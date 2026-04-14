@@ -21,35 +21,6 @@ import type { JobNodeData, JobType } from "@/lib/job-config";
 import type { AppMode } from "@/lib/types";
 import { applyDagreLayout } from "@/lib/layout";
 
-/* ── Demo data (will be laid out by dagre) ── */
-
-const RAW_NODES: Node<JobNodeData>[] = [
-  { id: "1", type: "job", position: { x: 0, y: 0 }, data: { label: "Extract Orders", jobType: "LAMBDA", status: "SUCCESS", lastRun: "2m ago", team: "TIME_A" } },
-  { id: "2", type: "job", position: { x: 0, y: 0 }, data: { label: "ETL Pipeline", jobType: "GLUE", status: "RUNNING", lastRun: "now", team: "TIME_A" } },
-  { id: "3", type: "job", position: { x: 0, y: 0 }, data: { label: "Process Batch", jobType: "BATCH", status: "SUCCESS", lastRun: "5m ago", team: "TIME_A" } },
-  { id: "4", type: "job", position: { x: 0, y: 0 }, data: { label: "Validate Results", jobType: "CHOICE", status: "WAITING", team: "TIME_B" } },
-  { id: "5", type: "job", position: { x: 0, y: 0 }, data: { label: "Orchestrate", jobType: "STEP_FUNCTION", status: "INACTIVE", team: "TIME_B" } },
-  { id: "6", type: "job", position: { x: 0, y: 0 }, data: { label: "Aggregate", jobType: "PARALLEL", status: "FAILED", lastRun: "1h ago", team: "TIME_C" } },
-  { id: "7", type: "job", position: { x: 0, y: 0 }, data: { label: "Cooldown", jobType: "WAIT", status: "INACTIVE", team: "TIME_C" } },
-];
-
-const RAW_EDGES: Edge[] = [
-  { id: "e1-2", source: "1", target: "2", animated: true },
-  { id: "e1-3", source: "1", target: "3", animated: true },
-  { id: "e2-4", source: "2", target: "4" },
-  { id: "e3-5", source: "3", target: "5" },
-  { id: "e4-6", source: "4", target: "6" },
-  { id: "e5-6", source: "5", target: "6" },
-  { id: "e6-7", source: "6", target: "7" },
-];
-
-// Auto-layout on init
-const { nodes: INITIAL_NODES, edges: INITIAL_EDGES } = applyDagreLayout(
-  RAW_NODES,
-  RAW_EDGES,
-  "TB"
-);
-
 const nodeTypes = { job: JobNodeComponent, teamGroup: TeamGroupComponent };
 
 /* ── Team group boundary computation ── */
@@ -117,12 +88,18 @@ interface FlowCanvasProps {
   onStatsChange: (stats: WorkflowStats) => void;
   onNodeSelect: (nodeId: string | null, data: JobNodeData | null) => void;
   onNodesReady?: (nodes: Node<JobNodeData>[]) => void;
+  onSave?: () => void;
   selectedNodeId: string | null;
   focusNodeId?: string | null;
+  initialNodes?: Node[];
+  initialEdges?: Edge[];
+  workflowName?: string;
+  folderSelector?: React.ReactNode;
 }
 
 export interface FlowCanvasHandle {
   focusNode: (nodeId: string) => void;
+  getState: () => { nodes: Node[]; edges: Edge[] };
 }
 
 let nodeIdCounter = 100;
@@ -133,11 +110,16 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
   onStatsChange,
   onNodeSelect,
   onNodesReady,
+  onSave,
   selectedNodeId,
   focusNodeId,
+  initialNodes = [],
+  initialEdges = [],
+  workflowName,
+  folderSelector,
 }, ref) {
-  const [nodes, setNodes, onNodesChange] = useNodesState(INITIAL_NODES);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(INITIAL_EDGES);
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, fitView, zoomIn, zoomOut, setCenter, getZoom } = useReactFlow();
 
@@ -154,7 +136,21 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
       setCenter(x, y, { zoom, duration: 500 });
       onNodeSelect(nodeId, target.data as JobNodeData);
     },
-  }), [nodes, setCenter, getZoom, onNodeSelect]);
+    getState: () => ({ nodes, edges }),
+  }), [nodes, edges, setCenter, getZoom, onNodeSelect]);
+
+  // When external data changes (folder switch), reload canvas
+  useEffect(() => {
+    if (initialNodes.length === 0 && initialEdges.length === 0) {
+      setNodes([]);
+      setEdges([]);
+      return;
+    }
+    const { nodes: laid, edges: laidE } = applyDagreLayout(initialNodes, initialEdges, "TB");
+    setNodes(laid);
+    setEdges(laidE);
+    setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 100);
+  }, [initialNodes, initialEdges]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When focusNodeId changes externally, center on it
   useEffect(() => {
@@ -343,6 +339,9 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
         onZoomIn={() => zoomIn({ duration: 250 })}
         onZoomOut={() => zoomOut({ duration: 250 })}
         onAutoLayout={handleAutoLayout}
+        onSave={onSave}
+        workflowName={workflowName}
+        folderSelector={folderSelector}
       />
 
       <div ref={reactFlowWrapper} className="flex-1 relative pt-4" style={{ backgroundColor: "#0a0f1c" }}>

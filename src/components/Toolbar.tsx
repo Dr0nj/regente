@@ -27,7 +27,9 @@ interface ToolbarProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onAutoLayout: () => void;
+  onSave?: () => void;
   workflowName?: string;
+  folderSelector?: React.ReactNode;
 }
 
 function Separator() {
@@ -41,26 +43,31 @@ export default function Toolbar({
   onZoomIn,
   onZoomOut,
   onAutoLayout,
+  onSave,
   workflowName = "Production Pipeline",
+  folderSelector,
 }: ToolbarProps) {
   const [saveToast, setSaveToast] = useState(false);
 
   const handleSave = () => {
+    onSave?.();
     setSaveToast(true);
     setTimeout(() => setSaveToast(false), 4000);
   };
 
   return (
     <header className="relative flex h-[52px] items-center justify-between border-b border-white/[0.05] bg-bg-surface/70 backdrop-blur-2xl px-4" style={{ boxShadow: "inset 0 -1px 0 rgba(255,255,255,0.02), 0 4px 24px rgba(0,0,0,0.3)" }}>
-      {/* Left: workflow name + actions */}
+      {/* Left: folder selector + actions */}
       <div className="flex items-center gap-2">
-        <button className="group flex items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 transition-all hover:border-white/[0.1] hover:bg-white/[0.04]">
-          <Sparkles className="h-3.5 w-3.5 text-accent-cyan" />
-          <span className="text-[13px] font-semibold text-text-primary">
-            {workflowName}
-          </span>
-          <ChevronDown className="h-3 w-3 text-text-muted group-hover:text-text-secondary transition-colors" />
-        </button>
+        {folderSelector ?? (
+          <button className="group flex items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 transition-all hover:border-white/[0.1] hover:bg-white/[0.04]">
+            <Sparkles className="h-3.5 w-3.5 text-accent-cyan" />
+            <span className="text-[13px] font-semibold text-text-primary">
+              {workflowName}
+            </span>
+            <ChevronDown className="h-3 w-3 text-text-muted group-hover:text-text-secondary transition-colors" />
+          </button>
+        )}
 
         <Separator />
 
