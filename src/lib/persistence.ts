@@ -80,7 +80,7 @@ interface LocalWorkflowMetric {
 
 export async function insertJobMetric(entry: LocalJobMetric): Promise<void> {
   if (useSupabase()) {
-    await supabase.from("execution_metrics_jobs").insert({
+    await (supabase.from as Function)("execution_metrics_jobs").insert({
       node_id: entry.nodeId,
       node_name: entry.nodeName,
       workflow_id: entry.workflowId,
@@ -97,7 +97,7 @@ export async function insertJobMetric(entry: LocalJobMetric): Promise<void> {
 
 export async function insertWorkflowMetric(entry: LocalWorkflowMetric): Promise<void> {
   if (useSupabase()) {
-    await supabase.from("execution_metrics_workflows").insert({
+    await (supabase.from as Function)("execution_metrics_workflows").insert({
       workflow_id: entry.workflowId,
       workflow_name: entry.workflowName,
       duration_ms: entry.durationMs,
@@ -115,8 +115,7 @@ export async function insertWorkflowMetric(entry: LocalWorkflowMetric): Promise<
 
 export async function loadJobMetrics(nodeId?: string): Promise<LocalJobMetric[]> {
   if (useSupabase()) {
-    let query = supabase
-      .from("execution_metrics_jobs")
+    let query = (supabase.from as Function)("execution_metrics_jobs")
       .select("*")
       .order("created_at", { ascending: true })
       .limit(METRICS_MAX);
@@ -138,8 +137,7 @@ export async function loadJobMetrics(nodeId?: string): Promise<LocalJobMetric[]>
 
 export async function loadWorkflowMetrics(workflowId?: string): Promise<LocalWorkflowMetric[]> {
   if (useSupabase()) {
-    let query = supabase
-      .from("execution_metrics_workflows")
+    let query = (supabase.from as Function)("execution_metrics_workflows")
       .select("*")
       .order("created_at", { ascending: true })
       .limit(METRICS_MAX);
@@ -162,8 +160,8 @@ export async function loadWorkflowMetrics(workflowId?: string): Promise<LocalWor
 
 export async function clearMetrics(): Promise<void> {
   if (useSupabase()) {
-    await supabase.from("execution_metrics_jobs").delete().neq("node_id", "");
-    await supabase.from("execution_metrics_workflows").delete().neq("workflow_id", "");
+    await (supabase.from as Function)("execution_metrics_jobs").delete().neq("node_id", "");
+    await (supabase.from as Function)("execution_metrics_workflows").delete().neq("workflow_id", "");
     return;
   }
   localStorage.removeItem(JOB_METRICS_KEY);
@@ -197,7 +195,7 @@ export interface AuditRow {
 
 export async function insertAudit(entry: LocalAuditEntry): Promise<void> {
   if (useSupabase()) {
-    await supabase.from("audit_entries").insert({
+    await (supabase.from as Function)("audit_entries").insert({
       action: entry.action,
       actor: entry.actor,
       target: entry.target,
@@ -339,7 +337,7 @@ export async function saveAlertRulesStore(rules: LocalAlertRule[]): Promise<void
       channels: r.channels,
       cooldown_ms: r.cooldownMs,
     }));
-    await supabase.from("alert_rules").upsert(rows, { onConflict: "id" });
+    await (supabase.from as Function)("alert_rules").upsert(rows, { onConflict: "id" });
     return;
   }
   localSave(RULES_KEY, rules, 100);
@@ -357,7 +355,7 @@ export async function insertAlertEvents(events: LocalAlertEvent[]): Promise<void
       message: e.message,
       acknowledged: e.acknowledged,
     }));
-    await supabase.from("alert_events").insert(rows);
+    await (supabase.from as Function)("alert_events").insert(rows);
     return;
   }
   const existing = localLoad<LocalAlertEvent>(EVENTS_KEY);
@@ -399,7 +397,7 @@ export async function loadAlertEvents(options?: {
 
 export async function acknowledgeAlertEvent(eventId: string): Promise<void> {
   if (useSupabase()) {
-    await supabase.from("alert_events").update({ acknowledged: true }).eq("id", eventId);
+    await (supabase.from as Function)("alert_events").update({ acknowledged: true }).eq("id", eventId);
     return;
   }
   const events = localLoad<LocalAlertEvent>(EVENTS_KEY);
@@ -412,7 +410,7 @@ export async function acknowledgeAlertEvent(eventId: string): Promise<void> {
 
 export async function acknowledgeAllAlertEvents(): Promise<void> {
   if (useSupabase()) {
-    await supabase.from("alert_events").update({ acknowledged: true }).eq("acknowledged", false);
+    await (supabase.from as Function)("alert_events").update({ acknowledged: true }).eq("acknowledged", false);
     return;
   }
   const events = localLoad<LocalAlertEvent>(EVENTS_KEY);

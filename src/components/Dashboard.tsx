@@ -13,6 +13,7 @@ import { validateDAG, type ValidationResult } from "@/lib/dag-validation";
 import { pushVersion, loadVersion } from "@/lib/workflow-versions";
 import type { WorkflowTemplate } from "@/lib/workflow-templates";
 import { useExecution } from "@/lib/execution-context";
+import { useOrchestrator } from "@/lib/orchestrator-context";
 import {
   seedDemoTeams,
   listTeamFolders,
@@ -63,6 +64,20 @@ export default function Dashboard() {
 
   // Execution engine (Phase 7)
   const { logs: execLogs, clearLogs, runWorkflow, running: engineRunning, abort: abortExecution, alertEvents, clearAlerts } = useExecution();
+
+  // Orchestrator (Architecture Pivot)
+  const {
+    instances,
+    stats: orchestratorStats,
+    loadFromCanvas,
+    forceRun,
+    getInstanceForDef,
+    hold: holdInst,
+    release: releaseInst,
+    cancel: cancelInst,
+    rerun: rerunInst,
+    instanceStatusToJobStatus,
+  } = useOrchestrator();
 
   // Sidebar collapse
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -164,6 +179,20 @@ export default function Dashboard() {
 
   const handleStatsChange = useCallback((s: WorkflowStats) => setStats(s), []);
 
+  // In monitoring mode, override stats with orchestrator instance data
+  const effectiveStats = useMemo<WorkflowStats>(() => {
+    if (mode === "monitoring" && instances.length > 0) {
+      return {
+        total: orchestratorStats.total,
+        running: orchestratorStats.running,
+        success: orchestratorStats.ok,
+        failed: orchestratorStats.notok,
+        waiting: orchestratorStats.waiting,
+      };
+    }
+    return stats;
+  }, [mode, stats, instances, orchestratorStats]);
+
   const handleNodeSelect = useCallback(
     (nodeId: string | null, data: JobNodeData | null) => {
       setSelectedNodeId(nodeId);
@@ -189,6 +218,29 @@ export default function Dashboard() {
     setCanvasNodes(nodes);
   }, []);
 
+  // Feed scheduler with definitions whenever canvas nodes change
+  useEffect(() => {
+    if (canvasNodes.length > 0) {
+      loadFromCanvas(canvasNodes);
+    }
+  }, [canvasNodes, loadFromCanvas]);
+
+  // In monitoring mode, project instance statuses onto canvas nodes
+  useEffect(() => {
+    if (mode !== "monitoring" || !flowRef.current) return;
+    for (const inst of instances) {
+      const jobStatus = instanceStatusToJobStatus(inst.status);
+      flowRef.current.updateNodeData(inst.definitionId, {
+        status: jobStatus,
+        lastRun: inst.completedAt
+          ? `${((inst.durationMs ?? 0) / 1000).toFixed(1)}s ago`
+          : inst.startedAt
+            ? "running"
+            : undefined,
+      });
+    }
+  }, [mode, instances, instanceStatusToJobStatus]);
+
   // When a job is clicked in the sidebar tree, focus that node in the canvas
   const handleJobFocus = useCallback((jobId: string) => {
     setFocusNodeId(jobId);
@@ -208,7 +260,7 @@ export default function Dashboard() {
     setSelectedNodeData(null);
   }, []);
 
-  // ── Execution via Engine (Phase 7) ──
+  // ── Execution via Engine (Phase 7) — updated for orchestrator pivot ──
   const handleRun = useCallback(() => {
     if (engineRunning) {
       abortExecution();
@@ -218,6 +270,13 @@ export default function Dashboard() {
     // Switch to monitoring mode
     setMode("monitoring");
 
+    // If a specific node is selected, force-run just that one
+    if (selectedNodeId) {
+      forceRun(selectedNodeId);
+      return;
+    }
+
+    // Otherwise, run all via the legacy workflow executor
     const state = flowRef.current?.getState();
     if (!state) return;
 
@@ -229,7 +288,7 @@ export default function Dashboard() {
       state.edges,
       update,
     );
-  }, [engineRunning, abortExecution, runWorkflow, activeFolderId]);
+  }, [engineRunning, abortExecution, runWorkflow, activeFolderId, selectedNodeId, forceRun]);
 
   // ── Export / Import workflows as JSON ──
   const handleExport = useCallback(() => {
@@ -291,7 +350,7 @@ export default function Dashboard() {
   return (
     <div className="flex flex-1 overflow-hidden">
       <Sidebar
-        stats={stats}
+        stats={effectiveStats}
         mode={mode}
         teams={teams}
         selectedJobId={selectedNodeId}
@@ -389,10 +448,15 @@ export default function Dashboard() {
         nodeData={selectedNodeData}
         nodeId={selectedNodeId}
         mode={mode}
+        instance={selectedNodeId ? getInstanceForDef(selectedNodeId) : undefined}
         onClose={handleCloseProperties}
         onUpdate={handleNodeDataUpdate}
         onDelete={(id) => { flowRef.current?.deleteNode(id); handleCloseProperties(); }}
         onDuplicate={(id) => flowRef.current?.duplicateNode(id)}
+        onHold={holdInst}
+        onRelease={releaseInst}
+        onCancel={cancelInst}
+        onRerun={rerunInst}
       />
     </div>
   );

@@ -49,7 +49,7 @@ interface TemplateVars {
 
 function renderTemplate(template: string, vars: TemplateVars): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
-    return (vars as Record<string, string>)[key] ?? `{{${key}}}`;
+    return (vars as unknown as Record<string, string>)[key] ?? `{{${key}}}`;
   });
 }
 

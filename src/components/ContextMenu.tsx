@@ -13,13 +13,19 @@ interface NodeContextMenuProps {
   onClose: () => void;
 }
 
-const ITEMS = [
+const ITEMS: Array<{
+  key: string;
+  icon?: typeof Crosshair;
+  label?: string;
+  shortcut?: string;
+  danger?: boolean;
+}> = [
   { key: "focus", icon: Crosshair, label: "Focus Node" },
   { key: "duplicate", icon: Copy, label: "Duplicate", shortcut: "Ctrl+D" },
   { key: "disconnect", icon: Unplug, label: "Disconnect Edges" },
   { key: "divider" },
   { key: "delete", icon: Trash2, label: "Delete Node", shortcut: "Del", danger: true },
-] as const;
+];
 
 export default function ContextMenu({
   x,

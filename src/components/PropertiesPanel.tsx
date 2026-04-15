@@ -5,15 +5,25 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { AppMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { describeCron, validateCron } from "@/lib/cron";
+import { INSTANCE_STATUS_CONFIG } from "@/lib/orchestrator-model";
+import type { JobInstance } from "@/lib/orchestrator-model";
 
 interface PropertiesPanelProps {
   nodeData: JobNodeData | null;
   nodeId: string | null;
   mode: AppMode;
+  /** Active instance for this node (Monitoring mode) */
+  instance?: JobInstance | null;
   onClose: () => void;
   onUpdate: (nodeId: string, data: Partial<JobNodeData>) => void;
   onDelete?: (nodeId: string) => void;
   onDuplicate?: (nodeId: string) => void;
+  /** Monitoring actions */
+  onHold?: (instanceId: string) => void;
+  onRelease?: (instanceId: string) => void;
+  onCancel?: (instanceId: string) => void;
+  onRerun?: (instanceId: string) => void;
 }
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
@@ -28,10 +38,15 @@ export default function PropertiesPanel({
   nodeData,
   nodeId,
   mode,
+  instance,
   onClose,
   onUpdate,
   onDelete,
   onDuplicate,
+  onHold,
+  onRelease,
+  onCancel,
+  onRerun,
 }: PropertiesPanelProps) {
   if (!nodeData || !nodeId) return null;
 
@@ -87,9 +102,25 @@ export default function PropertiesPanel({
             )}
           </div>
 
-          {/* Monitoring: execution details */}
-          {!isDesign && (
+          {/* Monitoring: instance execution details */}
+          {!isDesign && instance && (
             <>
+              {/* Instance status */}
+              <div className="glass-card rounded-xl p-3.5">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                    Instance Status
+                  </span>
+                  <Badge variant={instance.status === "OK" ? "success" : instance.status === "RUNNING" ? "running" : instance.status === "NOTOK" ? "failed" : instance.status === "HOLD" ? "inactive" : "waiting"}>
+                    <span className={cn("inline-block h-1.5 w-1.5 rounded-full", INSTANCE_STATUS_CONFIG[instance.status].dotColor, instance.status === "RUNNING" && "animate-pulse-dot")} />
+                    {INSTANCE_STATUS_CONFIG[instance.status].label}
+                  </Badge>
+                </div>
+                {instance.manual && (
+                  <span className="text-[10px] text-amber-400/80 font-medium">Manual (Force/Order)</span>
+                )}
+              </div>
+
               <div className="glass-card rounded-xl p-3.5 space-y-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
                   Execution Details
@@ -98,21 +129,47 @@ export default function PropertiesPanel({
                   <div className="flex justify-between">
                     <span className="text-text-muted">Duration</span>
                     <span className="text-text-secondary font-mono">
-                      {nodeData.status === "RUNNING" ? "02:34 (ongoing)" : "01:12"}
+                      {instance.durationMs != null
+                        ? `${(instance.durationMs / 1000).toFixed(1)}s`
+                        : instance.startedAt
+                          ? `${((Date.now() - instance.startedAt) / 1000).toFixed(0)}s (ongoing)`
+                          : "—"}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-text-muted">Attempts</span>
-                    <span className="text-text-secondary font-mono">1 / {nodeData.retries ?? 3}</span>
+                    <span className="text-text-secondary font-mono">{instance.attempts} / {instance.retries + 1}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-text-muted">Started</span>
-                    <span className="text-text-secondary font-mono">14:32:05</span>
+                    <span className="text-text-muted">Scheduled</span>
+                    <span className="text-text-secondary font-mono">
+                      {new Date(instance.scheduledAt).toLocaleTimeString("en-US", { hour12: false })}
+                    </span>
+                  </div>
+                  {instance.startedAt && (
+                    <div className="flex justify-between">
+                      <span className="text-text-muted">Started</span>
+                      <span className="text-text-secondary font-mono">
+                        {new Date(instance.startedAt).toLocaleTimeString("en-US", { hour12: false })}
+                      </span>
+                    </div>
+                  )}
+                  {instance.completedAt && (
+                    <div className="flex justify-between">
+                      <span className="text-text-muted">Completed</span>
+                      <span className="text-text-secondary font-mono">
+                        {new Date(instance.completedAt).toLocaleTimeString("en-US", { hour12: false })}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-text-muted">Order Date</span>
+                    <span className="text-text-secondary font-mono">{instance.orderDate}</span>
                   </div>
                 </div>
               </div>
 
-              {nodeData.status === "FAILED" && (
+              {instance.status === "NOTOK" && instance.error && (
                 <div className="rounded-xl border border-red-500/20 bg-red-500/[0.05] p-3.5">
                   <div className="flex items-center gap-1.5 mb-1.5">
                     <AlertTriangle className="h-3.5 w-3.5 text-red-400" />
@@ -121,11 +178,45 @@ export default function PropertiesPanel({
                     </span>
                   </div>
                   <p className="text-[11px] text-red-300/80 font-mono leading-relaxed">
-                    TimeoutError: Lambda execution exceeded 300s limit
+                    {instance.error}
                   </p>
                 </div>
               )}
+
+              {/* Instance actions */}
+              <div className="pt-2 border-t border-white/[0.04] space-y-1.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-2">Actions</p>
+                {instance.status === "WAITING" && (
+                  <>
+                    <Button variant="secondary" size="sm" className="w-full" onClick={() => onHold?.(instance.id)}>
+                      Hold
+                    </Button>
+                    <Button variant="destructive" size="sm" className="w-full" onClick={() => onCancel?.(instance.id)}>
+                      Cancel
+                    </Button>
+                  </>
+                )}
+                {instance.status === "HOLD" && (
+                  <Button variant="secondary" size="sm" className="w-full" onClick={() => onRelease?.(instance.id)}>
+                    Release
+                  </Button>
+                )}
+                {instance.status === "NOTOK" && (
+                  <Button variant="secondary" size="sm" className="w-full" onClick={() => onRerun?.(instance.id)}>
+                    Rerun
+                  </Button>
+                )}
+              </div>
             </>
+          )}
+
+          {/* Monitoring: no instance available */}
+          {!isDesign && !instance && (
+            <div className="glass-card rounded-xl p-3.5">
+              <p className="text-[11px] text-text-muted text-center">
+                No instance for today
+              </p>
+            </div>
           )}
 
           {/* Design: editable fields */}
@@ -194,6 +285,41 @@ export default function PropertiesPanel({
                 {nodeData.schedule && !/^\S+(\s+\S+){4,5}$/.test(nodeData.schedule.trim()) && (
                   <p className="text-[10px] text-amber-400 mt-1">Expected 5 or 6 fields</p>
                 )}
+                {nodeData.schedule && /^\S+(\s+\S+){4,5}$/.test(nodeData.schedule.trim()) && (
+                  <p className="text-[10px] text-emerald-400/80 mt-1">
+                    {describeCron(nodeData.schedule)}
+                  </p>
+                )}
+                {(() => {
+                  if (nodeData.schedule) {
+                    const err = validateCron(nodeData.schedule);
+                    if (err) return <p className="text-[10px] text-red-400 mt-0.5">{err}</p>;
+                  }
+                  return null;
+                })()}
+                {/* Preset buttons */}
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {([
+                    ["*/5 * * * *", "5min"],
+                    ["0 * * * *", "Hourly"],
+                    ["0 8 * * MON-FRI", "Weekdays 8h"],
+                    ["0 0 * * *", "Daily 0h"],
+                    ["0 6,12,18 * * *", "3x day"],
+                  ] as [string, string][]).map(([cron, label]) => (
+                    <button
+                      key={cron}
+                      onClick={() => onUpdate(nodeId, { schedule: cron })}
+                      className={cn(
+                        "text-[9px] px-1.5 py-0.5 rounded border transition-all",
+                        nodeData.schedule === cron
+                          ? "border-accent-cyan/40 bg-accent-cyan/10 text-accent-cyan"
+                          : "border-white/[0.06] bg-white/[0.02] text-text-muted hover:text-text-secondary hover:border-white/10"
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div>
