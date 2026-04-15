@@ -15,6 +15,7 @@ import {
   X,
   Download,
   Upload,
+  Search,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,8 @@ interface ToolbarProps {
   onRun?: () => void;
   onExport?: () => void;
   onImport?: () => void;
+  searchTerm?: string;
+  onSearchChange?: (term: string) => void;
   workflowName?: string;
   folderSelector?: React.ReactNode;
 }
@@ -51,6 +54,8 @@ export default function Toolbar({
   onRun,
   onExport,
   onImport,
+  searchTerm = "",
+  onSearchChange,
   workflowName = "Production Pipeline",
   folderSelector,
 }: ToolbarProps) {
@@ -75,6 +80,20 @@ export default function Toolbar({
             <ChevronDown className="h-3 w-3 text-text-muted group-hover:text-text-secondary transition-colors" />
           </button>
         )}
+
+        <Separator />
+
+        {/* Search */}
+        <div className="relative flex items-center">
+          <Search className="absolute left-2 h-3.5 w-3.5 text-text-muted pointer-events-none" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => onSearchChange?.(e.target.value)}
+            placeholder="Search nodes…"
+            className="h-7 w-36 rounded-md border border-white/[0.06] bg-white/[0.03] pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-muted/50 outline-none focus:border-accent-cyan/40 focus:ring-1 focus:ring-accent-cyan/20 transition-all"
+          />
+        </div>
 
         <Separator />
 

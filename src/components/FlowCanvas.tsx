@@ -98,12 +98,16 @@ interface FlowCanvasProps {
   initialEdges?: Edge[];
   workflowName?: string;
   folderSelector?: React.ReactNode;
+  searchTerm?: string;
+  onSearchChange?: (term: string) => void;
 }
 
 export interface FlowCanvasHandle {
   focusNode: (nodeId: string) => void;
   getState: () => { nodes: Node[]; edges: Edge[] };
   updateNodeData: (nodeId: string, update: Partial<JobNodeData>) => void;
+  deleteNode: (nodeId: string) => void;
+  duplicateNode: (nodeId: string) => void;
 }
 
 let nodeIdCounter = 100;
@@ -124,6 +128,8 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
   initialEdges = [],
   workflowName,
   folderSelector,
+  searchTerm = "",
+  onSearchChange,
 }, ref) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -144,12 +150,38 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
     [setNodes]
   );
 
+  // Delete a node and its connected edges
+  const deleteNode = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
+    },
+    [setNodes, setEdges]
+  );
+
+  // Duplicate a node (offset position slightly)
+  const duplicateNode = useCallback(
+    (nodeId: string) => {
+      const source = nodes.find((n) => n.id === nodeId);
+      if (!source) return;
+      const newId = `node-${++nodeIdCounter}`;
+      const clone: Node<JobNodeData> = {
+        id: newId,
+        type: source.type ?? "job",
+        position: { x: source.position.x + 40, y: source.position.y + 40 },
+        data: { ...(source.data as JobNodeData), label: `${(source.data as JobNodeData).label} (copy)` },
+      };
+      setNodes((nds) => [...nds, clone]);
+    },
+    [nodes, setNodes]
+  );
+
   // Expose focusNode to parent via ref
   useImperativeHandle(ref, () => ({
     focusNode: (nodeId: string) => {
       const target = nodes.find((n) => n.id === nodeId);
       if (!target) return;
-      const x = target.position.x + 120; // center of 240px wide node
+      const x = target.position.x + 120;
       const y = target.position.y + 40;
       const zoom = Math.max(getZoom(), 0.8);
       setCenter(x, y, { zoom, duration: 500 });
@@ -157,7 +189,9 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
     },
     getState: () => ({ nodes, edges }),
     updateNodeData,
-  }), [nodes, edges, setCenter, getZoom, onNodeSelect, updateNodeData]);
+    deleteNode,
+    duplicateNode,
+  }), [nodes, edges, setCenter, getZoom, onNodeSelect, updateNodeData, deleteNode, duplicateNode]);
 
   // When external data changes (folder switch), reload canvas
   useEffect(() => {
@@ -182,6 +216,26 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
     const zoom = Math.max(getZoom(), 0.8);
     setCenter(x, y, { zoom, duration: 500 });
   }, [focusNodeId, nodes, setCenter, getZoom]);
+
+  // Keyboard shortcuts (design mode only)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Ignore when typing in inputs
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      if (e.ctrlKey && e.key === "s") {
+        e.preventDefault();
+        onSave?.();
+      } else if (e.ctrlKey && e.key === "d" && isDesign) {
+        e.preventDefault();
+        const sel = nodes.find((n) => n.id === selectedNodeId);
+        if (sel) duplicateNode(sel.id);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isDesign, nodes, selectedNodeId, onSave, duplicateNode]);
 
   // Report nodes to parent for sidebar tree
   useEffect(() => {
@@ -275,17 +329,23 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
   // Inject mode into node data so nodes know which mode they're in
   const nodesWithMode = useMemo(
     () => {
-      const jobNodes = nodes.map((n) => ({
-        ...n,
-        data: { ...n.data, mode },
-        selected: n.id === selectedNodeId,
-        zIndex: 10,
-      }));
+      const term = searchTerm.toLowerCase().trim();
+      const jobNodes = nodes.map((n) => {
+        const label = ((n.data as JobNodeData).label ?? "").toLowerCase();
+        const dimmed = term.length > 0 && !label.includes(term);
+        return {
+          ...n,
+          data: { ...n.data, mode },
+          selected: n.id === selectedNodeId,
+          zIndex: 10,
+          style: dimmed ? { opacity: 0.2, transition: "opacity 0.2s" } : { opacity: 1, transition: "opacity 0.2s" },
+        };
+      });
       // Recompute group boundaries from current job node positions
       const groupNodes = computeTeamGroupNodes(nodes as Node<JobNodeData>[]);
       return [...groupNodes, ...jobNodes];
     },
-    [nodes, mode, selectedNodeId]
+    [nodes, mode, selectedNodeId, searchTerm]
   );
 
   // Build edges with colors based on source node status
@@ -363,6 +423,8 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
         onRun={onRun}
         onExport={onExport}
         onImport={onImport}
+        searchTerm={searchTerm}
+        onSearchChange={onSearchChange}
         workflowName={workflowName}
         folderSelector={folderSelector}
       />

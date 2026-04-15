@@ -5,6 +5,7 @@ import Sidebar, { type WorkflowStats } from "@/components/Sidebar";
 import FlowCanvas, { type FlowCanvasHandle } from "@/components/FlowCanvas";
 import PropertiesPanel from "@/components/PropertiesPanel";
 import FolderSelector from "@/components/FolderSelector";
+import ExecutionLog, { generateSimulationLogs, type LogEntry } from "@/components/ExecutionLog";
 import type { JobNodeData, JobStatus } from "@/lib/job-config";
 import type { AppMode } from "@/lib/types";
 import type { TreeTeam } from "@/components/MonitoringTree";
@@ -50,6 +51,13 @@ export default function Dashboard() {
   // Sidebar collapse
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const toggleSidebar = useCallback(() => setSidebarCollapsed((c) => !c), []);
+
+  // Search/filter
+  const [searchTerm, setSearchTerm] = useState("");
+
+  // Execution logs
+  const [execLogs, setExecLogs] = useState<LogEntry[]>([]);
+  const clearLogs = useCallback(() => setExecLogs([]), []);
 
   // Folder-based workflow state
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
@@ -200,9 +208,13 @@ export default function Dashboard() {
 
     // Set all to WAITING first
     const update = flowRef.current!.updateNodeData;
+    setExecLogs([]); // Clear previous logs
     for (const n of jobNodes) {
       update(n.id, { status: "WAITING" as JobStatus, lastRun: undefined });
     }
+
+    // Build node name lookup
+    const nameMap = new Map(jobNodes.map((n) => [n.id, (n.data as JobNodeData).label]));
 
     // Animate layers: each layer gets RUNNING then SUCCESS
     const LAYER_DELAY = 1500; // ms between layers
@@ -211,21 +223,30 @@ export default function Dashboard() {
     layers.forEach((layer, layerIdx) => {
       const startMs = layerIdx * LAYER_DELAY + 400;
 
-      // Set layer to RUNNING
+      // Set layer to RUNNING + generate logs
       const t1 = setTimeout(() => {
         for (const id of layer) {
           update(id, { status: "RUNNING" as JobStatus, lastRun: "now" });
+          const name = nameMap.get(id) ?? id;
+          const logs = generateSimulationLogs(id, name, "RUNNING" as JobStatus, layerIdx);
+          setExecLogs((prev) => [...prev, ...logs]);
         }
       }, startMs);
 
-      // Set layer to SUCCESS (simulate random failure for spice — 10% chance)
+      // Set layer to SUCCESS/FAILED + generate completion logs
       const t2 = setTimeout(() => {
         for (const id of layer) {
           const failed = Math.random() < 0.1;
+          const finalStatus = (failed ? "FAILED" : "SUCCESS") as JobStatus;
           update(id, {
-            status: (failed ? "FAILED" : "SUCCESS") as JobStatus,
+            status: finalStatus,
             lastRun: failed ? "failed" : `${Math.floor(Math.random() * 5) + 1}s ago`,
           });
+          const name = nameMap.get(id) ?? id;
+          const logs = generateSimulationLogs(id, name, finalStatus, layerIdx);
+          // Only add the completion logs (last 2-3 entries depending on status)
+          const completionLogs = logs.slice(4); // skip the startup logs already added
+          setExecLogs((prev) => [...prev, ...completionLogs]);
         }
       }, startMs + RUN_DURATION);
 
@@ -302,24 +323,35 @@ export default function Dashboard() {
         onToggleCollapse={toggleSidebar}
       />
       <ReactFlowProvider>
-        <FlowCanvas
-          ref={flowRef}
-          mode={mode}
-          onModeChange={setMode}
-          onStatsChange={handleStatsChange}
-          onNodeSelect={handleNodeSelect}
-          onNodesReady={handleNodesReady}
-          onSave={handleSave}
-          onRun={handleRun}
-          onExport={handleExport}
-          onImport={handleImport}
-          selectedNodeId={selectedNodeId}
-          focusNodeId={focusNodeId}
-          initialNodes={initialNodes}
-          initialEdges={initialEdges}
-          workflowName={activeFolderId?.toUpperCase() ?? "Select Folder"}
-          folderSelector={folderSelectorEl}
-        />
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <FlowCanvas
+            ref={flowRef}
+            mode={mode}
+            onModeChange={setMode}
+            onStatsChange={handleStatsChange}
+            onNodeSelect={handleNodeSelect}
+            onNodesReady={handleNodesReady}
+            onSave={handleSave}
+            onRun={handleRun}
+            onExport={handleExport}
+            onImport={handleImport}
+            selectedNodeId={selectedNodeId}
+            focusNodeId={focusNodeId}
+            initialNodes={initialNodes}
+            initialEdges={initialEdges}
+            workflowName={activeFolderId?.toUpperCase() ?? "Select Folder"}
+            folderSelector={folderSelectorEl}
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+          />
+          {mode === "monitoring" && (
+            <ExecutionLog
+              logs={execLogs}
+              onClear={clearLogs}
+              selectedNodeId={selectedNodeId}
+            />
+          )}
+        </div>
       </ReactFlowProvider>
       <PropertiesPanel
         nodeData={selectedNodeData}
@@ -327,6 +359,8 @@ export default function Dashboard() {
         mode={mode}
         onClose={handleCloseProperties}
         onUpdate={handleNodeDataUpdate}
+        onDelete={(id) => { flowRef.current?.deleteNode(id); handleCloseProperties(); }}
+        onDuplicate={(id) => flowRef.current?.duplicateNode(id)}
       />
     </div>
   );

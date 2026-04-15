@@ -1,4 +1,4 @@
-import { X, Clock, RotateCcw, Hash, Tag, Calendar, AlertTriangle, Bell } from "lucide-react";
+import { X, Clock, RotateCcw, Hash, Tag, Calendar, AlertTriangle, Bell, Copy } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { JOB_TYPES, STATUS_MAP, type JobNodeData } from "@/lib/job-config";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,8 @@ interface PropertiesPanelProps {
   mode: AppMode;
   onClose: () => void;
   onUpdate: (nodeId: string, data: Partial<JobNodeData>) => void;
+  onDelete?: (nodeId: string) => void;
+  onDuplicate?: (nodeId: string) => void;
 }
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
@@ -28,6 +30,8 @@ export default function PropertiesPanel({
   mode,
   onClose,
   onUpdate,
+  onDelete,
+  onDuplicate,
 }: PropertiesPanelProps) {
   if (!nodeData || !nodeId) return null;
 
@@ -205,8 +209,12 @@ export default function PropertiesPanel({
                     Danger Zone
                   </span>
                 </div>
-                <Button variant="destructive" size="sm" className="w-full">
+                <Button variant="destructive" size="sm" className="w-full" onClick={() => { onDelete?.(nodeId); onClose(); }}>
                   Delete Node
+                </Button>
+                <Button variant="secondary" size="sm" className="w-full mt-2 gap-1.5" onClick={() => onDuplicate?.(nodeId)}>
+                  <Copy className="h-3.5 w-3.5" />
+                  Duplicate Node
                 </Button>
               </div>
             </>
