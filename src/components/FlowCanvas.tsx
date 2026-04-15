@@ -101,6 +101,9 @@ interface FlowCanvasProps {
   folderSelector?: React.ReactNode;
   searchTerm?: string;
   onSearchChange?: (term: string) => void;
+  onValidate?: () => void;
+  onVersionHistory?: () => void;
+  onTemplates?: () => void;
 }
 
 export interface FlowCanvasHandle {
@@ -133,6 +136,9 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
   folderSelector,
   searchTerm = "",
   onSearchChange,
+  onValidate,
+  onVersionHistory,
+  onTemplates,
 }, ref) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -323,9 +329,19 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
     (params: Connection) => {
       if (!isDesign) return;
       pushHistory();
-      setEdges((eds) => addEdge({ ...params, animated: false }, eds));
+      // Auto-label edges from CHOICE nodes
+      const sourceNode = nodes.find((n) => n.id === params.source);
+      const sourceData = sourceNode?.data as JobNodeData | undefined;
+      let label: string | undefined;
+      if (sourceData?.jobType === "CHOICE") {
+        const existingFromSource = edges.filter((e) => e.source === params.source).length;
+        if (existingFromSource === 0) label = "True";
+        else if (existingFromSource === 1) label = "False";
+        else label = `Branch ${existingFromSource + 1}`;
+      }
+      setEdges((eds) => addEdge({ ...params, animated: false, ...(label ? { label, data: { conditionLabel: label } } : {}) }, eds));
     },
-    [setEdges, isDesign, pushHistory]
+    [setEdges, isDesign, pushHistory, nodes, edges]
   );
 
   /* Stats */
@@ -486,6 +502,14 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
           ...(dasharray && !animated ? { strokeDasharray: dasharray } : {}),
           ...(animated ? { strokeDasharray: "6 4", animation: "flow-dash 1s linear infinite" } : {}),
         },
+        // Preserve edge labels (from CHOICE routing)
+        ...(e.label ? {
+          label: e.label,
+          labelStyle: { fill: "#94a3b8", fontSize: 10, fontWeight: 600 },
+          labelBgStyle: { fill: "#0f172a", fillOpacity: 0.9 },
+          labelBgPadding: [6, 3] as [number, number],
+          labelBgBorderRadius: 6,
+        } : {}),
       };
     });
   }, [edges, nodes, mode]);
@@ -509,6 +533,9 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
         canRedo={canRedo}
         searchTerm={searchTerm}
         onSearchChange={onSearchChange}
+        onValidate={onValidate}
+        onVersionHistory={onVersionHistory}
+        onTemplates={onTemplates}
         workflowName={workflowName}
         folderSelector={folderSelector}
       />

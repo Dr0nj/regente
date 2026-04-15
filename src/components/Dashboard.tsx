@@ -6,9 +6,15 @@ import FlowCanvas, { type FlowCanvasHandle } from "@/components/FlowCanvas";
 import PropertiesPanel from "@/components/PropertiesPanel";
 import FolderSelector from "@/components/FolderSelector";
 import ExecutionLog, { generateSimulationLogs, type LogEntry } from "@/components/ExecutionLog";
+import ValidationPanel from "@/components/ValidationPanel";
+import VersionHistory from "@/components/VersionHistory";
+import TemplateGallery from "@/components/TemplateGallery";
 import type { JobNodeData, JobStatus } from "@/lib/job-config";
 import type { AppMode } from "@/lib/types";
 import type { TreeTeam } from "@/components/MonitoringTree";
+import { validateDAG, type ValidationResult } from "@/lib/dag-validation";
+import { pushVersion, loadVersion } from "@/lib/workflow-versions";
+import type { WorkflowTemplate } from "@/lib/workflow-templates";
 import {
   seedDemoTeams,
   listTeamFolders,
@@ -58,6 +64,12 @@ export default function Dashboard() {
   // Execution logs
   const [execLogs, setExecLogs] = useState<LogEntry[]>([]);
   const clearLogs = useCallback(() => setExecLogs([]), []);
+
+  // Phase 5 panels
+  const [showValidation, setShowValidation] = useState(false);
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   // Folder-based workflow state
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
@@ -111,7 +123,34 @@ export default function Dashboard() {
       jobNodes as never[],
       jobEdges as never[],
     );
+    // Push version snapshot
+    pushVersion(activeFolderId, jobNodes as never[], jobEdges as never[], "Manual save");
   }, [activeFolderId, canvasNodes]);
+
+  // DAG Validation
+  const handleValidate = useCallback(() => {
+    const state = flowRef.current?.getState();
+    if (!state) return;
+    const result = validateDAG(state.nodes, state.edges);
+    setValidationResult(result);
+    setShowValidation(true);
+  }, []);
+
+  // Version restore
+  const handleVersionRestore = useCallback((version: number) => {
+    if (!activeFolderId) return;
+    const v = loadVersion(activeFolderId, version);
+    if (!v) return;
+    setInitialNodes(v.nodes as unknown as Node[]);
+    setInitialEdges(v.edges as unknown as Edge[]);
+  }, [activeFolderId]);
+
+  // Template apply
+  const handleTemplateApply = useCallback((template: WorkflowTemplate) => {
+    setInitialNodes(template.nodes as unknown as Node[]);
+    setInitialEdges(template.edges as unknown as Edge[]);
+    setShowTemplates(false);
+  }, []);
 
   const handleStatsChange = useCallback((s: WorkflowStats) => setStats(s), []);
 
@@ -335,6 +374,9 @@ export default function Dashboard() {
             onRun={handleRun}
             onExport={handleExport}
             onImport={handleImport}
+            onValidate={handleValidate}
+            onVersionHistory={() => setShowVersionHistory((v) => !v)}
+            onTemplates={() => setShowTemplates(true)}
             selectedNodeId={selectedNodeId}
             focusNodeId={focusNodeId}
             initialNodes={initialNodes}
@@ -352,6 +394,29 @@ export default function Dashboard() {
             />
           )}
         </div>
+
+        {/* Phase 5 panels */}
+        {showValidation && (
+          <ValidationPanel
+            result={validationResult}
+            onValidate={handleValidate}
+            onFocusNode={handleJobFocus}
+            onClose={() => setShowValidation(false)}
+          />
+        )}
+        {showVersionHistory && (
+          <VersionHistory
+            folderId={activeFolderId}
+            onRestore={handleVersionRestore}
+            onClose={() => setShowVersionHistory(false)}
+          />
+        )}
+        {showTemplates && (
+          <TemplateGallery
+            onApply={handleTemplateApply}
+            onClose={() => setShowTemplates(false)}
+          />
+        )}
       </ReactFlowProvider>
       <PropertiesPanel
         nodeData={selectedNodeData}

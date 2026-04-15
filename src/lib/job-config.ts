@@ -122,6 +122,11 @@ export const STATUS_MAP: Record<JobStatus, StatusConfig> = {
 
 /* -- Node Data -- */
 
+export interface JobNodeVariable {
+  key: string;
+  value: string;
+}
+
 export interface JobNodeData {
   [key: string]: unknown;
   label: string;
@@ -132,4 +137,5 @@ export interface JobNodeData {
   timeout?: number;
   retries?: number;
   team?: string;
+  variables?: JobNodeVariable[];
 }

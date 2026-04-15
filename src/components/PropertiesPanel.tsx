@@ -1,6 +1,6 @@
-import { X, Clock, RotateCcw, Hash, Tag, Calendar, AlertTriangle, Bell, Copy } from "lucide-react";
+import { X, Clock, RotateCcw, Hash, Tag, Calendar, AlertTriangle, Bell, Copy, Plus, Trash2, Variable } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { JOB_TYPES, STATUS_MAP, type JobNodeData } from "@/lib/job-config";
+import { JOB_TYPES, STATUS_MAP, type JobNodeData, type JobNodeVariable } from "@/lib/job-config";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { AppMode } from "@/lib/types";
@@ -206,6 +206,59 @@ export default function PropertiesPanel({
                   value={(nodeData.alertChannel as string) ?? ""}
                   onChange={(e) => onUpdate(nodeId, { alertChannel: e.target.value || undefined })}
                 />
+              </div>
+
+              {/* Custom Variables */}
+              <div>
+                <FieldLabel>
+                  <span className="inline-flex items-center gap-1"><Variable className="h-3 w-3" /> Variables</span>
+                </FieldLabel>
+                <div className="space-y-1.5">
+                  {(nodeData.variables ?? []).map((v: JobNodeVariable, idx: number) => (
+                    <div key={idx} className="flex items-center gap-1.5">
+                      <input
+                        className="properties-input !py-1 flex-1 font-mono text-[11px]"
+                        placeholder="KEY"
+                        value={v.key}
+                        onChange={(e) => {
+                          const vars = [...(nodeData.variables ?? [])];
+                          vars[idx] = { ...vars[idx], key: e.target.value };
+                          onUpdate(nodeId, { variables: vars });
+                        }}
+                      />
+                      <span className="text-text-muted text-[10px]">=</span>
+                      <input
+                        className="properties-input !py-1 flex-1 font-mono text-[11px]"
+                        placeholder="value"
+                        value={v.value}
+                        onChange={(e) => {
+                          const vars = [...(nodeData.variables ?? [])];
+                          vars[idx] = { ...vars[idx], value: e.target.value };
+                          onUpdate(nodeId, { variables: vars });
+                        }}
+                      />
+                      <button
+                        onClick={() => {
+                          const vars = (nodeData.variables ?? []).filter((_: JobNodeVariable, i: number) => i !== idx);
+                          onUpdate(nodeId, { variables: vars });
+                        }}
+                        className="p-1 rounded hover:bg-red-500/10 text-text-muted hover:text-red-400 transition-all"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => {
+                      const vars = [...(nodeData.variables ?? []), { key: "", value: "" }];
+                      onUpdate(nodeId, { variables: vars });
+                    }}
+                    className="flex items-center gap-1.5 text-[10px] text-accent-cyan/80 hover:text-accent-cyan transition-all mt-1"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add variable
+                  </button>
+                </div>
               </div>
 
               <div>

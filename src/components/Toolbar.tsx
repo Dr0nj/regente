@@ -13,6 +13,9 @@ import {
   Download,
   Upload,
   Search,
+  ShieldCheck,
+  History,
+  LayoutTemplate,
 } from "lucide-react";
 import { useToast } from "@/components/ToastStack";
 import { Button } from "@/components/ui/button";
@@ -34,6 +37,9 @@ interface ToolbarProps {
   onRedo?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
+  onValidate?: () => void;
+  onVersionHistory?: () => void;
+  onTemplates?: () => void;
   searchTerm?: string;
   onSearchChange?: (term: string) => void;
   workflowName?: string;
@@ -59,6 +65,9 @@ export default function Toolbar({
   onRedo,
   canUndo = false,
   canRedo = false,
+  onValidate,
+  onVersionHistory,
+  onTemplates,
   searchTerm = "",
   onSearchChange,
   workflowName = "Production Pipeline",
@@ -119,6 +128,16 @@ export default function Toolbar({
               title="Auto-layout (dagre)"
             >
               Auto Layout
+            </Button>
+            <Separator />
+            <Button variant="ghost" size="icon-sm" onClick={onValidate} title="Validate DAG">
+              <ShieldCheck className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon-sm" onClick={onVersionHistory} title="Version History">
+              <History className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon-sm" onClick={onTemplates} title="Templates">
+              <LayoutTemplate className="h-3.5 w-3.5" />
             </Button>
           </>
         )}

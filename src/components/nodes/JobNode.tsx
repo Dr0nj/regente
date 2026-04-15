@@ -52,6 +52,13 @@ function JobNodeComponent({ data, selected, id }: NodeProps<JobNode>) {
       {/* Handles — vertical (top/bottom) */}
       <Handle type="target" position={Position.Top} className="!-top-[5px]" />
       <Handle type="source" position={Position.Bottom} className="!-bottom-[5px]" />
+      {/* CHOICE node: extra source handles for visual routing hint */}
+      {data.jobType === "CHOICE" && (
+        <>
+          <Handle type="source" position={Position.Right} id="choice-right" className="!-right-[5px] !top-1/2" />
+          <Handle type="source" position={Position.Left} id="choice-left" className="!-left-[5px] !top-1/2" />
+        </>
+      )}
 
       {/* Content */}
       <div className="relative p-3.5">
