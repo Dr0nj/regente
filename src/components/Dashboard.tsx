@@ -5,16 +5,18 @@ import Sidebar, { type WorkflowStats } from "@/components/Sidebar";
 import FlowCanvas, { type FlowCanvasHandle } from "@/components/FlowCanvas";
 import PropertiesPanel from "@/components/PropertiesPanel";
 import FolderSelector from "@/components/FolderSelector";
-import ExecutionLog, { generateSimulationLogs, type LogEntry } from "@/components/ExecutionLog";
+import ExecutionLog from "@/components/ExecutionLog";
 import ValidationPanel from "@/components/ValidationPanel";
 import VersionHistory from "@/components/VersionHistory";
 import TemplateGallery from "@/components/TemplateGallery";
-import type { JobNodeData, JobStatus } from "@/lib/job-config";
+import SchedulerPanel from "@/components/SchedulerPanel";
+import type { JobNodeData } from "@/lib/job-config";
 import type { AppMode } from "@/lib/types";
 import type { TreeTeam } from "@/components/MonitoringTree";
 import { validateDAG, type ValidationResult } from "@/lib/dag-validation";
 import { pushVersion, loadVersion } from "@/lib/workflow-versions";
 import type { WorkflowTemplate } from "@/lib/workflow-templates";
+import { useExecution } from "@/lib/execution-context";
 import {
   seedDemoTeams,
   listTeamFolders,
@@ -54,6 +56,9 @@ export default function Dashboard() {
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   const flowRef = useRef<FlowCanvasHandle>(null);
 
+  // Execution engine (Phase 7)
+  const { logs: execLogs, clearLogs, runWorkflow, running: engineRunning, abort: abortExecution } = useExecution();
+
   // Sidebar collapse
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const toggleSidebar = useCallback(() => setSidebarCollapsed((c) => !c), []);
@@ -61,15 +66,12 @@ export default function Dashboard() {
   // Search/filter
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Execution logs
-  const [execLogs, setExecLogs] = useState<LogEntry[]>([]);
-  const clearLogs = useCallback(() => setExecLogs([]), []);
-
   // Phase 5 panels
   const [showValidation, setShowValidation] = useState(false);
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showScheduler, setShowScheduler] = useState(false);
 
   // Folder-based workflow state
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
@@ -198,13 +200,12 @@ export default function Dashboard() {
     setSelectedNodeData(null);
   }, []);
 
-  // ── Execution simulation ──
-  const simulationRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-
+  // ── Execution via Engine (Phase 7) ──
   const handleRun = useCallback(() => {
-    // Clear any previous simulation
-    simulationRef.current.forEach(clearTimeout);
-    simulationRef.current = [];
+    if (engineRunning) {
+      abortExecution();
+      return;
+    }
 
     // Switch to monitoring mode
     setMode("monitoring");
@@ -212,86 +213,15 @@ export default function Dashboard() {
     const state = flowRef.current?.getState();
     if (!state) return;
 
-    const jobNodes = state.nodes.filter((n) => n.type === "job");
-    const jobEdges = state.edges.filter(
-      (e) => !e.source.startsWith("group-") && !e.target.startsWith("group-")
-    );
-
-    // Build adjacency list and in-degree for topological ordering
-    const children = new Map<string, string[]>();
-    const inDegree = new Map<string, number>();
-    for (const n of jobNodes) {
-      children.set(n.id, []);
-      inDegree.set(n.id, 0);
-    }
-    for (const e of jobEdges) {
-      children.get(e.source)?.push(e.target);
-      inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1);
-    }
-
-    // Topological layers (BFS)
-    const layers: string[][] = [];
-    let queue = jobNodes.filter((n) => (inDegree.get(n.id) ?? 0) === 0).map((n) => n.id);
-    while (queue.length) {
-      layers.push([...queue]);
-      const next: string[] = [];
-      for (const id of queue) {
-        for (const child of children.get(id) ?? []) {
-          const deg = (inDegree.get(child) ?? 1) - 1;
-          inDegree.set(child, deg);
-          if (deg === 0) next.push(child);
-        }
-      }
-      queue = next;
-    }
-
-    // Set all to WAITING first
     const update = flowRef.current!.updateNodeData;
-    setExecLogs([]); // Clear previous logs
-    for (const n of jobNodes) {
-      update(n.id, { status: "WAITING" as JobStatus, lastRun: undefined });
-    }
 
-    // Build node name lookup
-    const nameMap = new Map(jobNodes.map((n) => [n.id, (n.data as JobNodeData).label]));
-
-    // Animate layers: each layer gets RUNNING then SUCCESS
-    const LAYER_DELAY = 1500; // ms between layers
-    const RUN_DURATION = 1200; // ms that a node shows RUNNING
-
-    layers.forEach((layer, layerIdx) => {
-      const startMs = layerIdx * LAYER_DELAY + 400;
-
-      // Set layer to RUNNING + generate logs
-      const t1 = setTimeout(() => {
-        for (const id of layer) {
-          update(id, { status: "RUNNING" as JobStatus, lastRun: "now" });
-          const name = nameMap.get(id) ?? id;
-          const logs = generateSimulationLogs(id, name, "RUNNING" as JobStatus, layerIdx);
-          setExecLogs((prev) => [...prev, ...logs]);
-        }
-      }, startMs);
-
-      // Set layer to SUCCESS/FAILED + generate completion logs
-      const t2 = setTimeout(() => {
-        for (const id of layer) {
-          const failed = Math.random() < 0.1;
-          const finalStatus = (failed ? "FAILED" : "SUCCESS") as JobStatus;
-          update(id, {
-            status: finalStatus,
-            lastRun: failed ? "failed" : `${Math.floor(Math.random() * 5) + 1}s ago`,
-          });
-          const name = nameMap.get(id) ?? id;
-          const logs = generateSimulationLogs(id, name, finalStatus, layerIdx);
-          // Only add the completion logs (last 2-3 entries depending on status)
-          const completionLogs = logs.slice(4); // skip the startup logs already added
-          setExecLogs((prev) => [...prev, ...completionLogs]);
-        }
-      }, startMs + RUN_DURATION);
-
-      simulationRef.current.push(t1, t2);
-    });
-  }, []);
+    runWorkflow(
+      activeFolderId ?? "untitled",
+      state.nodes as Node<JobNodeData>[],
+      state.edges,
+      update,
+    );
+  }, [engineRunning, abortExecution, runWorkflow, activeFolderId]);
 
   // ── Export / Import workflows as JSON ──
   const handleExport = useCallback(() => {
@@ -377,6 +307,8 @@ export default function Dashboard() {
             onValidate={handleValidate}
             onVersionHistory={() => setShowVersionHistory((v) => !v)}
             onTemplates={() => setShowTemplates(true)}
+            onScheduler={() => setShowScheduler((v) => !v)}
+            engineRunning={engineRunning}
             selectedNodeId={selectedNodeId}
             focusNodeId={focusNodeId}
             initialNodes={initialNodes}
@@ -415,6 +347,11 @@ export default function Dashboard() {
           <TemplateGallery
             onApply={handleTemplateApply}
             onClose={() => setShowTemplates(false)}
+          />
+        )}
+        {showScheduler && (
+          <SchedulerPanel
+            onClose={() => setShowScheduler(false)}
           />
         )}
       </ReactFlowProvider>

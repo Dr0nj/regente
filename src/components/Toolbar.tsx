@@ -1,5 +1,6 @@
 import {
   Play,
+  StopCircle,
   Undo2,
   Redo2,
   ZoomIn,
@@ -16,6 +17,7 @@ import {
   ShieldCheck,
   History,
   LayoutTemplate,
+  Calendar,
 } from "lucide-react";
 import { useToast } from "@/components/ToastStack";
 import UserMenu from "@/components/UserMenu";
@@ -42,6 +44,8 @@ interface ToolbarProps {
   onValidate?: () => void;
   onVersionHistory?: () => void;
   onTemplates?: () => void;
+  onScheduler?: () => void;
+  engineRunning?: boolean;
   presenceUsers?: PresenceUser[];
   searchTerm?: string;
   onSearchChange?: (term: string) => void;
@@ -71,6 +75,8 @@ export default function Toolbar({
   onValidate,
   onVersionHistory,
   onTemplates,
+  onScheduler,
+  engineRunning = false,
   presenceUsers = [],
   searchTerm = "",
   onSearchChange,
@@ -143,6 +149,9 @@ export default function Toolbar({
             <Button variant="ghost" size="icon-sm" onClick={onTemplates} title="Templates">
               <LayoutTemplate className="h-3.5 w-3.5" />
             </Button>
+            <Button variant="ghost" size="icon-sm" onClick={onScheduler} title="Scheduler">
+              <Calendar className="h-3.5 w-3.5" />
+            </Button>
           </>
         )}
       </div>
@@ -207,8 +216,11 @@ export default function Toolbar({
               Save
             </Button>
             <Button size="sm" className="gap-1.5" onClick={onRun}>
-              <Play className="h-3.5 w-3.5 fill-current" />
-              Run Now
+              {engineRunning ? (
+                <><StopCircle className="h-3.5 w-3.5" /> Stop</>
+              ) : (
+                <><Play className="h-3.5 w-3.5 fill-current" /> Run Now</>
+              )}
             </Button>
           </>
         ) : (

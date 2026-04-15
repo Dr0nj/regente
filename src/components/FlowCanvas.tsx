@@ -104,6 +104,8 @@ interface FlowCanvasProps {
   onValidate?: () => void;
   onVersionHistory?: () => void;
   onTemplates?: () => void;
+  onScheduler?: () => void;
+  engineRunning?: boolean;
 }
 
 export interface FlowCanvasHandle {
@@ -139,6 +141,8 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
   onValidate,
   onVersionHistory,
   onTemplates,
+  onScheduler,
+  engineRunning,
 }, ref) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -536,6 +540,8 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
         onValidate={onValidate}
         onVersionHistory={onVersionHistory}
         onTemplates={onTemplates}
+        onScheduler={onScheduler}
+        engineRunning={engineRunning}
         workflowName={workflowName}
         folderSelector={folderSelector}
       />

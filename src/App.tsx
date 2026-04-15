@@ -4,6 +4,7 @@ import AuthPage from "@/components/AuthPage";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { ToastProvider } from "@/components/ToastStack";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { ExecutionProvider } from "@/lib/execution-context";
 
 function AppContent() {
   const { user, loading, isConfigured } = useAuth();
@@ -33,7 +34,9 @@ export default function App() {
     <ErrorBoundary>
       <AuthProvider>
         <ToastProvider>
-          <AppContent />
+          <ExecutionProvider>
+            <AppContent />
+          </ExecutionProvider>
         </ToastProvider>
       </AuthProvider>
     </ErrorBoundary>
