@@ -27,6 +27,7 @@ const TemplateGallery = lazy(() => import("@/components/TemplateGallery"));
 const SchedulerPanel = lazy(() => import("@/components/SchedulerPanel"));
 const MetricsDashboard = lazy(() => import("@/components/MetricsDashboard"));
 const AuditLog = lazy(() => import("@/components/AuditLog"));
+const NotificationSettings = lazy(() => import("@/components/NotificationSettings"));
 
 const EMPTY_STATS: WorkflowStats = {
   total: 0,
@@ -78,6 +79,7 @@ export default function Dashboard() {
   const [showScheduler, setShowScheduler] = useState(false);
   const [showMetrics, setShowMetrics] = useState(false);
   const [showAuditLog, setShowAuditLog] = useState(false);
+  const [showNotificationSettings, setShowNotificationSettings] = useState(false);
 
   // Folder-based workflow state
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
@@ -317,6 +319,7 @@ export default function Dashboard() {
             onMetrics={() => setShowMetrics((v) => !v)}
             onAudit={() => setShowAuditLog((v) => !v)}
             onAlerts={clearAlerts}
+            onNotificationSettings={() => setShowNotificationSettings((v) => !v)}
             alertCount={alertEvents.length}
             engineRunning={engineRunning}
             selectedNodeId={selectedNodeId}
@@ -373,6 +376,11 @@ export default function Dashboard() {
           {showAuditLog && (
             <AuditLog
               onClose={() => setShowAuditLog(false)}
+            />
+          )}
+          {showNotificationSettings && (
+            <NotificationSettings
+              onClose={() => setShowNotificationSettings(false)}
             />
           )}
         </Suspense>

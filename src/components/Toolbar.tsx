@@ -21,6 +21,7 @@ import {
   BarChart3,
   ScrollText,
   Bell,
+  Settings2,
 } from "lucide-react";
 import { useToast } from "@/components/ToastStack";
 import UserMenu from "@/components/UserMenu";
@@ -51,6 +52,7 @@ interface ToolbarProps {
   onMetrics?: () => void;
   onAudit?: () => void;
   onAlerts?: () => void;
+  onNotificationSettings?: () => void;
   alertCount?: number;
   engineRunning?: boolean;
   presenceUsers?: PresenceUser[];
@@ -86,6 +88,7 @@ export default function Toolbar({
   onMetrics,
   onAudit,
   onAlerts,
+  onNotificationSettings,
   alertCount = 0,
   engineRunning = false,
   presenceUsers = [],
@@ -177,6 +180,9 @@ export default function Toolbar({
                   {alertCount}
                 </span>
               )}
+            </Button>
+            <Button variant="ghost" size="icon-sm" onClick={onNotificationSettings} title="Notification Channels">
+              <Settings2 className="h-3.5 w-3.5" />
             </Button>
           </>
         )}

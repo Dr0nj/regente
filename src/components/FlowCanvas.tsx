@@ -108,6 +108,7 @@ interface FlowCanvasProps {
   onMetrics?: () => void;
   onAudit?: () => void;
   onAlerts?: () => void;
+  onNotificationSettings?: () => void;
   alertCount?: number;
   engineRunning?: boolean;
 }
@@ -149,6 +150,7 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
   onMetrics,
   onAudit,
   onAlerts,
+  onNotificationSettings,
   alertCount,
   engineRunning,
 }, ref) {
@@ -552,6 +554,7 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
         onMetrics={onMetrics}
         onAudit={onAudit}
         onAlerts={onAlerts}
+        onNotificationSettings={onNotificationSettings}
         alertCount={alertCount}
         engineRunning={engineRunning}
         workflowName={workflowName}

@@ -35,6 +35,8 @@ import {
 } from "@/lib/metrics";
 import { recordAudit } from "@/lib/audit";
 import { evaluateAlerts, type AlertEvent } from "@/lib/alerting";
+import { dispatchToAllChannels } from "@/lib/notification-channels";
+import { getNotificationChannels } from "@/lib/notification-settings";
 
 /* ── Context shape ── */
 
@@ -300,7 +302,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
           (ev) => setAlertEvents((prev) => [...prev, ev]),
         );
 
-        // Add alert logs
+        // Add alert logs + dispatch to external channels
         if (fired.length > 0) {
           const ts = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
           const alertLogs: LogEntry[] = fired.map((a) => ({
@@ -312,6 +314,14 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
             message: `[${a.severity.toUpperCase()}] ${a.message}`,
           }));
           setLogs((prev) => [...prev, ...alertLogs]);
+
+          // Dispatch to external notification channels (fire-and-forget)
+          const channels = getNotificationChannels();
+          if (channels.length > 0) {
+            for (const event of fired) {
+              dispatchToAllChannels(channels, event).catch(() => {});
+            }
+          }
         }
 
         return result;
