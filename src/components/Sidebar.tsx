@@ -45,6 +45,15 @@ const STAT_CARDS_DESIGN = [
 function onDragStart(event: DragEvent, jobType: JobType) {
   event.dataTransfer.setData("application/regente-job-type", jobType);
   event.dataTransfer.effectAllowed = "move";
+  // Custom drag preview
+  const config = JOB_TYPES[jobType];
+  const preview = document.createElement("div");
+  preview.textContent = config.label;
+  preview.style.cssText =
+    "position:fixed;top:-200px;left:-200px;padding:8px 16px;border-radius:10px;font-size:12px;font-weight:600;color:#f1f5f9;background:rgba(13,20,36,0.95);border:1px solid rgba(34,211,238,0.3);box-shadow:0 8px 32px rgba(0,0,0,0.5),0 0 0 1px rgba(34,211,238,0.1);white-space:nowrap;";
+  document.body.appendChild(preview);
+  event.dataTransfer.setDragImage(preview, 0, 0);
+  requestAnimationFrame(() => document.body.removeChild(preview));
 }
 
 export default function Sidebar({ stats, mode, teams = [], selectedJobId, onJobFocus, collapsed = false, onToggleCollapse }: SidebarProps) {

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useMemo, useEffect, useImperativeHandle, forwardRef, type DragEvent } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect, useImperativeHandle, forwardRef, type DragEvent } from "react";
 import {
   ReactFlow,
   Background,
@@ -20,6 +20,7 @@ import type { WorkflowStats } from "@/components/Sidebar";
 import type { JobNodeData, JobType } from "@/lib/job-config";
 import type { AppMode } from "@/lib/types";
 import { applyDagreLayout } from "@/lib/layout";
+import ContextMenu from "@/components/ContextMenu";
 
 const nodeTypes = { job: JobNodeComponent, teamGroup: TeamGroupComponent };
 
@@ -108,6 +109,8 @@ export interface FlowCanvasHandle {
   updateNodeData: (nodeId: string, update: Partial<JobNodeData>) => void;
   deleteNode: (nodeId: string) => void;
   duplicateNode: (nodeId: string) => void;
+  undo: () => void;
+  redo: () => void;
 }
 
 let nodeIdCounter = 100;
@@ -138,6 +141,65 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
 
   const isDesign = mode === "design";
 
+  // ── Undo/Redo history ──
+  const historyRef = useRef<{ nodes: Node[]; edges: Edge[] }[]>([]);
+  const historyPointerRef = useRef(-1);
+  const skipHistoryRef = useRef(false);
+  const latestStateRef = useRef({ nodes, edges });
+  const [, _forceHistoryRender] = useState(0);
+
+  useEffect(() => { latestStateRef.current = { nodes, edges }; });
+
+  const pushHistory = useCallback(() => {
+    if (skipHistoryRef.current) return;
+    const { nodes: ns, edges: es } = latestStateRef.current;
+    const snap = { nodes: ns.map((n) => ({ ...n, data: { ...n.data } })), edges: es.map((e) => ({ ...e })) };
+    const h = historyRef.current.slice(0, historyPointerRef.current + 1);
+    h.push(snap);
+    if (h.length > 50) h.shift();
+    historyRef.current = h;
+    historyPointerRef.current = h.length - 1;
+    _forceHistoryRender((c) => c + 1);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (historyPointerRef.current <= 0) return;
+    historyPointerRef.current--;
+    const snap = historyRef.current[historyPointerRef.current];
+    skipHistoryRef.current = true;
+    setNodes(snap.nodes);
+    setEdges(snap.edges);
+    skipHistoryRef.current = false;
+    _forceHistoryRender((c) => c + 1);
+  }, [setNodes, setEdges]);
+
+  const handleRedo = useCallback(() => {
+    if (historyPointerRef.current >= historyRef.current.length - 1) return;
+    historyPointerRef.current++;
+    const snap = historyRef.current[historyPointerRef.current];
+    skipHistoryRef.current = true;
+    setNodes(snap.nodes);
+    setEdges(snap.edges);
+    skipHistoryRef.current = false;
+    _forceHistoryRender((c) => c + 1);
+  }, [setNodes, setEdges]);
+
+  const canUndo = historyPointerRef.current > 0;
+  const canRedo = historyPointerRef.current < historyRef.current.length - 1;
+
+  // ── Context menu ──
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  /* Disconnect all edges from a node */
+  const disconnectNode = useCallback(
+    (nodeId: string) => {
+      pushHistory();
+      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
+    },
+    [pushHistory, setEdges],
+  );
+
   // Patch a canvas node's data (called from handle / parent ref)
   const updateNodeData = useCallback(
     (nodeId: string, update: Partial<JobNodeData>) => {
@@ -153,6 +215,7 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
   // Delete a node and its connected edges
   const deleteNode = useCallback(
     (nodeId: string) => {
+      pushHistory();
       setNodes((nds) => nds.filter((n) => n.id !== nodeId));
       setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
     },
@@ -162,6 +225,7 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
   // Duplicate a node (offset position slightly)
   const duplicateNode = useCallback(
     (nodeId: string) => {
+      pushHistory();
       const source = nodes.find((n) => n.id === nodeId);
       if (!source) return;
       const newId = `node-${++nodeIdCounter}`;
@@ -191,7 +255,9 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
     updateNodeData,
     deleteNode,
     duplicateNode,
-  }), [nodes, edges, setCenter, getZoom, onNodeSelect, updateNodeData, deleteNode, duplicateNode]);
+    undo: handleUndo,
+    redo: handleRedo,
+  }), [nodes, edges, setCenter, getZoom, onNodeSelect, updateNodeData, deleteNode, duplicateNode, handleUndo, handleRedo]);
 
   // When external data changes (folder switch), reload canvas
   useEffect(() => {
@@ -203,6 +269,10 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
     const { nodes: laid, edges: laidE } = applyDagreLayout(initialNodes, initialEdges, "TB");
     setNodes(laid);
     setEdges(laidE);
+    // Push initial state as first history entry
+    historyRef.current = [{ nodes: laid.map((n) => ({ ...n, data: { ...n.data } })), edges: laidE.map((e) => ({ ...e })) }];
+    historyPointerRef.current = 0;
+    _forceHistoryRender((c) => c + 1);
     setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 100);
   }, [initialNodes, initialEdges]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -227,6 +297,12 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
       if (e.ctrlKey && e.key === "s") {
         e.preventDefault();
         onSave?.();
+      } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "z" && isDesign) {
+        e.preventDefault();
+        handleRedo();
+      } else if (e.ctrlKey && e.key === "z" && isDesign) {
+        e.preventDefault();
+        handleUndo();
       } else if (e.ctrlKey && e.key === "d" && isDesign) {
         e.preventDefault();
         const sel = nodes.find((n) => n.id === selectedNodeId);
@@ -235,7 +311,7 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isDesign, nodes, selectedNodeId, onSave, duplicateNode]);
+  }, [isDesign, nodes, selectedNodeId, onSave, duplicateNode, handleUndo, handleRedo]);
 
   // Report nodes to parent for sidebar tree
   useEffect(() => {
@@ -246,9 +322,10 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
   const onConnect = useCallback(
     (params: Connection) => {
       if (!isDesign) return;
+      pushHistory();
       setEdges((eds) => addEdge({ ...params, animated: false }, eds));
     },
-    [setEdges, isDesign]
+    [setEdges, isDesign, pushHistory]
   );
 
   /* Stats */
@@ -277,16 +354,18 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
 
   const onPaneClick = useCallback(() => {
     onNodeSelect(null, null);
-  }, [onNodeSelect]);
+    closeContextMenu();
+  }, [onNodeSelect, closeContextMenu]);
 
   /* Auto layout */
   const handleAutoLayout = useCallback(() => {
+    pushHistory();
     // Only re-layout job nodes (filter out group nodes)
     const jobNodes = nodes.filter((n) => n.type === "job");
     const { nodes: layouted } = applyDagreLayout(jobNodes, edges, "TB");
     setNodes(layouted);
     setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 50);
-  }, [nodes, edges, setNodes, fitView]);
+  }, [nodes, edges, setNodes, fitView, pushHistory]);
 
   /* Drag & Drop (design only) */
   const onDragOver = useCallback(
@@ -321,9 +400,10 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
         },
       };
 
+      pushHistory();
       setNodes((nds) => [...nds, newNode]);
     },
-    [isDesign, screenToFlowPosition, setNodes]
+    [isDesign, screenToFlowPosition, setNodes, pushHistory]
   );
 
   // Inject mode into node data so nodes know which mode they're in
@@ -423,6 +503,10 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
         onRun={onRun}
         onExport={onExport}
         onImport={onImport}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        canUndo={canUndo}
+        canRedo={canRedo}
         searchTerm={searchTerm}
         onSearchChange={onSearchChange}
         workflowName={workflowName}
@@ -438,6 +522,12 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
           onEdgesChange={isDesign ? onEdgesChange : undefined}
           onConnect={onConnect}
           onNodeClick={onNodeClick}
+          onNodeContextMenu={(event, node) => {
+            event.preventDefault();
+            if (!isDesign) return;
+            setContextMenu({ x: event.clientX, y: event.clientY, nodeId: node.id });
+          }}
+          onNodeDragStop={() => pushHistory()}
           onPaneClick={onPaneClick}
           onDragOver={onDragOver}
           onDrop={onDrop}
@@ -483,6 +573,25 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
           />
         </ReactFlow>
       </div>
+
+      {/* Context menu */}
+      {contextMenu && isDesign && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onFocus={() => {
+            const target = nodes.find((n) => n.id === contextMenu.nodeId);
+            if (target) {
+              setCenter(target.position.x + 120, target.position.y + 40, { zoom: Math.max(getZoom(), 0.8), duration: 500 });
+              onNodeSelect(contextMenu.nodeId, target.data as JobNodeData);
+            }
+          }}
+          onDuplicate={() => duplicateNode(contextMenu.nodeId)}
+          onDisconnect={() => disconnectNode(contextMenu.nodeId)}
+          onDelete={() => deleteNode(contextMenu.nodeId)}
+          onClose={closeContextMenu}
+        />
+      )}
     </div>
   );
 });

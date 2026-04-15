@@ -136,10 +136,13 @@ export default function PropertiesPanel({
                   <span className="inline-flex items-center gap-1"><Tag className="h-3 w-3" /> Job Name</span>
                 </FieldLabel>
                 <input
-                  className="properties-input"
+                  className={cn("properties-input", !nodeData.label.trim() && "!border-red-500/40 !ring-red-500/20")}
                   value={nodeData.label}
                   onChange={(e) => onUpdate(nodeId, { label: e.target.value })}
                 />
+                {!nodeData.label.trim() && (
+                  <p className="text-[10px] text-red-400 mt-1">Name is required</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -149,11 +152,15 @@ export default function PropertiesPanel({
                   </FieldLabel>
                   <input
                     type="number"
-                    className="properties-input"
+                    min="0"
+                    className={cn("properties-input", nodeData.timeout !== undefined && nodeData.timeout < 0 && "!border-red-500/40")}
                     placeholder="300"
                     value={nodeData.timeout ?? ""}
                     onChange={(e) => onUpdate(nodeId, { timeout: e.target.value ? Number(e.target.value) : undefined })}
                   />
+                  {nodeData.timeout !== undefined && nodeData.timeout < 0 && (
+                    <p className="text-[10px] text-red-400 mt-0.5">Must be ≥ 0</p>
+                  )}
                 </div>
                 <div>
                   <FieldLabel>
@@ -161,11 +168,16 @@ export default function PropertiesPanel({
                   </FieldLabel>
                   <input
                     type="number"
-                    className="properties-input"
+                    min="0"
+                    max="10"
+                    className={cn("properties-input", nodeData.retries !== undefined && (nodeData.retries < 0 || nodeData.retries > 10) && "!border-red-500/40")}
                     placeholder="3"
                     value={nodeData.retries ?? ""}
                     onChange={(e) => onUpdate(nodeId, { retries: e.target.value ? Number(e.target.value) : undefined })}
                   />
+                  {nodeData.retries !== undefined && (nodeData.retries < 0 || nodeData.retries > 10) && (
+                    <p className="text-[10px] text-red-400 mt-0.5">Must be 0–10</p>
+                  )}
                 </div>
               </div>
 
@@ -174,11 +186,14 @@ export default function PropertiesPanel({
                   <span className="inline-flex items-center gap-1"><Calendar className="h-3 w-3" /> Schedule (cron)</span>
                 </FieldLabel>
                 <input
-                  className="properties-input"
+                  className={cn("properties-input", nodeData.schedule && !/^\S+(\s+\S+){4,5}$/.test(nodeData.schedule.trim()) && "!border-amber-500/40")}
                   placeholder="0 8 * * MON-FRI"
                   value={nodeData.schedule ?? ""}
                   onChange={(e) => onUpdate(nodeId, { schedule: e.target.value || undefined })}
                 />
+                {nodeData.schedule && !/^\S+(\s+\S+){4,5}$/.test(nodeData.schedule.trim()) && (
+                  <p className="text-[10px] text-amber-400 mt-1">Expected 5 or 6 fields</p>
+                )}
               </div>
 
               <div>

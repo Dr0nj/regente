@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   Play,
   Undo2,
@@ -11,13 +10,11 @@ import {
   Pencil,
   Sparkles,
   ChevronDown,
-  Check,
-  X,
   Download,
   Upload,
   Search,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useToast } from "@/components/ToastStack";
 import { Button } from "@/components/ui/button";
 import type { AppMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -33,6 +30,10 @@ interface ToolbarProps {
   onRun?: () => void;
   onExport?: () => void;
   onImport?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
   searchTerm?: string;
   onSearchChange?: (term: string) => void;
   workflowName?: string;
@@ -54,17 +55,20 @@ export default function Toolbar({
   onRun,
   onExport,
   onImport,
+  onUndo,
+  onRedo,
+  canUndo = false,
+  canRedo = false,
   searchTerm = "",
   onSearchChange,
   workflowName = "Production Pipeline",
   folderSelector,
 }: ToolbarProps) {
-  const [saveToast, setSaveToast] = useState(false);
+  const { addToast } = useToast();
 
   const handleSave = () => {
     onSave?.();
-    setSaveToast(true);
-    setTimeout(() => setSaveToast(false), 4000);
+    addToast({ type: "success", title: "Workflow saved", description: "Changes persisted successfully" });
   };
 
   return (
@@ -100,10 +104,10 @@ export default function Toolbar({
         {mode === "design" && (
           <>
             <div className="flex items-center gap-0.5">
-              <Button variant="ghost" size="icon-sm" title="Undo">
+              <Button variant="ghost" size="icon-sm" title="Undo (Ctrl+Z)" onClick={onUndo} disabled={!canUndo} className={cn(!canUndo && "opacity-30")}>
                 <Undo2 className="h-3.5 w-3.5" />
               </Button>
-              <Button variant="ghost" size="icon-sm" title="Redo">
+              <Button variant="ghost" size="icon-sm" title="Redo (Ctrl+Shift+Z)" onClick={onRedo} disabled={!canRedo} className={cn(!canRedo && "opacity-30")}>
                 <Redo2 className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -192,37 +196,6 @@ export default function Toolbar({
         )}
       </div>
 
-      {/* Save toast */}
-      <AnimatePresence>
-        {saveToast && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="absolute left-1/2 top-full mt-3 -translate-x-1/2 z-50"
-          >
-            <div className="flex items-center gap-2.5 rounded-xl bg-emerald-500/10 px-4 py-2.5 ring-1 ring-emerald-500/20 backdrop-blur-xl shadow-2xl">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/20">
-                <Check className="h-3.5 w-3.5 text-emerald-400" />
-              </div>
-              <div>
-                <p className="text-[12px] font-semibold text-emerald-400">
-                  Workflow salvo e PR aberta no GitHub
-                </p>
-                <p className="text-[10px] text-emerald-400/60">
-                  production-pipeline.yaml → main
-                </p>
-              </div>
-              <button
-                onClick={() => setSaveToast(false)}
-                className="ml-2 text-emerald-400/40 hover:text-emerald-400 transition-colors"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </header>
   );
 }
