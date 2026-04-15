@@ -15,6 +15,7 @@ import type { Node, Edge } from "@xyflow/react";
 import type { JobNodeData, JobStatus, JobType } from "@/lib/job-config";
 import { withRetry, type RetryResult } from "@/lib/retry";
 import { parseCron, nextRun } from "@/lib/cron";
+import { executeHttpJob, type HttpJobResult } from "@/lib/http-executor";
 
 /* ── Types ── */
 
@@ -25,6 +26,7 @@ export interface JobExecutionResult {
   attempts: number;
   error?: string;
   output?: Record<string, unknown>;
+  httpResult?: HttpJobResult;
 }
 
 export interface ExecutionEvent {
@@ -122,6 +124,7 @@ const JOB_DURATION_MS: Record<JobType, [number, number]> = {
   CHOICE: [100, 300],
   PARALLEL: [200, 500],
   WAIT: [1000, 2000],
+  HTTP: [300, 1000], // fallback for simulated HTTP (no config)
 };
 
 const FAILURE_RATE = 0.12; // 12% chance of failure per attempt
@@ -131,6 +134,29 @@ async function simulateJob(
   _attempt: number,
   signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
+  // ── HTTP job with config → real execution ──
+  if (node.data.jobType === "HTTP" && node.data.httpConfig?.url) {
+    const result = await executeHttpJob(
+      node.data.httpConfig,
+      node.data.dryRun ?? false,
+      signal,
+    );
+
+    if (!result.ok && !result.dryRun) {
+      throw new Error(
+        `HTTP ${result.statusCode} ${result.statusText}: ${result.responseBody.slice(0, 200)}`,
+      );
+    }
+
+    return {
+      exitCode: 0,
+      durationMs: result.durationMs,
+      output: `${result.dryRun ? "[DRY-RUN] " : ""}HTTP ${result.request.method} ${result.request.url} → ${result.statusCode || "OK"}`,
+      httpResult: result,
+    };
+  }
+
+  // ── All other jobs: simulated execution ──
   const [minMs, maxMs] = JOB_DURATION_MS[node.data.jobType] ?? [500, 1500];
   const duration = minMs + Math.random() * (maxMs - minMs);
 
@@ -297,6 +323,9 @@ export class WorkflowExecutor {
           attempts: result.attempts,
           error: result.success ? undefined : String(result.error),
           output: result.success ? result.value as Record<string, unknown> : undefined,
+          httpResult: result.success
+            ? (result.value as Record<string, unknown>)?.httpResult as HttpJobResult | undefined
+            : undefined,
         };
 
         jobResults.push(jobResult);
@@ -311,6 +340,7 @@ export class WorkflowExecutor {
             durationMs: Math.round(durationMs),
             attempts: result.attempts,
             error: jobResult.error,
+            httpResult: jobResult.httpResult,
           },
         });
 

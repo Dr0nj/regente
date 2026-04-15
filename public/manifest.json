@@ -1,0 +1,16 @@
+{
+  "name": "Regente — Workflow Orchestration",
+  "short_name": "Regente",
+  "description": "Visual workflow orchestration platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0f1c",
+  "theme_color": "#0a0f1c",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

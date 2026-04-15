@@ -129,28 +129,53 @@ function eventToLogs(event: ExecutionEvent): LogEntry[] {
     case "job-complete": {
       const status = event.data.status as string;
       const duration = ((event.data.durationMs as number) / 1000).toFixed(1);
+      const httpResult = event.data.httpResult as { dryRun?: boolean; statusCode?: number; request?: { method?: string; url?: string }; responseBody?: string } | undefined;
+      const entries: LogEntry[] = [];
+
       if (status === "SUCCESS") {
-        return [
-          {
-            id: `log-${++logCounter}`,
-            timestamp: ts,
-            nodeId,
-            nodeName,
-            level: "success",
-            message: `Completed in ${duration}s after ${event.data.attempts} attempt(s)`,
-          },
-        ];
-      }
-      return [
-        {
+        entries.push({
+          id: `log-${++logCounter}`,
+          timestamp: ts,
+          nodeId,
+          nodeName,
+          level: "success",
+          message: `Completed in ${duration}s after ${event.data.attempts} attempt(s)`,
+        });
+      } else {
+        entries.push({
           id: `log-${++logCounter}`,
           timestamp: ts,
           nodeId,
           nodeName,
           level: "error",
           message: `Failed after ${event.data.attempts} attempt(s) — ${event.data.error}`,
-        },
-      ];
+        });
+      }
+
+      // HTTP result details
+      if (httpResult) {
+        const prefix = httpResult.dryRun ? "[DRY-RUN] " : "";
+        entries.push({
+          id: `log-${++logCounter}`,
+          timestamp: ts,
+          nodeId,
+          nodeName,
+          level: httpResult.dryRun ? "debug" : "info",
+          message: `${prefix}${httpResult.request?.method} ${httpResult.request?.url} → ${httpResult.statusCode || "OK"}`,
+        });
+        if (httpResult.responseBody && !httpResult.dryRun) {
+          entries.push({
+            id: `log-${++logCounter}`,
+            timestamp: ts,
+            nodeId,
+            nodeName,
+            level: "debug",
+            message: `Response: ${(httpResult.responseBody as string).slice(0, 300)}`,
+          });
+        }
+      }
+
+      return entries;
     }
     case "workflow-complete": {
       const wfStatus = event.data.status as string;

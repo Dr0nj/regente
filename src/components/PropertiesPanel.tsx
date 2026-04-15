@@ -1,6 +1,6 @@
-import { X, Clock, RotateCcw, Hash, Tag, Calendar, AlertTriangle, Bell, Copy, Plus, Trash2, Variable } from "lucide-react";
+import { X, Clock, RotateCcw, Hash, Tag, Calendar, AlertTriangle, Bell, Copy, Plus, Trash2, Variable, Globe, Play } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { JOB_TYPES, STATUS_MAP, type JobNodeData, type JobNodeVariable } from "@/lib/job-config";
+import { JOB_TYPES, STATUS_MAP, type JobNodeData, type JobNodeVariable, type HttpMethod } from "@/lib/job-config";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { AppMode } from "@/lib/types";
@@ -207,6 +207,132 @@ export default function PropertiesPanel({
                   onChange={(e) => onUpdate(nodeId, { alertChannel: e.target.value || undefined })}
                 />
               </div>
+
+              {/* Dry Run toggle */}
+              <div className="flex items-center justify-between">
+                <FieldLabel>
+                  <span className="inline-flex items-center gap-1"><Play className="h-3 w-3" /> Dry Run</span>
+                </FieldLabel>
+                <button
+                  onClick={() => onUpdate(nodeId, { dryRun: !nodeData.dryRun })}
+                  className={cn(
+                    "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
+                    nodeData.dryRun ? "bg-amber-500/60" : "bg-white/10"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform",
+                      nodeData.dryRun ? "translate-x-4" : "translate-x-0.5"
+                    )}
+                  />
+                </button>
+              </div>
+              {nodeData.dryRun && (
+                <p className="text-[10px] text-amber-400 -mt-3">Jobs will log but not execute real requests</p>
+              )}
+
+              {/* HTTP Config (only for HTTP jobs) */}
+              {nodeData.jobType === "HTTP" && (
+                <div className="space-y-3 rounded-xl border border-sky-500/20 bg-sky-500/[0.03] p-3.5">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Globe className="h-3.5 w-3.5 text-sky-400" />
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-sky-400">
+                      HTTP Request
+                    </span>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <div className="w-24">
+                      <FieldLabel>Method</FieldLabel>
+                      <select
+                        className="properties-input text-[11px]"
+                        value={nodeData.httpConfig?.method ?? "GET"}
+                        onChange={(e) =>
+                          onUpdate(nodeId, {
+                            httpConfig: {
+                              ...(nodeData.httpConfig ?? { url: "", method: "GET" }),
+                              method: e.target.value as HttpMethod,
+                            },
+                          })
+                        }
+                      >
+                        <option value="GET">GET</option>
+                        <option value="POST">POST</option>
+                        <option value="PUT">PUT</option>
+                        <option value="PATCH">PATCH</option>
+                        <option value="DELETE">DELETE</option>
+                      </select>
+                    </div>
+                    <div className="flex-1">
+                      <FieldLabel>URL</FieldLabel>
+                      <input
+                        className={cn(
+                          "properties-input text-[11px] font-mono",
+                          !nodeData.httpConfig?.url && "!border-red-500/40"
+                        )}
+                        placeholder="https://api.example.com/endpoint"
+                        value={nodeData.httpConfig?.url ?? ""}
+                        onChange={(e) =>
+                          onUpdate(nodeId, {
+                            httpConfig: {
+                              ...(nodeData.httpConfig ?? { url: "", method: "GET" }),
+                              url: e.target.value,
+                            },
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <FieldLabel>Headers (JSON)</FieldLabel>
+                    <textarea
+                      className="properties-input text-[10px] font-mono !h-16 resize-none"
+                      placeholder='{"Authorization": "Bearer ..."}'
+                      value={
+                        nodeData.httpConfig?.headers
+                          ? JSON.stringify(nodeData.httpConfig.headers, null, 2)
+                          : ""
+                      }
+                      onChange={(e) => {
+                        let headers: Record<string, string> | undefined;
+                        try {
+                          headers = e.target.value ? JSON.parse(e.target.value) : undefined;
+                        } catch {
+                          // invalid JSON — keep raw text until valid
+                          return;
+                        }
+                        onUpdate(nodeId, {
+                          httpConfig: {
+                            ...(nodeData.httpConfig ?? { url: "", method: "GET" }),
+                            headers,
+                          },
+                        });
+                      }}
+                    />
+                  </div>
+
+                  {nodeData.httpConfig?.method !== "GET" && nodeData.httpConfig?.method !== "DELETE" && (
+                    <div>
+                      <FieldLabel>Body</FieldLabel>
+                      <textarea
+                        className="properties-input text-[10px] font-mono !h-20 resize-none"
+                        placeholder='{"key": "value"}'
+                        value={nodeData.httpConfig?.body ?? ""}
+                        onChange={(e) =>
+                          onUpdate(nodeId, {
+                            httpConfig: {
+                              ...(nodeData.httpConfig ?? { url: "", method: "POST" }),
+                              body: e.target.value || undefined,
+                            },
+                          })
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Custom Variables */}
               <div>

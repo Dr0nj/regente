@@ -7,6 +7,7 @@ import {
   GitBranch,
   Layers,
   Clock,
+  Globe,
 } from "lucide-react";
 
 /* -- Job Types -- */
@@ -18,7 +19,8 @@ export type JobType =
   | "STEP_FUNCTION"
   | "CHOICE"
   | "PARALLEL"
-  | "WAIT";
+  | "WAIT"
+  | "HTTP";
 
 export interface JobTypeConfig {
   label: string;
@@ -94,6 +96,15 @@ export const JOB_TYPES: Record<JobType, JobTypeConfig> = {
     accentColor: "#64748b",
     borderGlow: "rgba(100, 116, 139, 0.3)",
   },
+  HTTP: {
+    label: "HTTP",
+    description: "REST API call",
+    icon: Globe,
+    gradient: "from-sky-500/20 via-blue-500/10 to-transparent",
+    iconBg: "bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20",
+    accentColor: "#0ea5e9",
+    borderGlow: "rgba(14, 165, 233, 0.3)",
+  },
 };
 
 /* -- Status -- */
@@ -127,6 +138,15 @@ export interface JobNodeVariable {
   value: string;
 }
 
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+export interface HttpConfig {
+  url: string;
+  method: HttpMethod;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
 export interface JobNodeData {
   [key: string]: unknown;
   label: string;
@@ -138,4 +158,6 @@ export interface JobNodeData {
   retries?: number;
   team?: string;
   variables?: JobNodeVariable[];
+  httpConfig?: HttpConfig;
+  dryRun?: boolean;
 }

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo, useEffect } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect, lazy, Suspense } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import type { Node, Edge } from "@xyflow/react";
 import Sidebar, { type WorkflowStats } from "@/components/Sidebar";
@@ -6,12 +6,6 @@ import FlowCanvas, { type FlowCanvasHandle } from "@/components/FlowCanvas";
 import PropertiesPanel from "@/components/PropertiesPanel";
 import FolderSelector from "@/components/FolderSelector";
 import ExecutionLog from "@/components/ExecutionLog";
-import ValidationPanel from "@/components/ValidationPanel";
-import VersionHistory from "@/components/VersionHistory";
-import TemplateGallery from "@/components/TemplateGallery";
-import SchedulerPanel from "@/components/SchedulerPanel";
-import MetricsDashboard from "@/components/MetricsDashboard";
-import AuditLog from "@/components/AuditLog";
 import type { JobNodeData } from "@/lib/job-config";
 import type { AppMode } from "@/lib/types";
 import type { TreeTeam } from "@/components/MonitoringTree";
@@ -25,6 +19,14 @@ import {
   loadTeamWorkflow,
   saveTeamWorkflow,
 } from "@/lib/team-workflows";
+
+/* ── Lazy-loaded panels (code splitting — Phase 9) ── */
+const ValidationPanel = lazy(() => import("@/components/ValidationPanel"));
+const VersionHistory = lazy(() => import("@/components/VersionHistory"));
+const TemplateGallery = lazy(() => import("@/components/TemplateGallery"));
+const SchedulerPanel = lazy(() => import("@/components/SchedulerPanel"));
+const MetricsDashboard = lazy(() => import("@/components/MetricsDashboard"));
+const AuditLog = lazy(() => import("@/components/AuditLog"));
 
 const EMPTY_STATS: WorkflowStats = {
   total: 0,
@@ -335,43 +337,45 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Phase 5 panels */}
-        {showValidation && (
-          <ValidationPanel
-            result={validationResult}
-            onValidate={handleValidate}
-            onFocusNode={handleJobFocus}
-            onClose={() => setShowValidation(false)}
-          />
-        )}
-        {showVersionHistory && (
-          <VersionHistory
-            folderId={activeFolderId}
-            onRestore={handleVersionRestore}
-            onClose={() => setShowVersionHistory(false)}
-          />
-        )}
-        {showTemplates && (
-          <TemplateGallery
-            onApply={handleTemplateApply}
-            onClose={() => setShowTemplates(false)}
-          />
-        )}
-        {showScheduler && (
-          <SchedulerPanel
-            onClose={() => setShowScheduler(false)}
-          />
-        )}
-        {showMetrics && (
-          <MetricsDashboard
-            onClose={() => setShowMetrics(false)}
-          />
-        )}
-        {showAuditLog && (
-          <AuditLog
-            onClose={() => setShowAuditLog(false)}
-          />
-        )}
+        {/* Lazy-loaded panels (code splitting — Phase 9) */}
+        <Suspense fallback={null}>
+          {showValidation && (
+            <ValidationPanel
+              result={validationResult}
+              onValidate={handleValidate}
+              onFocusNode={handleJobFocus}
+              onClose={() => setShowValidation(false)}
+            />
+          )}
+          {showVersionHistory && (
+            <VersionHistory
+              folderId={activeFolderId}
+              onRestore={handleVersionRestore}
+              onClose={() => setShowVersionHistory(false)}
+            />
+          )}
+          {showTemplates && (
+            <TemplateGallery
+              onApply={handleTemplateApply}
+              onClose={() => setShowTemplates(false)}
+            />
+          )}
+          {showScheduler && (
+            <SchedulerPanel
+              onClose={() => setShowScheduler(false)}
+            />
+          )}
+          {showMetrics && (
+            <MetricsDashboard
+              onClose={() => setShowMetrics(false)}
+            />
+          )}
+          {showAuditLog && (
+            <AuditLog
+              onClose={() => setShowAuditLog(false)}
+            />
+          )}
+        </Suspense>
       </ReactFlowProvider>
       <PropertiesPanel
         nodeData={selectedNodeData}
