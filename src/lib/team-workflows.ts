@@ -53,7 +53,7 @@ function writeStore(store: LocalStore) {
 /* ── CRUD ── */
 
 /** List all team folders (metadata only — no nodes/edges) */
-export async function listTeamFolders(): Promise<TeamFolder[]> {
+export async function listTeamFolders(userId?: string): Promise<TeamFolder[]> {
   if (!isSupabaseConfigured) {
     const store = readStore();
     return Object.values(store).map((wf) => ({
@@ -65,10 +65,16 @@ export async function listTeamFolders(): Promise<TeamFolder[]> {
     }));
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("workflows")
     .select("id, name, description, nodes, updated_at")
     .order("name", { ascending: true });
+
+  if (userId) {
+    query = query.eq("owner_id", userId);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
   return (data ?? []).map((row) => ({
@@ -109,7 +115,8 @@ export async function saveTeamWorkflow(
   name: string,
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
-  description = ""
+  description = "",
+  userId?: string
 ): Promise<void> {
   const now = new Date().toISOString();
 
@@ -128,7 +135,7 @@ export async function saveTeamWorkflow(
       description,
       nodes: nodes as never,
       edges: edges as never,
-      owner_id: null,
+      owner_id: userId ?? null,
     });
 
   if (error) throw error;

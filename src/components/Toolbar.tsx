@@ -18,6 +18,8 @@ import {
   LayoutTemplate,
 } from "lucide-react";
 import { useToast } from "@/components/ToastStack";
+import UserMenu from "@/components/UserMenu";
+import CollaborationBar, { type PresenceUser } from "@/components/CollaborationBar";
 import { Button } from "@/components/ui/button";
 import type { AppMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -40,6 +42,7 @@ interface ToolbarProps {
   onValidate?: () => void;
   onVersionHistory?: () => void;
   onTemplates?: () => void;
+  presenceUsers?: PresenceUser[];
   searchTerm?: string;
   onSearchChange?: (term: string) => void;
   workflowName?: string;
@@ -68,6 +71,7 @@ export default function Toolbar({
   onValidate,
   onVersionHistory,
   onTemplates,
+  presenceUsers = [],
   searchTerm = "",
   onSearchChange,
   workflowName = "Production Pipeline",
@@ -213,6 +217,10 @@ export default function Toolbar({
             Export Log
           </Button>
         )}
+
+        <Separator />
+        <CollaborationBar users={presenceUsers} />
+        <UserMenu />
       </div>
 
     </header>
