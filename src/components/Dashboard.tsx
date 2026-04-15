@@ -10,6 +10,8 @@ import ValidationPanel from "@/components/ValidationPanel";
 import VersionHistory from "@/components/VersionHistory";
 import TemplateGallery from "@/components/TemplateGallery";
 import SchedulerPanel from "@/components/SchedulerPanel";
+import MetricsDashboard from "@/components/MetricsDashboard";
+import AuditLog from "@/components/AuditLog";
 import type { JobNodeData } from "@/lib/job-config";
 import type { AppMode } from "@/lib/types";
 import type { TreeTeam } from "@/components/MonitoringTree";
@@ -57,7 +59,7 @@ export default function Dashboard() {
   const flowRef = useRef<FlowCanvasHandle>(null);
 
   // Execution engine (Phase 7)
-  const { logs: execLogs, clearLogs, runWorkflow, running: engineRunning, abort: abortExecution } = useExecution();
+  const { logs: execLogs, clearLogs, runWorkflow, running: engineRunning, abort: abortExecution, alertEvents, clearAlerts } = useExecution();
 
   // Sidebar collapse
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -72,6 +74,8 @@ export default function Dashboard() {
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showScheduler, setShowScheduler] = useState(false);
+  const [showMetrics, setShowMetrics] = useState(false);
+  const [showAuditLog, setShowAuditLog] = useState(false);
 
   // Folder-based workflow state
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
@@ -308,6 +312,10 @@ export default function Dashboard() {
             onVersionHistory={() => setShowVersionHistory((v) => !v)}
             onTemplates={() => setShowTemplates(true)}
             onScheduler={() => setShowScheduler((v) => !v)}
+            onMetrics={() => setShowMetrics((v) => !v)}
+            onAudit={() => setShowAuditLog((v) => !v)}
+            onAlerts={clearAlerts}
+            alertCount={alertEvents.length}
             engineRunning={engineRunning}
             selectedNodeId={selectedNodeId}
             focusNodeId={focusNodeId}
@@ -352,6 +360,16 @@ export default function Dashboard() {
         {showScheduler && (
           <SchedulerPanel
             onClose={() => setShowScheduler(false)}
+          />
+        )}
+        {showMetrics && (
+          <MetricsDashboard
+            onClose={() => setShowMetrics(false)}
+          />
+        )}
+        {showAuditLog && (
+          <AuditLog
+            onClose={() => setShowAuditLog(false)}
           />
         )}
       </ReactFlowProvider>

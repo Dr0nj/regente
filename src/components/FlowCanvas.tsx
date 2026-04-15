@@ -105,6 +105,10 @@ interface FlowCanvasProps {
   onVersionHistory?: () => void;
   onTemplates?: () => void;
   onScheduler?: () => void;
+  onMetrics?: () => void;
+  onAudit?: () => void;
+  onAlerts?: () => void;
+  alertCount?: number;
   engineRunning?: boolean;
 }
 
@@ -142,6 +146,10 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
   onVersionHistory,
   onTemplates,
   onScheduler,
+  onMetrics,
+  onAudit,
+  onAlerts,
+  alertCount,
   engineRunning,
 }, ref) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -541,6 +549,10 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
         onVersionHistory={onVersionHistory}
         onTemplates={onTemplates}
         onScheduler={onScheduler}
+        onMetrics={onMetrics}
+        onAudit={onAudit}
+        onAlerts={onAlerts}
+        alertCount={alertCount}
         engineRunning={engineRunning}
         workflowName={workflowName}
         folderSelector={folderSelector}

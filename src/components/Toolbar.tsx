@@ -18,6 +18,9 @@ import {
   History,
   LayoutTemplate,
   Calendar,
+  BarChart3,
+  ScrollText,
+  Bell,
 } from "lucide-react";
 import { useToast } from "@/components/ToastStack";
 import UserMenu from "@/components/UserMenu";
@@ -45,6 +48,10 @@ interface ToolbarProps {
   onVersionHistory?: () => void;
   onTemplates?: () => void;
   onScheduler?: () => void;
+  onMetrics?: () => void;
+  onAudit?: () => void;
+  onAlerts?: () => void;
+  alertCount?: number;
   engineRunning?: boolean;
   presenceUsers?: PresenceUser[];
   searchTerm?: string;
@@ -76,6 +83,10 @@ export default function Toolbar({
   onVersionHistory,
   onTemplates,
   onScheduler,
+  onMetrics,
+  onAudit,
+  onAlerts,
+  alertCount = 0,
   engineRunning = false,
   presenceUsers = [],
   searchTerm = "",
@@ -151,6 +162,21 @@ export default function Toolbar({
             </Button>
             <Button variant="ghost" size="icon-sm" onClick={onScheduler} title="Scheduler">
               <Calendar className="h-3.5 w-3.5" />
+            </Button>
+            <Separator />
+            <Button variant="ghost" size="icon-sm" onClick={onMetrics} title="Metrics">
+              <BarChart3 className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon-sm" onClick={onAudit} title="Audit Trail">
+              <ScrollText className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon-sm" onClick={onAlerts} title="Alerts" className="relative">
+              <Bell className="h-3.5 w-3.5" />
+              {alertCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-red-500 px-0.5 text-[8px] font-bold text-white">
+                  {alertCount}
+                </span>
+              )}
             </Button>
           </>
         )}
