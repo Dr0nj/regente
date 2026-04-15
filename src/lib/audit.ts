@@ -1,9 +1,13 @@
 /**
- * Audit Trail — Phase 8
+ * Audit Trail — Phase 8 + Phase 11 (dual-mode persistence)
  *
  * Records user/system actions for compliance and debugging.
- * Stored in localStorage (MVP), Supabase-ready interface.
+ * Uses Supabase when configured, localStorage as fallback.
  */
+
+import { insertAudit, clearAuditStore, localLoad } from "@/lib/persistence";
+
+const AUDIT_KEY = "regente:audit";
 
 /* ── Types ── */
 
@@ -32,16 +36,13 @@ export interface AuditEntry {
   id: string;
   timestamp: number;
   action: AuditAction;
-  actor: string; // userId or "system"
-  target: string; // workflowId, nodeId, etc.
+  actor: string;
+  target: string;
   targetName?: string;
   details?: Record<string, unknown>;
 }
 
-/* ── Storage ── */
-
-const AUDIT_KEY = "regente:audit";
-const MAX_ENTRIES = 1000;
+/* ── Helpers ── */
 
 let counter = 0;
 
@@ -70,12 +71,8 @@ export function recordAudit(
     details: options?.details,
   };
 
-  const entries = getAuditEntries();
-  entries.push(entry);
-
-  // Trim to max
-  const trimmed = entries.slice(-MAX_ENTRIES);
-  localStorage.setItem(AUDIT_KEY, JSON.stringify(trimmed));
+  // Fire-and-forget async insert (doesn't block UI)
+  insertAudit(entry);
 
   return entry;
 }
@@ -87,20 +84,13 @@ export function getAuditEntries(options?: {
   since?: number;
   limit?: number;
 }): AuditEntry[] {
-  let entries: AuditEntry[];
-  try {
-    const raw = localStorage.getItem(AUDIT_KEY);
-    entries = raw ? JSON.parse(raw) : [];
-  } catch {
-    entries = [];
-  }
-
+  // Sync read from localStorage for fast UI rendering
+  let entries = localLoad<AuditEntry>(AUDIT_KEY);
   if (options?.action) entries = entries.filter((e) => e.action === options.action);
   if (options?.target) entries = entries.filter((e) => e.target === options.target);
   if (options?.actor) entries = entries.filter((e) => e.actor === options.actor);
   if (options?.since) entries = entries.filter((e) => e.timestamp >= options.since!);
   if (options?.limit) entries = entries.slice(-options.limit);
-
   return entries;
 }
 
@@ -109,7 +99,7 @@ export function getRecentAudit(limit = 50): AuditEntry[] {
 }
 
 export function clearAudit(): void {
-  localStorage.removeItem(AUDIT_KEY);
+  clearAuditStore();
 }
 
 /** Human-readable action label */

@@ -1,11 +1,22 @@
 /**
- * Alerting Engine — Phase 8
+ * Alerting Engine — Phase 8 + Phase 11 (dual-mode persistence)
  *
  * Rule-based alerting system that evaluates conditions after each
  * workflow execution and fires notifications.
  *
  * MVP: fires toast notifications. Extensible to Slack/email/PagerDuty.
+ * Uses Supabase when configured, localStorage as fallback.
  */
+
+import {
+  localLoad,
+  localSave,
+  insertAlertEvents,
+  acknowledgeAlertEvent,
+  acknowledgeAllAlertEvents,
+  saveAlertRulesStore,
+  COOLDOWN_KEY,
+} from "@/lib/persistence";
 
 /* ── Types ── */
 
@@ -43,11 +54,10 @@ export interface AlertEvent {
   acknowledged: boolean;
 }
 
-/* ── Storage ── */
+/* ── Storage keys ── */
 
 const RULES_KEY = "regente:alert-rules";
 const EVENTS_KEY = "regente:alert-events";
-const COOLDOWN_KEY = "regente:alert-cooldowns";
 const MAX_EVENTS = 200;
 
 let eventCounter = 0;
@@ -90,17 +100,19 @@ const DEFAULT_RULES: AlertRule[] = [
 /* ── Rule persistence ── */
 
 export function getAlertRules(): AlertRule[] {
-  try {
-    const raw = localStorage.getItem(RULES_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* use defaults */ }
+  const rules = localLoad<AlertRule>(RULES_KEY);
+  if (rules.length > 0) return rules;
   // Seed defaults
-  localStorage.setItem(RULES_KEY, JSON.stringify(DEFAULT_RULES));
+  localSave(RULES_KEY, DEFAULT_RULES, 100);
+  // Also persist to Supabase (fire-and-forget)
+  saveAlertRulesStore(DEFAULT_RULES);
   return [...DEFAULT_RULES];
 }
 
 export function saveAlertRules(rules: AlertRule[]): void {
-  localStorage.setItem(RULES_KEY, JSON.stringify(rules));
+  localSave(RULES_KEY, rules, 100);
+  // Also persist to Supabase (fire-and-forget)
+  saveAlertRulesStore(rules);
 }
 
 export function toggleAlertRule(ruleId: string): void {
@@ -119,45 +131,42 @@ export function getAlertEvents(options?: {
   acknowledged?: boolean;
   limit?: number;
 }): AlertEvent[] {
-  let events: AlertEvent[];
-  try {
-    const raw = localStorage.getItem(EVENTS_KEY);
-    events = raw ? JSON.parse(raw) : [];
-  } catch {
-    events = [];
-  }
-
+  // Sync read from localStorage for fast UI rendering
+  let events = localLoad<AlertEvent>(EVENTS_KEY);
   if (options?.severity) events = events.filter((e) => e.severity === options.severity);
   if (options?.acknowledged !== undefined) events = events.filter((e) => e.acknowledged === options.acknowledged);
   if (options?.limit) events = events.slice(-options.limit);
-
   return events;
 }
 
-function saveAlertEvents(events: AlertEvent[]): void {
-  localStorage.setItem(EVENTS_KEY, JSON.stringify(events.slice(-MAX_EVENTS)));
+function saveAlertEventsLocal(events: AlertEvent[]): void {
+  localSave(EVENTS_KEY, events, MAX_EVENTS);
 }
 
 export function acknowledgeAlert(eventId: string): void {
-  const events = getAlertEvents();
+  const events = localLoad<AlertEvent>(EVENTS_KEY);
   const ev = events.find((e) => e.id === eventId);
   if (ev) {
     ev.acknowledged = true;
-    saveAlertEvents(events);
+    saveAlertEventsLocal(events);
+    // Also persist to Supabase (fire-and-forget)
+    acknowledgeAlertEvent(eventId);
   }
 }
 
 export function acknowledgeAll(): void {
-  const events = getAlertEvents();
+  const events = localLoad<AlertEvent>(EVENTS_KEY);
   for (const e of events) e.acknowledged = true;
-  saveAlertEvents(events);
+  saveAlertEventsLocal(events);
+  // Also persist to Supabase (fire-and-forget)
+  acknowledgeAllAlertEvents();
 }
 
 export function getUnacknowledgedCount(): number {
   return getAlertEvents({ acknowledged: false }).length;
 }
 
-/* ── Cooldown tracking ── */
+/* ── Cooldown tracking (always localStorage — ephemeral) ── */
 
 function getCooldowns(): Record<string, number> {
   try {
@@ -272,8 +281,10 @@ export function evaluateAlerts(
 
   // Persist fired events
   if (fired.length > 0) {
-    const existing = getAlertEvents();
-    saveAlertEvents([...existing, ...fired]);
+    const existing = localLoad<AlertEvent>(EVENTS_KEY);
+    saveAlertEventsLocal([...existing, ...fired]);
+    // Also persist to Supabase (fire-and-forget)
+    insertAlertEvents(fired);
   }
 
   return fired;

@@ -1,5 +1,5 @@
 /**
- * Metrics Collector — Phase 8
+ * Metrics Collector — Phase 8 + Phase 11 (dual-mode persistence)
  *
  * Tracks execution metrics per workflow and per job:
  * - Duration (min, max, avg, p95)
@@ -7,8 +7,17 @@
  * - Retry rates
  * - SLA compliance
  *
- * Stored in localStorage (MVP). Supabase-ready interface.
+ * Uses Supabase when configured, localStorage as fallback.
  */
+
+import {
+  insertJobMetric,
+  insertWorkflowMetric,
+  loadJobMetrics,
+  loadWorkflowMetrics,
+  clearMetrics as clearMetricsStore,
+  localLoad,
+} from "@/lib/persistence";
 
 /* ── Types ── */
 
@@ -66,28 +75,9 @@ export interface SLAResult {
   actualSuccessRate: number;
 }
 
-/* ── Storage keys ── */
-
-const JOB_METRICS_KEY = "regente:metrics:jobs";
-const WORKFLOW_METRICS_KEY = "regente:metrics:workflows";
-const MAX_ENTRIES = 500;
-
 /* ── Helpers ── */
 
-function loadEntries<T>(key: string): T[] {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveEntries<T>(key: string, entries: T[]) {
-  // Keep only the most recent entries
-  const trimmed = entries.slice(-MAX_ENTRIES);
-  localStorage.setItem(key, JSON.stringify(trimmed));
-}
+const WORKFLOW_METRICS_KEY = "regente:metrics:workflows";
 
 function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
@@ -120,29 +110,25 @@ function aggregate(durations: number[], statuses: string[], retries?: number[]):
 /* ── Public API ── */
 
 export function recordJobMetric(entry: JobMetricEntry): void {
-  const entries = loadEntries<JobMetricEntry>(JOB_METRICS_KEY);
-  entries.push(entry);
-  saveEntries(JOB_METRICS_KEY, entries);
+  insertJobMetric(entry);
 }
 
 export function recordWorkflowMetric(entry: WorkflowMetricEntry): void {
-  const entries = loadEntries<WorkflowMetricEntry>(WORKFLOW_METRICS_KEY);
-  entries.push(entry);
-  saveEntries(WORKFLOW_METRICS_KEY, entries);
+  insertWorkflowMetric(entry);
 }
 
 export function getJobMetrics(nodeId?: string): JobMetricEntry[] {
-  const entries = loadEntries<JobMetricEntry>(JOB_METRICS_KEY);
-  return nodeId ? entries.filter((e) => e.nodeId === nodeId) : entries;
+  // Sync read from localStorage (fast path for UI rendering)
+  return loadJobMetrics(nodeId) as unknown as JobMetricEntry[];
 }
 
 export function getWorkflowMetrics(workflowId?: string): WorkflowMetricEntry[] {
-  const entries = loadEntries<WorkflowMetricEntry>(WORKFLOW_METRICS_KEY);
-  return workflowId ? entries.filter((e) => e.workflowId === workflowId) : entries;
+  return loadWorkflowMetrics(workflowId) as unknown as WorkflowMetricEntry[];
 }
 
 export function getWorkflowSummaries(): WorkflowSummary[] {
-  const entries = loadEntries<WorkflowMetricEntry>(WORKFLOW_METRICS_KEY);
+  // Sync fallback — uses localStorage for immediate rendering
+  const entries = localLoad<WorkflowMetricEntry>(WORKFLOW_METRICS_KEY);
   const byWorkflow = new Map<string, WorkflowMetricEntry[]>();
 
   for (const e of entries) {
@@ -172,16 +158,16 @@ export function getWorkflowSummaries(): WorkflowSummary[] {
 }
 
 export function getJobAggregation(nodeId: string): AggregatedMetrics {
-  const entries = getJobMetrics(nodeId);
+  const entries = localLoad<JobMetricEntry>("regente:metrics:jobs").filter((e) => e.nodeId === nodeId);
   return aggregate(
     entries.map((e) => e.durationMs),
     entries.map((e) => e.status),
-    entries.map((e) => e.attempts - 1), // retries = attempts - 1
+    entries.map((e) => e.attempts - 1),
   );
 }
 
 export function getGlobalMetrics(): AggregatedMetrics {
-  const entries = loadEntries<WorkflowMetricEntry>(WORKFLOW_METRICS_KEY);
+  const entries = localLoad<WorkflowMetricEntry>(WORKFLOW_METRICS_KEY);
   return aggregate(
     entries.map((e) => e.durationMs),
     entries.map((e) => e.status),
@@ -189,7 +175,8 @@ export function getGlobalMetrics(): AggregatedMetrics {
 }
 
 export function checkSLA(workflowId: string, sla: SLAConfig): SLAResult {
-  const entries = getWorkflowMetrics(workflowId);
+  const entries = localLoad<WorkflowMetricEntry>(WORKFLOW_METRICS_KEY)
+    .filter((e) => e.workflowId === workflowId);
   if (entries.length === 0) {
     return {
       withinDuration: true,
@@ -217,7 +204,8 @@ export function checkSLA(workflowId: string, sla: SLAConfig): SLAResult {
 
 /** Duration trend — last N workflow runs as [timestamp, durationMs] pairs */
 export function getDurationTrend(workflowId: string, limit = 20): [number, number][] {
-  const entries = getWorkflowMetrics(workflowId);
+  const entries = localLoad<WorkflowMetricEntry>(WORKFLOW_METRICS_KEY)
+    .filter((e) => e.workflowId === workflowId);
   return entries
     .slice(-limit)
     .map((e) => [e.timestamp, e.durationMs]);
@@ -225,7 +213,7 @@ export function getDurationTrend(workflowId: string, limit = 20): [number, numbe
 
 /** Hourly execution heatmap — count of runs per hour (0-23) */
 export function getHourlyHeatmap(): number[] {
-  const entries = loadEntries<WorkflowMetricEntry>(WORKFLOW_METRICS_KEY);
+  const entries = localLoad<WorkflowMetricEntry>(WORKFLOW_METRICS_KEY);
   const heatmap = new Array(24).fill(0);
   for (const e of entries) {
     const hour = new Date(e.timestamp).getHours();
@@ -235,6 +223,5 @@ export function getHourlyHeatmap(): number[] {
 }
 
 export function clearAllMetrics(): void {
-  localStorage.removeItem(JOB_METRICS_KEY);
-  localStorage.removeItem(WORKFLOW_METRICS_KEY);
+  clearMetricsStore();
 }
