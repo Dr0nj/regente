@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-  Save,
   Play,
   Undo2,
   Redo2,
@@ -14,6 +13,8 @@ import {
   ChevronDown,
   Check,
   X,
+  Download,
+  Upload,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,9 @@ interface ToolbarProps {
   onZoomOut: () => void;
   onAutoLayout: () => void;
   onSave?: () => void;
+  onRun?: () => void;
+  onExport?: () => void;
+  onImport?: () => void;
   workflowName?: string;
   folderSelector?: React.ReactNode;
 }
@@ -44,6 +48,9 @@ export default function Toolbar({
   onZoomOut,
   onAutoLayout,
   onSave,
+  onRun,
+  onExport,
+  onImport,
   workflowName = "Production Pipeline",
   folderSelector,
 }: ToolbarProps) {
@@ -142,18 +149,25 @@ export default function Toolbar({
 
         {mode === "design" ? (
           <>
+            <Button variant="ghost" size="icon-sm" onClick={onImport} title="Import JSON">
+              <Upload className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon-sm" onClick={onExport} title="Export JSON">
+              <Download className="h-3.5 w-3.5" />
+            </Button>
+            <Separator />
             <Button variant="secondary" size="sm" onClick={handleSave} className="gap-1.5">
               <GitBranch className="h-3.5 w-3.5" />
-              Save to GitHub
+              Save
             </Button>
-            <Button size="sm" className="gap-1.5">
+            <Button size="sm" className="gap-1.5" onClick={onRun}>
               <Play className="h-3.5 w-3.5 fill-current" />
               Run Now
             </Button>
           </>
         ) : (
-          <Button variant="secondary" size="sm" className="gap-1.5">
-            <Save className="h-3.5 w-3.5" />
+          <Button variant="secondary" size="sm" className="gap-1.5" onClick={onExport}>
+            <Download className="h-3.5 w-3.5" />
             Export Log
           </Button>
         )}

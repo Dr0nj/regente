@@ -8,6 +8,8 @@ import {
   GripVertical,
   TrendingUp,
   AlertCircle,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { JOB_TYPES, type JobType } from "@/lib/job-config";
@@ -29,6 +31,8 @@ interface SidebarProps {
   teams?: TreeTeam[];
   selectedJobId?: string | null;
   onJobFocus?: (jobId: string) => void;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 const STAT_CARDS_DESIGN = [
@@ -43,8 +47,43 @@ function onDragStart(event: DragEvent, jobType: JobType) {
   event.dataTransfer.effectAllowed = "move";
 }
 
-export default function Sidebar({ stats, mode, teams = [], selectedJobId, onJobFocus }: SidebarProps) {
+export default function Sidebar({ stats, mode, teams = [], selectedJobId, onJobFocus, collapsed = false, onToggleCollapse }: SidebarProps) {
   const isDesign = mode === "design";
+
+  // Collapsed: icon-only strip
+  if (collapsed) {
+    return (
+      <aside className="flex w-[52px] shrink-0 flex-col items-center border-r border-white/[0.05] bg-bg-surface/90 backdrop-blur-2xl py-3 gap-3" style={{ boxShadow: "inset -1px 0 0 rgba(255,255,255,0.02), 4px 0 24px rgba(0,0,0,0.3)" }}>
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-cyan-900/30">
+          <Activity className="h-4.5 w-4.5 text-white" />
+        </div>
+        <div className="h-px w-6 bg-white/[0.06]" />
+        <button onClick={onToggleCollapse} className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:text-text-secondary hover:bg-white/[0.04] transition-all" title="Expand sidebar">
+          <PanelLeftOpen className="h-4 w-4" />
+        </button>
+        <div className="h-px w-6 bg-white/[0.06]" />
+        {/* Mini stats */}
+        {stats.running > 0 && (
+          <div className="flex flex-col items-center gap-0.5" title={`${stats.running} running`}>
+            <Loader2 className="h-3.5 w-3.5 text-cyan-400 animate-spin" />
+            <span className="text-[9px] font-bold text-cyan-400 tabular-nums">{stats.running}</span>
+          </div>
+        )}
+        {stats.failed > 0 && (
+          <div className="flex flex-col items-center gap-0.5" title={`${stats.failed} failed`}>
+            <XCircle className="h-3.5 w-3.5 text-red-400" />
+            <span className="text-[9px] font-bold text-red-400 tabular-nums">{stats.failed}</span>
+          </div>
+        )}
+        {stats.success > 0 && (
+          <div className="flex flex-col items-center gap-0.5" title={`${stats.success} succeeded`}>
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+            <span className="text-[9px] font-bold text-emerald-400 tabular-nums">{stats.success}</span>
+          </div>
+        )}
+      </aside>
+    );
+  }
 
   return (
     <aside className="flex w-[270px] shrink-0 flex-col border-r border-white/[0.05] bg-bg-surface/90 backdrop-blur-2xl" style={{ boxShadow: "inset -1px 0 0 rgba(255,255,255,0.02), 4px 0 24px rgba(0,0,0,0.3)" }}>
@@ -72,6 +111,9 @@ export default function Sidebar({ stats, mode, teams = [], selectedJobId, onJobF
             {isDesign ? "Design Mode" : "Monitoring"}
           </p>
         </div>
+        <button onClick={onToggleCollapse} className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:text-text-secondary hover:bg-white/[0.04] transition-all" title="Collapse sidebar">
+          <PanelLeftClose className="h-3.5 w-3.5" />
+        </button>
       </div>
 
       {/* Stats */}

@@ -89,6 +89,9 @@ interface FlowCanvasProps {
   onNodeSelect: (nodeId: string | null, data: JobNodeData | null) => void;
   onNodesReady?: (nodes: Node<JobNodeData>[]) => void;
   onSave?: () => void;
+  onRun?: () => void;
+  onExport?: () => void;
+  onImport?: () => void;
   selectedNodeId: string | null;
   focusNodeId?: string | null;
   initialNodes?: Node[];
@@ -100,6 +103,7 @@ interface FlowCanvasProps {
 export interface FlowCanvasHandle {
   focusNode: (nodeId: string) => void;
   getState: () => { nodes: Node[]; edges: Edge[] };
+  updateNodeData: (nodeId: string, update: Partial<JobNodeData>) => void;
 }
 
 let nodeIdCounter = 100;
@@ -111,6 +115,9 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
   onNodeSelect,
   onNodesReady,
   onSave,
+  onRun,
+  onExport,
+  onImport,
   selectedNodeId,
   focusNodeId,
   initialNodes = [],
@@ -125,6 +132,18 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
 
   const isDesign = mode === "design";
 
+  // Patch a canvas node's data (called from handle / parent ref)
+  const updateNodeData = useCallback(
+    (nodeId: string, update: Partial<JobNodeData>) => {
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === nodeId ? { ...n, data: { ...n.data, ...update } } : n
+        )
+      );
+    },
+    [setNodes]
+  );
+
   // Expose focusNode to parent via ref
   useImperativeHandle(ref, () => ({
     focusNode: (nodeId: string) => {
@@ -137,7 +156,8 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
       onNodeSelect(nodeId, target.data as JobNodeData);
     },
     getState: () => ({ nodes, edges }),
-  }), [nodes, edges, setCenter, getZoom, onNodeSelect]);
+    updateNodeData,
+  }), [nodes, edges, setCenter, getZoom, onNodeSelect, updateNodeData]);
 
   // When external data changes (folder switch), reload canvas
   useEffect(() => {
@@ -340,6 +360,9 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
         onZoomOut={() => zoomOut({ duration: 250 })}
         onAutoLayout={handleAutoLayout}
         onSave={onSave}
+        onRun={onRun}
+        onExport={onExport}
+        onImport={onImport}
         workflowName={workflowName}
         folderSelector={folderSelector}
       />

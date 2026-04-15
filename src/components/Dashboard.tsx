@@ -5,7 +5,7 @@ import Sidebar, { type WorkflowStats } from "@/components/Sidebar";
 import FlowCanvas, { type FlowCanvasHandle } from "@/components/FlowCanvas";
 import PropertiesPanel from "@/components/PropertiesPanel";
 import FolderSelector from "@/components/FolderSelector";
-import type { JobNodeData } from "@/lib/job-config";
+import type { JobNodeData, JobStatus } from "@/lib/job-config";
 import type { AppMode } from "@/lib/types";
 import type { TreeTeam } from "@/components/MonitoringTree";
 import {
@@ -46,6 +46,10 @@ export default function Dashboard() {
   const [canvasNodes, setCanvasNodes] = useState<Node<JobNodeData>[]>([]);
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   const flowRef = useRef<FlowCanvasHandle>(null);
+
+  // Sidebar collapse
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const toggleSidebar = useCallback(() => setSidebarCollapsed((c) => !c), []);
 
   // Folder-based workflow state
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
@@ -112,8 +116,9 @@ export default function Dashboard() {
   );
 
   const handleNodeDataUpdate = useCallback(
-    (_nodeId: string, update: Partial<JobNodeData>) => {
+    (nodeId: string, update: Partial<JobNodeData>) => {
       setSelectedNodeData((prev) => (prev ? { ...prev, ...update } : null));
+      flowRef.current?.updateNodeData(nodeId, update);
     },
     []
   );
@@ -146,6 +151,135 @@ export default function Dashboard() {
     setSelectedNodeData(null);
   }, []);
 
+  // ── Execution simulation ──
+  const simulationRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const handleRun = useCallback(() => {
+    // Clear any previous simulation
+    simulationRef.current.forEach(clearTimeout);
+    simulationRef.current = [];
+
+    // Switch to monitoring mode
+    setMode("monitoring");
+
+    const state = flowRef.current?.getState();
+    if (!state) return;
+
+    const jobNodes = state.nodes.filter((n) => n.type === "job");
+    const jobEdges = state.edges.filter(
+      (e) => !e.source.startsWith("group-") && !e.target.startsWith("group-")
+    );
+
+    // Build adjacency list and in-degree for topological ordering
+    const children = new Map<string, string[]>();
+    const inDegree = new Map<string, number>();
+    for (const n of jobNodes) {
+      children.set(n.id, []);
+      inDegree.set(n.id, 0);
+    }
+    for (const e of jobEdges) {
+      children.get(e.source)?.push(e.target);
+      inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1);
+    }
+
+    // Topological layers (BFS)
+    const layers: string[][] = [];
+    let queue = jobNodes.filter((n) => (inDegree.get(n.id) ?? 0) === 0).map((n) => n.id);
+    while (queue.length) {
+      layers.push([...queue]);
+      const next: string[] = [];
+      for (const id of queue) {
+        for (const child of children.get(id) ?? []) {
+          const deg = (inDegree.get(child) ?? 1) - 1;
+          inDegree.set(child, deg);
+          if (deg === 0) next.push(child);
+        }
+      }
+      queue = next;
+    }
+
+    // Set all to WAITING first
+    const update = flowRef.current!.updateNodeData;
+    for (const n of jobNodes) {
+      update(n.id, { status: "WAITING" as JobStatus, lastRun: undefined });
+    }
+
+    // Animate layers: each layer gets RUNNING then SUCCESS
+    const LAYER_DELAY = 1500; // ms between layers
+    const RUN_DURATION = 1200; // ms that a node shows RUNNING
+
+    layers.forEach((layer, layerIdx) => {
+      const startMs = layerIdx * LAYER_DELAY + 400;
+
+      // Set layer to RUNNING
+      const t1 = setTimeout(() => {
+        for (const id of layer) {
+          update(id, { status: "RUNNING" as JobStatus, lastRun: "now" });
+        }
+      }, startMs);
+
+      // Set layer to SUCCESS (simulate random failure for spice — 10% chance)
+      const t2 = setTimeout(() => {
+        for (const id of layer) {
+          const failed = Math.random() < 0.1;
+          update(id, {
+            status: (failed ? "FAILED" : "SUCCESS") as JobStatus,
+            lastRun: failed ? "failed" : `${Math.floor(Math.random() * 5) + 1}s ago`,
+          });
+        }
+      }, startMs + RUN_DURATION);
+
+      simulationRef.current.push(t1, t2);
+    });
+  }, []);
+
+  // ── Export / Import workflows as JSON ──
+  const handleExport = useCallback(() => {
+    const state = flowRef.current?.getState();
+    if (!state) return;
+    const jobNodes = state.nodes.filter((n) => n.type === "job" || !n.type);
+    const jobEdges = state.edges.filter(
+      (e) => !e.source.startsWith("group-") && !e.target.startsWith("group-")
+    );
+    const payload = {
+      id: activeFolderId,
+      name: activeFolderId?.toUpperCase() ?? "workflow",
+      nodes: jobNodes,
+      edges: jobEdges,
+      exportedAt: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${activeFolderId ?? "workflow"}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [activeFolderId]);
+
+  const handleImport = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if (!Array.isArray(data.nodes) || !Array.isArray(data.edges)) return;
+        setInitialNodes(data.nodes as Node[]);
+        setInitialEdges(data.edges as Edge[]);
+        // If the import has an id/name, switch to it
+        if (data.id && data.name) {
+          await saveTeamWorkflow(data.id, data.name, data.nodes, data.edges, "Imported");
+          setActiveFolderId(data.id);
+        }
+      } catch { /* invalid file */ }
+    };
+    input.click();
+  }, []);
+
   const teams = useMemo(() => buildTeams(canvasNodes), [canvasNodes]);
 
   const folderSelectorEl = (
@@ -164,6 +298,8 @@ export default function Dashboard() {
         teams={teams}
         selectedJobId={selectedNodeId}
         onJobFocus={handleJobFocus}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={toggleSidebar}
       />
       <ReactFlowProvider>
         <FlowCanvas
@@ -174,6 +310,9 @@ export default function Dashboard() {
           onNodeSelect={handleNodeSelect}
           onNodesReady={handleNodesReady}
           onSave={handleSave}
+          onRun={handleRun}
+          onExport={handleExport}
+          onImport={handleImport}
           selectedNodeId={selectedNodeId}
           focusNodeId={focusNodeId}
           initialNodes={initialNodes}
