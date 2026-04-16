@@ -8,9 +8,10 @@ import { ExecutionProvider } from "@/lib/execution-context";
 import { OrchestratorProvider } from "@/lib/orchestrator-context";
 import V2Preview from "@/v2/V2Preview";
 
-// v2 preview flag — piloto visual (remover após aprovação + promoção)
-const isV2Preview =
-  typeof window !== "undefined" && window.location.search.includes("v2");
+// Fase 1 concluída — v2 é a rota padrão. `?v1=1` mantém legado acessível
+// enquanto Fase 5 não termina o wire-up real do monitoring.
+const isLegacyV1 =
+  typeof window !== "undefined" && window.location.search.includes("v1");
 
 function AppContent() {
   const { user, loading, isConfigured } = useAuth();
@@ -36,25 +37,25 @@ function AppContent() {
 }
 
 export default function App() {
-  if (isV2Preview) {
+  if (isLegacyV1) {
     return (
       <ErrorBoundary>
-        <V2Preview />
+        <AuthProvider>
+          <ToastProvider>
+            <ExecutionProvider>
+              <OrchestratorProvider>
+                <AppContent />
+              </OrchestratorProvider>
+            </ExecutionProvider>
+          </ToastProvider>
+        </AuthProvider>
       </ErrorBoundary>
     );
   }
 
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <ToastProvider>
-          <ExecutionProvider>
-            <OrchestratorProvider>
-              <AppContent />
-            </OrchestratorProvider>
-          </ExecutionProvider>
-        </ToastProvider>
-      </AuthProvider>
+      <V2Preview />
     </ErrorBoundary>
   );
 }

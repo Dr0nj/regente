@@ -140,19 +140,6 @@ export default function V2Preview() {
           <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: "0.02em" }}>
             Regente
           </span>
-          <span
-            style={{
-              fontSize: 10,
-              fontFamily: "var(--v2-font-mono)",
-              color: "var(--v2-text-muted)",
-              padding: "1px 5px",
-              border: "1px solid var(--v2-border-subtle)",
-              borderRadius: 2,
-              letterSpacing: "0.04em",
-            }}
-          >
-            v2-preview
-          </span>
         </div>
 
         {/* Mode switcher */}
@@ -196,22 +183,6 @@ export default function V2Preview() {
           <span><span style={{ color: "var(--v2-status-failed)" }}>●</span> 1</span>
           <span><span style={{ color: "var(--v2-status-waiting)" }}>●</span> 6</span>
         </div>
-
-        <a
-          href="?"
-          style={{
-            color: "var(--v2-text-muted)",
-            fontSize: 10,
-            textDecoration: "none",
-            border: "1px solid var(--v2-border-medium)",
-            padding: "3px 8px",
-            borderRadius: 3,
-            fontFamily: "var(--v2-font-mono)",
-            letterSpacing: "0.04em",
-          }}
-        >
-          ← v1
-        </a>
       </header>
 
       {/* Stage: canvas + sidebar flutuante */}
