@@ -169,3 +169,42 @@ export function createInstance(
     dryRun: def.dryRun,
   };
 }
+
+/* ──────────────────────────────────────────────────────────────
+   Fase 2 — Edge condition + Teams
+   ──────────────────────────────────────────────────────────────
+   Preserva compatibilidade: campos novos são opcionais até a
+   Fase 5 (wire-up completo). Consumers existentes continuam
+   funcionando.
+   ────────────────────────────────────────────────────────────── */
+
+/**
+ * Condição de disparo do sucessor. Inspiração Control-M:
+ *   - on-success: dispara só se pai terminou OK
+ *   - on-failure: dispara só se pai terminou NOTOK (branch de fallback/alerta)
+ *   - on-complete: dispara independente do resultado (OK ou NOTOK)
+ *   - always: alias de on-complete (mantido por clareza semântica)
+ */
+export type EdgeCondition = "on-success" | "on-failure" | "on-complete" | "always";
+
+/**
+ * Metadata opcional de uma aresta (React Flow Edge.data).
+ * Quando ausente, assume-se "on-success" para preservar o
+ * comportamento padrão de DAGs de workflow.
+ */
+export interface JobEdgeData {
+  condition?: EdgeCondition;
+  /** Rótulo opcional exibido na aresta (ex: "retry", "alerta"). */
+  label?: string;
+  [key: string]: unknown;
+}
+
+export const EDGE_CONDITION_DEFAULT: EdgeCondition = "on-success";
+
+/**
+ * Times (folders) canônicos do Regente PicPay.
+ * Mantido como const para permitir extensão futura sem breaking change.
+ * Fase 5: migrar `JobDefinition.team` para `Team` (required).
+ */
+export const TEAMS = ["DATA", "FIN", "PLAT", "RISK"] as const;
+export type Team = (typeof TEAMS)[number];
