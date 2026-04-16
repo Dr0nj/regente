@@ -19,6 +19,7 @@ import type { SchedulerPort } from "@/lib/ports/SchedulerPort";
 import type { ExecutorPort } from "@/lib/ports/ExecutorPort";
 
 import { LocalStorageAdapter } from "@/lib/adapters/storage/LocalStorageAdapter";
+import { GitAdapter } from "@/lib/adapters/storage/GitAdapter";
 import { BrowserTickAdapter } from "@/lib/adapters/scheduler/BrowserTickAdapter";
 import { MockExecutorAdapter } from "@/lib/adapters/executor/MockExecutorAdapter";
 import { HttpExecutorAdapter } from "@/lib/adapters/executor/HttpExecutorAdapter";
@@ -29,22 +30,24 @@ export interface RegenteContainer {
   executors: ExecutorPort[];
   /** Seleciona o primeiro executor que suporta o jobType. Fallback: mock. */
   executorFor(jobType: string): ExecutorPort;
+  /** Nome do backend de storage ativo (para UI/debug). */
+  storageBackend: "git" | "localStorage";
 }
 
 function buildContainer(): RegenteContainer {
-  const storage = new LocalStorageAdapter();
+  const gitEnabled = GitAdapter.isEnabled();
+  const storage: StoragePort = gitEnabled ? new GitAdapter() : new LocalStorageAdapter();
   const scheduler = new BrowserTickAdapter();
 
   const http = new HttpExecutorAdapter();
   const mock = new MockExecutorAdapter();
-
-  // Ordem importa: mais específico primeiro, genérico por último.
   const executors: ExecutorPort[] = [http, mock];
 
   return {
     storage,
     scheduler,
     executors,
+    storageBackend: gitEnabled ? "git" : "localStorage",
     executorFor(jobType: string): ExecutorPort {
       return executors.find((e) => e.supports(jobType)) ?? mock;
     },

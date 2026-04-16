@@ -1,81 +1,148 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ReactFlow, Background, BackgroundVariant, type Node, type Edge } from "@xyflow/react";
 import JobNodeV2 from "./JobNodeV2";
 import MonitoringSidebarV2, { type MonitoringJob } from "./MonitoringSidebarV2";
 import DesignSidebarV2 from "./DesignSidebarV2";
+import InstanceDetailsDrawer from "./InstanceDetailsDrawer";
 import type { JobNodeData } from "@/lib/job-config";
+import type { JobInstance, JobDefinition } from "@/lib/orchestrator-model";
+import { createInstance, todayOrderDate } from "@/lib/orchestrator-model";
+import {
+  getTodayInstances,
+  onInstanceChange,
+  holdInstance,
+  releaseInstance,
+  cancelInstance,
+  rerunInstance,
+  skipInstance,
+  bypassInstance,
+  orderJob,
+} from "@/lib/instance-store";
 
 import "@xyflow/react/dist/style.css";
 import "@/index.css";
 import "./tokens.css";
 
-/* ──────────────────────────────────────────────────────────────
-   V2 Preview — piloto visual com sidebars
-   ──────────────────────────────────────────────────────────────
-   Switcher: Design | Monitoring no topo.
-   Sidebar flutuante destacada (não colada nas bordas/topo).
-   Canvas ocupa o resto, preto dominante.
-   PILOTO — será destruído após aprovação.
-   ────────────────────────────────────────────────────────────── */
-
 type Mode = "design" | "monitoring";
 
-const monitoringJobs: MonitoringJob[] = [
-  { id: "01", label: "extract-picpay-tx",       team: "DATA", jobType: "LAMBDA",        status: "SUCCESS", durationMs: 4200,   startedAt: "02:14" },
-  { id: "02", label: "extract-pix-events",      team: "DATA", jobType: "LAMBDA",        status: "SUCCESS", durationMs: 3100,   startedAt: "02:14" },
-  { id: "03", label: "transform-daily",         team: "DATA", jobType: "GLUE",          status: "RUNNING", durationMs: 45000,  startedAt: "02:15" },
-  { id: "04", label: "load-warehouse-fact",     team: "DATA", jobType: "BATCH",         status: "WAITING" },
-  { id: "05", label: "load-warehouse-dim",      team: "DATA", jobType: "BATCH",         status: "WAITING" },
-  { id: "06", label: "reconcile-ledger",        team: "FIN",  jobType: "STEP_FUNCTION", status: "FAILED",  durationMs: 12400,  startedAt: "01:58" },
-  { id: "07", label: "fraud-check-daily",       team: "RISK", jobType: "LAMBDA",        status: "RUNNING", durationMs: 8900,   startedAt: "02:16" },
-  { id: "08", label: "risk-score-refresh",      team: "RISK", jobType: "GLUE",          status: "WAITING" },
-  { id: "09", label: "notify-ops",              team: "PLAT", jobType: "HTTP",          status: "INACTIVE" },
-  { id: "10", label: "backup-postgres",         team: "PLAT", jobType: "BATCH",         status: "SUCCESS", durationMs: 186000, startedAt: "00:30" },
-  { id: "11", label: "rotate-secrets",          team: "PLAT", jobType: "LAMBDA",        status: "SUCCESS", durationMs: 920,    startedAt: "03:00" },
-  { id: "12", label: "reconcile-cartoes",       team: "FIN",  jobType: "STEP_FUNCTION", status: "SUCCESS", durationMs: 23400,  startedAt: "02:00" },
-  { id: "13", label: "pix-settlement-batch",    team: "FIN",  jobType: "BATCH",         status: "RUNNING", durationMs: 67000,  startedAt: "02:10" },
-  { id: "14", label: "send-cashback-rewards",   team: "FIN",  jobType: "HTTP",          status: "WAITING" },
-  { id: "15", label: "audit-export-daily",      team: "RISK", jobType: "GLUE",          status: "WAITING" },
-];
+/* ──────────────────────────────────────────────────────────────
+   Mapeamento Domain ↔ UI
+   ────────────────────────────────────────────────────────────── */
 
-function buildMonitoringCanvas(): { nodes: Node[]; edges: Edge[] } {
-  const rows = [
-    ["01", "02"],
-    ["03"],
-    ["04", "05"],
-    ["07"],
-    ["13"],
+const INSTANCE_TO_UI_STATUS: Record<JobInstance["status"], JobNodeData["status"]> = {
+  OK: "SUCCESS",
+  NOTOK: "FAILED",
+  RUNNING: "RUNNING",
+  WAITING: "WAITING",
+  HOLD: "INACTIVE",
+  CANCELLED: "INACTIVE",
+};
+
+function instanceToMonitoring(inst: JobInstance): MonitoringJob {
+  return {
+    id: inst.id,
+    label: inst.label,
+    team: inst.team ?? "—",
+    jobType: inst.jobType as JobNodeData["jobType"],
+    status: INSTANCE_TO_UI_STATUS[inst.status],
+    durationMs: inst.durationMs ?? (inst.startedAt ? Date.now() - inst.startedAt : undefined),
+    startedAt: inst.startedAt ? new Date(inst.startedAt).toLocaleTimeString("en-GB", { hour12: false }).slice(0, 5) : undefined,
+  };
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Seed — cria instances de exemplo no primeiro load
+   ────────────────────────────────────────────────────────────── */
+
+const SEED_FLAG = "regente:v2-seeded:v1";
+
+function sampleDef(id: string, label: string, jobType: string, team: string): JobDefinition {
+  return {
+    id,
+    label,
+    jobType,
+    team,
+    schedule: { cronExpression: "0 3 * * *", enabled: true, description: "daily 03:00" },
+    retries: 2,
+    timeout: 300,
+  };
+}
+
+function seedIfEmpty(): void {
+  if (typeof window === "undefined") return;
+  if (window.localStorage.getItem(SEED_FLAG) === "1") return;
+  const existing = getTodayInstances();
+  if (existing.length > 0) {
+    window.localStorage.setItem(SEED_FLAG, "1");
+    return;
+  }
+
+  const now = Date.now();
+  const samples: Array<{ def: JobDefinition; status: JobInstance["status"]; offsetStart?: number; durationMs?: number; error?: string }> = [
+    { def: sampleDef("extract-picpay-tx",    "extract-picpay-tx",    "LAMBDA",        "DATA"), status: "OK",      offsetStart: -3600_000, durationMs: 4200 },
+    { def: sampleDef("extract-pix-events",   "extract-pix-events",   "LAMBDA",        "DATA"), status: "OK",      offsetStart: -3600_000, durationMs: 3100 },
+    { def: sampleDef("transform-daily",      "transform-daily",      "GLUE",          "DATA"), status: "RUNNING", offsetStart: -45_000 },
+    { def: sampleDef("load-warehouse-fact",  "load-warehouse-fact",  "BATCH",         "DATA"), status: "WAITING" },
+    { def: sampleDef("load-warehouse-dim",   "load-warehouse-dim",   "BATCH",         "DATA"), status: "WAITING" },
+    { def: sampleDef("reconcile-ledger",     "reconcile-ledger",     "STEP_FUNCTION", "FIN"),  status: "NOTOK",   offsetStart: -7200_000, durationMs: 12400, error: "timeout after 12s on endpoint /reconcile" },
+    { def: sampleDef("fraud-check-daily",    "fraud-check-daily",    "LAMBDA",        "RISK"), status: "RUNNING", offsetStart: -8_900 },
+    { def: sampleDef("risk-score-refresh",   "risk-score-refresh",   "GLUE",          "RISK"), status: "WAITING" },
+    { def: sampleDef("notify-ops",           "notify-ops",           "HTTP",          "PLAT"), status: "WAITING" },
+    { def: sampleDef("backup-postgres",      "backup-postgres",      "BATCH",         "PLAT"), status: "OK",      offsetStart: -9000_000, durationMs: 186000 },
+    { def: sampleDef("rotate-secrets",       "rotate-secrets",       "LAMBDA",        "PLAT"), status: "OK",      offsetStart: -1800_000, durationMs: 920 },
+    { def: sampleDef("reconcile-cartoes",    "reconcile-cartoes",    "STEP_FUNCTION", "FIN"),  status: "OK",      offsetStart: -5400_000, durationMs: 23400 },
+    { def: sampleDef("pix-settlement-batch", "pix-settlement-batch", "BATCH",         "FIN"),  status: "RUNNING", offsetStart: -67_000 },
+    { def: sampleDef("send-cashback-rewards","send-cashback-rewards","HTTP",          "FIN"),  status: "WAITING" },
+    { def: sampleDef("audit-export-daily",   "audit-export-daily",   "GLUE",          "RISK"), status: "HOLD" },
   ];
-  const nodes: Node[] = [];
-  rows.forEach((row, rowIdx) => {
-    row.forEach((id, colIdx) => {
-      const job = monitoringJobs.find((j) => j.id === id)!;
-      nodes.push({
-        id: `m-${id}`,
-        type: "jobV2",
-        position: { x: 60 + colIdx * 240, y: 40 + rowIdx * 80 },
-        data: {
-          label: job.label,
-          jobType: job.jobType,
-          status: job.status,
-          team: job.team,
-          lastRun: job.startedAt,
-        } as JobNodeData,
-      });
-    });
+
+  for (const s of samples) {
+    const inst = createInstance(s.def, new Date(), false);
+    inst.status = s.status;
+    if (s.offsetStart) {
+      inst.startedAt = now + s.offsetStart;
+      if (s.durationMs) {
+        inst.completedAt = inst.startedAt + s.durationMs;
+        inst.durationMs = s.durationMs;
+      }
+      inst.attempts = 1;
+    }
+    if (s.error) inst.error = s.error;
+    const all = JSON.parse(window.localStorage.getItem("regente:instances") || "[]") as JobInstance[];
+    all.push(inst);
+    window.localStorage.setItem("regente:instances", JSON.stringify(all));
+  }
+  window.localStorage.setItem(SEED_FLAG, "1");
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Canvas helpers
+   ────────────────────────────────────────────────────────────── */
+
+function buildMonitoringCanvas(instances: JobInstance[]): { nodes: Node[]; edges: Edge[] } {
+  // Layout: 3 colunas, stacking por posição de chegada. DAG real virá da definition.
+  const nodes: Node[] = instances.slice(0, 15).map((inst, idx) => {
+    const col = idx % 3;
+    const row = Math.floor(idx / 3);
+    return {
+      id: `m-${inst.id}`,
+      type: "jobV2",
+      position: { x: 60 + col * 240, y: 30 + row * 80 },
+      data: {
+        label: inst.label,
+        jobType: inst.jobType,
+        status: INSTANCE_TO_UI_STATUS[inst.status],
+        team: inst.team,
+        lastRun: inst.startedAt ? new Date(inst.startedAt).toLocaleTimeString("en-GB", { hour12: false }).slice(0, 5) : undefined,
+        mode: "monitoring",
+      } as JobNodeData,
+    };
   });
-  const edges: Edge[] = [
-    { id: "m-e1-3", source: "m-01", target: "m-03", style: { stroke: "#262626", strokeWidth: 1 } },
-    { id: "m-e2-3", source: "m-02", target: "m-03", style: { stroke: "#262626", strokeWidth: 1 } },
-    { id: "m-e3-4", source: "m-03", target: "m-04", style: { stroke: "#262626", strokeWidth: 1 } },
-    { id: "m-e3-5", source: "m-03", target: "m-05", style: { stroke: "#262626", strokeWidth: 1 } },
-    { id: "m-e4-7", source: "m-04", target: "m-07", style: { stroke: "#262626", strokeWidth: 1 } },
-    { id: "m-e7-13", source: "m-07", target: "m-13", style: { stroke: "#262626", strokeWidth: 1 } },
-  ];
-  return { nodes, edges };
+  return { nodes, edges: [] };
 }
 
 function buildDesignCanvas(): { nodes: Node[]; edges: Edge[] } {
+  // Placeholder — Fase 6 conectará ao definition-store
   const nodes: Node[] = [
     { id: "d-1", type: "jobV2", position: { x: 60, y: 40 }, data: { label: "extract-picpay-tx", jobType: "LAMBDA", status: "INACTIVE", team: "DATA" } as JobNodeData },
     { id: "d-2", type: "jobV2", position: { x: 60, y: 120 }, data: { label: "transform-daily", jobType: "GLUE", status: "INACTIVE", team: "DATA" } as JobNodeData },
@@ -90,12 +157,52 @@ function buildDesignCanvas(): { nodes: Node[]; edges: Edge[] } {
   return { nodes, edges };
 }
 
+/* ──────────────────────────────────────────────────────────────
+   Component
+   ────────────────────────────────────────────────────────────── */
+
 export default function V2Preview() {
   const [mode, setMode] = useState<Mode>("monitoring");
+  const [instances, setInstances] = useState<JobInstance[]>([]);
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
+
   const nodeTypes = useMemo(() => ({ jobV2: JobNodeV2 }), []);
-  const monitoring = useMemo(buildMonitoringCanvas, []);
-  const design = useMemo(buildDesignCanvas, []);
-  const current = mode === "monitoring" ? monitoring : design;
+
+  // Mount: seed + subscribe
+  useEffect(() => {
+    seedIfEmpty();
+    setInstances(getTodayInstances());
+    const unsub = onInstanceChange(() => {
+      setInstances(getTodayInstances().filter((i) => i.orderDate === todayOrderDate()));
+    });
+    return unsub;
+  }, []);
+
+  const monitoringJobs = useMemo(() => instances.map(instanceToMonitoring), [instances]);
+  const canvas = useMemo(
+    () => (mode === "monitoring" ? buildMonitoringCanvas(instances) : buildDesignCanvas()),
+    [mode, instances],
+  );
+  const selectedInstance = selectedInstanceId
+    ? instances.find((i) => i.id === selectedInstanceId)
+    : null;
+
+  const statusCounts = useMemo(() => {
+    const c = { ok: 0, running: 0, failed: 0, waiting: 0, hold: 0 };
+    for (const i of instances) {
+      if (i.status === "OK") c.ok++;
+      else if (i.status === "RUNNING") c.running++;
+      else if (i.status === "NOTOK") c.failed++;
+      else if (i.status === "WAITING") c.waiting++;
+      else if (i.status === "HOLD") c.hold++;
+    }
+    return c;
+  }, [instances]);
+
+  const handleRerun = (id: string) => {
+    const fresh = rerunInstance(id);
+    if (fresh) setSelectedInstanceId(fresh.id);
+  };
 
   return (
     <div
@@ -142,7 +249,6 @@ export default function V2Preview() {
           </span>
         </div>
 
-        {/* Mode switcher */}
         <div
           style={{
             display: "flex",
@@ -155,7 +261,7 @@ export default function V2Preview() {
           {(["design", "monitoring"] as const).map((m) => (
             <button
               key={m}
-              onClick={() => setMode(m)}
+              onClick={() => { setMode(m); setSelectedInstanceId(null); }}
               style={{
                 padding: "5px 14px",
                 background: mode === m ? "var(--v2-accent-deep)" : "transparent",
@@ -178,35 +284,61 @@ export default function V2Preview() {
         <div style={{ flex: 1 }} />
 
         <div style={{ display: "flex", gap: 14, fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-secondary)", letterSpacing: "0.04em" }}>
-          <span><span style={{ color: "var(--v2-status-ok)" }}>●</span> 5</span>
-          <span><span style={{ color: "var(--v2-status-running)" }}>●</span> 3</span>
-          <span><span style={{ color: "var(--v2-status-failed)" }}>●</span> 1</span>
-          <span><span style={{ color: "var(--v2-status-waiting)" }}>●</span> 6</span>
+          <span><span style={{ color: "var(--v2-status-ok)" }}>●</span> {statusCounts.ok}</span>
+          <span><span style={{ color: "var(--v2-status-running)" }}>●</span> {statusCounts.running}</span>
+          <span><span style={{ color: "var(--v2-status-failed)" }}>●</span> {statusCounts.failed}</span>
+          <span><span style={{ color: "var(--v2-status-waiting)" }}>●</span> {statusCounts.waiting}</span>
+          {statusCounts.hold > 0 && <span><span style={{ color: "var(--v2-text-secondary)" }}>●</span> {statusCounts.hold}</span>}
         </div>
       </header>
 
-      {/* Stage: canvas + sidebar flutuante */}
+      {/* Stage */}
       <main style={{ flex: 1, position: "relative", minHeight: 0 }}>
         <ReactFlow
-          nodes={current.nodes}
-          edges={current.edges}
+          nodes={canvas.nodes}
+          edges={canvas.edges}
           nodeTypes={nodeTypes}
           fitView
           fitViewOptions={{ padding: 0.2 }}
           proOptions={{ hideAttribution: true }}
           nodesDraggable={false}
           nodesConnectable={false}
-          elementsSelectable={mode === "design"}
+          elementsSelectable
           panOnDrag
           zoomOnScroll
+          onNodeClick={(_, node) => {
+            if (mode === "monitoring") {
+              const id = node.id.replace(/^m-/, "");
+              setSelectedInstanceId(id);
+            }
+          }}
         >
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#1a1a1a" />
         </ReactFlow>
 
         {mode === "monitoring" ? (
-          <MonitoringSidebarV2 jobs={monitoringJobs} />
+          <MonitoringSidebarV2
+            jobs={monitoringJobs}
+            selectedId={selectedInstanceId}
+            onSelect={setSelectedInstanceId}
+          />
         ) : (
           <DesignSidebarV2 />
+        )}
+
+        {mode === "monitoring" && selectedInstance && (
+          <InstanceDetailsDrawer
+            instance={selectedInstance}
+            handlers={{
+              onHold:    holdInstance,
+              onRelease: releaseInstance,
+              onCancel:  cancelInstance,
+              onSkip:    skipInstance,
+              onBypass:  bypassInstance,
+              onRerun:   handleRerun,
+              onClose:   () => setSelectedInstanceId(null),
+            }}
+          />
         )}
       </main>
 
@@ -227,20 +359,12 @@ export default function V2Preview() {
           flexShrink: 0,
         }}
       >
-        <span>bg #000 · surface #0a0a0a · border #262626</span>
-        <span>accent #11C76F / #064E2B</span>
-        <span style={{ marginLeft: "auto" }}>{mode} · 2026-04-16</span>
+        <span>{instances.length} instances · {todayOrderDate()}</span>
+        <span style={{ marginLeft: "auto" }}>{mode}</span>
       </footer>
 
-      <style>{`
-        @keyframes v2-dot-pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.35; }
-        }
-        .react-flow__edge-path { stroke: #262626; }
-        .react-flow__edge-text { fill: #a3a3a3; }
-        .react-flow__edge-textbg { fill: #0a0a0a; }
-      `}</style>
+      {/* Mock reference to orderJob/suppress unused (scheduler wire-up Fase 6) */}
+      <span style={{ display: "none" }}>{orderJob.name}</span>
     </div>
   );
 }

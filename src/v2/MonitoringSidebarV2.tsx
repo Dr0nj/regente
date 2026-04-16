@@ -39,10 +39,23 @@ function formatDuration(ms?: number): string {
   return `${Math.floor(ms / 60000)}m${Math.floor((ms % 60000) / 1000)}s`;
 }
 
-export default function MonitoringSidebarV2({ jobs }: { jobs: MonitoringJob[] }) {
+export default function MonitoringSidebarV2({
+  jobs,
+  selectedId,
+  onSelect,
+}: {
+  jobs: MonitoringJob[];
+  selectedId?: string | null;
+  onSelect?: (id: string) => void;
+}) {
   const [filter, setFilter] = useState<StatusFilter>("ALL");
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<string | null>(null);
+  const [internalSelected, setInternalSelected] = useState<string | null>(null);
+  const selected = selectedId !== undefined ? selectedId : internalSelected;
+  const handleSelect = (id: string) => {
+    if (onSelect) onSelect(id);
+    else setInternalSelected(id);
+  };
 
   const counts = useMemo(() => {
     const c = { ALL: jobs.length, RUNNING: 0, FAILED: 0, SUCCESS: 0, WAITING: 0 };
@@ -193,7 +206,7 @@ export default function MonitoringSidebarV2({ jobs }: { jobs: MonitoringJob[] })
           filtered.map((j) => (
             <div
               key={j.id}
-              onClick={() => setSelected(j.id)}
+              onClick={() => handleSelect(j.id)}
               style={{
                 height: 32,
                 padding: "0 12px",

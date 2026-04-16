@@ -193,3 +193,44 @@ export function getTodayStats(): {
     hold: today.filter((i) => i.status === "HOLD").length,
   };
 }
+
+/* ──────────────────────────────────────────────────────────────
+   Fase 4 — Controles Control-M adicionais
+   ────────────────────────────────────────────────────────────── */
+
+/**
+ * Skip — marca uma instance WAITING/HOLD como OK sem executar.
+ * Control-M "Confirm" / "Skip" equivalent.
+ * Não dispara sucessores via condição on-success (ver scheduler).
+ */
+export function skipInstance(instanceId: string): void {
+  const inst = getInstance(instanceId);
+  if (!inst) return;
+  if (inst.status === "WAITING" || inst.status === "HOLD") {
+    updateInstanceStatus(instanceId, "OK", {
+      completedAt: Date.now(),
+      durationMs: 0,
+      output: { skipped: true },
+    });
+  }
+}
+
+/**
+ * Bypass — força uma instance NOTOK a ser tratada como OK para
+ * desbloquear sucessores on-success. Mantém registro do bypass
+ * no output para auditoria.
+ */
+export function bypassInstance(instanceId: string): void {
+  const inst = getInstance(instanceId);
+  if (!inst || inst.status !== "NOTOK") return;
+  updateInstanceStatus(instanceId, "OK", {
+    output: { ...(inst.output ?? {}), bypassed: true, originalError: inst.error },
+    error: undefined,
+  });
+}
+
+/** Force — cria uma nova instance imediata (Order Now / Run Now). */
+export function forceInstance(def: JobDefinition): JobInstance {
+  return orderJob(def, new Date(), true);
+}
+
