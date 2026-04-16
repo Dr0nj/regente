@@ -1,111 +1,149 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
-import { Badge } from "@/components/ui/badge";
-import { JOB_TYPES, STATUS_MAP, type JobNodeData } from "@/lib/job-config";
+import { STATUS_MAP, type JobNodeData } from "@/lib/job-config";
 import type { AppMode } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
-type JobNode = Node<JobNodeData, "job">;
+/* ──────────────────────────────────────────────────────────────
+   JobNode ── identidade PicPay, densidade Control-M/Airflow
+   ──────────────────────────────────────────────────────────────
+   - Zero gradiente por tipo (tipo é texto mono, não cor)
+   - Zero noise overlay, zero glassmorphism
+   - Única animação: dot pulse em RUNNING (semântica)
+   - Paleta: preto + verde escuro PicPay, status ≤ 5 cores
+   - Densidade: 200×52px
+   ────────────────────────────────────────────────────────────── */
 
-function JobNodeComponent({ data, selected, id }: NodeProps<JobNode>) {
-  const typeConfig = JOB_TYPES[data.jobType];
-  const statusConfig = STATUS_MAP[data.status];
-  const Icon = typeConfig.icon;
+type JobNodeT = Node<JobNodeData, "job">;
+
+const STATUS_COLOR_VAR: Record<string, string> = {
+  SUCCESS:  "var(--color-status-success)",
+  RUNNING:  "var(--color-status-running)",
+  FAILED:   "var(--color-status-failed)",
+  WAITING:  "var(--color-status-waiting)",
+  INACTIVE: "var(--color-status-inactive)",
+};
+
+const STATUS_SHORT: Record<string, string> = {
+  SUCCESS:  "OK",
+  RUNNING:  "RUN",
+  FAILED:   "FAIL",
+  WAITING:  "WAIT",
+  INACTIVE: "IDLE",
+};
+
+function JobNodeComponent({ data, selected, id }: NodeProps<JobNodeT>) {
+  const status = data.status;
+  const statusColor = STATUS_COLOR_VAR[status] ?? "var(--color-text-muted)";
+  const statusShort = STATUS_SHORT[status] ?? status;
+  const statusLabel = STATUS_MAP[status]?.label ?? status;
   const mode = (data.mode ?? "design") as AppMode;
-  const isMonitoring = mode === "monitoring";
+  const isRunning = mode === "monitoring" && status === "RUNNING";
 
   return (
     <div
-      className={cn(
-        "regente-node group relative w-[240px] rounded-[14px] border border-white/[0.07] bg-[#1f2937]/80 backdrop-blur-lg overflow-hidden shadow-[inset_0_2px_8px_rgba(0,0,0,0.18)]",
-        (selected || (isMonitoring && data.status === "RUNNING")) && "node-glow-premium",
-        isMonitoring && data.status === "RUNNING" && "animate-pulse-scale",
-        isMonitoring && "pointer-events-auto"
-      )}
       data-label={data.label}
       data-id={id}
+      className="regente-node"
+      style={{
+        width: 200,
+        background: "var(--color-bg-surface)",
+        border: `1px solid ${selected ? "var(--color-accent-dark)" : "var(--color-border-medium)"}`,
+        borderRadius: 4,
+        fontFamily: "Inter, -apple-system, system-ui, sans-serif",
+        overflow: "hidden",
+        display: "flex",
+      }}
     >
-      {/* Accent top gradient bar */}
       <div
-        className="absolute inset-x-0 top-0 h-[3px]"
-        style={{
-          background: `linear-gradient(90deg, transparent 5%, ${typeConfig.accentColor}88 30%, ${typeConfig.accentColor} 50%, ${typeConfig.accentColor}88 70%, transparent 95%)`,
-        }}
+        aria-label={`status: ${statusLabel}`}
+        style={{ width: 3, background: statusColor, flexShrink: 0 }}
       />
 
-      {/* Noise/grain overlay for texture */}
-      <div className="absolute inset-0 opacity-[0.015] pointer-events-none"
-        style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\'/%3E%3C/svg%3E")', backgroundSize: '128px 128px' }}
-      />
-
-      {/* Gradient overlay */}
-      <div
-        className={cn(
-          "absolute inset-0 bg-gradient-to-br opacity-30 pointer-events-none",
-          typeConfig.gradient
-        )}
-      />
-
-      {/* Inner top highlight for depth */}
-      <div className="absolute inset-x-0 top-[3px] h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent pointer-events-none" />
-
-      {/* Handles — vertical (top/bottom) */}
-      <Handle type="target" position={Position.Top} className="!-top-[5px]" />
-      <Handle type="source" position={Position.Bottom} className="!-bottom-[5px]" />
-      {/* CHOICE node: extra source handles for visual routing hint */}
-      {data.jobType === "CHOICE" && (
-        <>
-          <Handle type="source" position={Position.Right} id="choice-right" className="!-right-[5px] !top-1/2" />
-          <Handle type="source" position={Position.Left} id="choice-left" className="!-left-[5px] !top-1/2" />
-        </>
-      )}
-
-      {/* Content */}
-      <div className="relative p-3.5">
-        <div className="flex items-start gap-3 mb-3">
-          <div className="relative">
-            <div
-              className={cn(
-                "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all duration-300 group-hover:scale-110 group-hover:shadow-lg",
-                typeConfig.iconBg
-              )}
-            >
-              <Icon className="h-5 w-5" strokeWidth={1.8} />
-            </div>
-            {isMonitoring && data.status === "RUNNING" && (
-              <div className="absolute -inset-1 rounded-xl animate-running-ring pointer-events-none" />
-            )}
-          </div>
-          <div className="min-w-0 flex-1 pt-0.5">
-            <p className="truncate text-[13px] font-semibold text-text-primary leading-tight">
-              {data.label}
-            </p>
-            <p className="text-[11px] text-text-muted mt-0.5 font-medium">
-              {typeConfig.label}
-            </p>
-          </div>
-        </div>
-
-        <div className="h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent mb-2.5" />
-
-        <div className="flex items-center justify-between">
-          <Badge variant={statusConfig.variant}>
+      <div style={{ flex: 1, padding: "8px 10px", minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--color-text-primary)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              flex: 1,
+            }}
+          >
+            {data.label}
+          </span>
+          {data.team && (
             <span
-              className={cn(
-                "inline-block h-1.5 w-1.5 rounded-full",
-                statusConfig.dotColor,
-                data.status === "RUNNING" && "animate-pulse-dot"
-              )}
-            />
-            {statusConfig.label}
-          </Badge>
-          {data.lastRun && (
-            <span className="text-[10px] text-text-muted font-medium">
-              {data.lastRun}
+              style={{
+                fontSize: 10,
+                color: "var(--color-text-muted)",
+                fontFamily: "JetBrains Mono, SF Mono, Consolas, monospace",
+                padding: "1px 4px",
+                border: "1px solid var(--color-border-subtle)",
+                borderRadius: 2,
+                flexShrink: 0,
+                letterSpacing: "0.04em",
+              }}
+            >
+              {data.team}
             </span>
           )}
         </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            marginTop: 3,
+            fontSize: 10,
+            fontFamily: "JetBrains Mono, SF Mono, Consolas, monospace",
+            color: "var(--color-text-muted)",
+            letterSpacing: "0.04em",
+          }}
+        >
+          <span style={{ textTransform: "uppercase" }}>{data.jobType}</span>
+          <span style={{ color: "var(--color-border-strong)" }}>│</span>
+          <span
+            style={{
+              color: statusColor,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              fontWeight: 600,
+            }}
+          >
+            <span
+              className={isRunning ? "animate-pulse-dot" : ""}
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                background: statusColor,
+              }}
+            />
+            {statusShort}
+          </span>
+          {data.lastRun && (
+            <>
+              <span style={{ color: "var(--color-border-strong)" }}>│</span>
+              <span>{data.lastRun}</span>
+            </>
+          )}
+        </div>
       </div>
+
+      <Handle type="target" position={Position.Top} className="!-top-[4px]" />
+      <Handle type="source" position={Position.Bottom} className="!-bottom-[4px]" />
+
+      {data.jobType === "CHOICE" && (
+        <>
+          <Handle type="source" position={Position.Right} id="choice-right" className="!-right-[4px] !top-1/2" />
+          <Handle type="source" position={Position.Left} id="choice-left" className="!-left-[4px] !top-1/2" />
+        </>
+      )}
     </div>
   );
 }

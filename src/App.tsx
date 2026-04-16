@@ -6,6 +6,11 @@ import { ToastProvider } from "@/components/ToastStack";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { ExecutionProvider } from "@/lib/execution-context";
 import { OrchestratorProvider } from "@/lib/orchestrator-context";
+import V2Preview from "@/v2/V2Preview";
+
+// v2 preview flag — piloto visual (remover após aprovação + promoção)
+const isV2Preview =
+  typeof window !== "undefined" && window.location.search.includes("v2");
 
 function AppContent() {
   const { user, loading, isConfigured } = useAuth();
@@ -31,6 +36,14 @@ function AppContent() {
 }
 
 export default function App() {
+  if (isV2Preview) {
+    return (
+      <ErrorBoundary>
+        <V2Preview />
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <AuthProvider>

@@ -1,0 +1,71 @@
+/* ══════════════════════════════════════════════════════════════
+   Regente v2 — Design Tokens (PicPay)
+   PILOTO — será promovido para index.css após aprovação.
+   ══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Backgrounds ── preto dominante */
+  --v2-bg-canvas:     #000000;
+  --v2-bg-surface:    #0a0a0a;
+  --v2-bg-elevated:   #111111;
+  --v2-bg-hover:      #161616;
+  --v2-bg-active:     #1c1c1c;
+
+  /* Borders ── discretas, sem glow */
+  --v2-border-subtle: #1a1a1a;
+  --v2-border-medium: #262626;
+  --v2-border-strong: #333333;
+  --v2-border-focus:  #11C76F;
+
+  /* Text ── hierarquia clara */
+  --v2-text-primary:   #f5f5f5;
+  --v2-text-secondary: #a3a3a3;
+  --v2-text-muted:     #525252;
+  --v2-text-disabled:  #3f3f3f;
+
+  /* Accent PicPay ── verde escuro dominante, brand só em CTA */
+  --v2-accent-brand:   #11C76F;   /* uso raro: CTA primário, selected state */
+  --v2-accent-dark:    #064E2B;   /* preferido: bordas ativas, indicadores */
+  --v2-accent-deep:    #052e19;   /* background: hover de item verde */
+  --v2-accent-faint:   #021a0e;   /* fundo de zona verde muito sutil */
+
+  /* Status ── semânticas, ≤ 5 cores */
+  --v2-status-ok:      #11C76F;
+  --v2-status-running: #22d3ee;
+  --v2-status-failed:  #ef4444;
+  --v2-status-hold:    #f59e0b;
+  --v2-status-waiting: #737373;
+
+  /* Typography ── compacta, tipo Control-M/Airflow */
+  --v2-font-sans: "Inter", -apple-system, system-ui, sans-serif;
+  --v2-font-mono: "JetBrains Mono", "SF Mono", Consolas, monospace;
+
+  --v2-text-xs:  10px;
+  --v2-text-sm:  11px;
+  --v2-text-base: 12px;
+  --v2-text-md:  13px;
+  --v2-text-lg:  14px;
+
+  /* Spacing ── grid 4px */
+  --v2-s1: 4px;
+  --v2-s2: 8px;
+  --v2-s3: 12px;
+  --v2-s4: 16px;
+
+  /* Radius ── sem cards arredondados demais */
+  --v2-radius-sm: 2px;
+  --v2-radius:    4px;
+  --v2-radius-md: 6px;
+}
+
+/* ── Utility classes (escopadas, prefixo v2-) ── */
+
+.v2-root {
+  background: var(--v2-bg-canvas);
+  color: var(--v2-text-primary);
+  font-family: var(--v2-font-sans);
+  font-size: var(--v2-text-base);
+  -webkit-font-smoothing: antialiased;
+}
+
+.v2-mono { font-family: var(--v2-font-mono); }
