@@ -34,13 +34,14 @@ import {
   rerunInstance,
   skipInstance,
   bypassInstance,
-} from "@/lib/instance-store";
+} from "@/lib/runtime-bridge";
 import {
   loadDefinitions,
   onDefinitionsChange,
   getDefinitions,
   saveDefinition,
   deleteDefinition,
+  reloadDefinitions,
 } from "@/lib/definition-store";
 import {
   runDaily,
@@ -48,8 +49,9 @@ import {
   stopScheduler,
   updateSchedulerDefs,
   getLastDailyRun,
-} from "@/lib/scheduler-runtime";
+} from "@/lib/runtime-bridge";
 import { container } from "@/lib/container";
+import { onServerEvent, isServerMode } from "@/lib/server-client";
 
 import "@xyflow/react/dist/style.css";
 import "@/index.css";
@@ -264,22 +266,26 @@ function V2PreviewInner() {
 
   /* ── Mount: load definitions + subscribe ── */
   useEffect(() => {
-    // One-shot migration: limpa os 15 fakes do seed v1 que ficaram no
-    // localStorage em sessões anteriores. Qualquer instance hoje que
-    // venha de uma definition inexistente é órfã e deve sumir.
-    if (typeof window !== "undefined") {
-      const oldSeedFlag = window.localStorage.getItem("regente:v2-seeded:v1");
-      if (oldSeedFlag) {
-        window.localStorage.removeItem("regente:instances");
-        window.localStorage.removeItem("regente:v2-seeded:v1");
-        window.localStorage.removeItem("regente:daily-run-at");
+    const serverMode = container.storageBackend === "server";
+
+    if (!serverMode) {
+      // One-shot migration: limpa os 15 fakes do seed v1 que ficaram no
+      // localStorage em sessões anteriores. Qualquer instance hoje que
+      // venha de uma definition inexistente é órfã e deve sumir.
+      if (typeof window !== "undefined") {
+        const oldSeedFlag = window.localStorage.getItem("regente:v2-seeded:v1");
+        if (oldSeedFlag) {
+          window.localStorage.removeItem("regente:instances");
+          window.localStorage.removeItem("regente:v2-seeded:v1");
+          window.localStorage.removeItem("regente:daily-run-at");
+        }
       }
     }
 
     void loadDefinitions().then((list) => {
       setDefs(list);
-      // Purga instances órfãs (sem definition correspondente).
-      if (typeof window !== "undefined") {
+      // Purga instances órfãs (sem definition correspondente) — só local mode.
+      if (!serverMode && typeof window !== "undefined") {
         const raw = window.localStorage.getItem("regente:instances");
         if (raw) {
           try {
@@ -303,9 +309,21 @@ function V2PreviewInner() {
       setInstances(getTodayInstances().filter((i) => i.orderDate === todayOrderDate()));
     });
     startScheduler(2000);
+
+    // Server mode: subscribe a WS para recarregar defs quando mudarem no server
+    let unsubWs: (() => void) | null = null;
+    if (isServerMode()) {
+      unsubWs = onServerEvent((ev) => {
+        if (ev.event === "definition.changed" || ev.event === "definition.deleted") {
+          void reloadDefinitions().then((list) => setDefs([...list]));
+        }
+      });
+    }
+
     return () => {
       unsubDefs();
       unsubInst();
+      if (unsubWs) unsubWs();
       stopScheduler();
     };
   }, []);
@@ -430,6 +448,11 @@ function V2PreviewInner() {
   const handleRunDaily = useCallback(() => {
     const created = runDaily(defs);
     setLastDaily(new Date().toISOString());
+    if (container.storageBackend === "server") {
+      // server mode: refresh é assíncrono via WS; UI re-renderiza sozinha
+      setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 200);
+      return;
+    }
     if (created.length > 0) {
       setInstances(getTodayInstances());
       setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 50);
@@ -439,8 +462,9 @@ function V2PreviewInner() {
   }, [defs, fitView]);
 
   const handleRerunInstance = useCallback((id: string) => {
-    const fresh = rerunInstance(id);
-    if (fresh) setSelectedInstanceId(fresh.id);
+    Promise.resolve(rerunInstance(id)).then((fresh) => {
+      if (fresh) setSelectedInstanceId(fresh.id);
+    });
   }, []);
 
   const hasDefs = defs.length > 0;

@@ -152,3 +152,11 @@ export async function clearAllDefinitions(): Promise<void> {
   emitChange();
 }
 
+/** Força refetch do storage (útil quando mudanças externas chegam via WS). */
+export async function reloadDefinitions(): Promise<JobDefinition[]> {
+  _cache = await container.storage.list();
+  _loaded = true;
+  emitChange();
+  return _cache;
+}
+

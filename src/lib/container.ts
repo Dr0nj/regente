@@ -20,9 +20,11 @@ import type { ExecutorPort } from "@/lib/ports/ExecutorPort";
 
 import { LocalStorageAdapter } from "@/lib/adapters/storage/LocalStorageAdapter";
 import { GitAdapter } from "@/lib/adapters/storage/GitAdapter";
+import { ServerApiAdapter } from "@/lib/adapters/storage/ServerApiAdapter";
 import { BrowserTickAdapter } from "@/lib/adapters/scheduler/BrowserTickAdapter";
 import { MockExecutorAdapter } from "@/lib/adapters/executor/MockExecutorAdapter";
 import { HttpExecutorAdapter } from "@/lib/adapters/executor/HttpExecutorAdapter";
+import { isServerMode, SERVER_URL } from "@/lib/server-client";
 
 export interface RegenteContainer {
   storage: StoragePort;
@@ -31,12 +33,28 @@ export interface RegenteContainer {
   /** Seleciona o primeiro executor que suporta o jobType. Fallback: mock. */
   executorFor(jobType: string): ExecutorPort;
   /** Nome do backend de storage ativo (para UI/debug). */
-  storageBackend: "git" | "localStorage";
+  storageBackend: "server" | "git" | "localStorage";
+  /** URL do regente-server quando em server mode. */
+  serverUrl: string | null;
 }
 
 function buildContainer(): RegenteContainer {
-  const gitEnabled = GitAdapter.isEnabled();
-  const storage: StoragePort = gitEnabled ? new GitAdapter() : new LocalStorageAdapter();
+  const serverOn = isServerMode();
+  const gitEnabled = !serverOn && GitAdapter.isEnabled();
+
+  let storage: StoragePort;
+  let backend: RegenteContainer["storageBackend"];
+  if (serverOn) {
+    storage = new ServerApiAdapter();
+    backend = "server";
+  } else if (gitEnabled) {
+    storage = new GitAdapter();
+    backend = "git";
+  } else {
+    storage = new LocalStorageAdapter();
+    backend = "localStorage";
+  }
+
   const scheduler = new BrowserTickAdapter();
 
   const http = new HttpExecutorAdapter();
@@ -47,7 +65,8 @@ function buildContainer(): RegenteContainer {
     storage,
     scheduler,
     executors,
-    storageBackend: gitEnabled ? "git" : "localStorage",
+    storageBackend: backend,
+    serverUrl: SERVER_URL,
     executorFor(jobType: string): ExecutorPort {
       return executors.find((e) => e.supports(jobType)) ?? mock;
     },
