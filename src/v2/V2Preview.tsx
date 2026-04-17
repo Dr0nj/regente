@@ -34,6 +34,7 @@ import {
   rerunInstance,
   skipInstance,
   bypassInstance,
+  forceInstance,
 } from "@/lib/runtime-bridge";
 import {
   loadDefinitions,
@@ -467,6 +468,18 @@ function V2PreviewInner() {
     });
   }, []);
 
+  /* ── Force Order (Run Now) ── */
+  const [forceMenuOpen, setForceMenuOpen] = useState(false);
+  const handleForce = useCallback((def: JobDefinition) => {
+    setForceMenuOpen(false);
+    Promise.resolve(forceInstance(def)).then((fresh) => {
+      if (fresh) setSelectedInstanceId(fresh.id);
+    }).catch((err) => {
+      console.error("[force] failed", err);
+      alert(`Force falhou: ${err?.message ?? err}`);
+    });
+  }, []);
+
   const hasDefs = defs.length > 0;
   const hasInstances = instances.length > 0;
 
@@ -532,24 +545,114 @@ function V2PreviewInner() {
         </div>
 
         {mode === "monitoring" && (
-          <button
-            onClick={handleRunDaily}
-            disabled={!hasDefs}
-            title={hasDefs ? "Materializa instances de hoje a partir das definitions" : "Crie definitions no Design primeiro"}
-            style={{
-              padding: "5px 10px",
-              background: "transparent",
-              border: "1px solid var(--v2-accent-brand)",
-              color: hasDefs ? "var(--v2-accent-brand)" : "var(--v2-text-muted)",
-              borderColor: hasDefs ? "var(--v2-accent-brand)" : "var(--v2-border-medium)",
-              borderRadius: 3,
-              fontSize: 10, fontFamily: "var(--v2-font-mono)",
-              letterSpacing: "0.06em", textTransform: "uppercase",
-              cursor: hasDefs ? "pointer" : "not-allowed", fontWeight: 600,
-            }}
-          >
-            ▶ Run Daily
-          </button>
+          <>
+            <button
+              onClick={handleRunDaily}
+              disabled={!hasDefs}
+              title={hasDefs ? "Materializa instances de hoje a partir das definitions" : "Crie definitions no Design primeiro"}
+              style={{
+                padding: "5px 10px",
+                background: "transparent",
+                border: "1px solid var(--v2-accent-brand)",
+                color: hasDefs ? "var(--v2-accent-brand)" : "var(--v2-text-muted)",
+                borderColor: hasDefs ? "var(--v2-accent-brand)" : "var(--v2-border-medium)",
+                borderRadius: 3,
+                fontSize: 10, fontFamily: "var(--v2-font-mono)",
+                letterSpacing: "0.06em", textTransform: "uppercase",
+                cursor: hasDefs ? "pointer" : "not-allowed", fontWeight: 600,
+              }}
+            >
+              ▶ Run Daily
+            </button>
+
+            <div style={{ position: "relative" }}>
+              <button
+                onClick={() => setForceMenuOpen((v) => !v)}
+                disabled={!hasDefs}
+                title={hasDefs ? "Force Order — criar instance agora (Run Now)" : "Crie definitions no Design primeiro"}
+                style={{
+                  padding: "5px 10px",
+                  background: forceMenuOpen ? "var(--v2-accent-deep)" : "transparent",
+                  border: "1px solid var(--v2-border-medium)",
+                  color: hasDefs ? "var(--v2-text-primary)" : "var(--v2-text-muted)",
+                  borderRadius: 3,
+                  fontSize: 10, fontFamily: "var(--v2-font-mono)",
+                  letterSpacing: "0.06em", textTransform: "uppercase",
+                  cursor: hasDefs ? "pointer" : "not-allowed", fontWeight: 600,
+                }}
+              >
+                ⚡ Force ▾
+              </button>
+              {forceMenuOpen && hasDefs && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 4px)",
+                    left: 0,
+                    minWidth: 260,
+                    maxHeight: 360,
+                    overflowY: "auto",
+                    background: "var(--v2-bg-surface)",
+                    border: "1px solid var(--v2-border-medium)",
+                    borderRadius: 4,
+                    boxShadow: "0 6px 20px rgba(0,0,0,0.4)",
+                    zIndex: 20,
+                    padding: "4px 0",
+                  }}
+                  onMouseLeave={() => setForceMenuOpen(false)}
+                >
+                  <div style={{
+                    padding: "6px 10px",
+                    fontSize: 9,
+                    fontFamily: "var(--v2-font-mono)",
+                    color: "var(--v2-text-muted)",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    borderBottom: "1px solid var(--v2-border-subtle)",
+                  }}>
+                    Order Job — Run Now
+                  </div>
+                  {defs.map((d) => (
+                    <button
+                      key={d.id}
+                      onClick={() => handleForce(d)}
+                      style={{
+                        display: "flex",
+                        width: "100%",
+                        padding: "7px 10px",
+                        background: "transparent",
+                        border: "none",
+                        textAlign: "left",
+                        color: "var(--v2-text-primary)",
+                        fontSize: 11,
+                        fontFamily: "var(--v2-font-sans)",
+                        cursor: "pointer",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--v2-bg-hover)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    >
+                      <span style={{ color: "var(--v2-accent-brand)" }}>▶</span>
+                      <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {d.label}
+                      </span>
+                      <span style={{
+                        fontSize: 9,
+                        fontFamily: "var(--v2-font-mono)",
+                        color: "var(--v2-text-muted)",
+                        padding: "1px 5px",
+                        border: "1px solid var(--v2-border-subtle)",
+                        borderRadius: 2,
+                      }}>
+                        {d.team ?? "—"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
         )}
 
         <div style={{ flex: 1 }} />
