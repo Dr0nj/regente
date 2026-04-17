@@ -80,6 +80,13 @@ export interface JobDefinition {
   variables?: Array<{ key: string; value: string }>;
   /** If true, log intent without executing */
   dryRun?: boolean;
+  /**
+   * Fase 8 — dependências upstream.
+   * Define quais definitions precisam ter terminado (com dada
+   * condição) antes que esta instance possa sair de WAITING.
+   * Undefined/empty = sem dependências.
+   */
+  upstream?: Array<{ from: string; condition: EdgeCondition }>;
 }
 
 /* ── Job Instance (Monitoring mode entity) ── */

@@ -90,6 +90,7 @@ export function definitionToYaml(def: JobDefinition): string {
     dryRun: def.dryRun ?? false,
     actionConfig: def.actionConfig ?? null,
     variables: def.variables ?? [],
+    upstream: def.upstream ?? [],
   };
   return emitObject(ordered, 0) + "\n";
 }
@@ -227,5 +228,6 @@ export function yamlToDefinition(yaml: string): JobDefinition {
     dryRun: Boolean(obj.dryRun),
     actionConfig: (obj.actionConfig as Record<string, unknown>) ?? undefined,
     variables: (obj.variables as Array<{ key: string; value: string }>) ?? [],
+    upstream: (obj.upstream as Array<{ from: string; condition: import("@/lib/orchestrator-model").EdgeCondition }>) ?? [],
   };
 }

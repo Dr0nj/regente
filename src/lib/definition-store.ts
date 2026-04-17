@@ -75,3 +75,80 @@ export function getSchedulableDefinitions(nodes: Node<JobNodeData>[]): JobDefini
     (d) => d.schedule.enabled && d.schedule.cronExpression,
   );
 }
+
+/* ──────────────────────────────────────────────────────────────
+   Fase 7 — Runtime store (async, com subscribers)
+   ──────────────────────────────────────────────────────────────
+   Envelope fino em cima de `container.storage` (Port). Mantém
+   cache em memória para a UI subscrever e emite eventos em cada
+   mutação. A persistência real (Git ou localStorage) é escolhida
+   pelo container.
+   ────────────────────────────────────────────────────────────── */
+
+import { container } from "@/lib/container";
+
+type DefinitionsListener = (defs: JobDefinition[]) => void;
+
+let _cache: JobDefinition[] = [];
+let _loaded = false;
+let _loading: Promise<JobDefinition[]> | null = null;
+const _listeners = new Set<DefinitionsListener>();
+
+function emitChange(): void {
+  for (const fn of _listeners) {
+    try { fn(_cache); } catch { /* ignore */ }
+  }
+}
+
+/** Carrega do storage configurado. Idempotente em chamadas paralelas. */
+export async function loadDefinitions(): Promise<JobDefinition[]> {
+  if (_loaded) return _cache;
+  if (_loading) return _loading;
+  _loading = (async () => {
+    try {
+      _cache = await container.storage.list();
+      _loaded = true;
+      emitChange();
+      return _cache;
+    } finally {
+      _loading = null;
+    }
+  })();
+  return _loading;
+}
+
+/** Cache atual (sincrono). Pode estar vazio antes do primeiro load. */
+export function getDefinitions(): JobDefinition[] {
+  return _cache;
+}
+
+/** Inscrição em mudanças (upsert/remove). Retorna unsubscribe. */
+export function onDefinitionsChange(fn: DefinitionsListener): () => void {
+  _listeners.add(fn);
+  return () => { _listeners.delete(fn); };
+}
+
+/** Upsert de uma definition — grava no storage e atualiza cache. */
+export async function saveDefinition(def: JobDefinition): Promise<void> {
+  await container.storage.save(def);
+  const idx = _cache.findIndex((d) => d.id === def.id);
+  if (idx >= 0) _cache = [..._cache.slice(0, idx), def, ..._cache.slice(idx + 1)];
+  else _cache = [..._cache, def];
+  emitChange();
+}
+
+/** Remove por id. */
+export async function deleteDefinition(id: string): Promise<void> {
+  await container.storage.remove(id);
+  _cache = _cache.filter((d) => d.id !== id);
+  emitChange();
+}
+
+/** Reset (útil em testes / limpar tudo no dev). */
+export async function clearAllDefinitions(): Promise<void> {
+  const ids = _cache.map((d) => d.id);
+  for (const id of ids) await container.storage.remove(id);
+  _cache = [];
+  emitChange();
+}
+

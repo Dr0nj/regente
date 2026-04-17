@@ -166,6 +166,10 @@ export default function DesignSidebarV2() {
                 <div
                   key={t.id}
                   draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("application/regente-jobtype", t.id);
+                    e.dataTransfer.effectAllowed = "copy";
+                  }}
                   style={{
                     padding: "8px 12px",
                     cursor: "grab",
