@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { JobDefinition } from "@/lib/orchestrator-model";
 import type { JobNodeData } from "@/lib/job-config";
 
 /* ──────────────────────────────────────────────────────────────
@@ -30,21 +31,21 @@ const JOB_TYPES: Array<{
   { id: "HTTP",          label: "HTTP",          hint: "REST API call" },
 ];
 
-const TEAMS = [
-  { name: "DATA", count: 12 },
-  { name: "FIN", count: 7 },
-  { name: "PLAT", count: 5 },
-  { name: "RISK", count: 3 },
-];
+const TEAMS_FALLBACK: string[] = []; // times só aparecem quando houver definitions
 
-const VARIABLES = [
-  { key: "env",            value: "prod",    type: "string" },
-  { key: "bucket_landing", value: "pp-land", type: "string" },
-  { key: "retry_http_429", value: "true",    type: "boolean" },
-];
-
-export default function DesignSidebarV2() {
+export default function DesignSidebarV2({ definitions = [] }: { definitions?: JobDefinition[] }) {
   const [tab, setTab] = useState<Tab>("palette");
+
+  // Agrupa definitions por team
+  const teams = (() => {
+    if (definitions.length === 0) return TEAMS_FALLBACK.map((name) => ({ name, count: 0 }));
+    const m = new Map<string, number>();
+    for (const d of definitions) {
+      const t = (d.team ?? "").trim() || "—";
+      m.set(t, (m.get(t) ?? 0) + 1);
+    }
+    return [...m.entries()].map(([name, count]) => ({ name, count }));
+  })();
 
   return (
     <aside
@@ -227,7 +228,12 @@ export default function DesignSidebarV2() {
 
           {tab === "teams" && (
             <div style={{ padding: "4px 0" }}>
-              {TEAMS.map((t) => (
+              {teams.length === 0 && (
+                <div style={{ padding: "12px 14px", fontSize: 11, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>
+                  Nenhum team. Crie um job e atribua um team para ele aparecer aqui.
+                </div>
+              )}
+              {teams.map((t) => (
                 <div
                   key={t.name}
                   style={{
@@ -276,45 +282,12 @@ export default function DesignSidebarV2() {
           )}
 
           {tab === "variables" && (
-            <div style={{ padding: "4px 0" }}>
-              {VARIABLES.map((v) => (
-                <div
-                  key={v.key}
-                  style={{
-                    padding: "8px 12px",
-                    borderBottom: "1px solid var(--v2-border-subtle)",
-                    fontFamily: "var(--v2-font-mono)",
-                    fontSize: 11,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span
-                      style={{
-                        color: "var(--v2-accent-brand)",
-                        letterSpacing: "0.02em",
-                      }}
-                    >
-                      ${v.key}
-                    </span>
-                    <span
-                      style={{
-                        marginLeft: "auto",
-                        fontSize: 9,
-                        color: "var(--v2-text-muted)",
-                        padding: "1px 4px",
-                        border: "1px solid var(--v2-border-subtle)",
-                        borderRadius: 2,
-                        letterSpacing: "0.04em",
-                      }}
-                    >
-                      {v.type}
-                    </span>
-                  </div>
-                  <div style={{ color: "var(--v2-text-secondary)", marginTop: 3, fontSize: 10 }}>
-                    {v.value}
-                  </div>
-                </div>
-              ))}
+            <div style={{ padding: "12px 14px", fontSize: 11, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)", lineHeight: 1.5 }}>
+              Nenhuma variável definida.
+              <br />
+              <span style={{ opacity: 0.6 }}>
+                (próxima fase: variáveis globais via <code style={{ color: "var(--v2-accent-brand)" }}>variables.yaml</code>)
+              </span>
             </div>
           )}
         </div>

@@ -264,7 +264,36 @@ function V2PreviewInner() {
 
   /* ── Mount: load definitions + subscribe ── */
   useEffect(() => {
-    void loadDefinitions().then((list) => setDefs(list));
+    // One-shot migration: limpa os 15 fakes do seed v1 que ficaram no
+    // localStorage em sessões anteriores. Qualquer instance hoje que
+    // venha de uma definition inexistente é órfã e deve sumir.
+    if (typeof window !== "undefined") {
+      const oldSeedFlag = window.localStorage.getItem("regente:v2-seeded:v1");
+      if (oldSeedFlag) {
+        window.localStorage.removeItem("regente:instances");
+        window.localStorage.removeItem("regente:v2-seeded:v1");
+        window.localStorage.removeItem("regente:daily-run-at");
+      }
+    }
+
+    void loadDefinitions().then((list) => {
+      setDefs(list);
+      // Purga instances órfãs (sem definition correspondente).
+      if (typeof window !== "undefined") {
+        const raw = window.localStorage.getItem("regente:instances");
+        if (raw) {
+          try {
+            const arr = JSON.parse(raw) as JobInstance[];
+            const ids = new Set(list.map((d) => d.id));
+            const cleaned = arr.filter((i) => ids.has(i.definitionId));
+            if (cleaned.length !== arr.length) {
+              window.localStorage.setItem("regente:instances", JSON.stringify(cleaned));
+            }
+          } catch { /* ignore */ }
+        }
+      }
+      setInstances(getTodayInstances());
+    });
     const unsubDefs = onDefinitionsChange((list) => {
       setDefs([...list]);
       updateSchedulerDefs([...list]);
@@ -558,7 +587,7 @@ function V2PreviewInner() {
             onSelect={handleSidebarSelect}
           />
         ) : (
-          <DesignSidebarV2 />
+          <DesignSidebarV2 definitions={defs} />
         )}
 
         {mode === "monitoring" && selectedInstance && (
