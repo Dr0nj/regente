@@ -19,7 +19,7 @@ import Toolbar from "@/components/Toolbar";
 import type { WorkflowStats } from "@/components/Sidebar";
 import type { JobNodeData, JobType } from "@/lib/job-config";
 import type { AppMode } from "@/lib/types";
-import { applyDagreLayout } from "@/lib/layout";
+import { applyDagreLayout, applyDagreLayoutByFolder } from "@/lib/layout";
 import ContextMenu from "@/components/ContextMenu";
 
 const nodeTypes = { job: JobNodeComponent, teamGroup: TeamGroupComponent };
@@ -286,7 +286,7 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
       setEdges([]);
       return;
     }
-    const { nodes: laid, edges: laidE } = applyDagreLayout(initialNodes, initialEdges, "TB");
+    const { nodes: laid, edges: laidE } = applyDagreLayoutByFolder(initialNodes, initialEdges);
     setNodes(laid);
     setEdges(laidE);
     // Push initial state as first history entry
@@ -392,7 +392,7 @@ const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function FlowCa
     pushHistory();
     // Only re-layout job nodes (filter out group nodes)
     const jobNodes = nodes.filter((n) => n.type === "job");
-    const { nodes: layouted } = applyDagreLayout(jobNodes, edges, "TB");
+    const { nodes: layouted } = applyDagreLayoutByFolder(jobNodes, edges);
     setNodes(layouted);
     setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 50);
   }, [nodes, edges, setNodes, fitView, pushHistory]);

@@ -129,4 +129,10 @@ export interface JobNodeData {
   httpConfig?: HttpConfig;
   dryRun?: boolean;
   mode?: "design" | "monitoring";
+  /**
+   * Instance foi criada via Force Order (Control-M semantics): bypassa
+   * deps/cron. UI deve mostrar badge FORCED para diferenciar de runs
+   * scheduled/condition-satisfied.
+   */
+  forced?: boolean;
 }

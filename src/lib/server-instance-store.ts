@@ -213,9 +213,23 @@ export async function skipInstance(id: string): Promise<void> {
 }
 
 export async function bypassInstance(id: string): Promise<void> {
-  // v1: server não tem bypass dedicado; UI vai ganhar endpoint em F14
-  void id;
-  console.warn("[server-instances] bypass not yet implemented on server");
+  // Set OK (Control-M parity): flip NOTOK/CANCELLED -> OK no server,
+  // destrava sucessores on-success.
+  await api<void>(`/api/instances/${encodeURIComponent(id)}/set-ok`, { method: "POST" });
+  await refresh();
+}
+
+export interface InstanceEvent {
+  id: number;
+  instanceId: string;
+  ts: string;       // RFC3339
+  kind: string;     // ordered | started | submitted | finished | timeout | cancelled | held | released | rerun | force-ordered | set-ok
+  actor?: string;   // scheduler | operator | agent
+  message?: string;
+}
+
+export async function fetchInstanceEvents(id: string): Promise<InstanceEvent[]> {
+  return api<InstanceEvent[]>(`/api/instances/${encodeURIComponent(id)}/events`);
 }
 
 export async function forceInstance(def: JobDefinition): Promise<JobInstance> {

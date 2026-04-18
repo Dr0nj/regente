@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { JobDefinition } from "@/lib/orchestrator-model";
 import { TEAMS } from "@/lib/orchestrator-model";
 import type { JobType } from "@/lib/job-config";
+import JobActionConfigEditor from "./JobActionConfigEditor";
 
 /* ──────────────────────────────────────────────────────────────
    JobConfigDrawer — painel direito para editar JobDefinition
@@ -44,6 +45,8 @@ export default function JobConfigDrawer({ definition, isNew, handlers }: Props) 
   const [retries, setRetries] = useState(definition.retries ?? 2);
   const [timeout, setTimeoutS] = useState(definition.timeout ?? 300);
   const [dryRun, setDryRun] = useState(definition.dryRun ?? false);
+  // F12 — actionConfig per-jobType (free-form Record).
+  const [actionConfig, setActionConfig] = useState<Record<string, unknown>>(definition.actionConfig ?? {});
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -57,12 +60,13 @@ export default function JobConfigDrawer({ definition, isNew, handlers }: Props) 
     setRetries(definition.retries ?? 2);
     setTimeoutS(definition.timeout ?? 300);
     setDryRun(definition.dryRun ?? false);
+    setActionConfig(definition.actionConfig ?? {});
     setErr(null);
   }, [definition.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSave() {
     if (!label.trim()) { setErr("label obrigatório"); return; }
-    if (!team.trim()) { setErr("team (folder) obrigatório"); return; }
+    if (!team.trim()) { setErr("folder obrigatório"); return; }
     if (!id.trim())    { setErr("id obrigatório"); return; }
     const next: JobDefinition = {
       ...definition,
@@ -78,6 +82,7 @@ export default function JobConfigDrawer({ definition, isNew, handlers }: Props) 
       retries,
       timeout,
       dryRun,
+      actionConfig,
     };
     setSaving(true);
     setErr(null);
@@ -170,7 +175,7 @@ export default function JobConfigDrawer({ definition, isNew, handlers }: Props) 
             {JOB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
         </Field>
-        <Field label="Team / Folder">
+        <Field label="Folder">
           <select
             value={team}
             onChange={(e) => setTeam(e.target.value)}
@@ -203,6 +208,9 @@ export default function JobConfigDrawer({ definition, isNew, handlers }: Props) 
             log only, don't execute
           </label>
         </Field>
+
+        {/* F12 — per-jobType action config */}
+        <JobActionConfigEditor jobType={jobType} config={actionConfig} onChange={setActionConfig} />
 
         {(definition.upstream?.length ?? 0) > 0 && (
           <Field label={`Upstream deps (${definition.upstream!.length})`}>

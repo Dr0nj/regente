@@ -1,10 +1,10 @@
 /**
- * folder-api.ts — Wrappers REST para folder lifecycle (F11.6).
- *
- * Server mode apenas. Em localStorage mode, folders são implícitos (derivados
- * do campo `team` das definitions) e as operações devolvem stubs/no-ops.
+ * folder-api.ts — REST client para folders (server mode).
+ * Em local mode os wrappers retornam no-ops e a UI fica em
+ * "single bucket" virtual (tudo em um só folder).
  */
-import { api, isServerMode } from "./server-client";
+import { api } from "@/lib/server-client";
+import { isServerMode } from "@/lib/server-client";
 
 export interface FolderInfo {
   name: string;
@@ -14,15 +14,12 @@ export interface FolderInfo {
 
 export async function listFolders(): Promise<FolderInfo[]> {
   if (!isServerMode()) return [];
-  return api<FolderInfo[]>("/api/folders");
+  return await api<FolderInfo[]>("/api/folders");
 }
 
 export async function createFolder(name: string): Promise<void> {
-  if (!isServerMode()) {
-    // localStorage mode: folder é só um label, nada a persistir até existir um job
-    return;
-  }
-  await api<{ name: string }>("/api/folders", {
+  if (!isServerMode()) return;
+  await api("/api/folders", {
     method: "POST",
     body: JSON.stringify({ name }),
   });
@@ -30,7 +27,7 @@ export async function createFolder(name: string): Promise<void> {
 
 export async function renameFolder(oldName: string, newName: string): Promise<void> {
   if (!isServerMode()) return;
-  await api<{ name: string }>(`/api/folders/${encodeURIComponent(oldName)}`, {
+  await api(`/api/folders/${encodeURIComponent(oldName)}`, {
     method: "PATCH",
     body: JSON.stringify({ newName }),
   });
@@ -38,15 +35,14 @@ export async function renameFolder(oldName: string, newName: string): Promise<vo
 
 export async function deleteFolder(name: string, force = false): Promise<void> {
   if (!isServerMode()) return;
-  const q = force ? "?force=true" : "";
-  await api<void>(`/api/folders/${encodeURIComponent(name)}${q}`, {
+  await api(`/api/folders/${encodeURIComponent(name)}?force=${force}`, {
     method: "DELETE",
   });
 }
 
 export async function archiveFolder(name: string): Promise<void> {
   if (!isServerMode()) return;
-  await api<{ name: string }>(`/api/folders/${encodeURIComponent(name)}/archive`, {
+  await api(`/api/folders/${encodeURIComponent(name)}/archive`, {
     method: "POST",
   });
 }

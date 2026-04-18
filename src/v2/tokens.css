@@ -69,3 +69,62 @@
 }
 
 .v2-mono { font-family: var(--v2-font-mono); }
+
+/* ══════════════════════════════════════════════════════════════
+   Grain noise overlay (chrome only — NUNCA no canvas)
+   Procedural via SVG feTurbulence: zero asset, escala infinita.
+   Aplicar com class `.v2-grain` em superfícies de chrome
+   (topbar, sidebar, drawer, modals). Pointer-events none.
+   ══════════════════════════════════════════════════════════════ */
+
+.v2-grain {
+  position: relative;
+  isolation: isolate;
+}
+
+.v2-grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.13;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 180px 180px;
+}
+
+/* Variant mais forte para áreas grandes (overlay sobre #000 puro) */
+.v2-grain-strong::after {
+  opacity: 0.07;
+  mix-blend-mode: overlay;
+}
+
+/* Variant para cards/nodes — grão mais perceptível com tile menor.
+   Cria sensação de "material" no chrome do card sem afetar a tipografia. */
+.v2-grain-card {
+  position: relative;
+  isolation: isolate;
+  /* Fundo sólido default — modais e dropdowns precisam ser opacos. */
+  background-color: var(--v2-bg-elevated);
+}
+
+.v2-grain-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.18;
+  mix-blend-mode: overlay;
+  border-radius: inherit;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.7 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 120px 120px;
+}
+
+/* Inset highlight discreto no topo de superfícies elevadas
+   — simula reflexo de luz ambiente sem virar glow. */
+.v2-edge-highlight {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+

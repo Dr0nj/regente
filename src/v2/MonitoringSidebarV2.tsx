@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { JobNodeData } from "@/lib/job-config";
+import { todayOrderDate } from "@/lib/orchestrator-model";
 
 /* ──────────────────────────────────────────────────────────────
    MonitoringSidebarV2 — flutuante, clean, densidade alta
@@ -78,8 +79,29 @@ export default function MonitoringSidebarV2({
     });
   }, [jobs, filter, query]);
 
+  // Agrupa por folder (Control-M style: folders expansíveis no sidebar)
+  const grouped = useMemo(() => {
+    const m = new Map<string, MonitoringJob[]>();
+    for (const j of filtered) {
+      const f = (j.team || "—").trim() || "—";
+      if (!m.has(f)) m.set(f, []);
+      m.get(f)!.push(j);
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filtered]);
+
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggleFolder = (name: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  };
+
   return (
     <aside
+      className="v2-grain v2-edge-highlight"
       style={{
         position: "absolute",
         top: 12,
@@ -123,7 +145,7 @@ export default function MonitoringSidebarV2({
           {filtered.length}/{jobs.length}
         </span>
         <span style={{ marginLeft: "auto", fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>
-          2026-04-16
+          {todayOrderDate()}
         </span>
       </div>
 
@@ -196,87 +218,137 @@ export default function MonitoringSidebarV2({
         ))}
       </div>
 
-      {/* List */}
+      {/* List — agrupada por folder (CTM style) */}
       <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
         {filtered.length === 0 ? (
           <div style={{ padding: 20, fontSize: 11, color: "var(--v2-text-muted)", textAlign: "center" }}>
             nenhum job com esse filtro
           </div>
         ) : (
-          filtered.map((j) => (
-            <div
-              key={j.id}
-              onClick={() => handleSelect(j.id)}
-              style={{
-                height: 32,
-                padding: "0 12px",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                borderBottom: "1px solid var(--v2-border-subtle)",
-                background: selected === j.id ? "var(--v2-accent-faint)" : "transparent",
-                borderLeft: selected === j.id ? "2px solid var(--v2-accent-brand)" : "2px solid transparent",
-                cursor: "pointer",
-                fontSize: 11,
-                transition: "background 80ms linear",
-              }}
-              onMouseEnter={(e) => {
-                if (selected !== j.id) e.currentTarget.style.background = "var(--v2-bg-hover)";
-              }}
-              onMouseLeave={(e) => {
-                if (selected !== j.id) e.currentTarget.style.background = "transparent";
-              }}
-            >
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: "50%",
-                  background: STATUS_DOT[j.status],
-                  flexShrink: 0,
-                  animation: j.status === "RUNNING" ? "v2-dot-pulse 1.2s ease-in-out infinite" : "none",
-                }}
-              />
-              <span
-                style={{
-                  flex: 1,
-                  color: "var(--v2-text-primary)",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  fontWeight: selected === j.id ? 600 : 400,
-                }}
-              >
-                {j.label}
-              </span>
-              <span
-                style={{
-                  fontSize: 9,
-                  fontFamily: "var(--v2-font-mono)",
-                  color: "var(--v2-text-muted)",
-                  padding: "1px 4px",
-                  border: "1px solid var(--v2-border-subtle)",
-                  borderRadius: 2,
-                  letterSpacing: "0.04em",
-                  flexShrink: 0,
-                }}
-              >
-                {j.team}
-              </span>
-              <span
-                style={{
-                  fontFamily: "var(--v2-font-mono)",
-                  fontSize: 10,
-                  color: "var(--v2-text-muted)",
-                  width: 48,
-                  textAlign: "right",
-                  flexShrink: 0,
-                }}
-              >
-                {formatDuration(j.durationMs)}
-              </span>
-            </div>
-          ))
+          grouped.map(([folder, jobsOfFolder]) => {
+            const isCollapsed = collapsed.has(folder);
+            return (
+              <div key={folder}>
+                {/* Folder header */}
+                <div
+                  onClick={() => toggleFolder(folder)}
+                  style={{
+                    height: 26,
+                    padding: "0 10px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    background: "var(--v2-bg-elevated)",
+                    borderTop: "1px solid var(--v2-border-subtle)",
+                    borderBottom: "1px solid var(--v2-border-subtle)",
+                    cursor: "pointer",
+                    userSelect: "none",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--v2-bg-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--v2-bg-elevated)")}
+                >
+                  <span
+                    style={{
+                      width: 10,
+                      fontSize: 9,
+                      color: "var(--v2-text-muted)",
+                      fontFamily: "var(--v2-font-mono)",
+                      transition: "transform 80ms linear",
+                      transform: isCollapsed ? "rotate(-90deg)" : "none",
+                      display: "inline-block",
+                    }}
+                  >▾</span>
+                  <span
+                    style={{
+                      flex: 1,
+                      fontSize: 10,
+                      fontFamily: "var(--v2-font-mono)",
+                      letterSpacing: "0.08em",
+                      color: "var(--v2-text-primary)",
+                      textTransform: "uppercase",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {folder}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 9,
+                      fontFamily: "var(--v2-font-mono)",
+                      color: "var(--v2-text-muted)",
+                      padding: "1px 5px",
+                      border: "1px solid var(--v2-border-subtle)",
+                      borderRadius: 2,
+                    }}
+                  >
+                    {jobsOfFolder.length}
+                  </span>
+                </div>
+
+                {/* Jobs do folder */}
+                {!isCollapsed && jobsOfFolder.map((j) => (
+                  <div
+                    key={j.id}
+                    onClick={() => handleSelect(j.id)}
+                    style={{
+                      height: 30,
+                      padding: "0 12px 0 22px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      borderBottom: "1px solid var(--v2-border-subtle)",
+                      background: selected === j.id ? "var(--v2-accent-faint)" : "transparent",
+                      borderLeft: selected === j.id ? "2px solid var(--v2-accent-brand)" : "2px solid transparent",
+                      cursor: "pointer",
+                      fontSize: 11,
+                      transition: "background 80ms linear",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (selected !== j.id) e.currentTarget.style.background = "var(--v2-bg-hover)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (selected !== j.id) e.currentTarget.style.background = "transparent";
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: "50%",
+                        background: STATUS_DOT[j.status],
+                        flexShrink: 0,
+                        animation: j.status === "RUNNING" ? "v2-dot-pulse 1.2s ease-in-out infinite" : "none",
+                      }}
+                    />
+                    <span
+                      style={{
+                        flex: 1,
+                        color: "var(--v2-text-primary)",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        fontWeight: selected === j.id ? 600 : 400,
+                      }}
+                    >
+                      {j.label}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: "var(--v2-font-mono)",
+                        fontSize: 10,
+                        color: "var(--v2-text-muted)",
+                        width: 48,
+                        textAlign: "right",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {formatDuration(j.durationMs)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })
         )}
       </div>
 

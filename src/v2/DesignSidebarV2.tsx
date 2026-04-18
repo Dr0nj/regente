@@ -7,9 +7,9 @@ import type { JobNodeData } from "@/lib/job-config";
    ──────────────────────────────────────────────────────────────
    Estratégia:
    - Painel flutuante à esquerda, com gap do topo/borda
-   - 3 abas: Palette | Teams | Variables
+   - 3 abas: Palette | Folders | Variables
    - Palette: drag source de tipos de job (ícone + label + hint)
-   - Teams: lista de times, pode criar na hora
+   - Folders: lista de folders (times/projetos), pode criar na hora
    - Variables: globais ao workflow, tipadas
    - Visual denso, tipo VS Code Activity Bar + Explorer
    ────────────────────────────────────────────────────────────── */
@@ -31,14 +31,14 @@ const JOB_TYPES: Array<{
   { id: "HTTP",          label: "HTTP",          hint: "REST API call" },
 ];
 
-const TEAMS_FALLBACK: string[] = []; // times só aparecem quando houver definitions
+const FOLDERS_FALLBACK: string[] = []; // folders só aparecem quando houver definitions
 
 export default function DesignSidebarV2({ definitions = [] }: { definitions?: JobDefinition[] }) {
   const [tab, setTab] = useState<Tab>("palette");
 
-  // Agrupa definitions por team
-  const teams = (() => {
-    if (definitions.length === 0) return TEAMS_FALLBACK.map((name) => ({ name, count: 0 }));
+  // Agrupa definitions por folder (campo `team` na model — vocabulário legado)
+  const folders = (() => {
+    if (definitions.length === 0) return FOLDERS_FALLBACK.map((name) => ({ name, count: 0 }));
     const m = new Map<string, number>();
     for (const d of definitions) {
       const t = (d.team ?? "").trim() || "—";
@@ -77,7 +77,7 @@ export default function DesignSidebarV2({ definitions = [] }: { definitions?: Jo
         {(
           [
             { id: "palette",   icon: "▤", label: "Components" },
-            { id: "teams",     icon: "◐", label: "Teams" },
+            { id: "teams",     icon: "◐", label: "Folders" },
             { id: "variables", icon: "ƒ", label: "Variables" },
           ] as const
         ).map((t) => (
@@ -141,7 +141,7 @@ export default function DesignSidebarV2({ definitions = [] }: { definitions?: Jo
               color: "var(--v2-text-primary)",
             }}
           >
-            {tab === "palette" ? "COMPONENTS" : tab === "teams" ? "TEAMS" : "VARIABLES"}
+            {tab === "palette" ? "COMPONENTS" : tab === "teams" ? "FOLDERS" : "VARIABLES"}
           </span>
           <button
             style={{
@@ -228,12 +228,12 @@ export default function DesignSidebarV2({ definitions = [] }: { definitions?: Jo
 
           {tab === "teams" && (
             <div style={{ padding: "4px 0" }}>
-              {teams.length === 0 && (
+              {folders.length === 0 && (
                 <div style={{ padding: "12px 14px", fontSize: 11, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>
-                  Nenhum team. Crie um job e atribua um team para ele aparecer aqui.
+                  Nenhum folder. Crie um job e atribua um folder para ele aparecer aqui.
                 </div>
               )}
-              {teams.map((t) => (
+              {folders.map((t) => (
                 <div
                   key={t.name}
                   style={{

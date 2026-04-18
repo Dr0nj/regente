@@ -55,6 +55,12 @@ export const forceInstance = isServerMode()
   ? serverInstance.forceInstance
   : localInstance.forceInstance;
 
+export type InstanceEvent = serverInstance.InstanceEvent;
+
+export const fetchInstanceEvents = isServerMode()
+  ? serverInstance.fetchInstanceEvents
+  : async (_id: string): Promise<serverInstance.InstanceEvent[]> => [];
+
 /* ── Scheduler API ── */
 
 export const runDaily = isServerMode()

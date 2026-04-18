@@ -38,6 +38,7 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
 
   return (
     <div
+      className="v2-grain-card v2-edge-highlight"
       style={{
         width: 200,
         background: "var(--v2-bg-surface)",
@@ -72,6 +73,25 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
             >
               {data.label}
             </span>
+            {data.forced && (
+              <span
+                title="Force Order — bypass de deps/cron (Control-M semantics)"
+                style={{
+                  fontSize: "var(--v2-text-xs)",
+                  fontFamily: "var(--v2-font-mono)",
+                  fontWeight: 700,
+                  letterSpacing: "0.08em",
+                  color: "#fbbf24",
+                  padding: "1px 4px",
+                  border: "1px solid #78350f",
+                  background: "rgba(251,191,36,0.08)",
+                  borderRadius: "var(--v2-radius-sm)",
+                  flexShrink: 0,
+                }}
+              >
+                ⚡FORCED
+              </span>
+            )}
             {data.team && (
               <span
                 style={{
