@@ -9,7 +9,7 @@
  * seleção sofrerão a ação (não o total selecionado). Botão fica disabled
  * se count == 0.
  */
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { JobInstance, JobDefinition } from "@/lib/orchestrator-model";
 
 interface MonitoringHandlers {
@@ -23,6 +23,8 @@ interface MonitoringHandlers {
 
 interface DesignHandlers {
   onDeleteAll: (ids: string[]) => Promise<void> | void;
+  /** F11.8 — move em lote para outra folder (via session bulk). */
+  onMoveAll?: (ids: string[], targetFolder: string) => Promise<void> | void;
   onClear: () => void;
 }
 
@@ -39,6 +41,8 @@ interface MonitoringProps extends CommonProps {
 interface DesignProps extends CommonProps {
   mode: "design";
   defs: JobDefinition[];
+  /** Folders disponíveis para mover (escopo da session). */
+  folders?: string[];
   handlers: DesignHandlers;
 }
 
@@ -113,21 +117,53 @@ function MonitoringBar({ selected, instances, handlers }: MonitoringProps) {
   );
 }
 
-function DesignBar({ selected, defs, handlers }: DesignProps) {
+function DesignBar({ selected, defs, folders = [], handlers }: DesignProps) {
   const ids = useMemo(() => [...selected], [selected]);
-  const eligibleDelete = ids.filter((id) => defs.some((d) => d.id === id));
+  const eligible = ids.filter((id) => defs.some((d) => d.id === id));
+  const [moveTarget, setMoveTarget] = useState("");
 
   const handleDelete = useCallback(async () => {
-    if (eligibleDelete.length === 0) return;
-    if (!window.confirm(`Delete ${eligibleDelete.length} definition${eligibleDelete.length === 1 ? "" : "s"}? This cannot be undone.`)) return;
-    await handlers.onDeleteAll(eligibleDelete);
-  }, [eligibleDelete, handlers]);
+    if (eligible.length === 0) return;
+    if (!window.confirm(`Delete ${eligible.length} definition${eligible.length === 1 ? "" : "s"}? This cannot be undone.`)) return;
+    await handlers.onDeleteAll(eligible);
+  }, [eligible, handlers]);
+
+  const handleMove = useCallback(async () => {
+    if (eligible.length === 0 || !moveTarget || !handlers.onMoveAll) return;
+    await handlers.onMoveAll(eligible, moveTarget);
+    setMoveTarget("");
+  }, [eligible, moveTarget, handlers]);
 
   return (
     <Bar count={ids.length} onClear={handlers.onClear}>
+      {/* F11.8 — Move to folder */}
+      {handlers.onMoveAll && folders.length > 0 && (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <select
+            value={moveTarget}
+            onChange={(e) => setMoveTarget(e.target.value)}
+            style={{
+              background: "var(--v2-bg-canvas)",
+              border: "1px solid var(--v2-border-medium)",
+              color: moveTarget ? "var(--v2-text-primary)" : "var(--v2-text-muted)",
+              padding: "4px 6px", fontSize: 10, fontFamily: "var(--v2-font-mono)",
+              borderRadius: 3, outline: "none",
+            }}
+          >
+            <option value="">Move to…</option>
+            {folders.map((f) => <option key={f} value={f}>{f}</option>)}
+          </select>
+          <Btn
+            label="Move"
+            count={moveTarget ? eligible.length : 0}
+            tone="primary"
+            onClick={() => void handleMove()}
+          />
+        </span>
+      )}
       <Btn
         label="Delete all"
-        count={eligibleDelete.length}
+        count={eligible.length}
         tone="danger"
         onClick={() => void handleDelete()}
       />

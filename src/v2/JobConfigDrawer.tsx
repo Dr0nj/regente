@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
-import type { JobDefinition } from "@/lib/orchestrator-model";
-import { TEAMS } from "@/lib/orchestrator-model";
+import { ExternalLink, X, Plus, Trash2, ArrowRight, ArrowLeft } from "lucide-react";
+import type { JobDefinition, CalendarRef, EdgeCondition } from "@/lib/orchestrator-model";
 import type { JobType } from "@/lib/job-config";
 import JobActionConfigEditor from "./JobActionConfigEditor";
+import ScheduleEditor from "./ScheduleEditor";
+import { DefinitionAuditPanel } from "./DefinitionAuditPanel";
+import { ErrorDialog } from "./ErrorDialog";
+import { getGitInfo, definitionFileUrl } from "@/lib/git-info";
+import { listCalendars } from "@/lib/bloco2-api";
 
 /* ──────────────────────────────────────────────────────────────
-   JobConfigDrawer — painel direito para editar JobDefinition
-   ──────────────────────────────────────────────────────────────
-   Usado em Design mode. Casamento 1:1 com InstanceDetailsDrawer
-   visualmente. Campos obrigatórios: label, jobType, team.
-   Save persiste via `definition-store` (Git ou localStorage).
+   JobConfigDrawer — painel direito (Design). Agora com ABAS:
+   General · Schedule · Calendars · Action · Dependencies.
    ────────────────────────────────────────────────────────────── */
 
 export interface JobConfigHandlers {
@@ -18,307 +20,306 @@ export interface JobConfigHandlers {
   onClose: () => void;
 }
 
-const JOB_TYPES: JobType[] = [
-  "LAMBDA",
-  "BATCH",
-  "GLUE",
-  "STEP_FUNCTION",
-  "CHOICE",
-  "PARALLEL",
-  "WAIT",
-  "HTTP",
+const JOB_TYPES: JobType[] = ["LAMBDA", "BATCH", "GLUE", "STEP_FUNCTION", "CHOICE", "PARALLEL", "WAIT", "HTTP"];
+type Tab = "general" | "schedule" | "calendars" | "action" | "deps";
+const TABS: Array<{ id: Tab; label: string }> = [
+  { id: "general", label: "Geral" },
+  { id: "schedule", label: "Schedule" },
+  { id: "calendars", label: "Calendars" },
+  { id: "action", label: "Action" },
+  { id: "deps", label: "Dependências" },
 ];
 
 interface Props {
   definition: JobDefinition;
   isNew: boolean;
+  availableFolders: string[];
+  /** Todas as defs do escopo — para a aba Dependencies (depende de / dispara). */
+  allDefs?: JobDefinition[];
   handlers: JobConfigHandlers;
 }
 
-export default function JobConfigDrawer({ definition, isNew, handlers }: Props) {
+export default function JobConfigDrawer({ definition, isNew, availableFolders, allDefs = [], handlers }: Props) {
+  const [tab, setTab] = useState<Tab>("general");
   const [label, setLabel] = useState(definition.label);
   const [id, setId] = useState(definition.id);
   const [jobType, setJobType] = useState<JobType>(definition.jobType as JobType);
-  const [team, setTeam] = useState(definition.team ?? "");
-  const [cron, setCron] = useState(definition.schedule?.cronExpression ?? "");
-  const [enabled, setEnabled] = useState(definition.schedule?.enabled ?? true);
+  const initialTeam = definition.team ?? (availableFolders.length === 1 ? availableFolders[0] : "");
+  const [team, setTeam] = useState(initialTeam);
+  const [schedule, setSchedule] = useState(definition.schedule);
   const [retries, setRetries] = useState(definition.retries ?? 2);
   const [timeout, setTimeoutS] = useState(definition.timeout ?? 300);
   const [dryRun, setDryRun] = useState(definition.dryRun ?? false);
-  // F12 — actionConfig per-jobType (free-form Record).
   const [actionConfig, setActionConfig] = useState<Record<string, unknown>>(definition.actionConfig ?? {});
+  const [calendars, setCalendars] = useState<CalendarRef[]>(definition.calendars ?? []);
+  const [upstream, setUpstream] = useState(definition.upstream ?? []);
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [showAudit, setShowAudit] = useState(false);
+  const [err, setErr] = useState<unknown>(null);
+  const [validationErr, setValidationErr] = useState<string | null>(null);
+  const [githubUrl, setGithubUrl] = useState<string | null>(null);
+  const [calendarNames, setCalendarNames] = useState<string[]>([]);
 
   useEffect(() => {
-    setLabel(definition.label);
-    setId(definition.id);
-    setJobType(definition.jobType as JobType);
-    setTeam(definition.team ?? "");
-    setCron(definition.schedule?.cronExpression ?? "");
-    setEnabled(definition.schedule?.enabled ?? true);
-    setRetries(definition.retries ?? 2);
-    setTimeoutS(definition.timeout ?? 300);
-    setDryRun(definition.dryRun ?? false);
-    setActionConfig(definition.actionConfig ?? {});
-    setErr(null);
+    setTab("general");
+    setLabel(definition.label); setId(definition.id); setJobType(definition.jobType as JobType);
+    setTeam(definition.team ?? (availableFolders.length === 1 ? availableFolders[0] : ""));
+    setSchedule(definition.schedule);
+    setRetries(definition.retries ?? 2); setTimeoutS(definition.timeout ?? 300);
+    setDryRun(definition.dryRun ?? false); setActionConfig(definition.actionConfig ?? {});
+    setCalendars(definition.calendars ?? []); setUpstream(definition.upstream ?? []);
+    setErr(null); setValidationErr(null);
   }, [definition.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (isNew || !definition.team || !definition.id) { setGithubUrl(null); return; }
+    let cancel = false;
+    void getGitInfo().then((st) => { if (!cancel) setGithubUrl(definitionFileUrl(st, definition.team!, definition.id)); });
+    return () => { cancel = true; };
+  }, [isNew, definition.team, definition.id]);
+
+  useEffect(() => {
+    let cancel = false;
+    void listCalendars().then((cs) => { if (!cancel) setCalendarNames(cs.map((c) => c.name)); }).catch(() => {});
+    return () => { cancel = true; };
+  }, []);
+
   async function handleSave() {
-    if (!label.trim()) { setErr("label obrigatório"); return; }
-    if (!team.trim()) { setErr("folder obrigatório"); return; }
-    if (!id.trim())    { setErr("id obrigatório"); return; }
+    if (!label.trim()) { setValidationErr("label obrigatório"); setTab("general"); return; }
+    if (!team.trim()) { setValidationErr("folder obrigatória"); setTab("general"); return; }
+    if (!id.trim()) { setValidationErr("id obrigatório"); setTab("general"); return; }
+    setValidationErr(null);
     const next: JobDefinition = {
       ...definition,
-      id: id.trim(),
-      label: label.trim(),
-      jobType,
-      team: team.trim(),
-      schedule: {
-        cronExpression: cron.trim(),
-        enabled: enabled && !!cron.trim(),
-        description: definition.schedule?.description,
-      },
-      retries,
-      timeout,
-      dryRun,
-      actionConfig,
+      id: id.trim(), label: label.trim(), jobType, team: team.trim(),
+      schedule: { ...schedule, enabled: schedule.enabled ?? true },
+      retries, timeout, dryRun, actionConfig,
+      calendars: calendars.length ? calendars : undefined,
+      upstream: upstream.length ? upstream : undefined,
     };
-    setSaving(true);
-    setErr(null);
-    try {
-      await handlers.onSave(next);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
-    }
+    setSaving(true); setErr(null);
+    try { await handlers.onSave(next); } catch (e) { setErr(e); } finally { setSaving(false); }
   }
 
   async function handleDelete() {
     if (isNew) { handlers.onClose(); return; }
     if (!confirm(`Delete definition "${definition.label}"? Vai remover o YAML do repo.`)) return;
     setSaving(true);
-    try {
-      await handlers.onDelete(definition.id);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
-    }
+    try { await handlers.onDelete(definition.id); } catch (e) { setErr(e); } finally { setSaving(false); }
   }
 
+  // Jobs que DEPENDEM deste (this.id ∈ outro.upstream.from) → "dispara".
+  const triggers = allDefs.filter((d) => (d.upstream ?? []).some((u) => u.from === definition.id));
+
   return (
-    <aside
-      style={{
-        position: "absolute",
-        top: 12,
-        right: 12,
-        bottom: 12,
-        width: 340,
-        background: "var(--v2-bg-surface)",
-        border: "1px solid var(--v2-border-medium)",
-        borderRadius: 6,
-        display: "flex",
-        flexDirection: "column",
-        fontFamily: "var(--v2-font-sans)",
-        zIndex: 5,
-        overflow: "hidden",
-      }}
-    >
+    <aside style={{
+      position: "absolute", top: 0, right: 0, bottom: 0, width: 360,
+      background: "var(--v2-bg-surface)", borderLeft: "1px solid var(--v2-border-medium)",
+      display: "flex", flexDirection: "column", fontFamily: "var(--v2-font-sans)", zIndex: 5, overflow: "hidden",
+    }}>
       {/* Header */}
-      <div
-        style={{
-          padding: "10px 12px",
-          borderBottom: "1px solid var(--v2-border-subtle)",
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-        }}
-      >
+      <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--v2-border-subtle)", display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--v2-accent-brand)" }} />
-        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.04em" }}>
-          {isNew ? "NEW JOB" : "EDIT JOB"}
-        </span>
-        <button
-          onClick={handlers.onClose}
-          style={{
-            marginLeft: "auto",
-            background: "transparent",
-            border: "none",
-            color: "var(--v2-text-secondary)",
-            cursor: "pointer",
-            fontSize: 14,
-            padding: 0,
-            width: 18,
-            height: 18,
-          }}
-          title="Close"
-        >
-          ×
+        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.04em" }}>{isNew ? "NEW JOB" : "EDIT JOB"}</span>
+        {githubUrl && (
+          <a href={githubUrl} target="_blank" rel="noreferrer" title="Ver o YAML no GitHub"
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-secondary)", textDecoration: "none", padding: "2px 7px", border: "1px solid var(--v2-border-medium)", borderRadius: 3, marginLeft: 6 }}>
+            <ExternalLink size={10} /> GitHub
+          </a>
+        )}
+        <button onClick={handlers.onClose} title="Close"
+          style={{ marginLeft: "auto", background: "transparent", border: "none", color: "var(--v2-text-secondary)", cursor: "pointer", padding: 0, width: 18, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          <X size={14} />
         </button>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 12 }}>
-        <Field label="ID">
-          <Input value={id} onChange={setId} disabled={!isNew} mono />
-        </Field>
-        <Field label="Label">
-          <Input value={label} onChange={setLabel} />
-        </Field>
-        <Field label="Job Type">
-          <select
-            value={jobType}
-            onChange={(e) => setJobType(e.target.value as JobType)}
-            style={selectStyle}
-          >
-            {JOB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </Field>
-        <Field label="Folder">
-          <select
-            value={team}
-            onChange={(e) => setTeam(e.target.value)}
-            style={selectStyle}
-          >
-            <option value="">— select —</option>
-            {TEAMS.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </Field>
-        <Field label="Cron (min hour dom mon dow)">
-          <Input value={cron} onChange={setCron} mono placeholder="0 3 * * *" />
-        </Field>
-        <Field label="Schedule enabled">
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)" }}>
-            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-            {enabled ? "enabled" : "disabled"}
-          </label>
-        </Field>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <Field label="Retries">
-            <Input value={String(retries)} onChange={(v) => setRetries(Number(v) || 0)} mono />
-          </Field>
-          <Field label="Timeout (s)">
-            <Input value={String(timeout)} onChange={(v) => setTimeoutS(Number(v) || 0)} mono />
-          </Field>
-        </div>
-        <Field label="Dry run">
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)" }}>
-            <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
-            log only, don't execute
-          </label>
-        </Field>
+      {/* Tabs */}
+      <div style={{ display: "flex", borderBottom: "1px solid var(--v2-border-subtle)", overflowX: "auto" }}>
+        {TABS.map((t) => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            padding: "7px 11px", fontSize: 10.5, cursor: "pointer", whiteSpace: "nowrap",
+            background: "transparent", border: "none",
+            borderBottom: `2px solid ${tab === t.id ? "var(--v2-accent-brand)" : "transparent"}`,
+            color: tab === t.id ? "var(--v2-text-primary)" : "var(--v2-text-muted)",
+            fontWeight: tab === t.id ? 600 : 500, fontFamily: "var(--v2-font-mono)",
+          }}>{t.label}{t.id === "deps" && (upstream.length + triggers.length > 0) ? ` (${upstream.length + triggers.length})` : ""}</button>
+        ))}
+      </div>
 
-        {/* F12 — per-jobType action config */}
-        <JobActionConfigEditor jobType={jobType} config={actionConfig} onChange={setActionConfig} />
-
-        {(definition.upstream?.length ?? 0) > 0 && (
-          <Field label={`Upstream deps (${definition.upstream!.length})`}>
-            <div style={{ fontFamily: "var(--v2-font-mono)", fontSize: 10, color: "var(--v2-text-secondary)", lineHeight: 1.6 }}>
-              {definition.upstream!.map((u, idx) => (
-                <div key={idx}>
-                  <span style={{ color: "var(--v2-text-muted)" }}>{u.from}</span>
-                  {" "}
-                  <span style={{ color: "var(--v2-accent-brand)" }}>{u.condition}</span>
-                </div>
-              ))}
+      <div style={{ flex: 1, overflowY: "auto", padding: "12px", display: "flex", flexDirection: "column", gap: 12 }}>
+        {tab === "general" && (
+          <>
+            <Field label="ID"><Input value={id} onChange={setId} disabled={!isNew} mono /></Field>
+            <Field label="Label"><Input value={label} onChange={setLabel} /></Field>
+            <Field label="Job Type">
+              <select value={jobType} onChange={(e) => setJobType(e.target.value as JobType)} style={selectStyle}>
+                {JOB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </Field>
+            <Field label="Folder">
+              <select value={team} onChange={(e) => setTeam(e.target.value)} style={selectStyle}>
+                <option value="">— select folder —</option>
+                {availableFolders.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </Field>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)" }}>
+              <input type="checkbox" checked={schedule.enabled} onChange={(e) => setSchedule({ ...schedule, enabled: e.target.checked })} />
+              Schedule habilitado
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <Field label="Retries"><Input value={String(retries)} onChange={(v) => setRetries(Number(v) || 0)} mono /></Field>
+              <Field label="Timeout (s)"><Input value={String(timeout)} onChange={(v) => setTimeoutS(Number(v) || 0)} mono /></Field>
             </div>
-          </Field>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)" }}>
+              <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
+              Dry run (log only, não executa)
+            </label>
+          </>
         )}
 
-        {err && (
-          <div style={{ padding: 8, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.3)", borderRadius: 3, color: "var(--v2-status-failed)", fontSize: 11, fontFamily: "var(--v2-font-mono)" }}>
-            {err}
-          </div>
+        {tab === "schedule" && <ScheduleEditor value={schedule} onChange={setSchedule} />}
+
+        {tab === "calendars" && (
+          <CalendarsTab calendars={calendars} onChange={setCalendars} available={calendarNames} />
+        )}
+
+        {tab === "action" && (
+          <JobActionConfigEditor jobType={jobType} config={actionConfig} onChange={setActionConfig} />
+        )}
+
+        {tab === "deps" && (
+          <DepsTab
+            self={definition.id}
+            upstream={upstream}
+            onChangeUpstream={setUpstream}
+            triggers={triggers}
+            allDefs={allDefs}
+          />
+        )}
+
+        {err != null && <ErrorDialog error={err} onClose={() => setErr(null)} />}
+        {validationErr && (
+          <div style={{ padding: 8, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.3)", borderRadius: 3, color: "var(--v2-status-failed)", fontSize: 11, fontFamily: "var(--v2-font-mono)" }}>{validationErr}</div>
+        )}
+        {tab === "general" && !isNew && team && id && (
+          <Field label="History">
+            <button type="button" onClick={() => setShowAudit((x) => !x)} style={{ background: "transparent", border: "1px solid #333", color: "#a3a3a3", padding: "4px 10px", borderRadius: 4, fontSize: 11, cursor: "pointer", marginBottom: showAudit ? 8 : 0 }}>
+              {showAudit ? "▾ Hide audit log" : "▸ Show audit log"}
+            </button>
+            {showAudit && <DefinitionAuditPanel team={team} definitionId={id} />}
+          </Field>
         )}
       </div>
 
       {/* Actions */}
-      <div
-        style={{
-          borderTop: "1px solid var(--v2-border-subtle)",
-          padding: "8px 12px",
-          display: "flex",
-          gap: 6,
-        }}
-      >
-        <button
-          onClick={handleDelete}
-          disabled={saving}
-          style={{ ...btnStyle, borderColor: "rgba(239,68,68,.4)", color: "var(--v2-status-failed)" }}
-        >
-          {isNew ? "Cancel" : "Delete"}
-        </button>
+      <div style={{ borderTop: "1px solid var(--v2-border-subtle)", padding: "8px 12px", display: "flex", gap: 6 }}>
+        <button onClick={handleDelete} disabled={saving} style={{ ...btnStyle, borderColor: "rgba(239,68,68,.4)", color: "var(--v2-status-failed)" }}>{isNew ? "Cancel" : "Delete"}</button>
         <div style={{ flex: 1 }} />
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          style={{ ...btnStyle, borderColor: "var(--v2-accent-brand)", color: "var(--v2-accent-brand)", fontWeight: 600 }}
-        >
-          {saving ? "…" : "Save"}
-        </button>
+        <button onClick={handleSave} disabled={saving} style={{ ...btnStyle, borderColor: "var(--v2-accent-brand)", color: "var(--v2-accent-brand)", fontWeight: 600 }}>{saving ? "…" : "Save"}</button>
       </div>
     </aside>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/* ── Aba Calendars (chamar/negar no job) ── */
+function CalendarsTab({ calendars, onChange, available }: { calendars: CalendarRef[]; onChange: (c: CalendarRef[]) => void; available: string[] }) {
+  const [pick, setPick] = useState("");
+  const add = (mode: "include" | "exclude") => {
+    if (!pick) return;
+    if (calendars.some((c) => c.name === pick && c.mode === mode)) return;
+    onChange([...calendars, { name: pick, mode }]);
+    setPick("");
+  };
+  const remove = (i: number) => onChange(calendars.filter((_, idx) => idx !== i));
   return (
-    <div>
-      <div style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--v2-text-muted)", marginBottom: 4 }}>
-        {label}
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <Hint>Chame um calendar para o job rodar só nos dias dele (<b>include</b>), ou negue para o job NÃO rodar nesses dias (<b>exclude</b>). Combine quantos quiser.</Hint>
+      <div style={{ display: "flex", gap: 6 }}>
+        <select value={pick} onChange={(e) => setPick(e.target.value)} style={{ ...selectStyle, flex: 1 }}>
+          <option value="">— calendar —</option>
+          {available.filter((n) => !calendars.some((c) => c.name === n)).map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
+        <button onClick={() => add("include")} disabled={!pick} style={{ ...chipBtn, borderColor: "var(--v2-accent-brand)", color: "var(--v2-accent-brand)" }}><Plus size={11} /> incluir</button>
+        <button onClick={() => add("exclude")} disabled={!pick} style={{ ...chipBtn, borderColor: "#7f1d1d", color: "#fca5a5" }}><Plus size={11} /> negar</button>
       </div>
-      {children}
+      {available.length === 0 && <Hint>Nenhum calendar criado ainda. Crie em Control-M Panel → Calendars.</Hint>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {calendars.map((c, i) => (
+          <div key={`${c.name}-${c.mode}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-subtle)", borderRadius: 3 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", padding: "1px 6px", borderRadius: 2, fontFamily: "var(--v2-font-mono)",
+              background: c.mode === "exclude" ? "#3b1d1d" : "var(--v2-accent-deep)", color: c.mode === "exclude" ? "#fca5a5" : "var(--v2-accent-brand)",
+              border: `1px solid ${c.mode === "exclude" ? "#7f1d1d" : "var(--v2-accent-dark)"}` }}>
+              {c.mode === "exclude" ? "negar" : "incluir"}
+            </span>
+            <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-primary)" }}>{c.name}</span>
+            <button onClick={() => remove(i)} style={iconBtn} title="Remover"><Trash2 size={12} /></button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-function Input({
-  value, onChange, disabled, mono, placeholder,
-}: { value: string; onChange: (v: string) => void; disabled?: boolean; mono?: boolean; placeholder?: string }) {
+/* ── Aba Dependencies (2 lados) ── */
+function DepsTab({ self, upstream, onChangeUpstream, triggers, allDefs }: {
+  self: string;
+  upstream: Array<{ from: string; condition: EdgeCondition }>;
+  onChangeUpstream: (u: Array<{ from: string; condition: EdgeCondition }>) => void;
+  triggers: JobDefinition[];
+  allDefs: JobDefinition[];
+}) {
+  const labelOf = (id: string) => allDefs.find((d) => d.id === id)?.label ?? id;
+  const remove = (from: string) => onChangeUpstream(upstream.filter((u) => u.from !== from));
   return (
-    <input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      disabled={disabled}
-      placeholder={placeholder}
-      style={{
-        width: "100%",
-        background: "var(--v2-bg-canvas)",
-        border: "1px solid var(--v2-border-subtle)",
-        color: disabled ? "var(--v2-text-muted)" : "var(--v2-text-primary)",
-        padding: "5px 8px",
-        fontSize: 11,
-        fontFamily: mono ? "var(--v2-font-mono)" : "var(--v2-font-sans)",
-        borderRadius: 3,
-        outline: "none",
-        boxSizing: "border-box",
-      }}
-    />
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Depende de (upstream do próprio job) */}
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--v2-text-muted)", marginBottom: 6 }}>
+          <ArrowLeft size={11} /> Depende de
+        </div>
+        {upstream.length === 0 && <Hint>Este job não espera nenhum outro. Conecte um job → este no canvas para criar.</Hint>}
+        {upstream.map((u) => (
+          <div key={u.from} style={depRow}>
+            <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}>{labelOf(u.from)}</span>
+            <span style={{ fontSize: 9, color: "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)" }}>{u.condition}</span>
+            <button onClick={() => remove(u.from)} style={iconBtn} title="Remover"><Trash2 size={12} /></button>
+          </div>
+        ))}
+      </div>
+      {/* Dispara (jobs cujo upstream aponta para este) */}
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--v2-text-muted)", marginBottom: 6 }}>
+          <ArrowRight size={11} /> Dispara
+        </div>
+        {triggers.length === 0 && <Hint>Nenhum job depende deste.</Hint>}
+        {triggers.map((d) => {
+          const cond = (d.upstream ?? []).find((u) => u.from === self)?.condition;
+          return (
+            <div key={d.id} style={depRow}>
+              <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}>{d.label}</span>
+              <span style={{ fontSize: 9, color: "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)" }}>{cond}</span>
+            </div>
+          );
+        })}
+        <Hint>Editado no job de destino (ou conectando no canvas). Mostrado aqui para você ver a relação dos dois lados.</Hint>
+      </div>
+    </div>
   );
 }
 
-const selectStyle: React.CSSProperties = {
-  width: "100%",
-  background: "var(--v2-bg-canvas)",
-  border: "1px solid var(--v2-border-subtle)",
-  color: "var(--v2-text-primary)",
-  padding: "5px 8px",
-  fontSize: 11,
-  fontFamily: "var(--v2-font-mono)",
-  borderRadius: 3,
-  outline: "none",
-  boxSizing: "border-box",
-};
-
-const btnStyle: React.CSSProperties = {
-  padding: "4px 10px",
-  background: "transparent",
-  border: "1px solid var(--v2-border-medium)",
-  borderRadius: 3,
-  fontSize: 10,
-  fontFamily: "var(--v2-font-mono)",
-  letterSpacing: "0.06em",
-  textTransform: "uppercase",
-  cursor: "pointer",
-};
+/* ── primitivos ── */
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (<div><div style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--v2-text-muted)", marginBottom: 4 }}>{label}</div>{children}</div>);
+}
+function Hint({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 10.5, color: "var(--v2-text-muted)", lineHeight: 1.45 }}>{children}</div>;
+}
+function Input({ value, onChange, disabled, mono, placeholder }: { value: string; onChange: (v: string) => void; disabled?: boolean; mono?: boolean; placeholder?: string }) {
+  return <input value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} placeholder={placeholder}
+    style={{ width: "100%", background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-subtle)", color: disabled ? "var(--v2-text-muted)" : "var(--v2-text-primary)", padding: "5px 8px", fontSize: 11, fontFamily: mono ? "var(--v2-font-mono)" : "var(--v2-font-sans)", borderRadius: 3, outline: "none", boxSizing: "border-box" }} />;
+}
+const selectStyle: React.CSSProperties = { width: "100%", background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-subtle)", color: "var(--v2-text-primary)", padding: "5px 8px", fontSize: 11, fontFamily: "var(--v2-font-mono)", borderRadius: 3, outline: "none", boxSizing: "border-box" };
+const btnStyle: React.CSSProperties = { padding: "4px 10px", background: "transparent", border: "1px solid var(--v2-border-medium)", borderRadius: 3, fontSize: 10, fontFamily: "var(--v2-font-mono)", letterSpacing: "0.06em", textTransform: "uppercase", cursor: "pointer" };
+const chipBtn: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 3, padding: "5px 8px", background: "transparent", border: "1px solid var(--v2-border-medium)", borderRadius: 3, fontSize: 10, fontFamily: "var(--v2-font-mono)", cursor: "pointer" };
+const iconBtn: React.CSSProperties = { background: "transparent", border: "none", color: "var(--v2-text-muted)", cursor: "pointer", padding: 2, display: "inline-flex" };
+const depRow: React.CSSProperties = { display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-subtle)", borderRadius: 3, marginBottom: 4 };

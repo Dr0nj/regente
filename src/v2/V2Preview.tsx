@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Dagre from "@dagrejs/dagre";
 import {
   ReactFlow,
@@ -56,11 +56,23 @@ import {
   getLastDailyRun,
 } from "@/lib/runtime-bridge";
 import { container } from "@/lib/container";
-import { onServerEvent, isServerMode, onAuthEvent, setAuthToken } from "@/lib/server-client";
+import { onServerEvent, isServerMode, onAuthEvent, setAuthToken, SERVER_URL } from "@/lib/server-client";
 import { fetchMe, loadCachedUser, type AuthUser } from "@/lib/auth-api";
 import { LoginForm } from "./LoginForm";
 import { UserMenu } from "./UserMenu";
 import { UsersDialog } from "./UsersDialog";
+import { ControlMPanel } from "./ControlMPanel";
+import { SettingsDialog } from "./SettingsDialog";
+import { GitStatusBadge } from "./GitStatusBadge";
+import { PRBannerHost } from "./PRBannerHost";
+import { PublishButton } from "./PublishButton";
+import { FolderOpener } from "./FolderOpener";
+import { getDesignSessionId, setDesignSessionId, onDesignSessionChange, onDesignSessionConflict } from "@/lib/server-client";
+import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, type SessionStatus } from "@/lib/design-session-api";
+import { toast, ToastHost } from "./Toast";
+import EdgeConditionModal from "./EdgeConditionModal";
+import { getGitInfo, commitUrl } from "@/lib/git-info";
+import { FolderOpen, Play, Zap, GitCommitHorizontal } from "lucide-react";
 
 import "@xyflow/react/dist/style.css";
 import "@/index.css";
@@ -105,6 +117,20 @@ function instanceToMonitoring(inst: JobInstance): MonitoringJob {
 
 function fmtHm(ms: number): string {
   return new Date(ms).toLocaleTimeString("en-GB", { hour12: false }).slice(0, 5);
+}
+
+/** Resumo curto do schedule estruturado para exibir no node do canvas. */
+function scheduleSummary(s: JobDefinition["schedule"]): string {
+  const wd: Record<string, string> = { mon: "seg", tue: "ter", wed: "qua", thu: "qui", fri: "sex", sat: "sáb", sun: "dom" };
+  let base = "";
+  switch (s.frequency ?? "daily") {
+    case "weekly": base = (s.daysOfWeek ?? []).map((d) => wd[d] ?? d).join(",") || "semanal"; break;
+    case "monthly": base = "dia " + ((s.daysOfMonth ?? []).map((d) => d === -1 ? "últ" : d).join(",") || "?"); break;
+    case "businessday": base = (s.nthBusinessDays ?? []).map((d) => d === -1 ? "últ útil" : `${d}º út`).join(",") || "dia útil"; break;
+    case "advanced": base = s.advancedRule ?? "regra"; break;
+    default: base = "diário";
+  }
+  return s.runAt ? `${base} ${s.runAt}` : base;
 }
 
 /* ──────────────────────────────────────────────────────────────
@@ -429,7 +455,7 @@ function buildDesignCanvas(defs: JobDefinition[]): Canvas {
         jobType: def.jobType as JobNodeData["jobType"],
         status: def.schedule.enabled ? "WAITING" : "INACTIVE",
         team: def.team,
-        schedule: def.schedule.cronExpression,
+        schedule: scheduleSummary(def.schedule),
         mode: "design",
       } as JobNodeData,
       zIndex: 10,
@@ -468,6 +494,69 @@ function V2PreviewInner() {
   const [me, setMe] = useState<AuthUser | null>(() => loadCachedUser());
   const [authChecked, setAuthChecked] = useState<boolean>(!isServerMode());
   const [showUsers, setShowUsers] = useState(false);
+  const [showControlM, setShowControlM] = useState(false);
+
+  // === Design sessions (Etapa 3+4+5, 2026-04-26) ===
+  // sessionId === null → mostra DesignFolderPickerModal quando entrar em Design.
+  // sessionId !== null → habilita PublishButton, e a UI de Design opera no clone.
+  const [designSessionId, setDesignSessionIdState] = useState<string | null>(getDesignSessionId());
+  const [designSessionNewFolders, setDesignSessionNewFolders] = useState<string[]>([]);
+  // P2 (2026-04-26): folders no escopo da session (folders ∪ newFolders).
+  // null = sem session (nenhum filtro aplicado por session); Set vazio é estado
+  // transitório enquanto carrega — também não filtra (segurança contra esconder tudo).
+  const [activeFolders, setActiveFolders] = useState<Set<string> | null>(null);
+  // P8 (2026-04-26): drift do clone da session vs origin/<branch>.
+  const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null);
+  useEffect(() => onDesignSessionChange((sid) => setDesignSessionIdState(sid)), []);
+  // P7 (2026-04-26): outra aba assumiu a mesma session → libera essa aba.
+  useEffect(() =>
+    onDesignSessionConflict((sid) => {
+      toast.error("Outra aba assumiu esta session", {
+        detail: `${sid.slice(0, 16)}… — esta aba foi desconectada para evitar perda de edições.`,
+      });
+      setDesignSessionId(null);
+      setDesignSessionNewFolders([]);
+    }),
+  []);
+  // P2: quando entra em session, busca detalhes e popula sessionFolders.
+  useEffect(() => {
+    if (!designSessionId) {
+      setActiveFolders(null);
+      setDesignSessionNewFolders([]);
+      return;
+    }
+    let cancel = false;
+    getDesignSession(designSessionId)
+      .then((s) => {
+        if (cancel) return;
+        const all = [...(s.folders ?? []), ...(s.newFolders ?? [])];
+        setActiveFolders(new Set(all));
+        setDesignSessionNewFolders(s.newFolders ?? []);
+      })
+      .catch(() => {
+        if (cancel) return;
+        // Falhou (404 = session expirou). Limpa para não filtrar erradamente.
+        setActiveFolders(null);
+        setDesignSessionNewFolders([]);
+      });
+    return () => { cancel = true; };
+  }, [designSessionId]);
+  // P8: polling 30s do drift status enquanto session ativa.
+  useEffect(() => {
+    if (!designSessionId) { setSessionStatus(null); return; }
+    let cancel = false;
+    const tick = () => {
+      getDesignSessionStatus(designSessionId)
+        .then((s) => { if (!cancel) setSessionStatus(s); })
+        .catch(() => { if (!cancel) setSessionStatus(null); });
+    };
+    tick();
+    const id = window.setInterval(tick, 30_000);
+    return () => { cancel = true; window.clearInterval(id); };
+  }, [designSessionId]);
+  // F20 — environment label (visual tag)
+  const [envLabel, setEnvLabel] = useState<string>("");
+  const [showSettings, setShowSettings] = useState(false);
   // F11.9 — multi-selection no canvas (ReactFlow nativo via Shift+click / drag rect)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const rfInstance = useRef<ReactFlowInstance | null>(null);
@@ -527,6 +616,14 @@ function V2PreviewInner() {
       unsubWs = onServerEvent((ev) => {
         if (ev.event === "definition.changed" || ev.event === "definition.deleted") {
           void reloadDefinitions().then((list) => setDefs([...list]));
+          // Loop GitHub→UI fechado: mudança veio do webhook (push/PR merged no
+          // GitHub) → avisa o usuário que as caixinhas mudaram sozinhas.
+          const payload = (ev.payload ?? {}) as { reason?: string; sha?: string };
+          if (payload.reason === "git-webhook") {
+            toast.info("Workspace atualizado via GitHub", {
+              detail: payload.sha ? `main agora em ${payload.sha}` : "novo commit no main",
+            });
+          }
         }
         // F11.8 — folder.changed: foldermanager já faz refresh interno; aqui só
         // garantimos que defs sigam coerentes (rename/delete podem ter movido jobs).
@@ -561,6 +658,15 @@ function V2PreviewInner() {
   useEffect(() => {
     if (!isServerMode()) { setAuthChecked(true); return; }
     let cancel = false;
+
+    // F20 — fetch env label (public endpoint, no auth)
+    if (SERVER_URL) {
+      fetch(`${SERVER_URL}/api/env`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => { if (!cancel && data?.label) setEnvLabel(data.label); })
+        .catch(() => {});
+    }
+
     (async () => {
       const u = await fetchMe();
       if (cancel) return;
@@ -576,23 +682,48 @@ function V2PreviewInner() {
     return () => { cancel = true; off(); };
   }, []);
 
-  // F11.8 — filtered defs/instances by visibleFolders (null = all)
+  // Re-alinhamento Design (Fase 1, 2026-04-27):
+  // `activeFolders` é o conjunto de folders abertas para trabalho (multi-select).
+  // - Em design: filtro = visibleFolders ∩ activeFolders. Sem activeFolders, NADA é mostrado.
+  // - Em monitoring: filtro = visibleFolders apenas (activeFolders ignorado, ver tudo).
+  const hasActiveFolders = activeFolders !== null && activeFolders.size > 0;
+  const effectiveFolders = useMemo<Set<string> | null>(() => {
+    if (mode === "design") {
+      // Design SEMPRE filtra por activeFolders. Sem folder ativa = empty set (nada).
+      if (!hasActiveFolders) return new Set<string>();
+      if (visibleFolders === null) return activeFolders;
+      const inter = new Set<string>();
+      for (const f of activeFolders!) if (visibleFolders.has(f)) inter.add(f);
+      return inter;
+    }
+    // Monitoring: comportamento F11.8 (visibleFolders apenas).
+    return visibleFolders;
+  }, [mode, hasActiveFolders, activeFolders, visibleFolders]);
   const filteredDefs = useMemo(() => {
-    if (visibleFolders === null) return defs;
-    return defs.filter((d) => visibleFolders.has(d.team ?? ""));
-  }, [defs, visibleFolders]);
+    if (effectiveFolders === null) return defs;
+    return defs.filter((d) => effectiveFolders.has(d.team ?? ""));
+  }, [defs, effectiveFolders]);
+  // Draft def: mostra o nó no canvas enquanto a definition nova está sendo
+  // configurada no drawer (antes de salvar). Some quando salva (vira real)
+  // ou quando o drawer é fechado.
+  const designDefsWithDraft = useMemo(() => {
+    if (mode !== "design") return filteredDefs;
+    if (!editingDef || !editingDef.isNew) return filteredDefs;
+    if (filteredDefs.some((d) => d.id === editingDef.def.id)) return filteredDefs;
+    return [...filteredDefs, editingDef.def];
+  }, [mode, filteredDefs, editingDef]);
   const filteredInstances = useMemo(() => {
-    if (visibleFolders === null) return instances;
+    if (effectiveFolders === null) return instances;
     const defsById = new Map(defs.map((d) => [d.id, d] as const));
     return instances.filter((i) => {
       const team = i.team || defsById.get(i.definitionId)?.team || "";
-      return visibleFolders.has(team);
+      return effectiveFolders.has(team);
     });
-  }, [instances, defs, visibleFolders]);
+  }, [instances, defs, effectiveFolders]);
 
   const canvas = useMemo<Canvas>(
-    () => (mode === "monitoring" ? buildMonitoringCanvas(filteredInstances, filteredDefs) : buildDesignCanvas(filteredDefs)),
-    [mode, filteredInstances, filteredDefs],
+    () => (mode === "monitoring" ? buildMonitoringCanvas(filteredInstances, filteredDefs) : buildDesignCanvas(designDefsWithDraft)),
+    [mode, filteredInstances, filteredDefs, designDefsWithDraft],
   );
 
   const monitoringJobs = useMemo(() => {
@@ -667,39 +798,47 @@ function V2PreviewInner() {
     // Posição do drop é ignorada — o canvas organiza por swimlane.
     // Criamos um ID sugerido único.
     const suggestedId = `${type.toLowerCase()}-${Date.now().toString(36).slice(-5)}`;
+    // Pré-seleciona folder se houver apenas uma ativa na session.
+    const folderList = activeFolders ? Array.from(activeFolders) : [];
+    const draftTeam = folderList.length === 1 ? folderList[0] : "";
     const draft: JobDefinition = {
       id: suggestedId,
       label: suggestedId,
       jobType: type,
-      team: "",
-      schedule: { cronExpression: "0 3 * * *", enabled: true, description: "daily 03:00" },
+      team: draftTeam,
+      schedule: { enabled: true, frequency: "daily", runAt: "06:00" },
       retries: 2,
       timeout: 300,
     };
     setEditingDef({ def: draft, isNew: true });
-  }, [mode]);
+  }, [mode, activeFolders]);
 
-  /* ── onConnect (Fase 8: edges com condição) ── */
+  /* ── onConnect (Fase 8: edges com condição) ──
+     window.prompt substituído por EdgeConditionModal (2026-06-12). */
+  const [pendingConn, setPendingConn] = useState<{ fromId: string; toId: string } | null>(null);
   const onConnect: OnConnect = useCallback((conn: Connection) => {
     if (mode !== "design") return;
     if (!conn.source || !conn.target || conn.source === conn.target) return;
-    const fromId = conn.source.replace(/^d-/, "");
-    const toId = conn.target.replace(/^d-/, "");
-    const choice = window.prompt(
-      "Condição da dependência?\n  s = on-success (default)\n  f = on-failure\n  c = on-complete\n  a = always",
-      "s",
-    );
-    if (choice === null) return;
-    const map: Record<string, EdgeCondition> = { s: "on-success", f: "on-failure", c: "on-complete", a: "always" };
-    const condition = map[choice.trim().toLowerCase()] ?? "on-success";
+    setPendingConn({
+      fromId: conn.source.replace(/^d-/, ""),
+      toId: conn.target.replace(/^d-/, ""),
+    });
+  }, [mode]);
+
+  const confirmConnection = useCallback((condition: EdgeCondition) => {
+    if (!pendingConn) return;
+    const { fromId, toId } = pendingConn;
+    setPendingConn(null);
     const target = defs.find((d) => d.id === toId);
     if (!target) return;
     const up = target.upstream ?? [];
     // remove aresta prévia do mesmo `from` para evitar duplicatas
     const next = [...up.filter((u) => u.from !== fromId), { from: fromId, condition }];
     const updated: JobDefinition = { ...target, upstream: next };
-    void saveDefinition(updated);
-  }, [mode, defs]);
+    void saveDefinition(updated).catch((e) => {
+      toast.error("Falha ao salvar dependência", { detail: e instanceof Error ? e.message : String(e) });
+    });
+  }, [pendingConn, defs]);
 
   /* ── Save/Delete definition ── */
   const handleSaveDef = useCallback(async (def: JobDefinition) => {
@@ -730,7 +869,9 @@ function V2PreviewInner() {
       setInstances(getTodayInstances());
       setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 50);
     } else {
-      alert("Nenhuma definition elegível (sem cron habilitado ou já materializadas hoje).");
+      toast.info("Nenhuma definition elegível", {
+        detail: "Sem schedule habilitado ou instances já materializadas hoje.",
+      });
     }
   }, [defs, fitView]);
 
@@ -743,17 +884,59 @@ function V2PreviewInner() {
   /* ── F11.9 Bulk handlers ── */
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
+  // Stable ref required: ReactFlow v12 has onSelectionChange in its effect deps →
+  // an inline arrow would create a new reference every render and loop infinitely.
+  const handleSelectionChange = useCallback(({ nodes: sel }: { nodes: Node[] }) => {
+    setSelectedIds((prev) => {
+      const ids = new Set<string>();
+      for (const n of sel) {
+        if (n.type === "laneLabel") continue;
+        ids.add(n.id.replace(/^[md]-/, ""));
+      }
+      if (ids.size === prev.size && [...ids].every((id) => prev.has(id))) return prev;
+      return ids;
+    });
+  }, []);
+
   const handleBulk = useCallback(
-    async (ids: string[], op: (id: string) => Promise<unknown> | unknown) => {
+    async (ids: string[], op: (id: string) => Promise<unknown> | unknown, label = "ação") => {
       const results = await Promise.allSettled(ids.map((id) => Promise.resolve(op(id))));
       const failed = results.filter((r) => r.status === "rejected");
       if (failed.length > 0) {
         console.warn(`[bulk] ${failed.length}/${ids.length} failed`, failed);
-        alert(`${failed.length} of ${ids.length} actions failed. See console.`);
+        toast.error(`Bulk ${label}: ${failed.length} de ${ids.length} falharam`, {
+          detail: "Detalhes no console do navegador.",
+        });
+      } else {
+        toast.success(`Bulk ${label}: ${ids.length} instance${ids.length === 1 ? "" : "s"} ok`);
       }
       clearSelection();
     },
     [clearSelection],
+  );
+
+  // F11.8 — bulk move de definitions para outra folder (via session bulk endpoint).
+  const handleBulkMoveDefs = useCallback(
+    async (ids: string[], targetFolder: string) => {
+      if (!designSessionId) {
+        toast.error("Mover em lote requer uma session de design ativa");
+        return;
+      }
+      try {
+        const res = await bulkSessionDefinitions(designSessionId, "move-folder", ids, { targetFolder });
+        if (res.failed > 0) {
+          const firstErr = res.results.find((r) => !r.ok)?.error ?? "";
+          toast.error(`Move: ${res.failed} de ${res.total} falharam`, { detail: firstErr });
+        } else {
+          toast.success(`${res.ok} job${res.ok === 1 ? "" : "s"} movido${res.ok === 1 ? "" : "s"} para ${targetFolder}`);
+        }
+        await reloadDefinitions().then((list) => setDefs([...list]));
+      } catch (e) {
+        toast.error("Bulk move falhou", { detail: e instanceof Error ? e.message : String(e) });
+      }
+      clearSelection();
+    },
+    [designSessionId, clearSelection],
   );
 
   const handleBulkDeleteDefs = useCallback(
@@ -794,7 +977,7 @@ function V2PreviewInner() {
       if (fresh) setSelectedInstanceId(fresh.id);
     }).catch((err) => {
       console.error("[force] failed", err);
-      alert(`Force falhou: ${err?.message ?? err}`);
+      toast.error("Force Order falhou", { detail: err?.message ?? String(err) });
     });
   }, []);
 
@@ -811,6 +994,21 @@ function V2PreviewInner() {
         const items: ContextMenuItem[] = [
           { label: "Run Now", tone: "primary", onClick: () => handleForce(def) },
           { label: "Edit",                onClick: () => setEditingDef({ def, isNew: false }) },
+          {
+            label: "Duplicate",
+            onClick: () => {
+              // Clona a definition com novo id/label; abre o drawer como NEW
+              // (gesto Control-M: criar a partir de um existente).
+              const suffix = Date.now().toString(36).slice(-4);
+              const clone: JobDefinition = {
+                ...def,
+                id: `${def.id}-copy-${suffix}`,
+                label: `${def.label} (copy)`,
+                upstream: def.upstream ? [...def.upstream] : undefined,
+              };
+              setEditingDef({ def: clone, isNew: true });
+            },
+          },
           { label: "Delete", tone: "danger", onClick: () => { void handleDeleteDef(def.id); } },
         ];
         setCtxMenu({ x: e.clientX, y: e.clientY, items });
@@ -910,6 +1108,14 @@ function V2PreviewInner() {
             }}
           >R</div>
           <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: "0.02em" }}>Regente</span>
+          {envLabel && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
+              padding: "2px 7px", borderRadius: 3,
+              background: "var(--v2-accent-brand)", color: "#000",
+              lineHeight: 1, textTransform: "uppercase",
+            }}>{envLabel}</span>
+          )}
           <span style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", letterSpacing: "0.06em", marginLeft: 4 }}>
             {container.storageBackend}
           </span>
@@ -956,7 +1162,8 @@ function V2PreviewInner() {
             display: "flex", alignItems: "center", gap: 6,
           }}
         >
-          <span>▦ Folders</span>
+          <FolderOpen size={12} />
+          <span>Folders</span>
           {visibleFolders !== null && (
             <span style={{
               padding: "0 5px", background: "var(--v2-accent-brand)", color: "#000",
@@ -982,9 +1189,10 @@ function V2PreviewInner() {
                 fontSize: 10, fontFamily: "var(--v2-font-mono)",
                 letterSpacing: "0.06em", textTransform: "uppercase",
                 cursor: hasDefs ? "pointer" : "not-allowed", fontWeight: 600,
+                display: "flex", alignItems: "center", gap: 6,
               }}
             >
-              ▶ Run Daily
+              <Play size={11} /> Run Daily
             </button>
 
             <div style={{ position: "relative" }}>
@@ -1001,9 +1209,10 @@ function V2PreviewInner() {
                   fontSize: 10, fontFamily: "var(--v2-font-mono)",
                   letterSpacing: "0.06em", textTransform: "uppercase",
                   cursor: hasDefs ? "pointer" : "not-allowed", fontWeight: 600,
+                  display: "flex", alignItems: "center", gap: 6,
                 }}
               >
-                ⚡ Force ▾
+                <Zap size={11} /> Force ▾
               </button>
               {forceMenuOpen && hasDefs && (
                 <div
@@ -1079,11 +1288,122 @@ function V2PreviewInner() {
 
         <div style={{ flex: 1 }} />
 
+        {/* GitStatusBadge é artefato do Design (ver memory/core/regente-product-model.md). */}
+        {mode === "design" && !designSessionId && (
+          <GitStatusBadge canSync={!!me && me.role === "admin"} />
+        )}
+        {/* FolderOpener: porta de entrada para abrir/criar folder ativa em Design.
+            Cria session lazily se ainda não houver. Visível em design+server mode. */}
+        {mode === "design" && isServerMode() && (
+          <FolderOpener
+            sessionId={designSessionId}
+            alreadyActive={activeFolders ?? new Set()}
+            onSessionCreated={(sid) => setDesignSessionId(sid)}
+            onAdded={async (res) => {
+              setActiveFolders((prev) => {
+                const next = new Set(prev ?? []);
+                next.add(res.name);
+                return next;
+              });
+              if (res.willForcePR) {
+                setDesignSessionNewFolders((prev) => prev.includes(res.name) ? prev : [...prev, res.name]);
+              }
+              await reloadDefinitions();
+            }}
+          />
+        )}
+        {mode === "design" && designSessionId && (
+          <>
+            <span style={{
+              fontSize: 11, fontFamily: "var(--v2-font-mono)",
+              color: "var(--v2-text-secondary)", padding: "3px 8px",
+              background: "var(--v2-bg-elevated)", borderRadius: 4,
+              border: "1px solid var(--v2-border-subtle)",
+              display: "inline-flex", alignItems: "center", gap: 6,
+            }} title={`session=${designSessionId}`}>
+              <GitCommitHorizontal size={12} />
+              SESSION • {designSessionId.slice(0, 12)}…
+              {designSessionNewFolders.length > 0 && (
+                <span style={{ color: "#fa6", marginLeft: 6 }}>+{designSessionNewFolders.length} novos</span>
+              )}
+            </span>
+            {sessionStatus && (sessionStatus.ahead > 0 || sessionStatus.behind > 0) && (
+              <span
+                style={{
+                  fontSize: 10, fontFamily: "var(--v2-font-mono)",
+                  color: sessionStatus.behind > 0 ? "#fbb" : "#bfb",
+                  padding: "3px 7px",
+                  background: sessionStatus.behind > 0 ? "#3b1d1d" : "#1d3b1d",
+                  borderRadius: 4,
+                  border: `1px solid ${sessionStatus.behind > 0 ? "#533" : "#353"}`,
+                }}
+                title={
+                  sessionStatus.behind > 0
+                    ? `main avançou ${sessionStatus.behind} commit(s) desde o clone — publish vai precisar resolver drift`
+                    : `${sessionStatus.ahead} commit(s) à frente do main`
+                }
+              >
+                {sessionStatus.ahead > 0 && `↑${sessionStatus.ahead}`}
+                {sessionStatus.ahead > 0 && sessionStatus.behind > 0 && " "}
+                {sessionStatus.behind > 0 && `↓${sessionStatus.behind}`}
+              </span>
+            )}
+            <PublishButton
+              sessionId={designSessionId}
+              newFolderCount={designSessionNewFolders.length}
+              onPublished={async (res) => {
+                // P4 (2026-04-26) — empty publish: server retorna mode=noop
+                // sem commit/push; não fechamos a session, só avisamos.
+                if (res.mode === "noop") {
+                  toast.info("Nada a publicar", { detail: "Working tree limpa — faça alguma edição antes." });
+                  return;
+                }
+                setDesignSessionId(null);
+                setDesignSessionNewFolders([]);
+                if (res.prUrl) {
+                  toast.success(`Publicado como PR #${res.prNumber}`, {
+                    linkUrl: res.prUrl,
+                    linkLabel: `PR #${res.prNumber} no GitHub`,
+                  });
+                } else {
+                  const st = await getGitInfo();
+                  toast.success("Publicado no GitHub", {
+                    detail: `commit ${res.commitSha?.slice(0, 7)}`,
+                    linkUrl: commitUrl(st, res.commitSha) ?? undefined,
+                    linkLabel: res.commitSha ? `ver commit ${res.commitSha.slice(0, 7)}` : undefined,
+                  });
+                }
+                await reloadDefinitions();
+              }}
+            />
+            <button
+              onClick={async () => {
+                if (!window.confirm("Descartar a sessão? Todas as edições não publicadas serão perdidas.")) return;
+                try {
+                  const sid = designSessionId;
+                  setDesignSessionId(null);
+                  setDesignSessionNewFolders([]);
+                  if (sid) {
+                    const { deleteDesignSession } = await import("@/lib/design-session-api");
+                    await deleteDesignSession(sid).catch(() => {});
+                  }
+                  await reloadDefinitions();
+                } catch { /* ignore */ }
+              }}
+              style={{ background: "transparent", color: "#a66", border: "1px solid #533", padding: "5px 10px", borderRadius: 4, cursor: "pointer", fontSize: 11 }}
+            >
+              Descartar
+            </button>
+          </>
+        )}
+
         {me && (
           <UserMenu
             me={me}
             onLogout={() => setMe(null)}
             onOpenUsers={() => setShowUsers(true)}
+            onOpenControlM={() => setShowControlM(true)}
+            onOpenSettings={() => setShowSettings(true)}
           />
         )}
 
@@ -1122,15 +1442,7 @@ function V2PreviewInner() {
           onNodeClick={onNodeClick}
           onNodeContextMenu={onNodeContextMenu}
           onConnect={onConnect}
-          onSelectionChange={({ nodes: sel }) => {
-            const ids = new Set<string>();
-            for (const n of sel) {
-              if (n.type === "laneLabel") continue;
-              const raw = n.id.replace(/^[md]-/, "");
-              ids.add(raw);
-            }
-            setSelectedIds(ids);
-          }}
+          onSelectionChange={handleSelectionChange}
           onInit={(inst) => { rfInstance.current = inst; }}
         >
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#1a1a1a" />
@@ -1145,7 +1457,13 @@ function V2PreviewInner() {
               : "Vá para Design mode e crie jobs arrastando tipos da palette."}
           />
         )}
-        {mode === "design" && !hasDefs && (
+        {mode === "design" && !hasActiveFolders && (
+          <EmptyState
+            title="Nenhuma folder aberta"
+            hint="Abra ou crie uma folder para começar a trabalhar. Sem folder ativa, não há onde colocar jobs."
+          />
+        )}
+        {mode === "design" && hasActiveFolders && !hasDefs && (
           <EmptyState
             title="Nenhuma definition"
             hint="Arraste um tipo da palette para o canvas para criar o primeiro job."
@@ -1159,7 +1477,9 @@ function V2PreviewInner() {
             onSelect={handleSidebarSelect}
           />
         ) : (
-          <DesignSidebarV2 definitions={defs} />
+          // Fase 1: palette de drag só aparece com folder ativa.
+          // Sem folder, não há destino válido para drop → esconde para evitar UX quebrada.
+          hasActiveFolders ? <DesignSidebarV2 definitions={defs} /> : null
         )}
 
         {mode === "monitoring" && selectedInstance && (
@@ -1181,6 +1501,8 @@ function V2PreviewInner() {
           <JobConfigDrawer
             definition={editingDef.def}
             isNew={editingDef.isNew}
+            availableFolders={activeFolders ? Array.from(activeFolders).sort() : []}
+            allDefs={defs}
             handlers={{
               onSave: handleSaveDef,
               onDelete: handleDeleteDef,
@@ -1210,6 +1532,12 @@ function V2PreviewInner() {
           <UsersDialog meId={me.id} onClose={() => setShowUsers(false)} />
         )}
 
+        {showControlM && <ControlMPanel onClose={() => setShowControlM(false)} />}
+
+        {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
+
+        <PRBannerHost />
+
         {/* F11.9 — Bulk action bar */}
         {selectedIds.size > 0 && mode === "monitoring" && (
           <BulkActionBar
@@ -1217,11 +1545,11 @@ function V2PreviewInner() {
             selected={selectedIds}
             instances={filteredInstances}
             handlers={{
-              onHoldAll:    (ids) => handleBulk(ids, holdInstance),
-              onReleaseAll: (ids) => handleBulk(ids, releaseInstance),
-              onCancelAll:  (ids) => handleBulk(ids, cancelInstance),
-              onSetOkAll:   (ids) => handleBulk(ids, bypassInstance),
-              onRerunAll:   (ids) => handleBulk(ids, rerunInstance),
+              onHoldAll:    (ids) => handleBulk(ids, holdInstance, "hold"),
+              onReleaseAll: (ids) => handleBulk(ids, releaseInstance, "release"),
+              onCancelAll:  (ids) => handleBulk(ids, cancelInstance, "cancel"),
+              onSetOkAll:   (ids) => handleBulk(ids, bypassInstance, "set-ok"),
+              onRerunAll:   (ids) => handleBulk(ids, rerunInstance, "rerun"),
               onClear:      clearSelection,
             }}
           />
@@ -1231,12 +1559,26 @@ function V2PreviewInner() {
             mode="design"
             selected={selectedIds}
             defs={filteredDefs}
+            folders={activeFolders ? Array.from(activeFolders).sort() : []}
             handlers={{
               onDeleteAll: handleBulkDeleteDefs,
+              onMoveAll: handleBulkMoveDefs,
               onClear: clearSelection,
             }}
           />
         )}
+
+        {/* Modal de condição da dependência (substitui window.prompt) */}
+        {pendingConn && (
+          <EdgeConditionModal
+            fromLabel={defs.find((d) => d.id === pendingConn.fromId)?.label ?? pendingConn.fromId}
+            toLabel={defs.find((d) => d.id === pendingConn.toId)?.label ?? pendingConn.toId}
+            onConfirm={confirmConnection}
+            onCancel={() => setPendingConn(null)}
+          />
+        )}
+
+        <ToastHost />
       </main>
 
       {/* Footer */}

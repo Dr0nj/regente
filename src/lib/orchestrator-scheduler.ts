@@ -170,7 +170,7 @@ export class OrchestratorScheduler {
    */
   private checkAndOrder(def: JobDefinition, now: Date): void {
     // Parse the cron
-    const cron = parseCron(def.schedule.cronExpression);
+    const cron = parseCron(def.schedule.cronExpression ?? "");
     if (!cron) return;
 
     // Check if this cron should fire today

@@ -153,7 +153,7 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
     default:
       return (
         <Section label="Action config (raw JSON)">
-          <TextArea mono rows={6} value={jsonStr(config)} onChange={v => onChange(parseJson(v) ?? {})} />
+          <TextArea mono rows={6} value={jsonStr(config)} onChange={v => onChange((parseJson(v) as Record<string, unknown> | null) ?? {})} />
         </Section>
       );
   }

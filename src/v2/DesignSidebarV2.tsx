@@ -1,126 +1,153 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import {
+  LayoutGrid,
+  Folder,
+  Variable,
+  GitBranch,
+  Globe,
+  Clock,
+  GitFork,
+  Layers,
+  Zap,
+  Box,
+  Database,
+  Workflow,
+  type LucideIcon,
+} from "lucide-react";
 import type { JobDefinition } from "@/lib/orchestrator-model";
 import type { JobNodeData } from "@/lib/job-config";
+import { getGitInfo } from "@/lib/git-info";
 
 /* ──────────────────────────────────────────────────────────────
-   DesignSidebarV2 — flutuante, robusta, criativa
+   DesignSidebarV2 — dockada (ancorada à esquerda, sem flutuar)
    ──────────────────────────────────────────────────────────────
-   Estratégia:
-   - Painel flutuante à esquerda, com gap do topo/borda
-   - 3 abas: Palette | Folders | Variables
-   - Palette: drag source de tipos de job (ícone + label + hint)
-   - Folders: lista de folders (times/projetos), pode criar na hora
-   - Variables: globais ao workflow, tipadas
-   - Visual denso, tipo VS Code Activity Bar + Explorer
+   - Activity bar vertical (ícones lucide) + painel: Palette | Folders | Variables
+   - Palette HONESTA: tipos sem executor real (P11 — AWS) levam badge "stub".
+     Continuam arrastáveis (o server aceita e roda em dry-run), mas o usuário
+     sabe o que está criando.
+   - Footer com git info REAL (branch@sha do /api/git/status), não hardcode.
    ────────────────────────────────────────────────────────────── */
 
-type Tab = "palette" | "teams" | "variables";
+type Tab = "palette" | "folders" | "variables";
 
 const JOB_TYPES: Array<{
   id: JobNodeData["jobType"];
   label: string;
   hint: string;
+  Icon: LucideIcon;
+  /** true = sem executor real ainda (P11) — badge "stub" na palette. */
+  stub?: boolean;
 }> = [
-  { id: "LAMBDA",        label: "Lambda",        hint: "Função serverless AWS" },
-  { id: "BATCH",         label: "Batch",         hint: "Container ECS/Batch" },
-  { id: "GLUE",          label: "Glue",          hint: "ETL pipeline" },
-  { id: "STEP_FUNCTION", label: "Step Function", hint: "State machine" },
-  { id: "CHOICE",        label: "Choice",        hint: "Desvio condicional" },
-  { id: "PARALLEL",      label: "Parallel",      hint: "Execução concorrente" },
-  { id: "WAIT",          label: "Wait",          hint: "Delay / espera" },
-  { id: "HTTP",          label: "HTTP",          hint: "REST API call" },
+  { id: "HTTP",          label: "HTTP",          hint: "Chamada REST com validação de status", Icon: Globe },
+  { id: "WAIT",          label: "Wait",          hint: "Delay / espera programada",            Icon: Clock },
+  { id: "CHOICE",        label: "Choice",        hint: "Desvio condicional",                   Icon: GitFork },
+  { id: "PARALLEL",      label: "Parallel",      hint: "Execução concorrente",                 Icon: Layers },
+  { id: "LAMBDA",        label: "Lambda",        hint: "Função serverless AWS",                Icon: Zap, stub: true },
+  { id: "BATCH",         label: "Batch",         hint: "Container ECS/Batch",                  Icon: Box, stub: true },
+  { id: "GLUE",          label: "Glue",          hint: "ETL pipeline",                         Icon: Database, stub: true },
+  { id: "STEP_FUNCTION", label: "Step Function", hint: "State machine",                        Icon: Workflow, stub: true },
 ];
-
-const FOLDERS_FALLBACK: string[] = []; // folders só aparecem quando houver definitions
 
 export default function DesignSidebarV2({ definitions = [] }: { definitions?: JobDefinition[] }) {
   const [tab, setTab] = useState<Tab>("palette");
+  const [gitLine, setGitLine] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancel = false;
+    void getGitInfo().then((st) => {
+      if (cancel || !st?.configured) return;
+      setGitLine(`${st.branch ?? "main"}@${st.shortSha ?? "?"}`);
+    });
+    return () => { cancel = true; };
+  }, []);
 
   // Agrupa definitions por folder (campo `team` na model — vocabulário legado)
   const folders = (() => {
-    if (definitions.length === 0) return FOLDERS_FALLBACK.map((name) => ({ name, count: 0 }));
     const m = new Map<string, number>();
     for (const d of definitions) {
       const t = (d.team ?? "").trim() || "—";
       m.set(t, (m.get(t) ?? 0) + 1);
     }
-    return [...m.entries()].map(([name, count]) => ({ name, count }));
+    return [...m.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   })();
+
+  const TABS: Array<{ id: Tab; Icon: LucideIcon; label: string }> = [
+    { id: "palette",   Icon: LayoutGrid, label: "Components" },
+    { id: "folders",   Icon: Folder,     label: "Folders" },
+    { id: "variables", Icon: Variable,   label: "Variables" },
+  ];
 
   return (
     <aside
       style={{
         position: "absolute",
-        top: 12,
-        left: 12,
-        bottom: 12,
+        top: 0,
+        left: 0,
+        bottom: 0,
         width: 280,
         display: "flex",
         fontFamily: "var(--v2-font-sans)",
         zIndex: 5,
+        borderRight: "1px solid var(--v2-border-medium)",
+        background: "var(--v2-bg-surface)",
       }}
     >
-      {/* Activity bar — coluna vertical de ícones (38px) */}
+      {/* Activity bar — coluna vertical de ícones */}
       <nav
         style={{
           width: 38,
           background: "var(--v2-bg-elevated)",
-          border: "1px solid var(--v2-border-medium)",
-          borderRadius: "6px 0 0 6px",
-          borderRight: "none",
+          borderRight: "1px solid var(--v2-border-subtle)",
           display: "flex",
           flexDirection: "column",
           padding: "6px 0",
           gap: 2,
+          flexShrink: 0,
         }}
       >
-        {(
-          [
-            { id: "palette",   icon: "▤", label: "Components" },
-            { id: "teams",     icon: "◐", label: "Folders" },
-            { id: "variables", icon: "ƒ", label: "Variables" },
-          ] as const
-        ).map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            title={t.label}
-            style={{
-              height: 32,
-              background: "transparent",
-              border: "none",
-              borderLeft: `2px solid ${tab === t.id ? "var(--v2-accent-brand)" : "transparent"}`,
-              color: tab === t.id ? "var(--v2-text-primary)" : "var(--v2-text-muted)",
-              fontSize: 16,
-              fontFamily: "var(--v2-font-mono)",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "color 100ms linear",
-            }}
-            onMouseEnter={(e) => {
-              if (tab !== t.id) e.currentTarget.style.color = "var(--v2-text-secondary)";
-            }}
-            onMouseLeave={(e) => {
-              if (tab !== t.id) e.currentTarget.style.color = "var(--v2-text-muted)";
-            }}
-          >
-            {t.icon}
-          </button>
-        ))}
+        {TABS.map((t) => {
+          const active = tab === t.id;
+          const Icon = t.Icon;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              title={t.label}
+              style={{
+                height: 32,
+                background: "transparent",
+                border: "none",
+                borderLeft: `2px solid ${active ? "var(--v2-accent-brand)" : "transparent"}`,
+                color: active ? "var(--v2-text-primary)" : "var(--v2-text-muted)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "color 100ms linear",
+              }}
+              onMouseEnter={(e) => {
+                if (!active) e.currentTarget.style.color = "var(--v2-text-secondary)";
+              }}
+              onMouseLeave={(e) => {
+                if (!active) e.currentTarget.style.color = "var(--v2-text-muted)";
+              }}
+            >
+              <Icon size={15} />
+            </button>
+          );
+        })}
       </nav>
 
       {/* Painel de conteúdo */}
       <div
         style={{
           flex: 1,
-          background: "var(--v2-bg-surface)",
-          border: "1px solid var(--v2-border-medium)",
-          borderRadius: "0 6px 6px 0",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
+          minWidth: 0,
         }}
       >
         {/* Header da aba */}
@@ -130,107 +157,98 @@ export default function DesignSidebarV2({ definitions = [] }: { definitions?: Jo
             borderBottom: "1px solid var(--v2-border-subtle)",
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
           }}
         >
           <span
             style={{
               fontSize: 11,
               fontWeight: 600,
-              letterSpacing: "0.04em",
+              letterSpacing: "0.06em",
               color: "var(--v2-text-primary)",
+              textTransform: "uppercase",
             }}
           >
-            {tab === "palette" ? "COMPONENTS" : tab === "teams" ? "FOLDERS" : "VARIABLES"}
+            {tab === "palette" ? "Components" : tab === "folders" ? "Folders" : "Variables"}
           </span>
-          <button
-            style={{
-              background: "transparent",
-              border: "1px solid var(--v2-border-medium)",
-              color: "var(--v2-text-secondary)",
-              padding: "2px 6px",
-              borderRadius: 2,
-              fontSize: 10,
-              cursor: "pointer",
-              fontFamily: "var(--v2-font-mono)",
-            }}
-          >
-            +
-          </button>
         </div>
 
         {/* Conteúdo */}
         <div style={{ flex: 1, overflowY: "auto" }}>
           {tab === "palette" && (
             <div style={{ padding: "4px 0" }}>
-              {JOB_TYPES.map((t) => (
-                <div
-                  key={t.id}
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData("application/regente-jobtype", t.id);
-                    e.dataTransfer.effectAllowed = "copy";
-                  }}
-                  style={{
-                    padding: "8px 12px",
-                    cursor: "grab",
-                    borderBottom: "1px solid var(--v2-border-subtle)",
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 10,
-                    transition: "background 80ms linear",
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--v2-bg-hover)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                >
-                  <span
-                    style={{
-                      width: 28,
-                      height: 28,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      border: "1px solid var(--v2-border-strong)",
-                      color: "var(--v2-text-secondary)",
-                      fontFamily: "var(--v2-font-mono)",
-                      fontSize: 10,
-                      borderRadius: 3,
-                      flexShrink: 0,
-                      letterSpacing: "0.04em",
+              {JOB_TYPES.map((t) => {
+                const Icon = t.Icon;
+                return (
+                  <div
+                    key={t.id}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("application/regente-jobtype", t.id);
+                      e.dataTransfer.effectAllowed = "copy";
                     }}
+                    title={t.stub ? "Sem executor real ainda (roda em dry-run). AWS executors = P11 no roadmap." : `Arraste para o canvas para criar um job ${t.label}`}
+                    style={{
+                      padding: "8px 12px",
+                      cursor: "grab",
+                      borderBottom: "1px solid var(--v2-border-subtle)",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 10,
+                      transition: "background 80ms linear",
+                      opacity: t.stub ? 0.75 : 1,
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--v2-bg-hover)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   >
-                    {t.id.slice(0, 2)}
-                  </span>
-                  <div style={{ minWidth: 0 }}>
-                    <div
+                    <span
                       style={{
-                        fontSize: 12,
-                        fontWeight: 500,
-                        color: "var(--v2-text-primary)",
+                        width: 28,
+                        height: 28,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        border: "1px solid var(--v2-border-strong)",
+                        color: "var(--v2-text-secondary)",
+                        borderRadius: 3,
+                        flexShrink: 0,
                       }}
                     >
-                      {t.label}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 10,
-                        color: "var(--v2-text-muted)",
-                        marginTop: 1,
-                      }}
-                    >
-                      {t.hint}
+                      <Icon size={14} />
+                    </span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 12, fontWeight: 500, color: "var(--v2-text-primary)" }}>
+                          {t.label}
+                        </span>
+                        {t.stub && (
+                          <span
+                            style={{
+                              fontSize: 8, fontFamily: "var(--v2-font-mono)",
+                              padding: "1px 5px", borderRadius: 2,
+                              border: "1px solid var(--v2-border-strong)",
+                              color: "var(--v2-text-muted)",
+                              letterSpacing: "0.06em", textTransform: "uppercase",
+                            }}
+                          >
+                            stub
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 1 }}>
+                        {t.hint}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
-          {tab === "teams" && (
+          {tab === "folders" && (
             <div style={{ padding: "4px 0" }}>
               {folders.length === 0 && (
                 <div style={{ padding: "12px 14px", fontSize: 11, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>
-                  Nenhum folder. Crie um job e atribua um folder para ele aparecer aqui.
+                  Nenhuma folder aberta nesta session.
                 </div>
               )}
               {folders.map((t) => (
@@ -242,20 +260,9 @@ export default function DesignSidebarV2({ definitions = [] }: { definitions?: Jo
                     alignItems: "center",
                     gap: 10,
                     borderBottom: "1px solid var(--v2-border-subtle)",
-                    cursor: "pointer",
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--v2-bg-hover)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 >
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      background: "var(--v2-accent-dark)",
-                      borderRadius: "50%",
-                      flexShrink: 0,
-                    }}
-                  />
+                  <Folder size={12} style={{ color: "var(--v2-accent-dark)", flexShrink: 0 }} />
                   <span
                     style={{
                       flex: 1,
@@ -263,18 +270,15 @@ export default function DesignSidebarV2({ definitions = [] }: { definitions?: Jo
                       color: "var(--v2-text-primary)",
                       fontFamily: "var(--v2-font-mono)",
                       letterSpacing: "0.04em",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
                     }}
                   >
                     {t.name}
                   </span>
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontFamily: "var(--v2-font-mono)",
-                      color: "var(--v2-text-muted)",
-                    }}
-                  >
-                    {t.count} jobs
+                  <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>
+                    {t.count} job{t.count === 1 ? "" : "s"}
                   </span>
                 </div>
               ))}
@@ -283,33 +287,32 @@ export default function DesignSidebarV2({ definitions = [] }: { definitions?: Jo
 
           {tab === "variables" && (
             <div style={{ padding: "12px 14px", fontSize: 11, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)", lineHeight: 1.5 }}>
-              Nenhuma variável definida.
+              Variáveis globais são gerenciadas no Control-M Panel
               <br />
-              <span style={{ opacity: 0.6 }}>
-                (próxima fase: variáveis globais via <code style={{ color: "var(--v2-accent-brand)" }}>variables.yaml</code>)
-              </span>
+              <span style={{ opacity: 0.6 }}>(menu do usuário → Control-M → Variables)</span>
             </div>
           )}
         </div>
 
-        {/* Footer com Git status — branding enterprise */}
-        <div
-          style={{
-            padding: "6px 12px",
-            borderTop: "1px solid var(--v2-border-subtle)",
-            fontSize: 10,
-            fontFamily: "var(--v2-font-mono)",
-            color: "var(--v2-text-muted)",
-            display: "flex",
-            justifyContent: "space-between",
-            letterSpacing: "0.04em",
-          }}
-        >
-          <span>
-            <span style={{ color: "var(--v2-accent-brand)" }}>⎇</span> main
-          </span>
-          <span>clean</span>
-        </div>
+        {/* Footer com git info REAL (do /api/git/status) */}
+        {gitLine && (
+          <div
+            style={{
+              padding: "6px 12px",
+              borderTop: "1px solid var(--v2-border-subtle)",
+              fontSize: 10,
+              fontFamily: "var(--v2-font-mono)",
+              color: "var(--v2-text-muted)",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              letterSpacing: "0.04em",
+            }}
+          >
+            <GitBranch size={11} style={{ color: "var(--v2-accent-brand)" }} />
+            <span>{gitLine}</span>
+          </div>
+        )}
       </div>
     </aside>
   );

@@ -5,9 +5,11 @@ interface UserMenuProps {
   me: AuthUser;
   onLogout: () => void;
   onOpenUsers: () => void;
+  onOpenControlM?: () => void;
+  onOpenSettings?: () => void;
 }
 
-export function UserMenu({ me, onLogout, onOpenUsers }: UserMenuProps) {
+export function UserMenu({ me, onLogout, onOpenUsers, onOpenControlM, onOpenSettings }: UserMenuProps) {
   const [open, setOpen] = useState(false);
   const [showChange, setShowChange] = useState(false);
 
@@ -33,6 +35,12 @@ export function UserMenu({ me, onLogout, onOpenUsers }: UserMenuProps) {
               <button onClick={() => { setOpen(false); setShowChange(true); }} style={menuBtn}>Trocar senha</button>
               {me.role === "admin" && (
                 <button onClick={() => { setOpen(false); onOpenUsers(); }} style={menuBtn}>Gerenciar usuarios</button>
+              )}
+              {onOpenControlM && (
+                <button onClick={() => { setOpen(false); onOpenControlM(); }} style={menuBtn}>Control-M Panel</button>
+              )}
+              {onOpenSettings && me.role === "admin" && (
+                <button onClick={() => { setOpen(false); onOpenSettings(); }} style={menuBtn}>Configurações</button>
               )}
               <hr style={{ border: 0, borderTop: "1px solid #333", margin: "4px 0" }} />
               <button

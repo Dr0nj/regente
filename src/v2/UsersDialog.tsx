@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   createUser, deleteUser, listUsers, resetUserPassword, updateUserRole,
   listUserACLs, replaceUserACLs,
-  type AuthUser, type FolderACL, type Role,
+  type AuthUser, type Role,
 } from "../lib/auth-api";
 import { listFolders, type FolderInfo } from "../lib/folder-api";
 

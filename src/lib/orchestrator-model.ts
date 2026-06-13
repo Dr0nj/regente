@@ -41,15 +41,52 @@ export const INSTANCE_STATUS_CONFIG: Record<
 
 /* ── Schedule Definition ── */
 
+/** Frequência de recorrência (Control-M-like). */
+export type ScheduleFrequency = "daily" | "weekly" | "monthly" | "businessday" | "advanced";
+
+/** Regras avançadas nomeadas (v1). */
+export type AdvancedRule =
+  | "first-businessday"
+  | "last-businessday"
+  | "first-businessday-not-monday"
+  | "penultimate-businessday";
+
 export interface JobSchedule {
-  /** Cron expression (5-field: min hour dom month dow) */
-  cronExpression: string;
-  /** Human-readable description (auto-generated from cron) */
-  description?: string;
   /** Whether this schedule is active */
   enabled: boolean;
+  /** Cron expression (5-field) — LEGADO; vazio quando usa Frequency. */
+  cronExpression?: string;
+  /** Human-readable description */
+  description?: string;
   /** Timezone (MVP: browser local; future: IANA tz) */
   timezone?: string;
+
+  /* ── Quando no dia (runtime) ── */
+  /** "HH:MM" — hora em que fica elegível após a daily */
+  runAt?: string;
+  windowFrom?: string;
+  windowTo?: string;
+  cyclic?: boolean;
+  intervalMin?: number;
+
+  /* ── Em quais dias (avaliado pela daily) ── */
+  frequency?: ScheduleFrequency;
+  /** weekly: ["mon","tue",...] */
+  daysOfWeek?: string[];
+  /** monthly: 1..31; -1 = último dia */
+  daysOfMonth?: number[];
+  /** businessday: 5 = 5º dia útil; -1 = último dia útil */
+  nthBusinessDays?: number[];
+  /** filtro de meses 1..12 (vazio = todos) */
+  monthsOfYear?: number[];
+  /** advanced: regra nomeada */
+  advancedRule?: AdvancedRule;
+}
+
+/** Vínculo de calendar a um job (chamar/negar). */
+export interface CalendarRef {
+  name: string;
+  mode: "include" | "exclude";
 }
 
 /* ── Job Definition (Design mode entity) ── */
@@ -80,6 +117,10 @@ export interface JobDefinition {
   variables?: Array<{ key: string; value: string }>;
   /** If true, log intent without executing */
   dryRun?: boolean;
+  /** F14 — calendar legado (include). Preferir `calendars`. */
+  calendar?: string;
+  /** F14+ — calendars chamados no job, cada um include ou exclude (negar). */
+  calendars?: CalendarRef[];
   /**
    * Fase 8 — dependências upstream.
    * Define quais definitions precisam ter terminado (com dada

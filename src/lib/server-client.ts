@@ -45,6 +45,73 @@ export function isServerMode(): boolean {
   return !!SERVER_URL;
 }
 
+// === Design session (Etapa 3+4 do realinhamento, 2026-04-26) ===
+// Quando setado, ServerApiAdapter e folder-api roteiam para
+// /api/design/sessions/{sid}/* em vez de /api/definitions e /api/folders.
+// null = trabalhando no workspace principal (uso normal: Monitoring).
+let _designSessionId: string | null = null;
+type SessionListener = (sid: string | null) => void;
+const sessionListeners = new Set<SessionListener>();
+
+// P7 (2026-04-26) — concurrent-tab guard via BroadcastChannel.
+// Toda vez que esta aba ativa uma session, anuncia. Outras abas que estavam
+// na mesma session (ou em qualquer session) recebem e podem reagir.
+type TabBroadcastMsg =
+  | { type: "session-claim"; sid: string; tabId: string; ts: number }
+  | { type: "session-release"; sid: string; tabId: string };
+
+const TAB_ID = (() => {
+  try {
+    return (crypto as Crypto).randomUUID();
+  } catch {
+    return `tab-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+  }
+})();
+let _bc: BroadcastChannel | null = null;
+type ConflictListener = (sid: string, otherTabId: string) => void;
+const conflictListeners = new Set<ConflictListener>();
+
+function ensureBC(): BroadcastChannel | null {
+  if (_bc) return _bc;
+  if (typeof BroadcastChannel === "undefined") return null;
+  _bc = new BroadcastChannel("regente:design-sessions");
+  _bc.onmessage = (ev: MessageEvent<TabBroadcastMsg>) => {
+    const msg = ev.data;
+    if (!msg || msg.type !== "session-claim") return;
+    if (msg.tabId === TAB_ID) return;
+    if (_designSessionId && msg.sid === _designSessionId) {
+      // Outra aba assumiu a MESMA session que estamos editando.
+      for (const fn of conflictListeners) try { fn(msg.sid, msg.tabId); } catch (e) { console.error(e); }
+    }
+  };
+  return _bc;
+}
+
+export function getDesignSessionId(): string | null { return _designSessionId; }
+export function setDesignSessionId(sid: string | null): void {
+  const prev = _designSessionId;
+  _designSessionId = sid;
+  if (sid && sid !== prev) {
+    const bc = ensureBC();
+    bc?.postMessage({ type: "session-claim", sid, tabId: TAB_ID, ts: Date.now() } satisfies TabBroadcastMsg);
+  } else if (!sid && prev) {
+    const bc = ensureBC();
+    bc?.postMessage({ type: "session-release", sid: prev, tabId: TAB_ID } satisfies TabBroadcastMsg);
+  }
+  for (const fn of sessionListeners) try { fn(sid); } catch (e) { console.error(e); }
+}
+export function onDesignSessionChange(fn: SessionListener): () => void {
+  sessionListeners.add(fn);
+  return () => { sessionListeners.delete(fn); };
+}
+
+/** P7 — registra callback para conflito de aba (outra aba assumiu a mesma session). */
+export function onDesignSessionConflict(fn: ConflictListener): () => void {
+  ensureBC();
+  conflictListeners.add(fn);
+  return () => { conflictListeners.delete(fn); };
+}
+
 export function wsUrl(path: string): string {
   if (!SERVER_URL) throw new Error("server mode disabled");
   const u = SERVER_URL.replace(/^http/i, (m) => (m.toLowerCase() === "https" ? "wss" : "ws"));
@@ -73,9 +140,25 @@ export async function api<T = unknown>(
     emitAuth("unauthorized");
   }
   if (!res.ok) {
-    let body: unknown;
-    try { body = await res.json(); } catch { body = await res.text().catch(() => undefined); }
-    const err = new Error(`${res.status} ${res.statusText} @ ${path}`) as ApiError;
+    // O body só pode ser lido uma vez. Se tentarmos res.json() e falhar,
+    // res.text() depois retorna string vazia (stream já consumido). Lemos
+    // como texto e tentamos parsear como JSON em memória.
+    const raw = await res.text().catch(() => "");
+    let body: unknown = raw;
+    if (raw) {
+      try { body = JSON.parse(raw); } catch { /* keep raw text */ }
+    }
+    const detail = typeof body === "string" && body.trim()
+      ? body.trim()
+      : (body && typeof body === "object"
+          ? ((body as { error?: string; message?: string }).error
+              ?? (body as { error?: string; message?: string }).message
+              ?? "")
+          : "");
+    const msg = detail
+      ? `${res.status} ${res.statusText} @ ${path} — ${detail}`
+      : `${res.status} ${res.statusText} @ ${path}`;
+    const err = new Error(msg) as ApiError;
     err.status = res.status;
     err.body = body;
     throw err;

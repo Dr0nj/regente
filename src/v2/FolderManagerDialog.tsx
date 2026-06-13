@@ -12,7 +12,6 @@ import { useEffect, useState, useCallback } from "react";
 import {
   type FolderInfo,
   listFolders,
-  createFolder,
   renameFolder,
   deleteFolder,
   archiveFolder,
@@ -29,7 +28,6 @@ export default function FolderManagerDialog({ visibleFolders, onChangeVisible, o
   const [folders, setFolders] = useState<FolderInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [newName, setNewName] = useState("");
   const [renaming, setRenaming] = useState<{ from: string; to: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ name: string; typed: string } | null>(null);
 
@@ -54,18 +52,6 @@ export default function FolderManagerDialog({ visibleFolders, onChangeVisible, o
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-
-  const handleCreate = useCallback(async () => {
-    const name = newName.trim();
-    if (!name) return;
-    try {
-      await createFolder(name);
-      setNewName("");
-      await refresh();
-    } catch (e: unknown) {
-      alert(`Create failed: ${(e as Error).message}`);
-    }
-  }, [newName, refresh]);
 
   const handleRename = useCallback(async () => {
     if (!renaming) return;
@@ -204,44 +190,10 @@ export default function FolderManagerDialog({ visibleFolders, onChangeVisible, o
           >×</button>
         </div>
 
-        {/* Create row */}
-        {isServerMode() && (
-          <div style={{
-            padding: "10px 18px",
-            borderBottom: "1px solid var(--v2-border-subtle)",
-            display: "flex", gap: 8, alignItems: "center",
-          }}>
-            <input
-              type="text"
-              placeholder="new folder name (a-z 0-9 - _)"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") void handleCreate(); }}
-              style={{
-                flex: 1, padding: "6px 10px",
-                background: "var(--v2-bg-elevated)",
-                border: "1px solid var(--v2-border-medium)",
-                color: "var(--v2-text-primary)", borderRadius: 3,
-                fontSize: 11, fontFamily: "var(--v2-font-mono)",
-              }}
-            />
-            <button
-              onClick={() => void handleCreate()}
-              disabled={!newName.trim()}
-              style={{
-                padding: "6px 14px",
-                background: newName.trim() ? "var(--v2-accent-deep)" : "transparent",
-                border: "1px solid var(--v2-accent-brand)",
-                color: newName.trim() ? "var(--v2-accent-brand)" : "var(--v2-text-muted)",
-                borderColor: newName.trim() ? "var(--v2-accent-brand)" : "var(--v2-border-medium)",
-                borderRadius: 3, fontSize: 10,
-                fontFamily: "var(--v2-font-mono)",
-                letterSpacing: "0.06em", textTransform: "uppercase",
-                cursor: newName.trim() ? "pointer" : "not-allowed", fontWeight: 600,
-              }}
-            >+ New Folder</button>
-          </div>
-        )}
+        {/* Create row removido (Fase 0 do re-alinhamento Design 2026-04-27).
+            A criação de folders agora vive no fluxo Open/Create do Design
+            (FolderOpener), que vincula a folder à session ativa em vez de
+            criar no estado canonônico fora de qualquer scope. */}
 
         {/* Body */}
         <div style={{ flex: 1, overflow: "auto", padding: 16, position: "relative", zIndex: 2 }}>
@@ -259,7 +211,7 @@ export default function FolderManagerDialog({ visibleFolders, onChangeVisible, o
           )}
           {isServerMode() && !loading && !err && folders.length === 0 && (
             <div style={{ padding: 24, textAlign: "center", color: "var(--v2-text-muted)", fontSize: 12 }}>
-              No folders yet. Create one above.
+              No folders yet. Open a Design session and create one.
             </div>
           )}
 

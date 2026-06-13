@@ -101,20 +101,17 @@ export default function MonitoringSidebarV2({
 
   return (
     <aside
-      className="v2-grain v2-edge-highlight"
       style={{
         position: "absolute",
-        top: 12,
-        left: 12,
-        bottom: 12,
+        top: 0,
+        left: 0,
+        bottom: 0,
         width: 320,
         background: "var(--v2-bg-surface)",
-        border: "1px solid var(--v2-border-medium)",
-        borderRadius: 6,
+        borderRight: "1px solid var(--v2-border-medium)",
         display: "flex",
         flexDirection: "column",
         fontFamily: "var(--v2-font-sans)",
-        boxShadow: "0 1px 0 var(--v2-border-subtle)",
         zIndex: 5,
         overflow: "hidden",
       }}
