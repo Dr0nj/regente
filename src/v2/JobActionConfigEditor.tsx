@@ -20,6 +20,33 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
   const get = <T,>(k: string, def: T): T => (config[k] === undefined ? def : (config[k] as T));
 
   switch (jobType) {
+    case "COMMAND":
+      return (
+        <Section label="Comando no agente">
+          <Row label="Comando (sh -c no Linux / powershell no Windows)">
+            <TextArea mono rows={3} value={str("command")} placeholder="echo hello && python /app/run.py --date {DATE}" onChange={v => set("command", v)} />
+          </Row>
+          <Row label="Working dir (cwd, opcional)">
+            <Input mono value={str("cwd")} placeholder="/opt/app   ou   C:\\app" onChange={v => set("cwd", v)} />
+          </Row>
+        </Section>
+      );
+
+    case "SCRIPT":
+      return (
+        <Section label="Script no agente">
+          <Row label="Caminho do script (.sh / .bat / .ps1 no agente)">
+            <Input mono value={str("scriptPath")} placeholder="/opt/jobs/load.sh   ou   C:\\jobs\\load.ps1" onChange={v => set("scriptPath", v)} />
+          </Row>
+          <Row label="Argumentos (opcional)">
+            <Input mono value={str("args")} placeholder="--date {DATE} --full" onChange={v => set("args", v)} />
+          </Row>
+          <Row label="Working dir (cwd, opcional)">
+            <Input mono value={str("cwd")} placeholder="/opt/jobs" onChange={v => set("cwd", v)} />
+          </Row>
+        </Section>
+      );
+
     case "HTTP":
       return (
         <Section label="HTTP request">

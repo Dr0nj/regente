@@ -8,6 +8,7 @@ import { DefinitionAuditPanel } from "./DefinitionAuditPanel";
 import { ErrorDialog } from "./ErrorDialog";
 import { getGitInfo, definitionFileUrl } from "@/lib/git-info";
 import { listCalendars } from "@/lib/bloco2-api";
+import { listAgents, type AgentInfo } from "@/lib/agents-api";
 import { useResizablePanel, ResizeHandle } from "./resizable";
 
 /* ──────────────────────────────────────────────────────────────
@@ -21,7 +22,7 @@ export interface JobConfigHandlers {
   onClose: () => void;
 }
 
-const JOB_TYPES: JobType[] = ["LAMBDA", "BATCH", "GLUE", "STEP_FUNCTION", "CHOICE", "PARALLEL", "WAIT", "HTTP"];
+const JOB_TYPES: JobType[] = ["COMMAND", "SCRIPT", "HTTP", "LAMBDA", "BATCH", "GLUE", "STEP_FUNCTION", "CHOICE", "PARALLEL", "WAIT"];
 type Tab = "general" | "schedule" | "calendars" | "action" | "deps";
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "general", label: "Geral" },
@@ -54,6 +55,10 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   const [actionConfig, setActionConfig] = useState<Record<string, unknown>>(definition.actionConfig ?? {});
   const [calendars, setCalendars] = useState<CalendarRef[]>(definition.calendars ?? []);
   const [upstream, setUpstream] = useState(definition.upstream ?? []);
+  const [agentId, setAgentId] = useState<string>(
+    typeof definition.actionConfig?._agentId === "string" ? (definition.actionConfig._agentId as string) : ""
+  );
+  const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [saving, setSaving] = useState(false);
   const [showAudit, setShowAudit] = useState(false);
   const [err, setErr] = useState<unknown>(null);
@@ -69,6 +74,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     setRetries(definition.retries ?? 2); setTimeoutS(definition.timeout ?? 300);
     setDryRun(definition.dryRun ?? false); setActionConfig(definition.actionConfig ?? {});
     setCalendars(definition.calendars ?? []); setUpstream(definition.upstream ?? []);
+    setAgentId(typeof definition.actionConfig?._agentId === "string" ? (definition.actionConfig._agentId as string) : "");
     setErr(null); setValidationErr(null);
   }, [definition.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -82,6 +88,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   useEffect(() => {
     let cancel = false;
     void listCalendars().then((cs) => { if (!cancel) setCalendarNames(cs.map((c) => c.name)); }).catch(() => {});
+    void listAgents().then((a) => { if (!cancel) setAgents(a); }).catch(() => {});
     return () => { cancel = true; };
   }, []);
 
@@ -94,7 +101,9 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
       ...definition,
       id: id.trim(), label: label.trim(), jobType, team: team.trim(),
       schedule: { ...schedule, enabled: schedule.enabled ?? true },
-      retries, timeout, dryRun, actionConfig,
+      retries, timeout, dryRun,
+      // _agentId é o canal que o ServerApiAdapter usa p/ mapear actionConfig→agentId.
+      actionConfig: { ...actionConfig, _agentId: agentId.trim() || undefined },
       calendars: calendars.length ? calendars : undefined,
       upstream: upstream.length ? upstream : undefined,
     };
@@ -167,6 +176,22 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
                 <option value="">— select folder —</option>
                 {availableFolders.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
+            </Field>
+            <Field label="Agente (onde roda)">
+              <select value={agentId} onChange={(e) => setAgentId(e.target.value)} style={selectStyle}>
+                <option value="">Automático (por capability)</option>
+                {agents.map((a) => (
+                  <option key={a.id} value={a.id}>{a.id} — {a.capabilities.join("/") || "sem caps"}</option>
+                ))}
+                {agentId && !agents.some((a) => a.id === agentId) && (
+                  <option value={agentId}>{agentId} (offline)</option>
+                )}
+              </select>
+              <div style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 4, lineHeight: 1.4 }}>
+                {agents.length === 0
+                  ? "Nenhum agente online. Rode o regente-agent na máquina alvo."
+                  : "Vazio = o server escolhe um agente com a capability do jobType."}
+              </div>
             </Field>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)" }}>
               <input type="checkbox" checked={schedule.enabled} onChange={(e) => setSchedule({ ...schedule, enabled: e.target.checked })} />

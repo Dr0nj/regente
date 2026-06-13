@@ -12,6 +12,8 @@ import {
   Box,
   Database,
   Workflow,
+  Terminal,
+  FileCode,
   type LucideIcon,
 } from "lucide-react";
 import type { JobDefinition } from "@/lib/orchestrator-model";
@@ -36,17 +38,19 @@ const JOB_TYPES: Array<{
   label: string;
   hint: string;
   Icon: LucideIcon;
-  /** true = sem executor real ainda (P11) — badge "stub" na palette. */
+  /** true = sem executor real ainda — badge "stub" na palette. */
   stub?: boolean;
 }> = [
+  { id: "COMMAND",       label: "Command",       hint: "Comando shell no agente (Win/Linux)",  Icon: Terminal },
+  { id: "SCRIPT",        label: "Script",        hint: "Script .sh/.bat/.ps1 no agente",       Icon: FileCode },
   { id: "HTTP",          label: "HTTP",          hint: "Chamada REST com validação de status", Icon: Globe },
   { id: "WAIT",          label: "Wait",          hint: "Delay / espera programada",            Icon: Clock },
   { id: "CHOICE",        label: "Choice",        hint: "Desvio condicional",                   Icon: GitFork },
   { id: "PARALLEL",      label: "Parallel",      hint: "Execução concorrente",                 Icon: Layers },
-  { id: "LAMBDA",        label: "Lambda",        hint: "Função serverless AWS",                Icon: Zap, stub: true },
-  { id: "BATCH",         label: "Batch",         hint: "Container ECS/Batch",                  Icon: Box, stub: true },
-  { id: "GLUE",          label: "Glue",          hint: "ETL pipeline",                         Icon: Database, stub: true },
-  { id: "STEP_FUNCTION", label: "Step Function", hint: "State machine",                        Icon: Workflow, stub: true },
+  { id: "LAMBDA",        label: "Lambda",        hint: "Função serverless AWS (fim do roadmap)", Icon: Zap, stub: true },
+  { id: "BATCH",         label: "Batch",         hint: "Container ECS/Batch (fim do roadmap)", Icon: Box, stub: true },
+  { id: "GLUE",          label: "Glue",          hint: "ETL pipeline (fim do roadmap)",        Icon: Database, stub: true },
+  { id: "STEP_FUNCTION", label: "Step Function", hint: "State machine (fim do roadmap)",       Icon: Workflow, stub: true },
 ];
 
 export default function DesignSidebarV2({ definitions = [] }: { definitions?: JobDefinition[] }) {

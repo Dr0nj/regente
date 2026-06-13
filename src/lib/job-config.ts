@@ -8,6 +8,8 @@ import {
   Layers,
   Clock,
   Globe,
+  Terminal,
+  FileCode,
 } from "lucide-react";
 
 /* ──────────────────────────────────────────────────────────────
@@ -20,14 +22,16 @@ import {
    ────────────────────────────────────────────────────────────── */
 
 export type JobType =
+  | "COMMAND"
+  | "SCRIPT"
+  | "HTTP"
   | "LAMBDA"
   | "BATCH"
   | "GLUE"
   | "STEP_FUNCTION"
   | "CHOICE"
   | "PARALLEL"
-  | "WAIT"
-  | "HTTP";
+  | "WAIT";
 
 export interface JobTypeConfig {
   label: string;
@@ -63,6 +67,8 @@ function make(
 }
 
 export const JOB_TYPES: Record<JobType, JobTypeConfig> = {
+  COMMAND:       make("Command",       "Comando no agente (shell)", Terminal),
+  SCRIPT:        make("Script",        "Script .sh/.bat/.ps1 no agente", FileCode),
   LAMBDA:        make("Lambda",        "Função serverless",       Zap),
   BATCH:         make("Batch",         "Container / job em lote", Box),
   GLUE:          make("Glue",          "ETL pipeline",            Paintbrush),
