@@ -1100,13 +1100,13 @@ function V2PreviewInner() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div
-            style={{
-              width: 18, height: 18, background: "var(--v2-accent-brand)",
-              borderRadius: 3, display: "inline-flex", alignItems: "center", justifyContent: "center",
-              color: "#000", fontWeight: 700, fontSize: 11,
-            }}
-          >R</div>
+          <img
+            src="/regente-logo.png"
+            alt="Regente"
+            width={22}
+            height={22}
+            style={{ objectFit: "contain", display: "block" }}
+          />
           <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: "0.02em" }}>Regente</span>
           {envLabel && (
             <span style={{
