@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { JobInstance } from "@/lib/orchestrator-model";
 import { fetchInstanceEvents, type InstanceEvent } from "@/lib/runtime-bridge";
+import { useResizablePanel, ResizeHandle } from "./resizable";
 
 /* ──────────────────────────────────────────────────────────────
    InstanceDetailsDrawer — painel lateral direito com ações
@@ -78,6 +79,10 @@ export default function InstanceDetailsDrawer({
     { label: "Rerun",   onClick: () => handlers.onRerun(instance.id),   tone: "primary" as const, show: status === "NOTOK" },
   ]).filter((a) => a.show);
 
+  const { width, onMouseDown, reset } = useResizablePanel({
+    storageKey: "regente.panel.instance.w", defaultWidth: 340, min: 280, max: 680, edge: "left",
+  });
+
   return (
     <aside
       className="v2-grain v2-edge-highlight"
@@ -86,7 +91,7 @@ export default function InstanceDetailsDrawer({
         top: 12,
         right: 12,
         bottom: 12,
-        width: 340,
+        width,
         background: "var(--v2-bg-surface)",
         border: "1px solid var(--v2-border-medium)",
         borderRadius: 4,
@@ -97,6 +102,7 @@ export default function InstanceDetailsDrawer({
         color: "var(--v2-text-primary)",
       }}
     >
+      <ResizeHandle edge="left" onMouseDown={onMouseDown} onReset={reset} />
       {/* Header */}
       <header
         style={{

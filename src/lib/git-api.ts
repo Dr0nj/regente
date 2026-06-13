@@ -14,6 +14,9 @@ export interface GitStatus {
   drift?: boolean;
   remoteSha?: string;
   driftErr?: string;
+  // Token via UI — estado de auth para push/PR
+  hasToken?: boolean;
+  authMode?: "token" | "none" | string;
 }
 
 export interface PRResult {
@@ -50,6 +53,21 @@ export async function syncGit(): Promise<GitStatus> {
 export async function checkDrift(): Promise<GitStatus> {
   if (!isServerMode()) return { configured: false };
   return api<GitStatus>("/api/git/drift");
+}
+
+/** Token via UI: grava o PAT no server (persiste em settings, propaga em runtime). */
+export async function setGitToken(token: string): Promise<GitStatus> {
+  return api<GitStatus>("/api/git/token", { method: "POST", body: JSON.stringify({ token }) });
+}
+
+/** Remove o PAT do server (volta a read-only). */
+export async function clearGitToken(): Promise<GitStatus> {
+  return api<GitStatus>("/api/git/token", { method: "DELETE" });
+}
+
+/** Remove a SQLite DB poluída no repo (push). Resolve o bug do WAL/DB. */
+export async function cleanupGitDB(): Promise<{ changed: boolean; status?: string; error?: string }> {
+  return api("/api/git/cleanup-db", { method: "POST" });
 }
 
 export async function fetchDefinitionAudit(team: string, id: string): Promise<DefinitionAuditEntry[]> {

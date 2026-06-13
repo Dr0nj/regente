@@ -58,7 +58,7 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
           }}
         />
         <div style={{ flex: 1, padding: "8px 10px", minWidth: 0 }}>
-          {/* Linha 1: label + team */}
+          {/* Linha 1: label (sem badge de folder — a folder já é contexto da lane) */}
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span
               style={{
@@ -90,21 +90,6 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
                 }}
               >
                 ⚡FORCED
-              </span>
-            )}
-            {data.team && (
-              <span
-                style={{
-                  fontSize: "var(--v2-text-xs)",
-                  color: "var(--v2-text-muted)",
-                  fontFamily: "var(--v2-font-mono)",
-                  padding: "1px 4px",
-                  border: "1px solid var(--v2-border-subtle)",
-                  borderRadius: "var(--v2-radius-sm)",
-                  flexShrink: 0,
-                }}
-              >
-                {data.team}
               </span>
             )}
           </div>

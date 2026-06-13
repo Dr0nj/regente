@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { JobNodeData } from "@/lib/job-config";
 import { todayOrderDate } from "@/lib/orchestrator-model";
+import { useResizablePanel, ResizeHandle } from "./resizable";
 
 /* ──────────────────────────────────────────────────────────────
    MonitoringSidebarV2 — flutuante, clean, densidade alta
@@ -99,6 +100,10 @@ export default function MonitoringSidebarV2({
     });
   };
 
+  const { width, onMouseDown, reset } = useResizablePanel({
+    storageKey: "regente.panel.monitoring.w", defaultWidth: 320, min: 240, max: 640, edge: "right",
+  });
+
   return (
     <aside
       style={{
@@ -106,7 +111,7 @@ export default function MonitoringSidebarV2({
         top: 0,
         left: 0,
         bottom: 0,
-        width: 320,
+        width,
         background: "var(--v2-bg-surface)",
         borderRight: "1px solid var(--v2-border-medium)",
         display: "flex",
@@ -116,6 +121,7 @@ export default function MonitoringSidebarV2({
         overflow: "hidden",
       }}
     >
+      <ResizeHandle edge="right" onMouseDown={onMouseDown} onReset={reset} />
       {/* Header */}
       <div
         style={{

@@ -17,6 +17,7 @@ import {
 import type { JobDefinition } from "@/lib/orchestrator-model";
 import type { JobNodeData } from "@/lib/job-config";
 import { getGitInfo } from "@/lib/git-info";
+import { useResizablePanel, ResizeHandle } from "./resizable";
 
 /* ──────────────────────────────────────────────────────────────
    DesignSidebarV2 — dockada (ancorada à esquerda, sem flutuar)
@@ -79,6 +80,10 @@ export default function DesignSidebarV2({ definitions = [] }: { definitions?: Jo
     { id: "variables", Icon: Variable,   label: "Variables" },
   ];
 
+  const { width, onMouseDown, reset } = useResizablePanel({
+    storageKey: "regente.panel.design.w", defaultWidth: 280, min: 220, max: 520, edge: "right",
+  });
+
   return (
     <aside
       style={{
@@ -86,7 +91,7 @@ export default function DesignSidebarV2({ definitions = [] }: { definitions?: Jo
         top: 0,
         left: 0,
         bottom: 0,
-        width: 280,
+        width,
         display: "flex",
         fontFamily: "var(--v2-font-sans)",
         zIndex: 5,
@@ -94,6 +99,7 @@ export default function DesignSidebarV2({ definitions = [] }: { definitions?: Jo
         background: "var(--v2-bg-surface)",
       }}
     >
+      <ResizeHandle edge="right" onMouseDown={onMouseDown} onReset={reset} />
       {/* Activity bar — coluna vertical de ícones */}
       <nav
         style={{

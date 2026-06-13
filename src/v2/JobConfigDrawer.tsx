@@ -8,6 +8,7 @@ import { DefinitionAuditPanel } from "./DefinitionAuditPanel";
 import { ErrorDialog } from "./ErrorDialog";
 import { getGitInfo, definitionFileUrl } from "@/lib/git-info";
 import { listCalendars } from "@/lib/bloco2-api";
+import { useResizablePanel, ResizeHandle } from "./resizable";
 
 /* ──────────────────────────────────────────────────────────────
    JobConfigDrawer — painel direito (Design). Agora com ABAS:
@@ -111,12 +112,17 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   // Jobs que DEPENDEM deste (this.id ∈ outro.upstream.from) → "dispara".
   const triggers = allDefs.filter((d) => (d.upstream ?? []).some((u) => u.from === definition.id));
 
+  const { width, onMouseDown, reset } = useResizablePanel({
+    storageKey: "regente.panel.jobConfig.w", defaultWidth: 360, min: 280, max: 720, edge: "left",
+  });
+
   return (
     <aside style={{
-      position: "absolute", top: 0, right: 0, bottom: 0, width: 360,
+      position: "absolute", top: 0, right: 0, bottom: 0, width,
       background: "var(--v2-bg-surface)", borderLeft: "1px solid var(--v2-border-medium)",
       display: "flex", flexDirection: "column", fontFamily: "var(--v2-font-sans)", zIndex: 5, overflow: "hidden",
     }}>
+      <ResizeHandle edge="left" onMouseDown={onMouseDown} onReset={reset} />
       {/* Header */}
       <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--v2-border-subtle)", display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--v2-accent-brand)" }} />
