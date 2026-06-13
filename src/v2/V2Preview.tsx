@@ -1101,11 +1101,11 @@ function V2PreviewInner() {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <img
-            src="/regente-logo.png"
+            src="/favicon-r.png"
             alt="Regente"
-            width={22}
-            height={22}
-            style={{ objectFit: "contain", display: "block" }}
+            width={26}
+            height={26}
+            style={{ objectFit: "contain", display: "block", borderRadius: 6 }}
           />
           <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: "0.02em" }}>Regente</span>
           {envLabel && (
