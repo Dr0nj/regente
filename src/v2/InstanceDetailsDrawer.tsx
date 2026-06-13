@@ -380,6 +380,7 @@ const KIND_COLOR: Record<string, string> = {
   released:       "var(--v2-accent-brand)",
   rerun:          "var(--v2-accent-brand)",
   "set-ok":       "var(--v2-accent-brand)",
+  output:         "var(--v2-text-secondary)",
 };
 
 function fmtTS(ts: string): string {
