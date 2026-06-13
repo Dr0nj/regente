@@ -1,163 +1,135 @@
-# Regente Lite — MVP
+<div align="center">
+  <img src="public/favicon-512.png" width="96" alt="Regente" />
+  <h1>Regente</h1>
+  <p><strong>Orquestrador de workflows Git-nativo, inspirado em Control-M.</strong></p>
+</div>
 
-Plataforma serverless de orquestração de jobs com interface visual inspirada em Control-M.
+Regente é um orquestrador de jobs onde **o repositório Git é a fonte da verdade**:
+cada caixinha na tela vira um YAML commitado, e cada YAML no GitHub vira uma
+caixinha. A UX é a de quem opera Control-M (folders, monitoring do dia,
+hold/rerun/force, find & update), e a arquitetura nasce pronta para evoluir até
+serverless — começando **local-first** (roda nas suas máquinas via agente).
+
+> Este repositório é o **frontend web** (React + TypeScript + Vite). O backend é um
+> serviço Go (`regente-server`, GitOps + SQLite) e o executor é um binário Go
+> (`regente-agent`), que rodam separadamente — ver [Arquitetura](#arquitetura).
+
+---
+
+## Conceito
+
+Dois mundos separados, estilo Control-M:
+
+- **Monitoring** — o que está rodando hoje. Resultado da *Daily*. Só consumo:
+  hold / release / cancel / set-ok / rerun / force order, audit por instance, SLA.
+- **Design** — onde as definitions são editadas. Você abre uma ou mais *folders*
+  (clone Git efêmero por sessão), edita no canvas drag-and-drop e dá **Publish**
+  (único caminho de escrita pro GitHub).
+
+**A Daily** roda 1×/dia à meia-noite (BRT): lê o Git, decide o que roda hoje
+(schedule + calendars + dependências + conditions) e materializa *instances*
+**imutáveis** — uma mudança publicada no Design durante o dia só entra na próxima
+daily ou via Force Order manual.
+
+## Funcionalidades
+
+- 🟢 **Git-nativo (GitOps)** — Publish vira commit/PR; mudanças no GitHub voltam
+  pra UI via webhook + polling. Deep-links job→YAML, instance→commit.
+- 🟢 **Executores locais via agente** — `COMMAND` (shell), `SCRIPT` (.sh/.bat/.ps1)
+  e `HTTP`, rodando na máquina onde o agente está (Windows ou Linux). Cada job
+  pode mirar um agente específico ou ser roteado por capability.
+- 🟢 **Schedule estilo Control-M** — dias da semana/mês, N-ésimo dia útil, regras
+  avançadas, janelas e execução cíclica; calendars include/exclude visuais.
+- 🟢 **Dependências entre jobs** com condições (on-success/failure/complete/always).
+- 🟢 **Engines de paridade** — calendars, resources/quotas, conditions, variáveis
+  globais (interpolação), SLA e forecast/analytics.
+- 🟢 **Token do GitHub pela UI** — configurável em runtime (Settings), persistido
+  server-side, sem precisar subir o server com `GITHUB_TOKEN`.
 
 ## Stack
 
-- **Frontend**: React + TypeScript + Vite
-- **UI**: Tailwind CSS + componentes customizados
-- **Canvas**: React Flow (@xyflow/react) para drag-and-drop visual
-- **Auth**: AWS Cognito (via Amplify Auth)
-- **Data**: DynamoDB (via Amplify Data / AppSync GraphQL)
-- **Backend**: AWS Amplify Gen 2
+| Camada | Tecnologia |
+|---|---|
+| Frontend (este repo) | React + TypeScript + Vite, [@xyflow/react](https://reactflow.dev) (canvas), ícones lucide |
+| Backend | Go (`regente-server`) — GitOps + SQLite, WebSocket hub |
+| Executor | Go (`regente-agent`) — conexão outbound, roda COMMAND/SCRIPT/HTTP |
+| Fonte da verdade | Repositório GitHub (YAML em `definitions/<folder>/<id>.yaml`) |
 
-## Como rodar localmente
+## Rodando o frontend
 
-### Pré-requisitos
-
-1. Node.js 18+
-2. Conta AWS configurada (`aws configure`)
-3. Amplify CLI: `npm install -g @aws-amplify/backend-cli`
-
-### Instalar dependências
+Pré-requisitos: Node 18+ e o `regente-server` rodando (ver abaixo).
 
 ```bash
-cd app
 npm install
+cp .env.example .env        # configure VITE_REGENTE_SERVER_URL
+npm run dev                 # http://localhost:5173
 ```
 
-### Iniciar backend sandbox (cria recursos AWS reais para dev)
+Variáveis (`.env`):
 
 ```bash
-cd app
-npx ampx sandbox
+VITE_REGENTE_SERVER_URL=http://localhost:8080   # vazio = modo local (localStorage)
+VITE_REGENTE_TOKEN=dev-token
 ```
 
-Isso vai:
-- Criar um Cognito User Pool (auth)
-- Criar tabelas DynamoDB (Job, Execution)
-- Criar API GraphQL (AppSync)
-- Gerar `amplify_outputs.json` com as configs
+Login padrão de dev: `admin` / `admin`.
 
-### Iniciar frontend
+## Arquitetura
 
-Em outro terminal:
+```
+  ┌──────────────┐    REST + WebSocket    ┌──────────────────┐   git push/pull   ┌──────────┐
+  │  Frontend     │ ─────────────────────▶ │  regente-server   │ ◀───────────────▶ │  GitHub   │
+  │  (este repo)  │ ◀───────────────────── │  (Go, SQLite)     │   (fonte da       │  (YAML)   │
+  └──────────────┘    instance.changed     └──────────────────┘    verdade)        └──────────┘
+                                                    ▲
+                                                    │ WebSocket (agente disca pra fora)
+                                                    │ dispatch ▼   ▲ result
+                                            ┌──────────────────┐
+                                            │  regente-agent    │  roda COMMAND/SCRIPT/HTTP
+                                            │  (seu PC / EC2)   │  no Windows ou Linux
+                                            └──────────────────┘
+```
+
+O `regente-server` e o `regente-agent` (Go) vivem fora deste repositório. Em dev:
 
 ```bash
-cd app
-npm run dev
+# server (GitOps + SQLite)
+cd ../server && go run . -api-token dev-token
+
+# agente executor (na máquina onde os comandos devem rodar)
+cd ../agent  && go run . -server ws://localhost:8080/ws/agent -token dev-token \
+                         -id meu-pc -caps COMMAND,SCRIPT,HTTP
 ```
 
-Acesse `http://localhost:5173`
-
-### Deploy para produção
-
-```bash
-cd app
-npx ampx pipeline-deploy --branch main --app-id SEU_APP_ID
-```
-
-Ou use o Amplify Console na AWS para CI/CD automático via GitHub.
-
-## Estrutura do projeto
+## Estrutura (frontend)
 
 ```
-app/
-├── amplify/
-│   ├── auth/resource.ts          # Config Cognito
-│   ├── data/resource.ts          # Modelos DynamoDB (Job, Execution)
-│   └── backend.ts                # Backend principal
-├── src/
-│   ├── main.tsx                  # Entry point + config Amplify
-│   ├── App.tsx                   # Layout + Authenticator
-│   ├── components/
-│   │   ├── Dashboard.tsx         # Sidebar + stats + canvas
-│   │   ├── JobCanvas.tsx         # Canvas React Flow
-│   │   └── nodes/
-│   │       ├── LambdaNode.tsx    # Node visual Lambda
-│   │       ├── BatchNode.tsx     # Node visual Batch
-│   │       └── ChoiceNode.tsx    # Node visual Choice
-│   └── index.css                 # Tailwind + React Flow styles
-└── amplify_outputs.json          # Gerado pelo sandbox (não comitar)
+src/
+├── v2/                  # UI atual (Monitoring, Design, drawers, dialogs)
+│   ├── V2Preview.tsx    # shell principal (topbar, canvas, modos)
+│   ├── JobConfigDrawer  # edição de job (Geral/Schedule/Calendars/Action/Deps)
+│   ├── ScheduleEditor   # scheduler visual estilo Control-M
+│   └── ...
+├── lib/                 # clientes de API + modelo + adapters
+│   ├── server-client.ts # REST + WS
+│   ├── git-api.ts       # status, token, cleanup, deep-links
+│   ├── agents-api.ts    # agentes online
+│   └── adapters/        # ports & adapters (storage/scheduler/executor)
+└── main.tsx
 ```
 
 ## Roadmap
 
-- [x] Phase 1: Projeto base (auth, modelos, canvas, dashboard)
-- [ ] Phase 2: Formulário de criação de job
-- [ ] Phase 3: Execução de jobs via Step Functions
-- [ ] Phase 4: Status em tempo real e alertas
-- [ ] Phase 5: Calendários e dependências entre jobs
-# React + TypeScript + Vite
+- [x] **GitOps** — Publish, webhook, drift, deep-links, PAT seguro + token via UI
+- [x] **Paridade Control-M** — calendars, resources, conditions, variáveis, SLA, forecast
+- [x] **Daily imutável** — instances congeladas no momento da ordem
+- [x] **Executores locais** — agente COMMAND/SCRIPT/HTTP + targeting por agente
+- [ ] Stream de stdout/stderr no detalhe da instance
+- [ ] Auth por agente (token dedicado)
+- [ ] Retry de execution, `/metrics`, testes E2E
+- [ ] Executores AWS (Lambda/Batch/Glue/Step) — *fim do roadmap*
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+---
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+<sub>Projeto pessoal de portfólio. UI inspirada na operação do Control-M; nenhuma
+relação com a BMC.</sub>
