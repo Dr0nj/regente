@@ -47,6 +47,27 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
         </Section>
       );
 
+    case "SSH":
+      return (
+        <Section label="SSH remoto (agentless)">
+          <Row label="Host">
+            <Input mono value={str("host")} placeholder="10.0.0.5 / ec2-...compute.amazonaws.com" onChange={v => set("host", v)} />
+          </Row>
+          <Row label="Usuário">
+            <Input mono value={str("user")} placeholder="ubuntu / ec2-user" onChange={v => set("user", v)} />
+          </Row>
+          <Row label="Porta (default 22)">
+            <Input mono value={str("port")} placeholder="22" onChange={v => set("port", v)} />
+          </Row>
+          <Row label="Comando">
+            <TextArea mono rows={3} value={str("command")} placeholder="systemctl restart app && echo ok" onChange={v => set("command", v)} />
+          </Row>
+          <Row label="Chave privada (keyPath, opcional)">
+            <Input mono value={str("keyPath")} placeholder="/home/user/.ssh/id_rsa" onChange={v => set("keyPath", v)} />
+          </Row>
+        </Section>
+      );
+
     case "HTTP":
       return (
         <Section label="HTTP request">

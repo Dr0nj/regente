@@ -22,7 +22,7 @@ export interface JobConfigHandlers {
   onClose: () => void;
 }
 
-const JOB_TYPES: JobType[] = ["COMMAND", "SCRIPT", "HTTP", "LAMBDA", "BATCH", "GLUE", "STEP_FUNCTION", "CHOICE", "PARALLEL", "WAIT"];
+const JOB_TYPES: JobType[] = ["COMMAND", "SCRIPT", "SSH", "HTTP", "LAMBDA", "BATCH", "GLUE", "STEP_FUNCTION", "CHOICE", "PARALLEL", "WAIT"];
 type Tab = "general" | "schedule" | "calendars" | "action" | "deps";
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "general", label: "Geral" },

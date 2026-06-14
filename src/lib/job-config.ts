@@ -10,6 +10,7 @@ import {
   Globe,
   Terminal,
   FileCode,
+  Network,
 } from "lucide-react";
 
 /* ──────────────────────────────────────────────────────────────
@@ -24,6 +25,7 @@ import {
 export type JobType =
   | "COMMAND"
   | "SCRIPT"
+  | "SSH"
   | "HTTP"
   | "LAMBDA"
   | "BATCH"
@@ -69,6 +71,7 @@ function make(
 export const JOB_TYPES: Record<JobType, JobTypeConfig> = {
   COMMAND:       make("Command",       "Comando no agente (shell)", Terminal),
   SCRIPT:        make("Script",        "Script .sh/.bat/.ps1 no agente", FileCode),
+  SSH:           make("SSH",           "Comando remoto via SSH (agentless)", Network),
   LAMBDA:        make("Lambda",        "Função serverless",       Zap),
   BATCH:         make("Batch",         "Container / job em lote", Box),
   GLUE:          make("Glue",          "ETL pipeline",            Paintbrush),

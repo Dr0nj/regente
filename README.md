@@ -37,7 +37,12 @@ daily ou via Force Order manual.
   pra UI via webhook + polling. Deep-links job→YAML, instance→commit.
 - 🟢 **Executores locais via agente** — `COMMAND` (shell), `SCRIPT` (.sh/.bat/.ps1)
   e `HTTP`, rodando na máquina onde o agente está (Windows ou Linux). Cada job
-  pode mirar um agente específico ou ser roteado por capability.
+  pode mirar um agente específico ou ser roteado por capability. Tokens **por
+  agente** + agente instalável como serviço (systemd / Tarefa Agendada).
+- 🟢 **SSH agentless** — `SSH` roda comando remoto direto do server (sem agente
+  no alvo), com stream de saída.
+- 🟢 **Retry de execution** — re-tentativa automática em falha (respeita `retries`).
+- 🟢 **Observabilidade** — `/metrics` em formato Prometheus.
 - 🟢 **Schedule estilo Control-M** — dias da semana/mês, N-ésimo dia útil, regras
   avançadas, janelas e execução cíclica; calendars include/exclude visuais.
 - 🟢 **Dependências entre jobs** com condições (on-success/failure/complete/always).
@@ -124,9 +129,12 @@ src/
 - [x] **Paridade Control-M** — calendars, resources, conditions, variáveis, SLA, forecast
 - [x] **Daily imutável** — instances congeladas no momento da ordem
 - [x] **Executores locais** — agente COMMAND/SCRIPT/HTTP + targeting por agente
-- [ ] Stream de stdout/stderr no detalhe da instance
-- [ ] Auth por agente (token dedicado)
-- [ ] Retry de execution, `/metrics`, testes E2E
+- [x] Stream de stdout/stderr no detalhe da instance
+- [x] Auth por agente (token dedicado) + instalação como serviço
+- [x] SSH agentless (comando remoto sem agente no alvo)
+- [x] Retry de execution + `/metrics` (Prometheus) + webhook secret por UI
+- [ ] Reconciler de drift explícito (state machine) — hoje: sync + alerta de drift
+- [ ] Mais testes E2E (publish→daily→execução)
 - [ ] Executores AWS (Lambda/Batch/Glue/Step) — *fim do roadmap*
 
 ---

@@ -119,6 +119,7 @@ export function resolveExecutionLayers(
 const JOB_DURATION_MS: Record<JobType, [number, number]> = {
   COMMAND: [200, 1500],
   SCRIPT: [300, 2000],
+  SSH: [300, 2500],
   LAMBDA: [400, 1200],
   BATCH: [1500, 3500],
   GLUE: [2000, 4000],

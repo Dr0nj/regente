@@ -1,7 +1,7 @@
 // F20 — Admin settings dialog.
 import { useEffect, useState } from "react";
 import { getSettings, putSettings, type ServerSettings } from "../lib/settings-api";
-import { fetchGitStatus, setGitToken, clearGitToken, cleanupGitDB, type GitStatus } from "../lib/git-api";
+import { fetchGitStatus, setGitToken, clearGitToken, cleanupGitDB, setWebhookSecret, type GitStatus } from "../lib/git-api";
 import { invalidateGitInfo } from "../lib/git-info";
 import { listAgents, listAgentTokens, createAgentToken, revokeAgentToken, type AgentInfo, type AgentToken } from "../lib/agents-api";
 
@@ -21,6 +21,7 @@ export function SettingsDialog({ onClose }: Props) {
   const [tokenBusy, setTokenBusy] = useState(false);
   const [tokenMsg, setTokenMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [cleanBusy, setCleanBusy] = useState(false);
+  const [webhookInput, setWebhookInput] = useState("");
 
   // Agentes (B5)
   const [agents, setAgents] = useState<AgentInfo[]>([]);
@@ -96,6 +97,19 @@ export function SettingsDialog({ onClose }: Props) {
       const st = await clearGitToken();
       setGit(st); invalidateGitInfo();
       setTokenMsg({ kind: "ok", text: "Token removido. Modo read-only." });
+    } catch (e) {
+      setTokenMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setTokenBusy(false);
+    }
+  }
+
+  async function handleSaveWebhook() {
+    setTokenBusy(true); setTokenMsg(null);
+    try {
+      const st = await setWebhookSecret(webhookInput.trim());
+      setGit(st); setWebhookInput("");
+      setTokenMsg({ kind: "ok", text: webhookInput.trim() ? "Webhook secret salvo. Configure o mesmo no GitHub." : "Webhook secret removido." });
     } catch (e) {
       setTokenMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -248,6 +262,45 @@ export function SettingsDialog({ onClose }: Props) {
                 >
                   {cleanBusy ? "Limpando…" : "Limpar DB do repositório"}
                 </button>
+              </div>
+
+              {/* P13 — webhook secret (HMAC) */}
+              <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--v2-border-subtle)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, fontSize: 12 }}>
+                  <span style={{ color: "var(--v2-text-muted)" }}>Webhook:</span>
+                  <span style={{ color: git?.webhookConfigured ? "var(--v2-status-ok)" : "var(--v2-text-muted)", fontWeight: 600 }}>
+                    {git?.webhookConfigured ? "secret configurado (HMAC ativo)" : "sem secret (validação inativa)"}
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input
+                    type="password"
+                    value={webhookInput}
+                    onChange={(e) => setWebhookInput(e.target.value)}
+                    placeholder={git?.webhookConfigured ? "•••••• (substituir / vazio remove)" : "secret do webhook do GitHub"}
+                    autoComplete="off"
+                    style={{
+                      flex: 1, padding: "6px 10px", fontSize: 13, fontFamily: "var(--v2-font-mono)",
+                      background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)",
+                      borderRadius: 4, color: "var(--v2-text-primary)", outline: "none", boxSizing: "border-box",
+                    }}
+                  />
+                  <button
+                    onClick={handleSaveWebhook}
+                    disabled={tokenBusy}
+                    style={{
+                      padding: "6px 14px", fontSize: 12, borderRadius: 4, whiteSpace: "nowrap",
+                      background: "transparent", border: "1px solid var(--v2-border-medium)",
+                      color: "var(--v2-text-secondary)", cursor: tokenBusy ? "wait" : "pointer",
+                    }}
+                  >
+                    Salvar webhook
+                  </button>
+                </div>
+                <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 4, display: "block", lineHeight: 1.5 }}>
+                  No GitHub: repo → Settings → Webhooks → payload <code>/api/git/webhook</code>, content-type JSON,
+                  secret igual a este. Mudanças no main voltam pra UI na hora.
+                </span>
               </div>
 
               {tokenMsg && (

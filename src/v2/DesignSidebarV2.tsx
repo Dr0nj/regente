@@ -14,6 +14,7 @@ import {
   Workflow,
   Terminal,
   FileCode,
+  Network,
   type LucideIcon,
 } from "lucide-react";
 import type { JobDefinition } from "@/lib/orchestrator-model";
@@ -43,6 +44,7 @@ const JOB_TYPES: Array<{
 }> = [
   { id: "COMMAND",       label: "Command",       hint: "Comando shell no agente (Win/Linux)",  Icon: Terminal },
   { id: "SCRIPT",        label: "Script",        hint: "Script .sh/.bat/.ps1 no agente",       Icon: FileCode },
+  { id: "SSH",           label: "SSH",           hint: "Comando remoto via SSH (sem agente)",  Icon: Network },
   { id: "HTTP",          label: "HTTP",          hint: "Chamada REST com validação de status", Icon: Globe },
   { id: "WAIT",          label: "Wait",          hint: "Delay / espera programada",            Icon: Clock },
   { id: "CHOICE",        label: "Choice",        hint: "Desvio condicional",                   Icon: GitFork },

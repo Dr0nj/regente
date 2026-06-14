@@ -17,6 +17,8 @@ export interface GitStatus {
   // Token via UI — estado de auth para push/PR
   hasToken?: boolean;
   authMode?: "token" | "none" | string;
+  // P13 — webhook GitHub (HMAC) configurado?
+  webhookConfigured?: boolean;
 }
 
 export interface PRResult {
@@ -68,6 +70,11 @@ export async function clearGitToken(): Promise<GitStatus> {
 /** Remove a SQLite DB poluída no repo (push). Resolve o bug do WAL/DB. */
 export async function cleanupGitDB(): Promise<{ changed: boolean; status?: string; error?: string }> {
   return api("/api/git/cleanup-db", { method: "POST" });
+}
+
+/** P13 — configura o secret HMAC do webhook GitHub (vazio = desabilita). */
+export async function setWebhookSecret(secret: string): Promise<GitStatus> {
+  return api<GitStatus>("/api/git/webhook-secret", { method: "POST", body: JSON.stringify({ secret }) });
 }
 
 export async function fetchDefinitionAudit(team: string, id: string): Promise<DefinitionAuditEntry[]> {
