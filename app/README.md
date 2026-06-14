@@ -1,18 +1,16 @@
 <div align="center">
   <img src="public/favicon-512.png" width="96" alt="Regente" />
-  <h1>Regente</h1>
-  <p><strong>Orquestrador de workflows Git-nativo, inspirado em Control-M.</strong></p>
+  <h1>Regente — Web (frontend)</h1>
+  <p><strong>Frontend do Regente, orquestrador de workflows Git-nativo inspirado em Control-M.</strong></p>
 </div>
 
-Regente é um orquestrador de jobs onde **o repositório Git é a fonte da verdade**:
-cada caixinha na tela vira um YAML commitado, e cada YAML no GitHub vira uma
-caixinha. A UX é a de quem opera Control-M (folders, monitoring do dia,
-hold/rerun/force, find & update), e a arquitetura nasce pronta para evoluir até
-serverless — começando **local-first** (roda nas suas máquinas via agente).
+> 📦 Esta é a pasta **`app/`** do monorepo. Visão geral do projeto, arquitetura e
+> instalação do **server**/**agent** estão no **[README raiz](../README.md)**.
 
-> Este repositório é o **frontend web** (React + TypeScript + Vite). O backend é um
-> serviço Go (`regente-server`, GitOps + SQLite) e o executor é um binário Go
-> (`regente-agent`), que rodam separadamente — ver [Arquitetura](#arquitetura).
+O frontend (React + TypeScript + Vite) é o cliente HTTP/WebSocket do `regente-server`:
+Monitoring (o que roda hoje) e Design (canvas drag-and-drop das definitions, com
+Publish pro Git). A UX é a de quem opera Control-M (folders, hold/rerun/force,
+find & update).
 
 ---
 
