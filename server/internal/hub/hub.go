@@ -1,0 +1,118 @@
+// Package hub — WebSocket hub para clientes web (eventos live) e agents (dispatch).
+//
+// Web clients recebem broadcasts ("instance.changed", "definition.changed", ...).
+// Agents recebem mensagens direcionadas com payload de dispatch e publicam "result".
+package hub
+
+import (
+	"encoding/json"
+	"log"
+	"sync"
+
+	"github.com/gorilla/websocket"
+)
+
+type ClientKind string
+
+const (
+	ClientWeb   ClientKind = "web"
+	ClientAgent ClientKind = "agent"
+)
+
+// Client — conexão WS ativa. Send buffer evita travar o writer.
+type Client struct {
+	ID           string
+	Kind         ClientKind
+	Conn         *websocket.Conn
+	Send         chan []byte
+	Capabilities []string // agents: ["COMMAND","REST",...]
+}
+
+type Hub struct {
+	mu      sync.RWMutex
+	clients map[string]*Client
+	agents  map[string]*Client // indexado por ID
+}
+
+func New() *Hub {
+	return &Hub{
+		clients: map[string]*Client{},
+		agents:  map[string]*Client{},
+	}
+}
+
+func (h *Hub) Register(c *Client) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.clients[c.ID] = c
+	if c.Kind == ClientAgent {
+		h.agents[c.ID] = c
+	}
+}
+
+func (h *Hub) Unregister(c *Client) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if _, ok := h.clients[c.ID]; !ok {
+		return
+	}
+	delete(h.clients, c.ID)
+	if c.Kind == ClientAgent {
+		delete(h.agents, c.ID)
+	}
+	close(c.Send)
+}
+
+// BroadcastWeb envia um evento para todos os clientes web conectados.
+func (h *Hub) BroadcastWeb(event string, payload interface{}) {
+	msg := map[string]interface{}{"event": event, "payload": payload}
+	raw, _ := json.Marshal(msg)
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, c := range h.clients {
+		if c.Kind != ClientWeb {
+			continue
+		}
+		select {
+		case c.Send <- raw:
+		default:
+			log.Printf("[hub] drop msg to web %s (buffer full)", c.ID)
+		}
+	}
+}
+
+// PickAgent retorna o primeiro agent disponível que anuncia a capability.
+// V1: round-robin simples não implementado — pega o primeiro encontrado.
+func (h *Hub) PickAgent(capability string) *Client {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, a := range h.agents {
+		for _, cap := range a.Capabilities {
+			if cap == capability {
+				return a
+			}
+		}
+	}
+	return nil
+}
+
+// GetAgent retorna o agent com ID exato (ou nil).
+func (h *Hub) GetAgent(id string) *Client {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.agents[id]
+}
+
+// OnlineAgents retorna IDs dos agents conectados.
+func (h *Hub) OnlineAgents() []map[string]interface{} {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	out := []map[string]interface{}{}
+	for id, a := range h.agents {
+		out = append(out, map[string]interface{}{
+			"id":           id,
+			"capabilities": a.Capabilities,
+		})
+	}
+	return out
+}

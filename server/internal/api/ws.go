@@ -1,0 +1,132 @@
+package api
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"log"
+	"net/http"
+	"strings"
+
+	"github.com/Dr0nj/regente-server/internal/auth"
+	"github.com/Dr0nj/regente-server/internal/domain"
+	"github.com/Dr0nj/regente-server/internal/hub"
+	"github.com/gorilla/websocket"
+)
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true }, // dev: permissivo; em prod: checar origin
+}
+
+func randID() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func (s *server) wsWeb(w http.ResponseWriter, r *http.Request) {
+	if !s.wsTokenOK(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("[ws/web] upgrade: %v", err)
+		return
+	}
+	c := &hub.Client{
+		ID:   "web-" + randID(),
+		Kind: hub.ClientWeb,
+		Conn: conn,
+		Send: make(chan []byte, 64),
+	}
+	s.cfg.Hub.Register(c)
+	go clientWriter(c)
+	clientReader(c, nil)
+	s.cfg.Hub.Unregister(c)
+}
+
+func (s *server) wsAgent(w http.ResponseWriter, r *http.Request) {
+	// B5 — aceita token POR AGENTE (agent_tokens) ou o token legado/sessão (dev).
+	if !s.agentTokenValid(auth.ExtractToken(r)) && !s.wsTokenOK(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	agentID := r.URL.Query().Get("id")
+	if agentID == "" {
+		agentID = "agent-" + randID()
+	}
+	capStr := r.URL.Query().Get("caps")
+	var caps []string
+	if capStr != "" {
+		caps = strings.Split(capStr, ",")
+	}
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("[ws/agent] upgrade: %v", err)
+		return
+	}
+	c := &hub.Client{
+		ID:           agentID,
+		Kind:         hub.ClientAgent,
+		Conn:         conn,
+		Send:         make(chan []byte, 64),
+		Capabilities: caps,
+	}
+	s.cfg.Hub.Register(c)
+	log.Printf("[ws/agent] %s connected caps=%v", agentID, caps)
+
+	go clientWriter(c)
+	clientReader(c, func(msg []byte) {
+		var ev struct {
+			Event      string `json:"event"`
+			InstanceID string `json:"instanceId"`
+			ExitCode   int    `json:"exitCode"`
+			Output     string `json:"output"`
+			Chunk      string `json:"chunk"`
+		}
+		if err := json.Unmarshal(msg, &ev); err != nil {
+			return
+		}
+		switch ev.Event {
+		case "result":
+			status := domain.StatusOK
+			if ev.ExitCode != 0 {
+				status = domain.StatusNotOK
+			}
+			s.cfg.Scheduler.FinishInstance(ev.InstanceID, status, ev.ExitCode, ev.Output)
+		case "output":
+			// B4 — stream de stdout/stderr: persiste como instance_event (kind=output)
+			// e o LogPanel da UI mostra progressivamente (poll enquanto RUNNING).
+			if ev.InstanceID != "" && ev.Chunk != "" {
+				s.cfg.Scheduler.EmitEvent(ev.InstanceID, "output", "agent", strings.TrimRight(ev.Chunk, "\r\n"))
+			}
+		case "heartbeat":
+			// TODO: gravar last_seen_at
+		}
+	})
+	s.cfg.Hub.Unregister(c)
+	log.Printf("[ws/agent] %s disconnected", agentID)
+}
+
+func clientWriter(c *hub.Client) {
+	for msg := range c.Send {
+		if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+			break
+		}
+	}
+	_ = c.Conn.Close()
+}
+
+func clientReader(c *hub.Client, onMsg func([]byte)) {
+	defer c.Conn.Close()
+	for {
+		_, msg, err := c.Conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		if onMsg != nil {
+			onMsg(msg)
+		}
+	}
+}

@@ -1,0 +1,13 @@
+/regente-server.exe
+/regente.db
+/regente.db-*
+/regente-state.db
+/regente-state.db-*
+/workspace/
+/sessions/
+/.env
+/server.log
+/server-err.log
+/smoke*.log
+/smoke-sid.txt
+/regente-server.exe~

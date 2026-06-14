@@ -1,0 +1,31 @@
+# --- Go binaries ---
+/server/regente-server
+/server/regente-server.exe
+/agent/regente-agent
+/agent/regente-agent.exe
+*.exe~
+dist/
+
+# --- Runtime state (NUNCA versionar) ---
+*.db
+*.db-shm
+*.db-wal
+/server/regente-state.db*
+/server/regente.db*
+/server/workspace/
+/server/sessions/
+
+# --- Logs ---
+*.log
+
+# --- Env / secrets ---
+.env
+secrets.json
+*.pem
+*.key
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

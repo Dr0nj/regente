@@ -1,0 +1,54 @@
+name: Release
+
+# Dispara ao empurrar uma tag de versão, ex.: git tag v0.1.0 && git push --tags
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # necessário para criar o GitHub Release e anexar binários
+
+jobs:
+  build:
+    name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64, ext: "" }
+          - { goos: windows, goarch: amd64, ext: ".exe" }
+          - { goos: darwin, goarch: amd64, ext: "" }
+          - { goos: darwin, goarch: arm64, ext: "" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      # Binários pure-Go (modernc sqlite + pgx) → CGO desligado, cross-compile limpo.
+      - name: Build server
+        working-directory: server
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: go build -trimpath -o ../dist/regente-server_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }} .
+
+      - name: Build agent
+        working-directory: agent
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: go build -trimpath -o ../dist/regente-agent_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }} .
+
+      # Scripts de instalação do agente entram no release uma vez (job linux).
+      - name: Stage install scripts
+        if: matrix.goos == 'linux'
+        run: cp agent/deploy/install-windows.ps1 agent/deploy/install-linux.sh dist/
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true

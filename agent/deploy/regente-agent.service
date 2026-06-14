@@ -1,0 +1,15 @@
+[Unit]
+Description=Regente Agent (executor local)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Substitua os placeholders ou use install-linux.sh (faz isso por você).
+ExecStart=/usr/local/bin/regente-agent -server __SERVER__ -token __TOKEN__ -id __ID__ -caps __CAPS__
+Restart=always
+RestartSec=5
+# Rode como um usuário sem privilégios (ajuste conforme sua necessidade).
+User=__USER__
+
+[Install]
+WantedBy=multi-user.target
