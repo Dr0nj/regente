@@ -133,9 +133,15 @@ src/
 - [x] Auth por agente (token dedicado) + instalação como serviço
 - [x] SSH agentless (comando remoto sem agente no alvo)
 - [x] Retry de execution + `/metrics` (Prometheus) + webhook secret por UI
-- [ ] Reconciler de drift explícito (state machine) — hoje: sync + alerta de drift
-- [ ] Mais testes E2E (publish→daily→execução)
-- [ ] Executores AWS (Lambda/Batch/Glue/Step) — *fim do roadmap*
+
+### Enterprise readiness (em andamento — solidez > velocidade)
+- [ ] **Escala**: storage Postgres/DynamoDB, nós de API stateless, 10k+ jobs/dia
+- [ ] **HA & resiliência**: leader election do scheduler, hub WebSocket distribuído, DR/backup
+- [ ] **Segurança**: SSO (OIDC/SAML/LDAP), RBAC + ACL por folder, secrets manager, mTLS dos agentes, audit imutável/SIEM
+- [ ] **Operação**: tracing (OpenTelemetry), alert routing, upgrades zero-downtime, multi-ambiente, quotas
+- [ ] **Qualidade**: testes E2E + carga + chaos, SLOs
+- [ ] Reconciler de drift explícito (state machine)
+- [ ] Executores AWS (Lambda/Batch/Glue/Step)
 
 ---
 
