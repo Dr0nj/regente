@@ -135,9 +135,13 @@ src/
 - [x] Retry de execution + `/metrics` (Prometheus) + webhook secret por UI
 
 ### Enterprise readiness (em andamento — solidez > velocidade)
-- [ ] **Escala**: storage Postgres/DynamoDB, nós de API stateless, 10k+ jobs/dia
-- [ ] **HA & resiliência**: leader election do scheduler, hub WebSocket distribuído, DR/backup
-- [ ] **Segurança**: SSO (OIDC/SAML/LDAP), RBAC + ACL por folder, secrets manager, mTLS dos agentes, audit imutável/SIEM
+- [x] **Escala — backend Postgres** (além de SQLite): state store plugável por dialeto,
+  flag `-db-driver sqlite|postgres`, migrations versionadas. *(falta: DynamoDB, nós stateless, 10k+ jobs/dia)*
+- [x] **HA — leader election do scheduler**: só o líder materializa a daily/dispatch
+  (`pg_advisory_lock` no Postgres; nó único no SQLite). *(falta: hub WebSocket distribuído, DR/backup)*
+- [x] **Segurança — secrets manager** (provider plugável, tira PAT/secrets do banco em claro;
+  default env+arquivo, Vault/AWS pluggável) **+ SSO/OIDC** (Authorization Code, opt-in via `-auth-mode`;
+  login local segue default). *(falta: SSO ponta-a-ponta com IdP + frontend, RBAC/ACL completo, mTLS dos agentes, audit→SIEM)*
 - [ ] **Operação**: tracing (OpenTelemetry), alert routing, upgrades zero-downtime, multi-ambiente, quotas
 - [ ] **Qualidade**: testes E2E + carga + chaos, SLOs
 - [ ] Reconciler de drift explícito (state machine)
