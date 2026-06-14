@@ -11,3 +11,26 @@ export async function listAgents(): Promise<AgentInfo[]> {
   if (!isServerMode()) return [];
   return api<AgentInfo[]>("/api/agents");
 }
+
+// B5 — tokens por agente (admin).
+export interface AgentToken {
+  id: number;
+  label: string;
+  tokenPrefix: string;
+  createdAt: string;
+  lastUsedAt: string;
+}
+
+export async function listAgentTokens(): Promise<AgentToken[]> {
+  if (!isServerMode()) return [];
+  return api<AgentToken[]>("/api/agents/tokens");
+}
+
+/** Cria um token de agente. O `token` cru só volta aqui, uma vez. */
+export async function createAgentToken(label: string): Promise<{ id: number; label: string; token: string }> {
+  return api("/api/agents/tokens", { method: "POST", body: JSON.stringify({ label }) });
+}
+
+export async function revokeAgentToken(id: number): Promise<void> {
+  await api(`/api/agents/tokens/${id}`, { method: "DELETE" });
+}
