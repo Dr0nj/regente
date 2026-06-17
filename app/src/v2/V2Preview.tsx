@@ -62,6 +62,8 @@ import { LoginForm } from "./LoginForm";
 import { UserMenu } from "./UserMenu";
 import { UsersDialog } from "./UsersDialog";
 import { ControlMPanel } from "./ControlMPanel";
+import { AlertsPanel } from "./AlertsPanel";
+import { setAlertNotifier, getUnacknowledgedCount } from "@/lib/alerting";
 import { SettingsDialog } from "./SettingsDialog";
 import { GitStatusBadge } from "./GitStatusBadge";
 import { PRBannerHost } from "./PRBannerHost";
@@ -72,7 +74,7 @@ import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, type 
 import { toast, ToastHost } from "./Toast";
 import EdgeConditionModal from "./EdgeConditionModal";
 import { getGitInfo, commitUrl } from "@/lib/git-info";
-import { FolderOpen, Play, Zap, GitCommitHorizontal } from "lucide-react";
+import { FolderOpen, Play, Zap, GitCommitHorizontal, Bell } from "lucide-react";
 
 import "@xyflow/react/dist/style.css";
 import "@/index.css";
@@ -495,6 +497,8 @@ function V2PreviewInner() {
   const [authChecked, setAuthChecked] = useState<boolean>(!isServerMode());
   const [showUsers, setShowUsers] = useState(false);
   const [showControlM, setShowControlM] = useState(false);
+  const [showAlerts, setShowAlerts] = useState(false);
+  const [unreadAlerts, setUnreadAlerts] = useState<number>(0);
 
   // === Design sessions (Etapa 3+4+5, 2026-04-26) ===
   // sessionId === null → mostra DesignFolderPickerModal quando entrar em Design.
@@ -643,6 +647,28 @@ function V2PreviewInner() {
 
   // Mantém scheduler com defs atuais
   useEffect(() => { updateSchedulerDefs(defs); }, [defs]);
+
+  // Alerting (Phase 8) — surface fired alerts as toasts and keep the topbar
+  // badge in sync. The notifier is invoked from instance-store when a rule
+  // fires; here we wire it to the UI toast layer.
+  useEffect(() => {
+    setAlertNotifier((event) => {
+      const opts = { detail: event.message };
+      if (event.severity === "critical" || event.severity === "warning") {
+        toast.error(event.ruleName, opts);
+      } else {
+        toast.info(event.ruleName, opts);
+      }
+      setUnreadAlerts(getUnacknowledgedCount());
+    });
+    return () => setAlertNotifier(null);
+  }, []);
+
+  // Recompute unread badge on instance changes (alerts fire during updates)
+  // and whenever the panel toggles (acknowledge happens inside it).
+  useEffect(() => {
+    setUnreadAlerts(getUnacknowledgedCount());
+  }, [instances, showAlerts]);
 
   // F11.8 — persist visibleFolders
   useEffect(() => {
@@ -1397,6 +1423,33 @@ function V2PreviewInner() {
           </>
         )}
 
+        {/* Alerts bell + unread badge (Phase 8) */}
+        <button
+          onClick={() => setShowAlerts(true)}
+          title={unreadAlerts > 0 ? `${unreadAlerts} alerta(s) não reconhecido(s)` : "Alertas"}
+          style={{
+            position: "relative",
+            padding: "5px 8px",
+            background: showAlerts ? "var(--v2-accent-deep)" : "transparent",
+            border: `1px solid ${unreadAlerts > 0 ? "var(--v2-status-failed)" : "var(--v2-border-medium)"}`,
+            color: unreadAlerts > 0 ? "var(--v2-status-failed)" : "var(--v2-text-secondary)",
+            borderRadius: 3, cursor: "pointer",
+            display: "flex", alignItems: "center",
+          }}
+        >
+          <Bell size={13} />
+          {unreadAlerts > 0 && (
+            <span style={{
+              position: "absolute", top: -6, right: -6,
+              minWidth: 16, height: 16, padding: "0 4px",
+              background: "var(--v2-status-failed)", color: "#fff",
+              borderRadius: 8, fontSize: 9, fontWeight: 700,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontFamily: "var(--v2-font-mono)",
+            }}>{unreadAlerts > 99 ? "99+" : unreadAlerts}</span>
+          )}
+        </button>
+
         {me && (
           <UserMenu
             me={me}
@@ -1533,6 +1586,8 @@ function V2PreviewInner() {
         )}
 
         {showControlM && <ControlMPanel onClose={() => setShowControlM(false)} />}
+
+        {showAlerts && <AlertsPanel onClose={() => setShowAlerts(false)} />}
 
         {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
 
