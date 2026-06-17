@@ -9,16 +9,14 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bell, Check, CheckCheck, X } from "lucide-react";
+import type { AlertEvent, AlertRule, AlertSeverity } from "@/lib/alerting";
 import {
-  getAlertEvents,
-  getAlertRules,
-  acknowledgeAlert,
-  acknowledgeAll,
-  toggleAlertRule,
-  type AlertEvent,
-  type AlertRule,
-  type AlertSeverity,
-} from "@/lib/alerting";
+  fetchAlertEvents,
+  fetchAlertRules,
+  ackAlert,
+  ackAllAlerts,
+  toggleRule,
+} from "@/lib/alerts-api";
 
 type Tab = "events" | "rules";
 
@@ -45,7 +43,7 @@ function relativeTime(ts: number): string {
   return new Date(ts).toLocaleString("pt-BR");
 }
 
-export function AlertsPanel({ onClose }: { onClose: () => void }) {
+export function AlertsPanel({ onClose, onChange }: { onClose: () => void; onChange?: () => void }) {
   const [tab, setTab] = useState<Tab>("events");
 
   // ESC fecha o modal
@@ -112,7 +110,7 @@ export function AlertsPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
-          {tab === "events" ? <EventsView /> : <RulesView />}
+          {tab === "events" ? <EventsView onChange={onChange} /> : <RulesView />}
         </div>
       </div>
     </div>
@@ -123,14 +121,18 @@ export function AlertsPanel({ onClose }: { onClose: () => void }) {
 
 type SeverityFilter = "all" | AlertSeverity;
 
-function EventsView() {
-  const [events, setEvents] = useState<AlertEvent[]>(() => getAlertEvents());
+function EventsView({ onChange }: { onChange?: () => void }) {
+  const [events, setEvents] = useState<AlertEvent[]>([]);
+  const [loading, setLoading] = useState(true);
   const [onlyUnack, setOnlyUnack] = useState(false);
   const [severity, setSeverity] = useState<SeverityFilter>("all");
 
   const reload = useCallback(() => {
-    setEvents(getAlertEvents());
+    fetchAlertEvents()
+      .then((evs) => { setEvents(evs); setLoading(false); })
+      .catch(() => setLoading(false));
   }, []);
+  useEffect(() => { reload(); }, [reload]);
 
   const filtered = useMemo(() => {
     let list = [...events].sort((a, b) => b.timestamp - a.timestamp);
@@ -141,8 +143,8 @@ function EventsView() {
 
   const unackCount = useMemo(() => events.filter((e) => !e.acknowledged).length, [events]);
 
-  const handleAck = (id: string) => { acknowledgeAlert(id); reload(); };
-  const handleAckAll = () => { acknowledgeAll(); reload(); };
+  const handleAck = (id: string) => { void ackAlert(id).then(() => { reload(); onChange?.(); }); };
+  const handleAckAll = () => { void ackAllAlerts().then(() => { reload(); onChange?.(); }); };
 
   return (
     <div>
@@ -183,7 +185,9 @@ function EventsView() {
         </button>
       </div>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <EmptyHint title="Carregando…" hint="Buscando alertas." />
+      ) : filtered.length === 0 ? (
         <EmptyHint
           title="Nenhum alerta"
           hint={events.length === 0
@@ -267,10 +271,13 @@ function conditionSummary(rule: AlertRule): string {
 }
 
 function RulesView() {
-  const [rules, setRules] = useState<AlertRule[]>(() => getAlertRules());
-  const reload = useCallback(() => setRules(getAlertRules()), []);
+  const [rules, setRules] = useState<AlertRule[]>([]);
+  const reload = useCallback(() => {
+    fetchAlertRules().then(setRules).catch(() => setRules([]));
+  }, []);
+  useEffect(() => { reload(); }, [reload]);
 
-  const handleToggle = (id: string) => { toggleAlertRule(id); reload(); };
+  const handleToggle = (id: string) => { void toggleRule(id).then(reload); };
 
   return (
     <div style={{ display: "grid", gap: 6 }}>

@@ -223,12 +223,16 @@ func main() {
 	sched.AttachResources(scheduler.NewResourceTracker())
 	sched.AttachConditions(scheduler.NewConditionEngine(database))
 	sched.AttachSLA(scheduler.NewSLAEngine(database, h))
+	alertEngine := scheduler.NewAlertEngine(database, h)
+	alertEngine.SeedDefaults()
+	sched.AttachAlerts(alertEngine)
 	if varStore, err := storage.NewVariableStore(database); err != nil {
 		log.Printf("[bloco2] variables: %v (continuing without globals)", err)
 	} else {
 		sched.AttachVariables(varStore)
 	}
 	log.Printf("[bloco2] calendars/resources/conditions/sla/variables engines attached")
+	log.Printf("[alerts] engine attached (Phase 8)")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
