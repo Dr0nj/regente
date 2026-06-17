@@ -163,6 +163,12 @@ func NewRouter(cfg Config) http.Handler {
 		r.With(s.requireWriterMW).Post("/conditions/{name}/unset", s.unsetCondition)
 		// F19 SLA
 		r.Get("/sla/breaches", s.listSLABreaches)
+		// Phase 8 — Alerting
+		r.Get("/alerts", s.listAlertEvents)
+		r.With(s.requireWriterMW).Post("/alerts/ack-all", s.ackAllAlertEvents)
+		r.With(s.requireWriterMW).Post("/alerts/{id}/ack", s.ackAlertEvent)
+		r.Get("/alerts/rules", s.listAlertRules)
+		r.With(s.requireWriterMW).Post("/alerts/rules/{id}/toggle", s.toggleAlertRule)
 		// F21 Forecast
 		r.Get("/forecast", s.getForecast)
 		// F22 Analytics

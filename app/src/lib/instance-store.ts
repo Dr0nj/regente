@@ -18,6 +18,7 @@ import {
   todayOrderDate,
 } from "@/lib/orchestrator-model";
 import { localLoad, localSave } from "@/lib/persistence";
+import { evaluateAlerts, type EvaluationContext } from "@/lib/alerting";
 
 /* ── Storage ── */
 
@@ -100,6 +101,7 @@ export function updateInstanceStatus(
   const inst = all.find((i) => i.id === instanceId);
   if (!inst) return;
 
+  const prevStatus = inst.status;
   inst.status = status;
   if (extra) Object.assign(inst, extra);
 
@@ -115,6 +117,50 @@ export function updateInstanceStatus(
   }
 
   saveAll(all);
+
+  // Alerting (Phase 8) — evaluate rules when a real run reaches a terminal
+  // state. Only on the first transition into OK/NOTOK (avoids re-fire when a
+  // status is re-applied) and only when the job actually executed (startedAt).
+  const becameTerminal = (status === "OK" || status === "NOTOK")
+    && prevStatus !== "OK" && prevStatus !== "NOTOK";
+  if (becameTerminal && inst.startedAt) {
+    try {
+      evaluateAlerts(buildAlertContext(inst, all));
+    } catch { /* alerting must never break the runtime */ }
+  }
+}
+
+/**
+ * Build the alerting EvaluationContext from an instance and the full store.
+ * Success rate / consecutive failures are derived from prior runs of the same
+ * definition (today), since the metrics subsystem is not wired in browser mode.
+ */
+function buildAlertContext(inst: JobInstance, all: JobInstance[]): EvaluationContext {
+  const history = all
+    .filter((i) => i.definitionId === inst.definitionId
+      && (i.status === "OK" || i.status === "NOTOK")
+      && i.completedAt)
+    .sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0));
+
+  const window = history.slice(-10);
+  const okCount = window.filter((i) => i.status === "OK").length;
+  const recentSuccessRate = window.length > 0 ? okCount / window.length : 1;
+
+  let consecutiveFailures = 0;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].status === "NOTOK") consecutiveFailures++;
+    else break;
+  }
+
+  return {
+    workflowId: inst.definitionId,
+    workflowName: inst.label,
+    status: inst.status === "OK" ? "SUCCESS" : "FAILED",
+    durationMs: inst.durationMs ?? 0,
+    maxJobRetries: Math.max(0, inst.attempts - 1),
+    recentSuccessRate,
+    consecutiveFailures,
+  };
 }
 
 /** Hold an instance (prevent execution) */

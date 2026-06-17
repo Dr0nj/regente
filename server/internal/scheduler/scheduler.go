@@ -48,6 +48,7 @@ type Scheduler struct {
 	resources  *ResourceTracker       // F15
 	conditions *ConditionEngine       // F16
 	sla        *SLAEngine             // F19
+	alerts     *AlertEngine           // Phase 8 alerting
 	variables  *storage.VariableStore // F18 globals
 
 	// === Opção B (2026-04-26) — daily lê de Git ===
@@ -81,6 +82,7 @@ func (s *Scheduler) AttachCalendars(c *storage.CalendarStore) { s.calStore = c }
 func (s *Scheduler) AttachResources(r *ResourceTracker)       { s.resources = r }
 func (s *Scheduler) AttachConditions(c *ConditionEngine)      { s.conditions = c }
 func (s *Scheduler) AttachSLA(sl *SLAEngine)                  { s.sla = sl }
+func (s *Scheduler) AttachAlerts(a *AlertEngine)              { s.alerts = a }
 func (s *Scheduler) AttachVariables(v *storage.VariableStore) { s.variables = v }
 func (s *Scheduler) AttachGit(g *storage.GitOps)              { s.git = g }
 func (s *Scheduler) AttachLeader(l Leader)                    { s.leader = l }
@@ -92,6 +94,7 @@ func (s *Scheduler) isLeader() bool { return s.leader == nil || s.leader.IsLeade
 func (s *Scheduler) Resources() *ResourceTracker       { return s.resources }
 func (s *Scheduler) Conditions() *ConditionEngine      { return s.conditions }
 func (s *Scheduler) SLA() *SLAEngine                   { return s.sla }
+func (s *Scheduler) Alerts() *AlertEngine              { return s.alerts }
 func (s *Scheduler) Calendars() *storage.CalendarStore { return s.calStore }
 func (s *Scheduler) Variables() *storage.VariableStore { return s.variables }
 
@@ -617,6 +620,85 @@ func (s *Scheduler) FinishInstance(id string, status domain.InstanceStatus, exit
 	s.hub.BroadcastWeb("instance.changed", map[string]interface{}{
 		"id": id, "status": string(status), "exitCode": exitCode,
 	})
+	// Phase 8 — avalia regras de alerta na transição terminal (retries já
+	// esgotados neste ponto). Best-effort; nunca quebra o fluxo de finish.
+	if s.alerts != nil && (status == domain.StatusOK || status == domain.StatusNotOK) {
+		s.alerts.Evaluate(s.buildAlertContext(id, status))
+	}
+}
+
+// buildAlertContext monta o AlertContext a partir da instance finalizada e do
+// histórico da mesma definition (success rate / falhas consecutivas).
+func (s *Scheduler) buildAlertContext(id string, status domain.InstanceStatus) AlertContext {
+	var defID, snapshot string
+	var attempts int
+	var startedAt, finishedAt sql.NullTime
+	_ = s.db.QueryRow(
+		`SELECT definition_id, COALESCE(definition_snapshot,''), COALESCE(attempts,1), started_at, finished_at
+		 FROM instances WHERE id=?`, id,
+	).Scan(&defID, &snapshot, &attempts, &startedAt, &finishedAt)
+
+	ctx := AlertContext{
+		WorkflowID:        defID,
+		WorkflowName:      defID,
+		Status:            string(status),
+		MaxJobRetries:     attempts - 1,
+		RecentSuccessRate: 1,
+	}
+	if ctx.MaxJobRetries < 0 {
+		ctx.MaxJobRetries = 0
+	}
+	if startedAt.Valid && finishedAt.Valid {
+		ctx.DurationMs = finishedAt.Time.Sub(startedAt.Time).Milliseconds()
+	}
+	// label do snapshot congelado, se houver.
+	if snapshot != "" {
+		var def domain.JobDefinition
+		if json.Unmarshal([]byte(snapshot), &def) == nil && def.Label != "" {
+			ctx.WorkflowName = def.Label
+		}
+	}
+
+	// Histórico terminal da definition (ordem cronológica).
+	rows, err := s.db.Query(
+		`SELECT status FROM instances
+		 WHERE definition_id=? AND status IN (?,?) AND finished_at IS NOT NULL
+		 ORDER BY finished_at ASC`,
+		defID, string(domain.StatusOK), string(domain.StatusNotOK),
+	)
+	if err == nil {
+		defer rows.Close()
+		var hist []string
+		for rows.Next() {
+			var st string
+			if rows.Scan(&st) == nil {
+				hist = append(hist, st)
+			}
+		}
+		// success rate sobre a janela das últimas 10.
+		window := hist
+		if len(window) > 10 {
+			window = window[len(window)-10:]
+		}
+		if len(window) > 0 {
+			ok := 0
+			for _, st := range window {
+				if st == string(domain.StatusOK) {
+					ok++
+				}
+			}
+			ctx.RecentSuccessRate = float64(ok) / float64(len(window))
+		}
+		// falhas consecutivas no fim do histórico.
+		for i := len(hist) - 1; i >= 0; i-- {
+			if hist[i] == string(domain.StatusNotOK) {
+				ctx.ConsecutiveFailures++
+			} else {
+				break
+			}
+		}
+	}
+	return ctx
 }
 
 // maybeRetry re-dispatcha a instance se ainda há tentativas (def.Retries do

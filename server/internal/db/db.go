@@ -412,10 +412,43 @@ CREATE INDEX IF NOT EXISTS idx_design_sessions_actor ON design_sessions(actor);
 `
 }
 
+// schemaV2 — Phase 8 alerting. Regras (toggleáveis) + eventos disparados.
+// `ts_ms` guarda o epoch em ms para o frontend renderizar sem parse de timezone.
+func schemaV2(idDef, ts string) string {
+	return `
+CREATE TABLE IF NOT EXISTS alert_rules (
+	id               TEXT PRIMARY KEY,
+	name             TEXT NOT NULL,
+	enabled          INTEGER DEFAULT 1,
+	workflow_pattern TEXT NOT NULL DEFAULT '*',
+	condition_json   TEXT NOT NULL,
+	severity         TEXT NOT NULL DEFAULT 'warning',
+	channels         TEXT NOT NULL DEFAULT 'toast',
+	cooldown_ms      INTEGER DEFAULT 60000
+);
+
+CREATE TABLE IF NOT EXISTS alert_events (
+	id            ` + idDef + `,
+	rule_id       TEXT NOT NULL,
+	rule_name     TEXT NOT NULL,
+	severity      TEXT NOT NULL,
+	workflow_id   TEXT NOT NULL,
+	workflow_name TEXT NOT NULL,
+	message       TEXT NOT NULL,
+	acknowledged  INTEGER DEFAULT 0,
+	ts_ms         BIGINT NOT NULL DEFAULT 0,
+	created_at    ` + ts + ` DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_alert_events_ack ON alert_events(acknowledged, ts_ms DESC);
+`
+}
+
 var sqliteMigrations = []migration{
 	{version: 1, sql: schemaV1(sqliteID, "DATETIME")},
+	{version: 2, sql: schemaV2(sqliteID, "DATETIME")},
 }
 
 var pgMigrations = []migration{
 	{version: 1, sql: schemaV1(pgID, "TIMESTAMPTZ")},
+	{version: 2, sql: schemaV2(pgID, "TIMESTAMPTZ")},
 }

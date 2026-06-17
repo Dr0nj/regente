@@ -247,13 +247,26 @@ function buildMessage(rule: AlertRule, ctx: EvaluationContext): string {
 export type AlertNotifier = (event: AlertEvent) => void;
 
 /**
+ * Global notifier — set once by the UI layer (e.g. to surface a toast).
+ * Keeps the firing site (instance-store) decoupled from React/UI.
+ */
+let globalNotifier: AlertNotifier | null = null;
+
+export function setAlertNotifier(fn: AlertNotifier | null): void {
+  globalNotifier = fn;
+}
+
+/**
  * Evaluate all enabled alert rules against an execution context.
  * Returns fired alert events and calls the notifier for each.
+ *
+ * If no explicit notifier is passed, the global notifier (if any) is used.
  */
 export function evaluateAlerts(
   ctx: EvaluationContext,
   notifier?: AlertNotifier,
 ): AlertEvent[] {
+  const notify = notifier ?? globalNotifier ?? undefined;
   const rules = getAlertRules().filter((r) => r.enabled);
   const fired: AlertEvent[] = [];
 
@@ -276,7 +289,7 @@ export function evaluateAlerts(
 
     fired.push(event);
     setCooldown(rule.id, Date.now());
-    notifier?.(event);
+    notify?.(event);
   }
 
   // Persist fired events
