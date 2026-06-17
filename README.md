@@ -69,6 +69,11 @@ daily ou via Force Order manual.
   publicada no dia só entra na próxima daily ou via Force).
 - 🟢 **Retry de execution** — re-tentativa automática em falha (respeita `retries`).
 - 🟢 **Observabilidade** — `/metrics` em formato Prometheus.
+- 🟢 **Alerting (Fase 8)** — regras configuráveis avaliadas ao fim de cada
+  execução (falha / lentidão / retries / taxa de sucesso / falhas consecutivas);
+  eventos com severidade, tela de alertas (sino + badge de não-reconhecidos,
+  ack individual/todos) e disparo em tempo real (toast). Funciona em server mode
+  (Postgres) e local (localStorage).
 - 🟢 **Schedule estilo Control-M** — dias da semana/mês, N-ésimo dia útil, regras
   avançadas, janelas e execução cíclica; calendars include/exclude visuais.
 - 🟢 **Dependências entre jobs** com condições (on-success/failure/complete/always).
@@ -192,9 +197,15 @@ Todas as rotas `/api/*` exigem `Authorization: Bearer <token>`.
 | POST   | `/api/instances/{id}/rerun`           | Rerun                          |
 | POST   | `/api/daily/run`                      | força a daily do dia           |
 | POST   | `/api/definitions/{id}/force`         | Order Force (Control-M)        |
+| POST   | `/api/scheduler/tick`                 | dispara um ciclo (cron externo, `-scheduler=external`) |
+| GET    | `/api/alerts`                         | eventos de alerta              |
+| POST   | `/api/alerts/{id}/ack` · `/api/alerts/ack-all` | reconhece alerta(s)   |
+| GET    | `/api/alerts/rules` · POST `/api/alerts/rules/{id}/toggle` | regras de alerta |
 | GET    | `/api/agents`                         | agents online                  |
 | GET    | `/ws/web?token=...`                   | WS para web (events)           |
-| GET    | `/ws/agent?token=...&id=...&caps=...` | WS para agent (dispatch)       |
+| GET    | `/ws/agent?token=...&id=...&caps=...` | WS para agent (WebSocket)      |
+| GET    | `/api/agent/poll?id=...&caps=...`     | dispatch via long-poll (`-transport=http`) |
+| POST   | `/api/agent/result` · `/api/agent/output` | resultado + stream do agente |
 
 ---
 
@@ -284,7 +295,7 @@ Get-ScheduledTask RegenteAgent     # status
 |---|---|
 | Frontend (este repo) | React + TypeScript + Vite, [@xyflow/react](https://reactflow.dev) (canvas), ícones lucide |
 | Backend | Go (`regente-server`) — GitOps + SQLite/Postgres, WebSocket hub |
-| Executor | Go (`regente-agent`) — conexão outbound, roda COMMAND/SCRIPT/HTTP |
+| Executor | Go (`regente-agent`) — conexão outbound (WS ou HTTP long-poll), roda COMMAND/SCRIPT/HTTP/SSH/WASM |
 | Fonte da verdade | Repositório GitHub (YAML em `definitions/<folder>/<id>.yaml`) |
 
 ### Rodando o frontend
@@ -315,11 +326,13 @@ src/
 │   ├── V2Preview.tsx    # shell principal (topbar, canvas, modos)
 │   ├── JobConfigDrawer  # edição de job (Geral/Schedule/Calendars/Action/Deps)
 │   ├── ScheduleEditor   # scheduler visual estilo Control-M
+│   ├── AlertsPanel.tsx  # tela de alertas (eventos + regras) — Fase 8
 │   └── ...
 ├── lib/                 # clientes de API + modelo + adapters
 │   ├── server-client.ts # REST + WS
 │   ├── git-api.ts       # status, token, cleanup, deep-links
 │   ├── agents-api.ts    # agentes online
+│   ├── alerts-api.ts    # alertas (facade dual-mode server/local)
 │   └── adapters/        # ports & adapters (storage/scheduler/executor)
 └── main.tsx
 ```
