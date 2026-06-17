@@ -362,7 +362,20 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 - [ ] **Operação**: tracing (OpenTelemetry), alert routing, upgrades zero-downtime, multi-ambiente, quotas
 - [ ] **Qualidade**: testes E2E + carga + chaos, SLOs
 - [ ] Reconciler de drift explícito (state machine)
-- [ ] Executores AWS (Lambda/Batch/Glue/Step)
+
+### Serverless portátil (sem lock-in) — ver [`docs/arquitetura-futuro.md`](docs/arquitetura-futuro.md)
+Estratégia: **container scale-to-zero + estado/gatilho externalizados**, não FaaS.
+A mesma imagem OCI roda em Knative/Cloud Run/Fly/App Runner; estado em Postgres
+(qualquer compatível), gatilho via cron externo. Nada amarra a AWS.
+- [x] **Fase 1 — gatilho externalizado**: `Tick()` idempotente, flags
+  `-scheduler=internal|external` e `-role=all|api|scheduler`, endpoint
+  `POST /api/scheduler/tick`, artefatos em [`deploy/`](deploy) (Dockerfile +
+  Knative + CronJob). Scale-to-zero do control plane.
+- [x] **Fase 2 — transporte plugável (seam)**: interface `Bus` desacopla o
+  scheduler do WebSocket hub. *(projetado: adapters NATS e SSE/long-poll, hub distribuído)*
+- [◑] **Fase 3 — executores como plugins**: roteamento por capability já é o
+  seam. *(projetado: executor WASM, adapters AWS/GCP/k8s por capability, durable
+  execution opt-in via Temporal/Restate, Postgres-como-fila)*
 
 ---
 

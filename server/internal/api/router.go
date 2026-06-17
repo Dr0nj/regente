@@ -104,6 +104,8 @@ func NewRouter(cfg Config) http.Handler {
 		// Daily + Force (Control-M parity)
 		r.With(s.requireWriterMW).Post("/daily/run", s.runDaily)
 		r.With(s.requireWriterMW).Post("/definitions/{id}/force", s.forceOrder)
+		// Fase 1 (serverless) — tick sob demanda para cron externo (scheduler=external)
+		r.With(s.requireWriterMW).Post("/scheduler/tick", s.schedulerTick)
 
 		// F11.8 — Find & Update / Mass Update (bulk, transacional por item)
 		r.With(s.requireWriterMW).Post("/bulk/instances", s.bulkInstances)

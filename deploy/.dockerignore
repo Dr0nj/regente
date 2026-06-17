@@ -1,0 +1,8 @@
+# Contexto de build enxuto — só o módulo server importa para a imagem.
+app/node_modules
+app/dist
+**/*.db
+**/*.db-*
+.git
+sessions/
+workspace/

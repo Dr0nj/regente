@@ -1,0 +1,46 @@
+# Knative Service — "serverless portátil" sem lock-in de fornecedor.
+# Knative é CNCF e roda em qualquer Kubernetes (GKE, EKS, AKS, on-prem, kind).
+# A MESMA imagem roda em Cloud Run / Fly / App Runner / Container Apps trocando
+# só este manifesto. Ver docs/arquitetura-futuro.md (Fase 1).
+#
+# Pré-requisitos:
+#   - Postgres acessível (use serverless compatível com o protocolo: Neon,
+#     Supabase, Cloud SQL… — é só Postgres, sem amarrar a nuvem).
+#   - Secret 'regente-secrets' com REGENTE_DB e REGENTE_TOKEN.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: regente-server
+spec:
+  template:
+    metadata:
+      annotations:
+        # Scale-to-zero: sem tráfego, zero réplicas (sem custo ocioso).
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "5"
+    spec:
+      containerConcurrency: 80
+      containers:
+        - image: ghcr.io/dr0nj/regente-server:latest
+          ports:
+            - containerPort: 8080
+          args:
+            - "-addr=:8080"
+            - "-db-driver=postgres"
+            # Fase 1: sem ticker interno; o tick vem do CronJob externo.
+            # Isso é o que permite escalar a zero entre execuções.
+            - "-scheduler=external"
+          env:
+            - name: REGENTE_DB_DRIVER
+              value: postgres
+            - name: REGENTE_DB
+              valueFrom:
+                secretKeyRef: { name: regente-secrets, key: REGENTE_DB }
+            - name: REGENTE_TOKEN
+              valueFrom:
+                secretKeyRef: { name: regente-secrets, key: REGENTE_TOKEN }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits: { cpu: "1", memory: "512Mi" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8080 }

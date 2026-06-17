@@ -172,6 +172,15 @@ func (s *server) runDaily(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]interface{}{"orderDate": today, "created": created})
 }
 
+// schedulerTick — Fase 1 (serverless): dispara um ciclo de scheduling sob
+// demanda. Pensado para -scheduler=external, onde um cron externo (Cloud
+// Scheduler, k8s CronJob, GitHub Actions) bate aqui em vez do ticker interno.
+// Idempotente e leader-guarded; seguro chamar com frequência.
+func (s *server) schedulerTick(w http.ResponseWriter, r *http.Request) {
+	s.cfg.Scheduler.Tick()
+	writeJSON(w, 200, map[string]interface{}{"ok": true, "at": time.Now().UTC().Format(time.RFC3339)})
+}
+
 func (s *server) forceOrder(w http.ResponseWriter, r *http.Request) {
 	defID := chi.URLParam(r, "id")
 	// F11.10b — precisa de write na folder da definition.

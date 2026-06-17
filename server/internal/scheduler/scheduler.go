@@ -35,7 +35,7 @@ type Settings struct {
 type Scheduler struct {
 	store *storage.FileStore
 	db    *db.DB
-	hub   *hub.Hub
+	hub   Bus
 	tick  time.Duration
 
 	mu       sync.Mutex
@@ -56,6 +56,18 @@ type Scheduler struct {
 
 	// === G1 (2026-06-14) — HA: só o líder materializa a daily + dispatch ===
 	leader Leader
+}
+
+// Bus — Fase 2 (futuro serverless): transporte do control-plane. Abstrai a
+// difusão de eventos para a web e o roteamento de dispatch para agentes, de
+// modo que o WebSocket hub (default) possa ser trocado por NATS/SSE/long-poll
+// sem tocar no core do scheduler (ver docs/arquitetura-futuro.md). *hub.Hub
+// satisfaz esta interface; o tipo hub.Client segue compartilhado por ser o
+// canal de envio concreto para o agente.
+type Bus interface {
+	BroadcastWeb(event string, payload interface{})
+	PickAgent(capability string) *hub.Client
+	GetAgent(id string) *hub.Client
 }
 
 // Leader — G1 HA. Só o nó líder roda a daily automática e o tick de dispatch;
@@ -116,6 +128,8 @@ func (s *Scheduler) Defs() []domain.JobDefinition {
 	return out
 }
 
+// Run roda o loop interno de scheduling (modo daemon clássico): a cada `tick`
+// dispara Tick(). Usado quando -scheduler=internal (default).
 func (s *Scheduler) Run(ctx context.Context) {
 	s.reloadDefs()
 	t := time.NewTicker(s.tick)
@@ -125,15 +139,24 @@ func (s *Scheduler) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			// G1 — só o líder materializa a daily e despacha. Followers servem
-			// API e ficam prontos para assumir se o líder cair.
-			if !s.isLeader() {
-				continue
-			}
-			s.autoDailyIfDue()
-			s.tickOnce()
+			s.Tick()
 		}
 	}
+}
+
+// Tick executa um ciclo de scheduling: materializa a daily se devida e avalia
+// deps/dispatch uma vez. É idempotente (claim atômico em startInstance + checks
+// de existência na daily), então pode ser disparado por um cron externo
+// (-scheduler=external + POST /api/scheduler/tick) num deploy serverless
+// scale-to-zero, sem o ticker em goroutine. Fase 1 — ver docs/arquitetura-futuro.md.
+//
+// G1 — só o líder materializa a daily e despacha; followers retornam cedo.
+func (s *Scheduler) Tick() {
+	if !s.isLeader() {
+		return
+	}
+	s.autoDailyIfDue()
+	s.tickOnce()
 }
 
 func (s *Scheduler) reloadDefs() {

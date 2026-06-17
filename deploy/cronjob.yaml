@@ -1,0 +1,41 @@
+# Gatilho de tempo EXTERNALIZADO (Fase 1) — o coração da estratégia serverless.
+#
+# Em vez do ticker em goroutine (que exige um processo sempre-ligado), um cron
+# externo bate em POST /api/scheduler/tick. O endpoint é idempotente e
+# leader-guarded, então pode ser chamado com frequência sem risco. Entre ticks,
+# o Knative Service escala a zero.
+#
+# Este exemplo usa um Kubernetes CronJob, mas QUALQUER cron serve — e essa é a
+# defesa anti-lock-in: Cloud Scheduler (GCP), EventBridge Scheduler (AWS),
+# GitHub Actions `schedule`, Cloud Scheduler do Fly, ou um systemd timer.
+# Trocar o cron NÃO toca no código.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: regente-tick
+spec:
+  # A cada minuto: dirige tanto a daily (autoDailyIfDue) quanto o dispatch.
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 50
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: tick
+              image: curlimages/curl:8.11.0
+              args:
+                - "-sS"
+                - "-X"
+                - "POST"
+                - "-H"
+                - "Authorization: Bearer $(REGENTE_TOKEN)"
+                - "http://regente-server.default.svc.cluster.local/api/scheduler/tick"
+              env:
+                - name: REGENTE_TOKEN
+                  valueFrom:
+                    secretKeyRef: { name: regente-secrets, key: REGENTE_TOKEN }

@@ -39,9 +39,12 @@ func main() {
 		dbPath      = flag.String("db", "./regente.db", "DB DSN: caminho do arquivo SQLite, ou connection string Postgres quando -db-driver=postgres")
 		dbDriver    = flag.String("db-driver", envOr("REGENTE_DB_DRIVER", "sqlite"), "State store backend: sqlite | postgres")
 		secretsFile = flag.String("secrets-file", envOr("REGENTE_SECRETS_FILE", ""), "H3: arquivo JSON de segredos {\"github_token\":...}; env REGENTE_SECRET_<KEY> tem prioridade")
-		tickMs      = flag.Int("tick-ms", 2000, "Scheduler tick interval (ms)")
-		gitEnable   = flag.Bool("git-commit", false, "Commit saves via git (workspace must be a git repo)")
-		apiToken    = flag.String("api-token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token for API + WS")
+		tickMs      = flag.Int("tick-ms", 2000, "Scheduler tick interval (ms) — usado no modo internal")
+		// Fase 1/2 (serverless) — papel do processo + origem do tick. Ver docs/arquitetura-futuro.md.
+		role          = flag.String("role", envOr("REGENTE_ROLE", "all"), "Process role: all | api | scheduler")
+		schedulerMode = flag.String("scheduler", envOr("REGENTE_SCHEDULER", "internal"), "Scheduler trigger: internal (goroutine ticker) | external (cron via POST /api/scheduler/tick)")
+		gitEnable     = flag.Bool("git-commit", false, "Commit saves via git (workspace must be a git repo)")
+		apiToken      = flag.String("api-token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token for API + WS")
 
 		// F13 GitOps — defaults apontam pro regente-workspace (padrão, não configuração)
 		gitSource    = flag.String("git-source", envOr("REGENTE_GIT_SOURCE", "https://github.com/Dr0nj/regente-workspace.git"), "Git remote URL for workspace source-of-truth")
@@ -249,7 +252,23 @@ func main() {
 		log.Printf("[ha] leader election: %s", leader.SingleNode{}.Describe())
 	}
 
-	go sched.Run(ctx)
+	// Fase 1/2 (serverless) — modo de scheduler + papel do processo.
+	//   -role=all|api|scheduler   (REGENTE_ROLE)   — quais responsabilidades este nó assume
+	//   -scheduler=internal|external (REGENTE_SCHEDULER) — ticker em goroutine vs cron externo
+	// Defaults (all+internal) = daemon clássico, comportamento idêntico ao anterior.
+	runsScheduler := *role == "all" || *role == "scheduler"
+	switch {
+	case !runsScheduler:
+		log.Printf("[scheduler] role=%s — este nó NÃO roda scheduling (só serve API)", *role)
+	case *schedulerMode == "external":
+		// Sem ticker interno: defs carregadas no boot; cron externo bate em
+		// POST /api/scheduler/tick para dirigir daily+dispatch (scale-to-zero).
+		sched.ReloadDefs()
+		log.Printf("[scheduler] mode=external — sem ticker interno; dirija via POST /api/scheduler/tick")
+	default:
+		go sched.Run(ctx)
+		log.Printf("[scheduler] mode=internal — ticker a cada %s", time.Duration(*tickMs)*time.Millisecond)
+	}
 
 	// F13.1 — polling opcional
 	if gitOps != nil && *gitPollSec > 0 {
