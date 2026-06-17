@@ -33,11 +33,17 @@ type Config struct {
 	AppURL string // destino do redirect pós-login OIDC (ex.: http://localhost:5173)
 }
 
-type server struct{ cfg Config }
+type server struct {
+	cfg         Config
+	agentBroker *agentBroker // Fase 2 — transporte HTTP long-poll (nil se sem hub)
+}
 
 // NewRouter monta o router principal (REST + WS).
 func NewRouter(cfg Config) http.Handler {
 	s := &server{cfg: cfg}
+	if cfg.Hub != nil {
+		s.agentBroker = newAgentBroker(cfg.Hub)
+	}
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RealIP)
@@ -186,6 +192,12 @@ func NewRouter(cfg Config) http.Handler {
 	// WebSockets (auth via query ?token=...)
 	r.Get("/ws/web", s.wsWeb)
 	r.Get("/ws/agent", s.wsAgent)
+
+	// Fase 2 — transporte HTTP long-poll p/ agentes (auth própria por agent token).
+	// Fora do grupo /api (que exige sessão/legacy), como o /ws/agent.
+	r.Get("/api/agent/poll", s.agentPoll)
+	r.Post("/api/agent/result", s.agentResult)
+	r.Post("/api/agent/output", s.agentOutput)
 
 	// F13.3 — webhook GitHub (público; auth via HMAC do payload)
 	r.Post("/api/git/webhook", s.gitWebhook)

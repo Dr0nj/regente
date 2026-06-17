@@ -6,11 +6,13 @@
 // "result" na mesma conexão.
 //
 // Uso:
-//   regente-agent -server ws://localhost:8080/ws/agent -token dev-token -id agent-macbook
+//
+//	regente-agent -server ws://localhost:8080/ws/agent -token dev-token -id agent-macbook
 package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -28,16 +30,31 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
+	"github.com/tetratelabs/wazero/sys"
 )
 
 func main() {
 	var (
-		server  = flag.String("server", "ws://localhost:8080/ws/agent", "regente-server WebSocket URL")
-		token   = flag.String("token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token")
-		agentID = flag.String("id", hostnameOr("agent-local"), "Agent ID (unique)")
-		caps    = flag.String("caps", "COMMAND,SCRIPT,HTTP,REST", "Comma-separated capabilities advertised")
+		server    = flag.String("server", "ws://localhost:8080/ws/agent", "regente-server WebSocket URL")
+		token     = flag.String("token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token")
+		agentID   = flag.String("id", hostnameOr("agent-local"), "Agent ID (unique)")
+		caps      = flag.String("caps", "COMMAND,SCRIPT,HTTP,REST,WASM", "Comma-separated capabilities advertised")
+		transport = flag.String("transport", envOr("REGENTE_AGENT_TRANSPORT", "ws"), "Transporte: ws (WebSocket) | http (long-poll, serverless-friendly)")
 	)
 	flag.Parse()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	// Fase 2 — transporte HTTP long-poll: control plane stateless (scale-to-zero).
+	if strings.EqualFold(*transport, "http") {
+		base := httpBase(*server)
+		log.Printf("regente-agent id=%s caps=%s transport=http -> %s", *agentID, *caps, base)
+		runAgentHTTP(base, *token, *agentID, *caps, stop)
+		return
+	}
 
 	u, err := url.Parse(*server)
 	if err != nil {
@@ -49,10 +66,7 @@ func main() {
 	q.Set("caps", *caps)
 	u.RawQuery = q.Encode()
 
-	log.Printf("regente-agent id=%s caps=%s -> %s", *agentID, *caps, *server)
-
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	log.Printf("regente-agent id=%s caps=%s transport=ws -> %s", *agentID, *caps, *server)
 
 	for {
 		select {
@@ -150,6 +164,103 @@ func runAgent(wsURL string) error {
 	}
 }
 
+// httpBase converte a -server (ws://…/ws/agent) na origem HTTP do control plane.
+// Aceita também http(s):// direto.
+func httpBase(server string) string {
+	b := server
+	b = strings.Replace(b, "wss://", "https://", 1)
+	b = strings.Replace(b, "ws://", "http://", 1)
+	b = strings.TrimSuffix(b, "/ws/agent")
+	return strings.TrimRight(b, "/")
+}
+
+// runAgentHTTP — loop de long-poll (transporte HTTP, Fase 2). Resiliente:
+// erros de rede viram retry com backoff curto; não derruba o processo.
+func runAgentHTTP(base, token, id, caps string, stop <-chan os.Signal) {
+	pollURL := base + "/api/agent/poll?id=" + url.QueryEscape(id) + "&caps=" + url.QueryEscape(caps)
+	// Client com timeout > janela de long-poll do server (25s) para não cortar.
+	client := &http.Client{Timeout: 35 * time.Second}
+
+	post := func(path string, v interface{}) {
+		raw, _ := json.Marshal(v)
+		req, err := http.NewRequest("POST", base+path, bytes.NewReader(raw))
+		if err != nil {
+			return
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		if res, err := http.DefaultClient.Do(req); err == nil {
+			res.Body.Close()
+		} else {
+			log.Printf("post %s: %v", path, err)
+		}
+	}
+
+	for {
+		select {
+		case <-stop:
+			log.Println("shutting down")
+			return
+		default:
+		}
+
+		req, _ := http.NewRequest("GET", pollURL, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		res, err := client.Do(req)
+		if err != nil {
+			log.Printf("poll: %v (retry in 3s)", err)
+			if sleepOrStop(stop, 3*time.Second) {
+				return
+			}
+			continue
+		}
+		if res.StatusCode == http.StatusNoContent {
+			res.Body.Close()
+			continue // nada pendente; re-polla imediatamente
+		}
+		if res.StatusCode != http.StatusOK {
+			res.Body.Close()
+			log.Printf("poll: HTTP %d (retry in 3s)", res.StatusCode)
+			if sleepOrStop(stop, 3*time.Second) {
+				return
+			}
+			continue
+		}
+		raw, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+
+		var job struct {
+			Event      string                 `json:"event"`
+			InstanceID string                 `json:"instanceId"`
+			JobType    string                 `json:"jobType"`
+			Params     map[string]interface{} `json:"params"`
+			Timeout    int                    `json:"timeout"`
+		}
+		if err := json.Unmarshal(raw, &job); err != nil || job.Event != "dispatch" {
+			continue
+		}
+		log.Printf("dispatch instance=%s jobType=%s", job.InstanceID, job.JobType)
+		go func() {
+			emit := func(chunk string) {
+				post("/api/agent/output", map[string]interface{}{"instanceId": job.InstanceID, "chunk": chunk})
+			}
+			code, out := executeJob(job.JobType, job.Params, job.Timeout, emit)
+			post("/api/agent/result", map[string]interface{}{"instanceId": job.InstanceID, "exitCode": code, "output": out})
+			log.Printf("instance=%s done exitCode=%d", job.InstanceID, code)
+		}()
+	}
+}
+
+// sleepOrStop espera d ou o sinal de parada; retorna true se foi parada.
+func sleepOrStop(stop <-chan os.Signal, d time.Duration) bool {
+	select {
+	case <-stop:
+		return true
+	case <-time.After(d):
+		return false
+	}
+}
+
 func executeJob(jobType string, params map[string]interface{}, timeoutSec int, emit func(string)) (int, string) {
 	switch strings.ToUpper(jobType) {
 	case "COMMAND":
@@ -158,6 +269,8 @@ func executeJob(jobType string, params map[string]interface{}, timeoutSec int, e
 		return runScript(params, timeoutSec, emit)
 	case "HTTP", "REST":
 		return runREST(params, timeoutSec)
+	case "WASM":
+		return runWASM(params, timeoutSec, emit)
 	default:
 		return -1, fmt.Sprintf("unsupported jobType %q", jobType)
 	}
@@ -283,7 +396,8 @@ func runCommand(params map[string]interface{}, timeoutSec int, emit func(string)
 
 // runREST — executa uma chamada HTTP.
 // Params: method (default GET), url (obrigatório), headers (map), body (string),
-//         expectStatus ([]int opcional — se definido e não bater, vira falha).
+//
+//	expectStatus ([]int opcional — se definido e não bater, vira falha).
 func runREST(params map[string]interface{}, timeoutSec int) (int, string) {
 	method, _ := params["method"].(string)
 	if method == "" {
@@ -351,6 +465,91 @@ func toInt(v interface{}) (int, bool) {
 		return n, true
 	}
 	return 0, false
+}
+
+// runWASM — executor WASM (Fase 3). Roda um módulo WebAssembly WASI no próprio
+// agent via wazero (runtime pure-Go, sem CGO — mesmo ethos do SQLite modernc).
+// Sandbox por construção: o módulo só enxerga o que for explicitamente provido.
+//
+// Params: wasmPath (arquivo local) OU wasmUrl (baixa o .wasm); args (string),
+//
+//	stdin (string). O módulo deve ser um "command" WASI (exporta _start),
+//	compilável de Rust/Go/TinyGo/C com target wasm32-wasi.
+func runWASM(params map[string]interface{}, timeoutSec int, emit func(string)) (int, string) {
+	var wasmBytes []byte
+	if path, _ := params["wasmPath"].(string); path != "" {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return -1, "read wasm: " + err.Error()
+		}
+		wasmBytes = b
+	} else if wurl, _ := params["wasmUrl"].(string); wurl != "" {
+		b, err := downloadWASM(wurl, timeoutSec)
+		if err != nil {
+			return -1, err.Error()
+		}
+		wasmBytes = b
+	} else {
+		return -1, "missing 'wasmPath' or 'wasmUrl' param"
+	}
+	args, _ := params["args"].(string)
+	stdin, _ := params["stdin"].(string)
+	if timeoutSec <= 0 {
+		timeoutSec = 300
+	}
+	return execWASM(wasmBytes, args, stdin, timeoutSec, emit)
+}
+
+// execWASM instancia e roda o módulo (testável isoladamente). Captura
+// stdout+stderr no buffer e os streama via emit; o exit code WASI vira o
+// exitCode do job (0 = OK).
+func execWASM(wasmBytes []byte, argStr, stdin string, timeoutSec int, emit func(string)) (int, string) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
+	defer cancel()
+
+	var buf bytes.Buffer
+	sw := &streamWriter{buf: &buf, emit: emit}
+
+	rt := wazero.NewRuntime(ctx)
+	defer rt.Close(ctx)
+	wasi_snapshot_preview1.MustInstantiate(ctx, rt)
+
+	argv := []string{"job"} // args[0] = nome do "programa" (convenção WASI)
+	if argStr != "" {
+		argv = append(argv, strings.Fields(argStr)...)
+	}
+	cfg := wazero.NewModuleConfig().WithStdout(sw).WithStderr(sw).WithArgs(argv...)
+	if stdin != "" {
+		cfg = cfg.WithStdin(strings.NewReader(stdin))
+	}
+
+	_, err := rt.InstantiateWithConfig(ctx, wasmBytes, cfg)
+	code := 0
+	if err != nil {
+		if ee, ok := err.(*sys.ExitError); ok {
+			code = int(ee.ExitCode()) // exit(n) do módulo
+		} else {
+			code = -1
+			buf.WriteString("\n" + err.Error())
+		}
+	}
+	return code, buf.String()
+}
+
+func downloadWASM(url string, timeoutSec int) ([]byte, error) {
+	if timeoutSec <= 0 {
+		timeoutSec = 60
+	}
+	client := &http.Client{Timeout: time.Duration(timeoutSec) * time.Second}
+	res, err := client.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("download wasm: %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		return nil, fmt.Errorf("download wasm: HTTP %d", res.StatusCode)
+	}
+	return io.ReadAll(res.Body)
 }
 
 func hostnameOr(def string) string {

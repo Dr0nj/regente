@@ -215,8 +215,13 @@ em tempo real** (aparece no detalhe da instance).
 | `COMMAND` | Comando no shell do SO (`powershell -Command` no Windows, `sh -c` no Linux) | `command`, `cwd?` |
 | `SCRIPT` | Executa um script; interpretador pela extensão (`.ps1`/`.bat`/`.sh`) | `scriptPath`, `args?`, `cwd?` |
 | `HTTP` | Chamada REST com validação de status | `method`, `url`, `headers?`, `body?`, `expectStatus?` |
+| `WASM` | Roda um módulo WebAssembly WASI sandboxed via [wazero](https://wazero.dev) (pure-Go, sem CGO) | `wasmPath` \| `wasmUrl`, `args?`, `stdin?` |
 
 > `SSH` (comando remoto agentless) **não** usa o agente — roda no próprio server.
+
+**Transporte** (`-transport`): `ws` (WebSocket, default) ou `http` (long-poll
+serverless-friendly — control plane stateless/scale-to-zero). Ver
+[`docs/arquitetura-futuro.md`](docs/arquitetura-futuro.md).
 
 ### Build & rodar (foreground)
 
@@ -371,11 +376,14 @@ A mesma imagem OCI roda em Knative/Cloud Run/Fly/App Runner; estado em Postgres
   `-scheduler=internal|external` e `-role=all|api|scheduler`, endpoint
   `POST /api/scheduler/tick`, artefatos em [`deploy/`](deploy) (Dockerfile +
   Knative + CronJob). Scale-to-zero do control plane.
-- [x] **Fase 2 — transporte plugável (seam)**: interface `Bus` desacopla o
-  scheduler do WebSocket hub. *(projetado: adapters NATS e SSE/long-poll, hub distribuído)*
-- [◑] **Fase 3 — executores como plugins**: roteamento por capability já é o
-  seam. *(projetado: executor WASM, adapters AWS/GCP/k8s por capability, durable
-  execution opt-in via Temporal/Restate, Postgres-como-fila)*
+- [x] **Fase 2 — transporte plugável**: interface `Bus` desacopla o scheduler do
+  WebSocket hub **+ transporte HTTP long-poll** (`-transport=http` no agent;
+  `/api/agent/poll|result|output`) para control plane stateless. *(projetado:
+  adapter NATS, hub distribuído)*
+- [x] **Fase 3 — executores como plugins**: roteamento por capability é o seam
+  **+ executor WASM** (`jobType: WASM` via wazero, pure-Go/sem CGO, sandbox WASI).
+  *(projetado: adapters AWS/GCP/k8s por capability, durable execution opt-in,
+  Postgres-como-fila)*
 
 ---
 

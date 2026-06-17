@@ -127,10 +127,10 @@ diária (em vez de checar a cada tick), e expor um `/api/scheduler/daily` dedica
 
 ---
 
-## 5. Fase 2 — transporte de agentes plugável (BusPort)  ◑ seam aplicado, adapters projetados
+## 5. Fase 2 — transporte de agentes plugável (BusPort)  ✅ seam + long-poll aplicados
 
 **Objetivo:** o WebSocket hub é a última peça que exige persistência. Abstrair o
-transporte para poder trocá-lo sem tocar no core.
+transporte e oferecer uma via stateless para deploys serverless.
 
 **Implementado neste repo:**
 
@@ -142,54 +142,62 @@ transporte para poder trocá-lo sem tocar no core.
       GetAgent(id string) *hub.Client
   }
   ```
-  O scheduler agora depende de `Bus`, não de `*hub.Hub`. `*hub.Hub` satisfaz a
-  interface (default WebSocket). Esse é o **seam**: o transporte virou um
-  detalhe substituível.
+  O scheduler depende de `Bus`, não de `*hub.Hub`. Transporte virou detalhe
+  substituível.
+- **Transporte HTTP long-poll** (`server/internal/api/agent_http.go` + agent):
+  - `GET /api/agent/poll?id=&caps=` — bloqueia ~25s esperando dispatch (204 no
+    timeout); `POST /api/agent/result` finaliza; `POST /api/agent/output`
+    streama stdout/stderr.
+  - O `agentBroker` registra o agente como `hub.Client` com canal `Send`, então
+    **reaproveita todo o roteamento existente** (`startInstance` → `PickAgent` →
+    `Send`) — zero mudança no scheduler. Reaper remove agentes que param de
+    pollar (não há "disconnect" como no WS).
+  - Agent: flag `-transport=ws|http` (`REGENTE_AGENT_TRANSPORT`). `http` mantém o
+    modelo outbound NAT-friendly, sem conexão persistente no processo do server
+    → control plane pode escalar a zero.
+  - **Validado e2e:** agent em `-transport=http` recebe dispatch (daily + force),
+    executa e devolve resultado/stream.
 
 **Projetado (próximas iterações):**
 
-- **Adapter NATS** (`internal/bus/nats`) — barramento CNCF, self-hostável e com
-  opção gerenciada; a escolha anti-lock-in contra SQS/EventBridge. Permite
-  control plane stateless: agentes assinam `regente.dispatch.<cap>`, o server
-  publica; resultados voltam por `regente.result`.
-- **Adapter SSE / long-poll** — para deploys 100% serverless sem broker: o
-  agente faz long-poll em `GET /api/agent/dispatch` (stateless) e devolve por
-  `POST /api/agent/result`. Mantém o modelo *outbound* NAT-friendly atual.
+- **Adapter NATS** (`internal/bus/nats`) — barramento CNCF para escala multi-nó:
+  agentes assinam `regente.dispatch.<cap>`; resultados em `regente.result`.
 - **Hub WebSocket distribuído** — fan-out de eventos web via NATS/Redis pub-sub
   para múltiplos nós (hoje o hub é por-processo).
-
-**Por que não já:** NATS adiciona dependência de infra e o SSE muda o protocolo
-do agente — merece iteração e teste dedicados. O seam acima garante que entram
-sem refatorar o scheduler.
+- **SSE** como alternativa ao long-poll para push de menor latência.
 
 ---
 
-## 6. Fase 3 — executores como plugins + tecnologias novas  ◑ seam existe, executores projetados
+## 6. Fase 3 — executores como plugins + tecnologias novas  ◑ executor WASM aplicado
 
 **Objetivo:** aderência a tecnologias novas e diferenciação, mantendo o núcleo
 agnóstico de fornecedor.
 
-**Seam que já existe (e é o ponto central):** o roteamento por **capability**.
-O agente anuncia capacidades (`-caps COMMAND,SCRIPT,HTTP,REST`) e despacha por
-`switch jobType` (`agent/main.go`); o server casa `jobType`→agente via
-`PickAgent(capability)`. **Adicionar um executor novo = adicionar um `case` +
-anunciar a capability.** O core não muda. Logo, "executores multi-cloud como
-plugins" já está habilitado pela arquitetura atual.
+**Seam (ponto central):** o roteamento por **capability**. O agente anuncia
+capacidades (`-caps`) e despacha por `switch jobType` (`agent/main.go`); o server
+casa `jobType`→agente via `PickAgent(capability)`. **Adicionar um executor novo
+= adicionar um `case` + anunciar a capability.** O core não muda.
+
+**Implementado neste repo — executor WASM:**
+
+- `jobType: WASM` + capability `WASM` (no default de `-caps`).
+- `runWASM`/`execWASM` (`agent/main.go`) usam **wazero** (runtime WASM pure-Go,
+  sem CGO — mesmo ethos do SQLite modernc). Roda módulos WASI (`_start`)
+  compiláveis de Rust/Go/TinyGo/C; sandbox por construção (só enxerga o que for
+  provido). Params: `wasmPath` ou `wasmUrl`, `args`, `stdin`. Captura
+  stdout/stderr e mapeia o exit WASI → exitCode do job.
+- **Testado:** unit (`agent/wasm_test.go` com fixture WASI embarcado) + e2e
+  (dispatch → runWASM → result via agent).
 
 **Projetado (R&D, marca claramente futuro):**
 
-- **Executor WASM** (`wasmtime`/`extism`) — rodar lógica de job como módulo WASM
-  sandboxed e portátil: "função serverless que é sua", sem shell-out. Novo
-  `jobType: WASM` + capability `WASM`. Forte diferencial e muito na moda.
 - **Executores de nuvem como adapters iguais** — `AWS` (Lambda/Batch/Glue/Step),
   `GCP` (Cloud Run Jobs), `k8s Jobs`. Cada um é **uma capability**, nunca a
   fundação — AWS deixa de ser base e vira plugin.
-- **Durable execution (Temporal / Restate)** — trilha opcional de
-  confiabilidade: substituir retry/tick/state-machine feitos à mão por um motor
-  durável testado. Grande história de DX/marketing; pesado, então fica como
-  opt-in, não default.
+- **Durable execution (Temporal / Restate)** — trilha opcional: substituir
+  retry/tick/state-machine por um motor durável testado. Opt-in, não default.
 - **Postgres-como-fila** (`SKIP LOCKED`, ex. River) — fila + estado numa só
-  dependência, sem Redis/SQS. Reforça o anti-lock-in.
+  dependência, sem Redis/SQS.
 - **OpenTelemetry** — tracing distribuído (já no roadmap de operação).
 
 ---
@@ -203,10 +211,10 @@ plugins" já está habilitado pela arquitetura atual.
 | `POST /api/scheduler/tick` | 1 | ✅ aplicado |
 | Dockerfile + Knative + CronJob + deploy/README | 1 | ✅ aplicado |
 | Interface `Bus` (seam de transporte) | 2 | ✅ aplicado |
+| Transporte HTTP long-poll (`-transport=http`) | 2 | ✅ aplicado (e2e) |
 | Adapter NATS | 2 | ◻ projetado |
-| Adapter SSE/long-poll p/ agente | 2 | ◻ projetado |
 | Hub WebSocket distribuído | 2 | ◻ projetado |
-| Executor WASM | 3 | ◻ projetado |
+| Executor WASM (wazero) | 3 | ✅ aplicado (unit + e2e) |
 | Adapters de nuvem (AWS/GCP/k8s) por capability | 3 | ◻ projetado (seam pronto) |
 | Durable execution (Temporal/Restate) | 3 | ◻ R&D opt-in |
 | Postgres-como-fila | 3 | ◻ projetado |
