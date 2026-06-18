@@ -1,6 +1,6 @@
 # 🎼 Regente — Roadmap
 
-> Documento vivo · revisão 2026-06-18 (validação de infra real destacada).
+> Documento vivo · revisão 2026-06-18 (F1 Postgres + G1 HA validados em PG real).
 > Estratégia de arquitetura em [`arquitetura-futuro.md`](arquitetura-futuro.md);
 > detalhe de produto no [`../README.md`](../README.md).
 
@@ -10,7 +10,7 @@
 Núcleo / Control-M     ██████████████████████  100%  ✅ pronto
 Alerting               ██████████████████████  100%  ✅ multi-canal + por-regra
 Serverless portátil    ████████████████░░░░░░   70%  🟡 funcional ponta-a-ponta
-Enterprise readiness   ███████████░░░░░░░░░░░   50%  🟡 base sólida, faltam gaps
+Enterprise readiness   ████████████░░░░░░░░░░   55%  🟡 F1+G1 validados em PG real
 ```
 
 Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado
@@ -54,26 +54,33 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado
 ## 🏢 Enterprise readiness
 
 ```
-✅ Escala     → Postgres plugável + migrations      ⬜ stateless · 10k+ jobs/dia · DR
-✅ HA         → leader election (advisory lock)      ⬜ hub distribuído · backup
-✅ Segurança  → secrets manager + SSO/OIDC opt-in    ⬜ RBAC · mTLS agentes · SIEM
+✅ Escala     → Postgres plugável + migrations ✔validado  ⬜ stateless · 10k+ jobs/dia · DR
+✅ HA         → leader election (advisory lock) ✔failover  ⬜ hub distribuído · backup
+✅ Segurança  → secrets manager + SSO/OIDC opt-in          ⬜ RBAC · mTLS agentes · SIEM
 ⬜ Operação   → OpenTelemetry · zero-downtime · multi-ambiente · quotas
 ⬜ Qualidade  → E2E · carga · chaos · SLOs · reconciler de drift
 ```
 
-## 🧪 Validação pendente *(codado + teste unitário; falta exercitar em infra real)*
+## 🧪 Validação em infra real
 
-Os itens enterprise acima estão implementados e cobertos por teste unitário, mas
-**ainda não foram validados ponta-a-ponta contra infraestrutura real** — gate
-antes de contar como *production-ready*:
+Gate antes de contar como *production-ready*. **F1 e G1 validados em 2026-06-18**
+contra Postgres 16 real (Docker); restante pendente:
 
 ```
-⬜ F1 Postgres    → subir server com -db-driver postgres contra um PG real
-⬜ G1 HA          → 2 nós no mesmo PG → 1 líder; matar líder → failover em ~5s
+✅ F1 Postgres    → server -db-driver postgres contra PG 16 real: migrations v1-3,
+                    seed, alerts, CRUD round-trip e leader election OK (2026-06-18)
+✅ G1 HA          → 2 nós no mesmo PG → 1 líder único (sem split-brain); kill do
+                    líder → failover ~1s (advisory lock auto-liberado) (2026-06-18)
 ⬜ H1 SSO/OIDC    → fluxo completo com IdP real (Keycloak/Cognito/Google) + SPA lê #token
 ⬜ Secrets        → resolver github_token/webhook_secret via provider (env/-secrets-file)
 ⬜ SSH · agente   → host com sshd; agente instalado como serviço (systemd / Task Windows)
 ```
+
+> Reprodução F1+G1: `docker run -d --name regente-pg -e POSTGRES_USER=regente
+> -e POSTGRES_PASSWORD=regente -e POSTGRES_DB=regente_test -p 5432:5432 postgres:16-alpine`;
+> `REGENTE_TEST_PG_DSN=postgres://regente:regente@localhost:5432/regente_test?sslmode=disable
+> go test ./internal/db -run Postgres -v`; subir 2 servers (`-db-driver postgres -db <dsn>`,
+> portas distintas) → só 1 loga "assumi a liderança"; matar o líder → o outro assume em ~1s.
 
 ---
 

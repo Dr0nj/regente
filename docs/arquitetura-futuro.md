@@ -245,7 +245,7 @@ casa `jobType`→agente via `PickAgent(capability)`. **Adicionar um executor nov
 | Flags `-scheduler`, `-role` | 1 | ✅ aplicado |
 | `POST /api/scheduler/tick` | 1 | ✅ aplicado |
 | Dockerfile + Knative + CronJob + deploy/README | 1 | ✅ aplicado |
-| HA clássico — leader election advisory-lock (`G1`) | 1 | ✅ aplicado (validação 2-nós pendente) |
+| HA clássico — leader election advisory-lock (`G1`) | 1 | ✅ aplicado · 2-nós validado em PG real (failover ~1s, 2026-06-18) |
 | HA serverless — idempotência + claim atômico | 1 | ✅ aplicado (corretude); lock-por-tick ◻ projetado |
 | Interface `Bus` (seam de transporte) | 2 | ✅ aplicado |
 | Transporte HTTP long-poll (`-transport=http`) | 2 | ✅ aplicado (e2e) |
