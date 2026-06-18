@@ -1,8 +1,8 @@
 # 🎼 Regente — Roadmap
 
-> Documento vivo · revisão 2026-06-18. Estratégia de arquitetura em
-> [`arquitetura-futuro.md`](arquitetura-futuro.md); detalhe de produto no
-> [`../README.md`](../README.md).
+> Documento vivo · revisão 2026-06-18 (validação de infra real destacada).
+> Estratégia de arquitetura em [`arquitetura-futuro.md`](arquitetura-futuro.md);
+> detalhe de produto no [`../README.md`](../README.md).
 
 ## 📊 Visão geral
 
@@ -57,6 +57,20 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado
 ✅ Segurança  → secrets manager + SSO/OIDC opt-in    ⬜ RBAC · mTLS agentes · SIEM
 ⬜ Operação   → OpenTelemetry · zero-downtime · multi-ambiente · quotas
 ⬜ Qualidade  → E2E · carga · chaos · SLOs · reconciler de drift
+```
+
+## 🧪 Validação pendente *(codado + teste unitário; falta exercitar em infra real)*
+
+Os itens enterprise acima estão implementados e cobertos por teste unitário, mas
+**ainda não foram validados ponta-a-ponta contra infraestrutura real** — gate
+antes de contar como *production-ready*:
+
+```
+⬜ F1 Postgres    → subir server com -db-driver postgres contra um PG real
+⬜ G1 HA          → 2 nós no mesmo PG → 1 líder; matar líder → failover em ~5s
+⬜ H1 SSO/OIDC    → fluxo completo com IdP real (Keycloak/Cognito/Google) + SPA lê #token
+⬜ Secrets        → resolver github_token/webhook_secret via provider (env/-secrets-file)
+⬜ SSH · agente   → host com sshd; agente instalado como serviço (systemd / Task Windows)
 ```
 
 ---
