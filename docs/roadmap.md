@@ -34,6 +34,8 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado
 ✅ Tela de alertas (sino + badge + ack) · toast em tempo real · dual-mode
 ✅ Routing externo  → Slack · webhook · e-mail (SMTP) · PagerDuty Events API
 ✅ Routing por regra na UI (canais selecionáveis por regra; fallback → todos)
+✅ Cooldown por (regra×job) — rajada não perde erro; só re-disparo do mesmo job agrupa
+✅ Ciclo de vida — rerun/Set OK marcam o alerta como tratado; re-falha gera alerta novo
 ```
 
 ## ☁️ Serverless portátil *(sem lock-in)*

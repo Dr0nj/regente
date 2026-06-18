@@ -71,10 +71,12 @@ daily ou via Force Order manual.
 - 🟢 **Observabilidade** — `/metrics` em formato Prometheus.
 - 🟢 **Alerting (Fase 8)** — regras configuráveis avaliadas ao fim de cada
   execução (falha / lentidão / retries / taxa de sucesso / falhas consecutivas);
-  eventos com severidade, tela de alertas (sino + badge de não-reconhecidos,
-  ack individual/todos), disparo em tempo real (toast) e **routing externo**
-  (Slack / webhook genérico, configurável na tela de alertas). Funciona em
-  server mode (Postgres) e local (localStorage).
+  tela de alertas (sino + badge, ack individual/todos) e toast em tempo real.
+  **Routing multi-canal por regra**: Slack · webhook genérico · e-mail (SMTP) ·
+  PagerDuty Events API. **Cooldown por (regra×job)** — uma rajada de jobs distintos
+  nunca perde alertas (só re-disparos do mesmo job são agrupados). **Ciclo de vida
+  do alerta** — rerun e Set OK do job marcam o alerta como *tratado* (rerun / set ok)
+  automaticamente; re-falha gera um alerta novo. Server mode (Postgres) e local.
 - 🟢 **Schedule estilo Control-M** — dias da semana/mês, N-ésimo dia útil, regras
   avançadas, janelas e execução cíclica; calendars include/exclude visuais.
 - 🟢 **Dependências entre jobs** com condições (on-success/failure/complete/always).
@@ -84,6 +86,8 @@ daily ou via Force Order manual.
   server-side, sem precisar subir o server com `GITHUB_TOKEN`.
 - 🟢 **Enterprise readiness** — backend **Postgres** (além de SQLite), **leader
   election** (HA do scheduler), **secrets manager** plugável, **SSO/OIDC** opt-in.
+- 🟢 **Temas** — aparência configurável (Settings): Escuro (padrão) + **Brasil**
+  verde-amarelo, com bandeiras para seleção. Aplica na hora e persiste no navegador.
 
 ---
 
@@ -199,9 +203,10 @@ Todas as rotas `/api/*` exigem `Authorization: Bearer <token>`.
 | POST   | `/api/daily/run`                      | força a daily do dia           |
 | POST   | `/api/definitions/{id}/force`         | Order Force (Control-M)        |
 | POST   | `/api/scheduler/tick`                 | dispara um ciclo (cron externo, `-scheduler=external`) |
-| GET    | `/api/alerts`                         | eventos de alerta              |
+| GET    | `/api/alerts`                         | eventos de alerta (com `resolution`) |
 | POST   | `/api/alerts/{id}/ack` · `/api/alerts/ack-all` | reconhece alerta(s)   |
 | GET    | `/api/alerts/rules` · POST `/api/alerts/rules/{id}/toggle` | regras de alerta |
+| PUT    | `/api/alerts/rules/{id}/channels` · `.../cooldown` | routing por-regra · cooldown |
 | GET    | `/api/agents`                         | agents online                  |
 | GET    | `/ws/web?token=...`                   | WS para web (events)           |
 | GET    | `/ws/agent?token=...&id=...&caps=...` | WS para agent (WebSocket)      |
@@ -371,7 +376,10 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 - [x] Auth por agente (token dedicado) + instalação como serviço
 - [x] SSH agentless (comando remoto sem agente no alvo)
 - [x] Retry de execution + `/metrics` (Prometheus) + webhook secret por UI
-- [x] **Alerting (Fase 8)** — regras, tela (sino + badge + ack), toast e **routing externo** (Slack/webhook)
+- [x] **Alerting (Fase 8)** — regras, tela (sino + badge + ack), toast, **routing multi-canal por regra**
+  (Slack/webhook/SMTP/PagerDuty), **cooldown por (regra×job)** (rajada não perde erro) e **ciclo de vida**
+  (rerun/Set OK marcam o alerta como tratado)
+- [x] **Temas** — Escuro (padrão) + Brasil verde-amarelo (Settings), com bandeiras para seleção
 
 ### Enterprise readiness (em andamento — solidez > velocidade)
 - [x] **Escala — backend Postgres** (além de SQLite): state store plugável por dialeto,
@@ -381,7 +389,7 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 - [x] **Segurança — secrets manager** (provider plugável, tira PAT/secrets do banco em claro;
   default env+arquivo, Vault/AWS pluggável) **+ SSO/OIDC** (Authorization Code, opt-in via `-auth-mode`;
   login local segue default). *(falta: SSO ponta-a-ponta com IdP + frontend, RBAC/ACL completo, mTLS dos agentes, audit→SIEM)*
-- [ ] **Operação**: tracing (OpenTelemetry), upgrades zero-downtime, multi-ambiente, quotas *(alert routing ✅ entregue — Slack/webhook)*
+- [ ] **Operação**: tracing (OpenTelemetry), upgrades zero-downtime, multi-ambiente, quotas *(alert routing ✅ multi-canal Slack/webhook/SMTP/PagerDuty)*
 - [ ] **Qualidade**: testes E2E + carga + chaos, SLOs
 - [ ] Reconciler de drift explícito (state machine)
 
