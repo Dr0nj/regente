@@ -59,9 +59,14 @@ CI (`.github/workflows/ci.yml`): 3 jobs — server (build/vet/test), agent
 - **Alerting (Fase 8):** motor de regras (`server/internal/scheduler/alerting.go`
   + `app/src/lib/alerting.ts`), tela `app/src/v2/AlertsPanel.tsx` (sino + badge),
   API `/api/alerts*`, broadcast `alert.fired`. Dual-mode (Postgres/localStorage).
-  **Routing externo:** sinks globais Slack/webhook configurados em settings
-  (`alert_slack_webhook`, `alert_webhook_url`, mascarados como segredo); router
-  best-effort async em `alerting.go`; UI configura na aba Regras (admin).
+  **Routing externo multi-canal:** sinks Slack (`alert_slack_webhook`), webhook
+  genérico (`alert_webhook_url`), e-mail SMTP (`alert_smtp_*`, `net/smtp`) e
+  PagerDuty Events v2 (`alert_pagerduty_routing_key`) — credenciais mascaradas em
+  `/api/settings`. **Routing por-regra:** cada regra escolhe os canais em `channels`
+  (`PUT /api/alerts/rules/{id}/channels`); `channelWanted` decide o disparo e
+  regra sem canal externo cai em fallback "todos os sinks configurados" (back-compat).
+  Router best-effort async em `alerting.go`; UI na aba Regras (chips por regra +
+  config de sinks, admin).
 - **Serverless Fases 1–3** (acima).
 
 ## Gotchas

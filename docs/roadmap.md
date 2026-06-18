@@ -8,7 +8,7 @@
 
 ```
 Núcleo / Control-M     ██████████████████████  100%  ✅ pronto
-Alerting               █████████████████████░   95%  ✅ + routing externo
+Alerting               ██████████████████████  100%  ✅ multi-canal + por-regra
 Serverless portátil    ████████████████░░░░░░   70%  🟡 funcional ponta-a-ponta
 Enterprise readiness   ███████████░░░░░░░░░░░   50%  🟡 base sólida, faltam gaps
 ```
@@ -32,8 +32,8 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado
 ```
 ✅ Motor de regras (falha · lentidão · retries · taxa · falhas consecutivas)
 ✅ Tela de alertas (sino + badge + ack) · toast em tempo real · dual-mode
-✅ Routing externo  → Slack / webhook genérico (sinks globais configuráveis)
-⬜ Routing por regra na UI · e-mail (SMTP) · PagerDuty Events API
+✅ Routing externo  → Slack · webhook · e-mail (SMTP) · PagerDuty Events API
+✅ Routing por regra na UI (canais selecionáveis por regra; fallback → todos)
 ```
 
 ## ☁️ Serverless portátil *(sem lock-in)*

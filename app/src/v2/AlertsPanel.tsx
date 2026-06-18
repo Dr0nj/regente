@@ -7,15 +7,17 @@
  *
  * Reads/writes through @/lib/alerting. Styled with v2 design tokens.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Bell, Check, CheckCheck, X, Send } from "lucide-react";
-import type { AlertEvent, AlertRule, AlertSeverity } from "@/lib/alerting";
+import type { AlertChannel, AlertEvent, AlertRule, AlertSeverity } from "@/lib/alerting";
+import { ALL_CHANNELS } from "@/lib/alerting";
 import {
   fetchAlertEvents,
   fetchAlertRules,
   ackAlert,
   ackAllAlerts,
   toggleRule,
+  updateRuleChannels,
 } from "@/lib/alerts-api";
 import { getSettings, putSettings } from "@/lib/settings-api";
 import { isServerMode } from "@/lib/server-client";
@@ -314,14 +316,69 @@ function RulesView({ isAdmin }: { isAdmin: boolean }) {
             <div style={{ fontSize: 11, color: "var(--v2-text-secondary)", marginTop: 2 }}>
               {conditionSummary(r)}
             </div>
-            <div style={{ display: "flex", gap: 10, marginTop: 4, fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>
-              <span>canais: {r.channels.join(", ")}</span>
-              <span>cooldown: {(r.cooldownMs / 1000).toFixed(0)}s</span>
-            </div>
+            <RuleChannelChips rule={r} isAdmin={isAdmin} onChanged={reload} />
           </div>
           <Toggle on={r.enabled} onClick={() => handleToggle(r.id)} />
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ── Per-rule channels (routing por regra) ── */
+
+function RuleChannelChips({ rule, isAdmin, onChanged }: { rule: AlertRule; isAdmin: boolean; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const active = new Set(rule.channels);
+  const externalSelected = ALL_CHANNELS.some((c) => c !== "toast" && active.has(c));
+
+  const toggle = (ch: AlertChannel) => {
+    if (!isAdmin || ch === "toast" || busy) return;
+    const next = new Set(active);
+    if (next.has(ch)) next.delete(ch);
+    else next.add(ch);
+    next.add("toast"); // toast é sempre presente
+    setBusy(true);
+    updateRuleChannels(rule.id, ALL_CHANNELS.filter((c) => next.has(c)))
+      .then(onChanged)
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+        {ALL_CHANNELS.map((ch) => {
+          const on = active.has(ch);
+          const fixed = ch === "toast";
+          return (
+            <button
+              key={ch}
+              onClick={() => toggle(ch)}
+              disabled={!isAdmin || fixed || busy}
+              title={fixed ? "Sempre ativo (aparece na UI)" : isAdmin ? "Alternar canal de routing" : "Somente admin"}
+              style={{
+                fontSize: 9, fontFamily: "var(--v2-font-mono)", padding: "2px 7px", borderRadius: 8,
+                cursor: !isAdmin || fixed ? "default" : "pointer",
+                textTransform: "uppercase", letterSpacing: "0.04em",
+                background: on ? "var(--v2-accent-deep)" : "transparent",
+                color: on ? "var(--v2-accent-brand)" : "var(--v2-text-muted)",
+                border: "1px solid " + (on ? "var(--v2-accent-brand)" : "var(--v2-border-medium)"),
+                opacity: fixed ? 0.85 : 1,
+              }}
+            >
+              {ch}
+            </button>
+          );
+        })}
+        <span style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", marginLeft: 4 }}>
+          cooldown: {(rule.cooldownMs / 1000).toFixed(0)}s
+        </span>
+      </div>
+      {isServerMode() && (
+        <div style={{ fontSize: 9, color: "var(--v2-text-muted)", marginTop: 3 }}>
+          {externalSelected ? "→ roteia só para os canais marcados" : "→ roteia para todos os sinks configurados"}
+        </div>
+      )}
     </div>
   );
 }
@@ -332,6 +389,7 @@ function ChannelsConfig({ isAdmin }: { isAdmin: boolean }) {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [slack, setSlack] = useState("");
   const [hook, setHook] = useState("");
+  const [pd, setPd] = useState("");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -344,11 +402,15 @@ function ChannelsConfig({ isAdmin }: { isAdmin: boolean }) {
 
   const slackSet = settings["alert_slack_webhook_set"] === "true";
   const hookSet = settings["alert_webhook_url_set"] === "true";
+  const pdSet = settings["alert_pagerduty_routing_key_set"] === "true";
+  // key do SmtpConfig: muda quando os settings de SMTP mudam → remonta com valores novos.
+  const smtpKey = ["alert_smtp_host", "alert_smtp_port", "alert_smtp_from", "alert_smtp_to", "alert_smtp_username", "alert_smtp_password_set"]
+    .map((k) => settings[k] || "").join("|");
 
   const save = (patch: Record<string, string>) => {
     setBusy(true);
     putSettings(patch)
-      .then((s) => { setSettings(s); setSlack(""); setHook(""); setSaved(true); setTimeout(() => setSaved(false), 2000); })
+      .then((s) => { setSettings(s); setSlack(""); setHook(""); setPd(""); setSaved(true); setTimeout(() => setSaved(false), 2000); })
       .catch(() => {})
       .finally(() => setBusy(false));
   };
@@ -364,10 +426,11 @@ function ChannelsConfig({ isAdmin }: { isAdmin: boolean }) {
         {saved && <span style={{ fontSize: 10, color: "var(--v2-status-ok)", fontFamily: "var(--v2-font-mono)" }}>✓ salvo</span>}
       </div>
       <div style={{ fontSize: 10, color: "var(--v2-text-muted)", marginBottom: 10, lineHeight: 1.4 }}>
-        Sinks globais: todo alerta disparado é enviado para os destinos configurados.
+        Configure os destinos abaixo; cada regra escolhe para quais roteia (nos chips de cada regra).
+        Regra sem canal externo marcado → roteia para todos os configurados.
       </div>
       <ChannelRow
-        label="Slack / webhook"
+        label="Slack"
         placeholder="https://hooks.slack.com/services/…"
         configured={slackSet}
         value={slack}
@@ -388,6 +451,19 @@ function ChannelsConfig({ isAdmin }: { isAdmin: boolean }) {
         onSave={() => save({ alert_webhook_url: hook })}
         onClear={() => save({ alert_webhook_url: "" })}
       />
+      <ChannelRow
+        label="PagerDuty"
+        placeholder="routing/integration key"
+        inputType="text"
+        configured={pdSet}
+        value={pd}
+        onChange={setPd}
+        isAdmin={isAdmin}
+        busy={busy}
+        onSave={() => save({ alert_pagerduty_routing_key: pd })}
+        onClear={() => save({ alert_pagerduty_routing_key: "" })}
+      />
+      <SmtpConfig key={smtpKey} settings={settings} isAdmin={isAdmin} busy={busy} onSave={save} />
       {!isAdmin && (
         <div style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 6 }}>
           Apenas admins podem alterar os canais.
@@ -397,9 +473,99 @@ function ChannelsConfig({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-function ChannelRow({ label, placeholder, configured, value, onChange, isAdmin, busy, onSave, onClear }: {
+/* ── SMTP (e-mail) — sub-form de múltiplos campos ── */
+
+function SmtpConfig({ settings, isAdmin, busy, onSave }: {
+  settings: Record<string, string>; isAdmin: boolean; busy: boolean; onSave: (patch: Record<string, string>) => void;
+}) {
+  // Inicializa dos valores atuais (não-secretos). O parent passa `key` derivada de
+  // settings, então quando os settings mudam o componente remonta e re-inicializa
+  // — sem setState dentro de effect.
+  const [host, setHost] = useState(settings["alert_smtp_host"] || "");
+  const [port, setPort] = useState(settings["alert_smtp_port"] || "");
+  const [from, setFrom] = useState(settings["alert_smtp_from"] || "");
+  const [to, setTo] = useState(settings["alert_smtp_to"] || "");
+  const [user, setUser] = useState(settings["alert_smtp_username"] || "");
+  const [pass, setPass] = useState("");
+
+  const passSet = settings["alert_smtp_password_set"] === "true";
+  const configured = (settings["alert_smtp_host"] || "") !== "" && (settings["alert_smtp_to"] || "") !== "";
+
+  const inputStyle: CSSProperties = {
+    minWidth: 0, fontSize: 11, padding: "4px 8px", borderRadius: 4,
+    background: "var(--v2-bg-surface)", color: "var(--v2-text-primary)",
+    border: "1px solid var(--v2-border-medium)", fontFamily: "var(--v2-font-mono)",
+  };
+
+  const save = () => {
+    const patch: Record<string, string> = {
+      alert_smtp_host: host, alert_smtp_port: port, alert_smtp_from: from,
+      alert_smtp_to: to, alert_smtp_username: user,
+    };
+    if (pass) patch.alert_smtp_password = pass; // só sobrescreve a senha se digitada
+    onSave(patch);
+    setPass("");
+  };
+  const clear = () => onSave({
+    alert_smtp_host: "", alert_smtp_port: "", alert_smtp_from: "",
+    alert_smtp_to: "", alert_smtp_username: "", alert_smtp_password: "",
+  });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8, paddingTop: 8, borderTop: "1px dashed var(--v2-border-subtle)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 11, color: "var(--v2-text-secondary)", width: 120, flexShrink: 0 }}>E-mail (SMTP)</span>
+        <span style={{
+          fontSize: 9, fontFamily: "var(--v2-font-mono)", padding: "1px 6px", borderRadius: 8,
+          background: configured ? "var(--v2-accent-deep)" : "transparent",
+          color: configured ? "var(--v2-status-ok)" : "var(--v2-text-muted)",
+          border: "1px solid " + (configured ? "var(--v2-accent-brand)" : "var(--v2-border-medium)"),
+        }}>{configured ? "configurado" : "—"}</span>
+      </div>
+      {isAdmin && (
+        <>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input style={{ ...inputStyle, flex: 2 }} placeholder="host (smtp.exemplo.com)" value={host} disabled={busy} onChange={(e) => setHost(e.target.value)} />
+            <input style={{ ...inputStyle, width: 70 }} placeholder="porta" value={port} disabled={busy} onChange={(e) => setPort(e.target.value)} />
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input style={{ ...inputStyle, flex: 1 }} placeholder="from (alertas@…)" value={from} disabled={busy} onChange={(e) => setFrom(e.target.value)} />
+            <input style={{ ...inputStyle, flex: 1 }} placeholder="to (a@x.com, b@y.com)" value={to} disabled={busy} onChange={(e) => setTo(e.target.value)} />
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input style={{ ...inputStyle, flex: 1 }} placeholder="usuário (opcional)" value={user} disabled={busy} onChange={(e) => setUser(e.target.value)} />
+            <input style={{ ...inputStyle, flex: 1 }} type="password" placeholder={passSet ? "senha (••• salva)" : "senha (opcional)"} value={pass} disabled={busy} onChange={(e) => setPass(e.target.value)} />
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={save}
+              disabled={busy || !host || !to}
+              style={{
+                padding: "4px 10px", borderRadius: 4, fontSize: 10,
+                background: host && to ? "var(--v2-accent-brand)" : "transparent",
+                color: host && to ? "#000" : "var(--v2-text-muted)",
+                border: "1px solid " + (host && to ? "var(--v2-accent-brand)" : "var(--v2-border-medium)"),
+                cursor: host && to && !busy ? "pointer" : "not-allowed", fontWeight: 600,
+              }}
+            >Salvar SMTP</button>
+            {configured && (
+              <button
+                onClick={clear}
+                disabled={busy}
+                style={{ padding: "4px 8px", borderRadius: 4, fontSize: 10, background: "transparent", color: "var(--v2-status-failed)", border: "1px solid var(--v2-border-medium)", cursor: "pointer" }}
+              >limpar</button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ChannelRow({ label, placeholder, configured, value, onChange, isAdmin, busy, onSave, onClear, inputType = "url" }: {
   label: string; placeholder: string; configured: boolean; value: string;
   onChange: (v: string) => void; isAdmin: boolean; busy: boolean; onSave: () => void; onClear: () => void;
+  inputType?: string;
 }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
@@ -413,7 +579,7 @@ function ChannelRow({ label, placeholder, configured, value, onChange, isAdmin, 
       {isAdmin && (
         <>
           <input
-            type="url"
+            type={inputType}
             value={value}
             placeholder={placeholder}
             onChange={(e) => onChange(e.target.value)}

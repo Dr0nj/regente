@@ -177,6 +177,7 @@ func NewRouter(cfg Config) http.Handler {
 		r.With(s.requireWriterMW).Post("/alerts/{id}/ack", s.ackAlertEvent)
 		r.Get("/alerts/rules", s.listAlertRules)
 		r.With(s.requireWriterMW).Post("/alerts/rules/{id}/toggle", s.toggleAlertRule)
+		r.With(s.requireWriterMW).Put("/alerts/rules/{id}/channels", s.setAlertRuleChannels)
 		// F21 Forecast
 		r.Get("/forecast", s.getForecast)
 		// F22 Analytics

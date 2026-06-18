@@ -33,9 +33,10 @@ func (s *server) getSettings(w http.ResponseWriter, r *http.Request) {
 			}
 			continue
 		}
-		// Webhooks de alerta são credenciais (quem tem a URL posta no canal):
-		// nunca devolver em claro, só sinalizar se estão setados.
-		if k == "alert_slack_webhook" || k == "alert_webhook_url" {
+		// Credenciais de alerta (webhooks com URL secreta, senha SMTP, routing key
+		// da PagerDuty): nunca devolver em claro, só sinalizar se estão setadas.
+		if k == "alert_slack_webhook" || k == "alert_webhook_url" ||
+			k == "alert_smtp_password" || k == "alert_pagerduty_routing_key" {
 			if v != "" {
 				m[k+"_set"] = "true"
 			}

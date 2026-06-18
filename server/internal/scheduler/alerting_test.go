@@ -151,6 +151,95 @@ func TestAlertEngine_NoWebhookConfigured(t *testing.T) {
 	}
 }
 
+func TestChannelWanted(t *testing.T) {
+	cases := []struct {
+		csv  string
+		ch   string
+		want bool
+	}{
+		{"toast", "slack", true}, // sem canal externo → roteia pra todos (back-compat)
+		{"toast", "webhook", true},
+		{"toast,slack", "slack", true}, // canal externo escolhido explicitamente
+		{"toast,slack", "webhook", false},
+		{"toast,pagerduty", "email", false},
+		{"toast,email,pagerduty", "email", true},
+	}
+	for _, c := range cases {
+		if got := channelWanted(c.csv, c.ch); got != c.want {
+			t.Errorf("channelWanted(%q,%q)=%v want %v", c.csv, c.ch, got, c.want)
+		}
+	}
+}
+
+func TestAlertEngine_UpdateRuleChannels(t *testing.T) {
+	eng := NewAlertEngine(newTestDB(t), nil)
+	eng.SeedDefaults()
+	// token inválido + duplicado + sem "toast" → deve sanear e prefixar "toast".
+	if err := eng.UpdateRuleChannels("rule-failure", []string{"slack", "slack", "bogus", "email"}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	rules, _ := eng.ListRules()
+	var ch string
+	for _, r := range rules {
+		if r.ID == "rule-failure" {
+			ch = r.Channels
+		}
+	}
+	if ch != "toast,slack,email" {
+		t.Fatalf("canais saneados inesperados: %q", ch)
+	}
+}
+
+func TestAlertEngine_PerRuleRoutingNarrows(t *testing.T) {
+	database := newTestDB(t)
+
+	webhookHit := make(chan bool, 1)
+	wsrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { webhookHit <- true }))
+	defer wsrv.Close()
+	pdHit := make(chan map[string]any, 1)
+	pdsrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var b map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&b)
+		pdHit <- b
+	}))
+	defer pdsrv.Close()
+	oldURL := pagerDutyURL
+	pagerDutyURL = pdsrv.URL
+	defer func() { pagerDutyURL = oldURL }()
+
+	for k, v := range map[string]string{
+		"alert_webhook_url":           wsrv.URL,
+		"alert_pagerduty_routing_key": "R0UTING",
+	} {
+		if _, err := database.Exec(`INSERT INTO settings(key,value) VALUES(?,?)`, k, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	eng := NewAlertEngine(database, nil)
+	eng.SeedDefaults()
+	// estreita rule-failure só para pagerduty (deixa de fora o webhook).
+	if err := eng.UpdateRuleChannels("rule-failure", []string{"pagerduty"}); err != nil {
+		t.Fatal(err)
+	}
+	eng.Evaluate(AlertContext{WorkflowID: "wf", WorkflowName: "WF", Status: string(domain.StatusNotOK), DurationMs: 1500})
+
+	select {
+	case b := <-pdHit:
+		if b["routing_key"] != "R0UTING" || b["event_action"] != "trigger" {
+			t.Fatalf("payload pagerduty inesperado: %+v", b)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("pagerduty não recebeu o alerta")
+	}
+	select {
+	case <-webhookHit:
+		t.Fatal("webhook não deveria disparar para regra estreitada em pagerduty")
+	case <-time.After(300 * time.Millisecond):
+		// ok — nenhum POST chegou ao webhook
+	}
+}
+
 func TestAlertEngine_ToggleDisablesRule(t *testing.T) {
 	eng := NewAlertEngine(newTestDB(t), nil)
 	eng.SeedDefaults()

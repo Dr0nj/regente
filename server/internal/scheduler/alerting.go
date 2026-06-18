@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/smtp"
 	"strings"
 	"sync"
 	"time"
@@ -165,30 +166,152 @@ func (e *AlertEngine) fire(r AlertRule, cond alertCondition, ctx AlertContext) {
 
 /* ── Alert routing — sinks externos (Slack / webhook) ── */
 
-// route entrega o alerta nos sinks globais configurados em settings:
+// route entrega o alerta nos sinks externos configurados em settings, conforme
+// os canais escolhidos POR REGRA:
 //
-//	alert_slack_webhook  — Slack incoming webhook (mensagem formatada)
-//	alert_webhook_url     — webhook genérico (JSON do evento; serve Teams/Discord/custom)
+//	slack      → alert_slack_webhook        (Slack incoming webhook)
+//	webhook    → alert_webhook_url          (webhook genérico; Teams/Discord/custom)
+//	email      → alert_smtp_*               (SMTP)
+//	pagerduty  → alert_pagerduty_routing_key (PagerDuty Events API v2)
 //
-// Sinks globais: todo alerta disparado é roteado se o destino estiver setado
-// (independente do channel da regra; routing por-regra fica como evolução). É
-// best-effort e nunca afeta o fluxo de disparo.
+// Routing por-regra: cada regra define em `channels` para onde roteia. Por
+// compatibilidade, regra SEM nenhum canal externo selecionado (ex.: só "toast")
+// roteia para TODOS os sinks configurados — preserva o comportamento "global".
+// É best-effort e nunca afeta o fluxo de disparo.
 func (e *AlertEngine) route(r AlertRule, ctx AlertContext, msg, id string, tsMs int64) {
-	if slack := e.setting("alert_slack_webhook"); slack != "" {
-		postJSON(slack, map[string]any{"text": slackText(r.Severity, r.Name, msg, ctx.WorkflowName)})
+	if channelWanted(r.Channels, "slack") {
+		if slack := e.setting("alert_slack_webhook"); slack != "" {
+			postJSON(slack, map[string]any{"text": slackText(r.Severity, r.Name, msg, ctx.WorkflowName)})
+		}
 	}
-	if hook := e.setting("alert_webhook_url"); hook != "" {
-		postJSON(hook, map[string]any{
-			"event":        "alert.fired",
-			"id":           id,
-			"ruleId":       r.ID,
-			"ruleName":     r.Name,
-			"severity":     r.Severity,
-			"timestamp":    tsMs,
-			"workflowId":   ctx.WorkflowID,
-			"workflowName": ctx.WorkflowName,
-			"message":      msg,
-		})
+	if channelWanted(r.Channels, "webhook") {
+		if hook := e.setting("alert_webhook_url"); hook != "" {
+			postJSON(hook, map[string]any{
+				"event":        "alert.fired",
+				"id":           id,
+				"ruleId":       r.ID,
+				"ruleName":     r.Name,
+				"severity":     r.Severity,
+				"timestamp":    tsMs,
+				"workflowId":   ctx.WorkflowID,
+				"workflowName": ctx.WorkflowName,
+				"message":      msg,
+			})
+		}
+	}
+	if channelWanted(r.Channels, "email") {
+		e.sendEmail(r, ctx, msg)
+	}
+	if channelWanted(r.Channels, "pagerduty") {
+		e.sendPagerDuty(r, ctx, msg)
+	}
+}
+
+// parseChannelSet — CSV "toast,slack" → set normalizado (lowercase).
+func parseChannelSet(csv string) map[string]bool {
+	set := map[string]bool{}
+	for _, c := range strings.Split(csv, ",") {
+		if t := strings.TrimSpace(strings.ToLower(c)); t != "" {
+			set[t] = true
+		}
+	}
+	return set
+}
+
+// channelWanted decide se um sink externo deve disparar dada a lista de canais
+// da regra. Regra sem canal externo escolhido → roteia para todos (back-compat).
+func channelWanted(channelsCSV, ch string) bool {
+	set := parseChannelSet(channelsCSV)
+	hasExternal := set["slack"] || set["webhook"] || set["email"] || set["pagerduty"]
+	return !hasExternal || set[ch]
+}
+
+// sendEmail entrega o alerta por SMTP. Settings:
+//
+//	alert_smtp_host · alert_smtp_port (default 587) · alert_smtp_username ·
+//	alert_smtp_password · alert_smtp_from · alert_smtp_to (CSV de destinatários)
+//
+// Sem host ou sem destinatário → no-op. Auth PLAIN só se houver username.
+func (e *AlertEngine) sendEmail(r AlertRule, ctx AlertContext, msg string) {
+	host := e.setting("alert_smtp_host")
+	to := e.setting("alert_smtp_to")
+	if host == "" || to == "" {
+		return
+	}
+	recipients := []string{}
+	for _, a := range strings.Split(to, ",") {
+		if t := strings.TrimSpace(a); t != "" {
+			recipients = append(recipients, t)
+		}
+	}
+	if len(recipients) == 0 {
+		return
+	}
+	from := e.setting("alert_smtp_from")
+	if from == "" {
+		from = "regente@localhost"
+	}
+	port := e.setting("alert_smtp_port")
+	if port == "" {
+		port = "587"
+	}
+	user := e.setting("alert_smtp_username")
+	pass := e.setting("alert_smtp_password")
+
+	subject := fmt.Sprintf("[Regente][%s] %s", strings.ToUpper(r.Severity), r.Name)
+	body := fmt.Sprintf("To: %s\r\nFrom: %s\r\nSubject: %s\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n%s\r\n\r\nworkflow: %s\r\n",
+		strings.Join(recipients, ", "), from, subject, msg, ctx.WorkflowName)
+
+	var auth smtp.Auth
+	if user != "" {
+		auth = smtp.PlainAuth("", user, pass, host)
+	}
+	if err := smtp.SendMail(host+":"+port, auth, from, recipients, []byte(body)); err != nil {
+		log.Printf("[alerts] route email failed: %v", err)
+	}
+}
+
+// pagerDutyURL — endpoint da Events API v2 (var p/ permitir override em teste).
+var pagerDutyURL = "https://events.pagerduty.com/v2/enqueue"
+
+// sendPagerDuty dispara um evento na PagerDuty Events API v2. Setting:
+//
+//	alert_pagerduty_routing_key — integration/routing key do serviço.
+//
+// Sem key → no-op. dedup_key estável por regra+workflow agrupa re-disparos.
+func (e *AlertEngine) sendPagerDuty(r AlertRule, ctx AlertContext, msg string) {
+	key := e.setting("alert_pagerduty_routing_key")
+	if key == "" {
+		return
+	}
+	source := ctx.WorkflowName
+	if source == "" {
+		source = ctx.WorkflowID
+	}
+	postJSON(pagerDutyURL, map[string]any{
+		"routing_key":  key,
+		"event_action": "trigger",
+		"dedup_key":    fmt.Sprintf("regente-%s-%s", r.ID, ctx.WorkflowID),
+		"payload": map[string]any{
+			"summary":   fmt.Sprintf("%s — %s", r.Name, msg),
+			"severity":  pagerDutySeverity(r.Severity),
+			"source":    source,
+			"component": "regente",
+			"group":     ctx.WorkflowID,
+		},
+	})
+}
+
+// pagerDutySeverity mapeia a severidade Regente para a aceita pela PagerDuty
+// (critical|error|warning|info).
+func pagerDutySeverity(sev string) string {
+	switch sev {
+	case "critical":
+		return "critical"
+	case "warning":
+		return "warning"
+	default:
+		return "info"
 	}
 }
 
@@ -394,6 +517,30 @@ func (e *AlertEngine) ToggleRule(id string) error {
 		next = 1
 	}
 	_, err := e.db.Exec(`UPDATE alert_rules SET enabled=? WHERE id=?`, next, id)
+	return err
+}
+
+// validChannels — canais aceitos para routing por regra.
+var validChannels = map[string]bool{
+	"toast": true, "slack": true, "webhook": true, "email": true, "pagerduty": true,
+}
+
+// UpdateRuleChannels persiste os canais de routing de uma regra (CSV ordenado).
+// Filtra tokens desconhecidos/duplicados e garante "toast" sempre presente (o
+// alerta sempre aparece na UI; os demais canais controlam o routing externo).
+func (e *AlertEngine) UpdateRuleChannels(id string, channels []string) error {
+	seen := map[string]bool{}
+	clean := []string{"toast"}
+	seen["toast"] = true
+	for _, c := range channels {
+		t := strings.ToLower(strings.TrimSpace(c))
+		if t == "" || !validChannels[t] || seen[t] {
+			continue
+		}
+		seen[t] = true
+		clean = append(clean, t)
+	}
+	_, err := e.db.Exec(`UPDATE alert_rules SET channels=? WHERE id=?`, strings.Join(clean, ","), id)
 	return err
 }
 

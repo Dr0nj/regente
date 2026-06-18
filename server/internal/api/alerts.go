@@ -107,3 +107,25 @@ func (s *server) toggleAlertRule(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
+
+// PUT /api/alerts/rules/{id}/channels — define os canais de routing da regra.
+// Body: {"channels": ["toast","slack","email",...]}. Routing por-regra na UI.
+func (s *server) setAlertRuleChannels(w http.ResponseWriter, r *http.Request) {
+	eng := s.cfg.Scheduler.Alerts()
+	if eng == nil {
+		http.Error(w, "alerting not configured", 503)
+		return
+	}
+	var body struct {
+		Channels []string `json:"channels"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid JSON", 400)
+		return
+	}
+	if err := eng.UpdateRuleChannels(chi.URLParam(r, "id"), body.Channels); err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true})
+}

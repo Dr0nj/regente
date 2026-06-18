@@ -12,7 +12,9 @@ import {
   acknowledgeAlert,
   acknowledgeAll,
   toggleAlertRule,
+  setAlertRuleChannels,
   getUnacknowledgedCount,
+  type AlertChannel,
   type AlertEvent,
   type AlertRule,
 } from "./alerting";
@@ -53,6 +55,17 @@ export async function toggleRule(id: string): Promise<void> {
     return;
   }
   toggleAlertRule(id);
+}
+
+export async function updateRuleChannels(id: string, channels: AlertChannel[]): Promise<void> {
+  if (isServerMode()) {
+    await api(`/api/alerts/rules/${encodeURIComponent(id)}/channels`, {
+      method: "PUT",
+      body: JSON.stringify({ channels }),
+    });
+    return;
+  }
+  setAlertRuleChannels(id, channels);
 }
 
 export async function fetchUnacknowledgedCount(): Promise<number> {

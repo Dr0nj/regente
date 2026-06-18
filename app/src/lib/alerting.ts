@@ -21,7 +21,10 @@ import {
 /* ── Types ── */
 
 export type AlertSeverity = "info" | "warning" | "critical";
-export type AlertChannel = "toast" | "slack" | "email" | "pagerduty";
+export type AlertChannel = "toast" | "slack" | "webhook" | "email" | "pagerduty";
+
+/** Todos os canais de routing, na ordem de exibição. */
+export const ALL_CHANNELS: AlertChannel[] = ["toast", "slack", "webhook", "email", "pagerduty"];
 
 export interface AlertRule {
   id: string;
@@ -122,6 +125,20 @@ export function toggleAlertRule(ruleId: string): void {
     rule.enabled = !rule.enabled;
     saveAlertRules(rules);
   }
+}
+
+/** Define os canais de routing de uma regra (browser mode). Garante "toast"
+ *  sempre presente e descarta tokens desconhecidos/duplicados. */
+export function setAlertRuleChannels(ruleId: string, channels: AlertChannel[]): void {
+  const rules = getAlertRules();
+  const rule = rules.find((r) => r.id === ruleId);
+  if (!rule) return;
+  const clean = channels.filter(
+    (c, i) => ALL_CHANNELS.includes(c) && channels.indexOf(c) === i,
+  );
+  if (!clean.includes("toast")) clean.unshift("toast");
+  rule.channels = clean;
+  saveAlertRules(rules);
 }
 
 /* ── Event persistence ── */
