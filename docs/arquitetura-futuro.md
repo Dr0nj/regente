@@ -122,6 +122,15 @@ anterior. Nada quebra para quem roda como daemon.
 **Resultado:** com `-scheduler=external` + cron externo + Postgres gerenciado, o
 control plane roda **serverless, scale-to-zero, sem lock-in**.
 
+**Validado em container (2026-06-18):** imagem de [`../deploy`](../deploy) +
+Postgres em container → boot OK, `/health`→200, leader election, e o gatilho
+externo `POST /api/scheduler/tick` materializou a daily (`5 instances`,
+persistidas no PG) de forma idempotente. A validação **descobriu e corrigiu** um
+furo: a camada de storage faz `exec git`, então a imagem `distroless/static`
+crashava no boot (`EnsureClone`: `git` ausente). Final stage agora é Alpine com
+`git`+`ca-certificates`, non-root (~55 MB). Alternativa distroless = git-sync +
+`-git-source ""` (defs do disco) — ver `deploy/README.md`.
+
 **Futuro próximo:** mover `autoDailyIfDue` para um gatilho separado de cadência
 diária (em vez de checar a cada tick), e expor um `/api/scheduler/daily` dedicado.
 
@@ -244,7 +253,8 @@ casa `jobType`→agente via `PickAgent(capability)`. **Adicionar um executor nov
 | `Tick()` idempotente + `Run()` refatorado | 1 | ✅ aplicado |
 | Flags `-scheduler`, `-role` | 1 | ✅ aplicado |
 | `POST /api/scheduler/tick` | 1 | ✅ aplicado |
-| Dockerfile + Knative + CronJob + deploy/README | 1 | ✅ aplicado |
+| Dockerfile + Knative + CronJob + deploy/README | 1 | ✅ aplicado · e2e em container validado (2026-06-18) |
+| Imagem precisa de `git` no PATH (GitOps faz `exec git`) | 1 | ✅ corrigido — Alpine+git non-root (era distroless, crashava no boot) |
 | HA clássico — leader election advisory-lock (`G1`) | 1 | ✅ aplicado · 2-nós validado em PG real (failover ~1s, 2026-06-18) |
 | HA serverless — idempotência + claim atômico | 1 | ✅ aplicado (corretude); lock-por-tick ◻ projetado |
 | Interface `Bus` (seam de transporte) | 2 | ✅ aplicado |

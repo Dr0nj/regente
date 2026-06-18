@@ -41,7 +41,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado
 ## ☁️ Serverless portátil *(sem lock-in)*
 
 ```
-✅ Fase 1 · gatilho externo   → Tick() · -scheduler=external · deploy/ (Knative)
+✅ Fase 1 · gatilho externo   → Tick() · -scheduler=external · deploy/ (Knative) ✔e2e em container
 ✅ Fase 2 · transporte         → Bus + HTTP long-poll (-transport=http)
 ✅ Fase 3 · executor WASM      → wazero, pure-Go, sandbox WASI
 ─────────────────────────────────────────────────────────────────
