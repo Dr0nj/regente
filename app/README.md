@@ -41,6 +41,10 @@ daily ou via Force Order manual.
   no alvo), com stream de saída.
 - 🟢 **Retry de execution** — re-tentativa automática em falha (respeita `retries`).
 - 🟢 **Observabilidade** — `/metrics` em formato Prometheus.
+- 🟢 **Executor WASM** — `WASM` roda módulos WebAssembly WASI sandboxed via wazero
+  (pure-Go, sem CGO).
+- 🟢 **Alerting (Fase 8)** — regras configuráveis, tela de alertas (sino + badge +
+  ack), toast em tempo real e routing externo (Slack/webhook).
 - 🟢 **Schedule estilo Control-M** — dias da semana/mês, N-ésimo dia útil, regras
   avançadas, janelas e execução cíclica; calendars include/exclude visuais.
 - 🟢 **Dependências entre jobs** com condições (on-success/failure/complete/always).
@@ -54,8 +58,8 @@ daily ou via Force Order manual.
 | Camada | Tecnologia |
 |---|---|
 | Frontend (este repo) | React + TypeScript + Vite, [@xyflow/react](https://reactflow.dev) (canvas), ícones lucide |
-| Backend | Go (`regente-server`) — GitOps + SQLite, WebSocket hub |
-| Executor | Go (`regente-agent`) — conexão outbound, roda COMMAND/SCRIPT/HTTP |
+| Backend | Go (`regente-server`) — GitOps + SQLite/Postgres, WebSocket hub |
+| Executor | Go (`regente-agent`) — conexão outbound (WS ou HTTP long-poll), roda COMMAND/SCRIPT/HTTP/SSH/WASM |
 | Fonte da verdade | Repositório GitHub (YAML em `definitions/<folder>/<id>.yaml`) |
 
 ## Rodando o frontend
@@ -112,38 +116,23 @@ src/
 │   ├── V2Preview.tsx    # shell principal (topbar, canvas, modos)
 │   ├── JobConfigDrawer  # edição de job (Geral/Schedule/Calendars/Action/Deps)
 │   ├── ScheduleEditor   # scheduler visual estilo Control-M
+│   ├── AlertsPanel.tsx  # tela de alertas (eventos + regras + canais) — Fase 8
 │   └── ...
 ├── lib/                 # clientes de API + modelo + adapters
 │   ├── server-client.ts # REST + WS
 │   ├── git-api.ts       # status, token, cleanup, deep-links
 │   ├── agents-api.ts    # agentes online
+│   ├── alerts-api.ts    # alertas (facade dual-mode server/local)
 │   └── adapters/        # ports & adapters (storage/scheduler/executor)
 └── main.tsx
 ```
 
 ## Roadmap
 
-- [x] **GitOps** — Publish, webhook, drift, deep-links, PAT seguro + token via UI
-- [x] **Paridade Control-M** — calendars, resources, conditions, variáveis, SLA, forecast
-- [x] **Daily imutável** — instances congeladas no momento da ordem
-- [x] **Executores locais** — agente COMMAND/SCRIPT/HTTP + targeting por agente
-- [x] Stream de stdout/stderr no detalhe da instance
-- [x] Auth por agente (token dedicado) + instalação como serviço
-- [x] SSH agentless (comando remoto sem agente no alvo)
-- [x] Retry de execution + `/metrics` (Prometheus) + webhook secret por UI
-
-### Enterprise readiness (em andamento — solidez > velocidade)
-- [x] **Escala — backend Postgres** (além de SQLite): state store plugável por dialeto,
-  flag `-db-driver sqlite|postgres`, migrations versionadas. *(falta: DynamoDB, nós stateless, 10k+ jobs/dia)*
-- [x] **HA — leader election do scheduler**: só o líder materializa a daily/dispatch
-  (`pg_advisory_lock` no Postgres; nó único no SQLite). *(falta: hub WebSocket distribuído, DR/backup)*
-- [x] **Segurança — secrets manager** (provider plugável, tira PAT/secrets do banco em claro;
-  default env+arquivo, Vault/AWS pluggável) **+ SSO/OIDC** (Authorization Code, opt-in via `-auth-mode`;
-  login local segue default). *(falta: SSO ponta-a-ponta com IdP + frontend, RBAC/ACL completo, mTLS dos agentes, audit→SIEM)*
-- [ ] **Operação**: tracing (OpenTelemetry), alert routing, upgrades zero-downtime, multi-ambiente, quotas
-- [ ] **Qualidade**: testes E2E + carga + chaos, SLOs
-- [ ] Reconciler de drift explícito (state machine)
-- [ ] Executores AWS (Lambda/Batch/Glue/Step)
+> Fonte única no monorepo (evita divergência): checklist no
+> **[README raiz](../README.md#-roadmap)** e a versão visual consolidada em
+> **[`../docs/roadmap.md`](../docs/roadmap.md)**. A estratégia serverless
+> (sem lock-in) está em **[`../docs/arquitetura-futuro.md`](../docs/arquitetura-futuro.md)**.
 
 ---
 

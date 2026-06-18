@@ -371,6 +371,7 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 - [x] Auth por agente (token dedicado) + instalação como serviço
 - [x] SSH agentless (comando remoto sem agente no alvo)
 - [x] Retry de execution + `/metrics` (Prometheus) + webhook secret por UI
+- [x] **Alerting (Fase 8)** — regras, tela (sino + badge + ack), toast e **routing externo** (Slack/webhook)
 
 ### Enterprise readiness (em andamento — solidez > velocidade)
 - [x] **Escala — backend Postgres** (além de SQLite): state store plugável por dialeto,
@@ -380,7 +381,7 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 - [x] **Segurança — secrets manager** (provider plugável, tira PAT/secrets do banco em claro;
   default env+arquivo, Vault/AWS pluggável) **+ SSO/OIDC** (Authorization Code, opt-in via `-auth-mode`;
   login local segue default). *(falta: SSO ponta-a-ponta com IdP + frontend, RBAC/ACL completo, mTLS dos agentes, audit→SIEM)*
-- [ ] **Operação**: tracing (OpenTelemetry), alert routing, upgrades zero-downtime, multi-ambiente, quotas
+- [ ] **Operação**: tracing (OpenTelemetry), upgrades zero-downtime, multi-ambiente, quotas *(alert routing ✅ entregue — Slack/webhook)*
 - [ ] **Qualidade**: testes E2E + carga + chaos, SLOs
 - [ ] Reconciler de drift explícito (state machine)
 
