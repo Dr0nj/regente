@@ -1,6 +1,6 @@
 # Arquitetura futura — Regente serverless, portátil e sem lock-in
 
-> Status: vivo · Última revisão: 2026-06-17
+> Status: vivo · Última revisão: 2026-06-18
 > Escopo: control plane (`server/`) + transporte de agentes + executores.
 > Decisão-mãe: **"serverless portátil" (container scale-to-zero + estado/gatilho
 > externalizados), não FaaS.**
@@ -125,6 +125,41 @@ control plane roda **serverless, scale-to-zero, sem lock-in**.
 **Futuro próximo:** mover `autoDailyIfDue` para um gatilho separado de cadência
 diária (em vez de checar a cada tick), e expor um `/api/scheduler/daily` dedicado.
 
+### Concorrência e HA — clássico vs. serverless (importante)
+
+Há **dois modelos de HA** no Regente, e eles não são o mesmo mecanismo. Confundir
+os dois leva a super-investir no lock errado.
+
+**Trilho clássico (daemon, `-scheduler=internal`):** N nós sempre-ligados, um
+segura `pg_try_advisory_lock` e roda o ticker; os outros são *hot standbys*. É o
+`G1 leader election` (`internal/leader`, `PgAdvisory`). Faz sentido para deploy
+on-prem / enterprise de 2-3 nós fixos. Failover ≈ TTL do lock quando o líder cai.
+
+**Trilho serverless (`-scheduler=external`, scale-to-zero):** o advisory-lock de
+liderança **não mapeia** — não há processo de longa duração para *segurar* o lock,
+e na maior parte do tempo há **zero** instâncias. O cron externo dispara
+`POST /api/scheduler/tick`, um container sobe, roda `Tick()`, morre. A correção
+contra **execução dupla** não vem de liderança, vem de **idempotência + claim
+atômico**, que já estão no código:
+
+1. `Tick()` idempotente — ticks concorrentes/sobrepostos convergem.
+2. **Claim atômico** em `startInstance` (`UPDATE … SET status='RUNNING' WHERE
+   id=? AND status='WAITING'`, bail se 0 linhas) — guard de correção nível-linha,
+   independe de quantas instâncias rodam. É a rede de segurança real.
+3. Checagem de existência na materialização da daily — idempotente entre ticks.
+
+Ou seja: **no serverless, leader election deixa de ser correção e vira otimização**
+(evitar N nós fazendo scheduling redundante). Se for preciso blindar ticks
+**sobrepostos** (cron que dispara 2× ou ticks longos que se cruzam), o mecanismo
+certo é um **lock por-tick** — `pg_try_advisory_lock` adquirido no início do
+`Tick()` e solto no fim, escopo curto — e **não** um lock de liderança de longa
+duração. (Projetado; hoje a idempotência + claim já garantem correção, então é
+opt-in para economia, não para corretude.)
+
+**Resumo:** `F1 Postgres` é fundação dos dois trilhos. `G1 advisory-lock` é HA do
+trilho **clássico**; o serverless ganha HA "de graça" (réplicas stateless + PG
+gerenciado durável + idempotência + claim atômico).
+
 ---
 
 ## 5. Fase 2 — transporte de agentes plugável (BusPort)  ✅ seam + long-poll aplicados
@@ -210,6 +245,8 @@ casa `jobType`→agente via `PickAgent(capability)`. **Adicionar um executor nov
 | Flags `-scheduler`, `-role` | 1 | ✅ aplicado |
 | `POST /api/scheduler/tick` | 1 | ✅ aplicado |
 | Dockerfile + Knative + CronJob + deploy/README | 1 | ✅ aplicado |
+| HA clássico — leader election advisory-lock (`G1`) | 1 | ✅ aplicado (validação 2-nós pendente) |
+| HA serverless — idempotência + claim atômico | 1 | ✅ aplicado (corretude); lock-por-tick ◻ projetado |
 | Interface `Bus` (seam de transporte) | 2 | ✅ aplicado |
 | Transporte HTTP long-poll (`-transport=http`) | 2 | ✅ aplicado (e2e) |
 | Adapter NATS | 2 | ◻ projetado |
