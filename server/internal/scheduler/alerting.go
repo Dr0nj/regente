@@ -11,9 +11,12 @@
 package scheduler
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -156,6 +159,70 @@ func (e *AlertEngine) fire(r AlertRule, cond alertCondition, ctx AlertContext) {
 			"acknowledged": false,
 		})
 	}
+	// Routing externo (best-effort, async) — Slack / webhook genérico.
+	go e.route(r, ctx, msg, fmt.Sprintf("%d", id), tsMs)
+}
+
+/* ── Alert routing — sinks externos (Slack / webhook) ── */
+
+// route entrega o alerta nos sinks globais configurados em settings:
+//
+//	alert_slack_webhook  — Slack incoming webhook (mensagem formatada)
+//	alert_webhook_url     — webhook genérico (JSON do evento; serve Teams/Discord/custom)
+//
+// Sinks globais: todo alerta disparado é roteado se o destino estiver setado
+// (independente do channel da regra; routing por-regra fica como evolução). É
+// best-effort e nunca afeta o fluxo de disparo.
+func (e *AlertEngine) route(r AlertRule, ctx AlertContext, msg, id string, tsMs int64) {
+	if slack := e.setting("alert_slack_webhook"); slack != "" {
+		postJSON(slack, map[string]any{"text": slackText(r.Severity, r.Name, msg, ctx.WorkflowName)})
+	}
+	if hook := e.setting("alert_webhook_url"); hook != "" {
+		postJSON(hook, map[string]any{
+			"event":        "alert.fired",
+			"id":           id,
+			"ruleId":       r.ID,
+			"ruleName":     r.Name,
+			"severity":     r.Severity,
+			"timestamp":    tsMs,
+			"workflowId":   ctx.WorkflowID,
+			"workflowName": ctx.WorkflowName,
+			"message":      msg,
+		})
+	}
+}
+
+func (e *AlertEngine) setting(key string) string {
+	var v string
+	_ = e.db.QueryRow(`SELECT value FROM settings WHERE key=?`, key).Scan(&v)
+	return v
+}
+
+func slackText(severity, ruleName, msg, workflow string) string {
+	icon := ":information_source:"
+	switch severity {
+	case "critical":
+		icon = ":rotating_light:"
+	case "warning":
+		icon = ":warning:"
+	}
+	return fmt.Sprintf("%s *%s* — %s\n%s\nworkflow: `%s`", icon, strings.ToUpper(severity), ruleName, msg, workflow)
+}
+
+func postJSON(url string, payload map[string]any) {
+	body, _ := json.Marshal(payload)
+	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[alerts] route webhook failed: %v", err)
+		return
+	}
+	resp.Body.Close()
 }
 
 /* ── Cooldown (ephemeral, in-memory) ── */

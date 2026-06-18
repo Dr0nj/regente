@@ -59,6 +59,9 @@ CI (`.github/workflows/ci.yml`): 3 jobs — server (build/vet/test), agent
 - **Alerting (Fase 8):** motor de regras (`server/internal/scheduler/alerting.go`
   + `app/src/lib/alerting.ts`), tela `app/src/v2/AlertsPanel.tsx` (sino + badge),
   API `/api/alerts*`, broadcast `alert.fired`. Dual-mode (Postgres/localStorage).
+  **Routing externo:** sinks globais Slack/webhook configurados em settings
+  (`alert_slack_webhook`, `alert_webhook_url`, mascarados como segredo); router
+  best-effort async em `alerting.go`; UI configura na aba Regras (admin).
 - **Serverless Fases 1–3** (acima).
 
 ## Gotchas

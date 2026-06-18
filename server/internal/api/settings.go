@@ -33,6 +33,14 @@ func (s *server) getSettings(w http.ResponseWriter, r *http.Request) {
 			}
 			continue
 		}
+		// Webhooks de alerta são credenciais (quem tem a URL posta no canal):
+		// nunca devolver em claro, só sinalizar se estão setados.
+		if k == "alert_slack_webhook" || k == "alert_webhook_url" {
+			if v != "" {
+				m[k+"_set"] = "true"
+			}
+			continue
+		}
 		m[k] = v
 	}
 	writeJSON(w, 200, m)

@@ -1604,6 +1604,7 @@ function V2PreviewInner() {
           <AlertsPanel
             onClose={() => setShowAlerts(false)}
             onChange={() => { void fetchUnacknowledgedCount().then(setUnreadAlerts); }}
+            isAdmin={me?.role === "admin"}
           />
         )}
 

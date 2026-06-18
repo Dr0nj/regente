@@ -72,8 +72,9 @@ daily ou via Force Order manual.
 - 🟢 **Alerting (Fase 8)** — regras configuráveis avaliadas ao fim de cada
   execução (falha / lentidão / retries / taxa de sucesso / falhas consecutivas);
   eventos com severidade, tela de alertas (sino + badge de não-reconhecidos,
-  ack individual/todos) e disparo em tempo real (toast). Funciona em server mode
-  (Postgres) e local (localStorage).
+  ack individual/todos), disparo em tempo real (toast) e **routing externo**
+  (Slack / webhook genérico, configurável na tela de alertas). Funciona em
+  server mode (Postgres) e local (localStorage).
 - 🟢 **Schedule estilo Control-M** — dias da semana/mês, N-ésimo dia útil, regras
   avançadas, janelas e execução cíclica; calendars include/exclude visuais.
 - 🟢 **Dependências entre jobs** com condições (on-success/failure/complete/always).
@@ -359,6 +360,8 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 ---
 
 ## 🗺 Roadmap
+
+> Versão visual e consolidada (progresso por trilha): [`docs/roadmap.md`](docs/roadmap.md).
 
 - [x] **GitOps** — Publish, webhook, drift, deep-links, PAT seguro + token via UI
 - [x] **Paridade Control-M** — calendars, resources, conditions, variáveis, SLA, forecast

@@ -8,7 +8,7 @@
  * Reads/writes through @/lib/alerting. Styled with v2 design tokens.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bell, Check, CheckCheck, X } from "lucide-react";
+import { Bell, Check, CheckCheck, X, Send } from "lucide-react";
 import type { AlertEvent, AlertRule, AlertSeverity } from "@/lib/alerting";
 import {
   fetchAlertEvents,
@@ -17,6 +17,8 @@ import {
   ackAllAlerts,
   toggleRule,
 } from "@/lib/alerts-api";
+import { getSettings, putSettings } from "@/lib/settings-api";
+import { isServerMode } from "@/lib/server-client";
 
 type Tab = "events" | "rules";
 
@@ -43,7 +45,7 @@ function relativeTime(ts: number): string {
   return new Date(ts).toLocaleString("pt-BR");
 }
 
-export function AlertsPanel({ onClose, onChange }: { onClose: () => void; onChange?: () => void }) {
+export function AlertsPanel({ onClose, onChange, isAdmin = false }: { onClose: () => void; onChange?: () => void; isAdmin?: boolean }) {
   const [tab, setTab] = useState<Tab>("events");
 
   // ESC fecha o modal
@@ -110,7 +112,7 @@ export function AlertsPanel({ onClose, onChange }: { onClose: () => void; onChan
         </div>
 
         <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
-          {tab === "events" ? <EventsView onChange={onChange} /> : <RulesView />}
+          {tab === "events" ? <EventsView onChange={onChange} /> : <RulesView isAdmin={isAdmin} />}
         </div>
       </div>
     </div>
@@ -270,7 +272,7 @@ function conditionSummary(rule: AlertRule): string {
   }
 }
 
-function RulesView() {
+function RulesView({ isAdmin }: { isAdmin: boolean }) {
   const [rules, setRules] = useState<AlertRule[]>([]);
   const reload = useCallback(() => {
     fetchAlertRules().then(setRules).catch(() => setRules([]));
@@ -281,6 +283,7 @@ function RulesView() {
 
   return (
     <div style={{ display: "grid", gap: 6 }}>
+      <ChannelsConfig isAdmin={isAdmin} />
       {rules.length === 0 && (
         <EmptyHint title="Nenhuma regra" hint="As regras padrão serão criadas automaticamente." />
       )}
@@ -319,6 +322,133 @@ function RulesView() {
           <Toggle on={r.enabled} onClick={() => handleToggle(r.id)} />
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ── Channels config (alert routing — server mode) ── */
+
+function ChannelsConfig({ isAdmin }: { isAdmin: boolean }) {
+  const [settings, setSettings] = useState<Record<string, string>>({});
+  const [slack, setSlack] = useState("");
+  const [hook, setHook] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const load = useCallback(() => {
+    getSettings().then(setSettings).catch(() => {});
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  if (!isServerMode()) return null; // routing externo é server-only
+
+  const slackSet = settings["alert_slack_webhook_set"] === "true";
+  const hookSet = settings["alert_webhook_url_set"] === "true";
+
+  const save = (patch: Record<string, string>) => {
+    setBusy(true);
+    putSettings(patch)
+      .then((s) => { setSettings(s); setSlack(""); setHook(""); setSaved(true); setTimeout(() => setSaved(false), 2000); })
+      .catch(() => {})
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div style={{
+      padding: "10px 12px", borderRadius: 5, marginBottom: 6,
+      background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-subtle)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+        <Send size={13} style={{ color: "var(--v2-accent-brand)" }} />
+        <span style={{ fontSize: 12, fontWeight: 600 }}>Canais de notificação</span>
+        {saved && <span style={{ fontSize: 10, color: "var(--v2-status-ok)", fontFamily: "var(--v2-font-mono)" }}>✓ salvo</span>}
+      </div>
+      <div style={{ fontSize: 10, color: "var(--v2-text-muted)", marginBottom: 10, lineHeight: 1.4 }}>
+        Sinks globais: todo alerta disparado é enviado para os destinos configurados.
+      </div>
+      <ChannelRow
+        label="Slack / webhook"
+        placeholder="https://hooks.slack.com/services/…"
+        configured={slackSet}
+        value={slack}
+        onChange={setSlack}
+        isAdmin={isAdmin}
+        busy={busy}
+        onSave={() => save({ alert_slack_webhook: slack })}
+        onClear={() => save({ alert_slack_webhook: "" })}
+      />
+      <ChannelRow
+        label="Webhook genérico"
+        placeholder="https://exemplo.com/alertas (JSON)"
+        configured={hookSet}
+        value={hook}
+        onChange={setHook}
+        isAdmin={isAdmin}
+        busy={busy}
+        onSave={() => save({ alert_webhook_url: hook })}
+        onClear={() => save({ alert_webhook_url: "" })}
+      />
+      {!isAdmin && (
+        <div style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 6 }}>
+          Apenas admins podem alterar os canais.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChannelRow({ label, placeholder, configured, value, onChange, isAdmin, busy, onSave, onClear }: {
+  label: string; placeholder: string; configured: boolean; value: string;
+  onChange: (v: string) => void; isAdmin: boolean; busy: boolean; onSave: () => void; onClear: () => void;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+      <span style={{ fontSize: 11, color: "var(--v2-text-secondary)", width: 120, flexShrink: 0 }}>{label}</span>
+      <span style={{
+        fontSize: 9, fontFamily: "var(--v2-font-mono)", padding: "1px 6px", borderRadius: 8, flexShrink: 0,
+        background: configured ? "var(--v2-accent-deep)" : "transparent",
+        color: configured ? "var(--v2-status-ok)" : "var(--v2-text-muted)",
+        border: "1px solid " + (configured ? "var(--v2-accent-brand)" : "var(--v2-border-medium)"),
+      }}>{configured ? "configurado" : "—"}</span>
+      {isAdmin && (
+        <>
+          <input
+            type="url"
+            value={value}
+            placeholder={placeholder}
+            onChange={(e) => onChange(e.target.value)}
+            disabled={busy}
+            style={{
+              flex: 1, minWidth: 0, fontSize: 11, padding: "4px 8px", borderRadius: 4,
+              background: "var(--v2-bg-surface)", color: "var(--v2-text-primary)",
+              border: "1px solid var(--v2-border-medium)", fontFamily: "var(--v2-font-mono)",
+            }}
+          />
+          <button
+            onClick={onSave}
+            disabled={busy || !value}
+            style={{
+              padding: "4px 10px", borderRadius: 4, fontSize: 10, flexShrink: 0,
+              background: value ? "var(--v2-accent-brand)" : "transparent",
+              color: value ? "#000" : "var(--v2-text-muted)",
+              border: "1px solid " + (value ? "var(--v2-accent-brand)" : "var(--v2-border-medium)"),
+              cursor: value && !busy ? "pointer" : "not-allowed", fontWeight: 600,
+            }}
+          >Salvar</button>
+          {configured && (
+            <button
+              onClick={onClear}
+              disabled={busy}
+              title="Remover destino"
+              style={{
+                padding: "4px 8px", borderRadius: 4, fontSize: 10, flexShrink: 0,
+                background: "transparent", color: "var(--v2-status-failed)",
+                border: "1px solid var(--v2-border-medium)", cursor: "pointer",
+              }}
+            >limpar</button>
+          )}
+        </>
+      )}
     </div>
   );
 }

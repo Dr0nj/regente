@@ -1,8 +1,12 @@
 package scheduler
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Dr0nj/regente-server/internal/db"
 	"github.com/Dr0nj/regente-server/internal/domain"
@@ -102,6 +106,48 @@ func TestAlertEngine_Acknowledge(t *testing.T) {
 	n, _ = eng.UnacknowledgedCount()
 	if n != 0 {
 		t.Fatalf("expected 0 unacknowledged after ack, got %d", n)
+	}
+}
+
+func TestAlertEngine_RoutesToWebhook(t *testing.T) {
+	database := newTestDB(t)
+	got := make(chan map[string]any, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		got <- body
+	}))
+	defer srv.Close()
+
+	// Configura o sink global de webhook genérico.
+	if _, err := database.Exec(`INSERT INTO settings(key,value) VALUES(?,?)`, "alert_webhook_url", srv.URL); err != nil {
+		t.Fatal(err)
+	}
+
+	eng := NewAlertEngine(database, nil)
+	eng.SeedDefaults()
+	eng.Evaluate(AlertContext{WorkflowID: "wf", WorkflowName: "WF", Status: string(domain.StatusNotOK), DurationMs: 1500})
+
+	select {
+	case body := <-got:
+		if body["event"] != "alert.fired" {
+			t.Fatalf("payload inesperado: %+v", body)
+		}
+		if body["severity"] != "critical" || body["workflowId"] != "wf" {
+			t.Fatalf("campos do alerta errados: %+v", body)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("webhook não recebeu o alerta dentro do timeout")
+	}
+}
+
+func TestAlertEngine_NoWebhookConfigured(t *testing.T) {
+	// Sem sink configurado, route() é no-op e não quebra o disparo.
+	eng := NewAlertEngine(newTestDB(t), nil)
+	eng.SeedDefaults()
+	eng.Evaluate(AlertContext{WorkflowID: "x", Status: string(domain.StatusNotOK)})
+	if evs, _ := eng.ListEvents(10); len(evs) != 1 {
+		t.Fatalf("evento deveria ter sido persistido mesmo sem webhook, veio %d", len(evs))
 	}
 }
 
