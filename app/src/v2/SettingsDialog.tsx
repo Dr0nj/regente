@@ -4,9 +4,27 @@ import { getSettings, putSettings, type ServerSettings } from "../lib/settings-a
 import { fetchGitStatus, setGitToken, clearGitToken, cleanupGitDB, setWebhookSecret, type GitStatus } from "../lib/git-api";
 import { invalidateGitInfo } from "../lib/git-info";
 import { listAgents, listAgentTokens, createAgentToken, revokeAgentToken, type AgentInfo, type AgentToken } from "../lib/agents-api";
+import { THEMES, getThemeId, applyTheme, type ThemeId, type ThemeDef } from "../lib/theme";
 
 interface Props {
   onClose: () => void;
+}
+
+// Bandeira simplificada (campo + losango + disco) usada nos cards de tema.
+function ThemeFlag({ flag, size = 40 }: { flag: ThemeDef["flag"]; size?: number }) {
+  const h = Math.round((size * 7) / 10);
+  return (
+    <svg width={size} height={h} viewBox="0 0 60 42" style={{ borderRadius: 3, display: "block", flexShrink: 0 }} aria-hidden="true">
+      <rect width="60" height="42" fill={flag.field} />
+      <polygon points="30,4 56,21 30,38 4,21" fill={flag.rhombus} />
+      <circle cx="30" cy="21" r="9" fill={flag.disc} />
+      <path d="M22 19.5 Q30 25 38 19.5" stroke="#fff" strokeWidth="1.2" fill="none" opacity="0.9" />
+      <circle cx="27" cy="19" r="0.7" fill="#fff" />
+      <circle cx="33" cy="22" r="0.7" fill="#fff" />
+      <circle cx="30" cy="24" r="0.6" fill="#fff" />
+      <circle cx="31.5" cy="18" r="0.5" fill="#fff" />
+    </svg>
+  );
 }
 
 export function SettingsDialog({ onClose }: Props) {
@@ -14,6 +32,7 @@ export function SettingsDialog({ onClose }: Props) {
   const [envLabel, setEnvLabel] = useState("");
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [theme, setTheme] = useState<ThemeId>(getThemeId());
 
   // GitHub token
   const [git, setGit] = useState<GitStatus | null>(null);
@@ -156,6 +175,41 @@ export function SettingsDialog({ onClose }: Props) {
           <span style={{ fontSize: 12, color: "var(--v2-text-muted)" }}>Carregando...</span>
         ) : (
           <>
+            {/* Temas — verde-amarelo do Brasil, com bandeiras para seleção */}
+            <fieldset style={{ border: "1px solid var(--v2-border-medium)", borderRadius: 6, padding: "12px 14px" }}>
+              <legend style={{ fontSize: 11, fontWeight: 600, color: "var(--v2-text-secondary)", padding: "0 4px" }}>
+                Tema
+              </legend>
+              <div style={{ fontSize: 10, color: "var(--v2-text-muted)", marginBottom: 10 }}>
+                Escolha a aparência. Aplica na hora e fica salvo neste navegador.
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {THEMES.map((t) => {
+                  const active = theme === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => { setTheme(t.id); applyTheme(t.id); }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 10, textAlign: "left",
+                        padding: "8px 10px", borderRadius: 6, cursor: "pointer",
+                        background: active ? "var(--v2-accent-deep)" : "var(--v2-bg-elevated)",
+                        border: "1px solid " + (active ? "var(--v2-accent-brand)" : "var(--v2-border-medium)"),
+                      }}
+                    >
+                      <ThemeFlag flag={t.flag} />
+                      <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: active ? "var(--v2-accent-brand)" : "var(--v2-text-primary)" }}>
+                          {t.name}{active ? " ✓" : ""}
+                        </span>
+                        <span style={{ fontSize: 10, color: "var(--v2-text-muted)", lineHeight: 1.3 }}>{t.desc}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+
             {/* F20 — Environment Label */}
             <fieldset style={{ border: "1px solid var(--v2-border-medium)", borderRadius: 6, padding: "12px 14px" }}>
               <legend style={{ fontSize: 11, fontWeight: 600, color: "var(--v2-text-secondary)", padding: "0 4px" }}>

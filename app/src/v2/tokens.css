@@ -58,6 +58,98 @@
   --v2-radius-md: 6px;
 }
 
+/* ══════════════════════════════════════════════════════════════
+   Temas (src/lib/theme.ts) — sobrescrevem os tokens via data-theme.
+   "escuro" = :root base (sem atributo). Brasil = verde e amarelo.
+   ══════════════════════════════════════════════════════════════ */
+
+:root[data-theme="brasil"] {
+  --v2-bg-canvas:     #04140a;
+  --v2-bg-surface:    #06180c;
+  --v2-bg-elevated:   #0a2011;
+  --v2-bg-hover:      #0e2916;
+  --v2-bg-active:     #12331c;
+
+  --v2-border-subtle: #103a1f;
+  --v2-border-medium: #1c5a33;
+  --v2-border-strong: #2b7d49;
+  --v2-border-focus:  #FFDF00;
+
+  --v2-text-primary:   #f3faf4;
+  --v2-text-secondary: #b6d2bd;
+  --v2-text-muted:     #5e7d68;
+  --v2-text-disabled:  #3c5343;
+
+  --v2-accent-brand:   #FFDF00;   /* amarelo ouro — CTA / selected */
+  --v2-accent-dark:    #009C3B;   /* verde bandeira */
+  --v2-accent-deep:    #0a3d1f;
+  --v2-accent-faint:   #052a13;
+
+  --v2-status-ok:      #00b84c;
+  --v2-status-running: #2f6fed;   /* azul bandeira */
+  --v2-status-failed:  #ef4444;
+  --v2-status-hold:    #f5b50a;
+  --v2-status-waiting: #6c8a76;
+}
+
+:root[data-theme="brasil-ouro"] {
+  --v2-bg-canvas:     #100d03;
+  --v2-bg-surface:    #161106;
+  --v2-bg-elevated:   #1d160a;
+  --v2-bg-hover:      #241c0d;
+  --v2-bg-active:     #2c2210;
+
+  --v2-border-subtle: #2a2110;
+  --v2-border-medium: #4a3a17;
+  --v2-border-strong: #6e561f;
+  --v2-border-focus:  #FFD200;
+
+  --v2-text-primary:   #fbf6e6;
+  --v2-text-secondary: #d6c79a;
+  --v2-text-muted:     #8a7a4c;
+  --v2-text-disabled:  #5a4f30;
+
+  --v2-accent-brand:   #FFD200;   /* ouro dominante */
+  --v2-accent-dark:    #C9A100;
+  --v2-accent-deep:    #3a2e08;
+  --v2-accent-faint:   #221b05;
+
+  --v2-status-ok:      #2ea043;
+  --v2-status-running: #2f6fed;
+  --v2-status-failed:  #ef4444;
+  --v2-status-hold:    #f5b50a;
+  --v2-status-waiting: #8a7f5e;
+}
+
+:root[data-theme="brasil-mata"] {
+  --v2-bg-canvas:     #02100a;
+  --v2-bg-surface:    #03140c;
+  --v2-bg-elevated:   #061b10;
+  --v2-bg-hover:      #0a2415;
+  --v2-bg-active:     #0e2d1a;
+
+  --v2-border-subtle: #0d301b;
+  --v2-border-medium: #164a2c;
+  --v2-border-strong: #226e41;
+  --v2-border-focus:  #E6C200;
+
+  --v2-text-primary:   #eef8f0;
+  --v2-text-secondary: #a8c8b2;
+  --v2-text-muted:     #547062;
+  --v2-text-disabled:  #35493d;
+
+  --v2-accent-brand:   #00C853;   /* verde-mata vibrante — CTA */
+  --v2-accent-dark:    #00813a;
+  --v2-accent-deep:    #06351d;
+  --v2-accent-faint:   #042412;
+
+  --v2-status-ok:      #00C853;
+  --v2-status-running: #2f6fed;
+  --v2-status-failed:  #ef4444;
+  --v2-status-hold:    #E6C200;
+  --v2-status-waiting: #5c7a66;
+}
+
 /* ── Utility classes (escopadas, prefixo v2-) ── */
 
 .v2-root {
