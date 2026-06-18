@@ -69,6 +69,14 @@ CI (`.github/workflows/ci.yml`): 3 jobs — server (build/vet/test), agent
   config de sinks, admin). **Cooldown por (regra×job)** (`cooldownKey`): re-disparos
   do MESMO job são agrupados (anti-spam de flapping), mas jobs DIFERENTES numa rajada
   nunca se suprimem — garante que nenhum erro distinto seja perdido na tela de alertas.
+  **Ciclo de vida do alerta** (`alert_events.resolution`, migration v3): ''=novo ·
+  'ack' · 'rerun' · 'set_ok'. Rerun/SetOK de uma instância marcam os alertas pendentes
+  do job (`MarkHandledByWorkflow`, hook nos handlers + broadcast `alert.changed`);
+  alertas já tratados não são sobrescritos. `rule-failure` vem com cooldown **0** (toda
+  falha vira alerta; dedup é por tratamento). Cooldown editável: `PUT .../cooldown`.
+- **Temas** (`app/src/lib/theme.ts` + `data-theme` em `tokens.css`): Escuro (default),
+  Brasil/Brasil Ouro/Brasil Mata (verde-amarelo). Seção "Tema" no `SettingsDialog` com
+  cards de bandeira; persiste em localStorage; aplicado no boot (`main.tsx`).
 - **Serverless Fases 1–3** (acima).
 
 ## Gotchas
