@@ -66,7 +66,9 @@ CI (`.github/workflows/ci.yml`): 3 jobs — server (build/vet/test), agent
   (`PUT /api/alerts/rules/{id}/channels`); `channelWanted` decide o disparo e
   regra sem canal externo cai em fallback "todos os sinks configurados" (back-compat).
   Router best-effort async em `alerting.go`; UI na aba Regras (chips por regra +
-  config de sinks, admin).
+  config de sinks, admin). **Cooldown por (regra×job)** (`cooldownKey`): re-disparos
+  do MESMO job são agrupados (anti-spam de flapping), mas jobs DIFERENTES numa rajada
+  nunca se suprimem — garante que nenhum erro distinto seja perdido na tela de alertas.
 - **Serverless Fases 1–3** (acima).
 
 ## Gotchas
