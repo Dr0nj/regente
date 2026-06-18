@@ -32,7 +32,7 @@ type AlertEngine struct {
 	hub *hub.Hub
 
 	mu        sync.Mutex
-	cooldowns map[string]time.Time // ruleID -> último disparo (ephemeral)
+	cooldowns map[string]time.Time // chave ruleID×workflowID -> último disparo (ephemeral)
 }
 
 func NewAlertEngine(database *db.DB, h *hub.Hub) *AlertEngine {
@@ -120,7 +120,7 @@ func (e *AlertEngine) Evaluate(ctx AlertContext) {
 		if !matchesWorkflow(r.WorkflowPattern, ctx.WorkflowID) {
 			continue
 		}
-		if e.onCooldown(r.ID, r.CooldownMs) {
+		if e.onCooldown(cooldownKey(r.ID, ctx.WorkflowID), r.CooldownMs) {
 			continue
 		}
 		var cond alertCondition
@@ -146,7 +146,7 @@ func (e *AlertEngine) fire(r AlertRule, cond alertCondition, ctx AlertContext) {
 		log.Printf("[alerts] insert event: %v", err)
 		return
 	}
-	e.setCooldown(r.ID)
+	e.setCooldown(cooldownKey(r.ID, ctx.WorkflowID))
 	if e.hub != nil {
 		e.hub.BroadcastWeb("alert.fired", map[string]any{
 			"id":           fmt.Sprintf("%d", id),
@@ -348,24 +348,34 @@ func postJSON(url string, payload map[string]any) {
 	resp.Body.Close()
 }
 
-/* ── Cooldown (ephemeral, in-memory) ── */
+/* ── Cooldown (ephemeral, in-memory) ──
+   A chave é ruleID×workflowID — NÃO só ruleID. O cooldown agrupa apenas
+   re-disparos do MESMO job na mesma regra (anti-spam de job flapando). Jobs
+   DIFERENTES nunca se suprimem: numa rajada (ex.: agente cai e N jobs falham
+   juntos), cada job gera o seu alerta. Garante que nenhum erro distinto seja
+   perdido na tela de alertas — o operador vê todos os jobs a tratar. */
 
-func (e *AlertEngine) onCooldown(ruleID string, cooldownMs int64) bool {
+// cooldownKey isola o cooldown por (regra, workflow). \x00 evita colisão de ids.
+func cooldownKey(ruleID, workflowID string) string {
+	return ruleID + "\x00" + workflowID
+}
+
+func (e *AlertEngine) onCooldown(key string, cooldownMs int64) bool {
 	if cooldownMs <= 0 {
 		return false
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	last, ok := e.cooldowns[ruleID]
+	last, ok := e.cooldowns[key]
 	if !ok {
 		return false
 	}
 	return time.Since(last) < time.Duration(cooldownMs)*time.Millisecond
 }
 
-func (e *AlertEngine) setCooldown(ruleID string) {
+func (e *AlertEngine) setCooldown(key string) {
 	e.mu.Lock()
-	e.cooldowns[ruleID] = time.Now()
+	e.cooldowns[key] = time.Now()
 	e.mu.Unlock()
 }
 

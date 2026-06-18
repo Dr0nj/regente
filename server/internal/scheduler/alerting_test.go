@@ -81,11 +81,30 @@ func TestAlertEngine_Cooldown(t *testing.T) {
 	eng.SeedDefaults()
 	ctx := AlertContext{WorkflowID: "z", Status: string(domain.StatusNotOK)}
 	eng.Evaluate(ctx)
-	eng.Evaluate(ctx) // dentro do cooldown → não dispara de novo
+	eng.Evaluate(ctx) // MESMO job dentro do cooldown → não dispara de novo
 
 	events, _ := eng.ListEvents(50)
 	if len(events) != 1 {
-		t.Fatalf("cooldown should suppress the 2nd fire, got %d events", len(events))
+		t.Fatalf("cooldown should suppress the 2nd fire of the SAME job, got %d events", len(events))
+	}
+}
+
+// Regressão crítica: cooldown é por (regra×job), nunca por regra inteira.
+// Uma rajada de jobs DIFERENTES (ex.: agente cai, N jobs falham) não pode
+// perder nenhum erro — cada job distinto gera o seu alerta.
+func TestAlertEngine_CooldownIsPerWorkflow(t *testing.T) {
+	eng := NewAlertEngine(newTestDB(t), nil)
+	eng.SeedDefaults()
+	for _, wf := range []string{"job-a", "job-b", "job-c"} {
+		eng.Evaluate(AlertContext{WorkflowID: wf, WorkflowName: wf, Status: string(domain.StatusNotOK)})
+	}
+	if evs, _ := eng.ListEvents(50); len(evs) != 3 {
+		t.Fatalf("rajada de 3 jobs distintos deveria gerar 3 alertas (nenhum perdido), veio %d", len(evs))
+	}
+	// Mas o MESMO job re-falhando dentro do cooldown segue throttled (anti-spam).
+	eng.Evaluate(AlertContext{WorkflowID: "job-a", Status: string(domain.StatusNotOK)})
+	if evs, _ := eng.ListEvents(50); len(evs) != 3 {
+		t.Fatalf("re-falha do mesmo job no cooldown não deveria gerar alerta novo, veio %d", len(evs))
 	}
 }
 
