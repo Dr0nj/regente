@@ -75,7 +75,7 @@ type AlertContext struct {
 // defaultRules — idênticas às do frontend (mesmos ids/cooldowns).
 var defaultRules = []AlertRule{
 	{ID: "rule-failure", Name: "Workflow Failure", Enabled: true, WorkflowPattern: "*",
-		ConditionJSON: `{"type":"failure"}`, Severity: "critical", Channels: "toast", CooldownMs: 60000},
+		ConditionJSON: `{"type":"failure"}`, Severity: "critical", Channels: "toast", CooldownMs: 0},
 	{ID: "rule-slow", Name: "Slow Execution", Enabled: true, WorkflowPattern: "*",
 		ConditionJSON: `{"type":"duration_exceeded","thresholdMs":30000}`, Severity: "warning", Channels: "toast", CooldownMs: 300000},
 	{ID: "rule-retries", Name: "Excessive Retries", Enabled: true, WorkflowPattern: "*",
@@ -434,6 +434,8 @@ type AlertEventRow struct {
 	WorkflowName string `json:"workflowName"`
 	Message      string `json:"message"`
 	Acknowledged bool   `json:"acknowledged"`
+	// Resolution — ciclo de vida: '' novo · 'ack' reconhecido · 'rerun' · 'set_ok'.
+	Resolution string `json:"resolution"`
 }
 
 func (e *AlertEngine) ListEvents(limit int) ([]AlertEventRow, error) {
@@ -442,7 +444,7 @@ func (e *AlertEngine) ListEvents(limit int) ([]AlertEventRow, error) {
 	}
 	rows, err := e.db.Query(
 		`SELECT id, rule_id, rule_name, severity, workflow_id, workflow_name, message,
-		        COALESCE(acknowledged,0), COALESCE(ts_ms,0)
+		        COALESCE(acknowledged,0), COALESCE(ts_ms,0), COALESCE(resolution,'')
 		 FROM alert_events ORDER BY ts_ms DESC LIMIT ?`,
 		limit,
 	)
@@ -456,7 +458,7 @@ func (e *AlertEngine) ListEvents(limit int) ([]AlertEventRow, error) {
 		var idNum int64
 		var ackInt int
 		if err := rows.Scan(&idNum, &ev.RuleID, &ev.RuleName, &ev.Severity,
-			&ev.WorkflowID, &ev.WorkflowName, &ev.Message, &ackInt, &ev.Timestamp); err != nil {
+			&ev.WorkflowID, &ev.WorkflowName, &ev.Message, &ackInt, &ev.Timestamp, &ev.Resolution); err != nil {
 			continue
 		}
 		ev.ID = fmt.Sprintf("%d", idNum)
@@ -473,13 +475,38 @@ func (e *AlertEngine) UnacknowledgedCount() (int, error) {
 }
 
 func (e *AlertEngine) Acknowledge(id string) error {
-	_, err := e.db.Exec(`UPDATE alert_events SET acknowledged=1 WHERE id=?`, id)
+	// reconhecimento manual = resolução 'ack' (não sobrescreve rerun/set_ok já tratados).
+	_, err := e.db.Exec(
+		`UPDATE alert_events SET acknowledged=1,
+		        resolution=CASE WHEN COALESCE(resolution,'')='' THEN 'ack' ELSE resolution END
+		 WHERE id=?`, id)
 	return err
 }
 
 func (e *AlertEngine) AcknowledgeAll() error {
-	_, err := e.db.Exec(`UPDATE alert_events SET acknowledged=1 WHERE COALESCE(acknowledged,0)=0`)
+	_, err := e.db.Exec(
+		`UPDATE alert_events SET acknowledged=1,
+		        resolution=CASE WHEN COALESCE(resolution,'')='' THEN 'ack' ELSE resolution END
+		 WHERE COALESCE(acknowledged,0)=0`)
 	return err
+}
+
+// MarkHandledByWorkflow marca como tratados os alertas AINDA NÃO tratados
+// (resolution=”) de um workflow, com a resolução dada ('rerun'|'set_ok').
+// Alertas já tratados não são sobrescritos — preserva o histórico de ações:
+// um alerta tratado com rerun continua 'rerun' mesmo depois de um set_ok posterior
+// (que marca apenas o alerta NOVO gerado pela re-execução). Retorna nº afetado.
+func (e *AlertEngine) MarkHandledByWorkflow(workflowID, resolution string) (int, error) {
+	res, err := e.db.Exec(
+		`UPDATE alert_events SET acknowledged=1, resolution=?
+		 WHERE workflow_id=? AND COALESCE(resolution,'')=''`,
+		resolution, workflowID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }
 
 // AlertRuleRow — linha de regra serializável (condition emitido como objeto).
@@ -551,6 +578,16 @@ func (e *AlertEngine) UpdateRuleChannels(id string, channels []string) error {
 		clean = append(clean, t)
 	}
 	_, err := e.db.Exec(`UPDATE alert_rules SET channels=? WHERE id=?`, strings.Join(clean, ","), id)
+	return err
+}
+
+// UpdateRuleCooldown define o cooldown (ms) de uma regra. 0 = sem cooldown
+// (toda ocorrência vira alerta — o tratamento é feito pelo ciclo de vida do alerta).
+func (e *AlertEngine) UpdateRuleCooldown(id string, cooldownMs int64) error {
+	if cooldownMs < 0 {
+		cooldownMs = 0
+	}
+	_, err := e.db.Exec(`UPDATE alert_rules SET cooldown_ms=? WHERE id=?`, cooldownMs, id)
 	return err
 }
 

@@ -646,6 +646,10 @@ function V2PreviewInner() {
           }
           void fetchUnacknowledgedCount().then(setUnreadAlerts);
         }
+        // Ciclo de vida: alertas tratados (rerun/set-ok) no server → atualiza o badge.
+        if (ev.event === "alert.changed") {
+          void fetchUnacknowledgedCount().then(setUnreadAlerts);
+        }
       });
     }
 

@@ -148,6 +148,8 @@ func (s *server) rerunInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.cfg.Scheduler.EmitEvent(id, "rerun", "operator", "reset to WAITING")
+	// Ciclo de vida do alerta: o operador agiu no job → marca alertas como tratados.
+	s.markAlertsHandled(id, "rerun")
 	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusWaiting)})
 	writeJSON(w, 200, map[string]string{"id": id, "status": string(domain.StatusWaiting)})
 }
@@ -163,6 +165,8 @@ func (s *server) setOKInstance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Ciclo de vida do alerta: set OK trata os alertas pendentes do job.
+	s.markAlertsHandled(id, "set_ok")
 	writeJSON(w, 200, map[string]string{"id": id, "status": string(domain.StatusOK)})
 }
 

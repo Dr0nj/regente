@@ -79,6 +79,10 @@ func TestAlertEngine_FailureFires(t *testing.T) {
 func TestAlertEngine_Cooldown(t *testing.T) {
 	eng := NewAlertEngine(newTestDB(t), nil)
 	eng.SeedDefaults()
+	// default do rule-failure é 0 (sem cooldown) — este teste cobre cooldown > 0.
+	if err := eng.UpdateRuleCooldown("rule-failure", 60000); err != nil {
+		t.Fatal(err)
+	}
 	ctx := AlertContext{WorkflowID: "z", Status: string(domain.StatusNotOK)}
 	eng.Evaluate(ctx)
 	eng.Evaluate(ctx) // MESMO job dentro do cooldown → não dispara de novo
@@ -95,6 +99,9 @@ func TestAlertEngine_Cooldown(t *testing.T) {
 func TestAlertEngine_CooldownIsPerWorkflow(t *testing.T) {
 	eng := NewAlertEngine(newTestDB(t), nil)
 	eng.SeedDefaults()
+	if err := eng.UpdateRuleCooldown("rule-failure", 60000); err != nil {
+		t.Fatal(err)
+	}
 	for _, wf := range []string{"job-a", "job-b", "job-c"} {
 		eng.Evaluate(AlertContext{WorkflowID: wf, WorkflowName: wf, Status: string(domain.StatusNotOK)})
 	}
@@ -257,6 +264,55 @@ func TestAlertEngine_PerRuleRoutingNarrows(t *testing.T) {
 	case <-time.After(300 * time.Millisecond):
 		// ok — nenhum POST chegou ao webhook
 	}
+}
+
+// Ciclo de vida do alerta tratado pela ação do operador no job:
+// falha → alerta novo; rerun → 'rerun'; re-falha → novo alerta; set_ok → 'set_ok'.
+func TestAlertEngine_HandledLifecycle(t *testing.T) {
+	eng := NewAlertEngine(newTestDB(t), nil)
+	eng.SeedDefaults() // rule-failure já vem com cooldown 0
+
+	// 1) job falha → alerta novo (resolution='')
+	eng.Evaluate(AlertContext{WorkflowID: "job1", WorkflowName: "Job 1", Status: string(domain.StatusNotOK)})
+	if evs, _ := eng.ListEvents(50); len(evs) != 1 || evs[0].Resolution != "" {
+		t.Fatalf("esperava 1 alerta novo (resolution=''), veio %+v", evs)
+	}
+
+	// 2) operador dá rerun → alerta vira 'rerun'
+	if n, _ := eng.MarkHandledByWorkflow("job1", "rerun"); n != 1 {
+		t.Fatalf("rerun deveria tratar 1 alerta, tratou %d", n)
+	}
+
+	// 3) job falha de novo → NOVO alerta (cooldown 0 não suprime)
+	eng.Evaluate(AlertContext{WorkflowID: "job1", WorkflowName: "Job 1", Status: string(domain.StatusNotOK)})
+	res := map[string]int{}
+	for _, e := range mustEvents(t, eng) {
+		res[e.Resolution]++
+	}
+	if res["rerun"] != 1 || res[""] != 1 {
+		t.Fatalf("esperava 1 'rerun' (tratado) + 1 '' (novo), veio %v", res)
+	}
+
+	// 4) set OK → trata SÓ o alerta novo; o 'rerun' permanece (histórico preservado)
+	if n, _ := eng.MarkHandledByWorkflow("job1", "set_ok"); n != 1 {
+		t.Fatalf("set_ok deveria tratar só o alerta novo (1), tratou %d", n)
+	}
+	res = map[string]int{}
+	for _, e := range mustEvents(t, eng) {
+		res[e.Resolution]++
+	}
+	if res["rerun"] != 1 || res["set_ok"] != 1 {
+		t.Fatalf("esperava 1 'rerun' + 1 'set_ok', veio %v", res)
+	}
+}
+
+func mustEvents(t *testing.T, eng *AlertEngine) []AlertEventRow {
+	t.Helper()
+	evs, err := eng.ListEvents(50)
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	return evs
 }
 
 func TestAlertEngine_ToggleDisablesRule(t *testing.T) {

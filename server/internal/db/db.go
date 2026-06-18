@@ -446,9 +446,18 @@ CREATE INDEX IF NOT EXISTS idx_alert_events_ack ON alert_events(acknowledged, ts
 var sqliteMigrations = []migration{
 	{version: 1, sql: schemaV1(sqliteID, "DATETIME")},
 	{version: 2, sql: schemaV2(sqliteID, "DATETIME")},
+	{version: 3, sql: schemaV3()},
 }
 
 var pgMigrations = []migration{
 	{version: 1, sql: schemaV1(pgID, "TIMESTAMPTZ")},
 	{version: 2, sql: schemaV2(pgID, "TIMESTAMPTZ")},
+	{version: 3, sql: schemaV3()},
+}
+
+// schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
+// '' = novo · 'ack' = reconhecido · 'rerun' = job re-executado · 'set_ok' = set OK.
+// ALTER idêntico em SQLite e Postgres.
+func schemaV3() string {
+	return `ALTER TABLE alert_events ADD COLUMN resolution TEXT NOT NULL DEFAULT ''`
 }

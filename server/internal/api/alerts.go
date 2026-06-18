@@ -129,3 +129,43 @@ func (s *server) setAlertRuleChannels(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
+
+// PUT /api/alerts/rules/{id}/cooldown — define o cooldown (ms) da regra (0 = nenhum).
+func (s *server) setAlertRuleCooldown(w http.ResponseWriter, r *http.Request) {
+	eng := s.cfg.Scheduler.Alerts()
+	if eng == nil {
+		http.Error(w, "alerting not configured", 503)
+		return
+	}
+	var body struct {
+		CooldownMs int64 `json:"cooldownMs"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid JSON", 400)
+		return
+	}
+	if err := eng.UpdateRuleCooldown(chi.URLParam(r, "id"), body.CooldownMs); err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// markAlertsHandled marca os alertas pendentes do workflow da instância como
+// tratados pela ação do operador (resolution 'rerun' | 'set_ok') e avisa a UI.
+func (s *server) markAlertsHandled(instanceID, resolution string) {
+	eng := s.cfg.Scheduler.Alerts()
+	if eng == nil {
+		return
+	}
+	var defID string
+	if err := s.cfg.DB.QueryRow(`SELECT definition_id FROM instances WHERE id=?`, instanceID).Scan(&defID); err != nil || defID == "" {
+		return
+	}
+	n, err := eng.MarkHandledByWorkflow(defID, resolution)
+	if err == nil && n > 0 && s.cfg.Hub != nil {
+		s.cfg.Hub.BroadcastWeb("alert.changed", map[string]any{
+			"workflowId": defID, "resolution": resolution, "count": n,
+		})
+	}
+}

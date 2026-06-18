@@ -7,8 +7,8 @@
  *
  * Reads/writes through @/lib/alerting. Styled with v2 design tokens.
  */
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { Bell, Check, CheckCheck, X, Send } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { Bell, Check, CheckCheck, X, Send, RotateCcw } from "lucide-react";
 import type { AlertChannel, AlertEvent, AlertRule, AlertSeverity } from "@/lib/alerting";
 import { ALL_CHANNELS } from "@/lib/alerting";
 import {
@@ -34,6 +34,13 @@ const SEVERITY_LABEL: Record<AlertSeverity, string> = {
   info: "Info",
   warning: "Warning",
   critical: "Critical",
+};
+
+// Ciclo de vida do alerta — como foi tratado pela ação do operador no job.
+const RESOLUTION_INFO: Record<string, { label: string; title: string; color: string; icon: ReactNode }> = {
+  ack: { label: "reconhecido", title: "Reconhecido manualmente", color: "var(--v2-status-ok)", icon: <Check size={12} /> },
+  rerun: { label: "tratado · rerun", title: "Job re-executado pelo operador", color: "var(--v2-status-running)", icon: <RotateCcw size={11} /> },
+  set_ok: { label: "tratado · set ok", title: "Marcado como OK pelo operador", color: "var(--v2-status-ok)", icon: <Check size={12} /> },
 };
 
 function relativeTime(ts: number): string {
@@ -230,28 +237,39 @@ function EventsView({ onChange }: { onChange?: () => void }) {
                   {e.message}
                 </div>
               </div>
-              {e.acknowledged ? (
-                <span style={{
-                  display: "flex", alignItems: "center", gap: 3, fontSize: 10,
-                  color: "var(--v2-status-ok)", fontFamily: "var(--v2-font-mono)", flexShrink: 0, marginTop: 2,
-                }}>
-                  <Check size={12} /> ok
-                </span>
-              ) : (
-                <button
-                  onClick={() => handleAck(e.id)}
-                  title="Reconhecer"
-                  style={{
-                    display: "flex", alignItems: "center", gap: 4, flexShrink: 0,
-                    padding: "3px 8px", borderRadius: 4,
-                    background: "transparent", border: "1px solid var(--v2-border-medium)",
-                    color: "var(--v2-text-secondary)", cursor: "pointer",
-                    fontSize: 10, fontFamily: "var(--v2-font-mono)",
-                  }}
-                >
-                  <Check size={12} /> ack
-                </button>
-              )}
+              {(() => {
+                const res = e.resolution || (e.acknowledged ? "ack" : "");
+                if (!res) {
+                  // alerta NOVO (não tratado) — botão de reconhecimento manual
+                  return (
+                    <button
+                      onClick={() => handleAck(e.id)}
+                      title="Reconhecer manualmente"
+                      style={{
+                        display: "flex", alignItems: "center", gap: 4, flexShrink: 0,
+                        padding: "3px 8px", borderRadius: 4,
+                        background: "transparent", border: "1px solid var(--v2-border-medium)",
+                        color: "var(--v2-text-secondary)", cursor: "pointer",
+                        fontSize: 10, fontFamily: "var(--v2-font-mono)",
+                      }}
+                    >
+                      <Check size={12} /> ack
+                    </button>
+                  );
+                }
+                const info = RESOLUTION_INFO[res] ?? RESOLUTION_INFO.ack;
+                return (
+                  <span
+                    title={info.title}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 4, fontSize: 10,
+                      color: info.color, fontFamily: "var(--v2-font-mono)", flexShrink: 0, marginTop: 2,
+                    }}
+                  >
+                    {info.icon} {info.label}
+                  </span>
+                );
+              })()}
             </div>
           ))}
         </div>
