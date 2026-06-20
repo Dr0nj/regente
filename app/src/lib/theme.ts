@@ -6,7 +6,7 @@
  * A escolha persiste em localStorage e é aplicada no boot (initTheme).
  */
 
-export type ThemeId = "escuro" | "brasil" | "brasil-ouro" | "brasil-mata";
+export type ThemeId = "escuro" | "brasil" | "brasil-ouro" | "brasil-mata" | "rosa";
 
 export interface ThemeDef {
   id: ThemeId;
@@ -16,7 +16,7 @@ export interface ThemeDef {
   flag: { field: string; rhombus: string; disc: string };
 }
 
-/** Temas disponíveis. O 1º é o default (Escuro); os demais são variações Brasil. */
+/** Temas disponíveis. O 1º é o default (Escuro); seguem variações Brasil e o Rosa. */
 export const THEMES: ThemeDef[] = [
   {
     id: "escuro",
@@ -41,6 +41,12 @@ export const THEMES: ThemeDef[] = [
     name: "Brasil Mata",
     desc: "Verde-mata profundo",
     flag: { field: "#00591f", rhombus: "#E6C200", disc: "#002766" },
+  },
+  {
+    id: "rosa",
+    name: "Rosa",
+    desc: "Rosa neon sobre fundo escuro",
+    flag: { field: "#160810", rhombus: "#FF4FA3", disc: "#5e0d34" },
   },
 ];
 

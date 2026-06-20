@@ -154,6 +154,36 @@
   --v2-status-waiting: #5c7a66;
 }
 
+:root[data-theme="rosa"] {
+  --v2-bg-canvas:     #120610;
+  --v2-bg-surface:    #180813;
+  --v2-bg-elevated:   #210b19;
+  --v2-bg-hover:      #2a0e20;
+  --v2-bg-active:     #331228;
+
+  --v2-border-subtle: #2c1322;
+  --v2-border-medium: #4d2039;
+  --v2-border-strong: #743055;
+  --v2-border-focus:  #FF4FA3;
+
+  --v2-text-primary:   #fdf2f8;
+  --v2-text-secondary: #e6c2d6;
+  --v2-text-muted:     #8a5e74;
+  --v2-text-disabled:  #5a3c4c;
+
+  --v2-accent-brand:   #FF4FA3;   /* rosa neon — CTA / selected */
+  --v2-accent-dark:    #C71E73;   /* magenta profundo — bordas ativas */
+  --v2-accent-deep:    #3d0f28;   /* background: hover de item rosa */
+  --v2-accent-faint:   #26081a;   /* fundo de zona rosa muito sutil */
+  --v2-accent-glow:    rgba(255, 79, 163, 0.38);
+
+  --v2-status-ok:      #20c997;   /* verde-água: sucesso legível sobre rosa */
+  --v2-status-running: #38bdf8;
+  --v2-status-failed:  #ef4444;
+  --v2-status-hold:    #f59e0b;
+  --v2-status-waiting: #9b7385;
+}
+
 /* ── Utility classes (escopadas, prefixo v2-) ── */
 
 .v2-root {
