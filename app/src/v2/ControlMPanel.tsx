@@ -31,24 +31,23 @@ export function ControlMPanel({ onClose }: { onClose: () => void }) {
       position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000,
       display: "flex", alignItems: "center", justifyContent: "center",
     }}>
-      <div style={{
-        background: "#1a1a1a", color: "#eee", borderRadius: 8, width: "min(1100px, 95vw)",
+      <div className="v2-neon-card" style={{
+        background: "var(--v2-bg-elevated)", color: "var(--v2-text-primary)", width: "min(1100px, 95vw)",
         height: "min(750px, 90vh)", display: "flex", flexDirection: "column",
-        boxShadow: "0 20px 60px rgba(0,0,0,0.8)",
       }}>
         <header style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "12px 16px", borderBottom: "1px solid #333",
+          padding: "12px 16px", borderBottom: "1px solid var(--v2-border-medium)",
         }}>
           <div style={{ fontWeight: 600 }}>Control-M Parity (Bloco 2)</div>
-          <button onClick={onClose} style={{ background: "transparent", color: "#aaa", border: "none", fontSize: 22, cursor: "pointer" }}>×</button>
+          <button onClick={onClose} style={{ background: "transparent", color: "var(--v2-text-secondary)", border: "none", fontSize: 22, cursor: "pointer" }}>×</button>
         </header>
-        <div style={{ display: "flex", gap: 6, padding: "8px 16px", borderBottom: "1px solid #333" }}>
+        <div style={{ display: "flex", gap: 6, padding: "8px 16px", borderBottom: "1px solid var(--v2-border-medium)" }}>
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
-              background: tab === t.id ? "#3b82f6" : "transparent",
-              color: tab === t.id ? "#fff" : "#aaa",
-              border: "1px solid " + (tab === t.id ? "#3b82f6" : "#444"),
+              background: tab === t.id ? "var(--v2-accent-brand)" : "transparent",
+              color: tab === t.id ? "#000" : "var(--v2-text-secondary)",
+              border: "1px solid " + (tab === t.id ? "var(--v2-accent-brand)" : "var(--v2-border-strong)"),
               padding: "6px 14px", borderRadius: 4, cursor: "pointer", fontSize: 13,
             }}>{t.label}</button>
           ))}
@@ -82,7 +81,7 @@ function CalendarsView() {
       <table style={tbl}>
         <thead><tr><th style={th}>Name</th><th style={th}>Business Days</th><th style={th}>Holidays</th><th style={th}></th></tr></thead>
         <tbody>
-          {items.length === 0 && <tr><td colSpan={4} style={{ ...td, textAlign: "center", color: "#666" }}>No calendars yet.</td></tr>}
+          {items.length === 0 && <tr><td colSpan={4} style={{ ...td, textAlign: "center", color: "var(--v2-text-muted)" }}>No calendars yet.</td></tr>}
           {items.map(c => (
             <tr key={c.name}>
               <td style={td}>{c.name}</td>
@@ -132,13 +131,13 @@ function CalendarEditor({ cal, onSave, onCancel }: { cal: Calendar; onSave: (c: 
   const daysInMonth = new Date(view.y, view.m + 1, 0).getDate();
   const cells: Array<number | null> = [...Array(startPad).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
   const monthLabel = first.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
-  const colorFor = (st: string) => st === "exclude" ? { bg: "#3b1d1d", fg: "#fca5a5", br: "#7f1d1d" }
-    : st === "include" ? { bg: "#052e19", fg: "#11C76F", br: "#064E2B" }
-    : st === "holiday" ? { bg: "#3a2d10", fg: "#f59e0b", br: "#7c5e1a" }
-    : { bg: "transparent", fg: "#a3a3a3", br: "#262626" };
+  const colorFor = (st: string) => st === "exclude" ? { bg: "rgba(239,68,68,0.14)", fg: "var(--v2-status-failed)", br: "rgba(239,68,68,0.5)" }
+    : st === "include" ? { bg: "var(--v2-accent-deep)", fg: "var(--v2-accent-brand)", br: "var(--v2-accent-dark)" }
+    : st === "holiday" ? { bg: "rgba(245,158,11,0.14)", fg: "var(--v2-status-hold)", br: "rgba(245,158,11,0.45)" }
+    : { bg: "transparent", fg: "var(--v2-text-secondary)", br: "var(--v2-border-medium)" };
 
   return (
-    <div style={{ marginTop: 16, padding: 12, border: "1px solid #444", borderRadius: 6 }}>
+    <div style={{ marginTop: 16, padding: 12, border: "1px solid var(--v2-border-strong)", borderRadius: 6 }}>
       <div style={{ marginBottom: 10 }}>
         <label style={lbl}>Name: </label>
         <input value={c.name} onChange={e => setC({ ...c, name: e.target.value })} style={inp} placeholder="ex: dias-uteis-br" />
@@ -162,7 +161,7 @@ function CalendarEditor({ cal, onSave, onCancel }: { cal: Calendar; onSave: (c: 
         <button onClick={() => setView((v) => v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 })} style={btnSm}>›</button>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
-        {["S","T","Q","Q","S","S","D"].map((d, i) => <div key={i} style={{ textAlign: "center", fontSize: 9, color: "#666", fontFamily: "monospace" }}>{d}</div>)}
+        {["S","T","Q","Q","S","S","D"].map((d, i) => <div key={i} style={{ textAlign: "center", fontSize: 9, color: "var(--v2-text-muted)", fontFamily: "monospace" }}>{d}</div>)}
         {cells.map((day, i) => {
           if (day === null) return <div key={`p${i}`} />;
           const iso = `${view.y}-${String(view.m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -174,16 +173,16 @@ function CalendarEditor({ cal, onSave, onCancel }: { cal: Calendar; onSave: (c: 
             <button key={iso} onClick={() => cycle(iso)} title={`${iso}${st ? ` — ${st}` : ""} (clique para alternar)`}
               style={{
                 padding: "6px 0", fontSize: 11, cursor: "pointer", borderRadius: 3, fontFamily: "monospace",
-                background: st ? col.bg : (isBiz ? "#161616" : "transparent"),
+                background: st ? col.bg : (isBiz ? "var(--v2-bg-hover)" : "transparent"),
                 border: `1px solid ${col.br}`, color: col.fg, fontWeight: st ? 700 : 400,
               }}>{day}</button>
           );
         })}
       </div>
-      <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 10, color: "#888" }}>
-        <span><span style={{ color: "#f59e0b" }}>■</span> feriado</span>
-        <span><span style={{ color: "#11C76F" }}>■</span> incluir</span>
-        <span><span style={{ color: "#fca5a5" }}>■</span> excluir</span>
+      <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 10, color: "var(--v2-text-muted)" }}>
+        <span><span style={{ color: "var(--v2-status-hold)" }}>■</span> feriado</span>
+        <span><span style={{ color: "var(--v2-accent-brand)" }}>■</span> incluir</span>
+        <span><span style={{ color: "var(--v2-status-failed)" }}>■</span> excluir</span>
         <span style={{ marginLeft: "auto" }}>clique cicla os estados</span>
       </div>
 
@@ -213,13 +212,13 @@ function ResourcesView() {
       <table style={tbl}>
         <thead><tr><th style={th}>Name</th><th style={th}>Capacity</th><th style={th}>Used</th><th style={th}>Free</th><th style={th}></th></tr></thead>
         <tbody>
-          {items.length === 0 && <tr><td colSpan={5} style={{ ...td, textAlign: "center", color: "#666" }}>No resources yet.</td></tr>}
+          {items.length === 0 && <tr><td colSpan={5} style={{ ...td, textAlign: "center", color: "var(--v2-text-muted)" }}>No resources yet.</td></tr>}
           {items.map(r => (
             <tr key={r.name}>
               <td style={td}>{r.name}</td>
               <td style={td}>{r.capacity}</td>
               <td style={td}>{r.used}</td>
-              <td style={{ ...td, color: r.capacity - r.used <= 0 ? "#ef4444" : "#10b981" }}>{r.capacity - r.used}</td>
+              <td style={{ ...td, color: r.capacity - r.used <= 0 ? "var(--v2-status-failed)" : "var(--v2-status-ok)" }}>{r.capacity - r.used}</td>
               <td style={td}>
                 <button
                   onClick={() => {
@@ -256,11 +255,11 @@ function ConditionsView() {
       <table style={tbl}>
         <thead><tr><th style={th}>Name</th><th style={th}>Scope</th><th style={th}>Set At</th><th style={th}>Set By</th><th style={th}></th></tr></thead>
         <tbody>
-          {items.length === 0 && <tr><td colSpan={5} style={{ ...td, textAlign: "center", color: "#666" }}>No conditions set.</td></tr>}
+          {items.length === 0 && <tr><td colSpan={5} style={{ ...td, textAlign: "center", color: "var(--v2-text-muted)" }}>No conditions set.</td></tr>}
           {items.map(c => (
             <tr key={c.name + "|" + c.scopeDate}>
               <td style={td}>{c.name}</td>
-              <td style={td}>{c.scopeDate || <em style={{ color: "#999" }}>permanent</em>}</td>
+              <td style={td}>{c.scopeDate || <em style={{ color: "var(--v2-text-muted)" }}>permanent</em>}</td>
               <td style={td}>{new Date(c.setAt).toLocaleString()}</td>
               <td style={td}>{c.setBy}</td>
               <td style={td}><button onClick={() => unsetCondition(c.name, c.scopeDate).then(reload)} style={btnDanger}>unset</button></td>
@@ -286,14 +285,14 @@ function SLAView() {
       <table style={tbl}>
         <thead><tr><th style={th}>When</th><th style={th}>Definition</th><th style={th}>Instance</th><th style={th}>Kind</th><th style={th}>Severity</th><th style={th}>Message</th></tr></thead>
         <tbody>
-          {items.length === 0 && <tr><td colSpan={6} style={{ ...td, textAlign: "center", color: "#10b981" }}>No SLA breaches. ✓</td></tr>}
+          {items.length === 0 && <tr><td colSpan={6} style={{ ...td, textAlign: "center", color: "var(--v2-status-ok)" }}>No SLA breaches. ✓</td></tr>}
           {items.map(b => (
             <tr key={b.id}>
               <td style={td}>{new Date(b.detectedAt).toLocaleString()}</td>
               <td style={td}>{b.defId}</td>
               <td style={{ ...td, fontFamily: "monospace", fontSize: 11 }}>{b.instanceId.slice(0, 8)}</td>
               <td style={td}>{b.kind}</td>
-              <td style={{ ...td, color: b.severity === "critical" ? "#ef4444" : "#f59e0b" }}>{b.severity}</td>
+              <td style={{ ...td, color: b.severity === "critical" ? "var(--v2-status-failed)" : "var(--v2-status-hold)" }}>{b.severity}</td>
               <td style={td}>{b.message}</td>
             </tr>
           ))}
@@ -319,7 +318,7 @@ function ForecastView() {
       {report && (
         <>
           {report.peakResourceUsage && Object.keys(report.peakResourceUsage).length > 0 && (
-            <div style={{ marginBottom: 12, padding: 8, background: "#222", borderRadius: 4 }}>
+            <div style={{ marginBottom: 12, padding: 8, background: "var(--v2-bg-elevated)", borderRadius: 4 }}>
               <strong>Peak resource usage:</strong>{" "}
               {Object.entries(report.peakResourceUsage).map(([k, v]) => `${k}: ${v}`).join(" · ")}
             </div>
@@ -332,10 +331,10 @@ function ForecastView() {
                   <td style={td}>{j.wave}</td>
                   <td style={td}>{j.label}</td>
                   <td style={td}>{j.team}</td>
-                  <td style={{ ...td, color: j.eligible ? "#10b981" : "#999" }} title={j.reason}>{j.eligible ? "✓" : "skip"}</td>
+                  <td style={{ ...td, color: j.eligible ? "var(--v2-status-ok)" : "var(--v2-text-muted)" }} title={j.reason}>{j.eligible ? "✓" : "skip"}</td>
                   <td style={td}>{new Date(j.startAt).toLocaleTimeString()}</td>
                   <td style={td}>{new Date(j.endAt).toLocaleTimeString()}</td>
-                  <td style={{ ...td, color: j.wouldBreachSla ? "#ef4444" : "#666" }}>{j.wouldBreachSla ? "BREACH" : "—"}</td>
+                  <td style={{ ...td, color: j.wouldBreachSla ? "var(--v2-status-failed)" : "var(--v2-text-muted)" }}>{j.wouldBreachSla ? "BREACH" : "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -360,13 +359,13 @@ function AnalyticsView() {
     <div>
       <h3 style={{ marginTop: 0 }}>Analytics (F22)</h3>
       {summary && (
-        <div style={{ marginBottom: 16, padding: 12, background: "#222", borderRadius: 4 }}>
-          <div style={{ marginBottom: 8, fontSize: 12, color: "#999" }}>Last 7 days (since {summary.since})</div>
+        <div style={{ marginBottom: 16, padding: 12, background: "var(--v2-bg-elevated)", borderRadius: 4 }}>
+          <div style={{ marginBottom: 8, fontSize: 12, color: "var(--v2-text-muted)" }}>Last 7 days (since {summary.since})</div>
           <div style={{ display: "flex", gap: 16 }}>
             {Object.entries(summary.counts).map(([s, n]) => (
-              <div key={s} style={{ textAlign: "center", padding: "8px 16px", background: "#1a1a1a", borderRadius: 4 }}>
+              <div key={s} style={{ textAlign: "center", padding: "8px 16px", background: "var(--v2-bg-surface)", borderRadius: 4 }}>
                 <div style={{ fontSize: 22, fontWeight: 600 }}>{n}</div>
-                <div style={{ fontSize: 11, color: "#aaa" }}>{s}</div>
+                <div style={{ fontSize: 11, color: "var(--v2-text-secondary)" }}>{s}</div>
               </div>
             ))}
           </div>
@@ -378,7 +377,7 @@ function AnalyticsView() {
           <table style={tbl}>
             <thead><tr><th style={th}>Definition</th><th style={th}>Fails</th></tr></thead>
             <tbody>
-              {top.length === 0 && <tr><td colSpan={2} style={{ ...td, textAlign: "center", color: "#666" }}>No failures.</td></tr>}
+              {top.length === 0 && <tr><td colSpan={2} style={{ ...td, textAlign: "center", color: "var(--v2-text-muted)" }}>No failures.</td></tr>}
               {top.map(t => <tr key={t.defId}><td style={td}>{t.defId}</td><td style={td}>{t.fails}</td></tr>)}
             </tbody>
           </table>
@@ -388,7 +387,7 @@ function AnalyticsView() {
           <table style={tbl}>
             <thead><tr><th style={th}>Definition</th><th style={th}>Avg (s)</th><th style={th}>Runs</th></tr></thead>
             <tbody>
-              {mttr.length === 0 && <tr><td colSpan={3} style={{ ...td, textAlign: "center", color: "#666" }}>No data.</td></tr>}
+              {mttr.length === 0 && <tr><td colSpan={3} style={{ ...td, textAlign: "center", color: "var(--v2-text-muted)" }}>No data.</td></tr>}
               {mttr.map(m => <tr key={m.defId}><td style={td}>{m.defId}</td><td style={td}>{Math.round(m.avgSec)}</td><td style={td}>{m.runs}</td></tr>)}
             </tbody>
           </table>
@@ -415,7 +414,7 @@ function VariablesView() {
   return (
     <div>
       <h3 style={{ marginTop: 0 }}>Global Variables (F18)</h3>
-      <div style={{ fontSize: 12, color: "#888", marginBottom: 12 }}>
+      <div style={{ fontSize: 12, color: "var(--v2-text-muted)", marginBottom: 12 }}>
         Globals injected as <code>{"${var.NAME}"}</code> on dispatch (params interpolation). Folder/job scopes not yet exposed.
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
@@ -426,13 +425,13 @@ function VariablesView() {
       <table style={tbl}>
         <thead><tr><th style={th}>Name</th><th style={th}>Value</th><th style={th}>Updated</th><th style={th}>By</th><th style={th}></th></tr></thead>
         <tbody>
-          {items.length === 0 && <tr><td colSpan={5} style={{ ...td, textAlign: "center", color: "#666" }}>No variables yet.</td></tr>}
+          {items.length === 0 && <tr><td colSpan={5} style={{ ...td, textAlign: "center", color: "var(--v2-text-muted)" }}>No variables yet.</td></tr>}
           {items.map(v => (
             <tr key={v.name}>
               <td style={td}><code>{v.name}</code></td>
-              <td style={{ ...td, fontFamily: "monospace", color: "#9ee" }}>{v.value}</td>
-              <td style={{ ...td, color: "#888", fontSize: 11 }}>{new Date(v.updatedAt).toLocaleString()}</td>
-              <td style={{ ...td, color: "#888" }}>{v.updatedBy || "—"}</td>
+              <td style={{ ...td, fontFamily: "monospace", color: "var(--v2-status-running)" }}>{v.value}</td>
+              <td style={{ ...td, color: "var(--v2-text-muted)", fontSize: 11 }}>{new Date(v.updatedAt).toLocaleString()}</td>
+              <td style={{ ...td, color: "var(--v2-text-muted)" }}>{v.updatedBy || "—"}</td>
               <td style={td}>
                 <button onClick={() => { setName(v.name); setValue(v.value); }} style={btnSm}>edit</button>{" "}
                 <button onClick={() => { if (confirm(`Delete variable "${v.name}"?`)) deleteVariable(v.name).then(reload); }} style={btnDanger}>delete</button>
@@ -446,10 +445,10 @@ function VariablesView() {
 }
 
 const tbl: React.CSSProperties = { width: "100%", borderCollapse: "collapse", fontSize: 13 };
-const th: React.CSSProperties = { textAlign: "left", padding: "6px 10px", borderBottom: "1px solid #333", color: "#999", fontWeight: 500 };
-const td: React.CSSProperties = { padding: "6px 10px", borderBottom: "1px solid #2a2a2a" };
-const btn: React.CSSProperties = { background: "#3b82f6", color: "#fff", border: "none", padding: "6px 14px", borderRadius: 4, cursor: "pointer", fontSize: 13 };
-const btnSm: React.CSSProperties = { background: "transparent", color: "#aaa", border: "1px solid #444", padding: "3px 10px", borderRadius: 4, cursor: "pointer", fontSize: 12 };
-const btnDanger: React.CSSProperties = { background: "transparent", color: "#ef4444", border: "1px solid #ef4444", padding: "3px 10px", borderRadius: 4, cursor: "pointer", fontSize: 12 };
-const inp: React.CSSProperties = { background: "#0a0a0a", color: "#eee", border: "1px solid #444", padding: "5px 8px", borderRadius: 4, fontSize: 13 };
-const lbl: React.CSSProperties = { display: "inline-block", marginRight: 8, fontSize: 12, color: "#aaa" };
+const th: React.CSSProperties = { textAlign: "left", padding: "6px 10px", borderBottom: "1px solid var(--v2-border-medium)", color: "var(--v2-text-secondary)", fontWeight: 500 };
+const td: React.CSSProperties = { padding: "6px 10px", borderBottom: "1px solid var(--v2-border-subtle)" };
+const btn: React.CSSProperties = { background: "var(--v2-accent-brand)", color: "#000", border: "none", padding: "6px 14px", borderRadius: 4, cursor: "pointer", fontSize: 13 };
+const btnSm: React.CSSProperties = { background: "transparent", color: "var(--v2-text-secondary)", border: "1px solid var(--v2-border-strong)", padding: "3px 10px", borderRadius: 4, cursor: "pointer", fontSize: 12 };
+const btnDanger: React.CSSProperties = { background: "transparent", color: "var(--v2-status-failed)", border: "1px solid var(--v2-status-failed)", padding: "3px 10px", borderRadius: 4, cursor: "pointer", fontSize: 12 };
+const inp: React.CSSProperties = { background: "var(--v2-bg-elevated)", color: "var(--v2-text-primary)", border: "1px solid var(--v2-border-medium)", padding: "5px 8px", borderRadius: 4, fontSize: 13 };
+const lbl: React.CSSProperties = { display: "inline-block", marginRight: 8, fontSize: 12, color: "var(--v2-text-secondary)" };

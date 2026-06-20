@@ -28,6 +28,7 @@
   --v2-accent-dark:    #064E2B;   /* preferido: bordas ativas, indicadores */
   --v2-accent-deep:    #052e19;   /* background: hover de item verde */
   --v2-accent-faint:   #021a0e;   /* fundo de zona verde muito sutil */
+  --v2-accent-glow:    rgba(17, 199, 111, 0.35); /* halo neon: borda de diálogos */
 
   /* Status ── semânticas, ≤ 5 cores */
   --v2-status-ok:      #11C76F;
@@ -84,6 +85,7 @@
   --v2-accent-dark:    #009C3B;   /* verde bandeira */
   --v2-accent-deep:    #0a3d1f;
   --v2-accent-faint:   #052a13;
+  --v2-accent-glow:    rgba(255, 223, 0, 0.35);
 
   --v2-status-ok:      #00b84c;
   --v2-status-running: #2f6fed;   /* azul bandeira */
@@ -113,6 +115,7 @@
   --v2-accent-dark:    #C9A100;
   --v2-accent-deep:    #3a2e08;
   --v2-accent-faint:   #221b05;
+  --v2-accent-glow:    rgba(255, 210, 0, 0.35);
 
   --v2-status-ok:      #2ea043;
   --v2-status-running: #2f6fed;
@@ -142,6 +145,7 @@
   --v2-accent-dark:    #00813a;
   --v2-accent-deep:    #06351d;
   --v2-accent-faint:   #042412;
+  --v2-accent-glow:    rgba(0, 200, 83, 0.35);
 
   --v2-status-ok:      #00C853;
   --v2-status-running: #2f6fed;
@@ -182,5 +186,19 @@
 /* Inset highlight — mantido bem sutil (1px de luz no topo do chrome). */
 .v2-edge-highlight {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Borda neon na cor do tema — diálogos de config/senha/tema, painéis.
+   Acompanha o tema via --v2-accent-brand/--v2-accent-glow.
+   Combina com .v2-grain-card (que fornece o fundo).
+   ══════════════════════════════════════════════════════════════ */
+.v2-neon-card {
+  border: 1px solid var(--v2-accent-brand);
+  border-radius: var(--v2-radius-md);
+  box-shadow:
+    0 0 0 1px var(--v2-accent-glow),
+    0 0 18px var(--v2-accent-glow),
+    0 18px 50px rgba(0, 0, 0, 0.6);
 }
 

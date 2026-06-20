@@ -71,7 +71,7 @@ export function UsersDialog({ meId, onClose }: UsersDialogProps) {
       position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
       display: "grid", placeItems: "center", zIndex: 9000,
     }}>
-      <div className="v2-grain-card" style={{ width: 720, maxHeight: "85vh", padding: 20, display: "grid", gap: 12, overflow: "auto" }}>
+      <div className="v2-grain-card v2-neon-card" style={{ width: 720, maxHeight: "85vh", padding: 20, display: "grid", gap: 12, overflow: "auto" }}>
         <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h3 style={{ margin: 0, fontSize: 16 }}>Usuarios</h3>
           <button onClick={onClose}>Fechar</button>
@@ -149,7 +149,7 @@ function ResetPasswordPrompt({ user, onClose }: { user: AuthUser; onClose: () =>
   }
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "grid", placeItems: "center", zIndex: 9100 }}>
-      <div className="v2-grain-card" style={{ width: 320, padding: 18, display: "grid", gap: 10 }}>
+      <div className="v2-grain-card v2-neon-card" style={{ width: 320, padding: 18, display: "grid", gap: 10 }}>
         <h4 style={{ margin: 0, fontSize: 14 }}>Reset senha — {user.username}</h4>
         {done ? <div style={{ color: "lightgreen" }}>OK</div> : (
           <form onSubmit={go} style={{ display: "grid", gap: 8 }}>
@@ -221,7 +221,7 @@ function AclEditor({ user, onClose }: { user: AuthUser; onClose: () => void }) {
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "grid", placeItems: "center", zIndex: 9100 }}>
-      <div className="v2-grain-card" style={{ width: 540, maxHeight: "85vh", padding: 18, display: "grid", gap: 10, overflow: "auto" }}>
+      <div className="v2-grain-card v2-neon-card" style={{ width: 540, maxHeight: "85vh", padding: 18, display: "grid", gap: 10, overflow: "auto" }}>
         <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h4 style={{ margin: 0, fontSize: 14 }}>ACLs — {user.username} <span style={{ opacity: 0.6, fontWeight: 400 }}>({user.role})</span></h4>
           <button onClick={onClose} disabled={saving}>×</button>

@@ -28,7 +28,7 @@ export function UserMenu({ me, onLogout, onOpenUsers, onOpenControlM, onOpenSett
         {open && (
           <>
             <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 100 }} />
-            <div className="v2-grain-card" style={{
+            <div className="v2-grain-card v2-neon-card" style={{
               position: "absolute", right: 0, top: "calc(100% + 4px)",
               minWidth: 200, padding: 6, display: "grid", gap: 2, zIndex: 101,
             }}>
@@ -42,7 +42,7 @@ export function UserMenu({ me, onLogout, onOpenUsers, onOpenControlM, onOpenSett
               {onOpenSettings && me.role === "admin" && (
                 <button onClick={() => { setOpen(false); onOpenSettings(); }} style={menuBtn}>Configurações</button>
               )}
-              <hr style={{ border: 0, borderTop: "1px solid #333", margin: "4px 0" }} />
+              <hr style={{ border: 0, borderTop: "1px solid var(--v2-border-medium)", margin: "4px 0" }} />
               <button
                 onClick={async () => { setOpen(false); await logout(); onLogout(); }}
                 style={{ ...menuBtn, color: "salmon" }}
@@ -92,7 +92,7 @@ function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
       position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
       display: "grid", placeItems: "center", zIndex: 9999,
     }}>
-      <div className="v2-grain-card" style={{ width: 340, padding: 20, display: "grid", gap: 10 }}>
+      <div className="v2-grain-card v2-neon-card" style={{ width: 340, padding: 20, display: "grid", gap: 10 }}>
         <h3 style={{ margin: 0, fontSize: 15 }}>Trocar senha</h3>
         {done ? (
           <div style={{ color: "lightgreen", fontSize: 13 }}>Senha trocada.</div>

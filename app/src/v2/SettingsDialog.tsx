@@ -160,7 +160,7 @@ export function SettingsDialog({ onClose }: Props) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="v2-grain-card"
+        className="v2-grain-card v2-neon-card"
         style={{
           width: 440, maxHeight: "80vh", overflow: "auto",
           padding: 24, display: "flex", flexDirection: "column", gap: 20,

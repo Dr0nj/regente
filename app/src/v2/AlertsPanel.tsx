@@ -75,13 +75,11 @@ export function AlertsPanel({ onClose, onChange, isAdmin = false }: { onClose: (
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="v2-grain-card"
+        className="v2-grain-card v2-neon-card"
         style={{
           background: "var(--v2-bg-surface)", color: "var(--v2-text-primary)",
-          borderRadius: 8, width: "min(820px, 95vw)", height: "min(680px, 90vh)",
+          width: "min(820px, 95vw)", height: "min(680px, 90vh)",
           display: "flex", flexDirection: "column",
-          border: "1px solid var(--v2-border-medium)",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.7)",
         }}
       >
         <header style={{
