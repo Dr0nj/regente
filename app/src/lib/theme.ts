@@ -12,7 +12,7 @@ export interface ThemeDef {
   id: ThemeId;
   name: string;
   desc: string;
-  /** Cores da bandeira mostrada no card de seleção (campo, losango, disco). */
+  /** Cores do swatch (3 faixas) mostrado no card de seleção do tema. */
   flag: { field: string; rhombus: string; disc: string };
 }
 

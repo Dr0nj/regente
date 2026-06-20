@@ -86,10 +86,14 @@ daily ou via Force Order manual.
   server-side, sem precisar subir o server com `GITHUB_TOKEN`.
 - 🟢 **Enterprise readiness** — backend **Postgres** (além de SQLite), **leader
   election** (HA do scheduler), **secrets manager** plugável, **SSO/OIDC** opt-in.
-- 🟢 **Temas** — aparência configurável (Settings): Escuro (padrão) + **Brasil**
-  verde-amarelo, com bandeiras para seleção. Aplica na hora e persiste no navegador.
-  Toda a UI consome os design tokens do tema, inclusive o painel **Control-M Parity**.
-  Diálogos de config/senha/tema ganham **borda neon na cor do tema** (`.v2-neon-card`).
+- 🟢 **Temas** — aparência configurável em Settings → Tema. Cinco temas: **Escuro**
+  (padrão), **Brasil**, **Brasil Ouro**, **Brasil Mata** (verde-amarelo) e **Rosa**
+  (rosa neon sobre fundo escuro). Cada card mostra um **swatch** com as cores do tema.
+  Aplica na hora e persiste no navegador (`localStorage`). Implementação: cada tema
+  sobrescreve os design tokens `--v2-*` via `:root[data-theme="<id>"]` em
+  `app/src/v2/tokens.css` (catálogo em `app/src/lib/theme.ts`). Toda a UI consome esses
+  tokens — inclusive o painel **Control-M Parity**. Diálogos de config/senha/tema ganham
+  **borda neon na cor do tema** (`.v2-neon-card`).
 
 ---
 
@@ -381,7 +385,7 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 - [x] **Alerting (Fase 8)** — regras, tela (sino + badge + ack), toast, **routing multi-canal por regra**
   (Slack/webhook/SMTP/PagerDuty), **cooldown por (regra×job)** (rajada não perde erro) e **ciclo de vida**
   (rerun/Set OK marcam o alerta como tratado)
-- [x] **Temas** — Escuro (padrão) + Brasil verde-amarelo (Settings), com bandeiras para seleção;
+- [x] **Temas** — Escuro (padrão) + Brasil/Brasil Ouro/Brasil Mata + Rosa (Settings), com swatch de cores;
   tokens aplicados em toda a UI (Control-M panel incluso) + borda neon nos diálogos de config
 
 ### Enterprise readiness (em andamento — solidez > velocidade)

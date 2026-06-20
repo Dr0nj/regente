@@ -10,19 +10,16 @@ interface Props {
   onClose: () => void;
 }
 
-// Bandeira simplificada (campo + losango + disco) usada nos cards de tema.
-function ThemeFlag({ flag, size = 40 }: { flag: ThemeDef["flag"]; size?: number }) {
+// Amostra de cores do tema (3 faixas) mostrada nos cards de seleção.
+function ThemeSwatch({ colors, size = 40 }: { colors: ThemeDef["flag"]; size?: number }) {
   const h = Math.round((size * 7) / 10);
   return (
-    <svg width={size} height={h} viewBox="0 0 60 42" style={{ borderRadius: 3, display: "block", flexShrink: 0 }} aria-hidden="true">
-      <rect width="60" height="42" fill={flag.field} />
-      <polygon points="30,4 56,21 30,38 4,21" fill={flag.rhombus} />
-      <circle cx="30" cy="21" r="9" fill={flag.disc} />
-      <path d="M22 19.5 Q30 25 38 19.5" stroke="#fff" strokeWidth="1.2" fill="none" opacity="0.9" />
-      <circle cx="27" cy="19" r="0.7" fill="#fff" />
-      <circle cx="33" cy="22" r="0.7" fill="#fff" />
-      <circle cx="30" cy="24" r="0.6" fill="#fff" />
-      <circle cx="31.5" cy="18" r="0.5" fill="#fff" />
+    <svg width={size} height={h} viewBox="0 0 60 42"
+      style={{ borderRadius: 4, display: "block", flexShrink: 0, border: "1px solid rgba(255,255,255,0.08)" }}
+      aria-hidden="true">
+      <rect x="0" width="20" height="42" fill={colors.field} />
+      <rect x="20" width="20" height="42" fill={colors.rhombus} />
+      <rect x="40" width="20" height="42" fill={colors.disc} />
     </svg>
   );
 }
@@ -175,7 +172,7 @@ export function SettingsDialog({ onClose }: Props) {
           <span style={{ fontSize: 12, color: "var(--v2-text-muted)" }}>Carregando...</span>
         ) : (
           <>
-            {/* Temas — verde-amarelo do Brasil, com bandeiras para seleção */}
+            {/* Temas — cada card mostra um swatch das cores do tema */}
             <fieldset style={{ border: "1px solid var(--v2-border-medium)", borderRadius: 6, padding: "12px 14px" }}>
               <legend style={{ fontSize: 11, fontWeight: 600, color: "var(--v2-text-secondary)", padding: "0 4px" }}>
                 Tema
@@ -197,7 +194,7 @@ export function SettingsDialog({ onClose }: Props) {
                         border: "1px solid " + (active ? "var(--v2-accent-brand)" : "var(--v2-border-medium)"),
                       }}
                     >
-                      <ThemeFlag flag={t.flag} />
+                      <ThemeSwatch colors={t.flag} />
                       <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
                         <span style={{ fontSize: 12, fontWeight: 600, color: active ? "var(--v2-accent-brand)" : "var(--v2-text-primary)" }}>
                           {t.name}{active ? " ✓" : ""}
