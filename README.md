@@ -88,6 +88,8 @@ daily ou via Force Order manual.
   election** (HA do scheduler), **secrets manager** plugável, **SSO/OIDC** opt-in.
 - 🟢 **Temas** — aparência configurável (Settings): Escuro (padrão) + **Brasil**
   verde-amarelo, com bandeiras para seleção. Aplica na hora e persiste no navegador.
+  Toda a UI consome os design tokens do tema, inclusive o painel **Control-M Parity**.
+  Diálogos de config/senha/tema ganham **borda neon na cor do tema** (`.v2-neon-card`).
 
 ---
 
@@ -379,7 +381,8 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 - [x] **Alerting (Fase 8)** — regras, tela (sino + badge + ack), toast, **routing multi-canal por regra**
   (Slack/webhook/SMTP/PagerDuty), **cooldown por (regra×job)** (rajada não perde erro) e **ciclo de vida**
   (rerun/Set OK marcam o alerta como tratado)
-- [x] **Temas** — Escuro (padrão) + Brasil verde-amarelo (Settings), com bandeiras para seleção
+- [x] **Temas** — Escuro (padrão) + Brasil verde-amarelo (Settings), com bandeiras para seleção;
+  tokens aplicados em toda a UI (Control-M panel incluso) + borda neon nos diálogos de config
 
 ### Enterprise readiness (em andamento — solidez > velocidade)
 - [x] **Escala — backend Postgres** (além de SQLite): state store plugável por dialeto,

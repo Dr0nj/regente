@@ -76,7 +76,14 @@ CI (`.github/workflows/ci.yml`): 3 jobs — server (build/vet/test), agent
   falha vira alerta; dedup é por tratamento). Cooldown editável: `PUT .../cooldown`.
 - **Temas** (`app/src/lib/theme.ts` + `data-theme` em `tokens.css`): Escuro (default),
   Brasil/Brasil Ouro/Brasil Mata (verde-amarelo). Seção "Tema" no `SettingsDialog` com
-  cards de bandeira; persiste em localStorage; aplicado no boot (`main.tsx`).
+  cards de bandeira; persiste em localStorage; aplicado no boot (`main.tsx`). **Toda a UI
+  consome os tokens `--v2-*`** — cor chumbada num componente = ele não acompanha o tema
+  (foi o bug do `ControlMPanel`, corrigido: trocado tudo por tokens). **Borda neon:** token
+  `--v2-accent-glow` por tema + classe `.v2-neon-card` (borda 1px na cor do tema + halo)
+  nos diálogos de config/senha/tema — `SettingsDialog`, `UsersDialog` (lista/reset senha/ACLs),
+  `UserMenu` (menu + trocar senha), `AlertsPanel` e `ControlMPanel`. A classe só adiciona
+  borda+sombra: **se o card tiver `border`/`boxShadow` inline, remova** (inline ganha da
+  classe e mata o neon — caso do `AlertsPanel`).
 - **Serverless Fases 1–3** (acima).
 
 ## Gotchas
