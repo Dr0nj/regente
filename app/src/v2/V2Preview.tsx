@@ -584,7 +584,7 @@ function V2PreviewInner() {
   // F11.9 — multi-selection no canvas (ReactFlow nativo via Shift+click / drag rect)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const rfInstance = useRef<ReactFlowInstance | null>(null);
-  const { setCenter, fitView } = useReactFlow();
+  const { setCenter, fitView, getViewport, setViewport } = useReactFlow();
 
   const nodeTypes = useMemo(() => ({ jobV2: JobNodeV2, laneLabel: LaneLabelNode }), []);
 
@@ -796,6 +796,19 @@ function V2PreviewInner() {
     const top = Math.min(...canvas.nodes.map((n) => n.position.y));
     return [[-100000, top - 24], [100000, 100000]];
   }, [mode, canvas.nodes]);
+
+  // Entrar TRAVADO no topo (Monitoring): após o fit, alinha o topo do conteúdo com
+  // o ACTIVE JOBS em vez de centralizar verticalmente (que era o comportamento do fitView).
+  useEffect(() => {
+    if (mode !== "monitoring" || canvas.nodes.length === 0) return;
+    const t = setTimeout(() => {
+      fitView({ padding: 0.12, duration: 0 });
+      const vp = getViewport();
+      const minY = Math.min(...canvas.nodes.map((n) => n.position.y));
+      setViewport({ x: vp.x, y: 24 - minY * vp.zoom, zoom: vp.zoom }, { duration: 220 });
+    }, 140);
+    return () => clearTimeout(t);
+  }, [mode, canvas.nodes, fitView, getViewport, setViewport]);
 
   const monitoringJobs = useMemo(() => {
     const defsById = new Map(defs.map((d) => [d.id, d] as const));
@@ -1530,9 +1543,11 @@ function V2PreviewInner() {
               zoomable
               position="bottom-right"
               ariaLabel="Minimap de navegação"
-              maskColor="rgba(0,0,0,0.5)"
-              nodeStrokeWidth={3}
+              maskColor="rgba(6,8,12,0.4)"
               nodeColor={miniNodeColor}
+              nodeStrokeColor={miniNodeColor}
+              nodeStrokeWidth={8}
+              nodeBorderRadius={3}
               style={{
                 width: miniSize.w, height: miniSize.h, margin: 0,
                 right: mode === "monitoring" && selectedInstance ? 392 : 16, bottom: 16,

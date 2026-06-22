@@ -89,7 +89,7 @@ export function UsersDialog({ meId, onClose }: UsersDialogProps) {
               {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </label>
-          <button type="submit" className="v2-btn-primary" disabled={creating}>{creating ? "..." : "Criar"}</button>
+          <button type="submit" className="v2-btn v2-btn-primary" disabled={creating}>{creating ? "..." : "Criar"}</button>
         </form>
 
         {err && <div style={{ color: "salmon", fontSize: 12 }}>{err}</div>}
@@ -157,7 +157,7 @@ function ResetPasswordPrompt({ user, onClose }: { user: AuthUser; onClose: () =>
             {err && <div style={{ color: "salmon", fontSize: 12 }}>{err}</div>}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
               <button type="button" className="v2-btn" onClick={onClose} disabled={busy}>Cancelar</button>
-              <button type="submit" className="v2-btn-primary" disabled={busy}>{busy ? "..." : "Definir"}</button>
+              <button type="submit" className="v2-btn v2-btn-primary" disabled={busy}>{busy ? "..." : "Definir"}</button>
             </div>
           </form>
         )}
@@ -264,7 +264,7 @@ function AclEditor({ user, onClose }: { user: AuthUser; onClose: () => void }) {
 
         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
           <button onClick={onClose} disabled={saving} className="v2-btn">Cancelar</button>
-          <button onClick={save} disabled={saving || loading} className="v2-btn-primary">{saving ? "..." : "Salvar"}</button>
+          <button onClick={save} disabled={saving || loading} className="v2-btn v2-btn-primary">{saving ? "..." : "Salvar"}</button>
         </div>
       </div>
     </div>

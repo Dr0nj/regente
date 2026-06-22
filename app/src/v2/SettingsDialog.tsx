@@ -488,7 +488,7 @@ export function SettingsDialog({ onClose }: Props) {
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button onClick={onClose} className="v2-btn">Cancelar</button>
-              <button onClick={handleSave} disabled={saving} className="v2-btn-primary">
+              <button onClick={handleSave} disabled={saving} className="v2-btn v2-btn-primary">
                 {saving ? "Salvando..." : "Salvar"}
               </button>
             </div>

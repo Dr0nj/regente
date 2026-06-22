@@ -241,7 +241,7 @@ function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
             {err && <div style={{ color: "salmon", fontSize: 12 }}>{err}</div>}
             <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
               <button type="button" className="v2-btn" onClick={onClose} disabled={busy}>Cancelar</button>
-              <button type="submit" className="v2-btn-primary" disabled={busy}>{busy ? "..." : "Salvar"}</button>
+              <button type="submit" className="v2-btn v2-btn-primary" disabled={busy}>{busy ? "..." : "Salvar"}</button>
             </div>
           </form>
         )}
