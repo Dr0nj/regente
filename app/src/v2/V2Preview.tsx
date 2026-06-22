@@ -5,6 +5,7 @@ import {
   ReactFlowProvider,
   Background,
   BackgroundVariant,
+  MiniMap,
   useReactFlow,
   type Node,
   type Edge,
@@ -358,6 +359,16 @@ function composeColumns<T extends { id: string; team?: string }>(
   return { nodes, lanes };
 }
 
+// Cor do nó no minimap por status (hex p/ o fill SVG do minimap).
+function miniNodeColor(n: Node): string {
+  const s = String((n.data as { status?: string } | undefined)?.status ?? "");
+  if (s === "FAILED" || s === "NOTOK") return "#ef4444";
+  if (s === "RUNNING") return "#22d3ee";
+  if (s === "SUCCESS" || s === "OK") return "#11C76F";
+  if (s === "WAITING") return "#737373";
+  return "#3a3a3a";
+}
+
 function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefinition[]): Canvas {
   // Edges a partir do upstream da definition, resolvidas para instances do mesmo dia.
   const defsById = new Map(defs.map((d) => [d.id, d] as const));
@@ -499,6 +510,14 @@ function V2PreviewInner() {
   const [showUsers, setShowUsers] = useState(false);
   const [showControlM, setShowControlM] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
+  // Minimap de navegação — protótipo opt-in (Settings → Geral), default off.
+  const [showMinimap, setShowMinimap] = useState<boolean>(() => typeof window !== "undefined" && window.localStorage.getItem("regente:minimap") === "1");
+  const [miniSize, setMiniSize] = useState<{ w: number; h: number }>({ w: 260, h: 168 });
+  useEffect(() => {
+    const sync = () => setShowMinimap(window.localStorage.getItem("regente:minimap") === "1");
+    window.addEventListener("regente:minimap-changed", sync);
+    return () => window.removeEventListener("regente:minimap-changed", sync);
+  }, []);
   const [unreadAlerts, setUnreadAlerts] = useState<number>(0);
 
   // === Design sessions (Etapa 3+4+5, 2026-04-26) ===
@@ -1505,7 +1524,51 @@ function V2PreviewInner() {
           onInit={(inst) => { rfInstance.current = inst; }}
         >
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#1a1a1a" />
+          {showMinimap && (
+            <MiniMap
+              pannable
+              zoomable
+              position="bottom-right"
+              ariaLabel="Minimap de navegação"
+              maskColor="rgba(0,0,0,0.5)"
+              nodeStrokeWidth={3}
+              nodeColor={miniNodeColor}
+              style={{
+                width: miniSize.w, height: miniSize.h, margin: 0,
+                right: mode === "monitoring" && selectedInstance ? 392 : 16, bottom: 16,
+                background: "var(--v2-bg-surface)",
+                border: "1px solid var(--v2-border-medium)",
+                borderRadius: 8,
+              }}
+            />
+          )}
         </ReactFlow>
+        {showMinimap && (
+          <div
+            title="Redimensionar minimap"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              const sx = e.clientX, sy = e.clientY, sw = miniSize.w, sh = miniSize.h;
+              const move = (ev: PointerEvent) => setMiniSize({
+                w: Math.min(560, Math.max(170, sw + (sx - ev.clientX))),
+                h: Math.min(380, Math.max(110, sh + (sy - ev.clientY))),
+              });
+              const up = () => {
+                window.removeEventListener("pointermove", move);
+                window.removeEventListener("pointerup", up);
+              };
+              window.addEventListener("pointermove", move);
+              window.addEventListener("pointerup", up);
+            }}
+            style={{
+              position: "absolute", zIndex: 11, cursor: "nwse-resize",
+              right: (mode === "monitoring" && selectedInstance ? 392 : 16) + miniSize.w - 7,
+              bottom: 16 + miniSize.h - 7,
+              width: 14, height: 14, borderRadius: 4,
+              background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-strong)",
+            }}
+          />
+        )}
 
         {/* Empty state overlay */}
         {mode === "monitoring" && !hasInstances && (

@@ -31,6 +31,7 @@ export function SettingsDialog({ onClose }: Props) {
   const [loaded, setLoaded] = useState(false);
   const [theme, setTheme] = useState<ThemeId>(getThemeId());
   const [tab, setTab] = useState<"geral" | "temas">("geral");
+  const [minimap, setMinimap] = useState<boolean>(() => typeof window !== "undefined" && window.localStorage.getItem("regente:minimap") === "1");
 
   // GitHub token
   const [git, setGit] = useState<GitStatus | null>(null);
@@ -229,6 +230,30 @@ export function SettingsDialog({ onClose }: Props) {
 
             {tab === "geral" && (
             <>
+            {/* Visualização — protótipos opt-in */}
+            <fieldset style={{ border: "1px solid var(--v2-border-medium)", borderRadius: 6, padding: "12px 14px" }}>
+              <legend style={{ fontSize: 11, fontWeight: 600, color: "var(--v2-text-secondary)", padding: "0 4px" }}>
+                Visualização
+              </legend>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={minimap}
+                  onChange={(e) => {
+                    const v = e.target.checked;
+                    setMinimap(v);
+                    try { window.localStorage.setItem("regente:minimap", v ? "1" : "0"); } catch { /* ignore */ }
+                    window.dispatchEvent(new Event("regente:minimap-changed"));
+                  }}
+                />
+                Minimap de navegação
+              </label>
+              <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 6, display: "block", lineHeight: 1.5 }}>
+                Protótipo. Mostra um mapa do ambiente no canto inferior do Monitoring — clique/arraste para
+                navegar em ambientes grandes (estilo Control-M). Redimensionável; desligado por padrão.
+              </span>
+            </fieldset>
+
             {/* F20 — Environment Label */}
             <fieldset style={{ border: "1px solid var(--v2-border-medium)", borderRadius: 6, padding: "12px 14px" }}>
               <legend style={{ fontSize: 11, fontWeight: 600, color: "var(--v2-text-secondary)", padding: "0 4px" }}>
