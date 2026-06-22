@@ -71,10 +71,10 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ✅ Leader election (advisory lock, failover ~1s) · watchdog stuck-running (15min)
 ✅ Retry persistido (attempts na DB) · daily fail-safe (adia se git sync falha)
 ─────────────────────────────────────────────────────────────────────────────
-🔴 R1 · Server supervisionado          → systemd Restart=always + Windows Service +
-        (o agente já tem; o server não)  livenessProbe no Knative + docs (default supervisionado)
-🔴 R2 · Panic-recovery + watchdog tick → recover() no dispatch e no Tick; idade do
-        (1 job não pode derrubar o cérebro) último tick em /metrics e /livez
+✅ R1 · Server supervisionado          → systemd Restart=always + Windows Service +
+        livenessProbe no Knative + server/deploy/ — ENTREGUE
+✅ R2 · Panic-recovery + watchdog tick → recover() no dispatch/Tick/retry + idade do
+        último tick em /metrics e /livez — ENTREGUE (testes)
 🟠 R3 · Health real                    → /livez vs /readyz (ping DB · status líder · último tick/daily)
 🟠 R4 · Config persiste no restart      → produção = Postgres + secrets via provider + volume p/ SQLite
 🟠 R6 · DR/backup (G3)                  → runbook backup/restore · PITR no Postgres
@@ -88,7 +88,9 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ✅ Fase 2 · transporte         → Bus + HTTP long-poll (-transport=http)
 ✅ Fase 3 · executor WASM      → wazero, pure-Go, sandbox WASI
 ─────────────────────────────────────────────────────────────────
-🔴 R5 · NATS + hub WebSocket distribuído   (escala multi-nó; failover não estranda agentes)   ⭐
+✅ R5 · NATS + hub distribuído (-bus=nats)  → fan-out web + presença + dispatch roteado ao nó dono;
+        VALIDADO 2-nós real (2026-06-22): job forçado no nó sem agente → roteado e executado
+🟡 OpenTelemetry (I1) — tracing OTLP/HTTP opt-in (-otel-endpoint); otelhttp + spans no scheduler  ✅
 ⬜ Adapters de nuvem por capability        (AWS · GCP · k8s Jobs)
 ⬜ Durable execution (Temporal / Restate)  (opt-in)
 ⬜ Postgres-como-fila (SKIP LOCKED)
@@ -98,9 +100,9 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ```
 ✅ Escala     → Postgres plugável + migrations ✔validado  ⬜ stateless · 10k+ jobs/dia
-✅ HA         → leader election (advisory lock) ✔failover  ⬜ hub distribuído (R5) · backup (R6)
+✅ HA         → leader election (advisory lock) ✔failover · hub distribuído (R5) ✔  ⬜ backup (R6)
 ✅ Segurança  → secrets manager + SSO/OIDC opt-in          ⬜ RBAC · mTLS agentes · SIEM
-⬜ Operação   → OpenTelemetry ⭐ · zero-downtime · multi-ambiente · quotas
+🟡 Operação   → OpenTelemetry ✔ (opt-in OTLP)  ⬜ zero-downtime · multi-ambiente · quotas
 ⬜ Qualidade  → E2E · carga · chaos · SLOs · reconciler de drift   (CI já roda build/vet/test)
 ```
 
@@ -116,7 +118,10 @@ contra Postgres 16 real (Docker); restante pendente:
                     seed, alerts, CRUD round-trip e leader election OK (2026-06-18)
 ✅ G1 HA          → 2 nós no mesmo PG → 1 líder único (sem split-brain); kill do
                     líder → failover ~1s (advisory lock auto-liberado) (2026-06-18)
-⬜ R1–R3          → supervisor + liveness validados num restart/chaos real
+✅ R1/R2          → supervisor (server/deploy/) + panic-recovery/watchdog ENTREGUES (testes unit)
+✅ R5 NATS        → 2 nós + NATS reais (2026-06-22): job forçado no nó SEM agente → roteado via
+                    NATS ao nó dono e executado (exitCode=0), sem estrandar agente
+⬜ R3 /readyz · validar supervisor (R1) num restart/chaos real · HA 2-nós no mesmo PG
 ⬜ H1 SSO/OIDC    → fluxo completo com IdP real (Keycloak/Cognito/Google) + SPA lê #token
 ⬜ Secrets        → resolver github_token/webhook_secret via provider (env/-secrets-file)
 ⬜ SSH · agente   → host com sshd; agente instalado como serviço (systemd / Task Windows)
@@ -133,6 +138,12 @@ contra Postgres 16 real (Docker); restante pendente:
 > `REGENTE_TEST_PG_DSN=postgres://regente:regente@localhost:5432/regente_test?sslmode=disable
 > go test ./internal/db -run Postgres -v`; subir 2 servers (`-db-driver postgres -db <dsn>`,
 > portas distintas) → só 1 loga "assumi a liderança"; matar o líder → o outro assume em ~1s.
+
+> Reprodução R5 (sem Docker): `go install github.com/nats-io/nats-server/v2@latest`; `nats-server -p 4222`;
+> 2 servers `-bus=nats -nats-url nats://localhost:4222` em portas/`-node-id` distintos; agente conectado
+> SÓ no nó A; force um COMMAND no nó B (sem agente) → evento `dispatched to agent:<id>` no nó B e
+> `done exitCode=0` no log do agente (rodou no nó A). Persistência do resultado cross-nó requer o MESMO
+> Postgres nos 2 nós (com SQLite separado, o resultado volta pro nó do agente — esperado).
 
 ---
 
