@@ -125,11 +125,15 @@ control plane roda **serverless, scale-to-zero, sem lock-in**.
 **Validado em container (2026-06-18):** imagem de [`../deploy`](../deploy) +
 Postgres em container → boot OK, `/health`→200, leader election, e o gatilho
 externo `POST /api/scheduler/tick` materializou a daily (`5 instances`,
-persistidas no PG) de forma idempotente. A validação **descobriu e corrigiu** um
-furo: a camada de storage faz `exec git`, então a imagem `distroless/static`
-crashava no boot (`EnsureClone`: `git` ausente). Final stage agora é Alpine com
-`git`+`ca-certificates`, non-root (~55 MB). Alternativa distroless = git-sync +
-`-git-source ""` (defs do disco) — ver `deploy/README.md`.
+persistidas no PG) de forma idempotente. A 1ª rodada **descobriu** um furo: a
+camada de storage fazia `exec git`, então a imagem `distroless/static` crashava
+no boot (`EnsureClone`: `git` ausente) — contornado na época com Alpine+git. A
+**correção definitiva** migrou `internal/storage/git.go` para **go-git** (Go
+puro, sem shell-out): a imagem voltou a `gcr.io/distroless/static-debian12:nonroot`
+(estática, non-root, só ca-certificates) e o boot/daily clonam/fazem fetch+reset
+**sem `git` no PATH**. Cuidado tratado: o `reset --hard` do go-git apaga arquivos
+untracked (diverge do git); reproduzimos o git limitando o reset à união dos
+paths tracked, preservando a SQLite DB no workspace.
 
 **Futuro próximo:** mover `autoDailyIfDue` para um gatilho separado de cadência
 diária (em vez de checar a cada tick), e expor um `/api/scheduler/daily` dedicado.
@@ -254,7 +258,7 @@ casa `jobType`→agente via `PickAgent(capability)`. **Adicionar um executor nov
 | Flags `-scheduler`, `-role` | 1 | ✅ aplicado |
 | `POST /api/scheduler/tick` | 1 | ✅ aplicado |
 | Dockerfile + Knative + CronJob + deploy/README | 1 | ✅ aplicado · e2e em container validado (2026-06-18) |
-| Imagem precisa de `git` no PATH (GitOps faz `exec git`) | 1 | ✅ corrigido — Alpine+git non-root (era distroless, crashava no boot) |
+| Imagem distroless sem `git` no PATH | 1 | ✅ storage migrada p/ go-git (Go puro); imagem voltou a `distroless/static:nonroot` |
 | HA clássico — leader election advisory-lock (`G1`) | 1 | ✅ aplicado · 2-nós validado em PG real (failover ~1s, 2026-06-18) |
 | HA serverless — idempotência + claim atômico | 1 | ✅ aplicado (corretude); lock-por-tick ◻ projetado |
 | Interface `Bus` (seam de transporte) | 2 | ✅ aplicado |

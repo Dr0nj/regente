@@ -15,18 +15,16 @@ você escolhe a nuvem no deploy, não no código.
 
 | Arquivo | Para quê |
 |---|---|
-| `Dockerfile` | Build multi-stage do server → imagem mínima Alpine (com `git`). |
+| `Dockerfile` | Build multi-stage do server → imagem **distroless** (sem shell/pacotes/`git`). |
 | `.dockerignore` | Contexto de build enxuto. |
 | `knative-service.yaml` | Service Knative com `minScale: 0` (scale-to-zero) e `-scheduler=external`. |
 | `cronjob.yaml` | Gatilho de tempo externo (k8s CronJob batendo no `/tick`). |
 
-> **Requisito de runtime — `git` no PATH.** A config é externalizada no Git e a
-> camada de storage faz `exec git` (clone/fetch/reset/commit). Por isso a imagem
-> final é Alpine **com `git` + `ca-certificates`** (non-root), e **não**
-> `distroless/static` — sem o binário `git`, o boot dá `log.Fatal` em
-> `EnsureClone`. Alternativa que preserva distroless: um **git-sync** (init
-> container/sidecar) popula um volume de workspace e o server roda com
-> `-git-source ""` (lê defs do disco, `daily-source=local`).
+> **Runtime sem `git`.** A config é externalizada no Git, mas a camada de storage
+> (`internal/storage/git.go`) usa **go-git** (Go puro) — não há `exec git`. Por
+> isso a imagem final é `gcr.io/distroless/static-debian12:nonroot`: estática,
+> non-root (uid 65532), só com `ca-certificates` (clone HTTPS). Sem shell, sem
+> gerenciador de pacotes, sem `git` no PATH — superfície de ataque mínima.
 
 ## Build
 
@@ -79,4 +77,11 @@ docker run -d --name regente-app --network regente-net -p 8090:8080 regente-serv
 Resultado: boot OK (clone do workspace **dentro do container**), `/health`→200,
 leader election via advisory lock, e `POST /api/scheduler/tick` (gatilho externo)
 materializou a daily — `5 instances created`, persistidas no Postgres — de forma
-**idempotente** (ticks repetidos não duplicam). Imagem **non-root**, ~55 MB.
+**idempotente** (ticks repetidos não duplicam).
+
+**Re-validado em imagem distroless (2026-06-18):** após migrar a storage para
+go-git, a mesma sequência roda em `gcr.io/distroless/static-debian12:nonroot`
+(**sem `git` no PATH**, sem shell). Boot clonou o workspace via go-git
+(`main@923f091`), `/health`→200, e o tick rodou o fetch+reset antes da daily
+(`synced workspace to 923f091` → `5 instances created`), idempotente. Imagem
+**non-root**, ~33 MB (era ~55 MB com Alpine+git).

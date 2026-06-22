@@ -136,8 +136,7 @@ func (w *PRWriter) Apply(actor, branchSuffix, commitMsg, prTitle, prBody string,
 	}
 
 	// commit SHA depois do commit
-	shaOut, _ := w.Git.run("rev-parse", "HEAD")
-	commitSHA := strings.TrimSpace(shaOut)
+	commitSHA, _ := w.Git.HeadSHA()
 
 	// 5. Create PR.
 	pr, err := w.GH.CreatePR(branch, w.Git.Branch(), prTitle, prBody)
