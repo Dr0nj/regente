@@ -87,12 +87,16 @@ daily ou via Force Order manual.
 - 🟢 **Enterprise readiness** — backend **Postgres** (além de SQLite), **leader
   election** (HA do scheduler), **secrets manager** plugável, **SSO/OIDC** opt-in.
 - 🟢 **Identidade visual** — logotipo **R** próprio (branco, vetorial, fundo
-  transparente — recolore com a superfície do tema), topbar **premium flutuante**
-  (cantos arredondados, segmented `‹ DESIGN · MONITORING ›` com chevrons e destaque
-  **neon** que segue o tema) e cluster de ações à direita: **alertas** (sino),
-  **configurações/conta** (engrenagem → menu), **tela cheia** (monitor) e **avatar**.
-  Tela de **login** com o logotipo, e **sidebars flutuantes**
-  (folders/jobs) com realce **neon** no item selecionado.
+  transparente), topbar **premium flutuante** (cantos arredondados, segmented
+  `‹ DESIGN · MONITORING ›` com chevrons e destaque **neon** que segue o tema) e cluster
+  de ações à direita: **alertas** (sino), **configurações/conta** (engrenagem → menu),
+  **tela cheia** (monitor) e **avatar**. Tela de **login** (paleta dark blue neon),
+  **sidebars flutuantes** e **janela de info do job dockada** (mesmo estilo do ACTIVE JOBS),
+  com realce **neon** no selecionado. **Diálogos padronizados** (✕ + Cancelar/Salvar via
+  classes compartilhadas; "Control-M Panel" → **Control Panel**). No **Monitoring**, o pan
+  fica **travado no topo** (folders alinhadas com o ACTIVE JOBS; livre pros lados e pra cima)
+  e há um **minimap de navegação** opcional (protótipo, Settings → Geral; ponto por job,
+  clique navega).
 - 🟢 **Temas** — aparência configurável em Settings → aba **Temas**. **13 temas**: **Escuro**
   (padrão), **Verde Amarelo**, **Amarelo Ouro**, **Verde Mata**, **Azul Neon**, **Azul Escuro**,
   **Rosa**, **Violeta**, **Vermelho**, **Laranja**, **Cinza** (escala), **Bege Escuro** e **Marrom**.

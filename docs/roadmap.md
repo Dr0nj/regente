@@ -35,11 +35,14 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ✅ Logo R próprio (branco, vetorial, transparente) — topbar, favicon e login
 ✅ Topbar premium flutuante — segmented ‹ DESIGN · MONITORING › com chevrons + neon por tema
 ✅ Cluster de ações — alertas (sino) · configurações/conta (engrenagem) · tela cheia (monitor) · avatar
-✅ Tela de login com o logotipo
-✅ Sidebars flutuantes (folders/jobs) com realce neon no item selecionado
+✅ Tela de login com o logotipo (paleta dark blue neon)
+✅ Sidebars flutuantes + janela de info do job dockada (mesmo estilo do ACTIVE JOBS)
+✅ Diálogos padronizados (✕ + Cancelar/Salvar via classes compartilhadas); Control Panel (ex Control-M)
+✅ Monitoring: pan travado no topo (folders alinhadas com o ACTIVE JOBS; livre pros lados e pra cima)
 ✅ 13 temas (Escuro · Verde Amarelo · Amarelo Ouro · Verde Mata · Azul Neon · Azul Escuro ·
    Rosa · Violeta · Vermelho · Laranja · Cinza · Bege Escuro · Marrom) com swatch de cores
 ✅ Configurações em sub-abas (Geral · Temas); borda neon nos diálogos
+◑ Minimap de navegação (protótipo opt-in, default off) — pontos por job, clique navega, redimensionável
 ```
 
 ## 🔔 Alerting
