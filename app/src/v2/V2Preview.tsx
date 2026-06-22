@@ -6,6 +6,7 @@ import {
   Background,
   BackgroundVariant,
   MiniMap,
+  type MiniMapNodeProps,
   useReactFlow,
   type Node,
   type Edge,
@@ -357,6 +358,14 @@ function composeColumns<T extends { id: string; team?: string }>(
   }
 
   return { nodes, lanes };
+}
+
+// Nó do minimap desenhado à mão: círculo de raio fixo (em unidades do flow) — aparece
+// mesmo quando a dimensão medida do nó custom é ~0 (motivo de os jobs não surgirem).
+function MiniNode({ x, y, width, height, color }: MiniMapNodeProps) {
+  const cx = x + (width || 0) / 2;
+  const cy = y + (height || 0) / 2;
+  return <circle cx={cx} cy={cy} r={18} fill={color || "#11C76F"} stroke="#06080c" strokeWidth={3} />;
 }
 
 // Cor do nó no minimap por status (hex p/ o fill SVG do minimap).
@@ -1545,9 +1554,7 @@ function V2PreviewInner() {
               ariaLabel="Minimap de navegação"
               maskColor="rgba(6,8,12,0.4)"
               nodeColor={miniNodeColor}
-              nodeStrokeColor={miniNodeColor}
-              nodeStrokeWidth={8}
-              nodeBorderRadius={3}
+              nodeComponent={MiniNode}
               style={{
                 width: miniSize.w, height: miniSize.h, margin: 0,
                 right: mode === "monitoring" && selectedInstance ? 392 : 16, bottom: 16,
