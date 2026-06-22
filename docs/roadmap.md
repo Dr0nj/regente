@@ -61,6 +61,12 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado
 ⬜ Qualidade  → E2E · carga · chaos · SLOs · reconciler de drift
 ```
 
+> 📌 **Nota (persistência de config no restart):** verificar/garantir que **descer e subir o
+> servidor** (restart, container efêmero, failover HA) **não perde as configurações de runtime**
+> — GitHub token, webhook secret e label de ambiente (hoje em `settings`/SQLite). Cobrir: DB/estado
+> fora do container efêmero, backup/migração da tabela `settings`, e checklist de upgrade
+> zero-downtime. Liga-se a Operação (zero-downtime) e G3 (DR/backup).
+
 ## 🧪 Validação em infra real
 
 Gate antes de contar como *production-ready*. **F1 e G1 validados em 2026-06-18**

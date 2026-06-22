@@ -30,6 +30,7 @@ export function SettingsDialog({ onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [theme, setTheme] = useState<ThemeId>(getThemeId());
+  const [tab, setTab] = useState<"geral" | "temas">("geral");
 
   // GitHub token
   const [git, setGit] = useState<GitStatus | null>(null);
@@ -172,7 +173,24 @@ export function SettingsDialog({ onClose }: Props) {
           <span style={{ fontSize: 12, color: "var(--v2-text-muted)" }}>Carregando...</span>
         ) : (
           <>
-            {/* Temas — cada card mostra um swatch das cores do tema */}
+            {/* Sub-abas: Geral | Temas */}
+            <div style={{ display: "flex", gap: 4, padding: 4, background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-subtle)", borderRadius: 10 }}>
+              {([["geral", "Geral"], ["temas", "Temas"]] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  onClick={() => setTab(id)}
+                  style={{
+                    flex: 1, padding: "7px 12px", borderRadius: 7, border: "none", cursor: "pointer",
+                    fontSize: 12, fontWeight: tab === id ? 700 : 500,
+                    background: tab === id ? "var(--v2-accent-brand)" : "transparent",
+                    color: tab === id ? "var(--v2-bg-canvas)" : "var(--v2-text-secondary)",
+                    transition: "background 140ms, color 140ms",
+                  }}
+                >{label}</button>
+              ))}
+            </div>
+
+            {tab === "temas" && (
             <fieldset style={{ border: "1px solid var(--v2-border-medium)", borderRadius: 6, padding: "12px 14px" }}>
               <legend style={{ fontSize: 11, fontWeight: 600, color: "var(--v2-text-secondary)", padding: "0 4px" }}>
                 Tema
@@ -206,7 +224,10 @@ export function SettingsDialog({ onClose }: Props) {
                 })}
               </div>
             </fieldset>
+            )}
 
+            {tab === "geral" && (
+            <>
             {/* F20 — Environment Label */}
             <fieldset style={{ border: "1px solid var(--v2-border-medium)", borderRadius: 6, padding: "12px 14px" }}>
               <legend style={{ fontSize: 11, fontWeight: 600, color: "var(--v2-text-secondary)", padding: "0 4px" }}>
@@ -436,6 +457,8 @@ export function SettingsDialog({ onClose }: Props) {
                 </div>
               )}
             </fieldset>
+            </>
+            )}
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button

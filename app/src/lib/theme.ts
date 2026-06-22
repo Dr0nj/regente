@@ -6,7 +6,10 @@
  * A escolha persiste em localStorage e é aplicada no boot (initTheme).
  */
 
-export type ThemeId = "escuro" | "brasil" | "brasil-ouro" | "brasil-mata" | "rosa";
+export type ThemeId =
+  | "escuro" | "verde-amarelo" | "amarelo-ouro" | "verde-mata" | "rosa"
+  | "azul-neon" | "azul-escuro" | "violeta" | "vermelho" | "laranja"
+  | "cinza" | "bege-escuro" | "marrom";
 
 export interface ThemeDef {
   id: ThemeId;
@@ -16,7 +19,7 @@ export interface ThemeDef {
   flag: { field: string; rhombus: string; disc: string };
 }
 
-/** Temas disponíveis. O 1º é o default (Escuro); seguem variações Brasil e o Rosa. */
+/** Temas disponíveis. O 1º é o default (Escuro); seguem as variações coloridas. */
 export const THEMES: ThemeDef[] = [
   {
     id: "escuro",
@@ -25,28 +28,76 @@ export const THEMES: ThemeDef[] = [
     flag: { field: "#0a0a0a", rhombus: "#11C76F", disc: "#064E2B" },
   },
   {
-    id: "brasil",
-    name: "Brasil",
-    desc: "Verde e amarelo — bandeira atual",
-    flag: { field: "#009C3B", rhombus: "#FFDF00", disc: "#002776" },
+    id: "verde-amarelo",
+    name: "Verde Amarelo",
+    desc: "Verde e amarelo vibrantes",
+    flag: { field: "#009C3B", rhombus: "#FFDF00", disc: "#0a3d1f" },
   },
   {
-    id: "brasil-ouro",
-    name: "Brasil Ouro",
+    id: "amarelo-ouro",
+    name: "Amarelo Ouro",
     desc: "Amarelo-ouro em destaque",
-    flag: { field: "#1c7a3f", rhombus: "#FFD200", disc: "#143a8a" },
+    flag: { field: "#161106", rhombus: "#FFD200", disc: "#C9A100" },
   },
   {
-    id: "brasil-mata",
-    name: "Brasil Mata",
+    id: "verde-mata",
+    name: "Verde Mata",
     desc: "Verde-mata profundo",
-    flag: { field: "#00591f", rhombus: "#E6C200", disc: "#002766" },
+    flag: { field: "#03140c", rhombus: "#00C853", disc: "#00813a" },
+  },
+  {
+    id: "azul-neon",
+    name: "Azul Neon",
+    desc: "Azul neon sobre fundo escuro",
+    flag: { field: "#061018", rhombus: "#29C5FF", disc: "#0a7fb8" },
+  },
+  {
+    id: "azul-escuro",
+    name: "Azul Escuro",
+    desc: "Dark blue — azul profundo",
+    flag: { field: "#070d1a", rhombus: "#3B82F6", disc: "#1e3a8a" },
   },
   {
     id: "rosa",
     name: "Rosa",
     desc: "Rosa neon sobre fundo escuro",
-    flag: { field: "#160810", rhombus: "#FF4FA3", disc: "#5e0d34" },
+    flag: { field: "#180813", rhombus: "#FF4FA3", disc: "#C71E73" },
+  },
+  {
+    id: "violeta",
+    name: "Violeta",
+    desc: "Violeta neon",
+    flag: { field: "#120a1f", rhombus: "#A855F7", disc: "#6b21a8" },
+  },
+  {
+    id: "vermelho",
+    name: "Vermelho",
+    desc: "Vermelho intenso",
+    flag: { field: "#1a0808", rhombus: "#FF4D4D", disc: "#991b1b" },
+  },
+  {
+    id: "laranja",
+    name: "Laranja",
+    desc: "Laranja vibrante",
+    flag: { field: "#180d04", rhombus: "#FF8C1A", disc: "#b45309" },
+  },
+  {
+    id: "cinza",
+    name: "Cinza",
+    desc: "Escala de cinzas, sem cor",
+    flag: { field: "#0d0d0d", rhombus: "#d4d4d4", disc: "#525252" },
+  },
+  {
+    id: "bege-escuro",
+    name: "Bege Escuro",
+    desc: "Bege/areia em fundo escuro",
+    flag: { field: "#15110a", rhombus: "#D9C89A", disc: "#8a7a4c" },
+  },
+  {
+    id: "marrom",
+    name: "Marrom",
+    desc: "Marrom terroso",
+    flag: { field: "#160c07", rhombus: "#C68A4E", disc: "#7a4f2a" },
   },
 ];
 
