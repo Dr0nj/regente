@@ -73,8 +73,8 @@ export function UsersDialog({ meId, onClose }: UsersDialogProps) {
     }}>
       <div className="v2-grain-card v2-neon-card" style={{ width: 720, maxHeight: "85vh", padding: 20, display: "grid", gap: 12, overflow: "auto" }}>
         <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 style={{ margin: 0, fontSize: 16 }}>Usuarios</h3>
-          <button onClick={onClose}>Fechar</button>
+          <h3 style={{ margin: 0, fontSize: 16 }}>Usuários</h3>
+          <button onClick={onClose} className="v2-dialog-x" aria-label="Fechar">✕</button>
         </header>
 
         <form onSubmit={doCreate} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 120px auto", gap: 6, alignItems: "end" }}>
@@ -89,7 +89,7 @@ export function UsersDialog({ meId, onClose }: UsersDialogProps) {
               {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </label>
-          <button type="submit" disabled={creating}>{creating ? "..." : "Criar"}</button>
+          <button type="submit" className="v2-btn-primary" disabled={creating}>{creating ? "..." : "Criar"}</button>
         </form>
 
         {err && <div style={{ color: "salmon", fontSize: 12 }}>{err}</div>}
@@ -156,8 +156,8 @@ function ResetPasswordPrompt({ user, onClose }: { user: AuthUser; onClose: () =>
             <input autoFocus type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="nova senha" disabled={busy} />
             {err && <div style={{ color: "salmon", fontSize: 12 }}>{err}</div>}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-              <button type="button" onClick={onClose} disabled={busy}>Cancelar</button>
-              <button type="submit" disabled={busy}>{busy ? "..." : "Definir"}</button>
+              <button type="button" className="v2-btn" onClick={onClose} disabled={busy}>Cancelar</button>
+              <button type="submit" className="v2-btn-primary" disabled={busy}>{busy ? "..." : "Definir"}</button>
             </div>
           </form>
         )}
@@ -224,7 +224,7 @@ function AclEditor({ user, onClose }: { user: AuthUser; onClose: () => void }) {
       <div className="v2-grain-card v2-neon-card" style={{ width: 540, maxHeight: "85vh", padding: 18, display: "grid", gap: 10, overflow: "auto" }}>
         <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h4 style={{ margin: 0, fontSize: 14 }}>ACLs — {user.username} <span style={{ opacity: 0.6, fontWeight: 400 }}>({user.role})</span></h4>
-          <button onClick={onClose} disabled={saving}>×</button>
+          <button onClick={onClose} disabled={saving} className="v2-dialog-x" aria-label="Fechar">✕</button>
         </header>
         <div style={{ fontSize: 11, opacity: 0.75, lineHeight: 1.5 }}>
           {restricted
@@ -263,8 +263,8 @@ function AclEditor({ user, onClose }: { user: AuthUser; onClose: () => void }) {
         )}
 
         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-          <button onClick={onClose} disabled={saving}>Cancelar</button>
-          <button onClick={save} disabled={saving || loading}>{saving ? "..." : "Salvar"}</button>
+          <button onClick={onClose} disabled={saving} className="v2-btn">Cancelar</button>
+          <button onClick={save} disabled={saving || loading} className="v2-btn-primary">{saving ? "..." : "Salvar"}</button>
         </div>
       </div>
     </div>

@@ -436,6 +436,29 @@
 
 .v2-mono { font-family: var(--v2-font-mono); }
 
+/* ── Chrome padronizado de diálogos (botão fechar + botões de ação) ──
+   Padroniza Configurações, Control Panel, Usuários e Trocar senha. */
+.v2-dialog-x {
+  background: transparent; border: none; cursor: pointer;
+  color: var(--v2-text-muted); font-size: 16px; line-height: 1;
+  padding: 4px 6px; border-radius: 4px; transition: background 120ms, color 120ms;
+}
+.v2-dialog-x:hover { color: var(--v2-text-primary); background: var(--v2-bg-hover); }
+
+.v2-btn {
+  font: inherit; font-size: 12px; padding: 6px 14px; border-radius: 4px;
+  cursor: pointer; background: transparent; border: 1px solid var(--v2-border-medium);
+  color: var(--v2-text-secondary); transition: background 120ms, color 120ms;
+}
+.v2-btn:hover:not(:disabled) { background: var(--v2-bg-hover); color: var(--v2-text-primary); }
+.v2-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.v2-btn-primary {
+  background: var(--v2-accent-brand); border-color: var(--v2-accent-brand);
+  color: var(--v2-bg-canvas); font-weight: 600;
+}
+.v2-btn-primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--v2-accent-brand); }
+
 /* ══════════════════════════════════════════════════════════════
    Grain noise REMOVIDO (2026-06-12 — passada anti-"cara de IA").
    Ferramenta de operação usa superfícies chapadas, sem textura.

@@ -160,7 +160,7 @@ export function UserMenu({
               )}
               {onOpenControlM && (
                 <button onClick={() => { setOpen(false); onOpenControlM(); }} style={menuBtn}>
-                  <LayoutGrid size={14} /> Control-M Panel
+                  <LayoutGrid size={14} /> Control Panel
                 </button>
               )}
               {onOpenSettings && me.role === "admin" && (
@@ -221,7 +221,10 @@ function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
       display: "grid", placeItems: "center", zIndex: 9999,
     }}>
       <div className="v2-neon-card" style={{ width: 340, padding: 20, display: "grid", gap: 10, background: "var(--v2-bg-elevated)", borderRadius: 14 }}>
-        <h3 style={{ margin: 0, fontSize: 15 }}>Trocar senha</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3 style={{ margin: 0, fontSize: 15 }}>Trocar senha</h3>
+          <button onClick={onClose} className="v2-dialog-x" aria-label="Fechar">✕</button>
+        </div>
         {done ? (
           <div style={{ color: "lightgreen", fontSize: 13 }}>Senha trocada.</div>
         ) : (
@@ -237,8 +240,8 @@ function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
             </label>
             {err && <div style={{ color: "salmon", fontSize: 12 }}>{err}</div>}
             <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-              <button type="button" onClick={onClose} disabled={busy}>Cancelar</button>
-              <button type="submit" disabled={busy}>{busy ? "..." : "Salvar"}</button>
+              <button type="button" className="v2-btn" onClick={onClose} disabled={busy}>Cancelar</button>
+              <button type="submit" className="v2-btn-primary" disabled={busy}>{busy ? "..." : "Salvar"}</button>
             </div>
           </form>
         )}

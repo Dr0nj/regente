@@ -769,6 +769,15 @@ function V2PreviewInner() {
     [mode, filteredInstances, filteredDefs, designDefsWithDraft],
   );
 
+  // Trava de pan do Monitoring: o topo do conteúdo (folders) fica alinhado com o
+  // ACTIVE JOBS. Pan livre pros lados e pra CIMA (revelar mais jobs abaixo), mas
+  // nunca pra baixo do topo inicial. translateExtent só no monitoring (Design é livre).
+  const monitoringExtent = useMemo<[[number, number], [number, number]] | undefined>(() => {
+    if (mode !== "monitoring" || canvas.nodes.length === 0) return undefined;
+    const top = Math.min(...canvas.nodes.map((n) => n.position.y));
+    return [[-100000, top - 24], [100000, 100000]];
+  }, [mode, canvas.nodes]);
+
   const monitoringJobs = useMemo(() => {
     const defsById = new Map(defs.map((d) => [d.id, d] as const));
     return filteredInstances.map((inst) => {
@@ -1484,6 +1493,7 @@ function V2PreviewInner() {
           // Pan: left button (default UX). Selection rect: Shift+drag.
           // panOnDrag={[0,1]} cobre left+middle; right (2) fica livre p/ ctx menu.
           panOnDrag={[0, 1]}
+          translateExtent={monitoringExtent}
           zoomOnScroll
           selectionOnDrag={false}
           selectionKeyCode="Shift"

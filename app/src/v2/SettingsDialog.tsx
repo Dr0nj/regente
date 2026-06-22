@@ -167,7 +167,7 @@ export function SettingsDialog({ onClose }: Props) {
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Configurações</h2>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--v2-text-muted)", cursor: "pointer", fontSize: 16 }}>✕</button>
+          <button onClick={onClose} className="v2-dialog-x" aria-label="Fechar">✕</button>
         </div>
 
         {!loaded ? (
@@ -462,26 +462,8 @@ export function SettingsDialog({ onClose }: Props) {
             )}
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button
-                onClick={onClose}
-                style={{
-                  padding: "6px 14px", fontSize: 12, borderRadius: 4,
-                  background: "transparent", border: "1px solid var(--v2-border-medium)",
-                  color: "var(--v2-text-secondary)", cursor: "pointer",
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                style={{
-                  padding: "6px 14px", fontSize: 12, borderRadius: 4,
-                  background: "var(--v2-accent-brand)", border: "none",
-                  color: "#000", fontWeight: 600, cursor: saving ? "wait" : "pointer",
-                  opacity: saving ? 0.6 : 1,
-                }}
-              >
+              <button onClick={onClose} className="v2-btn">Cancelar</button>
+              <button onClick={handleSave} disabled={saving} className="v2-btn-primary">
                 {saving ? "Salvando..." : "Salvar"}
               </button>
             </div>

@@ -39,8 +39,8 @@ export function ControlMPanel({ onClose }: { onClose: () => void }) {
           display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: "12px 16px", borderBottom: "1px solid var(--v2-border-medium)",
         }}>
-          <div style={{ fontWeight: 600 }}>Control-M Parity (Bloco 2)</div>
-          <button onClick={onClose} style={{ background: "transparent", color: "var(--v2-text-secondary)", border: "none", fontSize: 22, cursor: "pointer" }}>×</button>
+          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Control Panel</h2>
+          <button onClick={onClose} className="v2-dialog-x" aria-label="Fechar">✕</button>
         </header>
         <div style={{ display: "flex", gap: 6, padding: "8px 16px", borderBottom: "1px solid var(--v2-border-medium)" }}>
           {TABS.map(t => (

@@ -88,13 +88,12 @@ export default function InstanceDetailsDrawer({
       className="v2-grain v2-edge-highlight"
       style={{
         position: "absolute",
-        top: 12,
-        right: 12,
-        bottom: 12,
+        top: 0,
+        right: 0,
+        bottom: 0,
         width,
         background: "var(--v2-bg-surface)",
-        border: "1px solid var(--v2-border-medium)",
-        borderRadius: 4,
+        borderLeft: "1px solid var(--v2-border-medium)",
         display: "flex",
         flexDirection: "column",
         zIndex: 10,
