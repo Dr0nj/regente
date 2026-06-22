@@ -38,10 +38,11 @@ type Scheduler struct {
 	hub   Bus
 	tick  time.Duration
 
-	mu       sync.Mutex
-	running  map[string]bool
-	defs     []domain.JobDefinition
-	settings Settings
+	mu         sync.Mutex
+	running    map[string]bool
+	defs       []domain.JobDefinition
+	settings   Settings
+	lastTickAt time.Time // R2 — watchdog: instante do último ciclo de scheduling
 
 	// === Bloco 2 — engines opcionais ===
 	calStore   *storage.CalendarStore // F14
@@ -68,6 +69,9 @@ type Bus interface {
 	BroadcastWeb(event string, payload interface{})
 	PickAgent(capability string) *hub.Client
 	GetAgent(id string) *hub.Client
+	// Dispatch entrega o payload a um agent — local (hub) ou, no bus distribuído
+	// (R5/NATS), roteado ao nó dono do agent. Retorna o resultado e o id escolhido.
+	Dispatch(agentID, capability string, raw []byte) (hub.DispatchOutcome, string)
 }
 
 // Leader — G1 HA. Só o nó líder roda a daily automática e o tick de dispatch;
@@ -77,11 +81,11 @@ type Bus interface {
 // garante no máx. 1 execução por instance mesmo se dois nós despacharem.
 type Leader interface{ IsLeader() bool }
 
-func New(store *storage.FileStore, db *db.DB, h *hub.Hub, tick time.Duration) *Scheduler {
+func New(store *storage.FileStore, db *db.DB, bus Bus, tick time.Duration) *Scheduler {
 	return &Scheduler{
 		store:    store,
 		db:       db,
-		hub:      h,
+		hub:      bus,
 		tick:     tick,
 		running:  map[string]bool{},
 		settings: Settings{DailyAt: "00:00", Timezone: "America/Sao_Paulo"},
@@ -152,11 +156,32 @@ func (s *Scheduler) Run(ctx context.Context) {
 //
 // G1 — só o líder materializa a daily e despacha; followers retornam cedo.
 func (s *Scheduler) Tick() {
+	// R2 — watchdog: registra que o loop de scheduling rodou. A idade deste
+	// instante é exposta em /metrics e /livez; se parar de avançar (ticker morto
+	// no modo internal, ou cron parado no external), o monitor externo alerta.
+	s.mu.Lock()
+	s.lastTickAt = time.Now()
+	s.mu.Unlock()
+	// R2 — panic-recovery: um panic na materialização da daily ou na avaliação de
+	// deps/dispatch NÃO pode derrubar o processo nem matar o loop de scheduling.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[scheduler] PANIC no Tick recuperado: %v", r)
+		}
+	}()
 	if !s.isLeader() {
 		return
 	}
 	s.autoDailyIfDue()
 	s.tickOnce()
+}
+
+// LastTick — R2: instante do último ciclo de scheduling (watchdog/health).
+// Zero se o scheduler ainda não rodou nenhum tick.
+func (s *Scheduler) LastTick() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastTickAt
 }
 
 func (s *Scheduler) reloadDefs() {
@@ -558,32 +583,23 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 	s.hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusRunning)})
 
 	go func() {
+		// R2 — panic-recovery por dispatch: um panic aqui (executor, hub, codec)
+		// NÃO derruba o processo. Libera o running-guard e finaliza a instance
+		// como NOTOK para ela não ficar pendurada em RUNNING.
 		defer func() {
 			s.mu.Lock()
 			delete(s.running, id)
 			s.mu.Unlock()
+			if r := recover(); r != nil {
+				log.Printf("[scheduler] PANIC no dispatch de %s recuperado: %v", id, r)
+				s.FinishInstance(id, domain.StatusNotOK, -1, fmt.Sprintf("(panic no dispatch: %v)", r))
+			}
 		}()
 
 		// C1 — SSH é agentless: roda no próprio server (shell-out pro ssh),
 		// sem precisar de agente instalado no alvo.
 		if strings.EqualFold(def.JobType, "SSH") {
 			s.runSSH(id, def)
-			return
-		}
-
-		var agent *hub.Client
-		if def.AgentID != "" {
-			agent = s.hub.GetAgent(def.AgentID)
-		}
-		if agent == nil {
-			agent = s.hub.PickAgent(def.JobType)
-		}
-
-		if agent == nil {
-			// Mock finaliza em 1s para não bloquear o scheduler.
-			s.emitEvent(id, "submitted", "scheduler", "no agent online — mock")
-			time.Sleep(1 * time.Second)
-			s.FinishInstance(id, domain.StatusOK, 0, "(no agent online, mocked)")
 			return
 		}
 
@@ -595,13 +611,21 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 			"timeout":    def.Timeout,
 		}
 		raw, _ := json.Marshal(payload)
-		select {
-		case agent.Send <- raw:
-			_, _ = s.db.Exec(`UPDATE instances SET agent_id=? WHERE id=?`, agent.ID, id)
-			s.emitEvent(id, "submitted", "scheduler", "dispatched to agent:"+agent.ID)
-		default:
+		// Dispatch via Bus: local (hub) ou roteado ao nó dono do agent (bus NATS).
+		// Só o líder chega aqui (tick leader-gated) → a escolha do agent é feita por
+		// um decisor único, sem dupla-execução entre nós.
+		switch out, agentID := s.hub.Dispatch(def.AgentID, def.JobType, raw); out {
+		case hub.DispatchNoAgent:
+			// Mock finaliza em 1s para não bloquear o scheduler.
+			s.emitEvent(id, "submitted", "scheduler", "no agent online — mock")
+			time.Sleep(1 * time.Second)
+			s.FinishInstance(id, domain.StatusOK, 0, "(no agent online, mocked)")
+		case hub.DispatchQueueFull:
 			s.emitEvent(id, "submitted", "scheduler", "agent queue full")
 			s.FinishInstance(id, domain.StatusNotOK, -1, "agent queue full")
+		default: // hub.DispatchSent
+			_, _ = s.db.Exec(`UPDATE instances SET agent_id=? WHERE id=?`, agentID, id)
+			s.emitEvent(id, "submitted", "scheduler", "dispatched to agent:"+agentID)
 		}
 		// O resultado chega de forma assíncrona via ws handler -> FinishInstance.
 	}()
@@ -752,7 +776,16 @@ func (s *Scheduler) maybeRetry(id, output string) bool {
 	s.emitEvent(id, "retry", "scheduler", fmt.Sprintf("falhou — retry %d/%d", next, maxAttempts))
 	s.hub.BroadcastWeb("instance.changed", map[string]interface{}{"id": id, "status": string(domain.StatusWaiting)})
 	// backoff curto antes de re-dispatchar (running[id] já foi liberado).
-	time.AfterFunc(5*time.Second, func() { s.startInstance(id, def) })
+	// R2 — recover: o timer roda em goroutine própria; um panic na parte síncrona
+	// de startInstance (antes de spawnar a dela) não pode derrubar o processo.
+	time.AfterFunc(5*time.Second, func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[scheduler] PANIC no retry de %s recuperado: %v", id, r)
+			}
+		}()
+		s.startInstance(id, def)
+	})
 	return true
 }
 

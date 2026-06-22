@@ -50,6 +50,8 @@ func NewRouter(cfg Config) http.Handler {
 	r.Use(cors)
 
 	r.Get("/health", s.health)
+	// R2 — liveness (público): 200 enquanto o processo serve; reporta idade do tick.
+	r.Get("/livez", s.livez)
 
 	// P17 — métricas Prometheus (público, sem auth — scraper-friendly)
 	r.Get("/metrics", s.metrics)

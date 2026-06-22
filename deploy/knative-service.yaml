@@ -44,3 +44,8 @@ spec:
             limits: { cpu: "1", memory: "512Mi" }
           readinessProbe:
             httpGet: { path: /health, port: 8080 }
+          # R1 — liveness: um processo travado (mas escutando) é reiniciado.
+          livenessProbe:
+            httpGet: { path: /health, port: 8080 }
+            periodSeconds: 10
+            failureThreshold: 3

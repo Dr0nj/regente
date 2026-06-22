@@ -195,6 +195,13 @@ go build -o regente-server .
 | `-git-commit`   | `false`                       | Commita saves (workspace deve ser repo) |
 | `-api-token`    | `dev-token` / `REGENTE_TOKEN` | Bearer token web + agent                |
 | `-auth-mode`    | `local`                       | `local` \| `oidc` (SSO opt-in)          |
+| `-bus`          | `hub`                         | `hub` (local) \| `nats` (hub distribuído multi-nó, R5) |
+
+> **Produção:** rode o server **supervisionado** com restart automático — ver
+> [`server/deploy/`](server/deploy) (systemd `Restart=always` / Windows Service / `livenessProbe`).
+> Todas as flags acima leem variáveis de ambiente (`REGENTE_*`), então a unit/manifesto
+> dispensa argumentos. **Multi-nó (R5):** `-bus=nats` faz fan-out de eventos web e roteia o
+> dispatch ao nó dono do agent — o failover do líder não estranda agentes.
 
 ### API resumo
 
@@ -401,7 +408,13 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 - [x] **Escala — backend Postgres** (além de SQLite): state store plugável por dialeto,
   flag `-db-driver sqlite|postgres`, migrations versionadas. *(falta: DynamoDB, nós stateless, 10k+ jobs/dia)*
 - [x] **HA — leader election do scheduler**: só o líder materializa a daily/dispatch
-  (`pg_advisory_lock` no Postgres; nó único no SQLite). *(falta: hub WebSocket distribuído, DR/backup)*
+  (`pg_advisory_lock` no Postgres; nó único no SQLite). **+ hub distribuído via NATS (R5, opt-in
+  `-bus=nats`)** — fan-out de eventos web + dispatch roteado ao nó dono do agent. *(falta: DR/backup,
+  validação 2-nós em infra real)*
+- [x] **Resiliência operacional (R1/R2)**: server **supervisionado** (`regente-server.service`
+  systemd `Restart=always` + Windows Service + `livenessProbe`) + **panic-recovery** no scheduler
+  (um job não derruba o cérebro) + **watchdog de tick** (`/livez` + gauge em `/metrics`).
+  *(falta: DR/backup, validação chaos)*
 - [x] **Segurança — secrets manager** (provider plugável, tira PAT/secrets do banco em claro;
   default env+arquivo, Vault/AWS pluggável) **+ SSO/OIDC** (Authorization Code, opt-in via `-auth-mode`;
   login local segue default). *(falta: SSO ponta-a-ponta com IdP + frontend, RBAC/ACL completo, mTLS dos agentes, audit→SIEM)*
@@ -419,8 +432,9 @@ A mesma imagem OCI roda em Knative/Cloud Run/Fly/App Runner; estado em Postgres
   Knative + CronJob). Scale-to-zero do control plane.
 - [x] **Fase 2 — transporte plugável**: interface `Bus` desacopla o scheduler do
   WebSocket hub **+ transporte HTTP long-poll** (`-transport=http` no agent;
-  `/api/agent/poll|result|output`) para control plane stateless. *(projetado:
-  adapter NATS, hub distribuído)*
+  `/api/agent/poll|result|output`) para control plane stateless **+ adapter NATS
+  (`-bus=nats`)** — hub distribuído com fan-out de eventos web e dispatch roteado ao
+  nó dono do agent (R5; validação 2-nós em infra real pendente).
 - [x] **Fase 3 — executores como plugins**: roteamento por capability é o seam
   **+ executor WASM** (`jobType: WASM` via wazero, pure-Go/sem CGO, sandbox WASI).
   *(projetado: adapters AWS/GCP/k8s por capability, durable execution opt-in,

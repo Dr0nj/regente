@@ -23,6 +23,7 @@ import (
 
 	"github.com/Dr0nj/regente-server/internal/api"
 	"github.com/Dr0nj/regente-server/internal/auth"
+	"github.com/Dr0nj/regente-server/internal/bus"
 	"github.com/Dr0nj/regente-server/internal/db"
 	"github.com/Dr0nj/regente-server/internal/hub"
 	"github.com/Dr0nj/regente-server/internal/leader"
@@ -34,15 +35,19 @@ import (
 
 func main() {
 	var (
-		addr        = flag.String("addr", ":8080", "HTTP listen address")
-		workspace   = flag.String("workspace", "./workspace", "Path to regente workspace (contains definitions/)")
-		dbPath      = flag.String("db", "./regente.db", "DB DSN: caminho do arquivo SQLite, ou connection string Postgres quando -db-driver=postgres")
+		addr        = flag.String("addr", envOr("REGENTE_ADDR", ":8080"), "HTTP listen address")
+		workspace   = flag.String("workspace", envOr("REGENTE_WORKSPACE", "./workspace"), "Path to regente workspace (contains definitions/)")
+		dbPath      = flag.String("db", envOr("REGENTE_DB", "./regente.db"), "DB DSN: caminho do arquivo SQLite, ou connection string Postgres quando -db-driver=postgres")
 		dbDriver    = flag.String("db-driver", envOr("REGENTE_DB_DRIVER", "sqlite"), "State store backend: sqlite | postgres")
 		secretsFile = flag.String("secrets-file", envOr("REGENTE_SECRETS_FILE", ""), "H3: arquivo JSON de segredos {\"github_token\":...}; env REGENTE_SECRET_<KEY> tem prioridade")
 		tickMs      = flag.Int("tick-ms", 2000, "Scheduler tick interval (ms) — usado no modo internal")
 		// Fase 1/2 (serverless) — papel do processo + origem do tick. Ver docs/arquitetura-futuro.md.
 		role          = flag.String("role", envOr("REGENTE_ROLE", "all"), "Process role: all | api | scheduler")
 		schedulerMode = flag.String("scheduler", envOr("REGENTE_SCHEDULER", "internal"), "Scheduler trigger: internal (goroutine ticker) | external (cron via POST /api/scheduler/tick)")
+		// R5 — bus distribuído (opt-in). hub (default) = comportamento local de sempre.
+		busMode = flag.String("bus", envOr("REGENTE_BUS", "hub"), "Transporte do hub: hub (local) | nats (distribuído)")
+		natsURL = flag.String("nats-url", envOr("REGENTE_NATS_URL", "nats://localhost:4222"), "URL do NATS (quando -bus=nats)")
+		nodeID  = flag.String("node-id", envOr("REGENTE_NODE_ID", defaultNodeID()), "ID único deste nó no cluster (presence/routing R5)")
 		gitEnable     = flag.Bool("git-commit", false, "Commit saves via git (workspace must be a git repo)")
 		apiToken      = flag.String("api-token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token for API + WS")
 
@@ -209,7 +214,26 @@ func main() {
 
 	h := hub.New()
 
-	sched := scheduler.New(store, database, h, time.Duration(*tickMs)*time.Millisecond)
+	// R5 — bus: local (hub por-processo, default) ou distribuído via NATS (opt-in).
+	// No modo distribuído, eventos web fazem fan-out entre nós e o dispatch é roteado
+	// ao nó dono do agent — então o failover do líder não estranda agentes.
+	var theBus scheduler.Bus = h
+	if strings.EqualFold(*busMode, "nats") {
+		tr, err := bus.DialNATS(*natsURL)
+		if err != nil {
+			log.Fatalf("[bus] conexão NATS falhou: %v", err)
+		}
+		dbus := bus.NewDistributed(*nodeID, h, tr)
+		if err := dbus.Start(); err != nil {
+			log.Fatalf("[bus] start distribuído: %v", err)
+		}
+		theBus = dbus
+		log.Printf("[bus] distribuído via NATS url=%s node=%s", *natsURL, *nodeID)
+	} else {
+		log.Printf("[bus] local (hub por-processo)")
+	}
+
+	sched := scheduler.New(store, database, theBus, time.Duration(*tickMs)*time.Millisecond)
 
 	// Opção B (2026-04-26) — daily lê definitions de Git fresh.
 	// Sem GitOps atachado, daily cai pro modo legado (lê só do disco local).
@@ -346,4 +370,12 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// defaultNodeID — id do nó para presence/routing (R5); usa o hostname da máquina.
+func defaultNodeID() string {
+	if h, err := os.Hostname(); err == nil && h != "" {
+		return h
+	}
+	return "regente-1"
 }

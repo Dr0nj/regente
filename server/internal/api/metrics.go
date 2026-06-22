@@ -51,4 +51,30 @@ func (s *server) metrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "# HELP regente_git_drift 1 se o workspace está atrás do remoto.")
 	fmt.Fprintln(w, "# TYPE regente_git_drift gauge")
 	fmt.Fprintf(w, "regente_git_drift %d\n", drift)
+
+	// R2 — watchdog do scheduler: idade do último ciclo (loop de scheduling vivo).
+	if s.cfg.Scheduler != nil {
+		age := -1.0
+		if last := s.cfg.Scheduler.LastTick(); !last.IsZero() {
+			age = time.Since(last).Seconds()
+		}
+		fmt.Fprintln(w, "# HELP regente_scheduler_last_tick_age_seconds Segundos desde o último ciclo do scheduler (-1 se nunca rodou).")
+		fmt.Fprintln(w, "# TYPE regente_scheduler_last_tick_age_seconds gauge")
+		fmt.Fprintf(w, "regente_scheduler_last_tick_age_seconds %.1f\n", age)
+	}
+}
+
+// livez — R2/R3: liveness. Responde 200 enquanto o processo serve HTTP, e reporta
+// a idade do último tick do scheduler (informativo). NÃO falha por tick velho: no
+// modo -scheduler=external o tick vem de cron, e reprovar aqui causaria restart-loop.
+// Para alertar em tick parado use o gauge regente_scheduler_last_tick_age_seconds (R7).
+func (s *server) livez(w http.ResponseWriter, _ *http.Request) {
+	age := -1.0
+	if s.cfg.Scheduler != nil {
+		if last := s.cfg.Scheduler.LastTick(); !last.IsZero() {
+			age = time.Since(last).Seconds()
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, "{\"alive\":true,\"schedulerLastTickAgeSeconds\":%.1f}\n", age)
 }

@@ -1,0 +1,24 @@
+[Unit]
+Description=Regente Server (control plane)
+After=network-online.target
+Wants=network-online.target
+# Resiliência: nunca desiste de reiniciar, mesmo em crash-loop (sem rate limit).
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+# Toda a config vem do env (ver server.env.example). Tudo opt-in com defaults sãos.
+EnvironmentFile=/etc/regente/server.env
+ExecStart=/usr/local/bin/regente-server
+# R1 — o ponto desta unit: se o processo morrer (crash, OOM, kill), volta sozinho.
+Restart=always
+RestartSec=5
+WorkingDirectory=/var/lib/regente
+User=__USER__
+# Encerramento gracioso (o server faz srv.Shutdown em SIGTERM; estado já é durável).
+KillSignal=SIGTERM
+TimeoutStopSec=15
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

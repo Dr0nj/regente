@@ -103,6 +103,38 @@ func (h *Hub) GetAgent(id string) *Client {
 	return h.agents[id]
 }
 
+// DispatchOutcome — resultado de uma tentativa de entrega de dispatch a um agent.
+type DispatchOutcome int
+
+const (
+	DispatchNoAgent   DispatchOutcome = iota // nenhum agent (local/remoto) com a capability/id
+	DispatchSent                             // entregue ao agent (local) ou roteado ao nó dono
+	DispatchQueueFull                        // agent local existe mas o buffer de Send está cheio
+)
+
+// Dispatch entrega o payload a um agent LOCAL, centralizando a lógica que antes
+// vivia inline no scheduler (GetAgent por id, senão PickAgent por capability, e
+// envio não-bloqueante no canal Send). É o seam que o bus distribuído (R5) estende
+// para rotear ao nó dono quando o agent não está neste processo.
+func (h *Hub) Dispatch(agentID, capability string, raw []byte) (DispatchOutcome, string) {
+	var a *Client
+	if agentID != "" {
+		a = h.GetAgent(agentID)
+	}
+	if a == nil {
+		a = h.PickAgent(capability)
+	}
+	if a == nil {
+		return DispatchNoAgent, ""
+	}
+	select {
+	case a.Send <- raw:
+		return DispatchSent, a.ID
+	default:
+		return DispatchQueueFull, a.ID
+	}
+}
+
 // OnlineAgents retorna IDs dos agents conectados.
 func (h *Hub) OnlineAgents() []map[string]interface{} {
 	h.mu.RLock()
