@@ -31,6 +31,9 @@ import (
 	"github.com/Dr0nj/regente-server/internal/scheduler"
 	"github.com/Dr0nj/regente-server/internal/secrets"
 	"github.com/Dr0nj/regente-server/internal/storage"
+	"github.com/Dr0nj/regente-server/internal/telemetry"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 func main() {
@@ -48,8 +51,11 @@ func main() {
 		busMode = flag.String("bus", envOr("REGENTE_BUS", "hub"), "Transporte do hub: hub (local) | nats (distribuído)")
 		natsURL = flag.String("nats-url", envOr("REGENTE_NATS_URL", "nats://localhost:4222"), "URL do NATS (quando -bus=nats)")
 		nodeID  = flag.String("node-id", envOr("REGENTE_NODE_ID", defaultNodeID()), "ID único deste nó no cluster (presence/routing R5)")
-		gitEnable     = flag.Bool("git-commit", false, "Commit saves via git (workspace must be a git repo)")
-		apiToken      = flag.String("api-token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token for API + WS")
+		// I1 — observabilidade: tracing OTLP opt-in (vazio = off, no-op).
+		otelEndpoint = flag.String("otel-endpoint", envOr("OTEL_EXPORTER_OTLP_ENDPOINT", ""), "Endpoint OTLP/HTTP p/ tracing distribuído (vazio = off)")
+		otelService  = flag.String("otel-service", envOr("OTEL_SERVICE_NAME", "regente-server"), "service.name nos traces")
+		gitEnable    = flag.Bool("git-commit", false, "Commit saves via git (workspace must be a git repo)")
+		apiToken     = flag.String("api-token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token for API + WS")
 
 		// F13 GitOps — defaults apontam pro regente-workspace (padrão, não configuração)
 		gitSource    = flag.String("git-source", envOr("REGENTE_GIT_SOURCE", "https://github.com/Dr0nj/regente-workspace.git"), "Git remote URL for workspace source-of-truth")
@@ -88,6 +94,15 @@ func main() {
 		log.Fatalf("db migrate: %v", err)
 	}
 	log.Printf("[db] driver=%s", dialect)
+
+	// I1 — tracing OTLP (opt-in). Sem endpoint, no-op (zero overhead).
+	otelShutdown, otelErr := telemetry.Init(context.Background(), *otelEndpoint, *otelService)
+	if otelErr != nil {
+		log.Printf("[otel] init falhou (%v) — tracing desligado", otelErr)
+	} else if *otelEndpoint != "" {
+		log.Printf("[otel] tracing OTLP -> %s (service=%s)", *otelEndpoint, *otelService)
+	}
+	defer func() { _ = otelShutdown(context.Background()) }()
 
 	// F11.10 — bootstrap admin if no users exist
 	if err := auth.Bootstrap(database); err != nil {
@@ -341,7 +356,8 @@ func main() {
 		AppURL:    *appURL,
 	})
 
-	srv := &http.Server{Addr: *addr, Handler: router, ReadHeaderTimeout: 10 * time.Second}
+	// I1 — otelhttp instrumenta todas as rotas (latência/status por endpoint).
+	srv := &http.Server{Addr: *addr, Handler: otelhttp.NewHandler(router, "regente-server"), ReadHeaderTimeout: 10 * time.Second}
 
 	go func() {
 		gitState := "off"

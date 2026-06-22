@@ -24,6 +24,9 @@ import (
 	"github.com/Dr0nj/regente-server/internal/domain"
 	"github.com/Dr0nj/regente-server/internal/hub"
 	"github.com/Dr0nj/regente-server/internal/storage"
+	"github.com/Dr0nj/regente-server/internal/telemetry"
+
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // Settings — configuração global (depois persistida em workspace/settings.yaml).
@@ -293,6 +296,8 @@ func short(sha string) string {
 // Idempotente: se já existe instance para (def, date), é pulada.
 // Cada instance carrega o SHA do commit que originou as defs (Opção B).
 func (s *Scheduler) RunDaily(date string) int {
+	_, span := telemetry.Span(context.Background(), "scheduler.daily", attribute.String("order_date", date))
+	defer span.End()
 	s.mu.Lock()
 	defs := make([]domain.JobDefinition, len(s.defs))
 	copy(defs, s.defs)
@@ -595,6 +600,10 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 				s.FinishInstance(id, domain.StatusNotOK, -1, fmt.Sprintf("(panic no dispatch: %v)", r))
 			}
 		}()
+
+		_, span := telemetry.Span(context.Background(), "scheduler.dispatch",
+			attribute.String("instance", id), attribute.String("job_type", def.JobType))
+		defer span.End()
 
 		// C1 — SSH é agentless: roda no próprio server (shell-out pro ssh),
 		// sem precisar de agente instalado no alvo.
