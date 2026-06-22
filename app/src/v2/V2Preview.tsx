@@ -5,8 +5,6 @@ import {
   ReactFlowProvider,
   Background,
   BackgroundVariant,
-  MiniMap,
-  type MiniMapNodeProps,
   useReactFlow,
   type Node,
   type Edge,
@@ -360,12 +358,37 @@ function composeColumns<T extends { id: string; team?: string }>(
   return { nodes, lanes };
 }
 
-// Nó do minimap desenhado à mão: círculo de raio fixo (em unidades do flow) — aparece
-// mesmo quando a dimensão medida do nó custom é ~0 (motivo de os jobs não surgirem).
-function MiniNode({ x, y, width, height, color }: MiniMapNodeProps) {
-  const cx = x + (width || 0) / 2;
-  const cy = y + (height || 0) / 2;
-  return <circle cx={cx} cy={cy} r={18} fill={color || "#11C76F"} stroke="#06080c" strokeWidth={3} />;
+// Minimap próprio: desenha um ponto por job a partir de canvas.nodes (que têm posição
+// garantida), sem depender do MiniMap do ReactFlow (que filtra nós custom sem dimensão
+// medida — motivo de os jobs nunca aparecerem). Clique navega o canvas até o ponto.
+function NavMinimap({ nodes, width, height }: { nodes: Node[]; width: number; height: number }) {
+  const { setCenter, getViewport } = useReactFlow();
+  if (nodes.length === 0) {
+    return <div style={{ width, height, display: "grid", placeItems: "center", fontSize: 11, color: "var(--v2-text-muted)" }}>sem jobs</div>;
+  }
+  const NW = 170, NH = 56, PAD = 80; // estimativa do card + respiro p/ os bounds
+  const xs = nodes.map((n) => n.position.x);
+  const ys = nodes.map((n) => n.position.y);
+  const minX = Math.min(...xs) - PAD, maxX = Math.max(...xs) + NW + PAD;
+  const minY = Math.min(...ys) - PAD, maxY = Math.max(...ys) + NH + PAD;
+  const bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
+  const scale = Math.min(width / bw, height / bh);
+  const offX = (width - bw * scale) / 2, offY = (height - bh * scale) / 2;
+  const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const fx = minX + (e.clientX - r.left - offX) / scale;
+    const fy = minY + (e.clientY - r.top - offY) / scale;
+    setCenter(fx, fy, { zoom: getViewport().zoom, duration: 400 });
+  };
+  return (
+    <svg width={width} height={height} onClick={handleClick} style={{ display: "block", cursor: "pointer" }}>
+      {nodes.map((n) => {
+        const cx = offX + (n.position.x + NW / 2 - minX) * scale;
+        const cy = offY + (n.position.y + NH / 2 - minY) * scale;
+        return <circle key={n.id} cx={cx} cy={cy} r={4} fill={miniNodeColor(n)} stroke="#06080c" strokeWidth={1} />;
+      })}
+    </svg>
+  );
 }
 
 // Cor do nó no minimap por status (hex p/ o fill SVG do minimap).
@@ -1546,50 +1569,47 @@ function V2PreviewInner() {
           onInit={(inst) => { rfInstance.current = inst; }}
         >
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#1a1a1a" />
-          {showMinimap && (
-            <MiniMap
-              pannable
-              zoomable
-              position="bottom-right"
-              ariaLabel="Minimap de navegação"
-              maskColor="rgba(6,8,12,0.4)"
-              nodeColor={miniNodeColor}
-              nodeComponent={MiniNode}
-              style={{
-                width: miniSize.w, height: miniSize.h, margin: 0,
-                right: mode === "monitoring" && selectedInstance ? 392 : 16, bottom: 16,
-                background: "var(--v2-bg-surface)",
-                border: "1px solid var(--v2-border-medium)",
-                borderRadius: 8,
-              }}
-            />
-          )}
         </ReactFlow>
         {showMinimap && (
-          <div
-            title="Redimensionar minimap"
-            onPointerDown={(e) => {
-              e.preventDefault();
-              const sx = e.clientX, sy = e.clientY, sw = miniSize.w, sh = miniSize.h;
-              const move = (ev: PointerEvent) => setMiniSize({
-                w: Math.min(560, Math.max(170, sw + (sx - ev.clientX))),
-                h: Math.min(380, Math.max(110, sh + (sy - ev.clientY))),
-              });
-              const up = () => {
-                window.removeEventListener("pointermove", move);
-                window.removeEventListener("pointerup", up);
-              };
-              window.addEventListener("pointermove", move);
-              window.addEventListener("pointerup", up);
-            }}
-            style={{
-              position: "absolute", zIndex: 11, cursor: "nwse-resize",
-              right: (mode === "monitoring" && selectedInstance ? 392 : 16) + miniSize.w - 7,
-              bottom: 16 + miniSize.h - 7,
-              width: 14, height: 14, borderRadius: 4,
-              background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-strong)",
-            }}
-          />
+          <>
+            <div
+              style={{
+                position: "absolute", zIndex: 10,
+                right: mode === "monitoring" && selectedInstance ? 392 : 16, bottom: 16,
+                width: miniSize.w, height: miniSize.h,
+                background: "var(--v2-bg-surface)",
+                border: "1px solid var(--v2-border-medium)",
+                borderRadius: 8, overflow: "hidden",
+                boxShadow: "0 6px 20px rgba(0,0,0,0.4)",
+              }}
+            >
+              <NavMinimap nodes={canvas.nodes} width={miniSize.w} height={miniSize.h} />
+            </div>
+            <div
+              title="Redimensionar minimap"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                const sx = e.clientX, sy = e.clientY, sw = miniSize.w, sh = miniSize.h;
+                const move = (ev: PointerEvent) => setMiniSize({
+                  w: Math.min(560, Math.max(170, sw + (sx - ev.clientX))),
+                  h: Math.min(380, Math.max(110, sh + (sy - ev.clientY))),
+                });
+                const up = () => {
+                  window.removeEventListener("pointermove", move);
+                  window.removeEventListener("pointerup", up);
+                };
+                window.addEventListener("pointermove", move);
+                window.addEventListener("pointerup", up);
+              }}
+              style={{
+                position: "absolute", zIndex: 11, cursor: "nwse-resize",
+                right: (mode === "monitoring" && selectedInstance ? 392 : 16) + miniSize.w - 7,
+                bottom: 16 + miniSize.h - 7,
+                width: 14, height: 14, borderRadius: 4,
+                background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-strong)",
+              }}
+            />
+          </>
         )}
 
         {/* Empty state overlay */}
