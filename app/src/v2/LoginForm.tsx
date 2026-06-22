@@ -1,9 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { changePassword, login, type AuthUser } from "../lib/auth-api";
 
-/* ── Circuit-R Logo (real asset) ── */
-function RegenteLogo({ size = 160 }: { size?: number }) {
-  return <img src="/regente-logo.png" alt="Regente" width={size} height={size} style={{ objectFit: "contain" }} />;
+/* ── Logo R (asset oficial, branco/transparente) + wordmark ── */
+function RegenteLogo({ size = 92 }: { size?: number }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+      <img src="/logo-r.png" alt="Regente" height={size} style={{ height: size, width: "auto", objectFit: "contain" }} />
+      <span style={{ fontSize: 26, fontWeight: 500, letterSpacing: "-0.01em", color: "#f5f5f5" }}>Regente</span>
+    </div>
+  );
 }
 
 /* ── Status dots pair ── */
@@ -181,6 +186,14 @@ export function LoginForm({ onLogin }: LoginFormProps) {
   const [next2, setNext2] = useState("");
   const [btnHover, setBtnHover] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
+  // Intro: o vídeo toca 1x (ou skip/timeout) e então revela o form.
+  const [introDone, setIntroDone] = useState(false);
+
+  useEffect(() => {
+    // Rede de segurança: se o vídeo travar/não carregar, revela o form.
+    const t = setTimeout(() => setIntroDone(true), 12000);
+    return () => clearTimeout(t);
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -224,6 +237,34 @@ export function LoginForm({ onLogin }: LoginFormProps) {
     ...(focusedField === field ? S.inputFocus : {}),
   });
 
+  if (!introDone) {
+    return (
+      <div style={{ position: "fixed", inset: 0, background: "#000", zIndex: 9999, display: "grid", placeItems: "center", overflow: "hidden" }}>
+        <video
+          src="/login-intro.mp4"
+          autoPlay
+          muted
+          playsInline
+          onEnded={() => setIntroDone(true)}
+          onError={() => setIntroDone(true)}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+        <button
+          onClick={() => setIntroDone(true)}
+          style={{
+            position: "absolute", bottom: 28, right: 32,
+            background: "rgba(0,0,0,0.45)", color: "#f5f5f5",
+            border: "1px solid rgba(255,255,255,0.25)", borderRadius: 999,
+            padding: "8px 18px", fontSize: 13, cursor: "pointer",
+            backdropFilter: "blur(6px)", letterSpacing: "0.02em",
+          }}
+        >
+          Pular ›
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div style={S.overlay}>
       <GhostWorkflow />
@@ -232,7 +273,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
       <div style={S.card}>
         {/* Logo */}
         <div style={S.logoWrap}>
-          <RegenteLogo size={160} />
+          <RegenteLogo />
         </div>
 
         {!forceChange ? (

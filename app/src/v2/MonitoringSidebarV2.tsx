@@ -108,12 +108,14 @@ export default function MonitoringSidebarV2({
     <aside
       style={{
         position: "absolute",
-        top: 0,
-        left: 0,
-        bottom: 0,
+        top: 10,
+        left: 10,
+        bottom: 10,
         width,
         background: "var(--v2-bg-surface)",
-        borderRight: "1px solid var(--v2-border-medium)",
+        border: "1px solid var(--v2-border-medium)",
+        borderRadius: 16,
+        boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
         display: "flex",
         flexDirection: "column",
         fontFamily: "var(--v2-font-sans)",
@@ -300,11 +302,12 @@ export default function MonitoringSidebarV2({
                       alignItems: "center",
                       gap: 8,
                       borderBottom: "1px solid var(--v2-border-subtle)",
-                      background: selected === j.id ? "var(--v2-accent-faint)" : "transparent",
+                      background: selected === j.id ? "var(--v2-accent-deep)" : "transparent",
                       borderLeft: selected === j.id ? "2px solid var(--v2-accent-brand)" : "2px solid transparent",
+                      boxShadow: selected === j.id ? "inset 0 0 12px var(--v2-accent-glow)" : "none",
                       cursor: "pointer",
                       fontSize: 11,
-                      transition: "background 80ms linear",
+                      transition: "background 80ms linear, box-shadow 120ms linear",
                     }}
                     onMouseEnter={(e) => {
                       if (selected !== j.id) e.currentTarget.style.background = "var(--v2-bg-hover)";

@@ -75,7 +75,7 @@ import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, type 
 import { toast, ToastHost } from "./Toast";
 import EdgeConditionModal from "./EdgeConditionModal";
 import { getGitInfo, commitUrl } from "@/lib/git-info";
-import { FolderOpen, Play, Zap, GitCommitHorizontal, Bell } from "lucide-react";
+import { FolderOpen, Play, Zap, GitCommitHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
 
 import "@xyflow/react/dist/style.css";
 import "@/index.css";
@@ -1127,15 +1127,17 @@ function V2PreviewInner() {
     >
       {/* Topbar */}
       <header
-        className="v2-grain v2-edge-highlight"
         style={{
-          height: 44,
-          padding: "0 16px",
-          borderBottom: "1px solid var(--v2-border-subtle)",
+          margin: "10px 12px 2px",
+          height: 58,
+          padding: "0 18px",
+          borderRadius: 16,
+          border: "1px solid var(--v2-border-medium)",
           background: "var(--v2-bg-surface)",
+          boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
           display: "flex",
           alignItems: "center",
-          gap: 16,
+          gap: 14,
           flexShrink: 0,
           // z-index acima do canvas para dropdowns (UserMenu) escaparem do stacking context.
           position: "relative",
@@ -1144,13 +1146,12 @@ function V2PreviewInner() {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <img
-            src="/favicon-r.png"
+            src="/logo-r.png"
             alt="Regente"
-            width={26}
-            height={26}
-            style={{ objectFit: "contain", display: "block", borderRadius: 6 }}
+            height={30}
+            style={{ height: 30, width: "auto", objectFit: "contain", display: "block" }}
           />
-          <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: "0.02em" }}>Regente</span>
+          <span style={{ fontSize: 20, fontWeight: 500, letterSpacing: "-0.01em", color: "var(--v2-text-primary)" }}>Regente</span>
           {envLabel && (
             <span style={{
               fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
@@ -1164,28 +1165,33 @@ function V2PreviewInner() {
           </span>
         </div>
 
-        <div
-          style={{
-            display: "flex", background: "var(--v2-bg-elevated)",
-            border: "1px solid var(--v2-border-medium)", borderRadius: 4, overflow: "hidden",
-          }}
-        >
-          {(["design", "monitoring"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => { setMode(m); setSelectedInstanceId(null); setEditingDef(null); }}
-              style={{
-                padding: "5px 14px",
-                background: mode === m ? "var(--v2-accent-deep)" : "transparent",
-                border: "none",
-                borderRight: m === "design" ? "1px solid var(--v2-border-medium)" : "none",
-                color: mode === m ? "var(--v2-accent-brand)" : "var(--v2-text-secondary)",
-                fontSize: 11, fontFamily: "var(--v2-font-mono)",
-                letterSpacing: "0.06em", cursor: "pointer",
-                fontWeight: mode === m ? 600 : 500, textTransform: "uppercase",
-              }}
-            >{m}</button>
-          ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <ChevronLeft size={16} style={{ color: "var(--v2-text-muted)" }} />
+          <div
+            style={{
+              display: "flex", gap: 4, padding: 4,
+              background: "var(--v2-bg-elevated)",
+              border: "1px solid var(--v2-border-subtle)", borderRadius: 12,
+            }}
+          >
+            {(["design", "monitoring"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => { setMode(m); setSelectedInstanceId(null); setEditingDef(null); }}
+                style={{
+                  padding: "6px 16px",
+                  background: mode === m ? "var(--v2-accent-brand)" : "transparent",
+                  border: "none", borderRadius: 8,
+                  color: mode === m ? "var(--v2-bg-canvas)" : "var(--v2-text-secondary)",
+                  fontSize: 11, fontFamily: "var(--v2-font-mono)",
+                  letterSpacing: "0.06em", cursor: "pointer",
+                  fontWeight: mode === m ? 700 : 500, textTransform: "uppercase",
+                  transition: "background 140ms, color 140ms",
+                }}
+              >{m}</button>
+            ))}
+          </div>
+          <ChevronRight size={16} style={{ color: "var(--v2-text-muted)" }} />
         </div>
 
         {/* F11.8 — Folders picker button (apenas em design) */}
@@ -1440,33 +1446,6 @@ function V2PreviewInner() {
           </>
         )}
 
-        {/* Alerts bell + unread badge (Phase 8) */}
-        <button
-          onClick={() => setShowAlerts(true)}
-          title={unreadAlerts > 0 ? `${unreadAlerts} alerta(s) não reconhecido(s)` : "Alertas"}
-          style={{
-            position: "relative",
-            padding: "5px 8px",
-            background: showAlerts ? "var(--v2-accent-deep)" : "transparent",
-            border: `1px solid ${unreadAlerts > 0 ? "var(--v2-status-failed)" : "var(--v2-border-medium)"}`,
-            color: unreadAlerts > 0 ? "var(--v2-status-failed)" : "var(--v2-text-secondary)",
-            borderRadius: 3, cursor: "pointer",
-            display: "flex", alignItems: "center",
-          }}
-        >
-          <Bell size={13} />
-          {unreadAlerts > 0 && (
-            <span style={{
-              position: "absolute", top: -6, right: -6,
-              minWidth: 16, height: 16, padding: "0 4px",
-              background: "var(--v2-status-failed)", color: "#fff",
-              borderRadius: 8, fontSize: 9, fontWeight: 700,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontFamily: "var(--v2-font-mono)",
-            }}>{unreadAlerts > 99 ? "99+" : unreadAlerts}</span>
-          )}
-        </button>
-
         {me && (
           <UserMenu
             me={me}
@@ -1474,6 +1453,9 @@ function V2PreviewInner() {
             onOpenUsers={() => setShowUsers(true)}
             onOpenControlM={() => setShowControlM(true)}
             onOpenSettings={() => setShowSettings(true)}
+            unreadAlerts={unreadAlerts}
+            onOpenAlerts={() => setShowAlerts(true)}
+            alertsActive={showAlerts}
           />
         )}
 

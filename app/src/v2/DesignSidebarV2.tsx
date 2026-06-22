@@ -94,15 +94,18 @@ export default function DesignSidebarV2({ definitions = [] }: { definitions?: Jo
     <aside
       style={{
         position: "absolute",
-        top: 0,
-        left: 0,
-        bottom: 0,
+        top: 10,
+        left: 10,
+        bottom: 10,
         width,
         display: "flex",
         fontFamily: "var(--v2-font-sans)",
         zIndex: 5,
-        borderRight: "1px solid var(--v2-border-medium)",
+        border: "1px solid var(--v2-border-medium)",
+        borderRadius: 16,
+        boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
         background: "var(--v2-bg-surface)",
+        overflow: "hidden",
       }}
     >
       <ResizeHandle edge="right" onMouseDown={onMouseDown} onReset={reset} />
@@ -129,15 +132,16 @@ export default function DesignSidebarV2({ definitions = [] }: { definitions?: Jo
               title={t.label}
               style={{
                 height: 32,
-                background: "transparent",
+                background: active ? "var(--v2-accent-deep)" : "transparent",
                 border: "none",
                 borderLeft: `2px solid ${active ? "var(--v2-accent-brand)" : "transparent"}`,
-                color: active ? "var(--v2-text-primary)" : "var(--v2-text-muted)",
+                boxShadow: active ? "inset 0 0 12px var(--v2-accent-glow)" : "none",
+                color: active ? "var(--v2-accent-brand)" : "var(--v2-text-muted)",
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                transition: "color 100ms linear",
+                transition: "color 100ms linear, box-shadow 120ms linear",
               }}
               onMouseEnter={(e) => {
                 if (!active) e.currentTarget.style.color = "var(--v2-text-secondary)";

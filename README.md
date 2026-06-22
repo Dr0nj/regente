@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="app/public/favicon-512.png" width="96" alt="Regente" />
+  <img src="app/public/logo-r.png" width="92" alt="Regente" />
   <h1>Regente</h1>
   <p><strong>Orquestrador de workflows Git-nativo, inspirado em Control-M.</strong></p>
   <p>
@@ -86,6 +86,13 @@ daily ou via Force Order manual.
   server-side, sem precisar subir o server com `GITHUB_TOKEN`.
 - 🟢 **Enterprise readiness** — backend **Postgres** (além de SQLite), **leader
   election** (HA do scheduler), **secrets manager** plugável, **SSO/OIDC** opt-in.
+- 🟢 **Identidade visual** — logotipo **R** próprio (branco, vetorial, fundo
+  transparente — recolore com a superfície do tema), topbar **premium flutuante**
+  (cantos arredondados, segmented `‹ DESIGN · MONITORING ›` com chevrons e destaque
+  **neon** que segue o tema) e cluster de ações à direita: **alertas** (sino),
+  **configurações/conta** (engrenagem → menu), **tela cheia** (monitor) e **avatar**.
+  Tela de **login com intro em vídeo** antes do formulário, e **sidebars flutuantes**
+  (folders/jobs) com realce **neon** no item selecionado.
 - 🟢 **Temas** — aparência configurável em Settings → Tema. Cinco temas: **Escuro**
   (padrão), **Brasil**, **Brasil Ouro**, **Brasil Mata** (verde-amarelo) e **Rosa**
   (rosa neon sobre fundo escuro). Cada card mostra um **swatch** com as cores do tema.
