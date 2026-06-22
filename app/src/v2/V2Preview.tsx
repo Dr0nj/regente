@@ -1160,9 +1160,6 @@ function V2PreviewInner() {
               lineHeight: 1, textTransform: "uppercase",
             }}>{envLabel}</span>
           )}
-          <span style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", letterSpacing: "0.06em", marginLeft: 4 }}>
-            {container.storageBackend}
-          </span>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

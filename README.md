@@ -91,7 +91,7 @@ daily ou via Force Order manual.
   (cantos arredondados, segmented `‹ DESIGN · MONITORING ›` com chevrons e destaque
   **neon** que segue o tema) e cluster de ações à direita: **alertas** (sino),
   **configurações/conta** (engrenagem → menu), **tela cheia** (monitor) e **avatar**.
-  Tela de **login com intro em vídeo** antes do formulário, e **sidebars flutuantes**
+  Tela de **login** com o logotipo, e **sidebars flutuantes**
   (folders/jobs) com realce **neon** no item selecionado.
 - 🟢 **Temas** — aparência configurável em Settings → aba **Temas**. **13 temas**: **Escuro**
   (padrão), **Verde Amarelo**, **Amarelo Ouro**, **Verde Mata**, **Azul Neon**, **Azul Escuro**,
