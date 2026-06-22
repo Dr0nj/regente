@@ -91,7 +91,8 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ✅ R5 · NATS + hub distribuído (-bus=nats)  → fan-out web + presença + dispatch roteado ao nó dono;
         VALIDADO 2-nós real (2026-06-22): job forçado no nó sem agente → roteado e executado
 🟡 OpenTelemetry (I1) — tracing OTLP/HTTP opt-in (-otel-endpoint); otelhttp + spans no scheduler  ✅
-⬜ Adapters de nuvem por capability        (AWS · GCP · k8s Jobs)
+◑ Adapters de nuvem por capability  → k8s Jobs ✔ (agente `-caps K8S`, jobType `K8S_JOB` via API REST,
+        teste httptest); ⬜ AWS · GCP · validar em cluster real
 ⬜ Durable execution (Temporal / Restate)  (opt-in)
 ⬜ Postgres-como-fila (SKIP LOCKED)
 ```

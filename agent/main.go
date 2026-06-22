@@ -271,6 +271,8 @@ func executeJob(jobType string, params map[string]interface{}, timeoutSec int, e
 		return runREST(params, timeoutSec)
 	case "WASM":
 		return runWASM(params, timeoutSec, emit)
+	case "K8S_JOB", "K8S":
+		return runK8sJob(params, timeoutSec, emit)
 	default:
 		return -1, fmt.Sprintf("unsupported jobType %q", jobType)
 	}

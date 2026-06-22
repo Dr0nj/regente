@@ -258,8 +258,10 @@ em tempo real** (aparece no detalhe da instance).
 | `SCRIPT` | Executa um script; interpretador pela extensão (`.ps1`/`.bat`/`.sh`) | `scriptPath`, `args?`, `cwd?` |
 | `HTTP` | Chamada REST com validação de status | `method`, `url`, `headers?`, `body?`, `expectStatus?` |
 | `WASM` | Roda um módulo WebAssembly WASI sandboxed via [wazero](https://wazero.dev) (pure-Go, sem CGO) | `wasmPath` \| `wasmUrl`, `args?`, `stdin?` |
+| `K8S_JOB` | Cria um **Kubernetes Job** via API REST e aguarda concluir (adapter de nuvem por capability `K8S`) | `image`, `command?`, `namespace?`, `apiServer?`, `token?` |
 
 > `SSH` (comando remoto agentless) **não** usa o agente — roda no próprio server.
+> `K8S_JOB` exige um agente que anuncie `-caps K8S` (com acesso à API do cluster).
 
 **Transporte** (`-transport`): `ws` (WebSocket, default) ou `http` (long-poll
 serverless-friendly — control plane stateless/scale-to-zero). Ver
