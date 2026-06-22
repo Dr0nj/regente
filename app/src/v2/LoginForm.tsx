@@ -17,8 +17,8 @@ function StatusDots({ green = true }: { green?: boolean }) {
     <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
       <span style={{
         width: 7, height: 7, borderRadius: "50%",
-        background: green ? "#11C76F" : "#555",
-        boxShadow: green ? "0 0 6px #11C76F55" : "none",
+        background: green ? "#29C5FF" : "#555",
+        boxShadow: green ? "0 0 6px #29C5FF55" : "none",
       }} />
       <span style={{
         width: 7, height: 7, borderRadius: "50%",
@@ -91,17 +91,17 @@ function GhostWorkflow() {
 const S = {
   overlay: {
     position: "fixed" as const, inset: 0, display: "grid", placeItems: "center",
-    background: "#080a0c", zIndex: 9999, overflow: "hidden",
+    background: "#04080f", zIndex: 9999, overflow: "hidden",
   },
   card: {
     position: "relative" as const,
     width: 420, maxWidth: "92vw",
     padding: "36px 32px 28px",
     display: "grid", gap: 16,
-    background: "rgba(14,16,18,0.92)",
-    border: "1px solid rgba(17,199,111,0.15)",
+    background: "rgba(6,16,24,0.94)",
+    border: "1px solid rgba(41,197,255,0.18)",
     borderRadius: 14,
-    boxShadow: "0 0 80px rgba(17,199,111,0.08), 0 0 2px rgba(17,199,111,0.25), inset 0 1px 0 rgba(255,255,255,0.03)",
+    boxShadow: "0 0 80px rgba(41,197,255,0.10), 0 0 2px rgba(41,197,255,0.30), inset 0 1px 0 rgba(255,255,255,0.04)",
     backdropFilter: "blur(12px)",
     zIndex: 2,
   },
@@ -126,7 +126,7 @@ const S = {
     width: "100%",
     background: "rgba(0,0,0,0.5)",
     color: "#f5f5f5",
-    border: "1px solid rgba(17,199,111,0.2)",
+    border: "1px solid rgba(41,197,255,0.22)",
     borderRadius: 8,
     padding: "10px 14px",
     fontSize: 14,
@@ -135,16 +135,16 @@ const S = {
     fontFamily: "'Inter', -apple-system, system-ui, sans-serif",
   },
   inputFocus: {
-    borderColor: "rgba(17,199,111,0.5)",
-    boxShadow: "0 0 0 2px rgba(17,199,111,0.1)",
+    borderColor: "rgba(41,197,255,0.55)",
+    boxShadow: "0 0 0 2px rgba(41,197,255,0.14)",
   },
   btn: {
     width: "100%",
     padding: "12px 0",
     fontSize: 16, fontWeight: 500,
-    color: "#11C76F",
-    background: "linear-gradient(180deg, rgba(17,199,111,0.12) 0%, rgba(6,78,43,0.25) 100%)",
-    border: "1px solid rgba(17,199,111,0.3)",
+    color: "#29C5FF",
+    background: "linear-gradient(180deg, rgba(41,197,255,0.14) 0%, rgba(8,52,80,0.30) 100%)",
+    border: "1px solid rgba(41,197,255,0.32)",
     borderRadius: 8,
     cursor: "pointer",
     transition: "all 0.2s",
@@ -153,8 +153,8 @@ const S = {
     marginTop: 4,
   },
   btnHover: {
-    background: "linear-gradient(180deg, rgba(17,199,111,0.2) 0%, rgba(6,78,43,0.35) 100%)",
-    boxShadow: "0 0 20px rgba(17,199,111,0.15)",
+    background: "linear-gradient(180deg, rgba(41,197,255,0.22) 0%, rgba(8,52,80,0.40) 100%)",
+    boxShadow: "0 0 22px rgba(41,197,255,0.20)",
   },
   footer: {
     fontSize: 12, color: "#666", textAlign: "center" as const, marginTop: 2,
@@ -166,7 +166,7 @@ const S = {
     position: "absolute" as const,
     top: "50%", left: "50%", transform: "translate(-50%,-50%)",
     width: 500, height: 500,
-    background: "radial-gradient(ellipse, rgba(17,199,111,0.06) 0%, transparent 70%)",
+    background: "radial-gradient(ellipse, rgba(41,197,255,0.07) 0%, transparent 70%)",
     pointerEvents: "none" as const, zIndex: 1,
   },
 } as const;

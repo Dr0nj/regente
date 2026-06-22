@@ -89,6 +89,7 @@ export function SettingsDialog({ onClose }: Props) {
     try {
       const updated = await putSettings({ ...settings, env_label: envLabel });
       setSettings(updated);
+      onClose(); // salva e fecha o diálogo (o tema já aplica na hora ao selecionar)
     } finally {
       setSaving(false);
     }
