@@ -11,7 +11,7 @@ Núcleo / Control-M        █████████████████�
 Identidade visual / UI    ██████████████████████ 100%  ✅ logo, topbar, 13 temas, login vídeo, sidebars
 Alerting                  ██████████████████████ 100%  ✅ multi-canal + por-regra
 Serverless portátil       ████████████████████░░  90%  🟡 Knative/long-poll/WASM/NATS/k8s/AWS/GCP ✓ · e2e real ⬜
-Enterprise readiness      ██████████████░░░░░░░░  62%  🟡 F1/G1/secrets/OIDC/OTel ✓ · RBAC/mTLS/SIEM ⬜
+Enterprise readiness      ███████████████░░░░░░░  70%  🟡 F1/G1/secrets/OIDC/RBAC/mTLS/OTel ✓ · SIEM/SSO-e2e ⬜
 Resiliência operacional   ██████████████████████ 100%  ✅ R1–R7 ✓ + chaos/HA validado em PG real
 ```
 
@@ -109,8 +109,9 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ```
 ✅ Escala     → Postgres plugável + migrations ✔validado  ⬜ stateless · 10k+ jobs/dia
-✅ HA         → leader election (advisory lock) ✔failover · hub distribuído (R5) ✔  ⬜ backup (R6)
-✅ Segurança  → secrets manager + SSO/OIDC opt-in          ⬜ RBAC · mTLS agentes · SIEM
+✅ HA         → leader election (advisory lock) ✔failover · hub distribuído (R5) ✔ · backup/DR (R6) ✔
+✅ Segurança  → secrets manager · SSO/OIDC opt-in · RBAC/ACL (roles + por-folder) · mTLS opt-in (`-tls-client-ca`,
+                 verifica cert de cliente; teste e2e de handshake)   ⬜ audit→SIEM · SSO e2e c/ IdP real
 🟡 Operação   → OpenTelemetry ✔ (opt-in OTLP)  ⬜ zero-downtime · multi-ambiente · quotas
 ⬜ Qualidade  → E2E · carga · chaos · SLOs · reconciler de drift   (CI já roda build/vet/test)
 ```

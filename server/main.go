@@ -30,6 +30,7 @@ import (
 	"github.com/Dr0nj/regente-server/internal/oidc"
 	"github.com/Dr0nj/regente-server/internal/scheduler"
 	"github.com/Dr0nj/regente-server/internal/secrets"
+	"github.com/Dr0nj/regente-server/internal/sectls"
 	"github.com/Dr0nj/regente-server/internal/storage"
 	"github.com/Dr0nj/regente-server/internal/telemetry"
 
@@ -43,6 +44,10 @@ func main() {
 		dbPath      = flag.String("db", envOr("REGENTE_DB", "./regente.db"), "DB DSN: caminho do arquivo SQLite, ou connection string Postgres quando -db-driver=postgres")
 		dbDriver    = flag.String("db-driver", envOr("REGENTE_DB_DRIVER", "sqlite"), "State store backend: sqlite | postgres")
 		backupTo    = flag.String("backup", "", "R6/DR: grava um backup online do state store neste caminho e sai (SQLite: VACUUM INTO; Postgres: use pg_dump — ver docs/dr-backup.md)")
+		// Segurança — TLS/mTLS opcional (vazio = HTTP plano, comportamento atual).
+		tlsCert     = flag.String("tls-cert", envOr("REGENTE_TLS_CERT", ""), "Segurança: cert TLS do servidor (vazio = HTTP plano)")
+		tlsKey      = flag.String("tls-key", envOr("REGENTE_TLS_KEY", ""), "Segurança: chave TLS do servidor")
+		tlsClientCA = flag.String("tls-client-ca", envOr("REGENTE_TLS_CLIENT_CA", ""), "Segurança: CA p/ exigir+verificar cert de cliente (liga mTLS)")
 		secretsFile = flag.String("secrets-file", envOr("REGENTE_SECRETS_FILE", ""), "H3: arquivo JSON de segredos {\"github_token\":...}; env REGENTE_SECRET_<KEY> tem prioridade")
 		tickMs      = flag.Int("tick-ms", 2000, "Scheduler tick interval (ms) — usado no modo internal")
 		// Fase 1/2 (serverless) — papel do processo + origem do tick. Ver docs/arquitetura-futuro.md.
@@ -385,8 +390,17 @@ func main() {
 		AppURL:    *appURL,
 	})
 
+	// Segurança — TLS/mTLS opcional. Sem -tls-cert segue em HTTP plano.
+	tlsCfg, mtlsOn, tlsErr := sectls.ServerTLS(*tlsCert, *tlsKey, *tlsClientCA)
+	if tlsErr != nil {
+		log.Fatalf("[tls] %v", tlsErr)
+	}
+
 	// I1 — otelhttp instrumenta todas as rotas (latência/status por endpoint).
 	srv := &http.Server{Addr: *addr, Handler: otelhttp.NewHandler(router, "regente-server"), ReadHeaderTimeout: 10 * time.Second}
+	if tlsCfg != nil {
+		srv.TLSConfig = tlsCfg
+	}
 
 	go func() {
 		gitState := "off"
@@ -395,8 +409,21 @@ func main() {
 		} else if *gitEnable {
 			gitState = "local-commit"
 		}
-		log.Printf("regente-server listening on %s (workspace=%s, db=%s, gitops=%s)", *addr, *workspace, *dbPath, gitState)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		scheme := "http"
+		if tlsCfg != nil {
+			scheme = "https"
+			if mtlsOn {
+				scheme = "https+mTLS"
+			}
+		}
+		log.Printf("regente-server listening on %s [%s] (workspace=%s, db=%s, gitops=%s)", *addr, scheme, *workspace, *dbPath, gitState)
+		var err error
+		if tlsCfg != nil {
+			err = srv.ListenAndServeTLS("", "") // certs já no TLSConfig
+		} else {
+			err = srv.ListenAndServe()
+		}
+		if err != nil && err != http.ErrServerClosed {
 			log.Fatalf("http: %v", err)
 		}
 	}()
