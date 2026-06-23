@@ -424,9 +424,21 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 - [x] **Segurança — secrets manager** (provider plugável, tira PAT/secrets do banco em claro;
   default env+arquivo, Vault/AWS pluggável) **+ SSO/OIDC** (Authorization Code, opt-in via `-auth-mode`;
   login local segue default). *(falta: SSO ponta-a-ponta com IdP + frontend, RBAC/ACL completo, mTLS dos agentes, audit→SIEM)*
-- [ ] **Operação**: tracing (OpenTelemetry), upgrades zero-downtime, multi-ambiente, quotas *(alert routing ✅ multi-canal Slack/webhook/SMTP/PagerDuty)*
+- [x] **Operação — tracing (OpenTelemetry)** ✅ (OTLP/HTTP opt-in, `-otel-endpoint`); *(falta: upgrades zero-downtime, multi-ambiente, quotas)*
 - [ ] **Qualidade**: testes E2E + carga + chaos, SLOs
 - [ ] Reconciler de drift explícito (state machine)
+
+### Aprofundamento Control-M (testar a fundo + aprimorar)
+- [ ] **Calendários complexos**: validar que o job entra na daily exatamente quando deve — 1º dia útil
+  do mês, só segundas, 1º dia útil que NÃO é segunda, N-ésimo dia útil, regras avançadas, include/exclude,
+  feriados, meses específicos. Cobrir todas as combinações; corrigir o gating onde divergir.
+- [ ] **Controle de recursos**: jobs que não podem concorrer (lock exclusivo), máximo de jobs simultâneos
+  por host/pool, quantitative (N slots), fila quando esgota e liberação correta.
+- [ ] **Actions / On-Do do job**: trigar ações configuráveis pelo resultado (OK/NOTOK), lentidão
+  (SLA/expectedDuration) ou nº de retries → rerun, set-ok, notificar, rodar outro job, setar condition.
+- [ ] **Job FILE_WATCH**: espera a chegada de arquivo (path/glob, polling/evento, tamanho estável) antes
+  de concluir e disparar o sucessor. Novo jobType + capability.
+- [ ] **Janela de info do job (drawer)**: deixar mais friendly — ações claras, output/log legível, layout.
 
 ### Serverless portátil (sem lock-in) — ver [`docs/arquitetura-futuro.md`](docs/arquitetura-futuro.md)
 Estratégia: **container scale-to-zero + estado/gatilho externalizados**, não FaaS.

@@ -43,6 +43,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
    Rosa · Violeta · Vermelho · Laranja · Cinza · Bege Escuro · Marrom) com swatch de cores
 ✅ Configurações em sub-abas (Geral · Temas); borda neon nos diálogos
 ◑ Minimap de navegação (protótipo opt-in, default off) — pontos por job, clique navega, redimensionável
+⬜ Janela de info do job (drawer) — deixar mais friendly: ações claras, output/log legível, layout melhor
 ```
 
 ## 🔔 Alerting
@@ -159,6 +160,24 @@ contra Postgres 16 real (Docker); restante pendente:
 | 5 | **Qualidade** — E2E/carga/chaos/SLOs + **R7** auto-SLO | Confiança de produção; CI já roda build/vet/test. |
 
 ---
+
+## 🧩 Aprofundamento Control-M *(testar a fundo + aprimorar)*
+
+> O núcleo de paridade existe, mas precisa de **bateria de testes** cobrindo os casos reais do
+> Control-M e refino onde faltar. Cada item = testar TODAS as possibilidades + fechar os gaps.
+
+```
+⬜ Calendários complexos — validar que o job entra na daily exatamente quando deve: 1º dia útil do mês ·
+   só segundas · 1º dia útil que NÃO é segunda · N-ésimo dia útil · regras avançadas · include/exclude ·
+   feriados · meses específicos. Cobrir todas as combinações; corrigir o gating onde divergir.
+⬜ Controle de recursos — testar e aprimorar: quantitative (N slots), jobs que NÃO podem concorrer
+   (lock exclusivo), máximo de jobs simultâneos por host/pool, fila quando esgota, liberação correta.
+⬜ Actions / On-Do do job — trigar ações configuráveis pelo resultado: OK/NOTOK · está demorando
+   (SLA/expectedDuration) · nº de retries → ações (rerun · set-ok · notificar · rodar outro job · setar
+   condition…). Testar + expor a config por job na UI.
+⬜ Job FILE_WATCH — espera a chegada de arquivo (path/glob · polling/evento · tamanho estável) antes de
+   concluir; dispara o sucessor quando o arquivo chega. Novo jobType + capability.
+```
 
 ## ⬜ Features avançadas *(depois do núcleo sólido)*
 
