@@ -12,7 +12,7 @@ Identidade visual / UI    ██████████████████
 Alerting                  ██████████████████████ 100%  ✅ multi-canal + por-regra
 Serverless portátil       ██████████████████░░░░  80%  🟡 Knative/long-poll/WASM/NATS/k8s ✓ · AWS/GCP ⬜
 Enterprise readiness      ██████████████░░░░░░░░  62%  🟡 F1/G1/secrets/OIDC/OTel ✓ · RBAC/mTLS/SIEM ⬜
-Resiliência operacional   ███████████████████░░░  85%  🟡 R1/R2/R3/R4/R5/R6 ✓ + chaos/HA validado · só R7 ⬜
+Resiliência operacional   ██████████████████████ 100%  ✅ R1–R7 ✓ + chaos/HA validado em PG real
 ```
 
 Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · 🔴 prioridade
@@ -59,7 +59,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ---
 
-## 🔴 Resiliência operacional *(nova trilha — prioridade máxima)*
+## ✅ Resiliência operacional *(trilha COMPLETA — R1–R7)*
 
 > **Contexto.** O Regente blinda *estado e correção* (estado durável externo, daily
 > idempotente, claim atômico, leader election, watchdog de stuck, retry persistido,
@@ -83,7 +83,9 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ✅ R6 · DR/backup (G3)                  → backup ONLINE portátil (`-backup` = VACUUM INTO no SQLite, in-process)
         + scripts backup.sh/restore.sh (pg_dump p/ PG) + runbook docs/dr-backup.md (PITR via WAL/gerenciado),
         validado e2e — ENTREGUE (testes)
-🟠 R7 · Auto-SLO do control plane      → alerta tick parado · leader flapping · erro de DB · frota de agentes
+✅ R7 · Auto-SLO do control plane      → monitor (`-selfmon`) alerta tick parado · DB inacessível · leader
+        flapping · frota de agentes ↓ pelos MESMOS canais das regras (só o líder publica); gauge
+        regente_is_leader em /metrics — ENTREGUE (testes + e2e)
 ```
 
 ## ☁️ Serverless portátil *(sem lock-in)*
@@ -135,6 +137,8 @@ contra Postgres 16 real (Docker); restante pendente:
 ✅ R6/R4 backup+restart (2026-06-23) → `-backup` (VACUUM INTO) gerou snapshot; reabrir o snapshot devolveu
                     env_label=PROD-DR (config sobrevive a backup/restore E a restart) · scripts backup.sh/
                     restore.sh + runbook docs/dr-backup.md
+✅ R7 auto-SLO (2026-06-23) → tick forçado a parar (modo external, limiar 3s) → monitor disparou alerta
+                    control-plane "Scheduler tick parado" (critical) persistido em /api/alerts em ~6s
 ⬜ H1 SSO/OIDC    → fluxo completo com IdP real (Keycloak/Cognito/Google) + SPA lê #token
 ⬜ Secrets        → resolver github_token/webhook_secret via provider (env/-secrets-file)
 ⬜ SSH · agente   → host com sshd; agente instalado como serviço (systemd / Task Windows)
@@ -168,7 +172,7 @@ contra Postgres 16 real (Docker); restante pendente:
 | ✅ | ~~R6 DR/backup + R4 config no restart~~ | **Feito (2026-06-23):** `-backup` online (VACUUM INTO) + scripts + runbook (PITR) · config sobrevive backup/restart. |
 | **1** | **Adapters AWS/GCP** + validar **k8s** em cluster real | Cada nuvem vira plugin; o seam por capability já existe (k8s feito). |
 | **2** | **Segurança** — RBAC/ACL · mTLS agentes · audit→SIEM · H1 SSO ponta-a-ponta | Requisitos enterprise de acesso e auditoria. |
-| 3 | **Qualidade** — E2E/carga/chaos/SLOs + **R7** auto-SLO | Confiança de produção; CI já roda build/vet/test. |
+| 3 | **Qualidade** — E2E/carga/chaos/SLOs | Confiança de produção; CI já roda build/vet/test. *(R7 auto-SLO ✓ entregue)* |
 
 ---
 

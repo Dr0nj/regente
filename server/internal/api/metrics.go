@@ -66,6 +66,15 @@ func (s *server) metrics(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "# HELP regente_scheduler_last_tick_age_seconds Segundos desde o último ciclo do scheduler (-1 se nunca rodou).")
 		fmt.Fprintln(w, "# TYPE regente_scheduler_last_tick_age_seconds gauge")
 		fmt.Fprintf(w, "regente_scheduler_last_tick_age_seconds %.1f\n", age)
+
+		// R7 — liderança deste nó (HA). Prometheus pode alertar em changes() = leader flapping.
+		lead := 0
+		if s.cfg.Scheduler.IsLeader() {
+			lead = 1
+		}
+		fmt.Fprintln(w, "# HELP regente_is_leader 1 se este nó é o líder do scheduler (HA).")
+		fmt.Fprintln(w, "# TYPE regente_is_leader gauge")
+		fmt.Fprintf(w, "regente_is_leader %d\n", lead)
 	}
 }
 

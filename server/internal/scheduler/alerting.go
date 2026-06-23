@@ -164,6 +164,39 @@ func (e *AlertEngine) fire(r AlertRule, cond alertCondition, ctx AlertContext) {
 	go e.route(r, ctx, msg, fmt.Sprintf("%d", id), tsMs)
 }
 
+// FireSystem emite um alerta do CONTROL PLANE (R7) — auto-monitoramento do próprio
+// servidor (tick parado, DB inacessível, leader flapping, frota de agentes). Reusa a
+// MESMA persistência (alert_events) + broadcast + routing externo das regras, então cai
+// nos canais já configurados (Slack/webhook/e-mail/PagerDuty). signalKey identifica o
+// sinal (ex.: "tick-stalled") e tem cooldown próprio p/ não virar storm. Best-effort.
+func (e *AlertEngine) FireSystem(signalKey, name, severity, message string, cooldownMs int64) {
+	if e.onCooldown("sys:"+signalKey, cooldownMs) {
+		return
+	}
+	tsMs := time.Now().UnixMilli()
+	id, err := e.db.InsertID(
+		`INSERT INTO alert_events(rule_id, rule_name, severity, workflow_id, workflow_name, message, acknowledged, ts_ms)
+		 VALUES(?,?,?,?,?,?,0,?)`,
+		"rule-control-plane", name, severity, "control-plane", "Control Plane", message, tsMs,
+	)
+	if err != nil {
+		log.Printf("[alerts] insert system event: %v", err)
+		return
+	}
+	e.setCooldown("sys:" + signalKey)
+	if e.hub != nil {
+		e.hub.BroadcastWeb("alert.fired", map[string]any{
+			"id": fmt.Sprintf("%d", id), "ruleId": "rule-control-plane", "ruleName": name,
+			"severity": severity, "timestamp": tsMs, "workflowId": "control-plane",
+			"workflowName": "Control Plane", "message": message, "acknowledged": false,
+		})
+	}
+	// Regra sintética SEM canais → channelWanted roteia p/ todos os sinks configurados.
+	r := AlertRule{ID: "rule-control-plane", Name: name, Severity: severity, Channels: ""}
+	ctx := AlertContext{WorkflowID: "control-plane", WorkflowName: "Control Plane"}
+	go e.route(r, ctx, message, fmt.Sprintf("%d", id), tsMs)
+}
+
 /* ── Alert routing — sinks externos (Slack / webhook) ── */
 
 // route entrega o alerta nos sinks externos configurados em settings, conforme

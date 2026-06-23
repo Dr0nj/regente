@@ -53,7 +53,11 @@ func main() {
 		natsURL = flag.String("nats-url", envOr("REGENTE_NATS_URL", "nats://localhost:4222"), "URL do NATS (quando -bus=nats)")
 		nodeID  = flag.String("node-id", envOr("REGENTE_NODE_ID", defaultNodeID()), "ID único deste nó no cluster (presence/routing R5)")
 		// I1 — observabilidade: tracing OTLP opt-in (vazio = off, no-op).
-		otelEndpoint = flag.String("otel-endpoint", envOr("OTEL_EXPORTER_OTLP_ENDPOINT", ""), "Endpoint OTLP/HTTP p/ tracing distribuído (vazio = off)")
+		// R7 — auto-SLO do control plane (auto-monitoramento: tick parado/DB/leader flapping/agentes).
+		selfmon          = flag.Bool("selfmon", true, "R7: auto-SLO do control plane (alerta tick parado/DB/leader flapping/frota de agentes). -selfmon=false desliga")
+		selfmonInterval  = flag.Int("selfmon-interval-sec", 30, "R7: cadência do auto-monitoramento (s)")
+		selfmonTickStale = flag.Int("selfmon-tick-stale-sec", 90, "R7: idade do último tick acima da qual alerta (s)")
+		otelEndpoint     = flag.String("otel-endpoint", envOr("OTEL_EXPORTER_OTLP_ENDPOINT", ""), "Endpoint OTLP/HTTP p/ tracing distribuído (vazio = off)")
 		otelService  = flag.String("otel-service", envOr("OTEL_SERVICE_NAME", "regente-server"), "service.name nos traces")
 		gitEnable    = flag.Bool("git-commit", false, "Commit saves via git (workspace must be a git repo)")
 		apiToken     = flag.String("api-token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token for API + WS")
@@ -298,6 +302,22 @@ func main() {
 	} else {
 		sched.AttachLeader(leader.SingleNode{})
 		log.Printf("[ha] leader election: %s", leader.SingleNode{}.Describe())
+	}
+
+	// R7 — auto-SLO do control plane: o servidor vigia a própria saúde e alerta pelos
+	// mesmos canais (Slack/webhook/e-mail/PagerDuty). Só o líder publica; DB caído é logado.
+	if *selfmon {
+		mon := scheduler.NewControlPlaneMonitor(
+			alertEngine, sched.LastTick, sched.IsLeader,
+			func(c context.Context) error { return database.PingContext(c) },
+			func() int { return len(h.OnlineAgents()) },
+			time.Duration(*selfmonInterval)*time.Second,
+			time.Duration(*selfmonTickStale)*time.Second,
+		)
+		mon.Start(ctx)
+		log.Printf("[selfmon] R7 control-plane monitor ON (interval=%ds, tick-stale=%ds)", *selfmonInterval, *selfmonTickStale)
+	} else {
+		log.Printf("[selfmon] R7 control-plane monitor OFF (-selfmon=false)")
 	}
 
 	// Fase 1/2 (serverless) — modo de scheduler + papel do processo.
