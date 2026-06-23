@@ -441,8 +441,9 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 - [ ] **Job FILE_WATCH**: espera a chegada de arquivo (path/glob, polling/evento, tamanho estável) antes
   de concluir e disparar o sucessor. Novo jobType + capability.
 - [ ] **Forecast**: testar a previsão de ≥ 1 semana à frente (quais jobs rodam por dia) contra o gating real.
-- [ ] **Ciclo de vida na daily (Keep Active / carry-over)**: `keepActive=N` (job que não rodou OK sobrevive
-  N diárias); **default** NOTOK não tratado persiste +1 diária; **HOLD** atravessa as diárias enquanto em hold.
+- [ ] **Ciclo de vida na daily (Keep Active / carry-over)**: **RUNNING na virada não some** (segue na daily
+  pra tracking até terminar); `keepActive=N` (job que não rodou OK sobrevive N diárias); **default** NOTOK não
+  tratado persiste +1 diária; **HOLD** atravessa as diárias enquanto em hold.
 - [ ] **CONFIRM**: job que precisa de ação manual (Confirm) para sair do estado e prosseguir (semântica Control-M).
 - [ ] **Job tipo DATABASE**: plugin com conectores (JDBC e outros); corpo = procedure ou SQL numa telinha
   PL/SQL amigável (editor). Novo jobType + capability.
@@ -461,12 +462,10 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 
 ### Diferenciais — além do Control-M (visão de produto) — detalhe em [`docs/roadmap.md`](docs/roadmap.md)
 Onde o Regente **passa** o Control-M (longo prazo, depois do núcleo sólido):
-- **Orquestração híbrida/stateful**: human-in-the-loop + long-running (dias/semanas), pausa/resume com estado, **durable execution** (retoma do ponto exato), event-driven confiável.
-- **AI-native scheduling**: sugerir schedule pelos últimos 30d, auto-detectar janelas de baixa carga, sugerir paralelização, auto-healing de schedules.
-- **Data-aware** (estilo Dagster): assets com **lineage**, scheduling por freshness de dados, partitioned + **backfill**.
+- **Orquestração híbrida/stateful**: human-in-the-loop + long-running (dias/semanas), pausa/resume com estado, event-driven confiável.
 - **Observabilidade avançada**: impact analysis · **blast radius** (cancelar X agora → N jobs caem, Y SLAs violados, atraso estimado) · **dry run** (simular daily futura sem criar instances) · **explain** ("por que o job não rodou?" — motor sem IA: resource/condition/deps) · root-cause automático · forecasting · **diff de daily** (barato via Git-native) · **event log de primeira classe** (CQRS-lite: log transacional/replayável; não ES puro — HA/DR/audit/config já cobertos).
 - **Developer experience**: schedule-as-code (YAML + DSL), `regente test`, `regente dev daily` (mock local).
-- **Enterprise**: promotion Dev→Staging→Prod via Git, **policy-as-code**, cost awareness, chaos ("Inject Failure").
+- **Enterprise**: promotion Dev→Staging→Prod via Git, **policy-as-code**, chaos ("Inject Failure").
 - **"Wow"**: editor visual **Gantt** da daily, bulk schedule + templates, **self-service portal**, mobile alerts com ações.
 
 ### Serverless portátil (sem lock-in) — ver [`docs/arquitetura-futuro.md`](docs/arquitetura-futuro.md)

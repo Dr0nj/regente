@@ -185,6 +185,8 @@ contra Postgres 16 real (Docker); restante pendente:
 ⬜ Forecast — testar a previsão de ≥ 1 semana à frente (quais jobs rodam por dia, sem executar); validar
    contra o gating real (calendars + deps + conditions + recursos).
 ⬜ Ciclo de vida na daily (Keep Active / carry-over entre diárias):
+   • RUNNING persiste (REGRA) — job EM EXECUÇÃO na virada da daily NÃO some: segue na daily até terminar,
+     para o tracking da execução (jamais perder a instância no rollover).
    • Keep Active — opção no job: se NÃO executou com sucesso, sobrevive N diárias (keepActive=1 → +1 diária).
    • DEFAULT — job que termina NOTOK e NÃO é tratado persiste +1 diária (carry-over automático).
    • HOLD persiste — job em HOLD atravessa as diárias enquanto estiver em hold, independente do estado
@@ -232,25 +234,9 @@ contra Postgres 16 real (Docker); restante pendente:
    (ex.: aprovação manual + retry após 3 dias)
 ⬜ Pausa/resume com ESTADO preservado (além de Hold)
 ⬜ Event-driven confiável — reage a eventos externos de forma confiável (não só polling)
-⬜ Durable execution — server cai no meio de um fluxo longo → retoma do ponto EXATO (Temporal/Restate-style)
 ```
 
-### 2. AI-native scheduling
-```
-⬜ AI Schedule Assistant — "sugira o melhor schedule pra esse job pelos últimos 30 dias";
-   auto-detecção de janelas de baixa carga
-⬜ Análise de dependências + sugestão de otimização ("esse job pode rodar em paralelo")
-⬜ Auto-healing schedules — job que falha sempre em dado horário → sistema sugere mudar o schedule
-```
-
-### 3. Data-aware orchestration *(estilo Dagster — Control-M é fraco)*
-```
-⬜ Asset-based — jobs produzem "assets" (tabelas/arquivos/datasets) com LINEAGE visual
-⬜ Scheduling por freshness de dados ("roda só se os dados de ontem estão prontos")
-⬜ Partitioned scheduling — por partição (dia/região/cliente) com BACKFILL fácil
-```
-
-### 4. Observabilidade e análise avançada
+### 2. Observabilidade e análise avançada
 ```
 ⬜ Job Neighborhood + Impact Analysis — clique no job → grafo de impacto up/downstream;
    "se esse job atrasar, quais SLAs quebram?"
@@ -277,22 +263,21 @@ contra Postgres 16 real (Docker); restante pendente:
    ROI/risco: HA/DR/auditoria/histórico-de-config já cobertos por Postgres+leader · PITR · instance_events · Git.)
 ```
 
-### 5. Developer Experience *(onde o Control-M perde feio)*
+### 3. Developer Experience *(onde o Control-M perde feio)*
 ```
 ⬜ Schedule as Code completo — YAML + DSL Go/Python no repo, sincronizado com a UI
 ⬜ Testing framework — `regente test job.yaml` simula execução com mocks
 ⬜ Local development mode — `regente dev daily` roda a daily local (mock de agents/datas)
 ```
 
-### 6. Enterprise & operação *(além do que já existe)*
+### 4. Enterprise & operação *(além do que já existe)*
 ```
 ⬜ Multi-environment promotion (Dev → Staging → Prod) com Git flow nativo
 ⬜ Policy as Code — regras obrigatórias (todo job tem SLA / retry / owner…)
-⬜ Cost awareness — estimativa de custo por job (cloud) + sugestão de otimização
 ⬜ Chaos engineering — botão "Inject Failure" pra testar resiliência de workflows
 ```
 
-### 7. Features "wow" menores mas impactantes
+### 5. Features "wow" menores mas impactantes
 ```
 ⬜ Visual Schedule Editor com timeline (Gantt-like) da daily
 ⬜ Bulk Schedule Actions + templates reutilizáveis
