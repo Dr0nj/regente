@@ -257,6 +257,9 @@ contra Postgres 16 real (Docker); restante pendente:
 ⬜ Root Cause Analysis automático — sugere causas por histórico
    ("80% das falhas ocorrem quando o job X roda ao mesmo tempo")
 ⬜ Performance forecasting com gráficos no Monitoring
+⬜ Diff de Daily — comparar a daily de HOJE vs ONTEM (ou vs qualquer order_date): jobs adicionados (+) /
+   removidos (-), schedule mudou, dependência mudou, mudança de def. Aproveita o DNA Git-native (cada
+   instância carrega o commit_sha + snapshot da def) → diff EXATO e barato. Forte diferencial.
 ```
 
 ### 5. Developer Experience *(onde o Control-M perde feio)*
