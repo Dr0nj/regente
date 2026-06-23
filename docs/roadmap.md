@@ -172,9 +172,11 @@ contra Postgres 16 real (Docker); restante pendente:
    feriados · meses específicos. Cobrir todas as combinações; corrigir o gating onde divergir.
 ⬜ Controle de recursos — testar e aprimorar: quantitative (N slots), jobs que NÃO podem concorrer
    (lock exclusivo), máximo de jobs simultâneos por host/pool, fila quando esgota, liberação correta.
-⬜ Actions / On-Do do job — trigar ações configuráveis pelo resultado: OK/NOTOK · está demorando
-   (SLA/expectedDuration) · nº de retries → ações (rerun · set-ok · notificar · rodar outro job · setar
-   condition…). Testar + expor a config por job na UI.
+⬜ Retries configuráveis + Actions / On-Do POR Nº DE TENTATIVA — configurar quantos retries (ex.: 4) e
+   trigar ações conforme a CONTAGEM de rerun, em escada de escalonamento: rerun automático por falha; e
+   regras tipo "no 2º rerun → setar condition <evento>", "no 3º → alerta", "no Nº → rodar outro job /
+   set-ok / notificar". Cada tentativa pode ter ação própria. Também por resultado (OK/NOTOK) e lentidão
+   (SLA/expectedDuration). Testar + expor a config por job na UI.
 ⬜ Job FILE_WATCH — espera a chegada de arquivo (path/glob · polling/evento · tamanho estável) antes de
    concluir; dispara o sucessor quando o arquivo chega. Novo jobType + capability.
 ```

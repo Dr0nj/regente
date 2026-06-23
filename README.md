@@ -434,8 +434,9 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   feriados, meses específicos. Cobrir todas as combinações; corrigir o gating onde divergir.
 - [ ] **Controle de recursos**: jobs que não podem concorrer (lock exclusivo), máximo de jobs simultâneos
   por host/pool, quantitative (N slots), fila quando esgota e liberação correta.
-- [ ] **Actions / On-Do do job**: trigar ações configuráveis pelo resultado (OK/NOTOK), lentidão
-  (SLA/expectedDuration) ou nº de retries → rerun, set-ok, notificar, rodar outro job, setar condition.
+- [ ] **Retries configuráveis + Actions / On-Do por nº de tentativa**: configurar quantos retries e ações
+  por **contagem de rerun** (escada de escalonamento) — ex.: 2º rerun → setar condition (evento), 3º → alerta,
+  Nº → rodar outro job / set-ok / notificar. Também por resultado (OK/NOTOK) e lentidão (SLA/expectedDuration).
 - [ ] **Job FILE_WATCH**: espera a chegada de arquivo (path/glob, polling/evento, tamanho estável) antes
   de concluir e disparar o sucessor. Novo jobType + capability.
 - [ ] **Janela de info do job (drawer)**: deixar mais friendly — ações claras, output/log legível, layout.
