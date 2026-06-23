@@ -12,7 +12,7 @@ Identidade visual / UI    ██████████████████
 Alerting                  ██████████████████████ 100%  ✅ multi-canal + por-regra
 Serverless portátil       ██████████████████░░░░  80%  🟡 Knative/long-poll/WASM/NATS/k8s ✓ · AWS/GCP ⬜
 Enterprise readiness      ██████████████░░░░░░░░  62%  🟡 F1/G1/secrets/OIDC/OTel ✓ · RBAC/mTLS/SIEM ⬜
-Resiliência operacional   ████████████████░░░░░░  75%  🟡 R1/R2/R3/R5 ✓ · R4/R6/R7 ⬜
+Resiliência operacional   █████████████████░░░░░  78%  🟡 R1/R2/R3/R5 ✓ + chaos/HA 2-nós validado · R4/R6/R7 ⬜
 ```
 
 Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · 🔴 prioridade
@@ -125,7 +125,10 @@ contra Postgres 16 real (Docker); restante pendente:
 ✅ R5 NATS        → 2 nós + NATS reais (2026-06-22): job forçado no nó SEM agente → roteado via
                     NATS ao nó dono e executado (exitCode=0), sem estrandar agente
 ✅ R3 /readyz   → endpoint de readiness (ping DB = gate; líder/tick/último daily informativos) + testes (2026-06-23)
-⬜ Validar supervisor (R1) num restart/chaos real · HA 2-nós no mesmo PG
+✅ Chaos/HA 2-nós real (2026-06-23) → 2 nós no MESMO PG (r3test): 1 líder único · matar o líder →
+                    follower assume em ~4s (advisory lock) · DB parado → /readyz 503 (gate) e o processo
+                    SEGUE vivo/ticando (livez≠readyz) · DB volta → 200 sozinho (~1s) · restart do nó morto
+                    (R1) → rejoin como follower, sem split-brain
 ⬜ H1 SSO/OIDC    → fluxo completo com IdP real (Keycloak/Cognito/Google) + SPA lê #token
 ⬜ Secrets        → resolver github_token/webhook_secret via provider (env/-secrets-file)
 ⬜ SSH · agente   → host com sshd; agente instalado como serviço (systemd / Task Windows)
@@ -155,11 +158,11 @@ contra Postgres 16 real (Docker); restante pendente:
 
 | ⭐ | Frente | Por quê |
 |----|--------|---------|
-| **1** | **Validar R1/R3 em chaos/restart real** (`/readyz` ✓ entregue) + **HA 2-nós no mesmo PG** | Fecha o gate "production-ready" da resiliência (R1/R2/R3/R5 entregues; falta o teste de fogo). |
-| **2** | **R6 DR/backup** (PITR Postgres) + **R4** config no restart | Sobreviver a desastre/restart de container sem perder estado nem config. |
-| **3** | **Adapters AWS/GCP** + validar **k8s** em cluster real | Cada nuvem vira plugin; o seam por capability já existe (k8s feito). |
-| 4 | **Segurança** — RBAC/ACL · mTLS agentes · audit→SIEM · H1 SSO ponta-a-ponta | Requisitos enterprise de acesso e auditoria. |
-| 5 | **Qualidade** — E2E/carga/chaos/SLOs + **R7** auto-SLO | Confiança de produção; CI já roda build/vet/test. |
+| ✅ | ~~Validar R1/R3 em chaos/HA 2-nós real~~ | **Feito (2026-06-23):** failover ~4s · /readyz gate em DB-down · rejoin sem split-brain. Gate de resiliência fechado. |
+| **1** | **R6 DR/backup** (PITR Postgres) + **R4** config no restart | Sobreviver a desastre/restart de container sem perder estado nem config. |
+| **2** | **Adapters AWS/GCP** + validar **k8s** em cluster real | Cada nuvem vira plugin; o seam por capability já existe (k8s feito). |
+| 3 | **Segurança** — RBAC/ACL · mTLS agentes · audit→SIEM · H1 SSO ponta-a-ponta | Requisitos enterprise de acesso e auditoria. |
+| 4 | **Qualidade** — E2E/carga/chaos/SLOs + **R7** auto-SLO | Confiança de produção; CI já roda build/vet/test. |
 
 ---
 
