@@ -269,6 +269,12 @@ contra Postgres 16 real (Docker); restante pendente:
    consome, slots livres ex. 0/3) · WAIT_CONDITION (qual condition falta, job produtor, última execução/status)
    · deps não satisfeitas · fora da janela · calendar. O scheduler já computa o gating — falta expor o PORQUÊ
    por instância. Mata a pergunta nº1 de quem opera Control-M.
+⬜ Event log de primeira classe (CQRS-lite — NÃO Event Sourcing puro) — evoluir o `instance_events` (já é a
+   semente) para um log COMPLETO e CONFIÁVEL: emissão TRANSACIONAL (evento + mutação de estado no mesmo
+   commit), sequência global, + tipos que faltam (DailyCreated, ConditionAdded/Removed…). O estado mutável
+   segue como PROJEÇÃO (claim atômico intacto). Destrava replay / time-travel / forense ("estado às 08:14")
+   e outbox → NATS/observabilidade, SEM reescrever o core de correção. (ES puro foi avaliado e rejeitado por
+   ROI/risco: HA/DR/auditoria/histórico-de-config já cobertos por Postgres+leader · PITR · instance_events · Git.)
 ```
 
 ### 5. Developer Experience *(onde o Control-M perde feio)*

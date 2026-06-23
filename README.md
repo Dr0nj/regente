@@ -464,7 +464,7 @@ Onde o Regente **passa** o Control-M (longo prazo, depois do núcleo sólido):
 - **Orquestração híbrida/stateful**: human-in-the-loop + long-running (dias/semanas), pausa/resume com estado, **durable execution** (retoma do ponto exato), event-driven confiável.
 - **AI-native scheduling**: sugerir schedule pelos últimos 30d, auto-detectar janelas de baixa carga, sugerir paralelização, auto-healing de schedules.
 - **Data-aware** (estilo Dagster): assets com **lineage**, scheduling por freshness de dados, partitioned + **backfill**.
-- **Observabilidade avançada**: impact analysis · **blast radius** (cancelar X agora → N jobs caem, Y SLAs violados, atraso estimado) · **dry run** (simular daily futura sem criar instances) · **explain** ("por que o job não rodou?" — motor sem IA: resource/condition/deps) · root-cause automático · forecasting · **diff de daily** (barato via Git-native).
+- **Observabilidade avançada**: impact analysis · **blast radius** (cancelar X agora → N jobs caem, Y SLAs violados, atraso estimado) · **dry run** (simular daily futura sem criar instances) · **explain** ("por que o job não rodou?" — motor sem IA: resource/condition/deps) · root-cause automático · forecasting · **diff de daily** (barato via Git-native) · **event log de primeira classe** (CQRS-lite: log transacional/replayável; não ES puro — HA/DR/audit/config já cobertos).
 - **Developer experience**: schedule-as-code (YAML + DSL), `regente test`, `regente dev daily` (mock local).
 - **Enterprise**: promotion Dev→Staging→Prod via Git, **policy-as-code**, cost awareness, chaos ("Inject Failure").
 - **"Wow"**: editor visual **Gantt** da daily, bulk schedule + templates, **self-service portal**, mobile alerts com ações.
