@@ -10,7 +10,7 @@
 Núcleo / Control-M        ██████████████████████ 100%  ✅ pronto
 Identidade visual / UI    ██████████████████████ 100%  ✅ logo, topbar, 13 temas, login vídeo, sidebars
 Alerting                  ██████████████████████ 100%  ✅ multi-canal + por-regra
-Serverless portátil       ██████████████████░░░░  80%  🟡 Knative/long-poll/WASM/NATS/k8s ✓ · AWS/GCP ⬜
+Serverless portátil       ████████████████████░░  90%  🟡 Knative/long-poll/WASM/NATS/k8s/AWS/GCP ✓ · e2e real ⬜
 Enterprise readiness      ██████████████░░░░░░░░  62%  🟡 F1/G1/secrets/OIDC/OTel ✓ · RBAC/mTLS/SIEM ⬜
 Resiliência operacional   ██████████████████████ 100%  ✅ R1–R7 ✓ + chaos/HA validado em PG real
 ```
@@ -98,8 +98,9 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ✅ R5 · NATS + hub distribuído (-bus=nats)  → fan-out web + presença + dispatch roteado ao nó dono;
         VALIDADO 2-nós real (2026-06-22): job forçado no nó sem agente → roteado e executado
 🟡 OpenTelemetry (I1) — tracing OTLP/HTTP opt-in (-otel-endpoint); otelhttp + spans no scheduler  ✅
-◑ Adapters de nuvem por capability  → k8s Jobs ✔ (agente `-caps K8S`, jobType `K8S_JOB` via API REST,
-        teste httptest); ⬜ AWS · GCP · validar em cluster real
+◑ Adapters de nuvem por capability  → k8s Jobs ✔ (`-caps K8S`, jobType `K8S_JOB`) · AWS Lambda ✔
+        (`LAMBDA`, Invoke API + SigV4 stdlib, sem SDK) · GCP Cloud Run Jobs ✔ (`GCP_RUN`, Run Admin API v2
+        + Bearer OAuth) — todos testados contra API mock (httptest); ⬜ validar em cluster/conta REAL (e2e)
 ⬜ Durable execution (Temporal / Restate)  (opt-in)
 ⬜ Postgres-como-fila (SKIP LOCKED)
 ```
