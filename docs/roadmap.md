@@ -221,6 +221,69 @@ contra Postgres 16 real (Docker); restante pendente:
 - MFT (FILE_TRANSFER nativo) · Archives/Retention · Import de Control-M · CLI/SDK · site de docs
 - **Executores AWS** (Lambda/Batch/Glue/Step) — como adapters por capability, item tardio
 
+## 🌟 Diferenciais — além do Control-M *(visão de produto)*
+
+> Não é paridade — é onde o Regente **passa** o Control-M. Visão de longo prazo; entra
+> depois do núcleo sólido. Organizado por tema.
+
+### 1. Orquestração híbrida e stateful *(grande gap do Control-M)*
+```
+⬜ Human-in-the-loop nativo + long-running — workflows que duram dias/semanas
+   (ex.: aprovação manual + retry após 3 dias)
+⬜ Pausa/resume com ESTADO preservado (além de Hold)
+⬜ Event-driven confiável — reage a eventos externos de forma confiável (não só polling)
+⬜ Durable execution — server cai no meio de um fluxo longo → retoma do ponto EXATO (Temporal/Restate-style)
+```
+
+### 2. AI-native scheduling
+```
+⬜ AI Schedule Assistant — "sugira o melhor schedule pra esse job pelos últimos 30 dias";
+   auto-detecção de janelas de baixa carga
+⬜ Análise de dependências + sugestão de otimização ("esse job pode rodar em paralelo")
+⬜ Auto-healing schedules — job que falha sempre em dado horário → sistema sugere mudar o schedule
+```
+
+### 3. Data-aware orchestration *(estilo Dagster — Control-M é fraco)*
+```
+⬜ Asset-based — jobs produzem "assets" (tabelas/arquivos/datasets) com LINEAGE visual
+⬜ Scheduling por freshness de dados ("roda só se os dados de ontem estão prontos")
+⬜ Partitioned scheduling — por partição (dia/região/cliente) com BACKFILL fácil
+```
+
+### 4. Observabilidade e análise avançada
+```
+⬜ Job Neighborhood + Impact Analysis — clique no job → grafo de impacto up/downstream;
+   "se esse job atrasar, quais SLAs quebram?"
+⬜ Root Cause Analysis automático — sugere causas por histórico
+   ("80% das falhas ocorrem quando o job X roda ao mesmo tempo")
+⬜ Performance forecasting com gráficos no Monitoring
+```
+
+### 5. Developer Experience *(onde o Control-M perde feio)*
+```
+⬜ Schedule as Code completo — YAML + DSL Go/Python no repo, sincronizado com a UI
+⬜ Testing framework — `regente test job.yaml` simula execução com mocks
+⬜ Local development mode — `regente dev daily` roda a daily local (mock de agents/datas)
+```
+
+### 6. Enterprise & operação *(além do que já existe)*
+```
+⬜ Multi-environment promotion (Dev → Staging → Prod) com Git flow nativo
+⬜ Policy as Code — regras obrigatórias (todo job tem SLA / retry / owner…)
+⬜ Cost awareness — estimativa de custo por job (cloud) + sugestão de otimização
+⬜ Chaos engineering — botão "Inject Failure" pra testar resiliência de workflows
+```
+
+### 7. Features "wow" menores mas impactantes
+```
+⬜ Visual Schedule Editor com timeline (Gantt-like) da daily
+⬜ Bulk Schedule Actions + templates reutilizáveis
+⬜ Self-Service Portal — negócio roda jobs aprovados sem tocar no Design
+⬜ Mobile-friendly alerts com ações rápidas (rerun, set-ok)
+```
+
+---
+
 ## 🏁 Fase Z — ÚLTIMO GATE
 
 Case study técnico + post LinkedIn — **só com tudo sólido**, incluindo a trilha

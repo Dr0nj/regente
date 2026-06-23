@@ -459,6 +459,16 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   qualquer campo, tags/conditions em lote), com preview/undo. (bulk básico já existe via `/api/bulk`.)
 - [ ] **Janela de info do job (drawer)**: deixar mais friendly — ações claras, output/log legível, layout.
 
+### Diferenciais — além do Control-M (visão de produto) — detalhe em [`docs/roadmap.md`](docs/roadmap.md)
+Onde o Regente **passa** o Control-M (longo prazo, depois do núcleo sólido):
+- **Orquestração híbrida/stateful**: human-in-the-loop + long-running (dias/semanas), pausa/resume com estado, **durable execution** (retoma do ponto exato), event-driven confiável.
+- **AI-native scheduling**: sugerir schedule pelos últimos 30d, auto-detectar janelas de baixa carga, sugerir paralelização, auto-healing de schedules.
+- **Data-aware** (estilo Dagster): assets com **lineage**, scheduling por freshness de dados, partitioned + **backfill**.
+- **Observabilidade avançada**: impact analysis (grafo up/downstream, "quais SLAs quebram?"), root-cause automático, performance forecasting.
+- **Developer experience**: schedule-as-code (YAML + DSL), `regente test`, `regente dev daily` (mock local).
+- **Enterprise**: promotion Dev→Staging→Prod via Git, **policy-as-code**, cost awareness, chaos ("Inject Failure").
+- **"Wow"**: editor visual **Gantt** da daily, bulk schedule + templates, **self-service portal**, mobile alerts com ações.
+
 ### Serverless portátil (sem lock-in) — ver [`docs/arquitetura-futuro.md`](docs/arquitetura-futuro.md)
 Estratégia: **container scale-to-zero + estado/gatilho externalizados**, não FaaS.
 A mesma imagem OCI roda em Knative/Cloud Run/Fly/App Runner; estado em Postgres
