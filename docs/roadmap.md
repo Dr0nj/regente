@@ -195,6 +195,10 @@ contra Postgres 16 real (Docker); restante pendente:
    job = selecionar procedure OU escrever SQL numa telinha PL/SQL amigável (editor). Novo jobType + capability.
 ⬜ ViewPoint (Monitoring) — viewpoints salvos/selecionáveis: mostrar SÓ certas folders (não todas) no
    Monitoring; filtro nomeado e persistido por usuário.
+⬜ Dashboards prontos (ViewPoint de dashboard) — abrir um painel por folder(s) ou do AMBIENTE INTEIRO com
+   gráficos (pizza e outros) e estatísticas em TEMPO REAL: jobs em execução / hold / waiting / confirm,
+   total de execuções, total de jobs, end OK / failed / waiting, NOMES dos últimos jobs executados e dos
+   últimos que deram erro, métricas por folder. Layout selecionável e persistido (estilo Control-M dashboards).
 ⬜ Mass Update / Find & Update (Design) — alteração em MASSA nas folders abertas por regex/critério de
    campo: buscar e substituir/adicionar em N jobs. Casos: descrição vazia → preencher; adicionar action/
    evento em TODOS / selecionados / que atendem critério; buscar string e substituir em qualquer campo;

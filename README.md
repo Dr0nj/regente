@@ -451,6 +451,9 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   `%AnoAtualYYYY`, último dia do mês…) e **cálculo de datas com template** — aritmética tipo `%DiaAtual+3`
   resolvendo p/ data numérica ciente de dia útil/feriado; interpolação em qualquer campo + inspetor por instância.
 - [ ] **ViewPoint (Monitoring)**: viewpoints salvos — mostrar só certas folders (não todas) no Monitoring.
+- [ ] **Dashboards prontos (ViewPoint de dashboard)**: painel por folder(s) ou do ambiente inteiro com
+  gráficos (pizza e outros) e estatísticas em tempo real — jobs em execução/hold/waiting/confirm, totais,
+  OK/failed, nomes dos últimos executados e dos últimos com erro, métricas por folder. (Analytics base já no Control Panel.)
 - [ ] **Mass Update / Find & Update (Design)**: alteração em massa nas folders abertas por regex/critério de
   campo — buscar e substituir/adicionar em N jobs (descrição vazia, add action/evento, find-replace em
   qualquer campo, tags/conditions em lote), com preview/undo. (bulk básico já existe via `/api/bulk`.)
