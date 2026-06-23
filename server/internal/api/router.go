@@ -52,6 +52,9 @@ func NewRouter(cfg Config) http.Handler {
 	r.Get("/health", s.health)
 	// R2 — liveness (público): 200 enquanto o processo serve; reporta idade do tick.
 	r.Get("/livez", s.livez)
+	// R3 — readiness (público): 200 se o nó pode servir respostas corretas (DB alcançável);
+	// reporta líder + idade do tick + último daily. Aponte o readinessProbe do k8s aqui.
+	r.Get("/readyz", s.readyz)
 
 	// P17 — métricas Prometheus (público, sem auth — scraper-friendly)
 	r.Get("/metrics", s.metrics)

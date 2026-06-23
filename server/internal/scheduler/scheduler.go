@@ -109,6 +109,9 @@ func (s *Scheduler) AttachLeader(l Leader)                    { s.leader = l }
 // isLeader — nil leader = nó único (sempre líder). G1.
 func (s *Scheduler) isLeader() bool { return s.leader == nil || s.leader.IsLeader() }
 
+// IsLeader — R3: status de liderança exposto para o /readyz (público). nó único = true.
+func (s *Scheduler) IsLeader() bool { return s.isLeader() }
+
 // Resources / Conditions / SLA exposed for API handlers.
 func (s *Scheduler) Resources() *ResourceTracker       { return s.resources }
 func (s *Scheduler) Conditions() *ConditionEngine      { return s.conditions }

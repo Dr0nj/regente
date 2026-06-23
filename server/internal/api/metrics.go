@@ -2,10 +2,15 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
 )
+
+// readyTickStaleSeconds — acima disso o tick do scheduler é reportado como "stale"
+// no /readyz (informativo; não reprova a readiness — ver readyz).
+const readyTickStaleSeconds = 120.0
 
 func (s *server) metrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
@@ -77,4 +82,60 @@ func (s *server) livez(w http.ResponseWriter, _ *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, "{\"alive\":true,\"schedulerLastTickAgeSeconds\":%.1f}\n", age)
+}
+
+// readyz — R3: readiness. Enquanto /livez pergunta "o processo está vivo?", /readyz
+// pergunta "este nó consegue servir respostas CORRETAS?". Gate duro = DB alcançável
+// (sem DB nada útil é servido → 503, k8s tira o pod de rotação). Status de líder e
+// idade do último tick/daily são REPORTADOS para observabilidade mas NÃO reprovam:
+//   - um follower (não-líder) serve a API normalmente;
+//   - gatear readiness em tick velho tiraria de rotação o ÚNICO nó saudável, e no modo
+//     -scheduler=external o tick vem de cron. Tick parado é alertável via gauge (R7).
+func (s *server) readyz(w http.ResponseWriter, r *http.Request) {
+	type check struct {
+		OK     bool   `json:"ok"`
+		Detail string `json:"detail,omitempty"`
+	}
+	ready := true
+	out := map[string]any{}
+
+	// 1. DB alcançável — gate duro da readiness.
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	dbCheck := check{OK: true}
+	if err := s.cfg.DB.PingContext(ctx); err != nil {
+		dbCheck.OK, dbCheck.Detail, ready = false, err.Error(), false
+	}
+	out["db"] = dbCheck
+
+	// 2. Liderança — informativo (follower é ready).
+	if s.cfg.Scheduler != nil {
+		if s.cfg.Scheduler.IsLeader() {
+			out["leader"] = check{OK: true, Detail: "leader"}
+		} else {
+			out["leader"] = check{OK: true, Detail: "follower"}
+		}
+	}
+
+	// 3. Tick do scheduler + último daily — informativo.
+	age := -1.0
+	stale := false
+	if s.cfg.Scheduler != nil {
+		if last := s.cfg.Scheduler.LastTick(); !last.IsZero() {
+			age = time.Since(last).Seconds()
+			stale = age > readyTickStaleSeconds
+		}
+	}
+	out["schedulerLastTickAgeSeconds"] = age
+	out["schedulerStale"] = stale
+	var lastDaily string
+	_ = s.cfg.DB.QueryRow(`SELECT COALESCE(MAX(order_date),'') FROM daily_runs`).Scan(&lastDaily)
+	out["lastDaily"] = lastDaily
+
+	out["ready"] = ready
+	status := http.StatusOK
+	if !ready {
+		status = http.StatusServiceUnavailable
+	}
+	writeJSON(w, status, out)
 }

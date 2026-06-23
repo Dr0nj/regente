@@ -42,10 +42,12 @@ spec:
           resources:
             requests: { cpu: "100m", memory: "128Mi" }
             limits: { cpu: "1", memory: "512Mi" }
+          # R3 — readiness: só recebe tráfego se o nó serve respostas corretas (DB alcançável).
           readinessProbe:
-            httpGet: { path: /health, port: 8080 }
-          # R1 — liveness: um processo travado (mas escutando) é reiniciado.
+            httpGet: { path: /readyz, port: 8080 }
+          # R1/R2 — liveness: um processo travado (mas escutando) é reiniciado. /livez não
+          # reprova por tick velho (no modo external o tick vem do CronJob) → sem restart-loop.
           livenessProbe:
-            httpGet: { path: /health, port: 8080 }
+            httpGet: { path: /livez, port: 8080 }
             periodSeconds: 10
             failureThreshold: 3

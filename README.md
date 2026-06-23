@@ -417,10 +417,11 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   (`pg_advisory_lock` no Postgres; nó único no SQLite). **+ hub distribuído via NATS (R5, opt-in
   `-bus=nats`)** — fan-out de eventos web + dispatch roteado ao nó dono do agent. *(falta: DR/backup,
   validação 2-nós em infra real)*
-- [x] **Resiliência operacional (R1/R2)**: server **supervisionado** (`regente-server.service`
-  systemd `Restart=always` + Windows Service + `livenessProbe`) + **panic-recovery** no scheduler
-  (um job não derruba o cérebro) + **watchdog de tick** (`/livez` + gauge em `/metrics`).
-  *(falta: DR/backup, validação chaos)*
+- [x] **Resiliência operacional (R1/R2/R3)**: server **supervisionado** (`regente-server.service`
+  systemd `Restart=always` + Windows Service) + **panic-recovery** no scheduler
+  (um job não derruba o cérebro) + **watchdog de tick** (`/livez` + gauge em `/metrics`) +
+  **readiness real** (`/readyz`: ping DB = gate; líder + tick + último daily informativos;
+  `readinessProbe` do Knative aponta aqui). *(falta: DR/backup, validação chaos)*
 - [x] **Segurança — secrets manager** (provider plugável, tira PAT/secrets do banco em claro;
   default env+arquivo, Vault/AWS pluggável) **+ SSO/OIDC** (Authorization Code, opt-in via `-auth-mode`;
   login local segue default). *(falta: SSO ponta-a-ponta com IdP + frontend, RBAC/ACL completo, mTLS dos agentes, audit→SIEM)*

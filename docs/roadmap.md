@@ -12,7 +12,7 @@ Identidade visual / UI    ██████████████████
 Alerting                  ██████████████████████ 100%  ✅ multi-canal + por-regra
 Serverless portátil       ██████████████████░░░░  80%  🟡 Knative/long-poll/WASM/NATS/k8s ✓ · AWS/GCP ⬜
 Enterprise readiness      ██████████████░░░░░░░░  62%  🟡 F1/G1/secrets/OIDC/OTel ✓ · RBAC/mTLS/SIEM ⬜
-Resiliência operacional   ███████████████░░░░░░░  70%  🟡 R1/R2/R5 ✓ · R3/R4/R6/R7 ⬜
+Resiliência operacional   ████████████████░░░░░░  75%  🟡 R1/R2/R3/R5 ✓ · R4/R6/R7 ⬜
 ```
 
 Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · 🔴 prioridade
@@ -76,7 +76,8 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
         livenessProbe no Knative + server/deploy/ — ENTREGUE
 ✅ R2 · Panic-recovery + watchdog tick → recover() no dispatch/Tick/retry + idade do
         último tick em /metrics e /livez — ENTREGUE (testes)
-🟠 R3 · Health real                    → /livez vs /readyz (ping DB · status líder · último tick/daily)
+✅ R3 · Health real                    → /readyz (ping DB = gate; líder + tick + último daily informativos),
+        distinto de /livez; readinessProbe do Knative aponta aqui — ENTREGUE (testes)
 🟠 R4 · Config persiste no restart      → produção = Postgres + secrets via provider + volume p/ SQLite
 🟠 R6 · DR/backup (G3)                  → runbook backup/restore · PITR no Postgres
 🟠 R7 · Auto-SLO do control plane      → alerta tick parado · leader flapping · erro de DB · frota de agentes
@@ -123,7 +124,8 @@ contra Postgres 16 real (Docker); restante pendente:
 ✅ R1/R2          → supervisor (server/deploy/) + panic-recovery/watchdog ENTREGUES (testes unit)
 ✅ R5 NATS        → 2 nós + NATS reais (2026-06-22): job forçado no nó SEM agente → roteado via
                     NATS ao nó dono e executado (exitCode=0), sem estrandar agente
-⬜ R3 /readyz · validar supervisor (R1) num restart/chaos real · HA 2-nós no mesmo PG
+✅ R3 /readyz   → endpoint de readiness (ping DB = gate; líder/tick/último daily informativos) + testes (2026-06-23)
+⬜ Validar supervisor (R1) num restart/chaos real · HA 2-nós no mesmo PG
 ⬜ H1 SSO/OIDC    → fluxo completo com IdP real (Keycloak/Cognito/Google) + SPA lê #token
 ⬜ Secrets        → resolver github_token/webhook_secret via provider (env/-secrets-file)
 ⬜ SSH · agente   → host com sshd; agente instalado como serviço (systemd / Task Windows)
@@ -153,7 +155,7 @@ contra Postgres 16 real (Docker); restante pendente:
 
 | ⭐ | Frente | Por quê |
 |----|--------|---------|
-| **1** | **R3 — health real (`/readyz`)** + validar R1 num chaos/restart real | Fecha o gate "production-ready" da resiliência (R1/R2/R5 já entregues). |
+| **1** | **Validar R1/R3 em chaos/restart real** (`/readyz` ✓ entregue) + **HA 2-nós no mesmo PG** | Fecha o gate "production-ready" da resiliência (R1/R2/R3/R5 entregues; falta o teste de fogo). |
 | **2** | **R6 DR/backup** (PITR Postgres) + **R4** config no restart | Sobreviver a desastre/restart de container sem perder estado nem config. |
 | **3** | **Adapters AWS/GCP** + validar **k8s** em cluster real | Cada nuvem vira plugin; o seam por capability já existe (k8s feito). |
 | 4 | **Segurança** — RBAC/ACL · mTLS agentes · audit→SIEM · H1 SSO ponta-a-ponta | Requisitos enterprise de acesso e auditoria. |
