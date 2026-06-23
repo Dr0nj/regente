@@ -200,6 +200,15 @@ contra Postgres 16 real (Docker); restante pendente:
    evento em TODOS / selecionados / que atendem critério; buscar string e substituir em qualquer campo;
    add/remove tag/condition/upstream em lote. Find & Update completo (busca + substituição + adição) com
    preview e undo, transacional por item. (bulk básico já existe via /api/bulk e /api/design/sessions/{sid}/bulk.)
+⬜ Sistema de variáveis completo (estilo Control-M %%):
+   • GLOBAIS de runtime — um job ATRIBUI valor e jobs posteriores LEEM (passagem entre jobs; hoje há globais
+     interpoláveis via VariableStore, falta o SET em runtime por um job).
+   • LOCAIS por job — escopo só do próprio job.
+   • NATIVAS/sistema — %DataAtual · %DiaAtual · %AnoAtualYYYY · %MesAtual · último dia do mês · dia útil…
+   • CÁLCULO de datas com template — aritmética sobre variáveis de data (ex.: %DiaAtual+3) resolvendo p/
+     data numérica, ciente de dia útil/feriado/calendar. Ex.: arquivo gerado na sexta com a data de segunda
+     no nome → %DiaAtual+3 = sexta + 3 dias → display da próxima data útil.
+   • Interpolação em QUALQUER campo string (command/url/path/body) + inspetor de resolução por instância.
 ```
 
 ## ⬜ Features avançadas *(depois do núcleo sólido)*

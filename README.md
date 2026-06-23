@@ -446,6 +446,10 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 - [ ] **CONFIRM**: job que precisa de ação manual (Confirm) para sair do estado e prosseguir (semântica Control-M).
 - [ ] **Job tipo DATABASE**: plugin com conectores (JDBC e outros); corpo = procedure ou SQL numa telinha
   PL/SQL amigável (editor). Novo jobType + capability.
+- [ ] **Sistema de variáveis completo** (estilo Control-M `%%`): **globais de runtime** (um job atribui,
+  outro lê — passagem entre jobs), **locais por job**, **nativas/sistema** (`%DataAtual`, `%DiaAtual`,
+  `%AnoAtualYYYY`, último dia do mês…) e **cálculo de datas com template** — aritmética tipo `%DiaAtual+3`
+  resolvendo p/ data numérica ciente de dia útil/feriado; interpolação em qualquer campo + inspetor por instância.
 - [ ] **ViewPoint (Monitoring)**: viewpoints salvos — mostrar só certas folders (não todas) no Monitoring.
 - [ ] **Mass Update / Find & Update (Design)**: alteração em massa nas folders abertas por regex/critério de
   campo — buscar e substituir/adicionar em N jobs (descrição vazia, add action/evento, find-replace em
