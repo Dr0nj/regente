@@ -415,8 +415,8 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   flag `-db-driver sqlite|postgres`, migrations versionadas. *(falta: DynamoDB, nós stateless, 10k+ jobs/dia)*
 - [x] **HA — leader election do scheduler**: só o líder materializa a daily/dispatch
   (`pg_advisory_lock` no Postgres; nó único no SQLite). **+ hub distribuído via NATS (R5, opt-in
-  `-bus=nats`)** — fan-out de eventos web + dispatch roteado ao nó dono do agent. *(falta: DR/backup,
-  validação 2-nós em infra real)*
+  `-bus=nats`)** — fan-out de eventos web + dispatch roteado ao nó dono do agent. **2-nós validado em
+  Postgres real (failover ~4s); DR/backup = R6 ✓.**
 - [x] **Resiliência operacional COMPLETA (R1–R7)**: server **supervisionado** (`regente-server.service`
   systemd `Restart=always` + Windows Service) + **panic-recovery** no scheduler
   (um job não derruba o cérebro) + **watchdog de tick** (`/livez` + gauge em `/metrics`) +
@@ -426,11 +426,14 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   no restart (settings no DB) + **auto-SLO do control plane** (`-selfmon`: alerta tick parado / DB inacessível /
   leader flapping / frota de agentes ↓ pelos mesmos canais). **Chaos/HA 2-nós validado em Postgres real** (failover ~4s).
 - [x] **Segurança — secrets manager** (provider plugável, tira PAT/secrets do banco em claro;
-  default env+arquivo, Vault/AWS pluggável) **+ SSO/OIDC** (Authorization Code, opt-in via `-auth-mode`;
-  login local segue default). *(falta: SSO ponta-a-ponta com IdP + frontend, RBAC/ACL completo, mTLS dos agentes, audit→SIEM)*
+  default env+arquivo, Vault/AWS pluggável) **+ SSO/OIDC** (opt-in `-auth-mode`) **+ RBAC/ACL** (roles
+  admin/operator/viewer + ACL por folder) **+ mTLS opt-in** (`-tls-client-ca`, verifica cert de cliente)
+  **+ audit→SIEM** (eventos JSON em stderr + POST `-audit-siem-url`). *(falta: SSO ponta-a-ponta com IdP real)*
 - [x] **Operação — tracing (OpenTelemetry)** ✅ (OTLP/HTTP opt-in, `-otel-endpoint`); *(falta: upgrades zero-downtime, multi-ambiente, quotas)*
-- [ ] **Qualidade**: testes E2E + carga + chaos, SLOs
-- [ ] Reconciler de drift explícito (state machine)
+- [x] **Adapters de nuvem por capability**: k8s Jobs (`K8S_JOB`) + **AWS Lambda** (`LAMBDA`, SigV4 stdlib)
+  + **GCP Cloud Run Jobs** (`GCP_RUN`) — testados contra API mock. *(falta: e2e em cluster/conta real)*
+- [x] **Qualidade**: testes **E2E HTTP** + **smoke de carga** (~7.5k req/s) + **chaos/HA** (`chaos-ha.sh` + validado)
+  + **SLOs** ([`docs/slos.md`](docs/slos.md)). *(falta: carga real k6/hey, reconciler de drift)*
 
 ### Aprofundamento Control-M (testar a fundo + aprimorar)
 - [ ] **Calendários complexos**: validar que o job entra na daily exatamente quando deve — 1º dia útil
