@@ -11,7 +11,7 @@ Núcleo / Control-M        █████████████████�
 Identidade visual / UI    ██████████████████████ 100%  ✅ logo, topbar, 13 temas, login vídeo, sidebars
 Alerting                  ██████████████████████ 100%  ✅ multi-canal + por-regra
 Serverless portátil       ████████████████████░░  90%  🟡 Knative/long-poll/WASM/NATS/k8s/AWS/GCP ✓ · e2e real ⬜
-Enterprise readiness      ████████████████░░░░░░  75%  🟡 F1/G1/secrets/OIDC/RBAC/mTLS/SIEM/OTel ✓ · SSO-e2e ⬜
+Enterprise readiness      █████████████████░░░░░  80%  🟡 secrets/OIDC/RBAC/mTLS/SIEM/OTel/E2E/SLOs ✓ · SSO-e2e·carga-real ⬜
 Resiliência operacional   ██████████████████████ 100%  ✅ R1–R7 ✓ + chaos/HA validado em PG real
 ```
 
@@ -114,7 +114,8 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
                  verifica cert; e2e handshake) · audit→SIEM (eventos JSON em stderr + POST `-audit-siem-url`)
                  ⬜ SSO e2e c/ IdP real
 🟡 Operação   → OpenTelemetry ✔ (opt-in OTLP)  ⬜ zero-downtime · multi-ambiente · quotas
-⬜ Qualidade  → E2E · carga · chaos · SLOs · reconciler de drift   (CI já roda build/vet/test)
+🟡 Qualidade  → E2E HTTP ✔ · smoke de carga ✔ (~7.5k req/s local) · chaos/HA ✔ (script chaos-ha.sh + validado)
+                 · SLOs ✔ (docs/slos.md, amarrados ao R7/métricas)   ⬜ carga real (k6/hey) · reconciler de drift
 ```
 
 ---
@@ -173,9 +174,12 @@ contra Postgres 16 real (Docker); restante pendente:
 |----|--------|---------|
 | ✅ | ~~Validar R1/R3 em chaos/HA 2-nós real~~ | **Feito (2026-06-23):** failover ~4s · /readyz gate em DB-down · rejoin sem split-brain. |
 | ✅ | ~~R6 DR/backup + R4 config no restart~~ | **Feito (2026-06-23):** `-backup` online (VACUUM INTO) + scripts + runbook (PITR) · config sobrevive backup/restart. |
-| **1** | **Adapters AWS/GCP** + validar **k8s** em cluster real | Cada nuvem vira plugin; o seam por capability já existe (k8s feito). |
-| **2** | **Segurança** — RBAC/ACL · mTLS agentes · audit→SIEM · H1 SSO ponta-a-ponta | Requisitos enterprise de acesso e auditoria. |
-| 3 | **Qualidade** — E2E/carga/chaos/SLOs | Confiança de produção; CI já roda build/vet/test. *(R7 auto-SLO ✓ entregue)* |
+| ✅ | ~~Adapters AWS/GCP~~ | **Feito (2026-06-23):** AWS Lambda (SigV4) + GCP Cloud Run, por capability, testados (httptest). |
+| ✅ | ~~Segurança — RBAC/ACL · mTLS · audit→SIEM~~ | **Feito (2026-06-23):** mTLS opt-in + RBAC travado + audit→SIEM (JSON/HTTP). |
+| ✅ | ~~Qualidade — E2E/carga/chaos/SLOs~~ | **Feito (2026-06-23):** E2E HTTP + smoke de carga + chaos-ha.sh + docs/slos.md. |
+| **1** | **e2e em infra REAL** — k8s cluster · conta AWS/GCP · SSO com IdP real · carga (k6) | O que falta dos itens acima exige infra externa (não dá pra mockar). |
+| **2** | **Operação** — upgrades zero-downtime · multi-ambiente · quotas · reconciler de drift | Maturidade de operação contínua. |
+| 3 | **Escala** — stateless · 10k+ jobs/dia validado | Volume de produção. |
 
 ---
 
