@@ -42,6 +42,7 @@ func main() {
 		workspace   = flag.String("workspace", envOr("REGENTE_WORKSPACE", "./workspace"), "Path to regente workspace (contains definitions/)")
 		dbPath      = flag.String("db", envOr("REGENTE_DB", "./regente.db"), "DB DSN: caminho do arquivo SQLite, ou connection string Postgres quando -db-driver=postgres")
 		dbDriver    = flag.String("db-driver", envOr("REGENTE_DB_DRIVER", "sqlite"), "State store backend: sqlite | postgres")
+		backupTo    = flag.String("backup", "", "R6/DR: grava um backup online do state store neste caminho e sai (SQLite: VACUUM INTO; Postgres: use pg_dump — ver docs/dr-backup.md)")
 		secretsFile = flag.String("secrets-file", envOr("REGENTE_SECRETS_FILE", ""), "H3: arquivo JSON de segredos {\"github_token\":...}; env REGENTE_SECRET_<KEY> tem prioridade")
 		tickMs      = flag.Int("tick-ms", 2000, "Scheduler tick interval (ms) — usado no modo internal")
 		// Fase 1/2 (serverless) — papel do processo + origem do tick. Ver docs/arquitetura-futuro.md.
@@ -90,6 +91,14 @@ func main() {
 		log.Fatalf("db open: %v", err)
 	}
 	defer database.Close()
+	// R6/DR — modo backup one-shot: -backup <dest> faz um snapshot online e sai.
+	if *backupTo != "" {
+		if err := db.OnlineBackup(database, *backupTo); err != nil {
+			log.Fatalf("[backup] %v", err)
+		}
+		log.Printf("[backup] snapshot online gravado em %s", *backupTo)
+		return
+	}
 	if err := db.Migrate(database); err != nil {
 		log.Fatalf("db migrate: %v", err)
 	}

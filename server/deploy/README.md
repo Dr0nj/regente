@@ -36,8 +36,18 @@ cd server; go build -o regente-server.exe .
 ## Container / Kubernetes / serverless
 
 Ver [`../../deploy/`](../../deploy): `Dockerfile` (distroless) + `knative-service.yaml`
-(com `readinessProbe` **e** `livenessProbe` — um processo travado mas escutando é
+(`readinessProbe`→`/readyz`, `livenessProbe`→`/livez` — um processo travado mas escutando é
 reiniciado) + `cronjob.yaml` (gatilho externo no modo `-scheduler=external`).
+
+## DR / backup (R6)
+
+`backup.sh` / `restore.sh` cobrem SQLite (`-backup` = VACUUM INTO online) e Postgres
+(`pg_dump`/`pg_restore`). Runbook completo + PITR + checklist de config no restart (R4):
+[`../../docs/dr-backup.md`](../../docs/dr-backup.md).
+
+```sh
+REGENTE_DB_DRIVER=postgres REGENTE_DB="$DSN" ./deploy/backup.sh /backups   # agende via cron/timer/CronJob
+```
 
 ## Config por env (resumo)
 

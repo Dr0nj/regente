@@ -12,7 +12,7 @@ Identidade visual / UI    ██████████████████
 Alerting                  ██████████████████████ 100%  ✅ multi-canal + por-regra
 Serverless portátil       ██████████████████░░░░  80%  🟡 Knative/long-poll/WASM/NATS/k8s ✓ · AWS/GCP ⬜
 Enterprise readiness      ██████████████░░░░░░░░  62%  🟡 F1/G1/secrets/OIDC/OTel ✓ · RBAC/mTLS/SIEM ⬜
-Resiliência operacional   █████████████████░░░░░  78%  🟡 R1/R2/R3/R5 ✓ + chaos/HA 2-nós validado · R4/R6/R7 ⬜
+Resiliência operacional   ███████████████████░░░  85%  🟡 R1/R2/R3/R4/R5/R6 ✓ + chaos/HA validado · só R7 ⬜
 ```
 
 Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · 🔴 prioridade
@@ -78,8 +78,11 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
         último tick em /metrics e /livez — ENTREGUE (testes)
 ✅ R3 · Health real                    → /readyz (ping DB = gate; líder + tick + último daily informativos),
         distinto de /livez; readinessProbe do Knative aponta aqui — ENTREGUE (testes)
-🟠 R4 · Config persiste no restart      → produção = Postgres + secrets via provider + volume p/ SQLite
-🟠 R6 · DR/backup (G3)                  → runbook backup/restore · PITR no Postgres
+✅ R4 · Config persiste no restart      → settings no DB durável (PG externo / volume p/ SQLite) + checklist
+        em docs/dr-backup.md; teste TestSettings_SurviveRestart — ENTREGUE
+✅ R6 · DR/backup (G3)                  → backup ONLINE portátil (`-backup` = VACUUM INTO no SQLite, in-process)
+        + scripts backup.sh/restore.sh (pg_dump p/ PG) + runbook docs/dr-backup.md (PITR via WAL/gerenciado),
+        validado e2e — ENTREGUE (testes)
 🟠 R7 · Auto-SLO do control plane      → alerta tick parado · leader flapping · erro de DB · frota de agentes
 ```
 
@@ -129,6 +132,9 @@ contra Postgres 16 real (Docker); restante pendente:
                     follower assume em ~4s (advisory lock) · DB parado → /readyz 503 (gate) e o processo
                     SEGUE vivo/ticando (livez≠readyz) · DB volta → 200 sozinho (~1s) · restart do nó morto
                     (R1) → rejoin como follower, sem split-brain
+✅ R6/R4 backup+restart (2026-06-23) → `-backup` (VACUUM INTO) gerou snapshot; reabrir o snapshot devolveu
+                    env_label=PROD-DR (config sobrevive a backup/restore E a restart) · scripts backup.sh/
+                    restore.sh + runbook docs/dr-backup.md
 ⬜ H1 SSO/OIDC    → fluxo completo com IdP real (Keycloak/Cognito/Google) + SPA lê #token
 ⬜ Secrets        → resolver github_token/webhook_secret via provider (env/-secrets-file)
 ⬜ SSH · agente   → host com sshd; agente instalado como serviço (systemd / Task Windows)
@@ -158,11 +164,11 @@ contra Postgres 16 real (Docker); restante pendente:
 
 | ⭐ | Frente | Por quê |
 |----|--------|---------|
-| ✅ | ~~Validar R1/R3 em chaos/HA 2-nós real~~ | **Feito (2026-06-23):** failover ~4s · /readyz gate em DB-down · rejoin sem split-brain. Gate de resiliência fechado. |
-| **1** | **R6 DR/backup** (PITR Postgres) + **R4** config no restart | Sobreviver a desastre/restart de container sem perder estado nem config. |
-| **2** | **Adapters AWS/GCP** + validar **k8s** em cluster real | Cada nuvem vira plugin; o seam por capability já existe (k8s feito). |
-| 3 | **Segurança** — RBAC/ACL · mTLS agentes · audit→SIEM · H1 SSO ponta-a-ponta | Requisitos enterprise de acesso e auditoria. |
-| 4 | **Qualidade** — E2E/carga/chaos/SLOs + **R7** auto-SLO | Confiança de produção; CI já roda build/vet/test. |
+| ✅ | ~~Validar R1/R3 em chaos/HA 2-nós real~~ | **Feito (2026-06-23):** failover ~4s · /readyz gate em DB-down · rejoin sem split-brain. |
+| ✅ | ~~R6 DR/backup + R4 config no restart~~ | **Feito (2026-06-23):** `-backup` online (VACUUM INTO) + scripts + runbook (PITR) · config sobrevive backup/restart. |
+| **1** | **Adapters AWS/GCP** + validar **k8s** em cluster real | Cada nuvem vira plugin; o seam por capability já existe (k8s feito). |
+| **2** | **Segurança** — RBAC/ACL · mTLS agentes · audit→SIEM · H1 SSO ponta-a-ponta | Requisitos enterprise de acesso e auditoria. |
+| 3 | **Qualidade** — E2E/carga/chaos/SLOs + **R7** auto-SLO | Confiança de produção; CI já roda build/vet/test. |
 
 ---
 
