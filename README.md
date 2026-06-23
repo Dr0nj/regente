@@ -440,6 +440,12 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   Slack, >40min → alerta, >1h → abre chamado via webhook, cada limiar com destino/ação configurável.
 - [ ] **Job FILE_WATCH**: espera a chegada de arquivo (path/glob, polling/evento, tamanho estável) antes
   de concluir e disparar o sucessor. Novo jobType + capability.
+- [ ] **Forecast**: testar a previsão de ≥ 1 semana à frente (quais jobs rodam por dia) contra o gating real.
+- [ ] **Ciclo de vida na daily (Keep Active / carry-over)**: `keepActive=N` (job que não rodou OK sobrevive
+  N diárias); **default** NOTOK não tratado persiste +1 diária; **HOLD** atravessa as diárias enquanto em hold.
+- [ ] **CONFIRM**: job que precisa de ação manual (Confirm) para sair do estado e prosseguir (semântica Control-M).
+- [ ] **Job tipo DATABASE**: plugin com conectores (JDBC e outros); corpo = procedure ou SQL numa telinha
+  PL/SQL amigável (editor). Novo jobType + capability.
 - [ ] **Janela de info do job (drawer)**: deixar mais friendly — ações claras, output/log legível, layout.
 
 ### Serverless portátil (sem lock-in) — ver [`docs/arquitetura-futuro.md`](docs/arquitetura-futuro.md)

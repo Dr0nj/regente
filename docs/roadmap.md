@@ -182,6 +182,17 @@ contra Postgres 16 real (Docker); restante pendente:
    condition · abrir chamado. Testar + expor a config por job na UI.
 ⬜ Job FILE_WATCH — espera a chegada de arquivo (path/glob · polling/evento · tamanho estável) antes de
    concluir; dispara o sucessor quando o arquivo chega. Novo jobType + capability.
+⬜ Forecast — testar a previsão de ≥ 1 semana à frente (quais jobs rodam por dia, sem executar); validar
+   contra o gating real (calendars + deps + conditions + recursos).
+⬜ Ciclo de vida na daily (Keep Active / carry-over entre diárias):
+   • Keep Active — opção no job: se NÃO executou com sucesso, sobrevive N diárias (keepActive=1 → +1 diária).
+   • DEFAULT — job que termina NOTOK e NÃO é tratado persiste +1 diária (carry-over automático).
+   • HOLD persiste — job em HOLD atravessa as diárias enquanto estiver em hold, independente do estado
+     (OK/NOTOK/WAITING).
+⬜ CONFIRM — config no job: precisa de ação MANUAL (Confirm) para sair do estado e prosseguir.
+   (estudar o comportamento exato do Control-M antes de fechar a semântica do backlog.)
+⬜ Job tipo DATABASE — plugin com conectores (JDBC e outros) p/ rodar SQL/procedure em bancos; corpo do
+   job = selecionar procedure OU escrever SQL numa telinha PL/SQL amigável (editor). Novo jobType + capability.
 ```
 
 ## ⬜ Features avançadas *(depois do núcleo sólido)*
