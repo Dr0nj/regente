@@ -6,12 +6,25 @@
 package api
 
 import (
+	"net"
 	"net/http"
 
+	"github.com/Dr0nj/regente-server/internal/audit"
 	"github.com/Dr0nj/regente-server/internal/auth"
 	"github.com/Dr0nj/regente-server/internal/storage"
 	"github.com/go-chi/chi/v5"
 )
+
+// audit emite um evento de segurança para o SIEM (no-op se não configurado).
+func (s *server) audit(e audit.Event) { s.cfg.Audit.Emit(e) }
+
+// clientIP extrai o IP do request (RemoteAddr já normalizado pelo middleware RealIP).
+func clientIP(r *http.Request) string {
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	return r.RemoteAddr
+}
 
 // recordDefinitionAudit insere uma linha em definition_audit.
 // Falha em silêncio (loga, não bloqueia o write).
@@ -41,6 +54,8 @@ func (s *server) recordDefinitionAudit(actor, action, team, defID string, pr *st
 		// não-fatal: log
 		writeLogf("[audit] insert failed: %v", err)
 	}
+	// Espelha o write no SIEM (estruturado), além da trilha em definition_audit.
+	s.audit(audit.Event{Type: "definition.write", Actor: actor, Action: action, Target: team + "/" + defID, Outcome: "success"})
 }
 
 func nullable(s string) any {

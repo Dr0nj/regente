@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/Dr0nj/regente-server/internal/audit"
 	"github.com/Dr0nj/regente-server/internal/auth"
 	"github.com/Dr0nj/regente-server/internal/db"
 	"github.com/Dr0nj/regente-server/internal/hub"
@@ -31,6 +32,8 @@ type Config struct {
 	// H1 (2026-06-14) — SSO/OIDC. nil = desabilitado (login local segue ativo).
 	OIDC   *oidc.Provider
 	AppURL string // destino do redirect pós-login OIDC (ex.: http://localhost:5173)
+	// Segurança — exportação de auditoria p/ SIEM (login, writes). nil = no-op.
+	Audit *audit.Sink
 }
 
 type server struct {

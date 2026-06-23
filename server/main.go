@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/Dr0nj/regente-server/internal/api"
+	"github.com/Dr0nj/regente-server/internal/audit"
 	"github.com/Dr0nj/regente-server/internal/auth"
 	"github.com/Dr0nj/regente-server/internal/bus"
 	"github.com/Dr0nj/regente-server/internal/db"
@@ -47,7 +48,8 @@ func main() {
 		// Segurança — TLS/mTLS opcional (vazio = HTTP plano, comportamento atual).
 		tlsCert     = flag.String("tls-cert", envOr("REGENTE_TLS_CERT", ""), "Segurança: cert TLS do servidor (vazio = HTTP plano)")
 		tlsKey      = flag.String("tls-key", envOr("REGENTE_TLS_KEY", ""), "Segurança: chave TLS do servidor")
-		tlsClientCA = flag.String("tls-client-ca", envOr("REGENTE_TLS_CLIENT_CA", ""), "Segurança: CA p/ exigir+verificar cert de cliente (liga mTLS)")
+		tlsClientCA  = flag.String("tls-client-ca", envOr("REGENTE_TLS_CLIENT_CA", ""), "Segurança: CA p/ exigir+verificar cert de cliente (liga mTLS)")
+		auditSIEMURL = flag.String("audit-siem-url", envOr("REGENTE_AUDIT_SIEM_URL", ""), "Segurança: endpoint HTTP de SIEM p/ POST dos eventos de auditoria (vazio = só JSON em stderr)")
 		secretsFile = flag.String("secrets-file", envOr("REGENTE_SECRETS_FILE", ""), "H3: arquivo JSON de segredos {\"github_token\":...}; env REGENTE_SECRET_<KEY> tem prioridade")
 		tickMs      = flag.Int("tick-ms", 2000, "Scheduler tick interval (ms) — usado no modo internal")
 		// Fase 1/2 (serverless) — papel do processo + origem do tick. Ver docs/arquitetura-futuro.md.
@@ -375,6 +377,12 @@ func main() {
 		log.Printf("[auth] mode=local (admin/senha)")
 	}
 
+	// Segurança — sink de auditoria p/ SIEM (sempre JSON em stderr; POST se -audit-siem-url).
+	auditSink := audit.New(*auditSIEMURL)
+	if *auditSIEMURL != "" {
+		log.Printf("[audit] SIEM export -> %s", *auditSIEMURL)
+	}
+
 	router := api.NewRouter(api.Config{
 		Store:     store,
 		DB:        database,
@@ -388,6 +396,7 @@ func main() {
 		Sessions:  sessionMgr,
 		OIDC:      oidcProvider,
 		AppURL:    *appURL,
+		Audit:     auditSink,
 	})
 
 	// Segurança — TLS/mTLS opcional. Sem -tls-cert segue em HTTP plano.

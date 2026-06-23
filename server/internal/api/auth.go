@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Dr0nj/regente-server/internal/audit"
 	"github.com/Dr0nj/regente-server/internal/auth"
 	"github.com/go-chi/chi/v5"
 )
@@ -23,12 +24,14 @@ func (s *server) authLogin(w http.ResponseWriter, r *http.Request) {
 	tok, u, err := auth.Login(s.cfg.DB, req.Username, req.Password)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
+			s.audit(audit.Event{Type: "auth.login", Actor: req.Username, Action: "login", Outcome: "failure", IP: clientIP(r)})
 			http.Error(w, "invalid credentials", http.StatusUnauthorized)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.audit(audit.Event{Type: "auth.login", Actor: req.Username, Action: "login", Outcome: "success", IP: clientIP(r)})
 	writeJSON(w, 200, map[string]any{"token": tok, "user": u})
 }
 
