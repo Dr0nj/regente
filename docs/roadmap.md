@@ -10,9 +10,9 @@
 Núcleo / Control-M        ██████████████████████ 100%  ✅ pronto
 Identidade visual / UI    ██████████████████████ 100%  ✅ logo, topbar, 13 temas, login vídeo, sidebars
 Alerting                  ██████████████████████ 100%  ✅ multi-canal + por-regra
-Serverless portátil       ████████████████░░░░░░  70%  🟡 Knative/long-poll/WASM ✓ · NATS/cloud ⬜
-Enterprise readiness      ████████████░░░░░░░░░░  55%  🟡 F1+G1+H3+H1-seam ✓
-Resiliência operacional   ██████░░░░░░░░░░░░░░░░░  30%  🔴 estado ✓ · liveness do processo ✗
+Serverless portátil       ██████████████████░░░░  80%  🟡 Knative/long-poll/WASM/NATS/k8s ✓ · AWS/GCP ⬜
+Enterprise readiness      ██████████████░░░░░░░░  62%  🟡 F1/G1/secrets/OIDC/OTel ✓ · RBAC/mTLS/SIEM ⬜
+Resiliência operacional   ███████████████░░░░░░░  70%  🟡 R1/R2/R5 ✓ · R3/R4/R6/R7 ⬜
 ```
 
 Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · 🔴 prioridade
@@ -152,11 +152,11 @@ contra Postgres 16 real (Docker); restante pendente:
 
 | ⭐ | Frente | Por quê |
 |----|--------|---------|
-| **1** | **R1 — Server supervisionado** | Fecha o "caiu e ficou caído": systemd/Windows Service/livenessProbe. Barato, alto impacto. |
-| **2** | **R2 — Panic-recovery + watchdog** | Um job ruim nunca pode derrubar o orquestrador. Contido e testável. |
-| **3** | **R5 — Adapter NATS + hub distribuído** | Failover não estranda agentes + destrava escala real multi-nó. |
-| 4 | **Observabilidade (OpenTelemetry)** | Tracing distribuído = table stakes enterprise. |
-| 5 | **Adapters de nuvem por capability** (AWS/GCP/k8s) | Cada nuvem vira plugin, não fundação. |
+| **1** | **R3 — health real (`/readyz`)** + validar R1 num chaos/restart real | Fecha o gate "production-ready" da resiliência (R1/R2/R5 já entregues). |
+| **2** | **R6 DR/backup** (PITR Postgres) + **R4** config no restart | Sobreviver a desastre/restart de container sem perder estado nem config. |
+| **3** | **Adapters AWS/GCP** + validar **k8s** em cluster real | Cada nuvem vira plugin; o seam por capability já existe (k8s feito). |
+| 4 | **Segurança** — RBAC/ACL · mTLS agentes · audit→SIEM · H1 SSO ponta-a-ponta | Requisitos enterprise de acesso e auditoria. |
+| 5 | **Qualidade** — E2E/carga/chaos/SLOs + **R7** auto-SLO | Confiança de produção; CI já roda build/vet/test. |
 
 ---
 
