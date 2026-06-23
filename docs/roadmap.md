@@ -260,6 +260,15 @@ contra Postgres 16 real (Docker); restante pendente:
 ⬜ Diff de Daily — comparar a daily de HOJE vs ONTEM (ou vs qualquer order_date): jobs adicionados (+) /
    removidos (-), schedule mudou, dependência mudou, mudança de def. Aproveita o DNA Git-native (cada
    instância carrega o commit_sha + snapshot da def) → diff EXATO e barato. Forte diferencial.
+⬜ Blast Radius — "se eu CANCELAR/segurar este job AGORA, qual o impacto?": N jobs downstream deixarão de
+   executar · X SLAs serão violados · tempo estimado de atraso. Análise de impacto de uma AÇÃO (cancel/hold),
+   não só do grafo estático. Ex.: cancelar PIX_ENVIO → "37 jobs não executam · 3 SLAs violados · atraso ~2h15".
+⬜ Dry Run — simular uma daily FUTURA (ex.: 25/12/2026) SEM criar instances: quem roda · quem espera ·
+   quem NUNCA dispara. (o forecast já existe; falta o modo "data futura + razões por job + sem materializar".)
+⬜ Explain ("por que o job não rodou?") — motor de EXPLICAÇÃO (sem IA): WAIT_RESOURCE (qual recurso, quem
+   consome, slots livres ex. 0/3) · WAIT_CONDITION (qual condition falta, job produtor, última execução/status)
+   · deps não satisfeitas · fora da janela · calendar. O scheduler já computa o gating — falta expor o PORQUÊ
+   por instância. Mata a pergunta nº1 de quem opera Control-M.
 ```
 
 ### 5. Developer Experience *(onde o Control-M perde feio)*
