@@ -446,6 +446,10 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 - [ ] **CONFIRM**: job que precisa de ação manual (Confirm) para sair do estado e prosseguir (semântica Control-M).
 - [ ] **Job tipo DATABASE**: plugin com conectores (JDBC e outros); corpo = procedure ou SQL numa telinha
   PL/SQL amigável (editor). Novo jobType + capability.
+- [ ] **ViewPoint (Monitoring)**: viewpoints salvos — mostrar só certas folders (não todas) no Monitoring.
+- [ ] **Mass Update / Find & Update (Design)**: alteração em massa nas folders abertas por regex/critério de
+  campo — buscar e substituir/adicionar em N jobs (descrição vazia, add action/evento, find-replace em
+  qualquer campo, tags/conditions em lote), com preview/undo. (bulk básico já existe via `/api/bulk`.)
 - [ ] **Janela de info do job (drawer)**: deixar mais friendly — ações claras, output/log legível, layout.
 
 ### Serverless portátil (sem lock-in) — ver [`docs/arquitetura-futuro.md`](docs/arquitetura-futuro.md)

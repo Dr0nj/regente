@@ -193,6 +193,13 @@ contra Postgres 16 real (Docker); restante pendente:
    (estudar o comportamento exato do Control-M antes de fechar a semântica do backlog.)
 ⬜ Job tipo DATABASE — plugin com conectores (JDBC e outros) p/ rodar SQL/procedure em bancos; corpo do
    job = selecionar procedure OU escrever SQL numa telinha PL/SQL amigável (editor). Novo jobType + capability.
+⬜ ViewPoint (Monitoring) — viewpoints salvos/selecionáveis: mostrar SÓ certas folders (não todas) no
+   Monitoring; filtro nomeado e persistido por usuário.
+⬜ Mass Update / Find & Update (Design) — alteração em MASSA nas folders abertas por regex/critério de
+   campo: buscar e substituir/adicionar em N jobs. Casos: descrição vazia → preencher; adicionar action/
+   evento em TODOS / selecionados / que atendem critério; buscar string e substituir em qualquer campo;
+   add/remove tag/condition/upstream em lote. Find & Update completo (busca + substituição + adição) com
+   preview e undo, transacional por item. (bulk básico já existe via /api/bulk e /api/design/sessions/{sid}/bulk.)
 ```
 
 ## ⬜ Features avançadas *(depois do núcleo sólido)*
