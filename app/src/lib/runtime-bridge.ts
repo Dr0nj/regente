@@ -70,6 +70,14 @@ export const fetchInstanceExplain = isServerMode()
   ? serverInstance.fetchInstanceExplain
   : async (_id: string): Promise<serverInstance.Explanation | null> => null;
 
+export type DailyDiff = serverInstance.DailyDiff;
+export type DiffDefChange = serverInstance.DiffDefChange;
+
+// Diff de Daily só existe no server mode (lê snapshots do estado durável).
+export const fetchDailyDiff = isServerMode()
+  ? serverInstance.fetchDailyDiff
+  : async (_opts?: { from?: string; to?: string; folder?: string }): Promise<serverInstance.DailyDiff | null> => null;
+
 /* ── Scheduler API ── */
 
 export const runDaily = isServerMode()

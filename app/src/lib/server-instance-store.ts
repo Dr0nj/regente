@@ -268,6 +268,34 @@ export async function fetchInstanceExplain(id: string): Promise<Explanation> {
   return api<Explanation>(`/api/instances/${encodeURIComponent(id)}/explain`);
 }
 
+/* ── Diff de Daily ("o que mudou entre duas diárias?") ── */
+
+export interface DiffDefRef { defId: string; label?: string; team?: string }
+export interface DiffFieldChange { field: string; from: string; to: string }
+export interface DiffDefChange { defId: string; label?: string; team?: string; changes: DiffFieldChange[] }
+export interface DailyDiff {
+  dateA: string;
+  dateB: string;
+  folder?: string;
+  commitA?: string;
+  commitB?: string;
+  sameCommit: boolean;
+  counts: { totalA: number; totalB: number; added: number; removed: number; changed: number; unchanged: number };
+  added: DiffDefRef[];
+  removed: DiffDefRef[];
+  changed: DiffDefChange[];
+  truncated: boolean;
+}
+
+export async function fetchDailyDiff(opts?: { from?: string; to?: string; folder?: string }): Promise<DailyDiff> {
+  const qs = new URLSearchParams();
+  if (opts?.from) qs.set("from", opts.from);
+  if (opts?.to) qs.set("to", opts.to);
+  if (opts?.folder) qs.set("folder", opts.folder);
+  const q = qs.toString();
+  return api<DailyDiff>(`/api/daily/diff${q ? "?" + q : ""}`);
+}
+
 export async function forceInstance(def: JobDefinition): Promise<JobInstance> {
   const r = await api<{ instanceId: string }>(
     `/api/definitions/${encodeURIComponent(def.id)}/force`,

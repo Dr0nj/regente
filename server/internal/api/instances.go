@@ -350,6 +350,31 @@ func (s *server) runDaily(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]interface{}{"orderDate": today, "created": created})
 }
 
+// diffDaily — Diferencial "o que mudou entre duas diárias?". Default: to=hoje,
+// from=a diária anterior. ?folder= escopa a uma folder/team. Lê só os snapshots
+// congelados (DNA Git-native) — diff exato, sem reprocessar Git.
+func (s *server) diffDaily(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	to := q.Get("to")
+	if to == "" {
+		to = time.Now().Format("2006-01-02")
+	}
+	from := q.Get("from")
+	if from == "" {
+		from = s.cfg.Scheduler.PrevDailyDate(to)
+	}
+	if from == "" {
+		http.Error(w, "sem diária anterior para comparar (passe ?from=YYYY-MM-DD)", http.StatusBadRequest)
+		return
+	}
+	diff, err := s.cfg.Scheduler.DiffDaily(from, to, q.Get("folder"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, 200, diff)
+}
+
 // schedulerTick — Fase 1 (serverless): dispara um ciclo de scheduling sob
 // demanda. Pensado para -scheduler=external, onde um cron externo (Cloud
 // Scheduler, k8s CronJob, GitHub Actions) bate aqui em vez do ticker interno.
