@@ -50,6 +50,13 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ✅ Configurações em sub-abas (Geral · Temas); borda neon nos diálogos
 ◑ Minimap de navegação (protótipo opt-in, default off) — pontos por job, clique navega, redimensionável
 ⬜ Janela de info do job (drawer) — deixar mais friendly: ações claras, output/log legível, layout melhor
+⬜ Layout de jobs SEM dependência — hoje (como no Control-M) jobs sem conexão vão empilhando pra DIREITA na
+   horizontal; ao passar de N por linha fica ruim de ver (tudo esticado pro lado). Regra: ao atingir um limiar
+   de jobs soltos numa folder, QUEBRAR pra baixo em GRADE (wrap em linhas), em vez de só horizontal. N
+   configurável; vale pro canvas (Monitoring + Design). Mantém os conectados no fluxo; só os soltos viram grade.
+⬜ Minimap REVISTO — repensar o `NavMinimap` (hoje desenha pontos de `canvas.nodes`): comportamento/usabilidade
+   com a nova grade de jobs soltos + volume alto; precisa refletir o layout em wrap, navegação clara e densidade
+   legível (avaliar viewport-box arrastável, escala por densidade, on/off por contexto).
 ```
 
 ## 🔔 Alerting

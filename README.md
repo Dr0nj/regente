@@ -478,6 +478,11 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   campo — buscar e substituir/adicionar em N jobs (descrição vazia, add action/evento, find-replace em
   qualquer campo, tags/conditions em lote), com preview/undo. (bulk básico já existe via `/api/bulk`.)
 - [ ] **Janela de info do job (drawer)**: deixar mais friendly — ações claras, output/log legível, layout.
+- [ ] **Layout de jobs sem dependência (wrap em grade)**: hoje jobs soltos (sem conexão) empilham pra direita na
+  horizontal (como no Control-M); ao passar de N por linha fica ruim de ver. Regra: ao atingir um limiar, quebrar
+  pra baixo em **grade** em vez de só horizontal (N configurável; vale Monitoring + Design; conectados seguem no fluxo).
+- [ ] **Minimap revisto**: repensar o `NavMinimap` p/ refletir a nova grade de jobs soltos + volume alto —
+  navegação clara, densidade legível, viewport-box arrastável, on/off por contexto.
 
 ### Diferenciais — além do Control-M (visão de produto) — detalhe em [`docs/roadmap.md`](docs/roadmap.md)
 Onde o Regente **passa** o Control-M (longo prazo, depois do núcleo sólido):
