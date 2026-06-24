@@ -402,6 +402,20 @@ type instanceEvent struct {
 	Message    string    `json:"message,omitempty"`
 }
 
+// explainInstance — Diferencial "por que esse job não rodou?": expõe, por
+// instance, o gating que o scheduler já computa (janela · deps · conditions ·
+// recursos) via a FONTE ÚNICA gateInstance. Determinístico (sem IA); o futuro
+// tool MCP explain_job() chama exatamente isto.
+func (s *server) explainInstance(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	ex, err := s.cfg.Scheduler.Explain(id)
+	if err != nil {
+		http.Error(w, "instance não encontrada", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, 200, ex)
+}
+
 func (s *server) listInstanceEvents(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	rows, err := s.cfg.DB.Query(

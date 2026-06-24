@@ -241,6 +241,33 @@ export async function fetchInstanceEvents(id: string): Promise<InstanceEvent[]> 
   return api<InstanceEvent[]>(`/api/instances/${encodeURIComponent(id)}/events`);
 }
 
+/* ── Explain ("por que esse job não rodou?") ── */
+
+export interface ExplainBlocker {
+  kind: "WAIT_WINDOW" | "WAIT_DEP" | "BLOCKED_DEP" | "WAIT_CONDITION" | "WAIT_RESOURCE";
+  detail: string;
+  upstream?: string;
+  upstreamStatus?: string;
+  condition?: string;
+  resource?: string;
+  want?: number;
+  used?: number;
+  capacity?: number;
+}
+
+export interface Explanation {
+  instanceId: string;
+  definitionId: string;
+  status: string;
+  runnable: boolean;
+  summary: string;
+  blockers: ExplainBlocker[];
+}
+
+export async function fetchInstanceExplain(id: string): Promise<Explanation> {
+  return api<Explanation>(`/api/instances/${encodeURIComponent(id)}/explain`);
+}
+
 export async function forceInstance(def: JobDefinition): Promise<JobInstance> {
   const r = await api<{ instanceId: string }>(
     `/api/definitions/${encodeURIComponent(def.id)}/force`,

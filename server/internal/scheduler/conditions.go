@@ -92,12 +92,20 @@ func (c *ConditionEngine) ApplyOutcomes(def domain.JobDefinition, orderDate, act
 	}
 }
 
-// AllSatisfied returns true if every cond in `names` exists for orderDate.
-func (c *ConditionEngine) AllSatisfied(names []string, orderDate string) bool {
+// Missing returns the conditions in `names` that are NOT set for orderDate.
+// FONTE ÚNICA do "falta qual condition?" — usada pelo AllSatisfied (gating) e
+// pelo Explain ("por que não rodou"). Vazio = todas satisfeitas.
+func (c *ConditionEngine) Missing(names []string, orderDate string) []string {
+	var out []string
 	for _, n := range names {
 		if !c.Has(n, orderDate) {
-			return false
+			out = append(out, n)
 		}
 	}
-	return true
+	return out
+}
+
+// AllSatisfied returns true if every cond in `names` exists for orderDate.
+func (c *ConditionEngine) AllSatisfied(names []string, orderDate string) bool {
+	return len(c.Missing(names, orderDate)) == 0
 }

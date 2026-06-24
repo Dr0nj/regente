@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import type { JobInstance } from "@/lib/orchestrator-model";
-import { fetchInstanceEvents, type InstanceEvent } from "@/lib/runtime-bridge";
+import {
+  fetchInstanceEvents,
+  type InstanceEvent,
+  fetchInstanceExplain,
+  type Explanation,
+  type ExplainBlocker,
+} from "@/lib/runtime-bridge";
 import { useResizablePanel, ResizeHandle } from "./resizable";
 
 /* ──────────────────────────────────────────────────────────────
@@ -198,6 +204,10 @@ export default function InstanceDetailsDrawer({
       {/* Body */}
       {tab === "details" ? (
       <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px", fontSize: 11 }}>
+        {(status === "WAITING" || status === "CANCELLED") && (
+          <ExplainPanel instanceId={instance.id} status={status} />
+        )}
+
         <Section title="Timeline">
           <Field label="Ordered"    value={fmtTime(instance.createdAt)} />
           <Field label="Scheduled"  value={fmtTime(instance.scheduledAt)} />
@@ -387,6 +397,80 @@ function fmtTS(ts: string): string {
   if (isNaN(d.getTime())) return ts;
   return d.toLocaleTimeString("en-GB", { hour12: false }) +
     "." + String(d.getMilliseconds()).padStart(3, "0");
+}
+
+/* ── Explain ("por que esse job não rodou?") ── */
+
+const BLOCKER_COLOR: Record<ExplainBlocker["kind"], string> = {
+  WAIT_WINDOW:   "var(--v2-status-waiting)",
+  WAIT_DEP:      "var(--v2-status-waiting)",
+  BLOCKED_DEP:   "var(--v2-status-failed)",
+  WAIT_CONDITION:"var(--v2-status-waiting)",
+  WAIT_RESOURCE: "var(--v2-accent-brand)",
+};
+const BLOCKER_LABEL: Record<ExplainBlocker["kind"], string> = {
+  WAIT_WINDOW:   "JANELA",
+  WAIT_DEP:      "DEPENDÊNCIA",
+  BLOCKED_DEP:   "BLOQUEADO",
+  WAIT_CONDITION:"CONDITION",
+  WAIT_RESOURCE: "RECURSO",
+};
+
+function ExplainPanel({ instanceId, status }: { instanceId: string; status: JobInstance["status"] }) {
+  const [exp, setExp] = useState<Explanation | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const load = () => {
+      fetchInstanceExplain(instanceId)
+        .then((e) => { if (!cancelled) setExp(e); })
+        .catch(() => { if (!cancelled) setExp(null); })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    };
+    load();
+    // WAITING muda conforme upstreams terminam / recursos liberam → refresca.
+    if (status === "WAITING") timer = setInterval(load, 3000);
+    return () => { cancelled = true; if (timer) clearInterval(timer); };
+  }, [instanceId, status]);
+
+  // Modo local (sem server) devolve null → não mostra o painel.
+  if (!loading && !exp) return null;
+
+  const runnable = exp?.runnable ?? false;
+  const accent = runnable ? "var(--v2-status-ok)" : "var(--v2-status-waiting)";
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>
+        Por que {runnable ? "vai rodar" : "não rodou"}?
+      </div>
+      <div style={{ padding: "7px 9px", background: "var(--v2-bg-deep)", border: `1px solid ${accent}`, borderRadius: 3 }}>
+        <div style={{ fontSize: 11, color: "var(--v2-text-primary)", lineHeight: 1.45 }}>
+          {loading ? "avaliando…" : exp?.summary}
+        </div>
+        {exp && exp.blockers.length > 0 && (
+          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+            {exp.blockers.map((b, i) => (
+              <div key={i} style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
+                <span style={{
+                  flexShrink: 0, marginTop: 1, fontSize: 8, fontFamily: "var(--v2-font-mono)", fontWeight: 700,
+                  letterSpacing: "0.05em", color: BLOCKER_COLOR[b.kind], border: `1px solid ${BLOCKER_COLOR[b.kind]}`,
+                  borderRadius: 2, padding: "1px 4px", textTransform: "uppercase",
+                }}>
+                  {BLOCKER_LABEL[b.kind]}
+                </span>
+                <span style={{ fontSize: 10.5, color: "var(--v2-text-secondary)", lineHeight: 1.4 }}>
+                  {b.detail}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function LogPanel({ instanceId, status }: { instanceId: string; status: JobInstance["status"] }) {

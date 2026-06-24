@@ -790,24 +790,22 @@ func (s *Scheduler) tickOnce() {
 			s.startInstance(r.ID, def)
 			continue
 		}
-		ready, blocked := s.evalDeps(def, instByDef)
-		if blocked {
-			_, _ = s.db.Exec(`UPDATE instances SET status=?, finished_at=CURRENT_TIMESTAMP WHERE id=?`,
-				string(domain.StatusCancelled), r.ID)
-			s.emitEvent(r.ID, "cancelled", "scheduler", "upstream condition permanently unsatisfiable")
-			s.hub.BroadcastWeb("instance.changed", map[string]string{"id": r.ID, "status": string(domain.StatusCancelled)})
-			continue
-		}
-		if !ready {
-			continue
-		}
-		// F16 — conditions IN check
-		if len(def.ConditionsIn) > 0 && s.conditions != nil {
-			if !s.conditions.AllSatisfied(def.ConditionsIn, r.OrderDate) {
-				continue
+		// Gating pela FONTE ÚNICA (gateInstance) — o MESMO avaliador que o Explain
+		// usa pra dizer o porquê. short-circuit no 1º bloqueio (hot path). Nenhum
+		// gate bloqueia o dispatch sem aparecer aqui, então o Explain nunca diverge.
+		if blockers := s.gateInstance(r, def, instByDef, now, true); len(blockers) > 0 {
+			// Dep permanentemente impossível → CANCELLED (o 1º bloqueio é o
+			// determinante por causa do short-circuit, na mesma ordem do gate).
+			if blockers[0].Kind == GateDepBlocked {
+				_, _ = s.db.Exec(`UPDATE instances SET status=?, finished_at=CURRENT_TIMESTAMP WHERE id=?`,
+					string(domain.StatusCancelled), r.ID)
+				s.emitEvent(r.ID, "cancelled", "scheduler", "upstream condition permanently unsatisfiable")
+				s.hub.BroadcastWeb("instance.changed", map[string]string{"id": r.ID, "status": string(domain.StatusCancelled)})
 			}
+			continue
 		}
-		// F15 — resources gating
+		// Gates read-only passaram → reserva ATÔMICA do recurso (a única etapa com
+		// efeito colateral; o gate só fez Shortfalls read-only) e dispara.
 		if len(def.Resources) > 0 && s.resources != nil {
 			if !s.resources.TryAcquire(r.ID, def.Resources) {
 				continue
@@ -827,39 +825,18 @@ func (s *Scheduler) tickOnce() {
 }
 
 // evalDeps avalia todas as upstreams; retorna (ready, permanentlyBlocked).
+// Thin loop sobre edgeState (a regra por-aresta, fonte única compartilhada com o
+// Explain). Para na 1ª aresta não-satisfeita — mesma semântica de short-circuit
+// de antes (uma espera adiante mascara um bloqueio permanente posterior).
 func (s *Scheduler) evalDeps(def domain.JobDefinition, insts map[string]instRow) (bool, bool) {
-	if len(def.Upstream) == 0 {
-		return true, false
-	}
 	for _, u := range def.Upstream {
-		up, ok := insts[u.From]
-		if !ok {
-			return false, false // upstream ainda não existe neste order_date
+		up, exists := insts[u.From]
+		sat, permanent := edgeState(u.Condition, up.Status, exists)
+		if permanent {
+			return false, true
 		}
-		switch u.Condition {
-		case domain.CondOnSuccess:
-			if up.Status == string(domain.StatusOK) {
-				continue
-			}
-			if up.Status == string(domain.StatusNotOK) || up.Status == string(domain.StatusCancelled) {
-				return false, true
-			}
+		if !sat {
 			return false, false
-		case domain.CondOnFailure:
-			if up.Status == string(domain.StatusNotOK) {
-				continue
-			}
-			if up.Status == string(domain.StatusOK) {
-				return false, true
-			}
-			return false, false
-		case domain.CondOnComplete, "":
-			if up.Status == string(domain.StatusOK) || up.Status == string(domain.StatusNotOK) {
-				continue
-			}
-			return false, false
-		case domain.CondAlways:
-			continue
 		}
 	}
 	return true, false

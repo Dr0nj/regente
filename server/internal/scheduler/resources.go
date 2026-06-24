@@ -20,6 +20,15 @@ type ResourceState struct {
 	Used     int    `json:"used"`
 }
 
+// ResourceShortfall — um recurso de um pedido que NÃO cabe agora. Usado pelo
+// Explain ("por que não rodou") e pelo gate read-only do scheduler.
+type ResourceShortfall struct {
+	Name     string `json:"name"`
+	Want     int    `json:"want"`
+	Used     int    `json:"used"`
+	Capacity int    `json:"capacity"`
+}
+
 type ResourceTracker struct {
 	mu       sync.Mutex
 	capacity map[string]int
@@ -61,6 +70,35 @@ func (t *ResourceTracker) Delete(name string) error {
 	return nil
 }
 
+// shortfallsLocked — recursos de `want` que NÃO cabem agora. Chamar com mu travado.
+// `cap` default é 1 quando o recurso é desconhecido (mesma semântica do TryAcquire),
+// mas NÃO persiste no registry — read-only por design (o Explain não pode mutar estado).
+func (t *ResourceTracker) shortfallsLocked(want map[string]int) []ResourceShortfall {
+	var out []ResourceShortfall
+	for name, qty := range want {
+		cap, ok := t.capacity[name]
+		if !ok {
+			cap = 1
+		}
+		if t.used[name]+qty > cap {
+			out = append(out, ResourceShortfall{Name: name, Want: qty, Used: t.used[name], Capacity: cap})
+		}
+	}
+	return out
+}
+
+// Shortfalls — read-only: recursos que faltam pra `want` caber. Vazio = cabe.
+// FONTE ÚNICA do "está bloqueado por recurso?" compartilhada com TryAcquire e o
+// Explain — adicionar semântica nova de recurso aqui reflete nos dois.
+func (t *ResourceTracker) Shortfalls(want map[string]int) []ResourceShortfall {
+	if len(want) == 0 {
+		return nil
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.shortfallsLocked(want)
+}
+
 // TryAcquire tenta reservar todos os recursos atomicamente. All-or-nothing.
 func (t *ResourceTracker) TryAcquire(instanceID string, want map[string]int) bool {
 	if len(want) == 0 {
@@ -68,16 +106,14 @@ func (t *ResourceTracker) TryAcquire(instanceID string, want map[string]int) boo
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	// check
-	for name, qty := range want {
-		cap, ok := t.capacity[name]
-		if !ok {
-			cap = 1 // default
-			t.capacity[name] = cap
+	// cria recursos desconhecidos com capacidade default 1 (gating "no máx 1 por vez").
+	for name := range want {
+		if _, ok := t.capacity[name]; !ok {
+			t.capacity[name] = 1
 		}
-		if t.used[name]+qty > cap {
-			return false
-		}
+	}
+	if len(t.shortfallsLocked(want)) > 0 {
+		return false
 	}
 	// commit
 	if t.holders[instanceID] == nil {

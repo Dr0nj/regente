@@ -61,6 +61,15 @@ export const fetchInstanceEvents = isServerMode()
   ? serverInstance.fetchInstanceEvents
   : async (_id: string): Promise<serverInstance.InstanceEvent[]> => [];
 
+export type Explanation = serverInstance.Explanation;
+export type ExplainBlocker = serverInstance.ExplainBlocker;
+
+// Explain só existe no server mode (depende do gating do scheduler). No modo
+// local devolve null → a UI esconde o painel.
+export const fetchInstanceExplain = isServerMode()
+  ? serverInstance.fetchInstanceExplain
+  : async (_id: string): Promise<serverInstance.Explanation | null> => null;
+
 /* ── Scheduler API ── */
 
 export const runDaily = isServerMode()
