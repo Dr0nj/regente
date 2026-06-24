@@ -90,6 +90,14 @@ func (t *Tx) QueryRow(query string, args ...any) *sql.Row {
 	return t.Tx.QueryRow(rebind(query, t.dialect), args...)
 }
 
+// Prepare cria um prepared statement com o rebind por dialeto, atrelado a esta
+// transação. Use em loops quentes (ex.: materialização da daily em lote) para não
+// re-parsear o SQL por linha — o statement é compilado uma vez e reexecutado N×.
+// Sombreia o Prepare promovido do *sql.Tx (que NÃO faria o rebind p/ Postgres).
+func (t *Tx) Prepare(query string) (*sql.Stmt, error) {
+	return t.Tx.Prepare(rebind(query, t.dialect))
+}
+
 // ParseDialect normaliza a string da flag -db-driver.
 func ParseDialect(s string) (Dialect, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
@@ -456,7 +464,7 @@ var pgMigrations = []migration{
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
-// '' = novo · 'ack' = reconhecido · 'rerun' = job re-executado · 'set_ok' = set OK.
+// ” = novo · 'ack' = reconhecido · 'rerun' = job re-executado · 'set_ok' = set OK.
 // ALTER idêntico em SQLite e Postgres.
 func schemaV3() string {
 	return `ALTER TABLE alert_events ADD COLUMN resolution TEXT NOT NULL DEFAULT ''`

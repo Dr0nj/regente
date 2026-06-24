@@ -11,12 +11,14 @@ Núcleo / Control-M        █████████████████�
 Identidade visual / UI    ██████████████████████ 100%  ✅ logo, topbar, 13 temas, login vídeo, sidebars
 Alerting                  ██████████████████████ 100%  ✅ multi-canal + por-regra
 Serverless portátil       ██████████████████████ 100%  ✅ Knative/WASM/NATS/k8s ✓ · k8s e2e REAL ✓ · AWS/GCP (código + mock; conta paga fora de escopo)
-Enterprise readiness      ██████████████████████ 100%  ✅ RBAC/mTLS/SIEM/OTel/SLOs · SSO+carga REAIS · 10k-scale · zero-downtime · multi-env · quotas-HA · drift-reconciler
+Enterprise readiness      █████████████████████░  95%  🟡 RBAC/mTLS/SIEM/OTel/SLOs · SSO+carga REAIS · zero-downtime · multi-env · quotas-HA · drift · write-path 1M ✓ · read-path/UI 100k+ ⬜
+Escala Control-M (100k–1M) ████████░░░░░░░░░░░░░░░  35%  🟡 P1 write-path VALIDADO a 1M (17s) · P2 API paginada ⬜ · P3 UI ViewPoint ⬜
 Resiliência operacional   ██████████████████████ 100%  ✅ R1–R7 ✓ + chaos/HA validado em PG real
 ```
 
-> 🏁 **Marco (2026-06-23):** as 6 trilhas estruturais estão em **100%**. O que vem a seguir é
-> **profundidade de produto** (aprofundamento Control-M + diferenciais), não fundação.
+> 🏁 **Marco (2026-06-23):** 5 trilhas estruturais em **100%**; Enterprise em 95% (falta só o read-path/UI
+> de escala). Aberta a trilha **Escala Control-M (100k–1M/dia)** — o write-path já materializa **1M em 17s**
+> (P1 ✓); faltam a API paginada (P2) e a UI por ViewPoint (P3) para *operar* nesse volume.
 
 Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · 🔴 prioridade
 
@@ -112,8 +114,9 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ## 🏢 Enterprise readiness
 
 ```
-✅ Escala     → Postgres plugável + migrations ✔ · stateless (estado durável externo; só o líder agenda) ·
-                 **10k+ jobs/dia VALIDADO** (RunDaily materializa 10k instances idempotente — TestScale_RunDaily10k)
+🟡 Escala     → Postgres plugável + migrations ✔ · stateless (estado durável externo; só o líder agenda) ·
+                 **write-path escala a 1M/dia** (P1: materialização em lote — 1M em 17s; ver §Escala Control-M)
+                 ⬜ read-path (P2: API paginada/filtrada) · UI por ViewPoint server-driven (P3) p/ OPERAR 100k+
 ✅ HA         → leader election (advisory lock) ✔failover · hub distribuído (R5) ✔ · backup/DR (R6) ✔ ·
                  **quotas sobrevivem a failover** (RebuildResourcesFromRunning reconstrói o tracker do RUNNING)
 ✅ Segurança  → secrets · SSO/OIDC opt-in · RBAC/ACL (roles + por-folder) · mTLS opt-in (`-tls-client-ca`,
@@ -126,6 +129,28 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ✅ Qualidade  → E2E HTTP ✔ · chaos/HA ✔ (chaos-ha.sh + validado) · SLOs ✔ (docs/slos.md) · **carga REAL ✔**
                  (`hey` contra o binário: /readyz 50k reqs/100conc → 11.6k req/s · /metrics 7.9k req/s · 0 erros)
                  · **reconciler de drift** (`-drift-reconcile-sec`: líder alerta pelos canais do R7 ou auto-sync)
+```
+
+## 📈 Escala Control-M (100k–1M jobs/dia)
+
+> O Control-M roda rotineiramente 100k–1M+ jobs/dia; se a UI/engine engasga em 10k, nenhum
+> cliente grande adota. O estado durável (linhas) escala trivialmente — o que precisa escalar é
+> o **caminho de leitura/escrita**, que foi escrito assumindo "o dia inteiro cabe na memória e
+> numa tela". Three fases:
+
+```
+✅ P1 · WRITE PATH (materialização) — VALIDADO até 1M (2026-06-23)
+        Antes: O(N) round-trips (COUNT por def + INSERT autocommit por linha + evento por instance) → 8.8s/10k.
+        Agora: existência set-based (1 query) + gating em memória + INSERT em LOTE por transação com prepared
+        stmts (chunk de 5k, 1 commit/chunk). → 10k=182ms · 100k=1.7s · 1M=17.4s (~57k inst/s).
+⬜ P2 · READ PATH (API) — /api/instances hoje devolve o DIA INTEIRO num array, sem filtro/paginação; pra
+        não-admin roda CanReadFolder POR LINHA (O(N) queries). Fazer: filtro server-side (folder/status/SLA/
+        busca) + paginação por cursor + denormalizar team/folder na instance (+índice) + endpoint de contadores
+        agregados (GROUP BY, já barato no /metrics).
+⬜ P3 · UI por ViewPoint server-driven — o front hoje BAIXA todas as instances e joga no ReactFlow sem
+        virtualização. Fazer: Monitoring carrega só um working set filtrado/paginado (o ViewPoint do Control-M
+        já está no backlog) + virtualização do que renderiza + dashboard/contadores pro total. Ninguém renderiza
+        1M nós — o modelo é mostrar centenas, guardar milhões.
 ```
 
 ---
@@ -164,7 +189,10 @@ contra Postgres 16 real (Docker); restante pendente:
                     100 conc → 11.6k req/s, p99 34ms, 0 erros · /metrics 30k → 7.9k req/s, 0 erros
 ✅ Zero-downtime REAL (2026-06-23) → rolling-upgrade.sh contra PG real: nó novo sobe follower → READY →
                     drena o líder → novo assume em ~4s, /livez do novo NUNCA caiu (API disponível na troca)
-✅ Escala 10k (2026-06-23) → RunDaily materializa 10.000 instances (idempotente: 2ª daily cria 0) — TestScale_RunDaily10k
+✅ Escala write-path (2026-06-23) → RunDaily materializa em LOTE (existência set-based + insert por transação
+                    com prepared stmts): **10k em 182ms · 100k em 1.7s · 1M em 17.4s** (~57k inst/s, SQLite gravando
+                    instances+eventos). Antes (autocommit por linha + COUNT por def): 8.8s/10k (~15min p/ 1M).
+                    Idempotente — TestScale_RunDaily10k + TestScale_BenchmarkN (env REGENTE_SCALE_N)
 ✅ Quotas HA (2026-06-23) → RebuildResourcesFromRunning reconstrói o tracker a partir das instances RUNNING →
                     novo líder não fura a capacidade ao retomar o dispatch — TestQuotas_RebuildFromRunning
 ⬜ Secrets        → resolver github_token/webhook_secret via provider (env/-secrets-file)
@@ -201,10 +229,11 @@ contra Postgres 16 real (Docker); restante pendente:
 | ✅ | ~~Segurança — RBAC/ACL · mTLS · audit→SIEM~~ | **Feito (2026-06-23):** mTLS opt-in + RBAC travado + audit→SIEM (JSON/HTTP). |
 | ✅ | ~~Qualidade — E2E/carga/chaos/SLOs~~ | **Feito (2026-06-23):** E2E HTTP + smoke de carga + chaos-ha.sh + docs/slos.md. |
 | ✅ | ~~e2e em infra REAL — k8s · SSO · carga~~ | **Feito (2026-06-23):** k8s em cluster kind REAL · SSO ponta-a-ponta com Keycloak REAL · carga REAL (`hey`, 11.6k req/s). |
-| ✅ | ~~Enterprise — operação · escala · quotas · drift~~ | **Feito (2026-06-23):** zero-downtime validado (rolling-upgrade.sh) · 10k jobs/dia · quotas-HA · multi-ambiente · reconciler de drift. **Enterprise readiness = 100%.** |
-| **1** | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · ciclo de vida da daily | Backlog de paridade de maior impacto percebido. |
-| **2** | **Diferenciais** — Explain · Diff de Daily · Blast Radius · Dry Run | Onde o Regente passa o Control-M. |
-| 3 | **Fase Z** — case study + post LinkedIn | Último gate, com tudo sólido. |
+| ✅ | ~~Enterprise — operação · quotas · drift · zero-downtime~~ | **Feito (2026-06-23):** zero-downtime validado · quotas-HA · multi-ambiente · reconciler de drift. |
+| ✅ | ~~Escala P1 — write-path (materialização)~~ | **Feito (2026-06-23):** daily em lote → **1M em 17s** (~57k inst/s); era ~15min. TestScale_BenchmarkN. |
+| **1** | **Escala P2 — read-path** (API paginada/filtrada + team na instance + contadores) | Sem isso a UI não OPERA 100k+ (hoje baixa o dia inteiro). Pré-req do P3. |
+| **2** | **Escala P3 — UI por ViewPoint server-driven** + virtualização | Mostrar centenas, guardar milhões (como o Control-M). |
+| 3 | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · ciclo de vida da daily | Backlog de paridade de maior impacto. |
 
 ---
 

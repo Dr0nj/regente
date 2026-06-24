@@ -338,9 +338,29 @@ func short(sha string) string {
 	return sha
 }
 
+// pendingInstance — uma instance decidida (gating já passou) aguardando o INSERT
+// em lote. Materializar em duas fases (decidir tudo em memória, depois gravar numa
+// transação) é o que torna a daily escalável a 100k–1M (ver insertDailyBatch).
+type pendingInstance struct {
+	id, defID   string
+	scheduledAt time.Time
+	snapshot    string
+}
+
+// dailyBatchChunk — tamanho do lote por transação na materialização. Bound o WAL
+// do SQLite e dá progresso parcial (re-rodar é idempotente), sem perder o ganho
+// do commit único por lote.
+const dailyBatchChunk = 5000
+
 // RunDaily materializa instances WAITING para todas as defs habilitadas.
 // Idempotente: se já existe instance para (def, date), é pulada.
 // Cada instance carrega o SHA do commit que originou as defs (Opção B).
+//
+// Escala (P1): em vez de O(N) round-trips (COUNT por def + INSERT autocommit por
+// linha + evento por instance), faz UMA query set-based de existência, decide o
+// gating em memória e grava em LOTE por transação com prepared statements — 1
+// commit por chunk em vez de 1 fsync por linha. Leva a daily de ~1k inst/s para
+// dezenas/centenas de milhares por segundo (ver TestScale_RunDaily).
 func (s *Scheduler) RunDaily(date string) int {
 	_, span := telemetry.Span(context.Background(), "scheduler.daily", attribute.String("order_date", date))
 	defer span.End()
@@ -350,45 +370,110 @@ func (s *Scheduler) RunDaily(date string) int {
 	s.mu.Unlock()
 
 	commitSHA := s.currentCommitSHA()
-	created := 0
+
+	// 1) Existência em UMA query (set-based), não um COUNT(*) por def.
+	existing := make(map[string]struct{})
+	if rows, err := s.db.Query("SELECT definition_id FROM instances WHERE order_date=?", date); err == nil {
+		for rows.Next() {
+			var id string
+			if rows.Scan(&id) == nil {
+				existing[id] = struct{}{}
+			}
+		}
+		rows.Close()
+	} else {
+		log.Printf("[scheduler] daily %s: existência: %v", date, err)
+	}
+
+	// 2) Gating (schedule + calendars) decidido em MEMÓRIA — sem tocar o banco.
+	var t time.Time
+	if s.calStore != nil {
+		t, _ = time.Parse("2006-01-02", date)
+	}
+	batch := make([]pendingInstance, 0, len(defs))
 	for _, d := range defs {
 		if !d.Schedule.Enabled {
 			continue
 		}
+		if _, dup := existing[d.ID]; dup {
+			continue
+		}
 		// Recorrência estruturada + calendars include/exclude (Control-M-like).
 		// Sem calStore atachado, cai no gating só por frequência.
-		if s.calStore != nil {
-			t, _ := time.Parse("2006-01-02", date)
-			if !IsScheduledOn(d, t, s.calStore) {
-				continue
-			}
-		}
-		var exists int
-		_ = s.db.QueryRow("SELECT COUNT(*) FROM instances WHERE definition_id=? AND order_date=?", d.ID, date).Scan(&exists)
-		if exists > 0 {
+		if s.calStore != nil && !IsScheduledOn(d, t, s.calStore) {
 			continue
 		}
-		scheduledAt := computeScheduledAt(d, date)
-		id := d.ID + "-" + date
 		snap, _ := json.Marshal(d) // Fase A: congela a def no momento da ordem.
-		_, err := s.db.Exec(
-			`INSERT INTO instances(id, definition_id, order_date, status, scheduled_at, definition_commit_sha, definition_snapshot) VALUES(?,?,?,?,?,?,?)`,
-			id, d.ID, date, string(domain.StatusWaiting), scheduledAt, commitSHA, string(snap),
-		)
-		if err != nil {
-			log.Printf("[scheduler] insert %s: %v", id, err)
-			continue
-		}
-		msg := fmt.Sprintf("daily order_date=%s scheduled=%s", date, scheduledAt.Format(time.RFC3339))
-		if commitSHA != "" {
-			msg += " commit=" + short(commitSHA)
-		}
-		s.emitEvent(id, "ordered", "scheduler", msg)
-		created++
+		batch = append(batch, pendingInstance{
+			id: d.ID + "-" + date, defID: d.ID,
+			scheduledAt: computeScheduledAt(d, date), snapshot: string(snap),
+		})
 	}
+
+	// 3) Grava em lote (transação + prepared statements, chunked).
+	created := s.insertDailyBatch(date, commitSHA, batch)
+
 	_, _ = s.db.Exec("INSERT OR REPLACE INTO daily_runs(order_date, started_at) VALUES(?, CURRENT_TIMESTAMP)", date)
 	s.hub.BroadcastWeb("daily.started", map[string]interface{}{"orderDate": date, "created": created, "commitSha": commitSHA})
 	log.Printf("[scheduler] daily %s: %d instances created (commit=%s)", date, created, short(commitSHA))
+	return created
+}
+
+// insertDailyBatch grava as instances decididas em LOTE, uma transação por chunk
+// (dailyBatchChunk). Cada chunk é atômico; entre chunks, re-rodar é idempotente
+// (a existência set-based pula o que já entrou). Retorna o total inserido.
+func (s *Scheduler) insertDailyBatch(date, commitSHA string, batch []pendingInstance) int {
+	created := 0
+	for start := 0; start < len(batch); start += dailyBatchChunk {
+		end := min(start+dailyBatchChunk, len(batch))
+		created += s.insertDailyChunk(date, commitSHA, batch[start:end])
+	}
+	return created
+}
+
+// insertDailyChunk insere um chunk numa única transação com prepared statements
+// (instance + evento "ordered"). 1 commit por chunk — sem fsync por linha.
+func (s *Scheduler) insertDailyChunk(date, commitSHA string, chunk []pendingInstance) int {
+	if len(chunk) == 0 {
+		return 0
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		log.Printf("[scheduler] daily %s: begin tx: %v", date, err)
+		return 0
+	}
+	insStmt, err := tx.Prepare(`INSERT INTO instances(id, definition_id, order_date, status, scheduled_at, definition_commit_sha, definition_snapshot) VALUES(?,?,?,?,?,?,?)`)
+	if err != nil {
+		_ = tx.Rollback()
+		log.Printf("[scheduler] daily %s: prepare insert: %v", date, err)
+		return 0
+	}
+	defer insStmt.Close()
+	evtStmt, err := tx.Prepare(`INSERT INTO instance_events(instance_id, kind, actor, message) VALUES(?,?,?,?)`)
+	if err != nil {
+		_ = tx.Rollback()
+		log.Printf("[scheduler] daily %s: prepare event: %v", date, err)
+		return 0
+	}
+	defer evtStmt.Close()
+
+	created := 0
+	for _, p := range chunk {
+		if _, err := insStmt.Exec(p.id, p.defID, date, string(domain.StatusWaiting), p.scheduledAt, commitSHA, p.snapshot); err != nil {
+			log.Printf("[scheduler] insert %s: %v", p.id, err)
+			continue
+		}
+		msg := fmt.Sprintf("daily order_date=%s scheduled=%s", date, p.scheduledAt.Format(time.RFC3339))
+		if commitSHA != "" {
+			msg += " commit=" + short(commitSHA)
+		}
+		_, _ = evtStmt.Exec(p.id, "ordered", "scheduler", msg)
+		created++
+	}
+	if err := tx.Commit(); err != nil {
+		log.Printf("[scheduler] daily %s: commit: %v", date, err)
+		return 0
+	}
 	return created
 }
 

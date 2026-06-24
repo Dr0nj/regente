@@ -3,6 +3,8 @@ package scheduler
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -54,6 +56,40 @@ func TestScale_RunDaily10kDefinitions(t *testing.T) {
 	if again := s.RunDaily(date); again != 0 {
 		t.Fatalf("re-rodar a daily deveria criar 0 (idempotente), criou %d", again)
 	}
+}
+
+// Benchmark de escala parametrizável — prova a daily em volume Control-M (100k–1M).
+// Env-gated p/ não pesar a suíte: REGENTE_SCALE_N=1000000 go test -run TestScale_BenchmarkN -v
+func TestScale_BenchmarkN(t *testing.T) {
+	raw := os.Getenv("REGENTE_SCALE_N")
+	if raw == "" {
+		t.Skip("defina REGENTE_SCALE_N (ex.: 100000, 1000000) para o benchmark de escala")
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		t.Fatalf("REGENTE_SCALE_N inválido: %q", raw)
+	}
+	s := newTestScheduler(t)
+
+	defs := make([]domain.JobDefinition, n)
+	for i := 0; i < n; i++ {
+		defs[i] = domain.JobDefinition{
+			ID: fmt.Sprintf("job-%07d", i), JobType: "COMMAND",
+			Schedule: domain.Schedule{Enabled: true},
+		}
+	}
+	s.mu.Lock()
+	s.defs = defs
+	s.mu.Unlock()
+
+	const date = "2026-06-23"
+	start := time.Now()
+	created := s.RunDaily(date)
+	elapsed := time.Since(start)
+	if created != n {
+		t.Fatalf("esperava %d instances, veio %d", n, created)
+	}
+	t.Logf("ESCALA %d: %v (%.0f inst/s)", n, elapsed.Round(time.Millisecond), float64(n)/elapsed.Seconds())
 }
 
 // Quotas HA — o ResourceTracker é in-memory e vive no líder; após restart/failover
