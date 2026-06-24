@@ -78,6 +78,14 @@ export const fetchDailyDiff = isServerMode()
   ? serverInstance.fetchDailyDiff
   : async (_opts?: { from?: string; to?: string; folder?: string }): Promise<serverInstance.DailyDiff | null> => null;
 
+export type BlastRadius = serverInstance.BlastRadius;
+export type BlastNode = serverInstance.BlastNode;
+
+// Blast Radius só existe no server mode (percorre o grafo de deps do scheduler).
+export const fetchBlastRadius = isServerMode()
+  ? serverInstance.fetchBlastRadius
+  : async (_id: string): Promise<serverInstance.BlastRadius | null> => null;
+
 /* ── Scheduler API ── */
 
 export const runDaily = isServerMode()

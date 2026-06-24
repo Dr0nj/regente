@@ -116,7 +116,8 @@ func NewRouter(cfg Config) http.Handler {
 		r.With(s.requireWriterMW).Post("/instances/{id}/rerun", s.rerunInstance)
 		r.With(s.requireWriterMW).Post("/instances/{id}/set-ok", s.setOKInstance)
 		r.Get("/instances/{id}/events", s.listInstanceEvents)
-		r.Get("/instances/{id}/explain", s.explainInstance) // diferencial: "por que não rodou?"
+		r.Get("/instances/{id}/explain", s.explainInstance)  // diferencial: "por que não rodou?"
+		r.Get("/instances/{id}/blast-radius", s.blastRadius) // diferencial: impacto de cancelar/segurar
 
 		r.Get("/daily/diff", s.diffDaily) // diferencial: o que mudou entre duas diárias
 

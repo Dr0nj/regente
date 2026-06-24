@@ -441,6 +441,19 @@ func (s *server) explainInstance(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, ex)
 }
 
+// blastRadius — Diferencial "se eu cancelar/segurar este job AGORA, qual o
+// impacto?": jobs downstream que deixam de rodar (cascata), SLAs em risco e times
+// afetados. Percorre o grafo de deps a partir do alvo, visitando só o raio.
+func (s *server) blastRadius(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	br, err := s.cfg.Scheduler.BlastRadius(id)
+	if err != nil {
+		http.Error(w, "instance não encontrada", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, 200, br)
+}
+
 func (s *server) listInstanceEvents(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	rows, err := s.cfg.DB.Query(

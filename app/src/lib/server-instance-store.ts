@@ -287,6 +287,24 @@ export interface DailyDiff {
   truncated: boolean;
 }
 
+/* ── Blast Radius ("se eu cancelar/segurar este job agora?") ── */
+
+export interface BlastNode { defId: string; label?: string; team?: string; status?: string; hasSla?: boolean; depth: number }
+export interface BlastRadius {
+  instanceId: string;
+  definitionId: string;
+  status: string;
+  orderDate: string;
+  counts: { downstream: number; slaAtRisk: number; teamsAffected: number; maxDepth: number };
+  downstream: BlastNode[];
+  slaAtRisk: BlastNode[];
+  truncated: boolean;
+}
+
+export async function fetchBlastRadius(id: string): Promise<BlastRadius> {
+  return api<BlastRadius>(`/api/instances/${encodeURIComponent(id)}/blast-radius`);
+}
+
 export async function fetchDailyDiff(opts?: { from?: string; to?: string; folder?: string }): Promise<DailyDiff> {
   const qs = new URLSearchParams();
   if (opts?.from) qs.set("from", opts.from);

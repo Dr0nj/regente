@@ -6,6 +6,8 @@ import {
   fetchInstanceExplain,
   type Explanation,
   type ExplainBlocker,
+  fetchBlastRadius,
+  type BlastRadius,
 } from "@/lib/runtime-bridge";
 import { useResizablePanel, ResizeHandle } from "./resizable";
 
@@ -206,6 +208,9 @@ export default function InstanceDetailsDrawer({
       <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px", fontSize: 11 }}>
         {(status === "WAITING" || status === "CANCELLED") && (
           <ExplainPanel instanceId={instance.id} status={status} />
+        )}
+        {(status === "WAITING" || status === "HOLD" || status === "RUNNING") && (
+          <BlastPanel instanceId={instance.id} />
         )}
 
         <Section title="Timeline">
@@ -467,6 +472,82 @@ function ExplainPanel({ instanceId, status }: { instanceId: string; status: JobI
               </div>
             ))}
           </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Blast Radius ("se eu cancelar/segurar este job agora?") ── */
+
+function BlastPanel({ instanceId }: { instanceId: string }) {
+  const [br, setBr] = useState<BlastRadius | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [opened, setOpened] = useState(false);
+
+  const load = () => {
+    setOpened(true);
+    setLoading(true);
+    fetchBlastRadius(instanceId)
+      .then((b) => setBr(b))
+      .catch(() => setBr(null))
+      .finally(() => setLoading(false));
+  };
+
+  if (!opened) {
+    return (
+      <div style={{ marginBottom: 14 }}>
+        <button
+          onClick={load}
+          style={{
+            width: "100%", padding: "7px 10px", fontSize: 10, fontFamily: "var(--v2-font-mono)",
+            letterSpacing: "0.05em", textTransform: "uppercase", cursor: "pointer",
+            border: "1px solid var(--v2-status-failed)", background: "rgba(239,68,68,0.06)",
+            color: "var(--v2-status-failed)", borderRadius: 3, fontWeight: 600,
+          }}
+        >
+          ⚠ Impacto se cancelar / segurar
+        </button>
+      </div>
+    );
+  }
+
+  const c = br?.counts;
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>
+        Blast Radius
+      </div>
+      <div style={{ padding: "8px 10px", background: "var(--v2-bg-deep)", border: "1px solid var(--v2-status-failed)", borderRadius: 3 }}>
+        {loading && <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>calculando impacto…</span>}
+        {!loading && !br && <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>indisponível</span>}
+        {!loading && br && (
+          <>
+            <div style={{ fontSize: 11, color: "var(--v2-text-primary)", lineHeight: 1.5 }}>
+              Cancelar/segurar este job impede <b style={{ color: "var(--v2-status-failed)" }}>{c!.downstream}</b> job(s) downstream
+              {c!.slaAtRisk > 0 && <> · <b style={{ color: "var(--v2-status-waiting)" }}>{c!.slaAtRisk}</b> SLA(s) em risco</>}
+              {c!.teamsAffected > 0 && <> · {c!.teamsAffected} folder(s)</>}
+              {c!.maxDepth > 0 && <> · cascata até {c!.maxDepth} nível(is)</>}.
+            </div>
+            {br.downstream.length > 0 && (
+              <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 3, maxHeight: 180, overflowY: "auto" }}>
+                {br.downstream.map((n) => (
+                  <div key={n.defId} style={{ display: "flex", gap: 7, alignItems: "baseline", fontSize: 10, fontFamily: "var(--v2-font-mono)" }}>
+                    <span style={{ color: "var(--v2-text-muted)", width: 16, textAlign: "right" }}>{n.depth}·</span>
+                    <span style={{ color: "var(--v2-text-primary)" }}>{n.defId}</span>
+                    {n.hasSla && <span style={{ color: "var(--v2-status-waiting)", fontSize: 8, border: "1px solid var(--v2-status-waiting)", borderRadius: 2, padding: "0 3px" }}>SLA</span>}
+                    {n.team && <span style={{ color: "var(--v2-accent-brand)", marginLeft: "auto" }}>{n.team}</span>}
+                  </div>
+                ))}
+                {br.truncated && <span style={{ color: "var(--v2-text-muted)", fontSize: 9 }}>… lista truncada (contadores exatos).</span>}
+              </div>
+            )}
+            {br.downstream.length === 0 && (
+              <div style={{ marginTop: 6, fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-status-ok)" }}>
+                Nenhum downstream impactado — seguro cancelar.
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
