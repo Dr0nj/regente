@@ -18,7 +18,7 @@ Resiliência operacional    █████████████████�
 
 ── Próximas fases ──────────────────────────────────────────────────────────
 Aprofundamento Control-M   ██░░░░░░░░░░░░░░░░░░░   8%  🟡 daily lifecycle ✅ · falta Actions/On-Do · variáveis · FILE_WATCH · calendários
-Diferenciais               ███░░░░░░░░░░░░░░░░░░  12%  🟡 Explain ✅ · falta Diff de Daily · Blast Radius · Dry Run
+Diferenciais               █████░░░░░░░░░░░░░░░░  25%  🟡 Explain ✅ · Diff de Daily ✅ · falta Blast Radius · Dry Run
 Refinamento UI             ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ grid wrap jobs soltos · minimap revisto · LEGACY_CAP virtualizado
 Fase Z — divulgação        ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ case study + post LinkedIn
 ```
@@ -224,6 +224,9 @@ contra Postgres 16 real (Docker); restante pendente:
                     Idempotente — TestScale_RunDaily10k + TestScale_BenchmarkN (env REGENTE_SCALE_N)
 ✅ Quotas HA (2026-06-23) → RebuildResourcesFromRunning reconstrói o tracker a partir das instances RUNNING →
                     novo líder não fura a capacidade ao retomar o dispatch — TestQuotas_RebuildFromRunning
+✅ Diff de Daily (2026-06-24) → server REAL: 2 dailies semeadas (commits aaaaaaa→bbbbbbb) → GET /api/daily/diff
+                    devolveu added=[new] · removed=[gone] · unchanged=[keep] · changed=[sched (schedule
+                    06:00→07:00), dep (upstream x→y)] com diff por-campo exato; counts exatos. 4 testes
 ✅ Explain "por que não rodou" (2026-06-24) → server REAL: job (workspace def) esperando condition
                     'FECHAMENTO_OK' + recurso db (quer 2, cap 1) → GET /explain listou os 2 bloqueios
                     (WAIT_CONDITION + WAIT_RESOURCE, runnable=false); setou a condition + subiu a capacidade
@@ -272,7 +275,8 @@ contra Postgres 16 real (Docker); restante pendente:
 | ✅ | ~~Escala P3 — UI por ViewPoint server-driven~~ | **Feito (2026-06-24):** ScaleMonitor (dashboard + folders + lista virtualizada) **validado AO VIVO @1M**; folder em ~39ms, DOM 36.777→932. |
 | ✅ | ~~Ciclo de vida da daily (carry-over / Keep Active)~~ | **Feito (2026-06-24):** RUNNING/HELD persistem; NOTOK +1 / keepActive N; order_date avança; migration v5; validado ao vivo. |
 | ✅ | ~~Diferencial: Explain ("por que não rodou?")~~ | **Feito (2026-06-24):** gating como fonte única (tick+Explain), read-only, 21 testes, validado ao vivo. Substrato do MCP `explain_job()`. |
-| **1** | **Diferenciais (cont.)** — Diff de Daily · Blast Radius · Dry Run | Baratos (dados já existem: commit_sha+snapshot, grafo de deps). Onde passa o Control-M. |
+| ✅ | ~~Diferencial: Diff de Daily~~ | **Feito (2026-06-24):** compara 2 order_date via snapshots congelados; diff por-campo; fast-path same-commit; 4 testes; validado ao vivo. |
+| **1** | **Diferenciais (cont.)** — Blast Radius · Dry Run | Baratos (dados já existem: grafo de deps + snapshot). Onde passa o Control-M. |
 | **2** | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · FILE_WATCH · calendários | Backlog de paridade de maior impacto. |
 | 3 | **Camada agent-native (MCP)** — expor Explain/Diff/Summary como tools | IA-native sobre verdade determinística; depois dos diferenciais existirem. |
 | 4 | **Fase Z** — case study + post LinkedIn | Último gate, com tudo sólido. |
@@ -371,9 +375,12 @@ contra Postgres 16 real (Docker); restante pendente:
 ⬜ Root Cause Analysis automático — sugere causas por histórico
    ("80% das falhas ocorrem quando o job X roda ao mesmo tempo")
 ⬜ Performance forecasting com gráficos no Monitoring
-⬜ Diff de Daily — comparar a daily de HOJE vs ONTEM (ou vs qualquer order_date): jobs adicionados (+) /
-   removidos (-), schedule mudou, dependência mudou, mudança de def. Aproveita o DNA Git-native (cada
-   instância carrega o commit_sha + snapshot da def) → diff EXATO e barato. Forte diferencial.
+✅ Diff de Daily — ENTREGUE (2026-06-24): compara dois order_date (default hoje vs diária anterior, ou
+   ?from&to&folder): adicionados (+) / removidos (-) / ALTERADOS com diff POR-CAMPO (schedule, deps, recursos,
+   conditions, params, SLA…). Aproveita o DNA Git-native (instance carrega commit_sha + snapshot congelado) →
+   EXATO e barato, sem reprocessar Git. Fast-path: commitA==commitB ⟹ nenhum comum mudou (pula a comparação).
+   Contadores exatos, listas capadas (truncated). `GET /api/daily/diff` + `DailyDiffModal` (botão "Diff" na
+   topbar). 4 testes + validado ao vivo. (`DiffDaily` é candidato natural a tool MCP `diff_daily()`.)
 ⬜ Blast Radius — "se eu CANCELAR/segurar este job AGORA, qual o impacto?": N jobs downstream deixarão de
    executar · X SLAs serão violados · tempo estimado de atraso. Análise de impacto de uma AÇÃO (cancel/hold),
    não só do grafo estático. Ex.: cancelar PIX_ENVIO → "37 jobs não executam · 3 SLAs violados · atraso ~2h15".
