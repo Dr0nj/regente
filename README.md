@@ -67,6 +67,11 @@ daily ou via Force Order manual.
   no alvo), com stream de saída.
 - 🟢 **Daily imutável** — instances congeladas no momento da ordem (mudança
   publicada no dia só entra na próxima daily ou via Force).
+- 🟢 **Ciclo de vida da daily (carry-over Control-M)** — na virada, a ordem que
+  ainda está aberta **não some**: RUNNING e HELD atravessam sempre; NOTOK
+  não-tratado persiste +1 diária (ou N via `schedule.keepActive`); OK/CANCELLED
+  encerram. A ordem **avança o order_date** mantendo id/status/histórico (não
+  duplica) e exibe a origem (badge ↩). Idempotente.
 - 🟢 **Retry de execution** — re-tentativa automática em falha (respeita `retries`).
 - 🟢 **Observabilidade** — `/metrics` em formato Prometheus.
 - 🟢 **Alerting (Fase 8)** — regras configuráveis avaliadas ao fim de cada
@@ -460,9 +465,12 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 - [ ] **Job FILE_WATCH**: espera a chegada de arquivo (path/glob, polling/evento, tamanho estável) antes
   de concluir e disparar o sucessor. Novo jobType + capability.
 - [ ] **Forecast**: testar a previsão de ≥ 1 semana à frente (quais jobs rodam por dia) contra o gating real.
-- [ ] **Ciclo de vida na daily (Keep Active / carry-over)**: **RUNNING na virada não some** (segue na daily
-  pra tracking até terminar); `keepActive=N` (job que não rodou OK sobrevive N diárias); **default** NOTOK não
-  tratado persiste +1 diária; **HOLD** atravessa as diárias enquanto em hold.
+- [x] **Ciclo de vida na daily (Keep Active / carry-over)** ✅ (2026-06-24): **RUNNING na virada não some**
+  (segue na daily pra tracking até terminar); `keepActive=N` (job que não rodou OK sobrevive N diárias);
+  **default** NOTOK não tratado persiste +1 diária; **HOLD** atravessa as diárias enquanto em hold. A ordem
+  AVANÇA o order_date (mesmo id/status/snapshot/eventos) e SUBSTITUI a fresca do dia (sem duplicar); migration
+  v5 (`carry_budget`/`carried_from`/`carried_at`); badge ↩ no ViewPoint; editável no Design (`keepActive`).
+  Idempotente. 11 testes + validado ao vivo no binário (40 ontem → 15 migraram, 25 ficaram, 1 carry-over).
 - [ ] **CONFIRM**: job que precisa de ação manual (Confirm) para sair do estado e prosseguir (semântica Control-M).
 - [ ] **Job tipo DATABASE**: plugin com conectores (JDBC e outros); corpo = procedure ou SQL numa telinha
   PL/SQL amigável (editor). Novo jobType + capability.

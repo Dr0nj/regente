@@ -69,6 +69,11 @@ export interface JobSchedule {
   cyclic?: boolean;
   intervalMin?: number;
 
+  /** Ciclo de vida da daily (Control-M Keep Active): quantas diárias EXTRA o job
+   *  sobrevive se NÃO terminou OK (carry-over). 0/ausente = DEFAULT (um NOTOK
+   *  não-tratado ainda persiste +1 diária). RUNNING/HELD persistem sempre. */
+  keepActive?: number;
+
   /* ── Em quais dias (avaliado pela daily) ── */
   frequency?: ScheduleFrequency;
   /** weekly: ["mon","tue",...] */
@@ -170,6 +175,9 @@ export interface JobInstance {
   output?: Record<string, unknown>;
   /** Whether this was a manual (Run Now/Force) trigger */
   manual: boolean;
+  /** Ciclo de vida da daily: order_date de origem se a instância foi carregada
+   *  da diária anterior (carry-over Control-M); ausente se nasceu hoje. */
+  carriedFrom?: string;
   /** Copied from definition for execution */
   actionConfig?: Record<string, unknown>;
   retries: number;

@@ -142,6 +142,21 @@ export default function ScheduleEditor({ value, onChange }: Props) {
         </label>
       </Group>
 
+      {/* Ciclo de vida na diária — carry-over Control-M (Keep Active) */}
+      <Group label="Ciclo de vida na diária">
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)" }}>
+          Keep Active — sobrevive
+          <input type="number" min={0} value={s.keepActive ?? 0}
+            onChange={(e) => patch({ keepActive: Math.max(0, Number(e.target.value) || 0) })}
+            style={{ width: 56, ...inputBase }} />
+          diárias extras se não terminar OK
+        </label>
+        <Hint>
+          RUNNING e HELD atravessam a virada sempre. 0 = padrão (um NOTOK não-tratado já
+          persiste +1 diária). N &gt; 0 mantém o job por N diárias mesmo sem rodar/terminar OK.
+        </Hint>
+      </Group>
+
       <SummaryLine schedule={s} />
     </div>
   );
@@ -159,6 +174,7 @@ function SummaryLine({ schedule: s }: { schedule: JobSchedule }) {
   if ((s.monthsOfYear ?? []).length) parts.push(`em ${(s.monthsOfYear ?? []).map((m) => MONTHS[m - 1]).join(", ")}`);
   if (s.runAt) parts.push(`às ${s.runAt}`);
   if (s.cyclic && s.intervalMin) parts.push(`a cada ${s.intervalMin}min`);
+  if (s.keepActive && s.keepActive > 0) parts.push(`keep active ${s.keepActive}d`);
   return (
     <div style={{ fontSize: 11, color: "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)", background: "var(--v2-accent-faint)", border: "1px solid var(--v2-accent-dark)", borderRadius: 4, padding: "6px 8px" }}>
       {parts.join(" · ")}

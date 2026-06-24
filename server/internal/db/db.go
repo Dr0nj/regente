@@ -456,6 +456,7 @@ var sqliteMigrations = []migration{
 	{version: 2, sql: schemaV2(sqliteID, "DATETIME")},
 	{version: 3, sql: schemaV3()},
 	{version: 4, sql: schemaV4()},
+	{version: 5, sql: schemaV5("DATETIME")},
 }
 
 var pgMigrations = []migration{
@@ -463,6 +464,7 @@ var pgMigrations = []migration{
 	{version: 2, sql: schemaV2(pgID, "TIMESTAMPTZ")},
 	{version: 3, sql: schemaV3()},
 	{version: 4, sql: schemaV4()},
+	{version: 5, sql: schemaV5("TIMESTAMPTZ")},
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
@@ -482,4 +484,22 @@ func schemaV4() string {
 	return `ALTER TABLE instances ADD COLUMN team TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_instances_team ON instances(order_date, team);
 CREATE INDEX IF NOT EXISTS idx_instances_page ON instances(order_date, scheduled_at, id)`
+}
+
+// schemaV5 — ciclo de vida da daily (carry-over entre diárias, Control-M-like).
+// Uma instance que sobrevive à virada AVANÇA seu order_date para o novo dia (mesmo
+// ID/status/started_at/snapshot/eventos), em vez de ser duplicada — ver
+// scheduler.carryOver. As 3 colunas guardam a contabilidade do carry:
+//   - carry_budget: diárias EXTRA restantes p/ um job não-OK (NOTOK/keepActive).
+//     -1 = ainda não avaliado (lazy-init na 1ª virada); 0 = esgotado (não carrega).
+//     RUNNING/HELD carregam incondicionalmente e não consomem orçamento.
+//   - carried_from: order_date de ORIGEM (1ª diária da ordem), p/ exibir "desde X".
+//   - carried_at: instante da última virada; RE-ARMA o watchdog de stuck-running
+//     (um RUNNING carregado com started_at antigo não é reapado no instante em que
+//     aparece no novo dia — staleness medido de max(started_at, carried_at)).
+// ALTER idêntico em SQLite e Postgres; instances antigas ficam com defaults.
+func schemaV5(ts string) string {
+	return `ALTER TABLE instances ADD COLUMN carry_budget INTEGER NOT NULL DEFAULT -1;
+ALTER TABLE instances ADD COLUMN carried_from TEXT NOT NULL DEFAULT '';
+ALTER TABLE instances ADD COLUMN carried_at ` + ts
 }

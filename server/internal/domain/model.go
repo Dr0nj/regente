@@ -47,6 +47,13 @@ type Schedule struct {
 	Cyclic      bool   `yaml:"cyclic,omitempty" json:"cyclic,omitempty"`
 	IntervalMin int    `yaml:"intervalMin,omitempty" json:"intervalMin,omitempty"`
 
+	// KeepActive (Control-M-like) — quantas diárias EXTRA o job sobrevive se NÃO
+	// terminou OK (carry-over entre diárias). 0 = comportamento DEFAULT (um NOTOK
+	// não-tratado ainda persiste +1 diária; um WAITING que nunca rodou NÃO persiste).
+	// >0 = sobrevive N diárias mesmo sem rodar/terminar OK. RUNNING e HELD persistem
+	// sempre, independente deste valor (ver scheduler.carryOver).
+	KeepActive int `yaml:"keepActive,omitempty" json:"keepActive,omitempty"`
+
 	// Recorrência estruturada (Control-M-like).
 	Frequency       string   `yaml:"frequency,omitempty" json:"frequency,omitempty"`
 	DaysOfWeek      []string `yaml:"daysOfWeek,omitempty" json:"daysOfWeek,omitempty"`

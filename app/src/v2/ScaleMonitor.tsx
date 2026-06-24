@@ -29,6 +29,7 @@ interface PageInstance {
   scheduledAt?: string;
   startedAt?: string;
   finishedAt?: string;
+  carriedFrom?: string;
 }
 interface PageResp {
   items: PageInstance[];
@@ -367,6 +368,14 @@ function VirtualJobList({
               </span>
               <span style={{ flex: 1, color: "var(--v2-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--v2-font-mono)" }}>
                 {j.definitionId}
+                {j.carriedFrom && (
+                  <span
+                    title={`Carregado da diária de ${j.carriedFrom} (carry-over)`}
+                    style={{ marginLeft: 7, fontSize: 9, color: "var(--v2-status-waiting)", fontFamily: "var(--v2-font-mono)" }}
+                  >
+                    ↩ {j.carriedFrom}
+                  </span>
+                )}
               </span>
               <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", flexShrink: 0 }}>
                 {j.scheduledAt ? new Date(j.scheduledAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : ""}

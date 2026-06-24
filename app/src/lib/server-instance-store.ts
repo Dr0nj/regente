@@ -26,6 +26,7 @@ interface ServerInstance {
   exitCode?: number;
   output?: string;
   forced?: boolean;
+  carriedFrom?: string;
 }
 
 function parseTime(s?: string): number | undefined {
@@ -62,6 +63,7 @@ function toWeb(s: ServerInstance): JobInstance {
     durationMs: started && completed ? completed - started : undefined,
     attempts: 0,
     manual: !!s.forced,
+    carriedFrom: s.carriedFrom || undefined,
     output: {
       text: s.output ?? "",
       exitCode: s.exitCode ?? 0,

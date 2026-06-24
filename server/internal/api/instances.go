@@ -25,11 +25,13 @@ type instanceRow struct {
 	ExitCode     int        `json:"exitCode,omitempty"`
 	Output       string     `json:"output,omitempty"`
 	Forced       bool       `json:"forced,omitempty"`
+	CarriedFrom  string     `json:"carriedFrom,omitempty"` // ciclo de vida da daily: dia de origem se foi carregada da diária anterior.
 }
 
 const instanceCols = `id, definition_id, COALESCE(team,''), order_date, status, scheduled_at,
 	started_at, finished_at,
-	COALESCE(agent_id,''), COALESCE(exit_code,0), COALESCE(output,''), COALESCE(forced,0)`
+	COALESCE(agent_id,''), COALESCE(exit_code,0), COALESCE(output,''), COALESCE(forced,0),
+	COALESCE(carried_from,'')`
 
 func scanInstances(rows *sql.Rows) []instanceRow {
 	out := []instanceRow{}
@@ -41,6 +43,7 @@ func scanInstances(rows *sql.Rows) []instanceRow {
 			&ir.ID, &ir.DefinitionID, &ir.Team, &ir.OrderDate, &ir.Status, &ir.ScheduledAt,
 			&startedAt, &finishedAt,
 			&ir.AgentID, &ir.ExitCode, &ir.Output, &forcedInt,
+			&ir.CarriedFrom,
 		); err != nil {
 			continue
 		}

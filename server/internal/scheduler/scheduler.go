@@ -352,6 +352,173 @@ type pendingInstance struct {
 // do commit único por lote.
 const dailyBatchChunk = 5000
 
+// carryPlan — decisão de carry-over de UMA instance na virada da daily.
+type carryPlan struct {
+	carry     bool
+	newBudget int    // orçamento a gravar na instance carregada (-1 = inalterado)
+	reason    string // p/ o evento "carried" e testes
+}
+
+// keepActiveDays — quantas diárias EXTRA um job sobrevive sem terminar OK.
+// notokDefault=true (caso NOTOK) → baseline 1 mesmo sem keepActive (DEFAULT +1).
+// notokDefault=false (caso WAITING nunca-rodou) → só sobrevive se keepActive>0.
+func keepActiveDays(def domain.JobDefinition, notokDefault bool) int {
+	if def.Schedule.KeepActive > 0 {
+		return def.Schedule.KeepActive
+	}
+	if notokDefault {
+		return 1
+	}
+	return 0
+}
+
+// carryDecision — REGRA pura do ciclo de vida da daily (Control-M-like). Decide se
+// uma instance no estado `status` (com `budget` atual e a def `def`) sobrevive à
+// virada e qual orçamento ela leva pro novo dia. Isolada p/ ser testável sem DB.
+//
+//	RUNNING → carrega sempre (rastrear até terminar); orçamento intacto (-1 fica -1).
+//	HELD    → carrega sempre enquanto em hold; orçamento intacto.
+//	NOTOK   → carrega se ainda há orçamento; lazy-init = keepActive ou 1 (DEFAULT).
+//	WAITING → (nunca rodou) só carrega se keepActive>0; lazy-init = keepActive.
+//	OK/CANCELLED/outros → não carrega (encerrado).
+func carryDecision(status string, budget int, def domain.JobDefinition) carryPlan {
+	switch status {
+	case string(domain.StatusRunning):
+		return carryPlan{carry: true, newBudget: budget, reason: "running"}
+	case string(domain.StatusHeld):
+		return carryPlan{carry: true, newBudget: budget, reason: "held"}
+	case string(domain.StatusNotOK):
+		b := budget
+		if b < 0 { // 1ª virada como NOTOK: inicializa o orçamento
+			b = keepActiveDays(def, true)
+		}
+		if b <= 0 {
+			return carryPlan{carry: false, newBudget: 0, reason: "notok-exhausted"}
+		}
+		return carryPlan{carry: true, newBudget: b - 1, reason: "notok"}
+	case string(domain.StatusWaiting):
+		b := budget
+		if b < 0 {
+			b = keepActiveDays(def, false)
+		}
+		if b <= 0 {
+			return carryPlan{carry: false, newBudget: 0, reason: "waiting-no-keepactive"}
+		}
+		return carryPlan{carry: true, newBudget: b - 1, reason: "waiting-keepactive"}
+	}
+	return carryPlan{carry: false, newBudget: budget, reason: "terminal"}
+}
+
+// carriedInstance — uma instance decidida a carregar pro novo dia.
+type carriedInstance struct {
+	id     string
+	from   string // order_date de origem (preservado entre múltiplas viradas)
+	budget int
+	reason string
+}
+
+// carryOver — ciclo de vida da daily (Control-M New Day). ANTES de materializar a
+// daily de `date`, traz da diária ANTERIOR (o order_date mais recente < date) as
+// instances que sobrevivem à virada: RUNNING/HELD persistem sempre; NOTOK não-tratado
+// e WAITING/keepActive persistem enquanto têm orçamento (carry_budget). A instance
+// carregada AVANÇA seu order_date para `date` mantendo ID/status/started_at/snapshot/
+// eventos — assim o tick, a API paginada e o RBAC (todos filtram order_date) a enxergam
+// no novo dia sem nenhuma mudança, e o check de existência do RunDaily NÃO cria uma
+// instance fresca duplicada para a mesma definition.
+//
+// Idempotente: instances já em `date` não estão na diária anterior, então re-rodar
+// (botão manual + auto) não move nada duas vezes nem reconsome orçamento.
+func (s *Scheduler) carryOver(date string) int {
+	var prev string
+	if err := s.db.QueryRow(
+		`SELECT COALESCE(MAX(order_date),'') FROM instances WHERE order_date < ?`, date,
+	).Scan(&prev); err != nil || prev == "" {
+		return 0
+	}
+
+	rows, err := s.db.Query(
+		`SELECT id, definition_id, status, COALESCE(carry_budget,-1), COALESCE(carried_from,''),
+		        COALESCE(definition_snapshot,'')
+		 FROM instances
+		 WHERE order_date=? AND status NOT IN (?,?)`,
+		prev, string(domain.StatusOK), string(domain.StatusCancelled),
+	)
+	if err != nil {
+		log.Printf("[scheduler] carry-over %s: query: %v", date, err)
+		return 0
+	}
+
+	s.mu.Lock()
+	live := make(map[string]domain.JobDefinition, len(s.defs))
+	for _, d := range s.defs {
+		live[d.ID] = d
+	}
+	s.mu.Unlock()
+
+	var plan []carriedInstance
+	for rows.Next() {
+		var id, defID, status, from, snap string
+		var budget int
+		if rows.Scan(&id, &defID, &status, &budget, &from, &snap) != nil {
+			continue
+		}
+		def, _ := defForInstance(instRow{DefID: defID, Snapshot: snap}, live)
+		d := carryDecision(status, budget, def)
+		if !d.carry {
+			continue
+		}
+		origin := from
+		if origin == "" { // 1ª virada: a origem da ordem é a diária de onde ela vem
+			origin = prev
+		}
+		plan = append(plan, carriedInstance{id: id, from: origin, budget: d.newBudget, reason: d.reason})
+	}
+	rows.Close()
+
+	if len(plan) == 0 {
+		return 0
+	}
+	if err := s.applyCarry(date, plan); err != nil {
+		log.Printf("[scheduler] carry-over %s: apply: %v", date, err)
+		return 0
+	}
+	log.Printf("[scheduler] carry-over %s: %d instances trazidas da diária %s", date, len(plan), prev)
+	return len(plan)
+}
+
+// applyCarry grava as viradas numa transação: avança order_date, atualiza o
+// orçamento/origem, re-arma o watchdog (carried_at) e registra o evento.
+func (s *Scheduler) applyCarry(date string, plan []carriedInstance) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	upd, err := tx.Prepare(
+		`UPDATE instances SET order_date=?, carry_budget=?, carried_from=?, carried_at=CURRENT_TIMESTAMP WHERE id=?`,
+	)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	defer upd.Close()
+	evt, err := tx.Prepare(`INSERT INTO instance_events(instance_id, kind, actor, message) VALUES(?,?,?,?)`)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	defer evt.Close()
+
+	for _, c := range plan {
+		if _, err := upd.Exec(date, c.budget, c.from, c.id); err != nil {
+			log.Printf("[scheduler] carry update %s: %v", c.id, err)
+			continue
+		}
+		_, _ = evt.Exec(c.id, "carried", "scheduler",
+			fmt.Sprintf("carry-over para %s (%s, desde %s, budget=%d)", date, c.reason, c.from, c.budget))
+	}
+	return tx.Commit()
+}
+
 // RunDaily materializa instances WAITING para todas as defs habilitadas.
 // Idempotente: se já existe instance para (def, date), é pulada.
 // Cada instance carrega o SHA do commit que originou as defs (Opção B).
@@ -370,6 +537,13 @@ func (s *Scheduler) RunDaily(date string) int {
 	s.mu.Unlock()
 
 	commitSHA := s.currentCommitSHA()
+
+	// 0) Ciclo de vida da daily (Control-M New Day): traz da diária anterior as
+	// instances que sobrevivem à virada (RUNNING/HELD/NOTOK-não-tratado/keepActive)
+	// AVANÇANDO seu order_date para hoje. Roda ANTES da existência: assim uma ordem
+	// carregada conta como "já existe" para sua def e o passo 2 NÃO cria uma fresca
+	// duplicada. Idempotente (re-rodar não re-move).
+	carried := s.carryOver(date)
 
 	// 1) Existência em UMA query (set-based), não um COUNT(*) por def.
 	existing := make(map[string]struct{})
@@ -414,8 +588,8 @@ func (s *Scheduler) RunDaily(date string) int {
 	created := s.insertDailyBatch(date, commitSHA, batch)
 
 	_, _ = s.db.Exec("INSERT OR REPLACE INTO daily_runs(order_date, started_at) VALUES(?, CURRENT_TIMESTAMP)", date)
-	s.hub.BroadcastWeb("daily.started", map[string]interface{}{"orderDate": date, "created": created, "commitSha": commitSHA})
-	log.Printf("[scheduler] daily %s: %d instances created (commit=%s)", date, created, short(commitSHA))
+	s.hub.BroadcastWeb("daily.started", map[string]interface{}{"orderDate": date, "created": created, "carried": carried, "commitSha": commitSHA})
+	log.Printf("[scheduler] daily %s: %d instances created, %d carried (commit=%s)", date, created, carried, short(commitSHA))
 	return created
 }
 
@@ -494,6 +668,7 @@ type instRow struct {
 	ID, DefID, OrderDate, Status string
 	ScheduledAt                  time.Time
 	StartedAt                    sql.NullTime
+	CarriedAt                    sql.NullTime // virada da daily: re-arma o watchdog de stuck-running.
 	Forced                       bool
 	Snapshot                     string // Fase A: def congelada na ordem (JSON); "" em instances legadas.
 }
@@ -548,7 +723,7 @@ func (s *Scheduler) tickOnce() {
 	// evalDeps precisa enxergar pais OK/NOTOK para decidir corretamente.
 	rows, err := s.db.Query(
 		`SELECT id, definition_id, order_date, status, scheduled_at,
-		        started_at, COALESCE(forced,0), COALESCE(definition_snapshot,'')
+		        started_at, carried_at, COALESCE(forced,0), COALESCE(definition_snapshot,'')
 		 FROM instances WHERE order_date=?`,
 		today,
 	)
@@ -559,7 +734,7 @@ func (s *Scheduler) tickOnce() {
 	for rows.Next() {
 		var r instRow
 		var forcedInt int
-		_ = rows.Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &forcedInt, &r.Snapshot)
+		_ = rows.Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.Snapshot)
 		r.Forced = forcedInt == 1
 		insts = append(insts, r)
 	}
@@ -584,9 +759,16 @@ func (s *Scheduler) tickOnce() {
 	}
 
 	for _, r := range insts {
-		// Watchdog: RUNNING parado por muito tempo vira NOTOK (timeout).
+		// Watchdog: RUNNING parado por muito tempo vira NOTOK (timeout). Um job
+		// carregado na virada da daily (carried_at) re-arma o relógio: mede-se a
+		// staleness de max(started_at, carried_at), pra um RUNNING legítimo que
+		// atravessa a virada não ser reapado no instante em que aparece no novo dia.
 		if r.Status == string(domain.StatusRunning) && r.StartedAt.Valid {
-			if now.Sub(r.StartedAt.Time) > stuckRunningTimeout {
+			anchor := r.StartedAt.Time
+			if r.CarriedAt.Valid && r.CarriedAt.Time.After(anchor) {
+				anchor = r.CarriedAt.Time
+			}
+			if now.Sub(anchor) > stuckRunningTimeout {
 				s.emitEvent(r.ID, "timeout", "scheduler", fmt.Sprintf("RUNNING > %s without agent result", stuckRunningTimeout))
 				s.FinishInstance(r.ID, domain.StatusNotOK, -1,
 					fmt.Sprintf("(timeout: RUNNING > %s without agent result)", stuckRunningTimeout))

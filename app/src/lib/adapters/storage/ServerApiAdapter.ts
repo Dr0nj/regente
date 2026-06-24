@@ -41,6 +41,7 @@ interface ServerSchedule {
   windowTo?: string;
   cyclic?: boolean;
   intervalMin?: number;
+  keepActive?: number;
   frequency?: string;
   daysOfWeek?: string[];
   daysOfMonth?: number[];
@@ -81,6 +82,7 @@ function scheduleToWeb(s: ServerSchedule): JobDefinition["schedule"] {
     windowTo: s.windowTo,
     cyclic: s.cyclic,
     intervalMin: s.intervalMin,
+    keepActive: s.keepActive,
     frequency: (s.frequency as JobDefinition["schedule"]["frequency"]) || "daily",
     daysOfWeek: s.daysOfWeek,
     daysOfMonth: s.daysOfMonth,
@@ -98,6 +100,7 @@ function scheduleToServer(s: JobDefinition["schedule"]): ServerSchedule {
     windowTo: s.windowTo || undefined,
     cyclic: s.cyclic || undefined,
     intervalMin: s.intervalMin || undefined,
+    keepActive: s.keepActive || undefined,
     frequency: s.frequency || "daily",
     daysOfWeek: s.daysOfWeek?.length ? s.daysOfWeek : undefined,
     daysOfMonth: s.daysOfMonth?.length ? s.daysOfMonth : undefined,

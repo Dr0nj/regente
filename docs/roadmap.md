@@ -7,13 +7,20 @@
 ## 📊 Visão geral
 
 ```
-Núcleo / Control-M        ██████████████████████ 100%  ✅ pronto
-Identidade visual / UI    ██████████████████████ 100%  ✅ logo, topbar, 13 temas, login vídeo, sidebars
-Alerting                  ██████████████████████ 100%  ✅ multi-canal + por-regra
-Serverless portátil       ██████████████████████ 100%  ✅ Knative/WASM/NATS/k8s ✓ · k8s e2e REAL ✓ · AWS/GCP (código + mock; conta paga fora de escopo)
-Enterprise readiness      ██████████████████████ 100%  ✅ RBAC/mTLS/SIEM/OTel/SLOs · SSO+carga REAIS · zero-downtime · multi-env · quotas-HA · drift · escala 100k–1M end-to-end (write+read+UI)
-Escala Control-M (100k–1M) ██████████████████████ 100%  ✅ P1 write-path 1M (17s) · P2 API paginada/contadores (51/18ms) · P3 UI ViewPoint validado AO VIVO @1M
-Resiliência operacional   ██████████████████████ 100%  ✅ R1–R7 ✓ + chaos/HA validado em PG real
+── Trilhas estruturais (FECHADAS) ──────────────────────────────────────────
+Núcleo / Control-M         ██████████████████████ 100%  ✅ pronto
+Identidade visual / UI     ██████████████████████ 100%  ✅ logo, topbar, 13 temas, login vídeo, sidebars
+Alerting                   ██████████████████████ 100%  ✅ multi-canal + por-regra
+Serverless portátil        ██████████████████████ 100%  ✅ Knative/WASM/NATS/k8s ✓ · AWS/GCP (código+mock)
+Enterprise readiness       ██████████████████████ 100%  ✅ RBAC/mTLS/SIEM/OTel/SLOs · SSO+carga REAIS · zero-downtime · quotas-HA · drift
+Escala Control-M (100k–1M) ██████████████████████ 100%  ✅ P1 write 1M/17s · P2 API 51/18ms · P3 ViewPoint @1M
+Resiliência operacional    ██████████████████████ 100%  ✅ R1–R7 + chaos/HA validado em PG real
+
+── Próximas fases ──────────────────────────────────────────────────────────
+Aprofundamento Control-M   ██░░░░░░░░░░░░░░░░░░░   8%  🟡 daily lifecycle ✅ · falta Actions/On-Do · variáveis · FILE_WATCH · calendários
+Diferenciais               ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ Explain · Diff de Daily · Blast Radius · Dry Run
+Refinamento UI             ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ grid wrap jobs soltos · minimap revisto · LEGACY_CAP virtualizado
+Fase Z — divulgação        ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ case study + post LinkedIn
 ```
 
 > 🏁 **Marco (2026-06-24):** **todas as trilhas estruturais em 100%**, incluindo **Escala Control-M (100k–1M/dia)
@@ -217,6 +224,10 @@ contra Postgres 16 real (Docker); restante pendente:
                     Idempotente — TestScale_RunDaily10k + TestScale_BenchmarkN (env REGENTE_SCALE_N)
 ✅ Quotas HA (2026-06-23) → RebuildResourcesFromRunning reconstrói o tracker a partir das instances RUNNING →
                     novo líder não fura a capacidade ao retomar o dispatch — TestQuotas_RebuildFromRunning
+✅ Ciclo de vida da daily / carry-over (2026-06-24) → server REAL contra DB de disco semeado: ontem
+                    (2026-06-23) com 40 jobs → a virada (auto-daily) trouxe os 15 abertos (5 RUNNING + 5 NOTOK
+                    + 5 HELD) para hoje com carriedFrom=2026-06-23; OK(15)+WAITING(10) ficaram; carry-over
+                    rodou 1× apesar de N ticks (idempotente). Migration v5 aplicou no DB existente. 11 testes
 ⬜ Secrets        → resolver github_token/webhook_secret via provider (env/-secrets-file)
 ⬜ SSH · agente   → host com sshd; agente instalado como serviço (systemd / Task Windows)
 ```
@@ -255,7 +266,8 @@ contra Postgres 16 real (Docker); restante pendente:
 | ✅ | ~~Escala P1 — write-path (materialização)~~ | **Feito (2026-06-23):** daily em lote → **1M em 17s** (~57k inst/s); era ~15min. TestScale_BenchmarkN. |
 | ✅ | ~~Escala P2 — read-path (API paginada/filtrada + contadores)~~ | **Feito (2026-06-23):** /page (cursor) + /summary + `team` denormalizado + RBAC por conjunto → **51ms/18ms @100k** vs 491ms. |
 | ✅ | ~~Escala P3 — UI por ViewPoint server-driven~~ | **Feito (2026-06-24):** ScaleMonitor (dashboard + folders + lista virtualizada) **validado AO VIVO @1M**; folder em ~39ms, DOM 36.777→932. |
-| **1** | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · ciclo de vida da daily | Backlog de paridade de maior impacto. |
+| ✅ | ~~Ciclo de vida da daily (carry-over / Keep Active)~~ | **Feito (2026-06-24):** RUNNING/HELD persistem; NOTOK +1 / keepActive N; order_date avança; migration v5; validado ao vivo. |
+| **1** | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · FILE_WATCH · calendários complexos | Backlog de paridade de maior impacto. |
 | **2** | **Diferenciais** — Explain · Diff de Daily · Blast Radius · Dry Run | Onde o Regente passa o Control-M. |
 | 3 | **Fase Z** — case study + post LinkedIn | Último gate, com tudo sólido. |
 
@@ -284,13 +296,22 @@ contra Postgres 16 real (Docker); restante pendente:
    concluir; dispara o sucessor quando o arquivo chega. Novo jobType + capability.
 ⬜ Forecast — testar a previsão de ≥ 1 semana à frente (quais jobs rodam por dia, sem executar); validar
    contra o gating real (calendars + deps + conditions + recursos).
-⬜ Ciclo de vida na daily (Keep Active / carry-over entre diárias):
+✅ Ciclo de vida na daily (Keep Active / carry-over entre diárias) — ENTREGUE (2026-06-24):
    • RUNNING persiste (REGRA) — job EM EXECUÇÃO na virada da daily NÃO some: segue na daily até terminar,
-     para o tracking da execução (jamais perder a instância no rollover).
-   • Keep Active — opção no job: se NÃO executou com sucesso, sobrevive N diárias (keepActive=1 → +1 diária).
-   • DEFAULT — job que termina NOTOK e NÃO é tratado persiste +1 diária (carry-over automático).
-   • HOLD persiste — job em HOLD atravessa as diárias enquanto estiver em hold, independente do estado
-     (OK/NOTOK/WAITING).
+     para o tracking da execução (jamais perder a instância no rollover). ✓
+   • Keep Active — opção no job (`schedule.keepActive`, editável no Design): se NÃO executou com sucesso,
+     sobrevive N diárias. ✓
+   • DEFAULT — job que termina NOTOK e NÃO é tratado persiste +1 diária (carry-over automático). ✓
+   • HOLD persiste — job em HOLD atravessa as diárias enquanto estiver em hold. ✓
+   Mecanismo (Control-M New Day): `scheduler.carryOver(date)` roda no topo do `RunDaily` (antes da
+   existência), AVANÇANDO o order_date da ordem que sobrevive (mesmo id/status/started_at/snapshot/eventos)
+   — assim tick, /page, /summary e RBAC (todos filtram order_date) a enxergam no novo dia sem mudança, e a
+   ordem carregada SUBSTITUI a fresca daquele dia (sem duplicar). `carry_budget` (lazy-init, -1) bounda
+   NOTOK/keepActive; `carried_from` exibe a origem (badge "↩" no ViewPoint); `carried_at` re-arma o watchdog
+   de stuck-running (RUNNING carregado não é reapado no instante em que aparece). Migration v5. Idempotente.
+   11 testes (regra pura + RUNNING/HELD/NOTOK/keepActive/idempotência/no-dup/watchdog). VALIDADO AO VIVO no
+   binário: ontem 40→ficaram 25 (OK+WAITING), 15 abertos (RUNNING/NOTOK/HELD) migraram com carriedFrom, 1 só
+   carry-over apesar de N ticks.
 ⬜ CONFIRM — config no job: precisa de ação MANUAL (Confirm) para sair do estado e prosseguir.
    (estudar o comportamento exato do Control-M antes de fechar a semântica do backlog.)
 ⬜ Job tipo DATABASE — plugin com conectores (JDBC e outros) p/ rodar SQL/procedure em bancos; corpo do
