@@ -121,8 +121,15 @@ function upsertFromEvent(payload: unknown): void {
   applyInstance(p);
 }
 
+// Cap de segurança do canvas legado (ReactFlow não virtualiza): nunca puxa mais
+// que LEGACY_CAP instances do dia. Acima disso, use o ViewPoint server-driven
+// (ScaleMonitor), que pagina/filtra no servidor e aguenta 100k–1M. P3/escala.
+const LEGACY_CAP = 2000;
+
 async function refresh(date = todayOrderDate()): Promise<void> {
-  const arr = await api<ServerInstance[]>(`/api/instances?date=${encodeURIComponent(date)}`);
+  const arr = await api<ServerInstance[]>(
+    `/api/instances?date=${encodeURIComponent(date)}&limit=${LEGACY_CAP}`,
+  );
   cache.clear();
   for (const s of arr ?? []) cache.set(s.id, toWeb(s));
   lastFetchDate = date;

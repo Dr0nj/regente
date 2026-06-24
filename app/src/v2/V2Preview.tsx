@@ -16,6 +16,7 @@ import {
 import JobNodeV2 from "./JobNodeV2";
 import LaneLabelNode from "./LaneLabelNode";
 import MonitoringSidebarV2, { type MonitoringJob } from "./MonitoringSidebarV2";
+import ScaleMonitor from "./ScaleMonitor";
 import DesignSidebarV2 from "./DesignSidebarV2";
 import InstanceDetailsDrawer from "./InstanceDetailsDrawer";
 import JobConfigDrawer from "./JobConfigDrawer";
@@ -519,6 +520,8 @@ function buildDesignCanvas(defs: JobDefinition[]): Canvas {
 
 function V2PreviewInner() {
   const [mode, setMode] = useState<Mode>("monitoring");
+  // P3/escala — ViewPoint server-driven (paginado/virtualizado), p/ 100k–1M jobs.
+  const [scaleView, setScaleView] = useState(false);
   const [instances, setInstances] = useState<JobInstance[]>([]);
   const [defs, setDefs] = useState<JobDefinition[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
@@ -1314,6 +1317,24 @@ function V2PreviewInner() {
               <Play size={11} /> Run Daily
             </button>
 
+            <button
+              onClick={() => setScaleView((v) => !v)}
+              title="ViewPoint server-driven — paginado/virtualizado, aguenta 100k–1M jobs/dia"
+              style={{
+                padding: "5px 10px",
+                background: scaleView ? "var(--v2-accent-deep)" : "transparent",
+                border: `1px solid ${scaleView ? "var(--v2-accent-brand)" : "var(--v2-border-medium)"}`,
+                color: scaleView ? "var(--v2-accent-brand)" : "var(--v2-text-primary)",
+                borderRadius: 3,
+                fontSize: 10, fontFamily: "var(--v2-font-mono)",
+                letterSpacing: "0.06em", textTransform: "uppercase",
+                cursor: "pointer", fontWeight: 600,
+                display: "flex", alignItems: "center", gap: 6,
+              }}
+            >
+              <Zap size={11} /> ViewPoint
+            </button>
+
             <div style={{ position: "relative" }}>
               <button
                 onClick={() => setForceMenuOpen((v) => !v)}
@@ -1544,6 +1565,8 @@ function V2PreviewInner() {
         onDragOver={onDragOver}
         onDrop={onDrop}
       >
+        {/* P3/escala — não monta o canvas legado quando o ViewPoint cobre a tela */}
+        {!(mode === "monitoring" && scaleView) && (
         <ReactFlow
           nodes={canvas.nodes}
           edges={canvas.edges}
@@ -1570,7 +1593,8 @@ function V2PreviewInner() {
         >
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#1a1a1a" />
         </ReactFlow>
-        {showMinimap && (
+        )}
+        {showMinimap && !(mode === "monitoring" && scaleView) && (
           <>
             <div
               style={{
@@ -1635,11 +1659,14 @@ function V2PreviewInner() {
         )}
 
         {mode === "monitoring" ? (
-          <MonitoringSidebarV2
-            jobs={monitoringJobs}
-            selectedId={selectedInstanceId}
-            onSelect={handleSidebarSelect}
-          />
+          // P3/escala — esconde a sidebar legada (não-virtualizada) sob o ViewPoint.
+          scaleView ? null : (
+            <MonitoringSidebarV2
+              jobs={monitoringJobs}
+              selectedId={selectedInstanceId}
+              onSelect={handleSidebarSelect}
+            />
+          )
         ) : (
           // Fase 1: palette de drag só aparece com folder ativa.
           // Sem folder, não há destino válido para drop → esconde para evitar UX quebrada.
@@ -1748,6 +1775,11 @@ function V2PreviewInner() {
             onConfirm={confirmConnection}
             onCancel={() => setPendingConn(null)}
           />
+        )}
+
+        {/* P3/escala — ViewPoint server-driven cobre o canvas quando ligado */}
+        {mode === "monitoring" && scaleView && (
+          <ScaleMonitor onClose={() => setScaleView(false)} />
         )}
 
         <ToastHost />

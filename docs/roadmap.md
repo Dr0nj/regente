@@ -11,14 +11,15 @@ Núcleo / Control-M        █████████████████�
 Identidade visual / UI    ██████████████████████ 100%  ✅ logo, topbar, 13 temas, login vídeo, sidebars
 Alerting                  ██████████████████████ 100%  ✅ multi-canal + por-regra
 Serverless portátil       ██████████████████████ 100%  ✅ Knative/WASM/NATS/k8s ✓ · k8s e2e REAL ✓ · AWS/GCP (código + mock; conta paga fora de escopo)
-Enterprise readiness      ██████████████████████ 97%  🟡 RBAC/mTLS/SIEM/OTel/SLOs · SSO+carga REAIS · zero-downtime · multi-env · quotas-HA · drift · escala write+read 100k+ ✓ · só UI de escala (P3) ⬜
-Escala Control-M (100k–1M) ███████████████░░░░░░░  70%  🟡 P1 write-path 1M (17s) ✓ · P2 API paginada/filtrada+contadores ✓ · P3 UI ViewPoint ⬜
+Enterprise readiness      ██████████████████████ 100%  ✅ RBAC/mTLS/SIEM/OTel/SLOs · SSO+carga REAIS · zero-downtime · multi-env · quotas-HA · drift · escala 100k–1M end-to-end (write+read+UI)
+Escala Control-M (100k–1M) ██████████████████████ 100%  ✅ P1 write-path 1M (17s) · P2 API paginada/contadores (51/18ms) · P3 UI ViewPoint validado AO VIVO @1M
 Resiliência operacional   ██████████████████████ 100%  ✅ R1–R7 ✓ + chaos/HA validado em PG real
 ```
 
-> 🏁 **Marco (2026-06-23):** 5 trilhas estruturais em **100%**; Enterprise em 97%. Trilha **Escala Control-M
-> (100k–1M/dia)** a 70%: write-path materializa **1M em 17s** (P1 ✓) e o read-path serve **summary 51ms /
-> page 18ms @100k** (P2 ✓). Falta só **P3 — UI por ViewPoint server-driven** para *operar* o volume na tela.
+> 🏁 **Marco (2026-06-24):** **todas as trilhas estruturais em 100%**, incluindo **Escala Control-M (100k–1M/dia)
+> end-to-end**: write-path materializa **1M em 17s** (P1), read-path serve **summary 51ms / page 18ms @100k**
+> (P2), e a **UI por ViewPoint server-driven foi validada AO VIVO com 1.000.000 de jobs** (P3) — dashboard
+> instantâneo, folder aberta em ~39ms, lista virtualizada, sem nunca baixar o dia inteiro.
 
 Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · 🔴 prioridade
 
@@ -150,6 +151,11 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
         keyset estável scheduled_at,id) + **contadores agregados** (/api/instances/summary, GROUP BY) + **RBAC
         por CONJUNTO** (FilterReadableFolders uma vez, não por linha). Bench @100k: **summary 51ms · page(500)
         18ms** vs full-fetch do dia inteiro 491ms (e payload 500 linhas, não 100k). TestReadPath_Scale + 4 testes.
+✅ P3 · UI por VIEWPOINT server-driven — VALIDADO AO VIVO com **1.000.000 jobs** (2026-06-24). Componente
+        ScaleMonitor (toggle "ViewPoint" na topbar): dashboard do /summary (1M + por-status instantâneo) +
+        lista de 200 folders (byFolder) + tabela VIRTUALIZADA por folder via /page (cursor). Nunca baixa o dia
+        inteiro: abrir uma folder = 1ª página em ~39ms; DOM cai de 36.777→932 nós (legado capado + não montado
+        sob o ViewPoint). O canvas legado (ReactFlow) ganhou cap de 2.000 (`LEGACY_CAP`) p/ nunca travar.
 ⬜ P3 · UI por ViewPoint server-driven — o front hoje BAIXA todas as instances e joga no ReactFlow sem
         virtualização. Fazer: Monitoring carrega só um working set filtrado/paginado (o ViewPoint do Control-M
         já está no backlog) + virtualização do que renderiza + dashboard/contadores pro total. Ninguém renderiza
@@ -235,9 +241,10 @@ contra Postgres 16 real (Docker); restante pendente:
 | ✅ | ~~Enterprise — operação · quotas · drift · zero-downtime~~ | **Feito (2026-06-23):** zero-downtime validado · quotas-HA · multi-ambiente · reconciler de drift. |
 | ✅ | ~~Escala P1 — write-path (materialização)~~ | **Feito (2026-06-23):** daily em lote → **1M em 17s** (~57k inst/s); era ~15min. TestScale_BenchmarkN. |
 | ✅ | ~~Escala P2 — read-path (API paginada/filtrada + contadores)~~ | **Feito (2026-06-23):** /page (cursor) + /summary + `team` denormalizado + RBAC por conjunto → **51ms/18ms @100k** vs 491ms. |
-| **1** | **Escala P3 — UI por ViewPoint server-driven** + virtualização | Consome /page + /summary; mostra centenas, guarda milhões. Fecha a trilha de escala. |
-| **2** | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · ciclo de vida da daily | Backlog de paridade de maior impacto. |
-| 3 | **Diferenciais** — Explain · Diff de Daily · Blast Radius · Dry Run | Onde o Regente passa o Control-M. |
+| ✅ | ~~Escala P3 — UI por ViewPoint server-driven~~ | **Feito (2026-06-24):** ScaleMonitor (dashboard + folders + lista virtualizada) **validado AO VIVO @1M**; folder em ~39ms, DOM 36.777→932. |
+| **1** | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · ciclo de vida da daily | Backlog de paridade de maior impacto. |
+| **2** | **Diferenciais** — Explain · Diff de Daily · Blast Radius · Dry Run | Onde o Regente passa o Control-M. |
+| 3 | **Fase Z** — case study + post LinkedIn | Último gate, com tudo sólido. |
 
 ---
 

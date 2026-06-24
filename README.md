@@ -410,13 +410,14 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   Rosa/Violeta/Vermelho/Laranja/Cinza/Bege Escuro/Marrom) em Settings → aba Temas, com swatch de cores;
   tokens aplicados em toda a UI (Control-M panel incluso) + borda neon nos diálogos de config
 
-### Enterprise readiness (97% — solidez > velocidade; falta só a UI de escala 100k+, P3)
+### Enterprise readiness ✅ (100% — solidez > velocidade; escala 100k–1M end-to-end validada)
 - [x] **Escala — backend Postgres** (além de SQLite): state store plugável por dialeto,
   flag `-db-driver sqlite|postgres`, migrations versionadas. **Stateless** (estado durável externo; só o líder
   agenda). **Write-path escala a 1M jobs/dia** (materialização em lote → **1M em 17s**, era ~15min). **Read-path
   paginado/filtrado** (`/api/instances/page` por cursor + `/api/instances/summary` agregado + `team`
   denormalizado na instance + RBAC por conjunto → **summary 51ms / page 18ms @100k** vs 491ms baixando o dia
-  inteiro). *(falta só P3: UI por ViewPoint server-driven p/ OPERAR 100k+ na tela — ver [roadmap](docs/roadmap.md))*
+  inteiro). **UI por ViewPoint server-driven** (`ScaleMonitor`: dashboard + folders + lista virtualizada)
+  **validada AO VIVO com 1.000.000 de jobs** — folder aberta em ~39ms, sem nunca baixar o dia inteiro.
 - [x] **HA — leader election do scheduler**: só o líder materializa a daily/dispatch
   (`pg_advisory_lock` no Postgres; nó único no SQLite). **+ hub distribuído via NATS (R5, opt-in
   `-bus=nats`)** — fan-out de eventos web + dispatch roteado ao nó dono do agent. **2-nós validado em
