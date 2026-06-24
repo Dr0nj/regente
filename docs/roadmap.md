@@ -10,7 +10,7 @@
 Núcleo / Control-M        ██████████████████████ 100%  ✅ pronto
 Identidade visual / UI    ██████████████████████ 100%  ✅ logo, topbar, 13 temas, login vídeo, sidebars
 Alerting                  ██████████████████████ 100%  ✅ multi-canal + por-regra
-Serverless portátil       █████████████████████░  95%  🟡 Knative/WASM/NATS/k8s ✓ · k8s e2e REAL ✓ · AWS/GCP (precisa conta) ⬜
+Serverless portátil       ██████████████████████ 100%  ✅ Knative/WASM/NATS/k8s ✓ · k8s e2e REAL ✓ · AWS/GCP (código + mock; conta paga fora de escopo)
 Enterprise readiness      ███████████████████░░░  90%  🟡 RBAC/mTLS/SIEM/OTel/SLOs ✓ · SSO e2e REAL ✓ · carga REAL ✓ · 10k-scale ⬜
 Resiliência operacional   ██████████████████████ 100%  ✅ R1–R7 ✓ + chaos/HA validado em PG real
 ```
@@ -101,9 +101,9 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ✅ Adapters de nuvem por capability  → k8s Jobs ✔ (`-caps K8S`, jobType `K8S_JOB`) **VALIDADO em cluster REAL**
         (kind v1.36, 2026-06-23: Job real criado → kubelet rodou busybox → succeeded/failed lidos de volta;
         prova nos pod logs) · AWS Lambda ✔ (`LAMBDA`, Invoke API + SigV4 stdlib) · GCP Cloud Run Jobs ✔
-        (`GCP_RUN`, Run Admin API v2 + Bearer) — AWS/GCP testados em httptest; ⬜ validar em conta REAL (precisa cartão)
-⬜ Durable execution (Temporal / Restate)  (opt-in)
-⬜ Postgres-como-fila (SKIP LOCKED)
+        (`GCP_RUN`, Run Admin API v2 + Bearer) — AWS/GCP com código + e2e mock (httptest); validação em conta
+        paga FORA DE ESCOPO por decisão (não vamos por cartão), o mesmo seam por capability já provado real no k8s
+○ Extensões futuras opt-in (não bloqueiam): Durable execution (Temporal/Restate) · Postgres-como-fila (SKIP LOCKED)
 ```
 
 ## 🏢 Enterprise readiness
@@ -155,7 +155,6 @@ contra Postgres 16 real (Docker); restante pendente:
                     Teste: server/internal/api/oidc_integration_test.go (env-gated)
 ✅ Carga REAL (2026-06-23) → `hey` contra o binário compilado (TCP real, não in-process): /readyz 50k reqs /
                     100 conc → 11.6k req/s, p99 34ms, 0 erros · /metrics 30k → 7.9k req/s, 0 erros
-⬜ AWS/GCP adapters → validar em conta REAL (Lambda Invoke · Cloud Run Jobs) — precisa de conta paga
 ⬜ Secrets        → resolver github_token/webhook_secret via provider (env/-secrets-file)
 ⬜ SSH · agente   → host com sshd; agente instalado como serviço (systemd / Task Windows)
 ```
@@ -189,10 +188,10 @@ contra Postgres 16 real (Docker); restante pendente:
 | ✅ | ~~Adapters AWS/GCP~~ | **Feito (2026-06-23):** AWS Lambda (SigV4) + GCP Cloud Run, por capability, testados (httptest). |
 | ✅ | ~~Segurança — RBAC/ACL · mTLS · audit→SIEM~~ | **Feito (2026-06-23):** mTLS opt-in + RBAC travado + audit→SIEM (JSON/HTTP). |
 | ✅ | ~~Qualidade — E2E/carga/chaos/SLOs~~ | **Feito (2026-06-23):** E2E HTTP + smoke de carga + chaos-ha.sh + docs/slos.md. |
-| ✅ | ~~e2e em infra REAL — k8s · SSO · carga~~ | **Feito (2026-06-23):** k8s em cluster kind REAL · SSO ponta-a-ponta com Keycloak REAL · carga REAL (`hey`, 11.6k req/s). Só AWS/GCP em conta paga falta. |
+| ✅ | ~~e2e em infra REAL — k8s · SSO · carga~~ | **Feito (2026-06-23):** k8s em cluster kind REAL · SSO ponta-a-ponta com Keycloak REAL · carga REAL (`hey`, 11.6k req/s). |
 | **1** | **Operação** — upgrades zero-downtime · multi-ambiente · quotas · reconciler de drift | Maturidade de operação contínua. |
 | **2** | **Escala** — stateless · 10k+ jobs/dia validado | Volume de produção. |
-| 3 | **AWS/GCP em conta real** — Lambda · Cloud Run | Quando houver conta paga (código + e2e mock prontos). |
+| 3 | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · ciclo de vida da daily | Backlog de paridade de maior impacto percebido. |
 
 ---
 
@@ -256,7 +255,8 @@ contra Postgres 16 real (Docker); restante pendente:
 
 - Job types com schema dedicado · Multi-ambiente/multi-site · What-If/Forecast/Statistics
 - MFT (FILE_TRANSFER nativo) · Archives/Retention · Import de Control-M · CLI/SDK · site de docs
-- **Executores AWS** (Lambda/Batch/Glue/Step) — como adapters por capability, item tardio
+- **Executores AWS extras** (Batch/Glue/Step) — adapters por capability (Lambda já feito); validação em conta
+  paga fora de escopo por decisão
 
 ## 🌟 Diferenciais — além do Control-M *(visão de produto)*
 

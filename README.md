@@ -433,7 +433,8 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 - [x] **Operação — tracing (OpenTelemetry)** ✅ (OTLP/HTTP opt-in, `-otel-endpoint`); *(falta: upgrades zero-downtime, multi-ambiente, quotas)*
 - [x] **Adapters de nuvem por capability**: k8s Jobs (`K8S_JOB`) **VALIDADO em cluster real** (kind v1.36 — Job criado,
   kubelet rodou, succeeded/failed lidos de volta) + **AWS Lambda** (`LAMBDA`, SigV4 stdlib) + **GCP Cloud Run Jobs**
-  (`GCP_RUN`) — AWS/GCP testados em API mock. *(falta: AWS/GCP em conta paga real)*
+  (`GCP_RUN`) — AWS/GCP com código + e2e em API mock; o mesmo seam por capability já está provado real no k8s,
+  então validação em conta paga fica fora de escopo por decisão (sem cartão).
 - [x] **Qualidade**: testes **E2E HTTP** + **chaos/HA** (`chaos-ha.sh` + validado) + **SLOs** ([`docs/slos.md`](docs/slos.md))
   + **carga REAL** (`hey` contra o binário, TCP real: /readyz **11.6k req/s** com 100 conexões, p99 34ms, 0 erros).
   *(falta: reconciler de drift)*
@@ -490,11 +491,11 @@ A mesma imagem OCI roda em Knative/Cloud Run/Fly/App Runner; estado em Postgres
   WebSocket hub **+ transporte HTTP long-poll** (`-transport=http` no agent;
   `/api/agent/poll|result|output`) para control plane stateless **+ adapter NATS
   (`-bus=nats`)** — hub distribuído com fan-out de eventos web e dispatch roteado ao
-  nó dono do agent (R5; validação 2-nós em infra real pendente).
+  nó dono do agent (R5; **validado em 2 nós + NATS reais**).
 - [x] **Fase 3 — executores como plugins**: roteamento por capability é o seam
-  **+ executor WASM** (`jobType: WASM` via wazero, pure-Go/sem CGO, sandbox WASI).
-  *(projetado: adapters AWS/GCP/k8s por capability, durable execution opt-in,
-  Postgres-como-fila)*
+  **+ executor WASM** (`jobType: WASM` via wazero, pure-Go/sem CGO, sandbox WASI)
+  **+ adapters de nuvem** (k8s `K8S_JOB` validado em cluster real, AWS Lambda + GCP Cloud Run com mock).
+  *(extensões futuras opt-in: durable execution Temporal/Restate, Postgres-como-fila)*
 
 ---
 
