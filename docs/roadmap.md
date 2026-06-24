@@ -57,6 +57,12 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ⬜ Minimap REVISTO — repensar o `NavMinimap` (hoje desenha pontos de `canvas.nodes`): comportamento/usabilidade
    com a nova grade de jobs soltos + volume alto; precisa refletir o layout em wrap, navegação clara e densidade
    legível (avaliar viewport-box arrastável, escala por densidade, on/off por contexto).
+⬜ Cap de 2000 do Monitoring legado é POUCO + ENGANA — `LEGACY_CAP=2000` no canvas/ACTIVE JOBS (sidebar e
+   ReactFlow não-virtualizados → cap evita travar) é arbitrário e mostra "2000/2000" como se fosse o total.
+   Fix: (1) VIRTUALIZAR a sidebar ACTIVE JOBS (como o `ScaleMonitor`) → mostra o dia inteiro sem travar, cap
+   sobe muito/some na lista; (2) header com o TOTAL REAL do `/summary` ("2000 carregados de 1.000.000"), nunca
+   número truncado disfarçado de total; (3) cap do CANVAS (ReactFlow não desenha 100k nós) vira configurável e
+   bem maior, com aviso "abra o ViewPoint pra ver todos". O ViewPoint já mostra 100k–1M.
 ```
 
 ## 🔔 Alerting

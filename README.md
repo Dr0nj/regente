@@ -483,6 +483,10 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   pra baixo em **grade** em vez de só horizontal (N configurável; vale Monitoring + Design; conectados seguem no fluxo).
 - [ ] **Minimap revisto**: repensar o `NavMinimap` p/ refletir a nova grade de jobs soltos + volume alto —
   navegação clara, densidade legível, viewport-box arrastável, on/off por contexto.
+- [ ] **Cap de 2000 do Monitoring legado**: `LEGACY_CAP=2000` (canvas/ACTIVE JOBS não-virtualizados) é arbitrário
+  e mostra "2000/2000" como se fosse o total. Fix: **virtualizar a sidebar ACTIVE JOBS** (mostra o dia inteiro),
+  header com o **total real** do `/summary` ("2000 carregados de 1.000.000"), e cap do canvas configurável/maior
+  com aviso "abra o ViewPoint". (O ViewPoint já mostra 100k–1M.)
 
 ### Diferenciais — além do Control-M (visão de produto) — detalhe em [`docs/roadmap.md`](docs/roadmap.md)
 Onde o Regente **passa** o Control-M (longo prazo, depois do núcleo sólido):
