@@ -428,12 +428,15 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 - [x] **Segurança — secrets manager** (provider plugável, tira PAT/secrets do banco em claro;
   default env+arquivo, Vault/AWS pluggável) **+ SSO/OIDC** (opt-in `-auth-mode`) **+ RBAC/ACL** (roles
   admin/operator/viewer + ACL por folder) **+ mTLS opt-in** (`-tls-client-ca`, verifica cert de cliente)
-  **+ audit→SIEM** (eventos JSON em stderr + POST `-audit-siem-url`). *(falta: SSO ponta-a-ponta com IdP real)*
+  **+ audit→SIEM** (eventos JSON em stderr + POST `-audit-siem-url`). **SSO ponta-a-ponta VALIDADO com Keycloak real**
+  (Authorization Code completo → user provisionado → sessão federada autentica a API; 2026-06-23).
 - [x] **Operação — tracing (OpenTelemetry)** ✅ (OTLP/HTTP opt-in, `-otel-endpoint`); *(falta: upgrades zero-downtime, multi-ambiente, quotas)*
-- [x] **Adapters de nuvem por capability**: k8s Jobs (`K8S_JOB`) + **AWS Lambda** (`LAMBDA`, SigV4 stdlib)
-  + **GCP Cloud Run Jobs** (`GCP_RUN`) — testados contra API mock. *(falta: e2e em cluster/conta real)*
-- [x] **Qualidade**: testes **E2E HTTP** + **smoke de carga** (~7.5k req/s) + **chaos/HA** (`chaos-ha.sh` + validado)
-  + **SLOs** ([`docs/slos.md`](docs/slos.md)). *(falta: carga real k6/hey, reconciler de drift)*
+- [x] **Adapters de nuvem por capability**: k8s Jobs (`K8S_JOB`) **VALIDADO em cluster real** (kind v1.36 — Job criado,
+  kubelet rodou, succeeded/failed lidos de volta) + **AWS Lambda** (`LAMBDA`, SigV4 stdlib) + **GCP Cloud Run Jobs**
+  (`GCP_RUN`) — AWS/GCP testados em API mock. *(falta: AWS/GCP em conta paga real)*
+- [x] **Qualidade**: testes **E2E HTTP** + **chaos/HA** (`chaos-ha.sh` + validado) + **SLOs** ([`docs/slos.md`](docs/slos.md))
+  + **carga REAL** (`hey` contra o binário, TCP real: /readyz **11.6k req/s** com 100 conexões, p99 34ms, 0 erros).
+  *(falta: reconciler de drift)*
 
 ### Aprofundamento Control-M (testar a fundo + aprimorar)
 - [ ] **Calendários complexos**: validar que o job entra na daily exatamente quando deve — 1º dia útil

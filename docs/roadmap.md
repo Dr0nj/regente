@@ -10,8 +10,8 @@
 Núcleo / Control-M        ██████████████████████ 100%  ✅ pronto
 Identidade visual / UI    ██████████████████████ 100%  ✅ logo, topbar, 13 temas, login vídeo, sidebars
 Alerting                  ██████████████████████ 100%  ✅ multi-canal + por-regra
-Serverless portátil       ████████████████████░░  90%  🟡 Knative/long-poll/WASM/NATS/k8s/AWS/GCP ✓ · e2e real ⬜
-Enterprise readiness      █████████████████░░░░░  80%  🟡 secrets/OIDC/RBAC/mTLS/SIEM/OTel/E2E/SLOs ✓ · SSO-e2e·carga-real ⬜
+Serverless portátil       █████████████████████░  95%  🟡 Knative/WASM/NATS/k8s ✓ · k8s e2e REAL ✓ · AWS/GCP (precisa conta) ⬜
+Enterprise readiness      ███████████████████░░░  90%  🟡 RBAC/mTLS/SIEM/OTel/SLOs ✓ · SSO e2e REAL ✓ · carga REAL ✓ · 10k-scale ⬜
 Resiliência operacional   ██████████████████████ 100%  ✅ R1–R7 ✓ + chaos/HA validado em PG real
 ```
 
@@ -98,9 +98,10 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ✅ R5 · NATS + hub distribuído (-bus=nats)  → fan-out web + presença + dispatch roteado ao nó dono;
         VALIDADO 2-nós real (2026-06-22): job forçado no nó sem agente → roteado e executado
 🟡 OpenTelemetry (I1) — tracing OTLP/HTTP opt-in (-otel-endpoint); otelhttp + spans no scheduler  ✅
-◑ Adapters de nuvem por capability  → k8s Jobs ✔ (`-caps K8S`, jobType `K8S_JOB`) · AWS Lambda ✔
-        (`LAMBDA`, Invoke API + SigV4 stdlib, sem SDK) · GCP Cloud Run Jobs ✔ (`GCP_RUN`, Run Admin API v2
-        + Bearer OAuth) — todos testados contra API mock (httptest); ⬜ validar em cluster/conta REAL (e2e)
+✅ Adapters de nuvem por capability  → k8s Jobs ✔ (`-caps K8S`, jobType `K8S_JOB`) **VALIDADO em cluster REAL**
+        (kind v1.36, 2026-06-23: Job real criado → kubelet rodou busybox → succeeded/failed lidos de volta;
+        prova nos pod logs) · AWS Lambda ✔ (`LAMBDA`, Invoke API + SigV4 stdlib) · GCP Cloud Run Jobs ✔
+        (`GCP_RUN`, Run Admin API v2 + Bearer) — AWS/GCP testados em httptest; ⬜ validar em conta REAL (precisa cartão)
 ⬜ Durable execution (Temporal / Restate)  (opt-in)
 ⬜ Postgres-como-fila (SKIP LOCKED)
 ```
@@ -112,10 +113,12 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ✅ HA         → leader election (advisory lock) ✔failover · hub distribuído (R5) ✔ · backup/DR (R6) ✔
 ✅ Segurança  → secrets · SSO/OIDC opt-in · RBAC/ACL (roles + por-folder) · mTLS opt-in (`-tls-client-ca`,
                  verifica cert; e2e handshake) · audit→SIEM (eventos JSON em stderr + POST `-audit-siem-url`)
-                 ⬜ SSO e2e c/ IdP real
+                 · **SSO e2e VALIDADO com Keycloak REAL** (2026-06-23: Authorization Code ponta-a-ponta →
+                 user provisionado → sessão federada autentica a API)
 🟡 Operação   → OpenTelemetry ✔ (opt-in OTLP)  ⬜ zero-downtime · multi-ambiente · quotas
-🟡 Qualidade  → E2E HTTP ✔ · smoke de carga ✔ (~7.5k req/s local) · chaos/HA ✔ (script chaos-ha.sh + validado)
-                 · SLOs ✔ (docs/slos.md, amarrados ao R7/métricas)   ⬜ carga real (k6/hey) · reconciler de drift
+✅ Qualidade  → E2E HTTP ✔ · chaos/HA ✔ (chaos-ha.sh + validado) · SLOs ✔ (docs/slos.md) · **carga REAL ✔**
+                 (`hey` contra o binário: /readyz 50k reqs/100conc → 11.6k req/s · /metrics 7.9k req/s · 0 erros)
+                 ⬜ reconciler de drift
 ```
 
 ---
@@ -143,7 +146,16 @@ contra Postgres 16 real (Docker); restante pendente:
                     restore.sh + runbook docs/dr-backup.md
 ✅ R7 auto-SLO (2026-06-23) → tick forçado a parar (modo external, limiar 3s) → monitor disparou alerta
                     control-plane "Scheduler tick parado" (critical) persistido em /api/alerts em ~6s
-⬜ H1 SSO/OIDC    → fluxo completo com IdP real (Keycloak/Cognito/Google) + SPA lê #token
+✅ k8s adapter REAL (2026-06-23) → cluster kind v1.36 real: adapter `K8S_JOB` criou um Job de verdade →
+                    kubelet rodou busybox (pod log "hello-from-regente") → succeeded; Job de `exit 7` → failed;
+                    token inválido → erro na criação. Teste: agent/k8s_integration_test.go (env-gated)
+✅ H1 SSO/OIDC REAL (2026-06-23) → Keycloak 26 real (realm regente, client confidencial): Authorization Code
+                    ponta-a-ponta (/oidc/login → authorize → login form → callback → troca code→token→userinfo)
+                    → user 'thiago' provisionado (LoginFederated) → #token no SPA → sessão autentica a API.
+                    Teste: server/internal/api/oidc_integration_test.go (env-gated)
+✅ Carga REAL (2026-06-23) → `hey` contra o binário compilado (TCP real, não in-process): /readyz 50k reqs /
+                    100 conc → 11.6k req/s, p99 34ms, 0 erros · /metrics 30k → 7.9k req/s, 0 erros
+⬜ AWS/GCP adapters → validar em conta REAL (Lambda Invoke · Cloud Run Jobs) — precisa de conta paga
 ⬜ Secrets        → resolver github_token/webhook_secret via provider (env/-secrets-file)
 ⬜ SSH · agente   → host com sshd; agente instalado como serviço (systemd / Task Windows)
 ```
@@ -177,9 +189,10 @@ contra Postgres 16 real (Docker); restante pendente:
 | ✅ | ~~Adapters AWS/GCP~~ | **Feito (2026-06-23):** AWS Lambda (SigV4) + GCP Cloud Run, por capability, testados (httptest). |
 | ✅ | ~~Segurança — RBAC/ACL · mTLS · audit→SIEM~~ | **Feito (2026-06-23):** mTLS opt-in + RBAC travado + audit→SIEM (JSON/HTTP). |
 | ✅ | ~~Qualidade — E2E/carga/chaos/SLOs~~ | **Feito (2026-06-23):** E2E HTTP + smoke de carga + chaos-ha.sh + docs/slos.md. |
-| **1** | **e2e em infra REAL** — k8s cluster · conta AWS/GCP · SSO com IdP real · carga (k6) | O que falta dos itens acima exige infra externa (não dá pra mockar). |
-| **2** | **Operação** — upgrades zero-downtime · multi-ambiente · quotas · reconciler de drift | Maturidade de operação contínua. |
-| 3 | **Escala** — stateless · 10k+ jobs/dia validado | Volume de produção. |
+| ✅ | ~~e2e em infra REAL — k8s · SSO · carga~~ | **Feito (2026-06-23):** k8s em cluster kind REAL · SSO ponta-a-ponta com Keycloak REAL · carga REAL (`hey`, 11.6k req/s). Só AWS/GCP em conta paga falta. |
+| **1** | **Operação** — upgrades zero-downtime · multi-ambiente · quotas · reconciler de drift | Maturidade de operação contínua. |
+| **2** | **Escala** — stateless · 10k+ jobs/dia validado | Volume de produção. |
+| 3 | **AWS/GCP em conta real** — Lambda · Cloud Run | Quando houver conta paga (código + e2e mock prontos). |
 
 ---
 
