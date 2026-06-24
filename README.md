@@ -81,6 +81,10 @@ daily ou via Force Order manual.
   ou `?from&to&folder`) → jobs **adicionados / removidos / alterados**, com diff **por-campo**
   (schedule, deps, recursos, def). Lê os snapshots congelados (`commit_sha` + `definition_snapshot`)
   → exato e barato, sem reprocessar Git. `GET /api/daily/diff` + modal "Diff" na topbar.
+- 🟢 **Blast Radius** (diferencial): "se eu **cancelar/segurar** este job agora, qual o impacto?"
+  → jobs downstream que deixam de rodar em cascata, SLAs em risco, folders afetadas e profundidade.
+  Análise de uma AÇÃO (não do grafo estático): BFS no grafo de deps, só pelo raio. `GET
+  /api/instances/{id}/blast-radius` + painel "⚠ Impacto" no drawer.
 - 🟢 **Retry de execution** — re-tentativa automática em falha (respeita `retries`).
 - 🟢 **Observabilidade** — `/metrics` em formato Prometheus.
 - 🟢 **Alerting (Fase 8)** — regras configuráveis avaliadas ao fim de cada
@@ -240,6 +244,7 @@ Todas as rotas `/api/*` exigem `Authorization: Bearer <token>`.
 | POST   | `/api/instances/{id}/cancel`          | Cancel                         |
 | POST   | `/api/instances/{id}/rerun`           | Rerun                          |
 | GET    | `/api/instances/{id}/explain`         | por que (não) rodou: gating estruturado |
+| GET    | `/api/instances/{id}/blast-radius`    | impacto de cancelar/segurar (downstream/SLA) |
 | GET    | `/api/daily/diff?from&to&folder`      | diff entre duas diárias (+/−/alterados) |
 | POST   | `/api/daily/run`                      | força a daily do dia           |
 | POST   | `/api/definitions/{id}/force`         | Order Force (Control-M)        |

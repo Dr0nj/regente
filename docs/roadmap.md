@@ -18,7 +18,7 @@ Resiliência operacional    █████████████████�
 
 ── Próximas fases ──────────────────────────────────────────────────────────
 Aprofundamento Control-M   ██░░░░░░░░░░░░░░░░░░░   8%  🟡 daily lifecycle ✅ · falta Actions/On-Do · variáveis · FILE_WATCH · calendários
-Diferenciais               █████░░░░░░░░░░░░░░░░  25%  🟡 Explain ✅ · Diff de Daily ✅ · falta Blast Radius · Dry Run
+Diferenciais               ████████░░░░░░░░░░░░  38%  🟡 Explain ✅ · Diff de Daily ✅ · Blast Radius ✅ · falta Dry Run
 Refinamento UI             ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ grid wrap jobs soltos · minimap revisto · LEGACY_CAP virtualizado
 Fase Z — divulgação        ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ case study + post LinkedIn
 ```
@@ -224,6 +224,9 @@ contra Postgres 16 real (Docker); restante pendente:
                     Idempotente — TestScale_RunDaily10k + TestScale_BenchmarkN (env REGENTE_SCALE_N)
 ✅ Quotas HA (2026-06-23) → RebuildResourcesFromRunning reconstrói o tracker a partir das instances RUNNING →
                     novo líder não fura a capacidade ao retomar o dispatch — TestQuotas_RebuildFromRunning
+✅ Blast Radius (2026-06-24) → server REAL: workspace A→B→C + A→D(always), A travado por janela →
+                    GET /api/instances/A-*/blast-radius devolveu downstream=2 (B/PAGAMENTOS d1, C/RISCO d2
+                    com SLA), slaAtRisk=1, teamsAffected=2, maxDepth=2; D (aresta always) excluído. 4 testes
 ✅ Diff de Daily (2026-06-24) → server REAL: 2 dailies semeadas (commits aaaaaaa→bbbbbbb) → GET /api/daily/diff
                     devolveu added=[new] · removed=[gone] · unchanged=[keep] · changed=[sched (schedule
                     06:00→07:00), dep (upstream x→y)] com diff por-campo exato; counts exatos. 4 testes
@@ -276,9 +279,10 @@ contra Postgres 16 real (Docker); restante pendente:
 | ✅ | ~~Ciclo de vida da daily (carry-over / Keep Active)~~ | **Feito (2026-06-24):** RUNNING/HELD persistem; NOTOK +1 / keepActive N; order_date avança; migration v5; validado ao vivo. |
 | ✅ | ~~Diferencial: Explain ("por que não rodou?")~~ | **Feito (2026-06-24):** gating como fonte única (tick+Explain), read-only, 21 testes, validado ao vivo. Substrato do MCP `explain_job()`. |
 | ✅ | ~~Diferencial: Diff de Daily~~ | **Feito (2026-06-24):** compara 2 order_date via snapshots congelados; diff por-campo; fast-path same-commit; 4 testes; validado ao vivo. |
-| **1** | **Diferenciais (cont.)** — Blast Radius · Dry Run | Baratos (dados já existem: grafo de deps + snapshot). Onde passa o Control-M. |
-| **2** | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · FILE_WATCH · calendários | Backlog de paridade de maior impacto. |
-| 3 | **Camada agent-native (MCP)** — expor Explain/Diff/Summary como tools | IA-native sobre verdade determinística; depois dos diferenciais existirem. |
+| ✅ | ~~Diferencial: Blast Radius~~ | **Feito (2026-06-24):** BFS reverso de deps; downstream/SLA/folders/cascata; só o raio (barato a 1M); 4 testes; validado ao vivo. |
+| **1** | **Diferenciais (cont.)** — Dry Run | Simular daily futura sem materializar (o forecast já existe; falta o modo "data futura + razões"). |
+| **2** | **Camada agent-native (MCP)** — expor explain_job/diff_daily/blast_radius como tools | 3 substratos prontos; IA-native sobre verdade determinística. |
+| 3 | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · FILE_WATCH · calendários | Backlog de paridade de maior impacto. |
 | 4 | **Fase Z** — case study + post LinkedIn | Último gate, com tudo sólido. |
 
 ---
@@ -381,9 +385,12 @@ contra Postgres 16 real (Docker); restante pendente:
    EXATO e barato, sem reprocessar Git. Fast-path: commitA==commitB ⟹ nenhum comum mudou (pula a comparação).
    Contadores exatos, listas capadas (truncated). `GET /api/daily/diff` + `DailyDiffModal` (botão "Diff" na
    topbar). 4 testes + validado ao vivo. (`DiffDaily` é candidato natural a tool MCP `diff_daily()`.)
-⬜ Blast Radius — "se eu CANCELAR/segurar este job AGORA, qual o impacto?": N jobs downstream deixarão de
-   executar · X SLAs serão violados · tempo estimado de atraso. Análise de impacto de uma AÇÃO (cancel/hold),
-   não só do grafo estático. Ex.: cancelar PIX_ENVIO → "37 jobs não executam · 3 SLAs violados · atraso ~2h15".
+✅ Blast Radius — ENTREGUE (2026-06-24): "se eu CANCELAR/segurar este job AGORA, qual o impacto?". BFS no
+   grafo reverso de deps a partir do alvo: jobs downstream que deixam de rodar em CASCATA · SLAs em risco ·
+   folders afetadas · profundidade da cascata. Análise de uma AÇÃO (não do grafo estático): só conta sucessores
+   por aresta NÃO-`always` ainda-não-rodados (WAITING/HELD); arestas `always` não propagam, jobs já rodados
+   param a cascata. Visita só o RAIO → barato a 1M. `GET /api/instances/{id}/blast-radius` + painel "⚠ Impacto
+   se cancelar/segurar" no drawer. 4 testes + validado ao vivo. (Candidato a tool MCP `blast_radius()`.)
 ⬜ Dry Run — simular uma daily FUTURA (ex.: 25/12/2026) SEM criar instances: quem roda · quem espera ·
    quem NUNCA dispara. (o forecast já existe; falta o modo "data futura + razões por job + sem materializar".)
 ✅ Explain ("por que o job não rodou?") — ENTREGUE (2026-06-24): motor de EXPLICAÇÃO (sem IA): WAIT_WINDOW ·
