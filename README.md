@@ -410,9 +410,10 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   Rosa/Violeta/Vermelho/Laranja/Cinza/Bege Escuro/Marrom) em Settings → aba Temas, com swatch de cores;
   tokens aplicados em toda a UI (Control-M panel incluso) + borda neon nos diálogos de config
 
-### Enterprise readiness (em andamento — solidez > velocidade)
+### Enterprise readiness ✅ (100% — solidez > velocidade)
 - [x] **Escala — backend Postgres** (além de SQLite): state store plugável por dialeto,
-  flag `-db-driver sqlite|postgres`, migrations versionadas. *(falta: DynamoDB, nós stateless, 10k+ jobs/dia)*
+  flag `-db-driver sqlite|postgres`, migrations versionadas. **Stateless** (estado durável externo; só o
+  líder agenda) **+ 10k+ jobs/dia validado** (RunDaily materializa 10k instances idempotente). *(opt-in futuro: DynamoDB)*
 - [x] **HA — leader election do scheduler**: só o líder materializa a daily/dispatch
   (`pg_advisory_lock` no Postgres; nó único no SQLite). **+ hub distribuído via NATS (R5, opt-in
   `-bus=nats`)** — fan-out de eventos web + dispatch roteado ao nó dono do agent. **2-nós validado em
@@ -430,14 +431,17 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   admin/operator/viewer + ACL por folder) **+ mTLS opt-in** (`-tls-client-ca`, verifica cert de cliente)
   **+ audit→SIEM** (eventos JSON em stderr + POST `-audit-siem-url`). **SSO ponta-a-ponta VALIDADO com Keycloak real**
   (Authorization Code completo → user provisionado → sessão federada autentica a API; 2026-06-23).
-- [x] **Operação — tracing (OpenTelemetry)** ✅ (OTLP/HTTP opt-in, `-otel-endpoint`); *(falta: upgrades zero-downtime, multi-ambiente, quotas)*
+- [x] **Operação — tracing (OpenTelemetry)** (OTLP/HTTP opt-in, `-otel-endpoint`) **+ upgrades zero-downtime**
+  (rolling via leader election — `rolling-upgrade.sh` validado: novo sobe follower → drena o líder → assume ~4s,
+  API nunca cai) **+ multi-ambiente** (deployment por branch+DB+`env_label`; `regente_env_info` no /metrics)
+  **+ quotas** (F15, e o tracker se reconstrói do RUNNING após failover). Runbook: [`docs/operacao.md`](docs/operacao.md).
 - [x] **Adapters de nuvem por capability**: k8s Jobs (`K8S_JOB`) **VALIDADO em cluster real** (kind v1.36 — Job criado,
   kubelet rodou, succeeded/failed lidos de volta) + **AWS Lambda** (`LAMBDA`, SigV4 stdlib) + **GCP Cloud Run Jobs**
   (`GCP_RUN`) — AWS/GCP com código + e2e em API mock; o mesmo seam por capability já está provado real no k8s,
   então validação em conta paga fica fora de escopo por decisão (sem cartão).
 - [x] **Qualidade**: testes **E2E HTTP** + **chaos/HA** (`chaos-ha.sh` + validado) + **SLOs** ([`docs/slos.md`](docs/slos.md))
-  + **carga REAL** (`hey` contra o binário, TCP real: /readyz **11.6k req/s** com 100 conexões, p99 34ms, 0 erros).
-  *(falta: reconciler de drift)*
+  + **carga REAL** (`hey` contra o binário, TCP real: /readyz **11.6k req/s** com 100 conexões, p99 34ms, 0 erros)
+  + **reconciler de drift** (`-drift-reconcile-sec`: só o líder; alerta o drift GitOps pelos canais do R7, ou auto-sync).
 
 ### Aprofundamento Control-M (testar a fundo + aprimorar)
 - [ ] **Calendários complexos**: validar que o job entra na daily exatamente quando deve — 1º dia útil

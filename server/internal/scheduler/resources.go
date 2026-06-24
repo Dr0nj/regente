@@ -90,6 +90,34 @@ func (t *ResourceTracker) TryAcquire(instanceID string, want map[string]int) boo
 	return true
 }
 
+// Reacquire registra o uso de um instance que JÁ está rodando — usado no rebuild
+// pós-restart/failover. NÃO checa capacidade (a instance já detém o recurso no
+// mundo real; reprovar aqui seria mentir sobre o estado). Idempotente por
+// instanceID: zera o registro anterior antes de re-somar. Garante que o recurso
+// exista no registry (cria com a quantia detida se for desconhecido).
+func (t *ResourceTracker) Reacquire(instanceID string, held map[string]int) {
+	if len(held) == 0 {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if prev := t.holders[instanceID]; prev != nil {
+		for name, qty := range prev {
+			if t.used[name] -= qty; t.used[name] < 0 {
+				t.used[name] = 0
+			}
+		}
+	}
+	t.holders[instanceID] = map[string]int{}
+	for name, qty := range held {
+		if _, ok := t.capacity[name]; !ok {
+			t.capacity[name] = qty
+		}
+		t.used[name] += qty
+		t.holders[instanceID][name] += qty
+	}
+}
+
 // Release libera tudo o que `instanceID` segura. Idempotente.
 func (t *ResourceTracker) Release(instanceID string) {
 	t.mu.Lock()

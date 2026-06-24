@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -40,18 +41,18 @@ import (
 
 func main() {
 	var (
-		addr        = flag.String("addr", envOr("REGENTE_ADDR", ":8080"), "HTTP listen address")
-		workspace   = flag.String("workspace", envOr("REGENTE_WORKSPACE", "./workspace"), "Path to regente workspace (contains definitions/)")
-		dbPath      = flag.String("db", envOr("REGENTE_DB", "./regente.db"), "DB DSN: caminho do arquivo SQLite, ou connection string Postgres quando -db-driver=postgres")
-		dbDriver    = flag.String("db-driver", envOr("REGENTE_DB_DRIVER", "sqlite"), "State store backend: sqlite | postgres")
-		backupTo    = flag.String("backup", "", "R6/DR: grava um backup online do state store neste caminho e sai (SQLite: VACUUM INTO; Postgres: use pg_dump — ver docs/dr-backup.md)")
+		addr      = flag.String("addr", envOr("REGENTE_ADDR", ":8080"), "HTTP listen address")
+		workspace = flag.String("workspace", envOr("REGENTE_WORKSPACE", "./workspace"), "Path to regente workspace (contains definitions/)")
+		dbPath    = flag.String("db", envOr("REGENTE_DB", "./regente.db"), "DB DSN: caminho do arquivo SQLite, ou connection string Postgres quando -db-driver=postgres")
+		dbDriver  = flag.String("db-driver", envOr("REGENTE_DB_DRIVER", "sqlite"), "State store backend: sqlite | postgres")
+		backupTo  = flag.String("backup", "", "R6/DR: grava um backup online do state store neste caminho e sai (SQLite: VACUUM INTO; Postgres: use pg_dump — ver docs/dr-backup.md)")
 		// Segurança — TLS/mTLS opcional (vazio = HTTP plano, comportamento atual).
-		tlsCert     = flag.String("tls-cert", envOr("REGENTE_TLS_CERT", ""), "Segurança: cert TLS do servidor (vazio = HTTP plano)")
-		tlsKey      = flag.String("tls-key", envOr("REGENTE_TLS_KEY", ""), "Segurança: chave TLS do servidor")
+		tlsCert      = flag.String("tls-cert", envOr("REGENTE_TLS_CERT", ""), "Segurança: cert TLS do servidor (vazio = HTTP plano)")
+		tlsKey       = flag.String("tls-key", envOr("REGENTE_TLS_KEY", ""), "Segurança: chave TLS do servidor")
 		tlsClientCA  = flag.String("tls-client-ca", envOr("REGENTE_TLS_CLIENT_CA", ""), "Segurança: CA p/ exigir+verificar cert de cliente (liga mTLS)")
 		auditSIEMURL = flag.String("audit-siem-url", envOr("REGENTE_AUDIT_SIEM_URL", ""), "Segurança: endpoint HTTP de SIEM p/ POST dos eventos de auditoria (vazio = só JSON em stderr)")
-		secretsFile = flag.String("secrets-file", envOr("REGENTE_SECRETS_FILE", ""), "H3: arquivo JSON de segredos {\"github_token\":...}; env REGENTE_SECRET_<KEY> tem prioridade")
-		tickMs      = flag.Int("tick-ms", 2000, "Scheduler tick interval (ms) — usado no modo internal")
+		secretsFile  = flag.String("secrets-file", envOr("REGENTE_SECRETS_FILE", ""), "H3: arquivo JSON de segredos {\"github_token\":...}; env REGENTE_SECRET_<KEY> tem prioridade")
+		tickMs       = flag.Int("tick-ms", 2000, "Scheduler tick interval (ms) — usado no modo internal")
 		// Fase 1/2 (serverless) — papel do processo + origem do tick. Ver docs/arquitetura-futuro.md.
 		role          = flag.String("role", envOr("REGENTE_ROLE", "all"), "Process role: all | api | scheduler")
 		schedulerMode = flag.String("scheduler", envOr("REGENTE_SCHEDULER", "internal"), "Scheduler trigger: internal (goroutine ticker) | external (cron via POST /api/scheduler/tick)")
@@ -65,18 +66,21 @@ func main() {
 		selfmonInterval  = flag.Int("selfmon-interval-sec", 30, "R7: cadência do auto-monitoramento (s)")
 		selfmonTickStale = flag.Int("selfmon-tick-stale-sec", 90, "R7: idade do último tick acima da qual alerta (s)")
 		otelEndpoint     = flag.String("otel-endpoint", envOr("OTEL_EXPORTER_OTLP_ENDPOINT", ""), "Endpoint OTLP/HTTP p/ tracing distribuído (vazio = off)")
-		otelService  = flag.String("otel-service", envOr("OTEL_SERVICE_NAME", "regente-server"), "service.name nos traces")
-		gitEnable    = flag.Bool("git-commit", false, "Commit saves via git (workspace must be a git repo)")
-		apiToken     = flag.String("api-token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token for API + WS")
+		otelService      = flag.String("otel-service", envOr("OTEL_SERVICE_NAME", "regente-server"), "service.name nos traces")
+		gitEnable        = flag.Bool("git-commit", false, "Commit saves via git (workspace must be a git repo)")
+		apiToken         = flag.String("api-token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token for API + WS")
 
 		// F13 GitOps — defaults apontam pro regente-workspace (padrão, não configuração)
 		gitSource    = flag.String("git-source", envOr("REGENTE_GIT_SOURCE", "https://github.com/Dr0nj/regente-workspace.git"), "Git remote URL for workspace source-of-truth")
 		gitBranch    = flag.String("git-branch", envOr("REGENTE_GIT_BRANCH", "main"), "Git branch tracked as source-of-truth")
 		gitPollSec   = flag.Int("git-poll-interval", 30, "Git polling interval in seconds (0 = disabled)")
 		gitWriteMode = flag.String("git-write-mode", envOr("REGENTE_GIT_WRITE_MODE", "direct"), "Write mode: direct | pr-required")
-		ghToken      = flag.String("github-token", envOr("GITHUB_TOKEN", ""), "GitHub PAT for push/PR")
-		ghRepo       = flag.String("github-repo", envOr("REGENTE_GIT_REPO", "Dr0nj/regente-workspace"), "GitHub repo as 'owner/name'")
-		ghWebhookSec = flag.String("github-webhook-secret", envOr("REGENTE_WEBHOOK_SECRET", ""), "Shared secret for GitHub webhook HMAC validation")
+
+		driftReconcileSec  = flag.Int("drift-reconcile-sec", intEnvOr("REGENTE_DRIFT_RECONCILE_SEC", 0), "Enterprise: cadência (s) do reconciler de drift GitOps; alerta (e opcionalmente reconcilia) quando runtime≠Git. 0 = off")
+		driftReconcileMode = flag.String("drift-reconcile-mode", envOr("REGENTE_DRIFT_RECONCILE_MODE", "alert"), "Reconciler de drift: alert (só alerta pelos canais do R7) | sync (fetch+reset+reload automático)")
+		ghToken            = flag.String("github-token", envOr("GITHUB_TOKEN", ""), "GitHub PAT for push/PR")
+		ghRepo             = flag.String("github-repo", envOr("REGENTE_GIT_REPO", "Dr0nj/regente-workspace"), "GitHub repo as 'owner/name'")
+		ghWebhookSec       = flag.String("github-webhook-secret", envOr("REGENTE_WEBHOOK_SECRET", ""), "Shared secret for GitHub webhook HMAC validation")
 
 		// P3 (2026-04-26) — design session GC.
 		designSessionTTLMin    = flag.Int("design-session-ttl-min", 1440, "Design session TTL in minutes (idle since lastTouch); 0 disables GC")
@@ -327,6 +331,41 @@ func main() {
 		log.Printf("[selfmon] R7 control-plane monitor OFF (-selfmon=false)")
 	}
 
+	// Enterprise/HA — quotas (F15) são in-memory e vivem no líder. Após restart/
+	// failover, reconstrói o uso a partir das instances RUNNING (estado durável)
+	// para não furar a capacidade ao retomar o dispatch.
+	if n, err := sched.RebuildResourcesFromRunning(); err != nil {
+		log.Printf("[quotas] rebuild do tracker falhou: %v", err)
+	} else if n > 0 {
+		log.Printf("[quotas] tracker reconstruído: %d instances RUNNING re-registradas", n)
+	}
+
+	// Enterprise/Operação — reconciler de drift GitOps (opt-in). O git-poll já
+	// auto-sincroniza; este fecha o lado OPERACIONAL: quando runtime≠Git, alerta
+	// pelos MESMOS canais do R7 (Slack/PagerDuty/…), e o modo "sync" reconcilia
+	// sozinho (útil quando o git-poll está desligado). Só o líder reconcilia.
+	if gitOps != nil && *driftReconcileSec > 0 {
+		rec := scheduler.NewDriftReconciler(
+			func() (bool, string, error) { d, err := gitOps.CheckDrift(); return d, gitOps.Status().RemoteSHA, err },
+			func() error {
+				if e := gitOps.SyncFromRemote(); e != nil {
+					return e
+				}
+				sched.ReloadDefs()
+				return nil
+			},
+			sched.IsLeader,
+			func(remoteSHA, detail string) {
+				alertEngine.FireSystem("git-drift", "Workspace em drift com o Git", "warning",
+					"Runtime divergiu do repositório (remoto "+remoteSHA+"). "+detail, int64(*driftReconcileSec)*1000)
+			},
+			*driftReconcileMode,
+			time.Duration(*driftReconcileSec)*time.Second,
+		)
+		rec.Start(ctx)
+		log.Printf("[reconciler] drift GitOps ON (interval=%ds, mode=%s)", *driftReconcileSec, *driftReconcileMode)
+	}
+
 	// Fase 1/2 (serverless) — modo de scheduler + papel do processo.
 	//   -role=all|api|scheduler   (REGENTE_ROLE)   — quais responsabilidades este nó assume
 	//   -scheduler=internal|external (REGENTE_SCHEDULER) — ticker em goroutine vs cron externo
@@ -449,6 +488,16 @@ func main() {
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return def
+}
+
+// intEnvOr — como envOr, mas para flags numéricas (valor inválido cai no default).
+func intEnvOr(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
 	}
 	return def
 }

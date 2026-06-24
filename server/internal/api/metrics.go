@@ -20,6 +20,18 @@ func (s *server) metrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "# TYPE regente_up gauge")
 	fmt.Fprintln(w, "regente_up 1")
 
+	// Multi-ambiente: identifica QUAL deployment está respondendo (Dev/Staging/Prod).
+	// Dashboards/alertas agrupam por este label; cada ambiente é um deployment
+	// separado (workspace/branch + DB + env_label próprios) — ver docs/operacao.md.
+	var env string
+	_ = s.cfg.DB.QueryRow(`SELECT value FROM settings WHERE key='env_label'`).Scan(&env)
+	if env == "" {
+		env = "unset"
+	}
+	fmt.Fprintln(w, "# HELP regente_env_info Ambiente deste deployment (label=env_label).")
+	fmt.Fprintln(w, "# TYPE regente_env_info gauge")
+	fmt.Fprintf(w, "regente_env_info{env=%q} 1\n", env)
+
 	// Instances de hoje por status.
 	fmt.Fprintln(w, "# HELP regente_instances Instances do order_date de hoje por status.")
 	fmt.Fprintln(w, "# TYPE regente_instances gauge")

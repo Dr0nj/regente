@@ -11,9 +11,12 @@ Núcleo / Control-M        █████████████████�
 Identidade visual / UI    ██████████████████████ 100%  ✅ logo, topbar, 13 temas, login vídeo, sidebars
 Alerting                  ██████████████████████ 100%  ✅ multi-canal + por-regra
 Serverless portátil       ██████████████████████ 100%  ✅ Knative/WASM/NATS/k8s ✓ · k8s e2e REAL ✓ · AWS/GCP (código + mock; conta paga fora de escopo)
-Enterprise readiness      ███████████████████░░░  90%  🟡 RBAC/mTLS/SIEM/OTel/SLOs ✓ · SSO e2e REAL ✓ · carga REAL ✓ · 10k-scale ⬜
+Enterprise readiness      ██████████████████████ 100%  ✅ RBAC/mTLS/SIEM/OTel/SLOs · SSO+carga REAIS · 10k-scale · zero-downtime · multi-env · quotas-HA · drift-reconciler
 Resiliência operacional   ██████████████████████ 100%  ✅ R1–R7 ✓ + chaos/HA validado em PG real
 ```
+
+> 🏁 **Marco (2026-06-23):** as 6 trilhas estruturais estão em **100%**. O que vem a seguir é
+> **profundidade de produto** (aprofundamento Control-M + diferenciais), não fundação.
 
 Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · 🔴 prioridade
 
@@ -109,16 +112,20 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ## 🏢 Enterprise readiness
 
 ```
-✅ Escala     → Postgres plugável + migrations ✔validado  ⬜ stateless · 10k+ jobs/dia
-✅ HA         → leader election (advisory lock) ✔failover · hub distribuído (R5) ✔ · backup/DR (R6) ✔
+✅ Escala     → Postgres plugável + migrations ✔ · stateless (estado durável externo; só o líder agenda) ·
+                 **10k+ jobs/dia VALIDADO** (RunDaily materializa 10k instances idempotente — TestScale_RunDaily10k)
+✅ HA         → leader election (advisory lock) ✔failover · hub distribuído (R5) ✔ · backup/DR (R6) ✔ ·
+                 **quotas sobrevivem a failover** (RebuildResourcesFromRunning reconstrói o tracker do RUNNING)
 ✅ Segurança  → secrets · SSO/OIDC opt-in · RBAC/ACL (roles + por-folder) · mTLS opt-in (`-tls-client-ca`,
                  verifica cert; e2e handshake) · audit→SIEM (eventos JSON em stderr + POST `-audit-siem-url`)
                  · **SSO e2e VALIDADO com Keycloak REAL** (2026-06-23: Authorization Code ponta-a-ponta →
                  user provisionado → sessão federada autentica a API)
-🟡 Operação   → OpenTelemetry ✔ (opt-in OTLP)  ⬜ zero-downtime · multi-ambiente · quotas
+✅ Operação   → OpenTelemetry ✔ (opt-in OTLP) · **zero-downtime VALIDADO** (rolling-upgrade.sh: novo sobe
+                 follower → drena o líder → assume em ~4s, API nunca cai) · **multi-ambiente** (deployment por
+                 branch+DB+env_label; `regente_env_info` no /metrics) · **quotas** (F15 + rebuild HA) — docs/operacao.md
 ✅ Qualidade  → E2E HTTP ✔ · chaos/HA ✔ (chaos-ha.sh + validado) · SLOs ✔ (docs/slos.md) · **carga REAL ✔**
                  (`hey` contra o binário: /readyz 50k reqs/100conc → 11.6k req/s · /metrics 7.9k req/s · 0 erros)
-                 ⬜ reconciler de drift
+                 · **reconciler de drift** (`-drift-reconcile-sec`: líder alerta pelos canais do R7 ou auto-sync)
 ```
 
 ---
@@ -155,6 +162,11 @@ contra Postgres 16 real (Docker); restante pendente:
                     Teste: server/internal/api/oidc_integration_test.go (env-gated)
 ✅ Carga REAL (2026-06-23) → `hey` contra o binário compilado (TCP real, não in-process): /readyz 50k reqs /
                     100 conc → 11.6k req/s, p99 34ms, 0 erros · /metrics 30k → 7.9k req/s, 0 erros
+✅ Zero-downtime REAL (2026-06-23) → rolling-upgrade.sh contra PG real: nó novo sobe follower → READY →
+                    drena o líder → novo assume em ~4s, /livez do novo NUNCA caiu (API disponível na troca)
+✅ Escala 10k (2026-06-23) → RunDaily materializa 10.000 instances (idempotente: 2ª daily cria 0) — TestScale_RunDaily10k
+✅ Quotas HA (2026-06-23) → RebuildResourcesFromRunning reconstrói o tracker a partir das instances RUNNING →
+                    novo líder não fura a capacidade ao retomar o dispatch — TestQuotas_RebuildFromRunning
 ⬜ Secrets        → resolver github_token/webhook_secret via provider (env/-secrets-file)
 ⬜ SSH · agente   → host com sshd; agente instalado como serviço (systemd / Task Windows)
 ```
@@ -189,9 +201,10 @@ contra Postgres 16 real (Docker); restante pendente:
 | ✅ | ~~Segurança — RBAC/ACL · mTLS · audit→SIEM~~ | **Feito (2026-06-23):** mTLS opt-in + RBAC travado + audit→SIEM (JSON/HTTP). |
 | ✅ | ~~Qualidade — E2E/carga/chaos/SLOs~~ | **Feito (2026-06-23):** E2E HTTP + smoke de carga + chaos-ha.sh + docs/slos.md. |
 | ✅ | ~~e2e em infra REAL — k8s · SSO · carga~~ | **Feito (2026-06-23):** k8s em cluster kind REAL · SSO ponta-a-ponta com Keycloak REAL · carga REAL (`hey`, 11.6k req/s). |
-| **1** | **Operação** — upgrades zero-downtime · multi-ambiente · quotas · reconciler de drift | Maturidade de operação contínua. |
-| **2** | **Escala** — stateless · 10k+ jobs/dia validado | Volume de produção. |
-| 3 | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · ciclo de vida da daily | Backlog de paridade de maior impacto percebido. |
+| ✅ | ~~Enterprise — operação · escala · quotas · drift~~ | **Feito (2026-06-23):** zero-downtime validado (rolling-upgrade.sh) · 10k jobs/dia · quotas-HA · multi-ambiente · reconciler de drift. **Enterprise readiness = 100%.** |
+| **1** | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · ciclo de vida da daily | Backlog de paridade de maior impacto percebido. |
+| **2** | **Diferenciais** — Explain · Diff de Daily · Blast Radius · Dry Run | Onde o Regente passa o Control-M. |
+| 3 | **Fase Z** — case study + post LinkedIn | Último gate, com tudo sólido. |
 
 ---
 

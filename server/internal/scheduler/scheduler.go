@@ -204,6 +204,49 @@ func (s *Scheduler) reloadDefs() {
 // ReloadDefs é chamado pelo handler de save/delete de definition.
 func (s *Scheduler) ReloadDefs() { s.reloadDefs() }
 
+// RebuildResourcesFromRunning — Enterprise/HA: o ResourceTracker (F15/quotas) é
+// in-memory e vive no líder. Após restart ou failover, um novo líder começa com o
+// tracker ZERADO enquanto há instances RUNNING que ainda detêm slots no mundo
+// real → sem isto, as quotas furariam (o novo líder deixaria começar jobs acima
+// da capacidade). Este método reconstrói o uso a partir do estado durável: cada
+// instance RUNNING carrega o snapshot da def (com Resources). Chamar no boot e ao
+// assumir liderança. Retorna quantas instances foram re-registradas.
+func (s *Scheduler) RebuildResourcesFromRunning() (int, error) {
+	if s.resources == nil {
+		return 0, nil
+	}
+	rows, err := s.db.Query(`SELECT id, COALESCE(definition_snapshot,'') FROM instances WHERE status=?`, string(domain.StatusRunning))
+	if err != nil {
+		return 0, err
+	}
+	type rec struct{ id, snap string }
+	var recs []rec
+	for rows.Next() {
+		var id, snap string
+		if err := rows.Scan(&id, &snap); err == nil {
+			recs = append(recs, rec{id, snap})
+		}
+	}
+	rows.Close()
+
+	n := 0
+	for _, rc := range recs {
+		if rc.snap == "" {
+			continue
+		}
+		var def domain.JobDefinition
+		if json.Unmarshal([]byte(rc.snap), &def) != nil || len(def.Resources) == 0 {
+			continue
+		}
+		s.resources.Reacquire(rc.id, def.Resources)
+		n++
+	}
+	if n > 0 {
+		log.Printf("[scheduler] quotas: %d instances RUNNING re-registradas no tracker (rebuild)", n)
+	}
+	return n, nil
+}
+
 // currentCommitSHA — sha do HEAD do workspace de leitura (lido sob demanda).
 // Vazio se GitOps não atachado.
 func (s *Scheduler) currentCommitSHA() string {
