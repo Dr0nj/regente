@@ -455,12 +455,14 @@ var sqliteMigrations = []migration{
 	{version: 1, sql: schemaV1(sqliteID, "DATETIME")},
 	{version: 2, sql: schemaV2(sqliteID, "DATETIME")},
 	{version: 3, sql: schemaV3()},
+	{version: 4, sql: schemaV4()},
 }
 
 var pgMigrations = []migration{
 	{version: 1, sql: schemaV1(pgID, "TIMESTAMPTZ")},
 	{version: 2, sql: schemaV2(pgID, "TIMESTAMPTZ")},
 	{version: 3, sql: schemaV3()},
+	{version: 4, sql: schemaV4()},
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
@@ -468,4 +470,16 @@ var pgMigrations = []migration{
 // ALTER idêntico em SQLite e Postgres.
 func schemaV3() string {
 	return `ALTER TABLE alert_events ADD COLUMN resolution TEXT NOT NULL DEFAULT ''`
+}
+
+// schemaV4 — P2/escala: denormaliza a folder (team) na própria instance para
+// permitir FILTRO e PAGINAÇÃO server-side por folder (antes só existia na def, o
+// que forçava baixar o dia inteiro e filtrar no cliente). Os índices cobrem o
+// filtro por folder e a paginação por cursor (order_date, scheduled_at, id).
+// ALTER idêntico em SQLite e Postgres; instances antigas ficam com team=” (órfãs,
+// já escondidas de não-admin) — novas dailies preenchem. Ver instances.go.
+func schemaV4() string {
+	return `ALTER TABLE instances ADD COLUMN team TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_instances_team ON instances(order_date, team);
+CREATE INDEX IF NOT EXISTS idx_instances_page ON instances(order_date, scheduled_at, id)`
 }

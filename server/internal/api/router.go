@@ -108,6 +108,8 @@ func NewRouter(cfg Config) http.Handler {
 
 		// Instances (runtime)
 		r.Get("/instances", s.listInstances)
+		r.Get("/instances/page", s.pageInstances)       // P2/escala: paginação por cursor
+		r.Get("/instances/summary", s.summaryInstances) // P2/escala: contadores agregados
 		r.With(s.requireWriterMW).Post("/instances/{id}/hold", s.holdInstance)
 		r.With(s.requireWriterMW).Post("/instances/{id}/release", s.releaseInstance)
 		r.With(s.requireWriterMW).Post("/instances/{id}/cancel", s.cancelInstance)

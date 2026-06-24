@@ -11,14 +11,14 @@ Núcleo / Control-M        █████████████████�
 Identidade visual / UI    ██████████████████████ 100%  ✅ logo, topbar, 13 temas, login vídeo, sidebars
 Alerting                  ██████████████████████ 100%  ✅ multi-canal + por-regra
 Serverless portátil       ██████████████████████ 100%  ✅ Knative/WASM/NATS/k8s ✓ · k8s e2e REAL ✓ · AWS/GCP (código + mock; conta paga fora de escopo)
-Enterprise readiness      █████████████████████░  95%  🟡 RBAC/mTLS/SIEM/OTel/SLOs · SSO+carga REAIS · zero-downtime · multi-env · quotas-HA · drift · write-path 1M ✓ · read-path/UI 100k+ ⬜
-Escala Control-M (100k–1M) ████████░░░░░░░░░░░░░░░  35%  🟡 P1 write-path VALIDADO a 1M (17s) · P2 API paginada ⬜ · P3 UI ViewPoint ⬜
+Enterprise readiness      ██████████████████████ 97%  🟡 RBAC/mTLS/SIEM/OTel/SLOs · SSO+carga REAIS · zero-downtime · multi-env · quotas-HA · drift · escala write+read 100k+ ✓ · só UI de escala (P3) ⬜
+Escala Control-M (100k–1M) ███████████████░░░░░░░  70%  🟡 P1 write-path 1M (17s) ✓ · P2 API paginada/filtrada+contadores ✓ · P3 UI ViewPoint ⬜
 Resiliência operacional   ██████████████████████ 100%  ✅ R1–R7 ✓ + chaos/HA validado em PG real
 ```
 
-> 🏁 **Marco (2026-06-23):** 5 trilhas estruturais em **100%**; Enterprise em 95% (falta só o read-path/UI
-> de escala). Aberta a trilha **Escala Control-M (100k–1M/dia)** — o write-path já materializa **1M em 17s**
-> (P1 ✓); faltam a API paginada (P2) e a UI por ViewPoint (P3) para *operar* nesse volume.
+> 🏁 **Marco (2026-06-23):** 5 trilhas estruturais em **100%**; Enterprise em 97%. Trilha **Escala Control-M
+> (100k–1M/dia)** a 70%: write-path materializa **1M em 17s** (P1 ✓) e o read-path serve **summary 51ms /
+> page 18ms @100k** (P2 ✓). Falta só **P3 — UI por ViewPoint server-driven** para *operar* o volume na tela.
 
 Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · 🔴 prioridade
 
@@ -115,8 +115,9 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ```
 🟡 Escala     → Postgres plugável + migrations ✔ · stateless (estado durável externo; só o líder agenda) ·
-                 **write-path escala a 1M/dia** (P1: materialização em lote — 1M em 17s; ver §Escala Control-M)
-                 ⬜ read-path (P2: API paginada/filtrada) · UI por ViewPoint server-driven (P3) p/ OPERAR 100k+
+                 **write-path 1M/dia** (P1: lote, 1M em 17s) ✓ · **read-path paginado/filtrado** (P2: /page +
+                 /summary + `team` na instance, RBAC por conjunto — 51ms/18ms @100k) ✓ — ver §Escala Control-M
+                 ⬜ só falta a UI por ViewPoint server-driven (P3) p/ OPERAR 100k+ na tela
 ✅ HA         → leader election (advisory lock) ✔failover · hub distribuído (R5) ✔ · backup/DR (R6) ✔ ·
                  **quotas sobrevivem a failover** (RebuildResourcesFromRunning reconstrói o tracker do RUNNING)
 ✅ Segurança  → secrets · SSO/OIDC opt-in · RBAC/ACL (roles + por-folder) · mTLS opt-in (`-tls-client-ca`,
@@ -143,10 +144,12 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
         Antes: O(N) round-trips (COUNT por def + INSERT autocommit por linha + evento por instance) → 8.8s/10k.
         Agora: existência set-based (1 query) + gating em memória + INSERT em LOTE por transação com prepared
         stmts (chunk de 5k, 1 commit/chunk). → 10k=182ms · 100k=1.7s · 1M=17.4s (~57k inst/s).
-⬜ P2 · READ PATH (API) — /api/instances hoje devolve o DIA INTEIRO num array, sem filtro/paginação; pra
-        não-admin roda CanReadFolder POR LINHA (O(N) queries). Fazer: filtro server-side (folder/status/SLA/
-        busca) + paginação por cursor + denormalizar team/folder na instance (+índice) + endpoint de contadores
-        agregados (GROUP BY, já barato no /metrics).
+✅ P2 · READ PATH (API) — VALIDADO (2026-06-23). Antes: /api/instances devolvia o DIA INTEIRO num array +
+        CanReadFolder POR LINHA p/ não-admin. Agora: coluna `team` denormalizada na instance (migration v4 +
+        índices) → filtro server-side (folder/status/busca) + **paginação por cursor** (/api/instances/page,
+        keyset estável scheduled_at,id) + **contadores agregados** (/api/instances/summary, GROUP BY) + **RBAC
+        por CONJUNTO** (FilterReadableFolders uma vez, não por linha). Bench @100k: **summary 51ms · page(500)
+        18ms** vs full-fetch do dia inteiro 491ms (e payload 500 linhas, não 100k). TestReadPath_Scale + 4 testes.
 ⬜ P3 · UI por ViewPoint server-driven — o front hoje BAIXA todas as instances e joga no ReactFlow sem
         virtualização. Fazer: Monitoring carrega só um working set filtrado/paginado (o ViewPoint do Control-M
         já está no backlog) + virtualização do que renderiza + dashboard/contadores pro total. Ninguém renderiza
@@ -231,9 +234,10 @@ contra Postgres 16 real (Docker); restante pendente:
 | ✅ | ~~e2e em infra REAL — k8s · SSO · carga~~ | **Feito (2026-06-23):** k8s em cluster kind REAL · SSO ponta-a-ponta com Keycloak REAL · carga REAL (`hey`, 11.6k req/s). |
 | ✅ | ~~Enterprise — operação · quotas · drift · zero-downtime~~ | **Feito (2026-06-23):** zero-downtime validado · quotas-HA · multi-ambiente · reconciler de drift. |
 | ✅ | ~~Escala P1 — write-path (materialização)~~ | **Feito (2026-06-23):** daily em lote → **1M em 17s** (~57k inst/s); era ~15min. TestScale_BenchmarkN. |
-| **1** | **Escala P2 — read-path** (API paginada/filtrada + team na instance + contadores) | Sem isso a UI não OPERA 100k+ (hoje baixa o dia inteiro). Pré-req do P3. |
-| **2** | **Escala P3 — UI por ViewPoint server-driven** + virtualização | Mostrar centenas, guardar milhões (como o Control-M). |
-| 3 | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · ciclo de vida da daily | Backlog de paridade de maior impacto. |
+| ✅ | ~~Escala P2 — read-path (API paginada/filtrada + contadores)~~ | **Feito (2026-06-23):** /page (cursor) + /summary + `team` denormalizado + RBAC por conjunto → **51ms/18ms @100k** vs 491ms. |
+| **1** | **Escala P3 — UI por ViewPoint server-driven** + virtualização | Consome /page + /summary; mostra centenas, guarda milhões. Fecha a trilha de escala. |
+| **2** | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · ciclo de vida da daily | Backlog de paridade de maior impacto. |
+| 3 | **Diferenciais** — Explain · Diff de Daily · Blast Radius · Dry Run | Onde o Regente passa o Control-M. |
 
 ---
 

@@ -342,9 +342,9 @@ func short(sha string) string {
 // em lote. Materializar em duas fases (decidir tudo em memória, depois gravar numa
 // transação) é o que torna a daily escalável a 100k–1M (ver insertDailyBatch).
 type pendingInstance struct {
-	id, defID   string
-	scheduledAt time.Time
-	snapshot    string
+	id, defID, team string
+	scheduledAt     time.Time
+	snapshot        string
 }
 
 // dailyBatchChunk — tamanho do lote por transação na materialização. Bound o WAL
@@ -405,7 +405,7 @@ func (s *Scheduler) RunDaily(date string) int {
 		}
 		snap, _ := json.Marshal(d) // Fase A: congela a def no momento da ordem.
 		batch = append(batch, pendingInstance{
-			id: d.ID + "-" + date, defID: d.ID,
+			id: d.ID + "-" + date, defID: d.ID, team: d.Team,
 			scheduledAt: computeScheduledAt(d, date), snapshot: string(snap),
 		})
 	}
@@ -442,7 +442,7 @@ func (s *Scheduler) insertDailyChunk(date, commitSHA string, chunk []pendingInst
 		log.Printf("[scheduler] daily %s: begin tx: %v", date, err)
 		return 0
 	}
-	insStmt, err := tx.Prepare(`INSERT INTO instances(id, definition_id, order_date, status, scheduled_at, definition_commit_sha, definition_snapshot) VALUES(?,?,?,?,?,?,?)`)
+	insStmt, err := tx.Prepare(`INSERT INTO instances(id, definition_id, team, order_date, status, scheduled_at, definition_commit_sha, definition_snapshot) VALUES(?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		_ = tx.Rollback()
 		log.Printf("[scheduler] daily %s: prepare insert: %v", date, err)
@@ -459,7 +459,7 @@ func (s *Scheduler) insertDailyChunk(date, commitSHA string, chunk []pendingInst
 
 	created := 0
 	for _, p := range chunk {
-		if _, err := insStmt.Exec(p.id, p.defID, date, string(domain.StatusWaiting), p.scheduledAt, commitSHA, p.snapshot); err != nil {
+		if _, err := insStmt.Exec(p.id, p.defID, p.team, date, string(domain.StatusWaiting), p.scheduledAt, commitSHA, p.snapshot); err != nil {
 			log.Printf("[scheduler] insert %s: %v", p.id, err)
 			continue
 		}
@@ -977,8 +977,8 @@ func (s *Scheduler) ForceOrder(defID string) (string, error) {
 	id := defID + "-FORCE-" + time.Now().Format("150405")
 	snap, _ := json.Marshal(*def) // Fase A: congela a def no momento da ordem manual.
 	_, err := s.db.Exec(
-		`INSERT INTO instances(id, definition_id, order_date, status, scheduled_at, forced, definition_commit_sha, definition_snapshot) VALUES(?,?,?,?,?,1,?,?)`,
-		id, defID, today, string(domain.StatusWaiting), time.Now(), commitSHA, string(snap),
+		`INSERT INTO instances(id, definition_id, team, order_date, status, scheduled_at, forced, definition_commit_sha, definition_snapshot) VALUES(?,?,?,?,?,?,1,?,?)`,
+		id, defID, def.Team, today, string(domain.StatusWaiting), time.Now(), commitSHA, string(snap),
 	)
 	if err != nil {
 		return "", err
