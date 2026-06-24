@@ -1,0 +1,31 @@
+{
+  "//": "TEMPLATE INERTE — o Claude Code NAO carrega este arquivo. Para ATIVAR, voce (dono) copia para .claude/settings.json: cp .claude/settings.suggested.json .claude/settings.json . Pre-aprova comandos seguros (sem prompt) e registra um hook que roda gofmt -w em todo .go editado. Ajuste a gosto. O hook so dispara depois que voce aprovar na 1a vez (seguranca do Claude Code).",
+  "permissions": {
+    "allow": [
+      "Bash(go:*)",
+      "Bash(gofmt:*)",
+      "Bash(npm run:*)",
+      "Bash(npm ci)",
+      "Bash(npx eslint:*)",
+      "Bash(bash scripts/verify.sh)",
+      "Bash(git status)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/format_go.py"
+          }
+        ]
+      }
+    ]
+  }
+}

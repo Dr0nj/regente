@@ -40,6 +40,21 @@ CI (`.github/workflows/ci.yml`): 3 jobs — server (build/vet/test), agent
   branch/PR), salvo se houver branch protection — aí cai em branch + PR.
 - **Modelo/identidade:** nunca colocar o id do modelo em commits/PRs/código.
 
+## Tooling de agente (Claude Code)
+
+- **`go.work`** (raiz) — workspace amarrando `server` + `agent`. Da raiz dá pra rodar
+  `go test ./server/... ./agent/...` ou targeted `go test ./server/internal/<pkg>/...` **sem
+  `cd`/`go -C`**. ⚠ `go build ./...` PURO não funciona da raiz (a raiz não é módulo) — use
+  `./server/...` / `./agent/...`. Os comandos por-módulo da CI seguem funcionando.
+- **`scripts/verify.sh`** — equivalente local da CI (server build+vet+test · agent build+test ·
+  app build). `bash scripts/verify.sh`. Slash: **`/verify`**.
+- **`/new-migration <desc>`** — scaffold de `schemaVN` lembrando de registrar nas DUAS slices
+  (`sqliteMigrations` E `pgMigrations`).
+- **`.claude/settings.suggested.json`** — TEMPLATE inerte (o Claude Code não carrega). Para ATIVAR
+  pré-aprovação de comandos seguros + hook que roda `gofmt -w` em todo `.go` editado:
+  `cp .claude/settings.suggested.json .claude/settings.json`. Overrides pessoais (não versionados):
+  `.claude/settings.local.json`. Hook em `.claude/hooks/format_go.py` (defensivo: no-op silencioso se falhar).
+
 ## Arquitetura serverless (aplicada — ver ADR)
 
 "Serverless portátil" (container scale-to-zero + estado/gatilho externalizados),

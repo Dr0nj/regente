@@ -1,0 +1,4 @@
+# Scripts executados por bash (CI/Linux) precisam de fim de linha LF — um \r no
+# shebang quebra o interpretador. Força LF independente do autocrlf do Windows.
+*.sh   text eol=lf
+*.py   text eol=lf

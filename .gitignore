@@ -29,3 +29,6 @@ secrets.json
 Thumbs.db
 .idea/
 .vscode/
+
+# --- Claude Code: overrides pessoais (settings versionado é o settings.json) ---
+.claude/settings.local.json
