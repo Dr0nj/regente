@@ -72,6 +72,11 @@ daily ou via Force Order manual.
   não-tratado persiste +1 diária (ou N via `schedule.keepActive`); OK/CANCELLED
   encerram. A ordem **avança o order_date** mantendo id/status/histórico (não
   duplica) e exibe a origem (badge ↩). Idempotente.
+- 🟢 **Explain — "por que esse job não rodou?"** (diferencial, sem IA): por instância,
+  expõe o gating que o scheduler já computa — janela, dependências (qual upstream/condição),
+  conditions faltando, recurso indisponível (quer/uso/capacidade). Construído como **fonte
+  única**: o mesmo avaliador decide o dispatch e explica, então condição nova é absorvida sem
+  manutenção dupla. `GET /api/instances/{id}/explain` + painel no drawer.
 - 🟢 **Retry de execution** — re-tentativa automática em falha (respeita `retries`).
 - 🟢 **Observabilidade** — `/metrics` em formato Prometheus.
 - 🟢 **Alerting (Fase 8)** — regras configuráveis avaliadas ao fim de cada
@@ -230,6 +235,7 @@ Todas as rotas `/api/*` exigem `Authorization: Bearer <token>`.
 | POST   | `/api/instances/{id}/release`         | Release                        |
 | POST   | `/api/instances/{id}/cancel`          | Cancel                         |
 | POST   | `/api/instances/{id}/rerun`           | Rerun                          |
+| GET    | `/api/instances/{id}/explain`         | por que (não) rodou: gating estruturado |
 | POST   | `/api/daily/run`                      | força a daily do dia           |
 | POST   | `/api/definitions/{id}/force`         | Order Force (Control-M)        |
 | POST   | `/api/scheduler/tick`                 | dispara um ciclo (cron externo, `-scheduler=external`) |

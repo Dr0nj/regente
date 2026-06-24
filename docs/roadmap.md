@@ -18,7 +18,7 @@ Resiliência operacional    █████████████████�
 
 ── Próximas fases ──────────────────────────────────────────────────────────
 Aprofundamento Control-M   ██░░░░░░░░░░░░░░░░░░░   8%  🟡 daily lifecycle ✅ · falta Actions/On-Do · variáveis · FILE_WATCH · calendários
-Diferenciais               ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ Explain · Diff de Daily · Blast Radius · Dry Run
+Diferenciais               ███░░░░░░░░░░░░░░░░░░  12%  🟡 Explain ✅ · falta Diff de Daily · Blast Radius · Dry Run
 Refinamento UI             ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ grid wrap jobs soltos · minimap revisto · LEGACY_CAP virtualizado
 Fase Z — divulgação        ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ case study + post LinkedIn
 ```
@@ -224,6 +224,10 @@ contra Postgres 16 real (Docker); restante pendente:
                     Idempotente — TestScale_RunDaily10k + TestScale_BenchmarkN (env REGENTE_SCALE_N)
 ✅ Quotas HA (2026-06-23) → RebuildResourcesFromRunning reconstrói o tracker a partir das instances RUNNING →
                     novo líder não fura a capacidade ao retomar o dispatch — TestQuotas_RebuildFromRunning
+✅ Explain "por que não rodou" (2026-06-24) → server REAL: job (workspace def) esperando condition
+                    'FECHAMENTO_OK' + recurso db (quer 2, cap 1) → GET /explain listou os 2 bloqueios
+                    (WAIT_CONDITION + WAIT_RESOURCE, runnable=false); setou a condition + subiu a capacidade
+                    → runnable=true, blockers vazios. tick e Explain concordam (fonte única). 21 testes
 ✅ Ciclo de vida da daily / carry-over (2026-06-24) → server REAL contra DB de disco semeado: ontem
                     (2026-06-23) com 40 jobs → a virada (auto-daily) trouxe os 15 abertos (5 RUNNING + 5 NOTOK
                     + 5 HELD) para hoje com carriedFrom=2026-06-23; OK(15)+WAITING(10) ficaram; carry-over
@@ -267,9 +271,11 @@ contra Postgres 16 real (Docker); restante pendente:
 | ✅ | ~~Escala P2 — read-path (API paginada/filtrada + contadores)~~ | **Feito (2026-06-23):** /page (cursor) + /summary + `team` denormalizado + RBAC por conjunto → **51ms/18ms @100k** vs 491ms. |
 | ✅ | ~~Escala P3 — UI por ViewPoint server-driven~~ | **Feito (2026-06-24):** ScaleMonitor (dashboard + folders + lista virtualizada) **validado AO VIVO @1M**; folder em ~39ms, DOM 36.777→932. |
 | ✅ | ~~Ciclo de vida da daily (carry-over / Keep Active)~~ | **Feito (2026-06-24):** RUNNING/HELD persistem; NOTOK +1 / keepActive N; order_date avança; migration v5; validado ao vivo. |
-| **1** | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · FILE_WATCH · calendários complexos | Backlog de paridade de maior impacto. |
-| **2** | **Diferenciais** — Explain · Diff de Daily · Blast Radius · Dry Run | Onde o Regente passa o Control-M. |
-| 3 | **Fase Z** — case study + post LinkedIn | Último gate, com tudo sólido. |
+| ✅ | ~~Diferencial: Explain ("por que não rodou?")~~ | **Feito (2026-06-24):** gating como fonte única (tick+Explain), read-only, 21 testes, validado ao vivo. Substrato do MCP `explain_job()`. |
+| **1** | **Diferenciais (cont.)** — Diff de Daily · Blast Radius · Dry Run | Baratos (dados já existem: commit_sha+snapshot, grafo de deps). Onde passa o Control-M. |
+| **2** | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · FILE_WATCH · calendários | Backlog de paridade de maior impacto. |
+| 3 | **Camada agent-native (MCP)** — expor Explain/Diff/Summary como tools | IA-native sobre verdade determinística; depois dos diferenciais existirem. |
+| 4 | **Fase Z** — case study + post LinkedIn | Último gate, com tudo sólido. |
 
 ---
 
@@ -373,10 +379,15 @@ contra Postgres 16 real (Docker); restante pendente:
    não só do grafo estático. Ex.: cancelar PIX_ENVIO → "37 jobs não executam · 3 SLAs violados · atraso ~2h15".
 ⬜ Dry Run — simular uma daily FUTURA (ex.: 25/12/2026) SEM criar instances: quem roda · quem espera ·
    quem NUNCA dispara. (o forecast já existe; falta o modo "data futura + razões por job + sem materializar".)
-⬜ Explain ("por que o job não rodou?") — motor de EXPLICAÇÃO (sem IA): WAIT_RESOURCE (qual recurso, quem
-   consome, slots livres ex. 0/3) · WAIT_CONDITION (qual condition falta, job produtor, última execução/status)
-   · deps não satisfeitas · fora da janela · calendar. O scheduler já computa o gating — falta expor o PORQUÊ
-   por instância. Mata a pergunta nº1 de quem opera Control-M.
+✅ Explain ("por que o job não rodou?") — ENTREGUE (2026-06-24): motor de EXPLICAÇÃO (sem IA): WAIT_WINDOW ·
+   WAIT_DEP / BLOCKED_DEP (qual upstream, condição, status) · WAIT_CONDITION (qual condition falta) ·
+   WAIT_RESOURCE (recurso, quer/uso/capacidade). **Construído como FONTE ÚNICA do gating**: `gateInstance`
+   é o avaliador que o TICK usa pra decidir E o Explain pra mostrar — nenhum gate bloqueia o dispatch sem
+   aparecer no Explain, então condição nova é absorvida de graça (sem checador paralelo / manutenção dupla).
+   `edgeState` (regra de aresta), `Conditions.Missing` e `Resources.Shortfalls` são read-only e fonte única
+   com evalDeps/TryAcquire. `GET /api/instances/{id}/explain` → {runnable, summary, blockers[]} estruturado;
+   painel "Por que (não) rodou?" no drawer. Custo O(upstreams), não O(daily) → vale a 1M. 21 testes + validado
+   ao vivo. **Substrato do futuro tool MCP `explain_job()`** (camada agent-native).
 ⬜ Event log de primeira classe (CQRS-lite — NÃO Event Sourcing puro) — evoluir o `instance_events` (já é a
    semente) para um log COMPLETO e CONFIÁVEL: emissão TRANSACIONAL (evento + mutação de estado no mesmo
    commit), sequência global, + tipos que faltam (DailyCreated, ConditionAdded/Removed…). O estado mutável
