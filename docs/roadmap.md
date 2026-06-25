@@ -1,6 +1,6 @@
 # 🎼 Regente — Roadmap
 
-> Documento vivo · revisão 2026-06-22.
+> Documento vivo · revisão 2026-06-24.
 > Estratégia de arquitetura em [`arquitetura-futuro.md`](arquitetura-futuro.md);
 > detalhe de produto no [`../README.md`](../README.md).
 
