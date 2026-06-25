@@ -305,6 +305,23 @@ export async function fetchBlastRadius(id: string): Promise<BlastRadius> {
   return api<BlastRadius>(`/api/instances/${encodeURIComponent(id)}/blast-radius`);
 }
 
+/* ── Dry Run ("simular uma daily futura sem materializar") ── */
+
+export type DryRunOutcome = "RUN" | "WAIT" | "BLOCKED" | "NOT_SCHEDULED";
+export interface DryRunJob { defId: string; label?: string; team?: string; outcome: DryRunOutcome; reason: string; dependsOn?: string[] }
+export interface DryRun {
+  date: string;
+  hasCalendars: boolean;
+  counts: { run: number; wait: number; blocked: number; notScheduled: number; total: number };
+  jobs: DryRunJob[];
+  truncated: boolean;
+}
+
+export async function fetchDryRun(date?: string): Promise<DryRun> {
+  const q = date ? `?date=${encodeURIComponent(date)}` : "";
+  return api<DryRun>(`/api/daily/dryrun${q}`);
+}
+
 export async function fetchDailyDiff(opts?: { from?: string; to?: string; folder?: string }): Promise<DailyDiff> {
   const qs = new URLSearchParams();
   if (opts?.from) qs.set("from", opts.from);

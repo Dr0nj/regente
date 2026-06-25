@@ -350,6 +350,22 @@ func (s *server) runDaily(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]interface{}{"orderDate": today, "created": created})
 }
 
+// dryRunDaily — Diferencial "simular a daily de uma data futura SEM materializar":
+// quem roda, quem espera (depois de quem) e quem nunca dispara (e por quê). Default
+// date = amanhã. Não toca o banco.
+func (s *server) dryRunDaily(w http.ResponseWriter, r *http.Request) {
+	date := r.URL.Query().Get("date")
+	if date == "" {
+		date = time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	}
+	dr, err := s.cfg.Scheduler.DryRun(date)
+	if err != nil {
+		http.Error(w, "data inválida (use YYYY-MM-DD)", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, 200, dr)
+}
+
 // diffDaily — Diferencial "o que mudou entre duas diárias?". Default: to=hoje,
 // from=a diária anterior. ?folder= escopa a uma folder/team. Lê só os snapshots
 // congelados (DNA Git-native) — diff exato, sem reprocessar Git.

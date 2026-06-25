@@ -18,6 +18,7 @@ import LaneLabelNode from "./LaneLabelNode";
 import MonitoringSidebarV2, { type MonitoringJob } from "./MonitoringSidebarV2";
 import ScaleMonitor from "./ScaleMonitor";
 import DailyDiffModal from "./DailyDiffModal";
+import DryRunModal from "./DryRunModal";
 import DesignSidebarV2 from "./DesignSidebarV2";
 import InstanceDetailsDrawer from "./InstanceDetailsDrawer";
 import JobConfigDrawer from "./JobConfigDrawer";
@@ -77,7 +78,7 @@ import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, type 
 import { toast, ToastHost } from "./Toast";
 import EdgeConditionModal from "./EdgeConditionModal";
 import { getGitInfo, commitUrl } from "@/lib/git-info";
-import { FolderOpen, Play, Zap, GitCommitHorizontal, GitCompare, ChevronLeft, ChevronRight } from "lucide-react";
+import { FolderOpen, Play, Zap, GitCommitHorizontal, GitCompare, FlaskConical, ChevronLeft, ChevronRight } from "lucide-react";
 
 import "@xyflow/react/dist/style.css";
 import "@/index.css";
@@ -524,6 +525,7 @@ function V2PreviewInner() {
   // P3/escala — ViewPoint server-driven (paginado/virtualizado), p/ 100k–1M jobs.
   const [scaleView, setScaleView] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
+  const [showDryRun, setShowDryRun] = useState(false);
   const [instances, setInstances] = useState<JobInstance[]>([]);
   const [defs, setDefs] = useState<JobDefinition[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
@@ -1355,6 +1357,24 @@ function V2PreviewInner() {
               <GitCompare size={11} /> Diff
             </button>
 
+            <button
+              onClick={() => setShowDryRun(true)}
+              title="Dry Run — simular a daily de uma data futura sem materializar (quem roda / espera / nunca dispara)"
+              style={{
+                padding: "5px 10px",
+                background: "transparent",
+                border: "1px solid var(--v2-border-medium)",
+                color: "var(--v2-text-primary)",
+                borderRadius: 3,
+                fontSize: 10, fontFamily: "var(--v2-font-mono)",
+                letterSpacing: "0.06em", textTransform: "uppercase",
+                cursor: "pointer", fontWeight: 600,
+                display: "flex", alignItems: "center", gap: 6,
+              }}
+            >
+              <FlaskConical size={11} /> Dry Run
+            </button>
+
             <div style={{ position: "relative" }}>
               <button
                 onClick={() => setForceMenuOpen((v) => !v)}
@@ -1755,6 +1775,7 @@ function V2PreviewInner() {
 
         {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
         {showDiff && <DailyDiffModal onClose={() => setShowDiff(false)} />}
+        {showDryRun && <DryRunModal onClose={() => setShowDryRun(false)} />}
 
         <PRBannerHost />
 

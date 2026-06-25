@@ -86,6 +86,14 @@ export const fetchBlastRadius = isServerMode()
   ? serverInstance.fetchBlastRadius
   : async (_id: string): Promise<serverInstance.BlastRadius | null> => null;
 
+export type DryRun = serverInstance.DryRun;
+export type DryRunJob = serverInstance.DryRunJob;
+
+// Dry Run só existe no server mode (simula contra as defs/calendars do scheduler).
+export const fetchDryRun = isServerMode()
+  ? serverInstance.fetchDryRun
+  : async (_date?: string): Promise<serverInstance.DryRun | null> => null;
+
 /* ── Scheduler API ── */
 
 export const runDaily = isServerMode()
