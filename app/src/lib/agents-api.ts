@@ -5,6 +5,15 @@ import { api, isServerMode } from "./server-client";
 export interface AgentInfo {
   id: string;
   capabilities: string[];
+  online: boolean;
+  os?: string;
+  arch?: string;
+  host?: string;
+  version?: string;
+  startedAt?: string;   // início do processo do agente (uptime)
+  connectedAt?: string; // conectou neste servidor (sessão)
+  firstSeen?: string;
+  lastSeen?: string;
 }
 
 export async function listAgents(): Promise<AgentInfo[]> {

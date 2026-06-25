@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -26,6 +27,15 @@ type Client struct {
 	Conn         *websocket.Conn
 	Send         chan []byte
 	Capabilities []string // agents: ["COMMAND","REST",...]
+
+	// Metadata de agente (reportada no handshake) — alimenta a tela de Agentes.
+	OS          string
+	Arch        string
+	Host        string
+	Version     string
+	Started     string    // início do processo do agente (RFC3339), p/ uptime
+	ConnectedAt time.Time // quando conectou neste servidor (sessão)
+	LastSeen    time.Time // último sinal (heartbeat/result/output)
 }
 
 type Hub struct {
@@ -44,9 +54,24 @@ func New() *Hub {
 func (h *Hub) Register(c *Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	now := time.Now()
+	if c.ConnectedAt.IsZero() {
+		c.ConnectedAt = now
+	}
+	c.LastSeen = now
 	h.clients[c.ID] = c
 	if c.Kind == ClientAgent {
 		h.agents[c.ID] = c
+	}
+}
+
+// Touch carimba o último sinal de um agent (heartbeat/result/output) p/ a tela de
+// Agentes. No-op se o agent não está conectado.
+func (h *Hub) Touch(id string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if a := h.agents[id]; a != nil {
+		a.LastSeen = time.Now()
 	}
 }
 
@@ -135,7 +160,7 @@ func (h *Hub) Dispatch(agentID, capability string, raw []byte) (DispatchOutcome,
 	}
 }
 
-// OnlineAgents retorna IDs dos agents conectados.
+// OnlineAgents retorna os agents conectados com sua metadata (p/ a tela de Agentes).
 func (h *Hub) OnlineAgents() []map[string]interface{} {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -144,7 +169,21 @@ func (h *Hub) OnlineAgents() []map[string]interface{} {
 		out = append(out, map[string]interface{}{
 			"id":           id,
 			"capabilities": a.Capabilities,
+			"os":           a.OS,
+			"arch":         a.Arch,
+			"host":         a.Host,
+			"version":      a.Version,
+			"started":      a.Started,
+			"connectedAt":  a.ConnectedAt,
+			"lastSeen":     a.LastSeen,
 		})
 	}
 	return out
+}
+
+// IsOnline reporta se o agent está conectado AGORA neste nó (verdade do hub).
+func (h *Hub) IsOnline(id string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.agents[id] != nil
 }

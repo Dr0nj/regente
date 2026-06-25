@@ -35,6 +35,12 @@ import (
 	"github.com/tetratelabs/wazero/sys"
 )
 
+// agentVersion — versão reportada na tela de Agentes (handshake). processStarted
+// marca o início do processo, pra calcular uptime no servidor/UI.
+const agentVersion = "0.1.0"
+
+var processStarted = time.Now()
+
 func main() {
 	var (
 		server    = flag.String("server", "ws://localhost:8080/ws/agent", "regente-server WebSocket URL")
@@ -64,6 +70,14 @@ func main() {
 	q.Set("token", *token)
 	q.Set("id", *agentID)
 	q.Set("caps", *caps)
+	// Metadata pra tela de Agentes (OS/host/versão/uptime).
+	q.Set("os", runtime.GOOS)
+	q.Set("arch", runtime.GOARCH)
+	if h, err := os.Hostname(); err == nil {
+		q.Set("host", h)
+	}
+	q.Set("ver", agentVersion)
+	q.Set("started", processStarted.Format(time.RFC3339))
 	u.RawQuery = q.Encode()
 
 	log.Printf("regente-agent id=%s caps=%s transport=ws -> %s", *agentID, *caps, *server)

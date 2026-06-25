@@ -430,10 +430,6 @@ func (s *server) forceOrder(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"instanceId": id})
 }
 
-func (s *server) listAgents(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, s.cfg.Hub.OnlineAgents())
-}
-
 type instanceEvent struct {
 	ID         int64     `json:"id"`
 	InstanceID string    `json:"instanceId"`

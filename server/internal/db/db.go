@@ -457,6 +457,7 @@ var sqliteMigrations = []migration{
 	{version: 3, sql: schemaV3()},
 	{version: 4, sql: schemaV4()},
 	{version: 5, sql: schemaV5("DATETIME")},
+	{version: 6, sql: schemaV6("DATETIME")},
 }
 
 var pgMigrations = []migration{
@@ -465,6 +466,7 @@ var pgMigrations = []migration{
 	{version: 3, sql: schemaV3()},
 	{version: 4, sql: schemaV4()},
 	{version: 5, sql: schemaV5("TIMESTAMPTZ")},
+	{version: 6, sql: schemaV6("TIMESTAMPTZ")},
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
@@ -497,9 +499,27 @@ CREATE INDEX IF NOT EXISTS idx_instances_page ON instances(order_date, scheduled
 //   - carried_at: instante da última virada; RE-ARMA o watchdog de stuck-running
 //     (um RUNNING carregado com started_at antigo não é reapado no instante em que
 //     aparece no novo dia — staleness medido de max(started_at, carried_at)).
+//
 // ALTER idêntico em SQLite e Postgres; instances antigas ficam com defaults.
 func schemaV5(ts string) string {
 	return `ALTER TABLE instances ADD COLUMN carry_budget INTEGER NOT NULL DEFAULT -1;
 ALTER TABLE instances ADD COLUMN carried_from TEXT NOT NULL DEFAULT '';
 ALTER TABLE instances ADD COLUMN carried_at ` + ts
+}
+
+// schemaV6 — frota de agentes: a tabela `agents` já existe desde a v1 (id ·
+// capabilities · last_seen_at · online), mas era inerte. Aqui ela ENRIQUECE para
+// alimentar a tela de Agentes: metadata (OS/arch/host/versão), início do processo
+// (started_at → uptime), instante da conexão e first_seen. O "online agora" é a
+// verdade do hub (in-memory); a tabela guarda metadata + last_seen_at pra sobreviver
+// à desconexão e ao restart. ALTER ADD COLUMN nullable (sem default não-constante,
+// p/ compat SQLite); first_seen/last_seen_at são preenchidos no upsert (ver agents.go).
+func schemaV6(ts string) string {
+	return `ALTER TABLE agents ADD COLUMN os TEXT NOT NULL DEFAULT '';
+ALTER TABLE agents ADD COLUMN arch TEXT NOT NULL DEFAULT '';
+ALTER TABLE agents ADD COLUMN host TEXT NOT NULL DEFAULT '';
+ALTER TABLE agents ADD COLUMN version TEXT NOT NULL DEFAULT '';
+ALTER TABLE agents ADD COLUMN started_at ` + ts + `;
+ALTER TABLE agents ADD COLUMN connected_at ` + ts + `;
+ALTER TABLE agents ADD COLUMN first_seen ` + ts + ``
 }

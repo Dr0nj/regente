@@ -66,15 +66,22 @@ func (s *server) wsAgent(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[ws/agent] upgrade: %v", err)
 		return
 	}
+	q := r.URL.Query()
 	c := &hub.Client{
 		ID:           agentID,
 		Kind:         hub.ClientAgent,
 		Conn:         conn,
 		Send:         make(chan []byte, 64),
 		Capabilities: caps,
+		OS:           q.Get("os"),
+		Arch:         q.Get("arch"),
+		Host:         q.Get("host"),
+		Version:      q.Get("ver"),
+		Started:      q.Get("started"),
 	}
 	s.cfg.Hub.Register(c)
-	log.Printf("[ws/agent] %s connected caps=%v", agentID, caps)
+	s.recordAgentConnect(c)
+	log.Printf("[ws/agent] %s connected caps=%v os=%s/%s host=%s", agentID, caps, c.OS, c.Arch, c.Host)
 
 	go clientWriter(c)
 	clientReader(c, func(msg []byte) {
@@ -102,10 +109,12 @@ func (s *server) wsAgent(w http.ResponseWriter, r *http.Request) {
 				s.cfg.Scheduler.EmitEvent(ev.InstanceID, "output", "agent", strings.TrimRight(ev.Chunk, "\r\n"))
 			}
 		case "heartbeat":
-			// TODO: gravar last_seen_at
+			s.cfg.Hub.Touch(agentID)
+			s.recordAgentSeen(agentID)
 		}
 	})
 	s.cfg.Hub.Unregister(c)
+	s.recordAgentSeen(agentID) // marca o último visto na desconexão
 	log.Printf("[ws/agent] %s disconnected", agentID)
 }
 
