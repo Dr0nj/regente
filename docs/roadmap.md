@@ -20,7 +20,7 @@ Resiliência operacional    █████████████████�
 Agent-native (MCP)         █████████████████░░░  85%  🟢 servidor MCP ✅ (6 tools read + 2 write gated) · falta NL-query + writes ricos
 Diferenciais               ██████████░░░░░░░░░░  50%  🟡 Explain·Diff·Blast·Dry Run ✅ · falta Job Neighborhood · RCA · Event log
 Aprofundamento Control-M   ██░░░░░░░░░░░░░░░░░░░   8%  🟡 daily lifecycle ✅ · falta Actions/On-Do · variáveis · FILE_WATCH · calendários
-Refinamento UI             ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ grid wrap jobs soltos · minimap revisto · LEGACY_CAP virtualizado
+Refinamento UI             ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ grid wrap jobs soltos · minimap revisto · LEGACY_CAP virtualizado · aba de agentes (ping/frota)
 Fase Z — divulgação        ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ case study + post LinkedIn (agora com a história agent-native)
 ```
 
@@ -71,7 +71,16 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
    sobe muito/some na lista; (2) header com o TOTAL REAL do `/summary` ("2000 carregados de 1.000.000"), nunca
    número truncado disfarçado de total; (3) cap do CANVAS (ReactFlow não desenha 100k nós) vira configurável e
    bem maior, com aviso "abra o ViewPoint pra ver todos". O ViewPoint já mostra 100k–1M.
-```
+⬜ Aba de AGENTES (em Settings/Config) — visão e CONTROLE da frota. Hoje o backend já tem as peças
+   (`/api/agents` = online via `Hub.OnlineAgents` · `/api/agents/tokens` com `last_used_at` · presença
+   cross-nó no R5 · alerta de frota ↓ no R7), mas não há uma TELA dedicada que junte tudo. Fazer:
+   • LISTA consolidada: agentes INSTALADOS (têm token) × CONECTADOS agora × última vez visto (last_used_at),
+     com capabilities, host/nó (multi-nó R5) e o token-prefix; CONTADOR da frota ("3 de 5 online").
+   • PING ATIVO (health) — botão "ping" por agente (e "ping all"): manda um round-trip pelo /ws/agent e
+     mostra latência + OK/timeout, em vez de só inferir presença pela conexão WS. Novo tipo de msg no
+     protocolo do agente (ping/pong) + endpoint `POST /api/agents/{id}/ping`.
+   • Status ao vivo (verde/amarelo/vermelho) via WS (presence/heartbeat), auto-refresh; ação revogar token
+     ali mesmo (já existe o DELETE). Liga-se ao R7 (alerta quando some agente).
 
 ## 🔔 Alerting
 
