@@ -94,6 +94,10 @@ daily ou via Force Order manual.
   (*"o que falhou em pagamentos hoje e por quê?"*). Read-only por padrão; writes (`rerun`/`set_ok`)
   atrás de `-allow-writes` + aprovação do cliente. Pure-Go stdlib, fachada sobre a REST. Ver
   [`docs/mcp.md`](docs/mcp.md).
+- 🟢 **Tela de Agentes** (Settings → Agentes) — frota **consolidada** (online + offline com last-seen) +
+  contador "N de M online"; clique num agente abre um **modal de detalhe** (SO/arch, host, versão, **uptime**,
+  conectado há, 1ª vez visto, último sinal, capabilities). O agente reporta a metadata no handshake; gestão
+  de tokens junto. `GET /api/agents`.
 - 🟢 **Retry de execution** — re-tentativa automática em falha (respeita `retries`).
 - 🟢 **Observabilidade** — `/metrics` em formato Prometheus.
 - 🟢 **Alerting (Fase 8)** — regras configuráveis avaliadas ao fim de cada

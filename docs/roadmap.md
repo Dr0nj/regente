@@ -71,16 +71,16 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
    sobe muito/some na lista; (2) header com o TOTAL REAL do `/summary` ("2000 carregados de 1.000.000"), nunca
    número truncado disfarçado de total; (3) cap do CANVAS (ReactFlow não desenha 100k nós) vira configurável e
    bem maior, com aviso "abra o ViewPoint pra ver todos". O ViewPoint já mostra 100k–1M.
-⬜ Aba de AGENTES (em Settings/Config) — visão e CONTROLE da frota. Hoje o backend já tem as peças
-   (`/api/agents` = online via `Hub.OnlineAgents` · `/api/agents/tokens` com `last_used_at` · presença
-   cross-nó no R5 · alerta de frota ↓ no R7), mas não há uma TELA dedicada que junte tudo. Fazer:
-   • LISTA consolidada: agentes INSTALADOS (têm token) × CONECTADOS agora × última vez visto (last_used_at),
-     com capabilities, host/nó (multi-nó R5) e o token-prefix; CONTADOR da frota ("3 de 5 online").
-   • PING ATIVO (health) — botão "ping" por agente (e "ping all"): manda um round-trip pelo /ws/agent e
-     mostra latência + OK/timeout, em vez de só inferir presença pela conexão WS. Novo tipo de msg no
-     protocolo do agente (ping/pong) + endpoint `POST /api/agents/{id}/ping`.
-   • Status ao vivo (verde/amarelo/vermelho) via WS (presence/heartbeat), auto-refresh; ação revogar token
-     ali mesmo (já existe o DELETE). Liga-se ao R7 (alerta quando some agente).
+◑ Aba de AGENTES (em Settings/Config) — visão e CONTROLE da frota.
+   ✅ LISTA CONSOLIDADA (ENTREGUE 2026-06-25): aba "Agentes" com a frota online + offline (last-seen) +
+      CONTADOR ("N de M online"); cada agente reporta metadata no handshake (os/arch/host/versão/started);
+      migration v6 enriquece a tabela `agents`; `GET /api/agents` = online (verdade do hub) + DB. CLIQUE →
+      MODAL de detalhe (SO/arch, host, versão, UPTIME, conectado há, 1ª vez visto, último sinal, capabilities).
+      Auto-refresh 5s. Gestão de tokens junto. `AgentsManager.tsx`. 2 testes + validado ao vivo (2 agentes
+      reais → offline com last-seen ao matar). Multi-nó: online é por-nó (cross-nó via R5 presence fica p/ depois).
+   ⬜ PING ATIVO (health) — botão "ping" por agente (e "ping all"): round-trip pelo /ws/agent + latência/timeout,
+      em vez de só inferir presença pela conexão. Novo msg ping/pong no protocolo + `POST /api/agents/{id}/ping`.
+   ⬜ Cross-nó (multi-node R5): refletir agentes conectados em OUTROS nós (presence do bus), não só deste.
 
 ## 🔔 Alerting
 
