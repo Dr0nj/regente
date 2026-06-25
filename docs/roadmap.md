@@ -18,7 +18,7 @@ Resiliência operacional    █████████████████�
 
 ── Próximas fases ──────────────────────────────────────────────────────────
 Aprofundamento Control-M   ██░░░░░░░░░░░░░░░░░░░   8%  🟡 daily lifecycle ✅ · falta Actions/On-Do · variáveis · FILE_WATCH · calendários
-Diferenciais               ████████░░░░░░░░░░░░  38%  🟡 Explain ✅ · Diff de Daily ✅ · Blast Radius ✅ · falta Dry Run
+Diferenciais               ██████████░░░░░░░░░░  50%  🟡 Explain·Diff·Blast·Dry Run ✅ · falta Job Neighborhood · RCA · Event log · NL/MCP
 Refinamento UI             ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ grid wrap jobs soltos · minimap revisto · LEGACY_CAP virtualizado
 Fase Z — divulgação        ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ case study + post LinkedIn
 ```
@@ -224,6 +224,10 @@ contra Postgres 16 real (Docker); restante pendente:
                     Idempotente — TestScale_RunDaily10k + TestScale_BenchmarkN (env REGENTE_SCALE_N)
 ✅ Quotas HA (2026-06-23) → RebuildResourcesFromRunning reconstrói o tracker a partir das instances RUNNING →
                     novo líder não fura a capacidade ao retomar o dispatch — TestQuotas_RebuildFromRunning
+✅ Dry Run (2026-06-24) → server REAL: workspace com 5 jobs, GET /api/daily/dryrun?date=2026-12-25 →
+                    run=1 (root) · wait=1 (child, depois de root) · blocked=2 (orphan: condition NEVERSET;
+                    blocked_dep: depende de day15 não-agendado) · notScheduled=1 (day15, job de dia-15), com
+                    razão em cada; sem materializar nada. 3 testes
 ✅ Blast Radius (2026-06-24) → server REAL: workspace A→B→C + A→D(always), A travado por janela →
                     GET /api/instances/A-*/blast-radius devolveu downstream=2 (B/PAGAMENTOS d1, C/RISCO d2
                     com SLA), slaAtRisk=1, teamsAffected=2, maxDepth=2; D (aresta always) excluído. 4 testes
@@ -280,9 +284,10 @@ contra Postgres 16 real (Docker); restante pendente:
 | ✅ | ~~Diferencial: Explain ("por que não rodou?")~~ | **Feito (2026-06-24):** gating como fonte única (tick+Explain), read-only, 21 testes, validado ao vivo. Substrato do MCP `explain_job()`. |
 | ✅ | ~~Diferencial: Diff de Daily~~ | **Feito (2026-06-24):** compara 2 order_date via snapshots congelados; diff por-campo; fast-path same-commit; 4 testes; validado ao vivo. |
 | ✅ | ~~Diferencial: Blast Radius~~ | **Feito (2026-06-24):** BFS reverso de deps; downstream/SLA/folders/cascata; só o raio (barato a 1M); 4 testes; validado ao vivo. |
-| **1** | **Diferenciais (cont.)** — Dry Run | Simular daily futura sem materializar (o forecast já existe; falta o modo "data futura + razões"). |
-| **2** | **Camada agent-native (MCP)** — expor explain_job/diff_daily/blast_radius como tools | 3 substratos prontos; IA-native sobre verdade determinística. |
-| 3 | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · FILE_WATCH · calendários | Backlog de paridade de maior impacto. |
+| ✅ | ~~Diferencial: Dry Run~~ | **Feito (2026-06-24):** simula daily futura sem materializar (RUN/WAIT/BLOCKED/NOT_SCHEDULED + razão, cascata); reusa IsScheduledOn; 3 testes; validado ao vivo. |
+| **1** | **Camada agent-native (MCP)** — expor explain_job/diff_daily/blast_radius/dry_run como tools | **4 substratos prontos**; IA-native sobre verdade determinística. A história da Fase Z. |
+| **2** | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · FILE_WATCH · calendários | Backlog de paridade de maior impacto. |
+| 3 | **Diferenciais (cont.)** — Job Neighborhood · RCA automático · Event log CQRS-lite | Próxima leva de observabilidade avançada. |
 | 4 | **Fase Z** — case study + post LinkedIn | Último gate, com tudo sólido. |
 
 ---
@@ -391,8 +396,12 @@ contra Postgres 16 real (Docker); restante pendente:
    por aresta NÃO-`always` ainda-não-rodados (WAITING/HELD); arestas `always` não propagam, jobs já rodados
    param a cascata. Visita só o RAIO → barato a 1M. `GET /api/instances/{id}/blast-radius` + painel "⚠ Impacto
    se cancelar/segurar" no drawer. 4 testes + validado ao vivo. (Candidato a tool MCP `blast_radius()`.)
-⬜ Dry Run — simular uma daily FUTURA (ex.: 25/12/2026) SEM criar instances: quem roda · quem espera ·
-   quem NUNCA dispara. (o forecast já existe; falta o modo "data futura + razões por job + sem materializar".)
+✅ Dry Run — ENTREGUE (2026-06-24): simula a daily de QUALQUER data SEM materializar: RUN (raiz elegível) ·
+   WAIT (depois de quais upstreams) · BLOCKED (agendado mas nunca dispara — dep não-`always` não-agendada ou
+   condition que ninguém seta; cascata transitiva) · NOT_SCHEDULED (fora do calendário/frequência), com razão
+   por job. Reusa `IsScheduledOn` (a MESMA decisão do RunDaily) como fonte única; recursos não entram
+   (contenção de runtime). `GET /api/daily/dryrun?date=` + `DryRunModal` (botão "Dry Run" + seletor de data).
+   3 testes + validado ao vivo. (Candidato a tool MCP `dry_run()`.)
 ✅ Explain ("por que o job não rodou?") — ENTREGUE (2026-06-24): motor de EXPLICAÇÃO (sem IA): WAIT_WINDOW ·
    WAIT_DEP / BLOCKED_DEP (qual upstream, condição, status) · WAIT_CONDITION (qual condition falta) ·
    WAIT_RESOURCE (recurso, quer/uso/capacidade). **Construído como FONTE ÚNICA do gating**: `gateInstance`

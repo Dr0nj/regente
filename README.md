@@ -85,6 +85,10 @@ daily ou via Force Order manual.
   → jobs downstream que deixam de rodar em cascata, SLAs em risco, folders afetadas e profundidade.
   Análise de uma AÇÃO (não do grafo estático): BFS no grafo de deps, só pelo raio. `GET
   /api/instances/{id}/blast-radius` + painel "⚠ Impacto" no drawer.
+- 🟢 **Dry Run** (diferencial): **simula a daily de qualquer data sem materializar** — quem **roda**,
+  quem **espera** (depois de quem) e quem **nunca dispara** (e por quê: fora do calendário, dependência
+  que não roda, condition órfã…), com cascata transitiva. Reusa a mesma decisão de agendamento do RunDaily.
+  `GET /api/daily/dryrun?date=` + modal "Dry Run" (com seletor de data).
 - 🟢 **Retry de execution** — re-tentativa automática em falha (respeita `retries`).
 - 🟢 **Observabilidade** — `/metrics` em formato Prometheus.
 - 🟢 **Alerting (Fase 8)** — regras configuráveis avaliadas ao fim de cada
@@ -246,6 +250,7 @@ Todas as rotas `/api/*` exigem `Authorization: Bearer <token>`.
 | GET    | `/api/instances/{id}/explain`         | por que (não) rodou: gating estruturado |
 | GET    | `/api/instances/{id}/blast-radius`    | impacto de cancelar/segurar (downstream/SLA) |
 | GET    | `/api/daily/diff?from&to&folder`      | diff entre duas diárias (+/−/alterados) |
+| GET    | `/api/daily/dryrun?date`              | simula daily futura (roda/espera/nunca) |
 | POST   | `/api/daily/run`                      | força a daily do dia           |
 | POST   | `/api/definitions/{id}/force`         | Order Force (Control-M)        |
 | POST   | `/api/scheduler/tick`                 | dispara um ciclo (cron externo, `-scheduler=external`) |
