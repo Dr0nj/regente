@@ -58,10 +58,20 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ✅ Configurações em sub-abas (Geral · Temas); borda neon nos diálogos
 ◑ Minimap de navegação (protótipo opt-in, default off) — pontos por job, clique navega, redimensionável
 ⬜ Janela de info do job (drawer) — deixar mais friendly: ações claras, output/log legível, layout melhor
-⬜ Layout de jobs SEM dependência — hoje (como no Control-M) jobs sem conexão vão empilhando pra DIREITA na
-   horizontal; ao passar de N por linha fica ruim de ver (tudo esticado pro lado). Regra: ao atingir um limiar
-   de jobs soltos numa folder, QUEBRAR pra baixo em GRADE (wrap em linhas), em vez de só horizontal. N
-   configurável; vale pro canvas (Monitoring + Design). Mantém os conectados no fluxo; só os soltos viram grade.
+⬜ Layout de jobs — grade pros SOLTOS, fluxo pros DEPENDENTES (por folder). Hoje o dagre TB
+   (`layoutFolderInner` no V2Preview) já posiciona DEPENDENTES certo: A na linha 1, B e C lado a lado na
+   linha 2, cadeia A→B→C em 3 linhas. O problema é só com SOLTOS (sem aresta interna): o dagre joga todos no
+   rank 0 → uma fila horizontal infinita. Regras (escopo POR FOLDER — a decisão de uma folder não mexe nas
+   outras):
+   • DEPENDENTES → mantêm o dagre TB (top-down, irmãos lado a lado). Nada muda.
+   • SOLTOS → GRADE com wrap: até `columns` por linha, depois quebra pra baixo. 11º solo → linha 2 col A.
+   • ALARGAMENTO: `columns` é cap SOFT; ao passar de `maxRows` linhas, cresce colunas em vez de altura →
+     `effectiveCols = max(columns, ceil(qtdSoltos / maxRows))`. Não vira nem fileira única nem ribbon altíssima.
+   • Layout: zona de FLUXOS (componentes conectados, dagre) em cima · GRADE de soltos embaixo (gap entre elas).
+   • Parâmetros em Settings (default global + override por folder): `columns` (default 10) · `maxRows`
+     (default 30 — análise: 50 vira ~6000px de scroll; 30 mantém usável e só alarga após ~300 soltos numa
+     folder, raro). Range sugerido columns 4–20.
+   Vale pro Monitoring e Design. Plano de implementação detalhado: ver docs/plano-layout-jobs.md.
 ⬜ Minimap REVISTO — repensar o `NavMinimap` (hoje desenha pontos de `canvas.nodes`): comportamento/usabilidade
    com a nova grade de jobs soltos + volume alto; precisa refletir o layout em wrap, navegação clara e densidade
    legível (avaliar viewport-box arrastável, escala por densidade, on/off por contexto).
