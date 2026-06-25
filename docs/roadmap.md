@@ -58,7 +58,16 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ✅ Configurações em sub-abas (Geral · Temas); borda neon nos diálogos
 ◑ Minimap de navegação (protótipo opt-in, default off) — pontos por job, clique navega, redimensionável
 ⬜ Janela de info do job (drawer) — deixar mais friendly: ações claras, output/log legível, layout melhor
-⬜ Layout de jobs — grade pros SOLTOS, fluxo pros DEPENDENTES (por folder). Hoje o dagre TB
+◑ Layout de jobs — grade pros SOLTOS, fluxo pros DEPENDENTES (por folder).
+   ✅ FASE 1 (ENTREGUE 2026-06-25): `layoutFolderInner` particiona conectados (dagre TB, intacto) vs soltos
+      (GRADE com wrap: 10 cols, 11º→linha2/colA; alargamento cols=max(10,ceil(N/30)) após 30 linhas). Contrato
+      InnerLayout inalterado. Math validada (n=12→11º em linha2/colA; n=600→20cols/30linhas). Defaults
+      LAYOUT_COLUMNS=10 / LAYOUT_MAX_ROWS=30 hardcoded. (lib/layout.ts = dead code, mesmo bug, p/ limpar.)
+   ⬜ FASE 2: `columns`/`maxRows` configuráveis em Settings (ServerSettings + aba Geral) + override por folder
+      (.regente-folder.yaml).
+   ⬜ FASE 3: botão "auto-organizar" por folder; minimap refletir a grade.
+   ── (spec original abaixo) ──
+   Hoje o dagre TB
    (`layoutFolderInner` no V2Preview) já posiciona DEPENDENTES certo: A na linha 1, B e C lado a lado na
    linha 2, cadeia A→B→C em 3 linhas. O problema é só com SOLTOS (sem aresta interna): o dagre joga todos no
    rank 0 → uma fila horizontal infinita. Regras (escopo POR FOLDER — a decisão de uma folder não mexe nas
