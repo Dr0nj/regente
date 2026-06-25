@@ -91,11 +91,18 @@ func (s *server) wsAgent(w http.ResponseWriter, r *http.Request) {
 			ExitCode   int    `json:"exitCode"`
 			Output     string `json:"output"`
 			Chunk      string `json:"chunk"`
+			PingID     string `json:"pingId"`
 		}
 		if err := json.Unmarshal(msg, &ev); err != nil {
 			return
 		}
 		switch ev.Event {
+		case "pong":
+			// Ping ativo: destrava o handler HTTP que espera o round-trip.
+			s.cfg.Hub.Touch(agentID)
+			if s.pings != nil {
+				s.pings.signal(ev.PingID)
+			}
 		case "result":
 			status := domain.StatusOK
 			if ev.ExitCode != 0 {

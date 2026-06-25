@@ -147,8 +147,14 @@ func runAgent(wsURL string) error {
 			JobType    string                 `json:"jobType"`
 			Params     map[string]interface{} `json:"params"`
 			Timeout    int                    `json:"timeout"`
+			PingID     string                 `json:"pingId"`
 		}
 		if err := json.Unmarshal(msg, &job); err != nil {
+			continue
+		}
+		// Ping ativo (health) — responde na hora pra o servidor medir latência.
+		if job.Event == "ping" {
+			_ = send(map[string]string{"event": "pong", "pingId": job.PingID})
 			continue
 		}
 		if job.Event != "dispatch" {

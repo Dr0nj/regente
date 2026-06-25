@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import {
-  listAgents, listAgentTokens, createAgentToken, revokeAgentToken,
-  type AgentInfo, type AgentToken,
+  listAgents, listAgentTokens, createAgentToken, revokeAgentToken, pingAgent,
+  type AgentInfo, type AgentToken, type PingResult,
 } from "../lib/agents-api";
 
 /* ──────────────────────────────────────────────────────────────
@@ -43,6 +43,15 @@ export default function AgentsManager() {
   const [newLabel, setNewLabel] = useState("");
   const [justCreated, setJustCreated] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // ping ativo: id → "pending" | resultado
+  const [pings, setPings] = useState<Record<string, "pending" | PingResult>>({});
+
+  const doPing = useCallback((id: string) => {
+    setPings((p) => ({ ...p, [id]: "pending" }));
+    pingAgent(id)
+      .then((r) => setPings((p) => ({ ...p, [id]: r })))
+      .catch(() => setPings((p) => ({ ...p, [id]: { id, online: false, ok: false, error: "erro" } })));
+  }, []);
 
   const reload = useCallback(() => {
     listAgents().then(setAgents).catch(() => {});
@@ -79,17 +88,28 @@ export default function AgentsManager() {
           Frota — {online} de {agents.length} online
         </legend>
 
+        {online > 0 && (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+            <button
+              onClick={() => agents.filter((a) => a.online).forEach((a) => doPing(a.id))}
+              style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", textTransform: "uppercase", letterSpacing: "0.05em",
+                background: "transparent", border: "1px solid var(--v2-accent-brand)", color: "var(--v2-accent-brand)",
+                borderRadius: 3, padding: "3px 10px", cursor: "pointer" }}
+            >ping todos</button>
+          </div>
+        )}
+
         {agents.length === 0 ? (
           <div style={{ fontSize: 11, color: "var(--v2-text-muted)" }}>Nenhum agente registrado ainda.</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {agents.map((a) => (
-              <button
+              <div
                 key={a.id}
                 onClick={() => setDetail(a)}
                 title="Ver detalhes"
                 style={{
-                  display: "flex", alignItems: "center", gap: 10, textAlign: "left",
+                  display: "flex", alignItems: "center", gap: 10,
                   padding: "7px 10px", background: "var(--v2-bg-elevated)",
                   border: "1px solid var(--v2-border-subtle)", borderRadius: 4, cursor: "pointer",
                 }}
@@ -104,8 +124,19 @@ export default function AgentsManager() {
                 <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginLeft: "auto", whiteSpace: "nowrap" }}>
                   {a.online ? `up ${uptimeOf(a.startedAt)}` : `visto ${relativeOf(a.lastSeen)}`}
                 </span>
+                <PingChip state={pings[a.id]} />
+                {a.online && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); doPing(a.id); }}
+                    disabled={pings[a.id] === "pending"}
+                    title="Ping (round-trip)"
+                    style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", textTransform: "uppercase", letterSpacing: "0.05em",
+                      background: "transparent", border: "1px solid var(--v2-border-medium)", color: "var(--v2-text-secondary)",
+                      borderRadius: 3, padding: "2px 7px", cursor: "pointer" }}
+                  >ping</button>
+                )}
                 <span style={{ fontSize: 10, color: "var(--v2-text-muted)" }}>›</span>
-              </button>
+              </div>
             ))}
           </div>
         )}
@@ -190,6 +221,21 @@ function AgentDetailModal({ agent, onClose }: { agent: AgentInfo; onClose: () =>
         </div>
       </div>
     </div>
+  );
+}
+
+function PingChip({ state }: { state?: "pending" | PingResult }) {
+  if (!state) return null;
+  let text = "…", color = "var(--v2-text-muted)";
+  if (state !== "pending") {
+    if (state.ok) { text = `${state.latencyMs ?? 0}ms`; color = "var(--v2-status-ok)"; }
+    else if (state.online) { text = "timeout"; color = "var(--v2-status-waiting)"; }
+    else { text = "offline"; color = "var(--v2-text-muted)"; }
+  }
+  return (
+    <span title="último ping" style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color, border: `1px solid ${color}`, borderRadius: 3, padding: "1px 5px", whiteSpace: "nowrap" }}>
+      {text}
+    </span>
   );
 }
 

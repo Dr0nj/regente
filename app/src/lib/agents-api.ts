@@ -21,6 +21,19 @@ export async function listAgents(): Promise<AgentInfo[]> {
   return api<AgentInfo[]>("/api/agents");
 }
 
+// Ping ativo — round-trip pelo /ws/agent (latência), não só presença da conexão.
+export interface PingResult {
+  id: string;
+  online: boolean;
+  ok: boolean;
+  latencyMs?: number;
+  error?: string;
+}
+
+export async function pingAgent(id: string): Promise<PingResult> {
+  return api<PingResult>(`/api/agents/${encodeURIComponent(id)}/ping`, { method: "POST" });
+}
+
 // B5 — tokens por agente (admin).
 export interface AgentToken {
   id: number;

@@ -10,11 +10,81 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Dr0nj/regente-server/internal/hub"
 	"github.com/go-chi/chi/v5"
 )
+
+// pingRegistry — correlaciona o pong de um agente (chega pelo /ws/agent reader) com
+// o handler HTTP que disparou o ping e espera a resposta. Round-trip = latência.
+type pingRegistry struct {
+	mu      sync.Mutex
+	waiters map[string]chan struct{}
+}
+
+func newPingRegistry() *pingRegistry { return &pingRegistry{waiters: map[string]chan struct{}{}} }
+
+func (p *pingRegistry) register(id string) <-chan struct{} {
+	ch := make(chan struct{}, 1)
+	p.mu.Lock()
+	p.waiters[id] = ch
+	p.mu.Unlock()
+	return ch
+}
+
+func (p *pingRegistry) signal(id string) {
+	p.mu.Lock()
+	ch := p.waiters[id]
+	p.mu.Unlock()
+	if ch != nil {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (p *pingRegistry) unregister(id string) {
+	p.mu.Lock()
+	delete(p.waiters, id)
+	p.mu.Unlock()
+}
+
+type pingResult struct {
+	ID        string `json:"id"`
+	Online    bool   `json:"online"`
+	OK        bool   `json:"ok"`
+	LatencyMs int64  `json:"latencyMs,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+// pingAgent — POST /api/agents/{id}/ping: round-trip ATIVO (ping/pong) pelo /ws/agent
+// pra confirmar liveness + medir latência, em vez de só inferir presença pela conexão.
+func (s *server) pingAgent(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if s.cfg.Hub == nil || !s.cfg.Hub.IsOnline(id) {
+		writeJSON(w, 200, pingResult{ID: id, Online: false, Error: "agente offline"})
+		return
+	}
+	pingID := randID()
+	ch := s.pings.register(pingID)
+	defer s.pings.unregister(pingID)
+
+	raw, _ := json.Marshal(map[string]string{"event": "ping", "pingId": pingID})
+	sent := time.Now()
+	if outcome, _ := s.cfg.Hub.Dispatch(id, "", raw); outcome != hub.DispatchSent {
+		writeJSON(w, 200, pingResult{ID: id, Online: true, Error: "não foi possível enviar (buffer cheio?)"})
+		return
+	}
+	select {
+	case <-ch:
+		writeJSON(w, 200, pingResult{ID: id, Online: true, OK: true, LatencyMs: time.Since(sent).Milliseconds()})
+	case <-time.After(5 * time.Second):
+		writeJSON(w, 200, pingResult{ID: id, Online: true, Error: "timeout (5s)"})
+	}
+}
 
 // agentRow — linha da tela de Agentes: metadata persistida + online (verdade do hub).
 type agentRow struct {

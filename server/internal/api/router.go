@@ -38,12 +38,13 @@ type Config struct {
 
 type server struct {
 	cfg         Config
-	agentBroker *agentBroker // Fase 2 — transporte HTTP long-poll (nil se sem hub)
+	agentBroker *agentBroker  // Fase 2 — transporte HTTP long-poll (nil se sem hub)
+	pings       *pingRegistry // ping ativo de agentes (round-trip ping/pong)
 }
 
 // NewRouter monta o router principal (REST + WS).
 func NewRouter(cfg Config) http.Handler {
-	s := &server{cfg: cfg}
+	s := &server{cfg: cfg, pings: newPingRegistry()}
 	if cfg.Hub != nil {
 		s.agentBroker = newAgentBroker(cfg.Hub)
 	}
@@ -133,6 +134,7 @@ func NewRouter(cfg Config) http.Handler {
 
 		// Agents
 		r.Get("/agents", s.listAgents)
+		r.Post("/agents/{id}/ping", s.pingAgent) // ping ativo (round-trip latência)
 		// B5 — tokens por agente (admin-only enforced no handler)
 		r.Get("/agents/tokens", s.listAgentTokens)
 		r.Post("/agents/tokens", s.createAgentToken)
