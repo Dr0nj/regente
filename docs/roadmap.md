@@ -408,6 +408,18 @@ contra Postgres 16 real (Docker); restante pendente:
    segue como PROJEÇÃO (claim atômico intacto). Destrava replay / time-travel / forense ("estado às 08:14")
    e outbox → NATS/observabilidade, SEM reescrever o core de correção. (ES puro foi avaliado e rejeitado por
    ROI/risco: HA/DR/auditoria/histórico-de-config já cobertos por Postgres+leader · PITR · instance_events · Git.)
+⬜ Query estruturado / busca rica sobre o estado — endpoint de busca com filtro COMPOSTO (ranges, listas IN,
+   múltiplos campos, agregações) além do que `/api/instances?filtros` cobre hoje. Bounded e tipado (NÃO
+   SQL-sobre-HTTP). Consumidores: dashboards, integrações e a camada agent-native (tool MCP de query).
+   ── DECISÃO de transporte (2026-06-24): quando este item existir, usar **`POST /api/instances/query`
+   como baseline universal** + **aceitar o método HTTP `QUERY` na MESMA handler como opt-in** (progressive
+   enhancement p/ CLI/integrações/MCP). `QUERY` (draft IETF httpbis, novo verbo) é SAFE+idempotente como GET,
+   carrega body como POST e é CACHEÁVEL reusando o cache p/ a MESMA query (POST só semeia cache de GET/HEAD).
+   Em Go NÃO depende de release de framework (diferente do .NET 10): `net/http`+chi roteiam método custom hoje
+   (`r.Method("QUERY", h)`). NÃO adotar agora: os filtros atuais cabem na query string, a API é autenticada
+   sem CDN no meio (ganho de cache ≈ nulo) e ecossistema (proxies/caches que entendam QUERY) é imaturo —
+   seria enfeite com atrito. Adotar SÓ quando houver filtro-complexo-demais-pra-URL E/OU cache de
+   intermediário em jogo. Ref: vensas.de/en/blog/http-query-method-dotnet-10.
 ```
 
 ### 3. Developer Experience *(onde o Control-M perde feio)*
