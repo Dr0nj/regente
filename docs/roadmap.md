@@ -17,10 +17,11 @@ Escala Control-M (100k–1M) █████████████████
 Resiliência operacional    ██████████████████████ 100%  ✅ R1–R7 + chaos/HA validado em PG real
 
 ── Próximas fases ──────────────────────────────────────────────────────────
+Agent-native (MCP)         █████████████████░░░  85%  🟢 servidor MCP ✅ (6 tools read + 2 write gated) · falta NL-query + writes ricos
+Diferenciais               ██████████░░░░░░░░░░  50%  🟡 Explain·Diff·Blast·Dry Run ✅ · falta Job Neighborhood · RCA · Event log
 Aprofundamento Control-M   ██░░░░░░░░░░░░░░░░░░░   8%  🟡 daily lifecycle ✅ · falta Actions/On-Do · variáveis · FILE_WATCH · calendários
-Diferenciais               ██████████░░░░░░░░░░  50%  🟡 Explain·Diff·Blast·Dry Run ✅ · falta Job Neighborhood · RCA · Event log · NL/MCP
 Refinamento UI             ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ grid wrap jobs soltos · minimap revisto · LEGACY_CAP virtualizado
-Fase Z — divulgação        ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ case study + post LinkedIn
+Fase Z — divulgação        ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ case study + post LinkedIn (agora com a história agent-native)
 ```
 
 > 🏁 **Marco (2026-06-24):** **todas as trilhas estruturais em 100%**, incluindo **Escala Control-M (100k–1M/dia)
@@ -224,6 +225,10 @@ contra Postgres 16 real (Docker); restante pendente:
                     Idempotente — TestScale_RunDaily10k + TestScale_BenchmarkN (env REGENTE_SCALE_N)
 ✅ Quotas HA (2026-06-23) → RebuildResourcesFromRunning reconstrói o tracker a partir das instances RUNNING →
                     novo líder não fura a capacidade ao retomar o dispatch — TestQuotas_RebuildFromRunning
+✅ MCP agent-native (2026-06-24) → binário regente-mcp REAL dirigido por pipe JSON-RPC (como o Claude
+                    Desktop faz) contra server real: initialize ecoou protocolVersion 2025-06-18; tools/list
+                    devolveu as 6 read tools (writes ocultos sem -allow-writes); daily_summary e explain_job
+                    relegaram a verdade do engine (runnable=false, WAIT_CONDITION BATCH_OK). 7 testes
 ✅ Dry Run (2026-06-24) → server REAL: workspace com 5 jobs, GET /api/daily/dryrun?date=2026-12-25 →
                     run=1 (root) · wait=1 (child, depois de root) · blocked=2 (orphan: condition NEVERSET;
                     blocked_dep: depende de day15 não-agendado) · notScheduled=1 (day15, job de dia-15), com
@@ -285,9 +290,10 @@ contra Postgres 16 real (Docker); restante pendente:
 | ✅ | ~~Diferencial: Diff de Daily~~ | **Feito (2026-06-24):** compara 2 order_date via snapshots congelados; diff por-campo; fast-path same-commit; 4 testes; validado ao vivo. |
 | ✅ | ~~Diferencial: Blast Radius~~ | **Feito (2026-06-24):** BFS reverso de deps; downstream/SLA/folders/cascata; só o raio (barato a 1M); 4 testes; validado ao vivo. |
 | ✅ | ~~Diferencial: Dry Run~~ | **Feito (2026-06-24):** simula daily futura sem materializar (RUN/WAIT/BLOCKED/NOT_SCHEDULED + razão, cascata); reusa IsScheduledOn; 3 testes; validado ao vivo. |
-| **1** | **Camada agent-native (MCP)** — expor explain_job/diff_daily/blast_radius/dry_run como tools | **4 substratos prontos**; IA-native sobre verdade determinística. A história da Fase Z. |
+| ✅ | ~~Camada agent-native (MCP)~~ | **Feito (2026-06-24):** servidor MCP (`server/cmd/mcp`, stdio JSON-RPC, pure-Go) expõe os 4 diferenciais + summary/busca como tools; read-only por default, writes gated; 7 testes; validado ao vivo (pipe JSON-RPC). docs/mcp.md. |
+| **1** | **Fase Z** — case study + post LinkedIn | Agora com a história agent-native (operar o Control-M-killer conversando com o Claude). |
 | **2** | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · FILE_WATCH · calendários | Backlog de paridade de maior impacto. |
-| 3 | **Diferenciais (cont.)** — Job Neighborhood · RCA automático · Event log CQRS-lite | Próxima leva de observabilidade avançada. |
+| 3 | **Diferenciais (cont.)** — Job Neighborhood · RCA automático · Event log CQRS-lite · NL-query | Próxima leva de observabilidade avançada (NL-query usa o transporte QUERY documentado). |
 | 4 | **Fase Z** — case study + post LinkedIn | Último gate, com tudo sólido. |
 
 ---

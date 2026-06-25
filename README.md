@@ -89,6 +89,11 @@ daily ou via Force Order manual.
   quem **espera** (depois de quem) e quem **nunca dispara** (e por quê: fora do calendário, dependência
   que não roda, condition órfã…), com cascata transitiva. Reusa a mesma decisão de agendamento do RunDaily.
   `GET /api/daily/dryrun?date=` + modal "Dry Run" (com seletor de data).
+- 🟢 **Agent-native (MCP)** — servidor [MCP](https://modelcontextprotocol.io) (`server/cmd/mcp`)
+  que expõe os diferenciais como _tools_: você **opera o Regente conversando** com o Claude
+  (*"o que falhou em pagamentos hoje e por quê?"*). Read-only por padrão; writes (`rerun`/`set_ok`)
+  atrás de `-allow-writes` + aprovação do cliente. Pure-Go stdlib, fachada sobre a REST. Ver
+  [`docs/mcp.md`](docs/mcp.md).
 - 🟢 **Retry de execution** — re-tentativa automática em falha (respeita `retries`).
 - 🟢 **Observabilidade** — `/metrics` em formato Prometheus.
 - 🟢 **Alerting (Fase 8)** — regras configuráveis avaliadas ao fim de cada
