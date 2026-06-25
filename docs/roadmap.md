@@ -78,8 +78,10 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
       MODAL de detalhe (SO/arch, host, versão, UPTIME, conectado há, 1ª vez visto, último sinal, capabilities).
       Auto-refresh 5s. Gestão de tokens junto. `AgentsManager.tsx`. 2 testes + validado ao vivo (2 agentes
       reais → offline com last-seen ao matar). Multi-nó: online é por-nó (cross-nó via R5 presence fica p/ depois).
-   ⬜ PING ATIVO (health) — botão "ping" por agente (e "ping all"): round-trip pelo /ws/agent + latência/timeout,
-      em vez de só inferir presença pela conexão. Novo msg ping/pong no protocolo + `POST /api/agents/{id}/ping`.
+   ✅ PING ATIVO (ENTREGUE 2026-06-25): round-trip ping/pong pelo /ws/agent (server manda {event:ping,pingId},
+      agente responde {event:pong}); `POST /api/agents/{id}/ping` → {online, ok, latencyMs, error} (timeout 5s);
+      `pingRegistry` correlaciona o pong; botão "ping" por agente + "ping todos" na UI, chip com latência/timeout/
+      offline. 1 teste (WS real in-process) + validado ao vivo (agente real → ok; inexistente → offline).
    ⬜ Cross-nó (multi-node R5): refletir agentes conectados em OUTROS nós (presence do bus), não só deste.
 
 ## 🔔 Alerting

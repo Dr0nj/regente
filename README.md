@@ -97,7 +97,8 @@ daily ou via Force Order manual.
 - 🟢 **Tela de Agentes** (Settings → Agentes) — frota **consolidada** (online + offline com last-seen) +
   contador "N de M online"; clique num agente abre um **modal de detalhe** (SO/arch, host, versão, **uptime**,
   conectado há, 1ª vez visto, último sinal, capabilities). O agente reporta a metadata no handshake; gestão
-  de tokens junto. `GET /api/agents`.
+  de tokens junto. **Ping ativo** (round-trip ping/pong, latência) por agente e "ping todos". `GET /api/agents`
+  · `POST /api/agents/{id}/ping`.
 - 🟢 **Retry de execution** — re-tentativa automática em falha (respeita `retries`).
 - 🟢 **Observabilidade** — `/metrics` em formato Prometheus.
 - 🟢 **Alerting (Fase 8)** — regras configuráveis avaliadas ao fim de cada
@@ -267,7 +268,8 @@ Todas as rotas `/api/*` exigem `Authorization: Bearer <token>`.
 | POST   | `/api/alerts/{id}/ack` · `/api/alerts/ack-all` | reconhece alerta(s)   |
 | GET    | `/api/alerts/rules` · POST `/api/alerts/rules/{id}/toggle` | regras de alerta |
 | PUT    | `/api/alerts/rules/{id}/channels` · `.../cooldown` | routing por-regra · cooldown |
-| GET    | `/api/agents`                         | agents online                  |
+| GET    | `/api/agents`                         | frota consolidada (online + offline) |
+| POST   | `/api/agents/{id}/ping`               | ping ativo (round-trip, latência) |
 | GET    | `/ws/web?token=...`                   | WS para web (events)           |
 | GET    | `/ws/agent?token=...&id=...&caps=...` | WS para agent (WebSocket)      |
 | GET    | `/api/agent/poll?id=...&caps=...`     | dispatch via long-poll (`-transport=http`) |
