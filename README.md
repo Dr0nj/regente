@@ -518,9 +518,10 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   campo — buscar e substituir/adicionar em N jobs (descrição vazia, add action/evento, find-replace em
   qualquer campo, tags/conditions em lote), com preview/undo. (bulk básico já existe via `/api/bulk`.)
 - [ ] **Janela de info do job (drawer)**: deixar mais friendly — ações claras, output/log legível, layout.
-- [ ] **Layout de jobs sem dependência (wrap em grade)**: hoje jobs soltos (sem conexão) empilham pra direita na
-  horizontal (como no Control-M); ao passar de N por linha fica ruim de ver. Regra: ao atingir um limiar, quebrar
-  pra baixo em **grade** em vez de só horizontal (N configurável; vale Monitoring + Design; conectados seguem no fluxo).
+- [x] **Layout de jobs — grade pros soltos, fluxo pros dependentes** ✅ (2026-06-25): jobs SEM dependência
+  viram uma **grade** (N colunas, default 10; 11º quebra pra linha 2; ao passar de N linhas alarga colunas em vez
+  de crescer pra baixo). DEPENDENTES seguem o fluxo top-down (dagre). Por folder. `columns`/`máx. linhas`
+  configuráveis em **Settings › Geral › Visualização**; botão **Organizar** (re-enquadra). Vale Monitoring + Design.
 - [ ] **Minimap revisto**: repensar o `NavMinimap` p/ refletir a nova grade de jobs soltos + volume alto —
   navegação clara, densidade legível, viewport-box arrastável, on/off por contexto.
 - [ ] **Cap de 2000 do Monitoring legado**: `LEGACY_CAP=2000` (canvas/ACTIVE JOBS não-virtualizados) é arbitrário
