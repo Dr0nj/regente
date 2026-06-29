@@ -78,7 +78,7 @@ import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, type 
 import { toast, ToastHost } from "./Toast";
 import EdgeConditionModal from "./EdgeConditionModal";
 import { getGitInfo, commitUrl } from "@/lib/git-info";
-import { FolderOpen, Play, Zap, GitCommitHorizontal, GitCompare, FlaskConical, ChevronLeft, ChevronRight } from "lucide-react";
+import { FolderOpen, Play, Zap, GitCommitHorizontal, GitCompare, FlaskConical, LayoutGrid, ChevronLeft, ChevronRight } from "lucide-react";
 
 import "@xyflow/react/dist/style.css";
 import "@/index.css";
@@ -95,9 +95,25 @@ const NODE_H = 72;
 const NODE_GAP_Y = 28; // ranksep dagre (dep vertical)
 const NODE_GAP_X = 36; // nodesep dagre (jobs paralelos na mesma linha)
 const COL_PADDING_X = 24;
-// Grade dos jobs SOLTOS (sem dependência interna). Fase 2: configurável em Settings.
+// Grade dos jobs SOLTOS (sem dependência interna). Configurável em Settings (Fase 2).
 const LAYOUT_COLUMNS = 10; // colunas-base da grade (cap soft)
 const LAYOUT_MAX_ROWS = 30; // ao passar disso, alarga colunas em vez de crescer pra baixo
+type LayoutConfig = { columns: number; maxRows: number };
+const DEFAULT_LAYOUT: LayoutConfig = { columns: LAYOUT_COLUMNS, maxRows: LAYOUT_MAX_ROWS };
+
+// readLayoutConfig — lê a config de layout do localStorage (default 10/30), com
+// clamp sensato. Mesma estratégia do toggle do minimap (pref de visão por browser).
+function readLayoutConfig(): LayoutConfig {
+  if (typeof window === "undefined") return DEFAULT_LAYOUT;
+  const num = (k: string, def: number, min: number, max: number) => {
+    const v = parseInt(window.localStorage.getItem(k) ?? "", 10);
+    return Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : def;
+  };
+  return {
+    columns: num("regente:layoutCols", LAYOUT_COLUMNS, 1, 40),
+    maxRows: num("regente:layoutMaxRows", LAYOUT_MAX_ROWS, 1, 200),
+  };
+}
 const COL_PADDING_TOP = 40; // espaço pro header da folder
 const COL_PADDING_BOTTOM = 24;
 const COL_GAP = 28; // gap horizontal entre folders
@@ -264,6 +280,7 @@ function layoutFolderInner<T extends { id: string; team?: string }>(
   members: T[],
   nodeIdOf: (t: T) => string,
   allEdges: Array<{ source: string; target: string }>,
+  cfg: LayoutConfig = DEFAULT_LAYOUT,
 ): InnerLayout {
   const memberIds = new Set(members.map((m) => nodeIdOf(m)));
   const innerEdges = allEdges.filter((e) => memberIds.has(e.source) && memberIds.has(e.target));
@@ -311,7 +328,7 @@ function layoutFolderInner<T extends { id: string; team?: string }>(
   const gap = flowH > 0 && standalone.length > 0 ? NODE_GAP_Y * 3 : 0;
   if (standalone.length > 0) {
     const sorted = [...standalone].sort((a, b) => nodeIdOf(a).localeCompare(nodeIdOf(b)));
-    const cols = Math.max(LAYOUT_COLUMNS, Math.ceil(sorted.length / LAYOUT_MAX_ROWS));
+    const cols = Math.max(cfg.columns, Math.ceil(sorted.length / cfg.maxRows));
     const cellW = NODE_W + NODE_GAP_X;
     const cellH = NODE_H + NODE_GAP_Y;
     const baseY = flowH + gap;
@@ -347,11 +364,12 @@ function composeColumns<T extends { id: string; team?: string }>(
   buildJobNode: (t: T, absX: number, absY: number) => Node,
   allEdges: Array<{ source: string; target: string }>,
   nodeIdOf: (t: T) => string,
+  cfg: LayoutConfig = DEFAULT_LAYOUT,
 ): { nodes: Node[]; lanes: LaneInfo[] } {
   const grouped = groupByTeam(items);
   const layouts: InnerLayout[] = [];
   for (const [team, members] of grouped) {
-    layouts.push(layoutFolderInner(team, members, nodeIdOf, allEdges));
+    layouts.push(layoutFolderInner(team, members, nodeIdOf, allEdges, cfg));
   }
 
   const nodes: Node[] = [];
@@ -442,7 +460,7 @@ function miniNodeColor(n: Node): string {
   return "#3a3a3a";
 }
 
-function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefinition[]): Canvas {
+function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT): Canvas {
   // Edges a partir do upstream da definition, resolvidas para instances do mesmo dia.
   const defsById = new Map(defs.map((d) => [d.id, d] as const));
 
@@ -512,12 +530,13 @@ function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefinition[
     }),
     rawEdges,
     (inst) => `m-${inst.id}`,
+    cfg,
   );
 
   return { nodes, edges, lanes };
 }
 
-function buildDesignCanvas(defs: JobDefinition[]): Canvas {
+function buildDesignCanvas(defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT): Canvas {
   const edges: Edge[] = [];
   const rawEdges: Array<{ source: string; target: string }> = [];
   for (const def of defs) {
@@ -549,6 +568,7 @@ function buildDesignCanvas(defs: JobDefinition[]): Canvas {
     }),
     rawEdges,
     (def) => `d-${def.id}`,
+    cfg,
   );
 
   return { nodes, edges, lanes };
@@ -594,6 +614,14 @@ function V2PreviewInner() {
     const sync = () => setShowMinimap(window.localStorage.getItem("regente:minimap") === "1");
     window.addEventListener("regente:minimap-changed", sync);
     return () => window.removeEventListener("regente:minimap-changed", sync);
+  }, []);
+  // Config da grade de jobs soltos (colunas / max linhas). Pref de visão por browser,
+  // editável em Settings; re-layouta o canvas quando muda (evento regente:layout-changed).
+  const [layoutCfg, setLayoutCfg] = useState<LayoutConfig>(() => readLayoutConfig());
+  useEffect(() => {
+    const sync = () => setLayoutCfg(readLayoutConfig());
+    window.addEventListener("regente:layout-changed", sync);
+    return () => window.removeEventListener("regente:layout-changed", sync);
   }, []);
   const [unreadAlerts, setUnreadAlerts] = useState<number>(0);
 
@@ -861,8 +889,8 @@ function V2PreviewInner() {
   }, [instances, defs, effectiveFolders]);
 
   const canvas = useMemo<Canvas>(
-    () => (mode === "monitoring" ? buildMonitoringCanvas(filteredInstances, filteredDefs) : buildDesignCanvas(designDefsWithDraft)),
-    [mode, filteredInstances, filteredDefs, designDefsWithDraft],
+    () => (mode === "monitoring" ? buildMonitoringCanvas(filteredInstances, filteredDefs, layoutCfg) : buildDesignCanvas(designDefsWithDraft, layoutCfg)),
+    [mode, filteredInstances, filteredDefs, designDefsWithDraft, layoutCfg],
   );
 
   // Trava de pan do Monitoring: o topo do conteúdo (folders) fica alinhado com o
@@ -1411,6 +1439,24 @@ function V2PreviewInner() {
               }}
             >
               <FlaskConical size={11} /> Dry Run
+            </button>
+
+            <button
+              onClick={() => fitView({ padding: 0.2, duration: 300 })}
+              title="Organizar — re-enquadra o canvas (os jobs já se alinham sozinhos: dependentes em fluxo, soltos em grade)"
+              style={{
+                padding: "5px 10px",
+                background: "transparent",
+                border: "1px solid var(--v2-border-medium)",
+                color: "var(--v2-text-primary)",
+                borderRadius: 3,
+                fontSize: 10, fontFamily: "var(--v2-font-mono)",
+                letterSpacing: "0.06em", textTransform: "uppercase",
+                cursor: "pointer", fontWeight: 600,
+                display: "flex", alignItems: "center", gap: 6,
+              }}
+            >
+              <LayoutGrid size={11} /> Organizar
             </button>
 
             <div style={{ position: "relative" }}>

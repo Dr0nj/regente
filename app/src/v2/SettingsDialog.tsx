@@ -32,6 +32,19 @@ export function SettingsDialog({ onClose }: Props) {
   const [theme, setTheme] = useState<ThemeId>(getThemeId());
   const [tab, setTab] = useState<"geral" | "temas" | "agentes">("geral");
   const [minimap, setMinimap] = useState<boolean>(() => typeof window !== "undefined" && window.localStorage.getItem("regente:minimap") === "1");
+  const lsInt = (k: string, def: number) => {
+    const v = typeof window !== "undefined" ? parseInt(window.localStorage.getItem(k) ?? "", 10) : NaN;
+    return Number.isFinite(v) ? v : def;
+  };
+  const [layoutCols, setLayoutCols] = useState<number>(() => lsInt("regente:layoutCols", 10));
+  const [layoutMaxRows, setLayoutMaxRows] = useState<number>(() => lsInt("regente:layoutMaxRows", 30));
+  const writeLayout = (cols: number, rows: number) => {
+    try {
+      window.localStorage.setItem("regente:layoutCols", String(cols));
+      window.localStorage.setItem("regente:layoutMaxRows", String(rows));
+    } catch { /* ignore */ }
+    window.dispatchEvent(new Event("regente:layout-changed"));
+  };
 
   // GitHub token
   const [git, setGit] = useState<GitStatus | null>(null);
@@ -217,6 +230,29 @@ export function SettingsDialog({ onClose }: Props) {
                 Protótipo. Mostra um mapa do ambiente no canto inferior do Monitoring — clique/arraste para
                 navegar em ambientes grandes (estilo Control-M). Redimensionável; desligado por padrão.
               </span>
+
+              <div style={{ marginTop: 12, borderTop: "1px solid var(--v2-border-subtle)", paddingTop: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Layout de jobs soltos (grade)</div>
+                <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+                  <label style={{ fontSize: 11, color: "var(--v2-text-secondary)" }}>
+                    Colunas
+                    <input type="number" min={1} max={40} value={layoutCols}
+                      onChange={(e) => { const v = Math.max(1, Math.min(40, Number(e.target.value) || 10)); setLayoutCols(v); writeLayout(v, layoutMaxRows); }}
+                      style={{ display: "block", marginTop: 4, width: 70, padding: "5px 8px", fontSize: 13, background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)", borderRadius: 4, color: "var(--v2-text-primary)", outline: "none", boxSizing: "border-box" }} />
+                  </label>
+                  <label style={{ fontSize: 11, color: "var(--v2-text-secondary)" }}>
+                    Máx. linhas (antes de alargar)
+                    <input type="number" min={1} max={200} value={layoutMaxRows}
+                      onChange={(e) => { const v = Math.max(1, Math.min(200, Number(e.target.value) || 30)); setLayoutMaxRows(v); writeLayout(layoutCols, v); }}
+                      style={{ display: "block", marginTop: 4, width: 90, padding: "5px 8px", fontSize: 13, background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)", borderRadius: 4, color: "var(--v2-text-primary)", outline: "none", boxSizing: "border-box" }} />
+                  </label>
+                </div>
+                <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 6, display: "block", lineHeight: 1.5 }}>
+                  Jobs SEM dependência viram uma grade de N colunas; ao passar de "máx. linhas" a grade alarga
+                  (cria colunas) em vez de crescer pra baixo. Aplica por folder, na hora. Dependentes seguem o
+                  fluxo top-down (não muda).
+                </span>
+              </div>
             </fieldset>
 
             {/* F20 — Environment Label */}
