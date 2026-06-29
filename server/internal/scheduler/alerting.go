@@ -197,6 +197,39 @@ func (e *AlertEngine) FireSystem(signalKey, name, severity, message string, cool
 	go e.route(r, ctx, message, fmt.Sprintf("%d", id), tsMs)
 }
 
+// FireAction emite um alerta vindo de uma regra Actions/On-Do de um job (ação
+// "notify"). Reusa a MESMA persistência (alert_events) + broadcast + routing
+// externo das regras de alerta, então o sino/toast da UI e os canais
+// (Slack/webhook/e-mail/PagerDuty) funcionam igual. channels vazio → roteia para
+// TODOS os sinks configurados (igual a uma regra sem canal externo). Sem cooldown:
+// a regra On/Do já dispara no máximo uma vez por instance (ledger action_fires).
+// Best-effort.
+func (e *AlertEngine) FireAction(workflowID, workflowName, name, severity, message string, channels []string) {
+	if severity == "" {
+		severity = "warning"
+	}
+	tsMs := time.Now().UnixMilli()
+	id, err := e.db.InsertID(
+		`INSERT INTO alert_events(rule_id, rule_name, severity, workflow_id, workflow_name, message, acknowledged, ts_ms)
+		 VALUES(?,?,?,?,?,?,0,?)`,
+		"rule-action", name, severity, workflowID, workflowName, message, tsMs,
+	)
+	if err != nil {
+		log.Printf("[alerts] insert action event: %v", err)
+		return
+	}
+	if e.hub != nil {
+		e.hub.BroadcastWeb("alert.fired", map[string]any{
+			"id": fmt.Sprintf("%d", id), "ruleId": "rule-action", "ruleName": name,
+			"severity": severity, "timestamp": tsMs, "workflowId": workflowID,
+			"workflowName": workflowName, "message": message, "acknowledged": false,
+		})
+	}
+	r := AlertRule{ID: "rule-action", Name: name, Severity: severity, Channels: strings.Join(channels, ",")}
+	ctx := AlertContext{WorkflowID: workflowID, WorkflowName: workflowName}
+	go e.route(r, ctx, message, fmt.Sprintf("%d", id), tsMs)
+}
+
 /* ── Alert routing — sinks externos (Slack / webhook) ── */
 
 // route entrega o alerta nos sinks externos configurados em settings, conforme

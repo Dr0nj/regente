@@ -490,10 +490,14 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   feriados, meses específicos. Cobrir todas as combinações; corrigir o gating onde divergir.
 - [ ] **Controle de recursos**: jobs que não podem concorrer (lock exclusivo), máximo de jobs simultâneos
   por host/pool, quantitative (N slots), fila quando esgota e liberação correta.
-- [ ] **Actions / On-Do do job** (motor de regras por job, 3 dimensões): **(a) por nº de tentativa** —
-  configurar retries e escada de rerun (2º → setar condition, 3º → alerta, Nº → rodar outro job/set-ok/notificar);
-  **(b) por resultado** OK/NOTOK; **(c) por tempo de execução** ("shouts" estilo Control-M) — rodando >30min →
-  Slack, >40min → alerta, >1h → abre chamado via webhook, cada limiar com destino/ação configurável.
+- [x] **Actions / On-Do do job** — motor backend ✅ (2026-06-29): regras "On `<gatilho>` Do `<ação>`" por job nas
+  **3 dimensões** — **(a) por nº de tentativa** (`on: attempt` — dispara na N-ésima tentativa que falhou, cobrindo a
+  final; complementa o retry automático `retries`); **(b) por resultado** (`on: result` OK/NOTOK, transição terminal);
+  **(c) por tempo de execução** (`on: runtime` — RUNNING há >N min, shouts escalonáveis 30/40/60min). **4 ações**
+  reusando os substratos: `notify` (Slack/webhook/e-mail/PagerDuty), `set-condition` (destrava sucessores), `run-job`
+  (Force Order de outro job), `set-ok` (auto-heal NOTOK→OK). Idempotente — cada regra dispara 1× por instance (ledger
+  durável `action_fires`, migration v7); decisor puro testável. 14 testes + validado ao vivo no binário (`notify`→
+  `/api/alerts`, `set-condition`→`/api/conditions`). **Falta**: form de config por job na UI (Design).
 - [ ] **Job FILE_WATCH**: espera a chegada de arquivo (path/glob, polling/evento, tamanho estável) antes
   de concluir e disparar o sucessor. Novo jobType + capability.
 - [ ] **Forecast**: testar a previsão de ≥ 1 semana à frente (quais jobs rodam por dia) contra o gating real.

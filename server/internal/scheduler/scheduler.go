@@ -822,6 +822,9 @@ func (s *Scheduler) tickOnce() {
 		}
 		s.sla.Evaluate(defsByID, now)
 	}
+
+	// Actions/On-Do — dimensão "runtime": shouts por duração nas instances RUNNING.
+	s.evaluateRuntimeActions(now)
 }
 
 // evalDeps avalia todas as upstreams; retorna (ready, permanentlyBlocked).
@@ -932,6 +935,13 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 
 // FinishInstance — chamado pelo ws handler quando o agent publica "result".
 func (s *Scheduler) FinishInstance(id string, status domain.InstanceStatus, exitCode int, output string) {
+	// Actions/On-Do — dimensão "attempt": a tentativa que ACABOU de rodar falhou.
+	// Avaliada ANTES do retry, para cobrir TODA tentativa falha (inclusive a final).
+	if status == domain.StatusNotOK {
+		if def, orderDate, attempt, ok := s.instanceContext(id); ok && len(def.Actions) > 0 {
+			s.applyActions(id, orderDate, def, actionEvent{kind: "attempt", attempt: attempt})
+		}
+	}
 	// P15 — retry de execution: se falhou e ainda há tentativas (def.Retries),
 	// re-dispatcha em vez de finalizar como NOTOK.
 	if status == domain.StatusNotOK && s.maybeRetry(id, output) {
@@ -970,6 +980,13 @@ func (s *Scheduler) FinishInstance(id string, status domain.InstanceStatus, exit
 	// esgotados neste ponto). Best-effort; nunca quebra o fluxo de finish.
 	if s.alerts != nil && (status == domain.StatusOK || status == domain.StatusNotOK) {
 		s.alerts.Evaluate(s.buildAlertContext(id, status))
+	}
+	// Actions/On-Do — dimensão "result" (terminal): OK ou NOTOK com retries
+	// esgotados. Lê a def CONGELADA da instance (snapshot do momento da ordem).
+	if status == domain.StatusOK || status == domain.StatusNotOK {
+		if def, orderDate, _, ok := s.instanceContext(id); ok && len(def.Actions) > 0 {
+			s.applyActions(id, orderDate, def, actionEvent{kind: "result", status: status})
+		}
 	}
 }
 

@@ -19,7 +19,7 @@ Resiliência operacional    █████████████████�
 ── Próximas fases ──────────────────────────────────────────────────────────
 Agent-native (MCP)         █████████████████░░░  85%  🟢 servidor MCP ✅ (6 tools read + 2 write gated) · falta NL-query + writes ricos
 Diferenciais               ██████████░░░░░░░░░░  50%  🟡 Explain·Diff·Blast·Dry Run ✅ · falta Job Neighborhood · RCA · Event log
-Aprofundamento Control-M   ██░░░░░░░░░░░░░░░░░░░   8%  🟡 daily lifecycle ✅ · falta Actions/On-Do · variáveis · FILE_WATCH · calendários
+Aprofundamento Control-M   ██████░░░░░░░░░░░░░░░  25%  🟡 daily lifecycle ✅ · Actions/On-Do ✅ (motor backend) · falta UI das actions · variáveis · FILE_WATCH · calendários
 Refinamento UI             ████████████░░░░░░░░  60%  🟡 grade de jobs soltos ✅ · aba de agentes+ping ✅ · falta minimap revisto · LEGACY_CAP virtualizado
 Fase Z — divulgação        ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ case study + post LinkedIn (agora com a história agent-native)
 ```
@@ -323,7 +323,8 @@ contra Postgres 16 real (Docker); restante pendente:
 | ✅ | ~~Diferencial: Blast Radius~~ | **Feito (2026-06-24):** BFS reverso de deps; downstream/SLA/folders/cascata; só o raio (barato a 1M); 4 testes; validado ao vivo. |
 | ✅ | ~~Diferencial: Dry Run~~ | **Feito (2026-06-24):** simula daily futura sem materializar (RUN/WAIT/BLOCKED/NOT_SCHEDULED + razão, cascata); reusa IsScheduledOn; 3 testes; validado ao vivo. |
 | ✅ | ~~Camada agent-native (MCP)~~ | **Feito (2026-06-24):** servidor MCP (`server/cmd/mcp`, stdio JSON-RPC, pure-Go) expõe os 4 diferenciais + summary/busca como tools; read-only por default, writes gated; 7 testes; validado ao vivo (pipe JSON-RPC). docs/mcp.md. |
-| **1** | **Aprofundamento Control-M** — Actions/On-Do · variáveis runtime · FILE_WATCH · calendários complexos | Maior gap de PARIDADE. Actions/On-Do é o de maior impacto. |
+| ✅ | ~~Aprofundamento Control-M: Actions/On-Do (motor backend)~~ | **Feito (2026-06-29):** motor On/Do nas 3 dimensões (result/attempt/runtime) + 4 ações (notify/set-condition/run-job/set-ok) reusando substratos; idempotência por ledger (migration v7); 14 testes + validado ao vivo. Falta a config na UI. |
+| **1** | **Aprofundamento Control-M** — UI das actions (form por job) · variáveis runtime %% · FILE_WATCH · calendários complexos | Maior gap de PARIDADE. Actions/On-Do tem o motor pronto; falta a config na UI. |
 | **2** | **Diferenciais (cont.)** — Job Neighborhood · RCA automático · Event log CQRS-lite · NL-query | Próxima leva de observabilidade (NL-query usa o transporte QUERY documentado). |
 | 3 | **Refinamento UI** — grade de jobs soltos · minimap revisto · virtualizar ACTIVE JOBS (LEGACY_CAP) | Polimento que melhora a demo (alimenta a Fase Z). |
 | 🏁 | **Fase Z** — case study + post LinkedIn | **ÚLTIMO gate, por definição.** Só quando o backlog acima estiver onde você quer. NÃO é o próximo passo. |
@@ -342,14 +343,20 @@ contra Postgres 16 real (Docker); restante pendente:
    feriados · meses específicos. Cobrir todas as combinações; corrigir o gating onde divergir.
 ⬜ Controle de recursos — testar e aprimorar: quantitative (N slots), jobs que NÃO podem concorrer
    (lock exclusivo), máximo de jobs simultâneos por host/pool, fila quando esgota, liberação correta.
-⬜ Actions / On-Do do job — motor de regras configuráveis por job, em 3 dimensões:
-   (a) por Nº DE TENTATIVA (escada de rerun): configurar quantos retries (ex.: 4); "2º rerun → setar
-       condition <evento>", "3º → alerta", "Nº → rodar outro job / set-ok / notificar";
-   (b) por RESULTADO: OK / NOTOK → ação;
-   (c) por TEMPO DE EXECUÇÃO ("shouts" estilo Control-M): rodando há >30min → shout no Slack · >40min →
-       alerta · >1h → abre chamado via webhook tal; cada limiar com destino/ação própria (escalonamento por duração).
-   Cada regra dispara: rerun · set-ok · notificar (Slack/webhook/e-mail/PagerDuty) · rodar outro job · setar
-   condition · abrir chamado. Testar + expor a config por job na UI.
+◑ Actions / On-Do do job — motor de regras configuráveis por job, em 3 dimensões. MOTOR BACKEND
+   ENTREGUE (2026-06-29); falta só a config na UI (form por job) + ações extras opcionais. As 3 dimensões:
+   (a) por Nº DE TENTATIVA (escada de rerun): On attempt N → ação (dispara na N-ésima tentativa que falhou,
+       cobrindo a final; complementa o retry automático def.Retries); ✅
+   (b) por RESULTADO: On result OK/NOTOK → ação (transição terminal, após esgotar retries); ✅
+   (c) por TEMPO DE EXECUÇÃO ("shouts" estilo Control-M): On runtime >N min → ação, avaliado a cada tick
+       sobre o conjunto RUNNING (escalonamento por duração, ex.: 30/40/60min com destinos distintos). ✅
+   Ações entregues, reusando os substratos: notify (Slack/webhook/e-mail/PagerDuty via AlertEngine) ·
+   set-condition (destrava sucessores) · run-job (Force Order de outro job) · set-ok (auto-heal NOTOK→OK). ✅
+   Idempotência: cada regra dispara 1× por instance (ledger durável action_fires, migration v7). Decisor PURO
+   testável (actionMatches). server/internal/scheduler/actions.go + 14 testes (engine real sobre SQLite real) +
+   VALIDADO AO VIVO no binário (notify→/api/alerts + set-condition→/api/conditions disparando de verdade).
+   FALTA: form de config por job na UI (Design) + ações extras opcionais (rerun explícito, abrir chamado
+   dedicado) + expor o histórico de disparos (action_fires) no drawer.
 ⬜ Job FILE_WATCH — espera a chegada de arquivo (path/glob · polling/evento · tamanho estável) antes de
    concluir; dispara o sucessor quando o arquivo chega. Novo jobType + capability.
 ⬜ Forecast — testar a previsão de ≥ 1 semana à frente (quais jobs rodam por dia, sem executar); validar

@@ -120,6 +120,44 @@ type JobDefinition struct {
 
 	// F20: Environment — dev/staging/prod. Routing por env.
 	Environment string `yaml:"environment,omitempty" json:"environment,omitempty"`
+
+	// Actions / On-Do — regras configuráveis disparadas por evento do job
+	// (Control-M "On/Do"). Avaliadas pelo ActionsEngine; ver actions.go.
+	Actions []ActionRule `yaml:"actions,omitempty" json:"actions,omitempty"`
+}
+
+// ActionRule — uma regra "On <gatilho> Do <ação>" (Control-M On/Do).
+//
+// Estrutura PLANA (não aninhada) para legibilidade no YAML e edição na UI: os
+// campos de gatilho (On + qualificador) e os de ação (Do + parâmetros) convivem;
+// só os relevantes ao On/Do escolhido são lidos. Cada regra dispara NO MÁXIMO uma
+// vez por instance (idempotência via tabela action_fires, chaveada pelo índice da
+// regra no array). Três dimensões de gatilho:
+//
+//	On=="result"  → Status (OK|NOTOK) terminal do job, após esgotar retries.
+//	On=="attempt" → Attempt (1-based): a N-ésima tentativa FALHOU (escada de rerun).
+//	On=="runtime" → AfterMin: o job está RUNNING há mais que N minutos (shout).
+//
+// Ações (Do):
+//
+//	"notify"        → alerta nos canais (Message/Severity/Channels) — Slack/webhook/e-mail/PagerDuty.
+//	"set-condition" → seta a Condition global no escopo do order_date (destrava sucessores).
+//	"run-job"       → Force Order de TargetJob (roda outro job, ignorando deps).
+//	"set-ok"        → flipa o PRÓPRIO job NOTOK→OK (só faz sentido com On result NOTOK).
+type ActionRule struct {
+	// Gatilho.
+	On       string `yaml:"on" json:"on"`                             // "result" | "attempt" | "runtime"
+	Status   string `yaml:"status,omitempty" json:"status,omitempty"` // On=="result": "OK" | "NOTOK"
+	Attempt  int    `yaml:"attempt,omitempty" json:"attempt,omitempty"`
+	AfterMin int    `yaml:"afterMin,omitempty" json:"afterMin,omitempty"`
+
+	// Ação.
+	Do        string   `yaml:"do" json:"do"`                                   // "notify" | "set-condition" | "run-job" | "set-ok"
+	Message   string   `yaml:"message,omitempty" json:"message,omitempty"`     // notify
+	Severity  string   `yaml:"severity,omitempty" json:"severity,omitempty"`   // notify (warning|critical|info)
+	Channels  []string `yaml:"channels,omitempty" json:"channels,omitempty"`   // notify (vazio = todos configurados)
+	Condition string   `yaml:"condition,omitempty" json:"condition,omitempty"` // set-condition
+	TargetJob string   `yaml:"targetJob,omitempty" json:"targetJob,omitempty"` // run-job
 }
 
 // SubWorkflowRef — F17.

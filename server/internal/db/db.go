@@ -458,6 +458,7 @@ var sqliteMigrations = []migration{
 	{version: 4, sql: schemaV4()},
 	{version: 5, sql: schemaV5("DATETIME")},
 	{version: 6, sql: schemaV6("DATETIME")},
+	{version: 7, sql: schemaV7("DATETIME")},
 }
 
 var pgMigrations = []migration{
@@ -467,6 +468,7 @@ var pgMigrations = []migration{
 	{version: 4, sql: schemaV4()},
 	{version: 5, sql: schemaV5("TIMESTAMPTZ")},
 	{version: 6, sql: schemaV6("TIMESTAMPTZ")},
+	{version: 7, sql: schemaV7("TIMESTAMPTZ")},
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
@@ -522,4 +524,20 @@ ALTER TABLE agents ADD COLUMN version TEXT NOT NULL DEFAULT '';
 ALTER TABLE agents ADD COLUMN started_at ` + ts + `;
 ALTER TABLE agents ADD COLUMN connected_at ` + ts + `;
 ALTER TABLE agents ADD COLUMN first_seen ` + ts + ``
+}
+
+// schemaV7 — Actions / On-Do (Control-M On/Do). Ledger de disparos de ação para
+// IDEMPOTÊNCIA: cada regra (chave = índice da regra no array do job) dispara no
+// máximo uma vez por instance. PK (instance_id, action_key) garante isso mesmo
+// entre ticks e através de restart (a tabela é durável, não in-memory). O motor
+// faz claim com check-then-insert (tick roda só no líder, single-threaded; a
+// transição terminal de uma instance é única) — a PK é a rede de segurança.
+// Portável SQLite/PG. Ver scheduler/actions.go.
+func schemaV7(ts string) string {
+	return `CREATE TABLE IF NOT EXISTS action_fires (
+	instance_id TEXT NOT NULL,
+	action_key  TEXT NOT NULL,
+	fired_at    ` + ts + ` DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (instance_id, action_key)
+)`
 }
