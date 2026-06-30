@@ -924,19 +924,24 @@ function V2PreviewInner() {
     ];
   }, [mode, canvas.nodes]);
 
-  // Entrar ancorado um pouco abaixo do topo (Monitoring E Design): após o fit, alinha
-  // o topo do conteúdo em TOP_ANCHOR em vez de centralizar verticalmente — mesma
-  // sensação do "Organizar", que o usuário pediu como padrão nos dois modos.
+  // organizeView — re-enquadra ancorando o TOPO do conteúdo em TOP_ANCHOR (em vez
+  // de centralizar verticalmente, que jogaria o conteúdo mais pra baixo). Fonte
+  // ÚNICA usada tanto na ENTRADA quanto no botão "Organizar" — assim os dois caem
+  // exatamente no mesmo limite (era o bug: o botão fazia fitView puro = mais baixo).
+  const organizeView = useCallback((duration: number) => {
+    if (canvas.nodes.length === 0) return;
+    fitView({ padding: 0.12, duration: 0 });
+    const vp = getViewport();
+    const minY = Math.min(...canvas.nodes.map((n) => n.position.y));
+    setViewport({ x: vp.x, y: TOP_ANCHOR - minY * vp.zoom, zoom: vp.zoom }, { duration });
+  }, [canvas.nodes, fitView, getViewport, setViewport]);
+
+  // Entrar ancorado um pouco abaixo do topo (Monitoring E Design).
   useEffect(() => {
     if (canvas.nodes.length === 0) return;
-    const t = setTimeout(() => {
-      fitView({ padding: 0.12, duration: 0 });
-      const vp = getViewport();
-      const minY = Math.min(...canvas.nodes.map((n) => n.position.y));
-      setViewport({ x: vp.x, y: TOP_ANCHOR - minY * vp.zoom, zoom: vp.zoom }, { duration: 220 });
-    }, 140);
+    const t = setTimeout(() => organizeView(220), 140);
     return () => clearTimeout(t);
-  }, [mode, canvas.nodes, fitView, getViewport, setViewport]);
+  }, [mode, canvas.nodes, organizeView]);
 
   const monitoringJobs = useMemo(() => {
     const defsById = new Map(defs.map((d) => [d.id, d] as const));
@@ -1465,8 +1470,8 @@ function V2PreviewInner() {
             </button>
 
             <button
-              onClick={() => fitView({ padding: 0.2, duration: 300 })}
-              title="Organizar — re-enquadra o canvas (os jobs já se alinham sozinhos: dependentes em fluxo, soltos em grade)"
+              onClick={() => organizeView(300)}
+              title="Organizar — re-enquadra o canvas no mesmo limite da entrada (os jobs já se alinham sozinhos: dependentes em fluxo, soltos em grade)"
               style={{
                 padding: "5px 10px",
                 background: "transparent",
