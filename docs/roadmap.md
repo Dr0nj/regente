@@ -83,6 +83,12 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
    definition VIVA (`inst.team || def.team`) — def deletada ⇒ lane "—" sem nome. Fix: a instância carrega o
    `team` congelado que o server já grava no INSERT (a API /api/instances já devolvia); apagar/mover job no
    Design não reescreve mais a daily corrente.
+   ✅ PASSO 2 (2026-06-30, commit `c5e3db2`): redesign visual "Luxury Dashboard" (a partir de mock HTML do
+      usuário) — fundo ultra-dark × accent do tema, títulos SERIF (novo token `--v2-font-serif` = Playfair,
+      Inter+Playfair no index.html), cards de "ativo serializado" (ID REG-xxxx + LED Active/Idle + badge
+      OPEN), hover que eleva, MULTI-SELEÇÃO com action bar flutuante (Abrir/Fechar/Arquivar/Excluir em lote),
+      stats macro REAIS no topo (total/jobs/abertas/arquivadas). 100% theme-driven (o "dourado" = accent do
+      tema; NADA hardcoded → 13 temas funcionam). Validação visual no lab do usuário.
 ◑ Layout de jobs — grade pros SOLTOS, fluxo pros DEPENDENTES (por folder).
    ✅ FASE 1 (ENTREGUE 2026-06-25): `layoutFolderInner` particiona conectados (dagre TB, intacto) vs soltos
       (GRADE com wrap: 10 cols, 11º→linha2/colA; alargamento cols=max(10,ceil(N/30)) após 30 linhas). Contrato
