@@ -72,9 +72,8 @@ import { SettingsDialog } from "./SettingsDialog";
 import { GitStatusBadge } from "./GitStatusBadge";
 import { PRBannerHost } from "./PRBannerHost";
 import { PublishButton } from "./PublishButton";
-import { FolderOpener } from "./FolderOpener";
 import { getDesignSessionId, setDesignSessionId, onDesignSessionChange, onDesignSessionConflict } from "@/lib/server-client";
-import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, type SessionStatus } from "@/lib/design-session-api";
+import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, createDesignSession, openSessionFolder, createSessionFolder, type SessionStatus } from "@/lib/design-session-api";
 import { toast, ToastHost } from "./Toast";
 import EdgeConditionModal from "./EdgeConditionModal";
 import { getGitInfo, commitUrl } from "@/lib/git-info";
@@ -901,6 +900,42 @@ function V2PreviewInner() {
     [mode, filteredInstances, filteredDefs, designDefsWithDraft, layoutCfg],
   );
 
+  // Abrir/criar folder no Design — absorvido do antigo FolderOpener pro botão
+  // FOLDERS (FolderManagerDialog). Mantém a semântica de design-session: cria a
+  // session lazily, abre/cria via API da session, rastreia folders novas pro PR.
+  const addFolder = useCallback(async (action: "open" | "create", name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    let sid = designSessionId;
+    if (!sid) {
+      const sess = await createDesignSession([], []);
+      sid = sess.id;
+      setDesignSessionId(sid);
+    }
+    const res = action === "open"
+      ? await openSessionFolder(sid, trimmed)
+      : await createSessionFolder(sid, trimmed);
+    setActiveFolders((prev) => {
+      const next = new Set(prev ?? []);
+      next.add(res.name);
+      return next;
+    });
+    if (res.willForcePR) {
+      setDesignSessionNewFolders((prev) => prev.includes(res.name) ? prev : [...prev, res.name]);
+    }
+    await reloadDefinitions();
+  }, [designSessionId]);
+
+  // Fechar folder do working set: só remove da visão (não toca no Git nem na session).
+  const closeFolder = useCallback((name: string) => {
+    setActiveFolders((prev) => {
+      if (!prev) return prev;
+      const next = new Set(prev);
+      next.delete(name);
+      return next;
+    });
+  }, []);
+
   // Trava de pan. Monitoring: topo do conteúdo (folders) alinhado com o ACTIVE JOBS;
   // livre pros lados e pra CIMA (revelar mais jobs abaixo), nunca abaixo do topo.
   // Design: BOUNDED na caixa dos jobs da folder + margem — só puxa pros lados quando
@@ -1584,26 +1619,7 @@ function V2PreviewInner() {
         {mode === "design" && !designSessionId && (
           <GitStatusBadge canSync={!!me && me.role === "admin"} />
         )}
-        {/* FolderOpener: porta de entrada para abrir/criar folder ativa em Design.
-            Cria session lazily se ainda não houver. Visível em design+server mode. */}
-        {mode === "design" && isServerMode() && (
-          <FolderOpener
-            sessionId={designSessionId}
-            alreadyActive={activeFolders ?? new Set()}
-            onSessionCreated={(sid) => setDesignSessionId(sid)}
-            onAdded={async (res) => {
-              setActiveFolders((prev) => {
-                const next = new Set(prev ?? []);
-                next.add(res.name);
-                return next;
-              });
-              if (res.willForcePR) {
-                setDesignSessionNewFolders((prev) => prev.includes(res.name) ? prev : [...prev, res.name]);
-              }
-              await reloadDefinitions();
-            }}
-          />
-        )}
+        {/* Abrir/criar folder agora vive 100% no botão FOLDERS (FolderManagerDialog). */}
         {mode === "design" && designSessionId && (
           <>
             <span style={{
@@ -1867,6 +1883,10 @@ function V2PreviewInner() {
           <FolderManagerDialog
             visibleFolders={visibleFolders}
             onChangeVisible={setVisibleFolders}
+            activeFolders={activeFolders ?? new Set()}
+            onOpenFolder={(name) => addFolder("open", name)}
+            onCreateFolder={(name) => addFolder("create", name)}
+            onCloseFolder={closeFolder}
             onClose={() => setShowFolderManager(false)}
           />
         )}

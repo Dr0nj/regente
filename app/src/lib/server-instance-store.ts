@@ -17,6 +17,7 @@ import { api, onServerEvent } from "@/lib/server-client";
 interface ServerInstance {
   id: string;
   definitionId: string;
+  team?: string;
   orderDate: string;
   status: string;
   scheduledAt?: string;
@@ -53,7 +54,11 @@ function toWeb(s: ServerInstance): JobInstance {
     definitionId: s.definitionId,
     label: s.definitionId,
     jobType: "",
-    team: undefined,
+    // Snapshot da diária: a folder (team) é congelada NA instância pelo server
+    // (coluna `team` no INSERT). O monitoring reflete o dia como foi schedulado —
+    // apagar/mover o job no Design NÃO pode reescrever a daília corrente. Por isso
+    // usamos o team da instância, não o da definition viva (que pode nem existir).
+    team: s.team || undefined,
     orderDate: s.orderDate,
     createdAt: parseTime(s.scheduledAt) ?? Date.now(),
     scheduledAt: parseTime(s.scheduledAt) ?? Date.now(),

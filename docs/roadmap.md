@@ -20,7 +20,7 @@ Resiliência operacional    █████████████████�
 Agent-native (MCP)         █████████████████░░░  85%  🟢 servidor MCP ✅ (6 tools read + 2 write gated) · falta NL-query + writes ricos
 Diferenciais               ██████████░░░░░░░░░░  50%  🟡 Explain·Diff·Blast·Dry Run ✅ · falta Job Neighborhood · RCA · Event log
 Aprofundamento Control-M   ████████░░░░░░░░░░░░  35%  🟡 daily lifecycle ✅ · Actions/On-Do ✅ (motor + UI) · falta variáveis · FILE_WATCH · calendários
-Refinamento UI             ████████████░░░░░░░░  60%  🟡 grade de jobs soltos ✅ · aba de agentes+ping ✅ · falta minimap revisto · LEGACY_CAP virtualizado
+Refinamento UI             ██████████████░░░░░░  70%  🟡 grade de jobs soltos ✅ · aba de agentes+ping ✅ · seletor de folder (FOLDERS) ✅ + fix snapshot do monitoring ✅ · falta minimap revisto · LEGACY_CAP virtualizado
 Fase Z — divulgação        ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ case study + post LinkedIn (agora com a história agent-native)
 ```
 
@@ -72,10 +72,17 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ⬜ Janela de info do job (drawer) — deixar mais friendly: ações claras, output/log legível, layout melhor
 ⬜ Design: LISTA de labels dos jobs da folder — mostrar, no Design, a lista dos jobs (labels) que estão na
    folder aberta (além do canvas), pra localização rápida sem caçar nó por nó.
-⬜ Seletor de folder do Design REDESENHADO — hoje está feio/ruim. Trocar o botão "open/create folder" por um
-   único "Folders" que abre um POP-UP/modal com TODAS as folders em lista bonita e moderna, onde dá pra:
-   criar uma nova, e selecionar uma OU VÁRIAS folders (multi-select) pra carregar no canvas. Substitui o
-   controle atual (FolderOpener) por algo limpo e legível.
+✅ Seletor de folder do Design REDESENHADO (ENTREGUE 2026-06-30) — removido o botão flutuante "open/create
+   folder" (FolderOpener deletado). O botão único "FOLDERS" abre o modal (FolderManagerDialog) que agora
+   CONTROLA TUDO: criar nova folder ("+ New folder", força PR no Publish via design-session), abrir/fechar
+   uma OU VÁRIAS folders no canvas (multi-select via toggle "Open/Close in design" → activeFolders, badge
+   OPEN + borda destacada), além de visibilidade/rename/archive/delete já existentes. Semântica de
+   design-session+PR preservada (open/create routam pelo V2Preview.addFolder; close só tira da visão).
+   BUG corrigido junto: o snapshot do Monitoring perdia o nome da folder quando o job era apagado do Design.
+   Causa: `server-instance-store.toWeb` hardcodava `team: undefined` e o canvas recuperava a folder da
+   definition VIVA (`inst.team || def.team`) — def deletada ⇒ lane "—" sem nome. Fix: a instância carrega o
+   `team` congelado que o server já grava no INSERT (a API /api/instances já devolvia); apagar/mover job no
+   Design não reescreve mais a daily corrente.
 ◑ Layout de jobs — grade pros SOLTOS, fluxo pros DEPENDENTES (por folder).
    ✅ FASE 1 (ENTREGUE 2026-06-25): `layoutFolderInner` particiona conectados (dagre TB, intacto) vs soltos
       (GRADE com wrap: 10 cols, 11º→linha2/colA; alargamento cols=max(10,ceil(N/30)) após 30 linhas). Contrato
