@@ -44,8 +44,11 @@ Dois mundos separados, estilo Control-M:
 
 - **Monitoring** — o que está rodando hoje. Resultado da *Daily*. Só consumo:
   hold / release / cancel / set-ok / rerun / force order, audit por instance, SLA.
-- **Design** — onde as definitions são editadas. Você abre uma ou mais *folders*
-  (clone Git efêmero por sessão), edita no canvas drag-and-drop e dá **Publish**
+  É um **snapshot imutável**: a folder de cada instância é congelada quando a daily
+  foi schedulada — apagar ou mover o job no Design não reescreve a daily corrente.
+- **Design** — onde as definitions são editadas. Pelo botão **FOLDERS** você cria,
+  abre/fecha (multi-select) e gerencia *folders* — abrir uma folder monta um clone
+  Git efêmero por sessão; você edita no canvas drag-and-drop e dá **Publish**
   (único caminho de escrita pro GitHub).
 
 **A Daily** roda 1×/dia à meia-noite (BRT): lê o Git, decide o que roda hoje
