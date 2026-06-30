@@ -1,8 +1,8 @@
 /**
  * LocalStorageAdapter — StoragePort em cima de window.localStorage.
  *
- * MVP: chave única `regente:definitions` contendo JSON array.
- * Fase 3: substituído (ou espelhado) por GitAdapter.
+ * Chave única `regente:definitions` contendo JSON array (round-trip fiel da
+ * def inteira). Usado no modo demo/browser; o produto usa o ServerApiAdapter.
  */
 
 import type { StoragePort } from "@/lib/ports/StoragePort";

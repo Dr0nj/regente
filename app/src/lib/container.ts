@@ -19,7 +19,6 @@ import type { SchedulerPort } from "@/lib/ports/SchedulerPort";
 import type { ExecutorPort } from "@/lib/ports/ExecutorPort";
 
 import { LocalStorageAdapter } from "@/lib/adapters/storage/LocalStorageAdapter";
-import { GitAdapter } from "@/lib/adapters/storage/GitAdapter";
 import { ServerApiAdapter } from "@/lib/adapters/storage/ServerApiAdapter";
 import { BrowserTickAdapter } from "@/lib/adapters/scheduler/BrowserTickAdapter";
 import { MockExecutorAdapter } from "@/lib/adapters/executor/MockExecutorAdapter";
@@ -33,23 +32,23 @@ export interface RegenteContainer {
   /** Seleciona o primeiro executor que suporta o jobType. Fallback: mock. */
   executorFor(jobType: string): ExecutorPort;
   /** Nome do backend de storage ativo (para UI/debug). */
-  storageBackend: "server" | "git" | "localStorage";
+  storageBackend: "server" | "localStorage";
   /** URL do regente-server quando em server mode. */
   serverUrl: string | null;
 }
 
 function buildContainer(): RegenteContainer {
   const serverOn = isServerMode();
-  const gitEnabled = !serverOn && GitAdapter.isEnabled();
 
+  // Server mode (regente-server/GitOps) é o caminho do produto: round-trip
+  // completo de TODOS os campos via Go yaml. Fora dele, localStorage (fiel,
+  // offline) para o modo demo/browser. (O antigo GitAdapter browser-direto —
+  // PAT no bundle + serializer YAML lossy — foi removido em 2026-06-30.)
   let storage: StoragePort;
   let backend: RegenteContainer["storageBackend"];
   if (serverOn) {
     storage = new ServerApiAdapter();
     backend = "server";
-  } else if (gitEnabled) {
-    storage = new GitAdapter();
-    backend = "git";
   } else {
     storage = new LocalStorageAdapter();
     backend = "localStorage";

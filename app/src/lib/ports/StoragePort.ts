@@ -1,9 +1,8 @@
 /**
  * StoragePort — interface de persistência de JobDefinitions.
  *
- * Fase 2: contrato abstrato. Adapters MVP envolvem localStorage;
- * Fase 3: GitAdapter (YAML em repo GitHub);
- * Fase 8: DynamoDbAdapter (AWS).
+ * Contrato abstrato. Implementações: ServerApiAdapter (produto, regente-server/
+ * GitOps) e LocalStorageAdapter (demo/browser).
  *
  * Regra: o domínio nunca importa adapter direto — sempre Port.
  */
