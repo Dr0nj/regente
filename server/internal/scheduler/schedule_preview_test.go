@@ -63,6 +63,27 @@ func TestSchedulePreview_Monthly(t *testing.T) {
 	}
 }
 
+// TestSchedulePreview_WeeklyNoDays — semanal SEM dia escolhido = schedule
+// incompleto → NÃO roda nenhum dia (regressão: antes rodava todos os dias).
+func TestSchedulePreview_WeeklyNoDays(t *testing.T) {
+	s := newTestScheduler(t)
+	def := domain.JobDefinition{ID: "j", Schedule: domain.Schedule{Frequency: "weekly"}}
+	got := s.SchedulePreview(def, day("2026-06-29"), day("2026-07-05"))
+	if len(got) != 0 {
+		t.Fatalf("weekly sem dias deveria ser vazio, got %v", got)
+	}
+}
+
+// TestSchedulePreview_MonthlyNoDays — mensal SEM dia escolhido → NÃO roda.
+func TestSchedulePreview_MonthlyNoDays(t *testing.T) {
+	s := newTestScheduler(t)
+	def := domain.JobDefinition{ID: "j", Schedule: domain.Schedule{Frequency: "monthly"}}
+	got := s.SchedulePreview(def, day("2026-07-01"), day("2026-07-31"))
+	if len(got) != 0 {
+		t.Fatalf("monthly sem dias deveria ser vazio, got %v", got)
+	}
+}
+
 func eqStr(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

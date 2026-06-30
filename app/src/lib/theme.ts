@@ -84,7 +84,7 @@ export const THEMES: ThemeDef[] = [
   {
     id: "cinza",
     name: "Cinza",
-    desc: "Escala de cinzas, sem cor",
+    desc: "Interface em cinza, status coloridos",
     flag: { field: "#0d0d0d", rhombus: "#d4d4d4", disc: "#525252" },
   },
   {

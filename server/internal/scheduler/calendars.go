@@ -156,7 +156,9 @@ func matchesFrequency(d domain.JobDefinition, date time.Time, store calLookup) b
 		return true
 	case "weekly":
 		if len(s.DaysOfWeek) == 0 {
-			return true
+			// Semanal sem nenhum dia escolhido = schedule incompleto.
+			// NÃO roda (só "daily" roda todo dia). O preview reflete isso.
+			return false
 		}
 		wd := strings.ToLower(date.Weekday().String()[:3])
 		for _, x := range s.DaysOfWeek {
@@ -167,7 +169,8 @@ func matchesFrequency(d domain.JobDefinition, date time.Time, store calLookup) b
 		return false
 	case "monthly":
 		if len(s.DaysOfMonth) == 0 {
-			return true
+			// Mensal sem nenhum dia escolhido = schedule incompleto. NÃO roda.
+			return false
 		}
 		last := lastDayOfMonth(date)
 		for _, dom := range s.DaysOfMonth {
