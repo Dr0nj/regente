@@ -68,6 +68,34 @@ type calLookup interface {
 	Get(name string) (*domain.Calendar, error)
 }
 
+// noopCalLookup — store vazio (sem calendars configurados): nenhum calendar
+// existe, então include/exclude não filtram. Usado pelo SchedulePreview quando
+// o scheduler roda sem CalendarStore.
+type noopCalLookup struct{}
+
+func (noopCalLookup) Get(string) (*domain.Calendar, error) { return nil, nil }
+
+// SchedulePreview devolve as datas (YYYY-MM-DD) em que a definition RODARIA no
+// intervalo [from, to] inclusivo, avaliando IsScheduledOn dia a dia — a MESMA
+// regra do RunDaily (fonte única). Garante que o calendário do preview na UI bate
+// EXATAMENTE com o que a daily materializaria: dia presente = roda, ausente = não
+// roda. Limitado a ~2 anos por chamada (defesa contra range absurdo).
+func (s *Scheduler) SchedulePreview(d domain.JobDefinition, from, to time.Time) []string {
+	var store calLookup = noopCalLookup{}
+	if s.calStore != nil {
+		store = s.calStore
+	}
+	out := []string{}
+	guard := 0
+	for t := from; !t.After(to) && guard < 800; t = t.AddDate(0, 0, 1) {
+		guard++
+		if IsScheduledOn(d, t, store) {
+			out = append(out, t.Format("2006-01-02"))
+		}
+	}
+	return out
+}
+
 // IsScheduledOn decide se a definition deve ser ordenada na data dada,
 // combinando: filtro de meses + recorrência (Frequency) + calendars do job
 // (include/exclude). É a regra usada pela daily.
@@ -160,7 +188,7 @@ func matchesFrequency(d domain.JobDefinition, date time.Time, store calLookup) b
 		if idx < 0 {
 			return false // não é dia útil
 		}
-		nth := idx + 1            // 1-based
+		nth := idx + 1              // 1-based
 		fromEnd := len(bdays) - idx // 1 = último
 		for _, n := range s.NthBusinessDays {
 			if n > 0 && n == nth {

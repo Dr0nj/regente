@@ -113,8 +113,10 @@ daily ou via Force Order manual.
   janelas e execução cíclica. Os **calendários** vivem na própria aba Schedule e trabalham
   junto com as regras como **include/exclude** (ex.: negar "dias úteis" + todos os dias =
   roda todo dia, exceto dia útil), com **tradução** do que cada calendário faz e um
-  **preview** em linguagem natural no rodapé. ("Dia útil"/regra avançada saíram da
-  frequência: dia útil depende do calendário de feriados de cada lugar.)
+  **preview de calendário REAL** no rodapé (estilo Control-M "View Scheduling": 12
+  mini-meses + seletor de ano; os dias **destacados** são exatamente os que o job vai
+  rodar, calculados pelo backend com a **mesma regra da daily** — `POST /api/schedule/preview`).
+  ("Dia útil"/regra avançada saíram da frequência: dia útil depende do calendário de feriados de cada lugar.)
 - 🟢 **Dependências entre jobs** com condições (on-success/failure/complete/always).
 - 🟢 **Engines de paridade** — calendars, resources/quotas, conditions, variáveis
   globais (interpolação), SLA e forecast/analytics.

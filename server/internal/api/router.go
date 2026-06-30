@@ -120,8 +120,9 @@ func NewRouter(cfg Config) http.Handler {
 		r.Get("/instances/{id}/explain", s.explainInstance)  // diferencial: "por que não rodou?"
 		r.Get("/instances/{id}/blast-radius", s.blastRadius) // diferencial: impacto de cancelar/segurar
 
-		r.Get("/daily/diff", s.diffDaily)     // diferencial: o que mudou entre duas diárias
-		r.Get("/daily/dryrun", s.dryRunDaily) // diferencial: simular uma daily futura sem materializar
+		r.Get("/daily/diff", s.diffDaily)              // diferencial: o que mudou entre duas diárias
+		r.Get("/daily/dryrun", s.dryRunDaily)          // diferencial: simular uma daily futura sem materializar
+		r.Post("/schedule/preview", s.schedulePreview) // calendário-preview: dias que o schedule rodaria (read-only)
 
 		// Daily + Force (Control-M parity)
 		r.With(s.requireWriterMW).Post("/daily/run", s.runDaily)

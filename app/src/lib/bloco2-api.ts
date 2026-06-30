@@ -1,6 +1,24 @@
 // Bloco 2 — Control-M parity client API.
 // F14 Calendars, F15 Resources, F16 Conditions, F19 SLA, F21 Forecast, F22 Analytics.
 import { api, isServerMode } from "./server-client";
+import type { JobSchedule, CalendarRef } from "./orchestrator-model";
+
+// === Schedule preview (calendário real: dias que o job rodaria) ===
+// Reusa a MESMA regra da daily no backend (IsScheduledOn) — dia presente em
+// `dates` = roda sem falta, ausente = não roda. Em browser-mode devolve vazio.
+export interface SchedulePreviewResult { from: string; to: string; dates: string[]; }
+export async function schedulePreview(
+  def: { schedule: JobSchedule; calendars?: CalendarRef[]; calendar?: string },
+  from: string,
+  to: string,
+): Promise<SchedulePreviewResult> {
+  if (!isServerMode()) return { from, to, dates: [] };
+  return api<SchedulePreviewResult>("/api/schedule/preview", {
+    method: "POST",
+    body: JSON.stringify({ definition: def, from, to }),
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
 // === F14 Calendars ===
 export interface Calendar {

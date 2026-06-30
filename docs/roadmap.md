@@ -64,9 +64,11 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
    da frequência (dia útil depende de feriados/calendário de cada lugar; o Regente não adivinha) → ficam só
    daily/weekly/monthly; (2) os CALENDÁRIOS entraram na própria aba (fundiu a aba "Calendars" separada) e
    trabalham JUNTO com as regras como include/exclude, cada calendário anexado já mostra a tradução do que ele
-   faz (ex.: "seg–sex, menos 3 feriados"); (3) PREVIEW em linguagem natural no rodapé compõe frequência +
-   meses + calendários + horário (ex.: negar "dias úteis" + todos os dias = "Roda todos os dias, exceto dias
-   úteis (seg–sex…)"). Aba "Calendars" do drawer removida.
+   faz (ex.: "seg–sex, menos 3 feriados"); (3) PREVIEW = gist em linguagem natural + **CALENDÁRIO REAL** estilo
+   Control-M "View Scheduling" (12 mini-meses, seletor de ano) onde os dias DESTACADOS são EXATAMENTE os que o
+   job roda — vindos do backend `POST /api/schedule/preview` → `Scheduler.SchedulePreview` → `IsScheduledOn`
+   (a MESMA regra da daily, fonte única; destacado=roda, apagado=não roda). 4 testes Go + endpoint validado
+   ao vivo. Aba "Calendars" do drawer removida. (browser-mode sem server: mostra aviso, calendário exato exige server.)
 ⬜ Janela de info do job (drawer) — deixar mais friendly: ações claras, output/log legível, layout melhor
 ⬜ Design: LISTA de labels dos jobs da folder — mostrar, no Design, a lista dos jobs (labels) que estão na
    folder aberta (além do canvas), pra localização rápida sem caçar nó por nó.

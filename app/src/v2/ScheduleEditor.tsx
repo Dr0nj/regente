@@ -19,6 +19,7 @@ import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { JobSchedule, ScheduleFrequency, CalendarRef } from "@/lib/orchestrator-model";
 import type { Calendar } from "@/lib/bloco2-api";
+import SchedulePreviewCalendar from "./SchedulePreviewCalendar";
 
 const WEEKDAYS: Array<{ id: string; label: string }> = [
   { id: "mon", label: "Seg" }, { id: "tue", label: "Ter" }, { id: "wed", label: "Qua" },
@@ -140,8 +141,10 @@ export default function ScheduleEditor({ value, onChange, calendars, onCalendars
         </Hint>
       </Group>
 
-      {/* PREVIEW — embaixo de todas as regras (frequência + meses + calendários + horário) */}
+      {/* PREVIEW — embaixo de todas as regras. Gist em texto + calendário REAL (dias
+          destacados = dias que o job roda, pela mesma regra da daily). */}
       <SchedulePreview schedule={s} calendars={calendars} calDefs={availableCalendars} />
+      <SchedulePreviewCalendar schedule={s} calendars={calendars} />
     </div>
   );
 }
