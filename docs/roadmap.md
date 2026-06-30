@@ -19,7 +19,7 @@ Resiliência operacional    █████████████████�
 ── Próximas fases ──────────────────────────────────────────────────────────
 Agent-native (MCP)         █████████████████░░░  85%  🟢 servidor MCP ✅ (6 tools read + 2 write gated) · falta NL-query + writes ricos
 Diferenciais               ██████████░░░░░░░░░░  50%  🟡 Explain·Diff·Blast·Dry Run ✅ · falta Job Neighborhood · RCA · Event log
-Aprofundamento Control-M   ██████░░░░░░░░░░░░░░░  25%  🟡 daily lifecycle ✅ · Actions/On-Do ✅ (motor backend) · falta UI das actions · variáveis · FILE_WATCH · calendários
+Aprofundamento Control-M   ████████░░░░░░░░░░░░  35%  🟡 daily lifecycle ✅ · Actions/On-Do ✅ (motor + UI) · falta variáveis · FILE_WATCH · calendários
 Refinamento UI             ████████████░░░░░░░░  60%  🟡 grade de jobs soltos ✅ · aba de agentes+ping ✅ · falta minimap revisto · LEGACY_CAP virtualizado
 Fase Z — divulgação        ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ case study + post LinkedIn (agora com a história agent-native)
 ```
@@ -341,8 +341,9 @@ contra Postgres 16 real (Docker); restante pendente:
 | ✅ | ~~Diferencial: Blast Radius~~ | **Feito (2026-06-24):** BFS reverso de deps; downstream/SLA/folders/cascata; só o raio (barato a 1M); 4 testes; validado ao vivo. |
 | ✅ | ~~Diferencial: Dry Run~~ | **Feito (2026-06-24):** simula daily futura sem materializar (RUN/WAIT/BLOCKED/NOT_SCHEDULED + razão, cascata); reusa IsScheduledOn; 3 testes; validado ao vivo. |
 | ✅ | ~~Camada agent-native (MCP)~~ | **Feito (2026-06-24):** servidor MCP (`server/cmd/mcp`, stdio JSON-RPC, pure-Go) expõe os 4 diferenciais + summary/busca como tools; read-only por default, writes gated; 7 testes; validado ao vivo (pipe JSON-RPC). docs/mcp.md. |
-| ✅ | ~~Aprofundamento Control-M: Actions/On-Do (motor backend)~~ | **Feito (2026-06-29):** motor On/Do nas 3 dimensões (result/attempt/runtime) + 4 ações (notify/set-condition/run-job/set-ok) reusando substratos; idempotência por ledger (migration v7); 14 testes + validado ao vivo. Falta a config na UI. |
-| **1** | **Aprofundamento Control-M** — UI das actions (form por job) · variáveis runtime %% · FILE_WATCH · calendários complexos | Maior gap de PARIDADE. Actions/On-Do tem o motor pronto; falta a config na UI. |
+| ✅ | ~~Aprofundamento Control-M: Actions/On-Do (motor backend)~~ | **Feito (2026-06-29):** motor On/Do nas 3 dimensões (result/attempt/runtime) + 4 ações (notify/set-condition/run-job/set-ok) reusando substratos; idempotência por ledger (migration v7); 14 testes + validado ao vivo. |
+| ✅ | ~~Aprofundamento Control-M: Actions/On-Do (UI por job)~~ | **Feito (2026-06-30):** aba "On/Do" no JobConfigDrawer (OnDoEditor) — regras On‹gatilho›Do‹ação› com add/remove, campos contextuais, chips de canais e tradução natural por regra. ActionRule no modelo TS + map no ServerApiAdapter; round-trip provado (TestFileStore_ActionsRoundTrip). |
+| **1** | **Aprofundamento Control-M** — variáveis runtime %% · FILE_WATCH · calendários complexos | Maior gap de PARIDADE. Actions/On-Do (motor + UI) ✅; agora variáveis/file-watch/calendários. |
 | **2** | **Diferenciais (cont.)** — Job Neighborhood · RCA automático · Event log CQRS-lite · NL-query | Próxima leva de observabilidade (NL-query usa o transporte QUERY documentado). |
 | 3 | **Refinamento UI** — grade de jobs soltos · minimap revisto · virtualizar ACTIVE JOBS (LEGACY_CAP) | Polimento que melhora a demo (alimenta a Fase Z). |
 | 🏁 | **Fase Z** — case study + post LinkedIn | **ÚLTIMO gate, por definição.** Só quando o backlog acima estiver onde você quer. NÃO é o próximo passo. |

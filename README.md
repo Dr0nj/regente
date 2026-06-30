@@ -503,7 +503,11 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   reusando os substratos: `notify` (Slack/webhook/e-mail/PagerDuty), `set-condition` (destrava sucessores), `run-job`
   (Force Order de outro job), `set-ok` (auto-heal NOTOK→OK). Idempotente — cada regra dispara 1× por instance (ledger
   durável `action_fires`, migration v7); decisor puro testável. 14 testes + validado ao vivo no binário (`notify`→
-  `/api/alerts`, `set-condition`→`/api/conditions`). **Falta**: form de config por job na UI (Design).
+  `/api/alerts`, `set-condition`→`/api/conditions`). **UI ✅** (2026-06-30): aba **"On/Do"** no JobConfigDrawer
+  (`OnDoEditor`) — regras On‹gatilho›Do‹ação› com add/remove, campos contextuais por tipo, chips de canais e
+  **tradução em linguagem natural** por regra. `ActionRule` no modelo TS + map no `ServerApiAdapter`; backend já
+  fazia round-trip nativo (handler decodifica `domain.JobDefinition` → YAML). Round-trip provado
+  (`TestFileStore_ActionsRoundTrip`).
 - [ ] **Job FILE_WATCH**: espera a chegada de arquivo (path/glob, polling/evento, tamanho estável) antes
   de concluir e disparar o sucessor. Novo jobType + capability.
 - [ ] **Forecast**: testar a previsão de ≥ 1 semana à frente (quais jobs rodam por dia) contra o gating real.
