@@ -31,7 +31,7 @@ export default function SchedulePreviewCalendar({ schedule, calendars }: Props) 
   const [year, setYear] = useState(() => new Date().getFullYear());
   const [runDays, setRunDays] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const reqId = useRef(0);
 
   // chave estável do schedule+calendars p/ disparar o recálculo só quando muda de fato.
@@ -41,7 +41,7 @@ export default function SchedulePreviewCalendar({ schedule, calendars }: Props) 
     if (!server) return;
     const my = ++reqId.current;
     setLoading(true);
-    setErr(false);
+    setErr(null);
     const t = setTimeout(() => {
       schedulePreview({ schedule, calendars }, `${year}-01-01`, `${year}-12-31`)
         .then((res) => {
@@ -49,9 +49,12 @@ export default function SchedulePreviewCalendar({ schedule, calendars }: Props) 
           setRunDays(new Set(res.dates));
           setLoading(false);
         })
-        .catch(() => {
+        .catch((e: unknown) => {
           if (my !== reqId.current) return;
-          setErr(true);
+          const msg = e instanceof Error ? e.message : String(e);
+          // Rota ausente (404) = server desatualizado: o binário em execução não
+          // tem o endpoint novo. O lab recompila ao reabrir pelo .bat.
+          setErr(/\b404\b/.test(msg) ? "Servidor desatualizado — reinicie o lab (o .bat recompila o server)." : msg);
           setLoading(false);
         });
     }, 250); // debounce: edição rápida não martela a API
@@ -104,7 +107,9 @@ export default function SchedulePreviewCalendar({ schedule, calendars }: Props) 
           O calendário exato é calculado pelo servidor (mesma regra da daily). Disponível no modo server/GitOps.
         </div>
       ) : err ? (
-        <div style={{ fontSize: 11, color: "var(--v2-status-failed)", padding: "8px 0" }}>Falha ao calcular o preview.</div>
+        <div style={{ fontSize: 11, color: "var(--v2-status-failed)", lineHeight: 1.5, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.3)", borderRadius: 4, padding: "8px 10px", fontFamily: "var(--v2-font-mono)", wordBreak: "break-word" }}>
+          Falha ao calcular o preview: {err}
+        </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
           {MONTH_NAMES.map((name, mIdx) => (
