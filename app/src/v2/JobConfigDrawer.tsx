@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { ExternalLink, X, Trash2, ArrowRight, ArrowLeft } from "lucide-react";
-import type { JobDefinition, CalendarRef, EdgeCondition } from "@/lib/orchestrator-model";
+import type { JobDefinition, CalendarRef, EdgeCondition, ActionRule } from "@/lib/orchestrator-model";
 import type { JobType } from "@/lib/job-config";
 import JobActionConfigEditor from "./JobActionConfigEditor";
+import OnDoEditor from "./OnDoEditor";
 import ScheduleEditor from "./ScheduleEditor";
 import { DefinitionAuditPanel } from "./DefinitionAuditPanel";
 import { ErrorDialog } from "./ErrorDialog";
@@ -13,9 +14,11 @@ import { useResizablePanel, ResizeHandle } from "./resizable";
 
 /* ──────────────────────────────────────────────────────────────
    JobConfigDrawer — painel direito (Design). ABAS:
-   General · Schedule · Action · Dependencies.
+   General · Schedule · Action · On/Do · Dependencies.
    (Calendários foram fundidos na aba Schedule — trabalham junto com
    as regras como include/exclude; ver ScheduleEditor.)
+   "Action" = config de EXECUÇÃO do job (command/url/script).
+   "On/Do"  = regras REATIVAS ao ciclo (Control-M On-Do); ver OnDoEditor.
    ────────────────────────────────────────────────────────────── */
 
 export interface JobConfigHandlers {
@@ -25,11 +28,12 @@ export interface JobConfigHandlers {
 }
 
 const JOB_TYPES: JobType[] = ["COMMAND", "SCRIPT", "SSH", "HTTP", "LAMBDA", "BATCH", "GLUE", "STEP_FUNCTION", "CHOICE", "PARALLEL", "WAIT"];
-type Tab = "general" | "schedule" | "action" | "deps";
+type Tab = "general" | "schedule" | "action" | "ondo" | "deps";
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "general", label: "Geral" },
   { id: "schedule", label: "Schedule" },
   { id: "action", label: "Action" },
+  { id: "ondo", label: "On/Do" },
   { id: "deps", label: "Dependências" },
 ];
 
@@ -55,6 +59,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   const [dryRun, setDryRun] = useState(definition.dryRun ?? false);
   const [actionConfig, setActionConfig] = useState<Record<string, unknown>>(definition.actionConfig ?? {});
   const [calendars, setCalendars] = useState<CalendarRef[]>(definition.calendars ?? []);
+  const [actions, setActions] = useState<ActionRule[]>(definition.actions ?? []);
   const [upstream, setUpstream] = useState(definition.upstream ?? []);
   const [agentId, setAgentId] = useState<string>(
     typeof definition.actionConfig?._agentId === "string" ? (definition.actionConfig._agentId as string) : ""
@@ -74,7 +79,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     setSchedule(definition.schedule);
     setRetries(definition.retries ?? 2); setTimeoutS(definition.timeout ?? 300);
     setDryRun(definition.dryRun ?? false); setActionConfig(definition.actionConfig ?? {});
-    setCalendars(definition.calendars ?? []); setUpstream(definition.upstream ?? []);
+    setCalendars(definition.calendars ?? []); setActions(definition.actions ?? []); setUpstream(definition.upstream ?? []);
     setAgentId(typeof definition.actionConfig?._agentId === "string" ? (definition.actionConfig._agentId as string) : "");
     setErr(null); setValidationErr(null);
   }, [definition.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -106,6 +111,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
       // _agentId é o canal que o ServerApiAdapter usa p/ mapear actionConfig→agentId.
       actionConfig: { ...actionConfig, _agentId: agentId.trim() || undefined },
       calendars: calendars.length ? calendars : undefined,
+      actions: actions.length ? actions : undefined,
       upstream: upstream.length ? upstream : undefined,
     };
     setSaving(true); setErr(null);
@@ -158,7 +164,10 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
             borderBottom: `2px solid ${tab === t.id ? "var(--v2-accent-brand)" : "transparent"}`,
             color: tab === t.id ? "var(--v2-text-primary)" : "var(--v2-text-muted)",
             fontWeight: tab === t.id ? 600 : 500, fontFamily: "var(--v2-font-mono)",
-          }}>{t.label}{t.id === "deps" && (upstream.length + triggers.length > 0) ? ` (${upstream.length + triggers.length})` : ""}</button>
+          }}>{t.label}
+            {t.id === "deps" && (upstream.length + triggers.length > 0) ? ` (${upstream.length + triggers.length})` : ""}
+            {t.id === "ondo" && actions.length > 0 ? ` (${actions.length})` : ""}
+          </button>
         ))}
       </div>
 
@@ -221,6 +230,10 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
 
         {tab === "action" && (
           <JobActionConfigEditor jobType={jobType} config={actionConfig} onChange={setActionConfig} />
+        )}
+
+        {tab === "ondo" && (
+          <OnDoEditor value={actions} onChange={setActions} allDefs={allDefs} selfId={definition.id} />
         )}
 
         {tab === "deps" && (

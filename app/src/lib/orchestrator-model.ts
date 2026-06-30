@@ -133,6 +133,41 @@ export interface JobDefinition {
    * Undefined/empty = sem dependências.
    */
   upstream?: Array<{ from: string; condition: EdgeCondition }>;
+  /**
+   * Actions / On-Do (Control-M "On/Do") — regras reativas por job.
+   * Cada regra dispara no máximo uma vez por instance. Ver ActionRule.
+   * Undefined/empty = sem regras.
+   */
+  actions?: ActionRule[];
+}
+
+/**
+ * ActionRule — uma regra "On <gatilho> Do <ação>" (Control-M On/Do).
+ *
+ * Estrutura PLANA: só os campos relevantes ao On/Do escolhido são usados.
+ *  - on="result"  → status (OK|NOTOK) terminal do job, após esgotar retries.
+ *  - on="attempt" → attempt (1-based): a N-ésima tentativa FALHOU.
+ *  - on="runtime" → afterMin: o job está RUNNING há mais que N minutos.
+ *
+ * Ações (do):
+ *  - "notify"        → alerta nos canais (message/severity/channels).
+ *  - "set-condition" → seta a condition global no escopo do order_date.
+ *  - "run-job"       → Force Order de targetJob (ignora deps).
+ *  - "set-ok"        → flipa o PRÓPRIO job NOTOK→OK (só faz sentido com on result NOTOK).
+ */
+export interface ActionRule {
+  /** Gatilho. */
+  on: "result" | "attempt" | "runtime";
+  status?: "OK" | "NOTOK"; // on==="result"
+  attempt?: number; // on==="attempt" (1-based)
+  afterMin?: number; // on==="runtime"
+  /** Ação. */
+  do: "notify" | "set-condition" | "run-job" | "set-ok";
+  message?: string; // notify
+  severity?: "info" | "warning" | "critical"; // notify
+  channels?: string[]; // notify (vazio = todos configurados)
+  condition?: string; // set-condition
+  targetJob?: string; // run-job
 }
 
 /* ── Job Instance (Monitoring mode entity) ── */

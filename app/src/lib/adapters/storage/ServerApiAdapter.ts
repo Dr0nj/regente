@@ -12,7 +12,7 @@
  */
 
 import type { StoragePort } from "@/lib/ports/StoragePort";
-import type { JobDefinition, EdgeCondition } from "@/lib/orchestrator-model";
+import type { JobDefinition, EdgeCondition, ActionRule } from "@/lib/orchestrator-model";
 import { api, getDesignSessionId } from "@/lib/server-client";
 
 // Path helpers — retornam URLs do session-scoped endpoint quando uma
@@ -70,6 +70,8 @@ interface ServerDefinition {
   // aqui — o server descarta o map silenciosamente.
   actionConfig?: Record<string, unknown>;
   agentId?: string;
+  // On/Do — round-trip 1:1 com domain.ActionRule (json tags batem).
+  actions?: ActionRule[];
 }
 
 // Schedule estruturado mapeado 1:1 (sem esconder em actionConfig — 2026-06-12).
@@ -128,6 +130,7 @@ function toWeb(d: ServerDefinition): JobDefinition {
     },
     dryRun: d.dryRun,
     upstream: d.upstream,
+    actions: d.actions?.length ? d.actions : undefined,
   };
 }
 
@@ -149,6 +152,7 @@ function toServer(d: JobDefinition): ServerDefinition {
     upstream: d.upstream,
     actionConfig,
     agentId: typeof _agentId === "string" ? _agentId : undefined,
+    actions: d.actions?.length ? d.actions : undefined,
   };
 }
 
