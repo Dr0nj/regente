@@ -274,6 +274,11 @@ export default function FolderManagerDialog({
           borderRadius: 8,
           display: "flex", flexDirection: "column",
           position: "relative", isolation: "isolate",
+          // Playfair renderiza dígitos como oldstyle (0/1 na altura de minúscula →
+          // parecem menores que as maiúsculas). Força LINING figures (altura de caixa
+          // alta) — herdado por todos os títulos/stats serif do modal.
+          fontVariantNumeric: "lining-nums",
+          fontFeatureSettings: '"lnum" 1, "pnum" 1',
         }}
       >
         {/* ── Header ── */}
