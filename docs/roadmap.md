@@ -52,12 +52,28 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ✅ Tela de login com o logotipo (paleta dark blue neon)
 ✅ Sidebars flutuantes + janela de info do job dockada (mesmo estilo do ACTIVE JOBS)
 ✅ Diálogos padronizados (✕ + Cancelar/Salvar via classes compartilhadas); Control Panel (ex Control-M)
-✅ Monitoring: pan travado no topo (folders alinhadas com o ACTIVE JOBS; livre pros lados e pra cima)
+✅ Pan travado (Monitoring E Design) — entra ancorado um pouco abaixo do topo (TOP_ANCHOR=88, igual ao
+   "Organizar", padrão pedido nos 2 modos). Monitoring: livre pros lados/cima, nunca abaixo do topo.
+   Design (2026-06-29): BOUNDED na caixa dos jobs da folder + margem → só puxa pros lados quando os jobs
+   passam da tela, com LIMITE pra não "se perder" no vazio. `panExtent`/`TOP_ANCHOR` em V2Preview.
 ✅ 13 temas (Escuro · Verde Amarelo · Amarelo Ouro · Verde Mata · Azul Neon · Azul Escuro ·
    Rosa · Violeta · Vermelho · Laranja · Cinza · Bege Escuro · Marrom) com swatch de cores
 ✅ Configurações em sub-abas (Geral · Temas); borda neon nos diálogos
 ◑ Minimap de navegação (protótipo opt-in, default off) — pontos por job, clique navega, redimensionável
+✅ Aba Schedule do job redesenhada (2026-06-29) — `ScheduleEditor`: (1) SAÍRAM "dia útil" e "regra avançada"
+   da frequência (dia útil depende de feriados/calendário de cada lugar; o Regente não adivinha) → ficam só
+   daily/weekly/monthly; (2) os CALENDÁRIOS entraram na própria aba (fundiu a aba "Calendars" separada) e
+   trabalham JUNTO com as regras como include/exclude, cada calendário anexado já mostra a tradução do que ele
+   faz (ex.: "seg–sex, menos 3 feriados"); (3) PREVIEW em linguagem natural no rodapé compõe frequência +
+   meses + calendários + horário (ex.: negar "dias úteis" + todos os dias = "Roda todos os dias, exceto dias
+   úteis (seg–sex…)"). Aba "Calendars" do drawer removida.
 ⬜ Janela de info do job (drawer) — deixar mais friendly: ações claras, output/log legível, layout melhor
+⬜ Design: LISTA de labels dos jobs da folder — mostrar, no Design, a lista dos jobs (labels) que estão na
+   folder aberta (além do canvas), pra localização rápida sem caçar nó por nó.
+⬜ Seletor de folder do Design REDESENHADO — hoje está feio/ruim. Trocar o botão "open/create folder" por um
+   único "Folders" que abre um POP-UP/modal com TODAS as folders em lista bonita e moderna, onde dá pra:
+   criar uma nova, e selecionar uma OU VÁRIAS folders (multi-select) pra carregar no canvas. Substitui o
+   controle atual (FolderOpener) por algo limpo e legível.
 ◑ Layout de jobs — grade pros SOLTOS, fluxo pros DEPENDENTES (por folder).
    ✅ FASE 1 (ENTREGUE 2026-06-25): `layoutFolderInner` particiona conectados (dagre TB, intacto) vs soltos
       (GRADE com wrap: 10 cols, 11º→linha2/colA; alargamento cols=max(10,ceil(N/30)) após 30 linhas). Contrato

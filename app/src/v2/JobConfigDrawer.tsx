@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ExternalLink, X, Plus, Trash2, ArrowRight, ArrowLeft } from "lucide-react";
+import { ExternalLink, X, Trash2, ArrowRight, ArrowLeft } from "lucide-react";
 import type { JobDefinition, CalendarRef, EdgeCondition } from "@/lib/orchestrator-model";
 import type { JobType } from "@/lib/job-config";
 import JobActionConfigEditor from "./JobActionConfigEditor";
@@ -7,13 +7,15 @@ import ScheduleEditor from "./ScheduleEditor";
 import { DefinitionAuditPanel } from "./DefinitionAuditPanel";
 import { ErrorDialog } from "./ErrorDialog";
 import { getGitInfo, definitionFileUrl } from "@/lib/git-info";
-import { listCalendars } from "@/lib/bloco2-api";
+import { listCalendars, type Calendar } from "@/lib/bloco2-api";
 import { listAgents, type AgentInfo } from "@/lib/agents-api";
 import { useResizablePanel, ResizeHandle } from "./resizable";
 
 /* ──────────────────────────────────────────────────────────────
-   JobConfigDrawer — painel direito (Design). Agora com ABAS:
-   General · Schedule · Calendars · Action · Dependencies.
+   JobConfigDrawer — painel direito (Design). ABAS:
+   General · Schedule · Action · Dependencies.
+   (Calendários foram fundidos na aba Schedule — trabalham junto com
+   as regras como include/exclude; ver ScheduleEditor.)
    ────────────────────────────────────────────────────────────── */
 
 export interface JobConfigHandlers {
@@ -23,11 +25,10 @@ export interface JobConfigHandlers {
 }
 
 const JOB_TYPES: JobType[] = ["COMMAND", "SCRIPT", "SSH", "HTTP", "LAMBDA", "BATCH", "GLUE", "STEP_FUNCTION", "CHOICE", "PARALLEL", "WAIT"];
-type Tab = "general" | "schedule" | "calendars" | "action" | "deps";
+type Tab = "general" | "schedule" | "action" | "deps";
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "general", label: "Geral" },
   { id: "schedule", label: "Schedule" },
-  { id: "calendars", label: "Calendars" },
   { id: "action", label: "Action" },
   { id: "deps", label: "Dependências" },
 ];
@@ -64,7 +65,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   const [err, setErr] = useState<unknown>(null);
   const [validationErr, setValidationErr] = useState<string | null>(null);
   const [githubUrl, setGithubUrl] = useState<string | null>(null);
-  const [calendarNames, setCalendarNames] = useState<string[]>([]);
+  const [calendarDefs, setCalendarDefs] = useState<Calendar[]>([]);
 
   useEffect(() => {
     setTab("general");
@@ -87,7 +88,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
 
   useEffect(() => {
     let cancel = false;
-    void listCalendars().then((cs) => { if (!cancel) setCalendarNames(cs.map((c) => c.name)); }).catch(() => {});
+    void listCalendars().then((cs) => { if (!cancel) setCalendarDefs(cs); }).catch(() => {});
     void listAgents().then((a) => { if (!cancel) setAgents(a); }).catch(() => {});
     return () => { cancel = true; };
   }, []);
@@ -208,10 +209,14 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
           </>
         )}
 
-        {tab === "schedule" && <ScheduleEditor value={schedule} onChange={setSchedule} />}
-
-        {tab === "calendars" && (
-          <CalendarsTab calendars={calendars} onChange={setCalendars} available={calendarNames} />
+        {tab === "schedule" && (
+          <ScheduleEditor
+            value={schedule}
+            onChange={setSchedule}
+            calendars={calendars}
+            onCalendarsChange={setCalendars}
+            availableCalendars={calendarDefs}
+          />
         )}
 
         {tab === "action" && (
@@ -249,45 +254,6 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
         <button onClick={handleSave} disabled={saving} style={{ ...btnStyle, borderColor: "var(--v2-accent-brand)", color: "var(--v2-accent-brand)", fontWeight: 600 }}>{saving ? "…" : "Save"}</button>
       </div>
     </aside>
-  );
-}
-
-/* ── Aba Calendars (chamar/negar no job) ── */
-function CalendarsTab({ calendars, onChange, available }: { calendars: CalendarRef[]; onChange: (c: CalendarRef[]) => void; available: string[] }) {
-  const [pick, setPick] = useState("");
-  const add = (mode: "include" | "exclude") => {
-    if (!pick) return;
-    if (calendars.some((c) => c.name === pick && c.mode === mode)) return;
-    onChange([...calendars, { name: pick, mode }]);
-    setPick("");
-  };
-  const remove = (i: number) => onChange(calendars.filter((_, idx) => idx !== i));
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <Hint>Chame um calendar para o job rodar só nos dias dele (<b>include</b>), ou negue para o job NÃO rodar nesses dias (<b>exclude</b>). Combine quantos quiser.</Hint>
-      <div style={{ display: "flex", gap: 6 }}>
-        <select value={pick} onChange={(e) => setPick(e.target.value)} style={{ ...selectStyle, flex: 1 }}>
-          <option value="">— calendar —</option>
-          {available.filter((n) => !calendars.some((c) => c.name === n)).map((n) => <option key={n} value={n}>{n}</option>)}
-        </select>
-        <button onClick={() => add("include")} disabled={!pick} style={{ ...chipBtn, borderColor: "var(--v2-accent-brand)", color: "var(--v2-accent-brand)" }}><Plus size={11} /> incluir</button>
-        <button onClick={() => add("exclude")} disabled={!pick} style={{ ...chipBtn, borderColor: "#7f1d1d", color: "#fca5a5" }}><Plus size={11} /> negar</button>
-      </div>
-      {available.length === 0 && <Hint>Nenhum calendar criado ainda. Crie em Control-M Panel → Calendars.</Hint>}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        {calendars.map((c, i) => (
-          <div key={`${c.name}-${c.mode}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-subtle)", borderRadius: 3 }}>
-            <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", padding: "1px 6px", borderRadius: 2, fontFamily: "var(--v2-font-mono)",
-              background: c.mode === "exclude" ? "#3b1d1d" : "var(--v2-accent-deep)", color: c.mode === "exclude" ? "#fca5a5" : "var(--v2-accent-brand)",
-              border: `1px solid ${c.mode === "exclude" ? "#7f1d1d" : "var(--v2-accent-dark)"}` }}>
-              {c.mode === "exclude" ? "negar" : "incluir"}
-            </span>
-            <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-primary)" }}>{c.name}</span>
-            <button onClick={() => remove(i)} style={iconBtn} title="Remover"><Trash2 size={12} /></button>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -351,6 +317,5 @@ function Input({ value, onChange, disabled, mono, placeholder }: { value: string
 }
 const selectStyle: React.CSSProperties = { width: "100%", background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-subtle)", color: "var(--v2-text-primary)", padding: "5px 8px", fontSize: 11, fontFamily: "var(--v2-font-mono)", borderRadius: 3, outline: "none", boxSizing: "border-box" };
 const btnStyle: React.CSSProperties = { padding: "4px 10px", background: "transparent", border: "1px solid var(--v2-border-medium)", borderRadius: 3, fontSize: 10, fontFamily: "var(--v2-font-mono)", letterSpacing: "0.06em", textTransform: "uppercase", cursor: "pointer" };
-const chipBtn: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 3, padding: "5px 8px", background: "transparent", border: "1px solid var(--v2-border-medium)", borderRadius: 3, fontSize: 10, fontFamily: "var(--v2-font-mono)", cursor: "pointer" };
 const iconBtn: React.CSSProperties = { background: "transparent", border: "none", color: "var(--v2-text-muted)", cursor: "pointer", padding: 2, display: "inline-flex" };
 const depRow: React.CSSProperties = { display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-subtle)", borderRadius: 3, marginBottom: 4 };

@@ -109,8 +109,12 @@ daily ou via Force Order manual.
   nunca perde alertas (só re-disparos do mesmo job são agrupados). **Ciclo de vida
   do alerta** — rerun e Set OK do job marcam o alerta como *tratado* (rerun / set ok)
   automaticamente; re-falha gera um alerta novo. Server mode (Postgres) e local.
-- 🟢 **Schedule estilo Control-M** — dias da semana/mês, N-ésimo dia útil, regras
-  avançadas, janelas e execução cíclica; calendars include/exclude visuais.
+- 🟢 **Schedule estilo Control-M** — frequência (diário / dias da semana / dias do mês),
+  janelas e execução cíclica. Os **calendários** vivem na própria aba Schedule e trabalham
+  junto com as regras como **include/exclude** (ex.: negar "dias úteis" + todos os dias =
+  roda todo dia, exceto dia útil), com **tradução** do que cada calendário faz e um
+  **preview** em linguagem natural no rodapé. ("Dia útil"/regra avançada saíram da
+  frequência: dia útil depende do calendário de feriados de cada lugar.)
 - 🟢 **Dependências entre jobs** com condições (on-success/failure/complete/always).
 - 🟢 **Engines de paridade** — calendars, resources/quotas, conditions, variáveis
   globais (interpolação), SLA e forecast/analytics.
@@ -125,10 +129,10 @@ daily ou via Force Order manual.
   **tela cheia** (monitor) e **avatar**. Tela de **login** (paleta dark blue neon),
   **sidebars flutuantes** e **janela de info do job dockada** (mesmo estilo do ACTIVE JOBS),
   com realce **neon** no selecionado. **Diálogos padronizados** (✕ + Cancelar/Salvar via
-  classes compartilhadas; "Control-M Panel" → **Control Panel**). No **Monitoring**, o pan
-  fica **travado no topo** (folders alinhadas com o ACTIVE JOBS; livre pros lados e pra cima)
-  e há um **minimap de navegação** opcional (protótipo, Settings → Geral; ponto por job,
-  clique navega).
+  classes compartilhadas; "Control-M Panel" → **Control Panel**). O **pan fica travado** nos
+  dois modos, entrando **ancorado** um pouco abaixo do topo; no **Design** é **limitado** à
+  caixa dos jobs da folder (só puxa pros lados quando passam da tela, sem "se perder"). Há um
+  **minimap de navegação** opcional (protótipo, Settings → Geral; ponto por job, clique navega).
 - 🟢 **Temas** — aparência configurável em Settings → aba **Temas**. **13 temas**: **Escuro**
   (padrão), **Verde Amarelo**, **Amarelo Ouro**, **Verde Mata**, **Azul Neon**, **Azul Escuro**,
   **Rosa**, **Violeta**, **Vermelho**, **Laranja**, **Cinza** (escala), **Bege Escuro** e **Marrom**.

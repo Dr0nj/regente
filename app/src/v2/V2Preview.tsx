@@ -92,6 +92,14 @@ type Mode = "design" | "monitoring";
 
 const NODE_W = 220;
 const NODE_H = 72;
+// Âncora vertical de entrada do canvas: o topo do conteúdo fica este tanto abaixo
+// do topo da área (px de tela). Um pouco mais baixo que a trava antiga (24) — mesma
+// sensação do "Organizar". Vale pro Monitoring e pro Design.
+const TOP_ANCHOR = 88;
+// Design — margem (px de mundo) ao redor da caixa dos jobs para o limite de pan:
+// dá folga pros lados/baixo sem deixar "se perder" no vazio.
+const DESIGN_PAN_MARGIN_X = 360;
+const DESIGN_PAN_MARGIN_BOTTOM = 480;
 const NODE_GAP_Y = 28; // ranksep dagre (dep vertical)
 const NODE_GAP_X = 36; // nodesep dagre (jobs paralelos na mesma linha)
 const COL_PADDING_X = 24;
@@ -893,24 +901,39 @@ function V2PreviewInner() {
     [mode, filteredInstances, filteredDefs, designDefsWithDraft, layoutCfg],
   );
 
-  // Trava de pan do Monitoring: o topo do conteúdo (folders) fica alinhado com o
-  // ACTIVE JOBS. Pan livre pros lados e pra CIMA (revelar mais jobs abaixo), mas
-  // nunca pra baixo do topo inicial. translateExtent só no monitoring (Design é livre).
-  const monitoringExtent = useMemo<[[number, number], [number, number]] | undefined>(() => {
-    if (mode !== "monitoring" || canvas.nodes.length === 0) return undefined;
+  // Trava de pan. Monitoring: topo do conteúdo (folders) alinhado com o ACTIVE JOBS;
+  // livre pros lados e pra CIMA (revelar mais jobs abaixo), nunca abaixo do topo.
+  // Design: BOUNDED na caixa dos jobs da folder + margem — só puxa pros lados quando
+  // os jobs passam da tela, e com LIMITE pra não "se perder" no vazio.
+  const panExtent = useMemo<[[number, number], [number, number]] | undefined>(() => {
+    if (canvas.nodes.length === 0) return undefined;
     const top = Math.min(...canvas.nodes.map((n) => n.position.y));
-    return [[-100000, top - 24], [100000, 100000]];
+    if (mode === "monitoring") {
+      return [[-100000, top - TOP_ANCHOR], [100000, 100000]];
+    }
+    // Design — caixa [minX,minY]..[maxX,maxY] dos jobs + margem.
+    const xs = canvas.nodes.map((n) => n.position.x);
+    const ys = canvas.nodes.map((n) => n.position.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs) + NODE_W;
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys) + NODE_H;
+    return [
+      [minX - DESIGN_PAN_MARGIN_X, minY - TOP_ANCHOR],
+      [maxX + DESIGN_PAN_MARGIN_X, maxY + DESIGN_PAN_MARGIN_BOTTOM],
+    ];
   }, [mode, canvas.nodes]);
 
-  // Entrar TRAVADO no topo (Monitoring): após o fit, alinha o topo do conteúdo com
-  // o ACTIVE JOBS em vez de centralizar verticalmente (que era o comportamento do fitView).
+  // Entrar ancorado um pouco abaixo do topo (Monitoring E Design): após o fit, alinha
+  // o topo do conteúdo em TOP_ANCHOR em vez de centralizar verticalmente — mesma
+  // sensação do "Organizar", que o usuário pediu como padrão nos dois modos.
   useEffect(() => {
-    if (mode !== "monitoring" || canvas.nodes.length === 0) return;
+    if (canvas.nodes.length === 0) return;
     const t = setTimeout(() => {
       fitView({ padding: 0.12, duration: 0 });
       const vp = getViewport();
       const minY = Math.min(...canvas.nodes.map((n) => n.position.y));
-      setViewport({ x: vp.x, y: 24 - minY * vp.zoom, zoom: vp.zoom }, { duration: 220 });
+      setViewport({ x: vp.x, y: TOP_ANCHOR - minY * vp.zoom, zoom: vp.zoom }, { duration: 220 });
     }, 140);
     return () => clearTimeout(t);
   }, [mode, canvas.nodes, fitView, getViewport, setViewport]);
@@ -1704,7 +1727,7 @@ function V2PreviewInner() {
           // Pan: left button (default UX). Selection rect: Shift+drag.
           // panOnDrag={[0,1]} cobre left+middle; right (2) fica livre p/ ctx menu.
           panOnDrag={[0, 1]}
-          translateExtent={monitoringExtent}
+          translateExtent={panExtent}
           zoomOnScroll
           selectionOnDrag={false}
           selectionKeyCode="Shift"

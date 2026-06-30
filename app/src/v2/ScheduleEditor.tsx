@@ -1,16 +1,24 @@
 /**
  * ScheduleEditor — editor visual de recorrência estilo Control-M.
  *
- * Cobre os 4 modos (decisão 2026-06-12):
- *   - weekly:      dias da semana (toggles)
- *   - monthly:     dias do mês (grid 1..31 + último dia)
- *   - businessday: N-ésimo dia útil do mês (chips, inclui último = -1)
- *   - advanced:    regra nomeada
- * + filtro de meses (opcional), horário (runAt), janela e cíclico.
+ * Modos de frequência (decisão 2026-06-29): apenas os que o Regente sabe resolver
+ * SOZINHO, sem precisar saber feriados/dia-útil de cada cidade:
+ *   - daily:   todo dia
+ *   - weekly:  dias da semana (toggles)
+ *   - monthly: dias do mês (grid 1..31 + último dia)
+ * "Dia útil" / "regra avançada" SAÍRAM daqui: dia útil depende de um CALENDÁRIO
+ * (cada lugar tem seus feriados). Em vez disso, os calendários entram NESTA aba e
+ * trabalham junto com as regras como INCLUDE (só nesses dias) ou EXCLUDE (menos
+ * esses dias). Ex.: negar o calendário "dias úteis" + marcar todos os dias =
+ * "roda todo dia, exceto dia útil".
  *
- * Edita um JobSchedule e emite via onChange. Sem estado próprio além de UI.
+ * O PREVIEW no rodapé traduz frequência + meses + calendários + horário em
+ * linguagem natural.
  */
-import type { JobSchedule, ScheduleFrequency, AdvancedRule } from "@/lib/orchestrator-model";
+import { useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
+import type { JobSchedule, ScheduleFrequency, CalendarRef } from "@/lib/orchestrator-model";
+import type { Calendar } from "@/lib/bloco2-api";
 
 const WEEKDAYS: Array<{ id: string; label: string }> = [
   { id: "mon", label: "Seg" }, { id: "tue", label: "Ter" }, { id: "wed", label: "Qua" },
@@ -23,27 +31,22 @@ const FREQS: Array<{ id: ScheduleFrequency; label: string }> = [
   { id: "daily", label: "Diário" },
   { id: "weekly", label: "Dias da semana" },
   { id: "monthly", label: "Dias do mês" },
-  { id: "businessday", label: "Dia útil" },
-  { id: "advanced", label: "Regra avançada" },
 ];
-
-const ADVANCED_RULES: Array<{ id: AdvancedRule; label: string }> = [
-  { id: "first-businessday", label: "Primeiro dia útil do mês" },
-  { id: "last-businessday", label: "Último dia útil do mês" },
-  { id: "penultimate-businessday", label: "Penúltimo dia útil do mês" },
-  { id: "first-businessday-not-monday", label: "1º dia útil que não for segunda" },
-];
-
-const NTH_QUICK = [1, 2, 3, 4, 5, 10, 15];
 
 interface Props {
   value: JobSchedule;
   onChange: (next: JobSchedule) => void;
+  /** Calendários chamados/negados pelo job (trabalham junto com as regras). */
+  calendars: CalendarRef[];
+  onCalendarsChange: (c: CalendarRef[]) => void;
+  /** Calendários disponíveis (objetos completos p/ traduzir o comportamento). */
+  availableCalendars: Calendar[];
 }
 
-export default function ScheduleEditor({ value, onChange }: Props) {
+export default function ScheduleEditor({ value, onChange, calendars, onCalendarsChange, availableCalendars }: Props) {
   const s = value;
-  const freq: ScheduleFrequency = s.frequency ?? "daily";
+  // "daily" é o default; frequências legadas (businessday/advanced) caem em daily na UI.
+  const freq: ScheduleFrequency = (s.frequency === "weekly" || s.frequency === "monthly") ? s.frequency : "daily";
   const patch = (p: Partial<JobSchedule>) => onChange({ ...s, ...p });
 
   const toggleInArr = <T,>(arr: T[] | undefined, v: T): T[] => {
@@ -65,7 +68,7 @@ export default function ScheduleEditor({ value, onChange }: Props) {
 
       {/* Corpo condicional por frequência */}
       {freq === "daily" && (
-        <Hint>Roda todos os dias (sujeito aos calendars e ao filtro de meses abaixo).</Hint>
+        <Hint>Roda todos os dias (sujeito aos calendários e ao filtro de meses abaixo).</Hint>
       )}
 
       {freq === "weekly" && (
@@ -92,29 +95,6 @@ export default function ScheduleEditor({ value, onChange }: Props) {
         </Group>
       )}
 
-      {freq === "businessday" && (
-        <Group label="N-ésimo dia útil do mês">
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
-            {NTH_QUICK.map((n) => (
-              <Toggle key={n} small active={(s.nthBusinessDays ?? []).includes(n)}
-                onClick={() => patch({ nthBusinessDays: toggleInArr(s.nthBusinessDays, n) })}>{n}º</Toggle>
-            ))}
-            <Toggle small wide active={(s.nthBusinessDays ?? []).includes(-1)}
-              onClick={() => patch({ nthBusinessDays: toggleInArr(s.nthBusinessDays, -1) })}>último útil</Toggle>
-          </div>
-          <Hint>Dia útil = seg–sex menos feriados do calendar include do job (se houver).</Hint>
-        </Group>
-      )}
-
-      {freq === "advanced" && (
-        <Group label="Regra">
-          <select value={s.advancedRule ?? ""} onChange={(e) => patch({ advancedRule: e.target.value as AdvancedRule })} style={selectStyle}>
-            <option value="">— selecione —</option>
-            {ADVANCED_RULES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-          </select>
-        </Group>
-      )}
-
       {/* Filtro de meses (opcional, vale para todas as frequências) */}
       <Group label="Meses (vazio = todos)">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 3 }}>
@@ -124,6 +104,9 @@ export default function ScheduleEditor({ value, onChange }: Props) {
           ))}
         </div>
       </Group>
+
+      {/* Calendários — trabalham junto com as regras (include/exclude) */}
+      <CalendarSection calendars={calendars} onChange={onCalendarsChange} available={availableCalendars} />
 
       {/* Horário / janela / cíclico */}
       <Group label="Horário">
@@ -157,31 +140,122 @@ export default function ScheduleEditor({ value, onChange }: Props) {
         </Hint>
       </Group>
 
-      <SummaryLine schedule={s} />
+      {/* PREVIEW — embaixo de todas as regras (frequência + meses + calendários + horário) */}
+      <SchedulePreview schedule={s} calendars={calendars} calDefs={availableCalendars} />
     </div>
   );
 }
 
-/* ── Resumo legível (tipo "Run at 06:00, every weekday except weekends") ── */
-function SummaryLine({ schedule: s }: { schedule: JobSchedule }) {
-  const parts: string[] = [];
-  const freq = s.frequency ?? "daily";
-  if (freq === "daily") parts.push("todo dia");
-  else if (freq === "weekly") parts.push(`toda ${(s.daysOfWeek ?? []).map(wd).join(", ") || "(sem dias)"}`);
-  else if (freq === "monthly") parts.push(`dia ${(s.daysOfMonth ?? []).map((d) => d === -1 ? "último" : d).join(", ") || "(sem dias)"}`);
-  else if (freq === "businessday") parts.push(`${(s.nthBusinessDays ?? []).map((d) => d === -1 ? "último útil" : `${d}º útil`).join(", ") || "(sem dias)"}`);
-  else if (freq === "advanced") parts.push(ADVANCED_RULES.find((r) => r.id === s.advancedRule)?.label ?? "(regra não escolhida)");
-  if ((s.monthsOfYear ?? []).length) parts.push(`em ${(s.monthsOfYear ?? []).map((m) => MONTHS[m - 1]).join(", ")}`);
-  if (s.runAt) parts.push(`às ${s.runAt}`);
-  if (s.cyclic && s.intervalMin) parts.push(`a cada ${s.intervalMin}min`);
-  if (s.keepActive && s.keepActive > 0) parts.push(`keep active ${s.keepActive}d`);
+/* ── Calendários na aba Schedule (include/exclude, junto com as regras) ── */
+function CalendarSection({ calendars, onChange, available }: { calendars: CalendarRef[]; onChange: (c: CalendarRef[]) => void; available: Calendar[] }) {
+  const [pick, setPick] = useState("");
+  const add = (mode: "include" | "exclude") => {
+    if (!pick) return;
+    if (calendars.some((c) => c.name === pick && c.mode === mode)) return;
+    onChange([...calendars, { name: pick, mode }]);
+    setPick("");
+  };
+  const remove = (i: number) => onChange(calendars.filter((_, idx) => idx !== i));
+  const calByName = (n: string) => available.find((c) => c.name === n);
+
   return (
-    <div style={{ fontSize: 11, color: "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)", background: "var(--v2-accent-faint)", border: "1px solid var(--v2-accent-dark)", borderRadius: 4, padding: "6px 8px" }}>
-      {parts.join(" · ")}
+    <Group label="Calendários (trabalham junto com as regras)">
+      <Hint>
+        <b>Incluir</b> = roda só nos dias do calendário. <b>Negar</b> = NÃO roda nesses dias.
+        Combine com as regras acima — ex.: negar "dias úteis" + marcar todos os dias = roda todo dia, exceto dia útil.
+      </Hint>
+      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+        <select value={pick} onChange={(e) => setPick(e.target.value)} style={{ ...selectStyle, flex: 1 }}>
+          <option value="">— calendário —</option>
+          {available.filter((c) => !calendars.some((cr) => cr.name === c.name)).map((c) => (
+            <option key={c.name} value={c.name}>{c.name}</option>
+          ))}
+        </select>
+        <button onClick={() => add("include")} disabled={!pick} style={{ ...chipBtn, borderColor: "var(--v2-accent-brand)", color: "var(--v2-accent-brand)" }}><Plus size={11} /> incluir</button>
+        <button onClick={() => add("exclude")} disabled={!pick} style={{ ...chipBtn, borderColor: "#7f1d1d", color: "#fca5a5" }}><Plus size={11} /> negar</button>
+      </div>
+      {available.length === 0 && <Hint>Nenhum calendário criado ainda. Crie em Control-M Panel → Calendars.</Hint>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
+        {calendars.map((c, i) => (
+          <div key={`${c.name}-${c.mode}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-subtle)", borderRadius: 3 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", padding: "1px 6px", borderRadius: 2, fontFamily: "var(--v2-font-mono)",
+              background: c.mode === "exclude" ? "#3b1d1d" : "var(--v2-accent-deep)", color: c.mode === "exclude" ? "#fca5a5" : "var(--v2-accent-brand)",
+              border: `1px solid ${c.mode === "exclude" ? "#7f1d1d" : "var(--v2-accent-dark)"}` }}>
+              {c.mode === "exclude" ? "negar" : "incluir"}
+            </span>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 1 }}>
+              <span style={{ fontSize: 12, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-primary)" }}>{c.name}</span>
+              <span style={{ fontSize: 10, color: "var(--v2-text-muted)" }}>{describeCalendar(calByName(c.name))}</span>
+            </div>
+            <button onClick={() => remove(i)} style={iconBtn} title="Remover"><Trash2 size={12} /></button>
+          </div>
+        ))}
+      </div>
+    </Group>
+  );
+}
+
+/* ── Tradução do COMPORTAMENTO de um calendário (o que ele significa) ── */
+const WD_PT: Record<string, string> = { mon: "seg", tue: "ter", wed: "qua", thu: "qui", fri: "sex", sat: "sáb", sun: "dom" };
+function describeCalendar(cal?: Calendar): string {
+  if (!cal) return "calendário não encontrado";
+  const parts: string[] = [];
+  const bd = (cal.businessDays ?? []).map((d) => d.toLowerCase().slice(0, 3));
+  if (bd.length) {
+    const isMonFri = ["mon", "tue", "wed", "thu", "fri"].every((d) => bd.includes(d)) && !bd.includes("sat") && !bd.includes("sun");
+    parts.push(isMonFri ? "seg–sex" : bd.map((d) => WD_PT[d] ?? d).join(", "));
+  }
+  if ((cal.holidays ?? []).length) parts.push(`menos ${cal.holidays!.length} feriado${cal.holidays!.length > 1 ? "s" : ""}`);
+  if ((cal.excludeDates ?? []).length) parts.push(`menos ${cal.excludeDates!.length} data(s)`);
+  if ((cal.includeDates ?? []).length) parts.push(`+ ${cal.includeDates!.length} exceção(ões)`);
+  return parts.length ? parts.join(", ") : "sem dias definidos";
+}
+
+/* ── Preview legível: frequência + meses + calendários + horário ── */
+function SchedulePreview({ schedule: s, calendars, calDefs }: { schedule: JobSchedule; calendars: CalendarRef[]; calDefs: Calendar[] }) {
+  const freq = (s.frequency === "weekly" || s.frequency === "monthly") ? s.frequency : "daily";
+  const calByName = (n: string) => calDefs.find((c) => c.name === n);
+
+  // base (frequência)
+  let base: string;
+  if (freq === "weekly") {
+    const days = s.daysOfWeek ?? [];
+    if (days.length === 0) base = "(nenhum dia da semana marcado)";
+    else if (days.length === 7) base = "todos os dias";
+    else base = `toda ${days.map((d) => WD_PT[d] ?? d).join(", ")}`;
+  } else if (freq === "monthly") {
+    const days = s.daysOfMonth ?? [];
+    base = days.length ? `no dia ${days.map((d) => (d === -1 ? "último" : d)).join(", ")} do mês` : "(nenhum dia do mês marcado)";
+  } else {
+    base = "todos os dias";
+  }
+
+  // calendários
+  const inc = calendars.filter((c) => c.mode === "include");
+  const exc = calendars.filter((c) => c.mode === "exclude");
+  const calPhrase = (c: CalendarRef) => {
+    const d = describeCalendar(calByName(c.name));
+    return `${c.name}${d && d !== "sem dias definidos" && d !== "calendário não encontrado" ? ` (${d})` : ""}`;
+  };
+
+  const parts: string[] = [base];
+  if (inc.length) parts.push(`só nos dias de ${inc.map(calPhrase).join(" e ")}`);
+  if (exc.length) parts.push(`exceto ${exc.map(calPhrase).join(" e ")}`);
+  if ((s.monthsOfYear ?? []).length) parts.push(`apenas em ${(s.monthsOfYear ?? []).map((m) => MONTHS[m - 1]).join(", ")}`);
+  if (s.runAt) parts.push(`às ${s.runAt}`);
+  if (s.cyclic && s.intervalMin) parts.push(`repetindo a cada ${s.intervalMin}min`);
+  if (s.keepActive && s.keepActive > 0) parts.push(`keep active ${s.keepActive}d`);
+
+  return (
+    <div>
+      <div style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--v2-text-muted)", marginBottom: 6 }}>Preview</div>
+      <div style={{ fontSize: 12, color: "var(--v2-accent-brand)", lineHeight: 1.5, background: "var(--v2-accent-faint)", border: "1px solid var(--v2-accent-dark)", borderRadius: 4, padding: "8px 10px" }}>
+        Roda {parts.join(", ")}.
+        {!s.enabled && <span style={{ color: "var(--v2-text-muted)" }}> (schedule desabilitado)</span>}
+      </div>
     </div>
   );
 }
-function wd(id: string) { return WEEKDAYS.find((w) => w.id === id)?.label ?? id; }
 
 /* ── primitivos visuais ── */
 function Group({ label, children }: { label: string; children: React.ReactNode }) {
@@ -231,6 +305,15 @@ const inputBase: React.CSSProperties = {
   fontFamily: "var(--v2-font-mono)", borderRadius: 3, outline: "none", boxSizing: "border-box",
 };
 const selectStyle: React.CSSProperties = { ...inputBase, width: "100%" };
+const chipBtn: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 9px", fontSize: 10.5,
+  cursor: "pointer", borderRadius: 3, background: "transparent", border: "1px solid",
+  fontFamily: "var(--v2-font-mono)", whiteSpace: "nowrap",
+};
+const iconBtn: React.CSSProperties = {
+  background: "transparent", border: "none", color: "var(--v2-text-muted)", cursor: "pointer",
+  padding: 2, display: "inline-flex", alignItems: "center",
+};
 function TimeInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} style={{ ...inputBase, width: "100%" }} />;
 }
