@@ -1,17 +1,19 @@
 /**
- * FolderManagerDialog — modal Control-M Planning style, ÚNICO controle de folders
- * (o botão "FOLDERS" da topbar). Faz tudo:
- *  - grid de folder cards (name, jobCount, archived badge)
- *  - OPEN/CLOSE: abre folders pro working set do Design (multi-select → activeFolders)
- *  - "+ New folder": cria folder nova (força PR no Publish) e já abre
- *  - filtro de visibilidade (checkbox por card; null = tudo visível)
- *  - actions por card: rename, archive, delete (double-confirm se jobCount>0)
+ * FolderManagerDialog — a tela ÚNICA de folders (botão "FOLDERS" da topbar).
  *
- * Substituiu o antigo botão flutuante "Open / Create folder" (FolderOpener):
- * agora abrir/criar/gerenciar vivem todos aqui. open/create routam pelo caller
- * (V2Preview) que mantém a semântica de design-session + PR.
+ * Estética "Luxury Dashboard" (pedido do usuário, 2026-06-30): contraste fundo
+ * ultra-dark × accent do tema, títulos em SERIF (Playfair via --v2-font-serif),
+ * dados em mono/sans. Cards de folder como "ativos serializados" (ID REG-xxxx +
+ * LED de status), hover que eleva + destaca a borda, MULTI-SELEÇÃO com action bar
+ * flutuante (fade-in + slide-up), e stats macro no topo.
  *
- * Em local mode mostra estado vazio + hint para configurar server.
+ * IMPORTANTE — tema: NADA de cor hardcoded. O "dourado" do mock = `--v2-accent-brand`
+ * (verde no default, ouro nos temas Brasil, etc.). Trocar o tema troca o acento.
+ *
+ * Faz tudo: criar ("+ Nova pasta"), abrir/fechar no Design (multi-select →
+ * activeFolders), arquivar, excluir (confirm), renomear (hover), e o filtro de
+ * visibilidade do monitor (eye por card). open/create routam pelo caller (V2Preview)
+ * que mantém a semântica de design-session + PR.
  */
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
@@ -22,6 +24,10 @@ import {
   archiveFolder,
 } from "@/lib/folder-api";
 import { isServerMode } from "@/lib/server-client";
+import {
+  Folder, Eye, EyeOff, Pencil, Check,
+  Plus, X, Trash2, Archive, FolderOpen,
+} from "lucide-react";
 
 interface Props {
   visibleFolders: Set<string> | null;
@@ -37,6 +43,13 @@ interface Props {
   onClose: () => void;
 }
 
+// ID determinístico "de ativo" a partir do nome (estável entre renders/sessões).
+function assetId(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return `REG-${1000 + (h % 9000)}`;
+}
+
 export default function FolderManagerDialog({
   visibleFolders,
   onChangeVisible,
@@ -50,16 +63,17 @@ export default function FolderManagerDialog({
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ from: string; to: string } | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<{ name: string; typed: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ names: string[]; typed: string } | null>(null);
+  const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setErr(null);
     try {
-      const list = await listFolders();
-      setFolders(list);
+      setFolders(await listFolders());
     } catch (e: unknown) {
       setErr((e as Error).message ?? "failed to load folders");
     } finally {
@@ -69,98 +83,46 @@ export default function FolderManagerDialog({
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  // ESC closes
+  // ESC fecha (ou cancela seleção/criação primeiro).
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (creating) { setCreating(false); return; }
+      if (selected.size > 0) { setSelected(new Set()); return; }
+      onClose();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, creating, selected.size]);
 
-  const handleRename = useCallback(async () => {
-    if (!renaming) return;
-    const to = renaming.to.trim();
-    if (!to || to === renaming.from) { setRenaming(null); return; }
-    try {
-      await renameFolder(renaming.from, to);
-      // migra seleção se essa folder estava visível
-      if (visibleFolders?.has(renaming.from)) {
-        const next = new Set(visibleFolders);
-        next.delete(renaming.from);
-        next.add(to);
-        onChangeVisible(next);
-      }
-      setRenaming(null);
-      await refresh();
-    } catch (e: unknown) {
-      alert(`Rename failed: ${(e as Error).message}`);
-    }
-  }, [renaming, visibleFolders, onChangeVisible, refresh]);
-
-  const handleArchive = useCallback(async (name: string) => {
-    try {
-      await archiveFolder(name);
-      await refresh();
-    } catch (e: unknown) {
-      alert(`Archive failed: ${(e as Error).message}`);
-    }
-  }, [refresh]);
-
-  const handleDelete = useCallback(async () => {
-    if (!confirmDelete) return;
-    const f = folders.find((x) => x.name === confirmDelete.name);
-    if (!f) return;
-    if (f.jobCount > 0 && confirmDelete.typed !== confirmDelete.name) {
-      alert(`Type "${confirmDelete.name}" to confirm delete (${f.jobCount} jobs).`);
-      return;
-    }
-    try {
-      await deleteFolder(confirmDelete.name, f.jobCount > 0);
-      if (visibleFolders?.has(confirmDelete.name)) {
-        const next = new Set(visibleFolders);
-        next.delete(confirmDelete.name);
-        onChangeVisible(next);
-      }
-      setConfirmDelete(null);
-      await refresh();
-    } catch (e: unknown) {
-      alert(`Delete failed: ${(e as Error).message}`);
-    }
-  }, [confirmDelete, folders, visibleFolders, onChangeVisible, refresh]);
-
-  const toggleVisible = useCallback((name: string) => {
-    const allNames = folders.map((f) => f.name);
-    // null = "all visible"; first toggle materializes the set
-    const current = visibleFolders ?? new Set(allNames);
-    const next = new Set(current);
-    if (next.has(name)) next.delete(name);
-    else next.add(name);
-    // se o usuário voltou a ter todas marcadas, normaliza para null
-    if (next.size === allNames.length && allNames.every((n) => next.has(n))) {
-      onChangeVisible(null);
-    } else {
-      onChangeVisible(next);
-    }
-  }, [folders, visibleFolders, onChangeVisible]);
-
-  const allVisible = visibleFolders === null;
-  const selectAll = useCallback(() => onChangeVisible(null), [onChangeVisible]);
-  const selectNone = useCallback(() => onChangeVisible(new Set()), [onChangeVisible]);
-
-  // Nome novo só é "criável" se não colidir com folder existente (aí seria open).
+  /* ── derivados ── */
   const existingNames = useMemo(() => new Set(folders.map((f) => f.name)), [folders]);
-  const trimmedNew = newName.trim();
-  const newCollides = existingNames.has(trimmedNew);
+  const totalJobs = useMemo(() => folders.reduce((a, f) => a + (f.jobCount ?? 0), 0), [folders]);
+  const archivedCount = useMemo(() => folders.filter((f) => f.archived).length, [folders]);
+  const allVisible = visibleFolders === null;
 
+  /* ── seleção ── */
+  const toggleSelect = useCallback((name: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  }, []);
+  const selectAll = useCallback(() => setSelected(new Set(folders.map((f) => f.name))), [folders]);
+  const clearSelection = useCallback(() => setSelected(new Set()), []);
+
+  /* ── criar ── */
   const handleCreate = useCallback(async () => {
     const name = newName.trim();
     if (!name || busy) return;
     setBusy(`create:${name}`);
     setErr(null);
     try {
-      // Se já existe, "criar" vira abrir (não duplica, igual ao antigo FolderOpener).
-      if (existingNames.has(name)) await onOpenFolder(name);
+      if (existingNames.has(name)) await onOpenFolder(name); // já existe → abre
       else await onCreateFolder(name);
       setNewName("");
+      setCreating(false);
       await refresh();
     } catch (e: unknown) {
       setErr((e as Error).message ?? "create failed");
@@ -169,379 +131,467 @@ export default function FolderManagerDialog({
     }
   }, [newName, busy, existingNames, onOpenFolder, onCreateFolder, refresh]);
 
-  const handleToggleActive = useCallback(async (name: string) => {
-    if (busy) return;
-    if (activeFolders.has(name)) {
-      onCloseFolder(name);
-      return;
-    }
-    setBusy(`open:${name}`);
-    setErr(null);
+  /* ── renomear ── */
+  const handleRename = useCallback(async () => {
+    if (!renaming) return;
+    const to = renaming.to.trim();
+    if (!to || to === renaming.from) { setRenaming(null); return; }
     try {
-      await onOpenFolder(name);
+      await renameFolder(renaming.from, to);
+      if (visibleFolders?.has(renaming.from)) {
+        const next = new Set(visibleFolders);
+        next.delete(renaming.from); next.add(to);
+        onChangeVisible(next);
+      }
+      setRenaming(null);
+      await refresh();
+    } catch (e: unknown) {
+      setErr(`Rename: ${(e as Error).message}`);
+    }
+  }, [renaming, visibleFolders, onChangeVisible, refresh]);
+
+  /* ── abrir/fechar selecionadas ── */
+  const openSelected = useCallback(async () => {
+    const targets = [...selected].filter((n) => {
+      const f = folders.find((x) => x.name === n);
+      return f && !f.archived && !activeFolders.has(n);
+    });
+    if (targets.length === 0) return;
+    setBusy("open-bulk");
+    try {
+      for (const n of targets) await onOpenFolder(n);
+      clearSelection();
     } catch (e: unknown) {
       setErr((e as Error).message ?? "open failed");
-    } finally {
-      setBusy(null);
-    }
-  }, [busy, activeFolders, onOpenFolder, onCloseFolder]);
+    } finally { setBusy(null); }
+  }, [selected, folders, activeFolders, onOpenFolder, clearSelection]);
+
+  const closeSelected = useCallback(() => {
+    for (const n of selected) if (activeFolders.has(n)) onCloseFolder(n);
+    clearSelection();
+  }, [selected, activeFolders, onCloseFolder, clearSelection]);
+
+  /* ── arquivar selecionadas ── */
+  const archiveSelected = useCallback(async () => {
+    const targets = [...selected].filter((n) => !folders.find((x) => x.name === n)?.archived);
+    if (targets.length === 0) return;
+    setBusy("archive-bulk");
+    try {
+      for (const n of targets) await archiveFolder(n);
+      clearSelection();
+      await refresh();
+    } catch (e: unknown) {
+      setErr(`Archive: ${(e as Error).message}`);
+    } finally { setBusy(null); }
+  }, [selected, folders, clearSelection, refresh]);
+
+  /* ── excluir selecionadas (confirm) ── */
+  const delJobsTotal = useMemo(() => {
+    if (!confirmDelete) return 0;
+    return confirmDelete.names.reduce((a, n) => a + (folders.find((x) => x.name === n)?.jobCount ?? 0), 0);
+  }, [confirmDelete, folders]);
+
+  const handleDelete = useCallback(async () => {
+    if (!confirmDelete) return;
+    if (delJobsTotal > 0 && confirmDelete.typed.trim().toUpperCase() !== "EXCLUIR") return;
+    setBusy("delete-bulk");
+    try {
+      for (const n of confirmDelete.names) {
+        const f = folders.find((x) => x.name === n);
+        await deleteFolder(n, (f?.jobCount ?? 0) > 0);
+        if (visibleFolders?.has(n)) {
+          const next = new Set(visibleFolders); next.delete(n); onChangeVisible(next);
+        }
+      }
+      setConfirmDelete(null);
+      clearSelection();
+      await refresh();
+    } catch (e: unknown) {
+      setErr(`Delete: ${(e as Error).message}`);
+    } finally { setBusy(null); }
+  }, [confirmDelete, delJobsTotal, folders, visibleFolders, onChangeVisible, clearSelection, refresh]);
+
+  /* ── visibilidade (filtro do monitor) ── */
+  const toggleVisible = useCallback((name: string) => {
+    const allNames = folders.map((f) => f.name);
+    const current = visibleFolders ?? new Set(allNames);
+    const next = new Set(current);
+    if (next.has(name)) next.delete(name); else next.add(name);
+    if (next.size === allNames.length && allNames.every((n) => next.has(n))) onChangeVisible(null);
+    else onChangeVisible(next);
+  }, [folders, visibleFolders, onChangeVisible]);
+
+  const acc = "var(--v2-accent-brand)";
+  const selectedHasOpen = [...selected].some((n) => activeFolders.has(n));
+  const selectedHasClosed = [...selected].some((n) => {
+    const f = folders.find((x) => x.name === n);
+    return f && !f.archived && !activeFolders.has(n);
+  });
 
   return (
     <div
       onClick={onClose}
       style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.78)",
+        backdropFilter: "blur(3px)",
         display: "flex", alignItems: "center", justifyContent: "center",
         zIndex: 100,
       }}
     >
+      {/* CSS local: hover-reveal das ações secundárias + lift do card. */}
+      <style>{`
+        .fmd-card { transition: transform .35s cubic-bezier(.4,0,.2,1), border-color .3s, box-shadow .3s, background .3s; }
+        .fmd-card:hover { transform: translateY(-4px); border-color: var(--v2-accent-brand); box-shadow: 0 12px 30px rgba(0,0,0,.45); }
+        .fmd-card:hover .fmd-hoveract { opacity: 1; }
+        .fmd-hoveract { opacity: 0; transition: opacity .25s; }
+        .fmd-iconbtn:hover { color: var(--v2-accent-brand) !important; border-color: var(--v2-accent-brand) !important; }
+        @keyframes fmdBarIn { from { opacity: 0; transform: translate(-50%, 24px); } to { opacity: 1; transform: translate(-50%, 0); } }
+        @keyframes fmdCardIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
+
       <div
         onClick={(e) => e.stopPropagation()}
         className="v2-grain v2-edge-highlight"
         style={{
-          width: "min(820px, 92vw)",
-          maxHeight: "84vh",
+          width: "min(1240px, 95vw)",
+          height: "min(88vh, 900px)",
           background: "var(--v2-bg-surface)",
           border: "1px solid var(--v2-border-medium)",
-          borderRadius: 6,
-          display: "flex",
-          flexDirection: "column",
-          position: "relative",
-          isolation: "isolate",
+          borderRadius: 8,
+          display: "flex", flexDirection: "column",
+          position: "relative", isolation: "isolate",
         }}
       >
-        {/* Header */}
-        <div style={{
-          padding: "14px 18px",
-          borderBottom: "1px solid var(--v2-border-subtle)",
-          display: "flex", alignItems: "center", gap: 12,
-        }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--v2-text-primary)" }}>Folders</div>
-            <div style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 2, fontFamily: "var(--v2-font-mono)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-              {folders.length} total · {activeFolders.size} open · {allVisible ? "all visible" : `${visibleFolders?.size ?? 0} visible`}
+        {/* ── Header ── */}
+        <div style={{ padding: "22px 28px 0", position: "relative", zIndex: 2 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+            <div>
+              <h1 style={{
+                fontFamily: "var(--v2-font-serif)", fontStyle: "italic",
+                fontSize: 38, lineHeight: 1, margin: 0, color: acc, fontWeight: 600,
+              }}>Folders</h1>
+              <div style={{
+                marginTop: 8, fontSize: 10, letterSpacing: "0.28em", textTransform: "uppercase",
+                color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)",
+              }}>Workspace Orchestrator</div>
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <button
+                onClick={selectAll}
+                style={luxBtn(false)}
+              >Selecionar tudo</button>
+              <button
+                onClick={() => { setCreating(true); setNewName(""); }}
+                style={luxBtn(true, acc)}
+              ><Plus size={12} style={{ marginRight: 4, verticalAlign: "-2px" }} />Nova pasta</button>
+              <button
+                onClick={onClose}
+                aria-label="Close"
+                style={{
+                  marginLeft: 4, width: 30, height: 30, display: "grid", placeItems: "center",
+                  background: "transparent", border: "1px solid var(--v2-border-medium)",
+                  color: "var(--v2-text-secondary)", borderRadius: 4, cursor: "pointer",
+                }}
+                className="fmd-iconbtn"
+              ><X size={15} /></button>
             </div>
           </div>
-          <button
-            onClick={selectAll}
-            style={{
-              padding: "4px 10px", background: "transparent",
-              border: "1px solid var(--v2-border-medium)",
-              color: "var(--v2-text-secondary)", borderRadius: 3,
-              fontSize: 10, fontFamily: "var(--v2-font-mono)",
-              letterSpacing: "0.06em", textTransform: "uppercase", cursor: "pointer",
-            }}
-          >Select all</button>
-          <button
-            onClick={selectNone}
-            style={{
-              padding: "4px 10px", background: "transparent",
-              border: "1px solid var(--v2-border-medium)",
-              color: "var(--v2-text-secondary)", borderRadius: 3,
-              fontSize: 10, fontFamily: "var(--v2-font-mono)",
-              letterSpacing: "0.06em", textTransform: "uppercase", cursor: "pointer",
-            }}
-          >Clear</button>
-          <button
-            onClick={onClose}
-            style={{
-              padding: "4px 10px", background: "transparent",
-              border: "none", color: "var(--v2-text-secondary)",
-              fontSize: 16, cursor: "pointer", lineHeight: 1,
-            }}
-            aria-label="Close"
-          >×</button>
+
+          {/* gold-line */}
+          <div style={{
+            height: 1, margin: "20px 0 0",
+            background: `linear-gradient(90deg, transparent, ${acc}, transparent)`,
+            opacity: 0.35,
+          }} />
         </div>
 
-        {/* Create row — cria folder nova (vincula à design-session via caller).
-            Re-incorporada aqui ao absorver o antigo FolderOpener (2026-06-30). */}
-        {isServerMode() && (
-          <div style={{
-            padding: "10px 16px",
-            borderBottom: "1px solid var(--v2-border-subtle)",
-            display: "flex", alignItems: "center", gap: 8,
-          }}>
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") void handleCreate(); }}
-              placeholder="nova folder (ou nome existente p/ abrir)"
-              disabled={!!busy}
-              style={{
-                flex: 1, padding: "6px 10px",
-                background: "var(--v2-bg-base)",
-                border: "1px solid var(--v2-border-medium)",
-                color: "var(--v2-text-primary)", borderRadius: 3,
-                fontSize: 12, fontFamily: "var(--v2-font-mono)",
-              }}
-            />
-            <button
-              onClick={() => void handleCreate()}
-              disabled={!trimmedNew || !!busy}
-              title={newCollides ? "Folder já existe — vai abrir" : "Cria folder nova (força PR no Publish)"}
-              style={{
-                padding: "6px 12px",
-                background: trimmedNew ? "var(--v2-accent-deep)" : "transparent",
-                border: `1px solid ${trimmedNew ? "var(--v2-accent-brand)" : "var(--v2-border-medium)"}`,
-                color: trimmedNew ? "var(--v2-accent-brand)" : "var(--v2-text-muted)",
-                borderRadius: 3, fontSize: 10, fontFamily: "var(--v2-font-mono)",
-                letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 600,
-                cursor: trimmedNew && !busy ? "pointer" : "default",
-                whiteSpace: "nowrap",
-              }}
-            >{newCollides ? "Open" : "+ New folder"}</button>
-          </div>
-        )}
+        {/* ── Stats (números reais) ── */}
+        <div style={{
+          display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
+          padding: "18px 28px 16px", position: "relative", zIndex: 2,
+        }}>
+          {([
+            ["Total", String(folders.length), false],
+            ["Active Jobs", String(totalJobs), true],
+            ["Abertas no Design", String(activeFolders.size), false],
+            ["Arquivadas", String(archivedCount), false],
+          ] as const).map(([label, value, gold], i) => (
+            <div key={label} style={{
+              textAlign: "center",
+              borderLeft: i === 0 ? "none" : "1px solid var(--v2-border-subtle)",
+            }}>
+              <div style={{
+                fontSize: 9, letterSpacing: "0.22em", textTransform: "uppercase",
+                color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)", marginBottom: 4,
+              }}>{label}</div>
+              <div style={{
+                fontFamily: "var(--v2-font-serif)", fontSize: 26, lineHeight: 1,
+                color: gold ? acc : "var(--v2-text-primary)",
+              }}>{value}</div>
+            </div>
+          ))}
+        </div>
 
-        {/* Body */}
-        <div style={{ flex: 1, overflow: "auto", padding: 16, position: "relative", zIndex: 2 }}>
+        {/* ── Body: grid de cards ── */}
+        <div style={{ flex: 1, overflow: "auto", padding: "8px 28px 28px", position: "relative", zIndex: 2 }}>
           {!isServerMode() && (
-            <div style={{ padding: 24, textAlign: "center", color: "var(--v2-text-muted)", fontSize: 12 }}>
-              Folder management requires server mode.<br />
-              Set <code style={{ color: "var(--v2-accent-brand)" }}>VITE_REGENTE_SERVER_URL</code> and reload.
-            </div>
+            <Empty>Folder management requires server mode.<br />Set <code style={{ color: acc }}>VITE_REGENTE_SERVER_URL</code> and reload.</Empty>
           )}
-          {isServerMode() && loading && (
-            <div style={{ padding: 24, textAlign: "center", color: "var(--v2-text-muted)", fontSize: 12 }}>Loading…</div>
-          )}
+          {isServerMode() && loading && <Empty>Carregando…</Empty>}
           {isServerMode() && err && (
-            <div style={{ padding: 12, background: "#450a0a", border: "1px solid #7f1d1d", color: "#fca5a5", borderRadius: 3, fontSize: 11 }}>{err}</div>
+            <div style={{ padding: 12, background: "rgba(120,20,20,.25)", border: "1px solid #7f1d1d", color: "#fca5a5", borderRadius: 4, fontSize: 11, marginBottom: 12 }}>{err}</div>
           )}
-          {isServerMode() && !loading && !err && folders.length === 0 && (
-            <div style={{ padding: 24, textAlign: "center", color: "var(--v2-text-muted)", fontSize: 12 }}>
-              No folders yet. Open a Design session and create one.
-            </div>
+          {isServerMode() && !loading && !err && folders.length === 0 && !creating && (
+            <Empty>Nenhuma folder ainda. Clique em <strong style={{ color: acc }}>+ Nova pasta</strong>.</Empty>
           )}
 
           <div style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-            gap: 10,
+            gridTemplateColumns: "repeat(auto-fill, minmax(232px, 1fr))",
+            gap: 18,
           }}>
+            {/* card de criação inline */}
+            {creating && (
+              <div className="fmd-card" style={{
+                ...cardBase(acc), borderStyle: "dashed", borderColor: acc,
+                animation: "fmdCardIn .35s ease-out", justifyContent: "center", gap: 10,
+              }}>
+                <div style={{ fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>Nova folder</div>
+                <input
+                  autoFocus value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") void handleCreate(); if (e.key === "Escape") setCreating(false); }}
+                  placeholder="nome (ou existente p/ abrir)"
+                  disabled={!!busy}
+                  style={{
+                    width: "100%", boxSizing: "border-box", padding: "8px 10px",
+                    background: "var(--v2-bg-canvas)", border: `1px solid ${acc}`,
+                    color: "var(--v2-text-primary)", borderRadius: 4,
+                    fontSize: 13, fontFamily: "var(--v2-font-serif)",
+                  }}
+                />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => void handleCreate()} disabled={!newName.trim() || !!busy} style={{ ...luxBtn(true, acc), flex: 1, justifyContent: "center" }}>
+                    {existingNames.has(newName.trim()) ? "Abrir" : "Criar"}
+                  </button>
+                  <button onClick={() => setCreating(false)} style={{ ...luxBtn(false), flex: 1, justifyContent: "center" }}>Cancelar</button>
+                </div>
+              </div>
+            )}
+
             {folders.map((f) => {
-              const visible = allVisible || (visibleFolders?.has(f.name) ?? false);
+              const isSel = selected.has(f.name);
+              const isOpen = activeFolders.has(f.name);
+              const isVisible = allVisible || (visibleFolders?.has(f.name) ?? false);
               const isRenaming = renaming?.from === f.name;
-              const isActive = activeFolders.has(f.name);
+              const active = (f.jobCount ?? 0) > 0;
               return (
                 <div
                   key={f.name}
-                  className="v2-grain-card"
+                  className="fmd-card"
+                  onClick={() => !isRenaming && toggleSelect(f.name)}
                   style={{
-                    padding: 12,
-                    background: "var(--v2-bg-elevated)",
-                    border: `1px solid ${isActive ? "var(--v2-accent-brand)" : visible ? "var(--v2-accent-deep)" : "var(--v2-border-medium)"}`,
-                    boxShadow: isActive ? "0 0 0 1px var(--v2-accent-brand) inset" : "none",
-                    borderRadius: 4,
-                    display: "flex", flexDirection: "column", gap: 8,
-                    opacity: f.archived ? 0.55 : 1,
-                    position: "relative",
-                    isolation: "isolate",
+                    ...cardBase(acc),
+                    cursor: "pointer",
+                    opacity: f.archived ? 0.5 : 1,
+                    borderColor: isSel || isOpen ? acc : "var(--v2-border-medium)",
+                    background: isSel ? "color-mix(in srgb, var(--v2-accent-brand) 5%, var(--v2-bg-elevated))" : "var(--v2-bg-elevated)",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, position: "relative", zIndex: 2 }}>
-                    <input
-                      type="checkbox"
-                      checked={visible}
-                      onChange={() => toggleVisible(f.name)}
-                      style={{ accentColor: "var(--v2-accent-brand)" }}
-                    />
-                    {isRenaming ? (
-                      <input
-                        type="text"
-                        autoFocus
-                        value={renaming.to}
-                        onChange={(e) => setRenaming({ from: renaming.from, to: e.target.value })}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") void handleRename();
-                          else if (e.key === "Escape") setRenaming(null);
-                        }}
-                        onBlur={() => void handleRename()}
-                        style={{
-                          flex: 1, padding: "3px 6px",
-                          background: "var(--v2-bg-surface)",
-                          border: "1px solid var(--v2-accent-brand)",
-                          color: "var(--v2-text-primary)", borderRadius: 2,
-                          fontSize: 12, fontFamily: "var(--v2-font-mono)",
-                        }}
-                      />
-                    ) : (
-                      <span style={{
-                        flex: 1, fontSize: 12, fontWeight: 600,
-                        color: "var(--v2-text-primary)",
-                        fontFamily: "var(--v2-font-mono)",
-                        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                      }}>{f.name}</span>
-                    )}
-                    {isActive && (
-                      <span style={{
-                        fontSize: 8, fontFamily: "var(--v2-font-mono)",
-                        color: "#000", background: "var(--v2-accent-brand)", padding: "1px 4px",
-                        borderRadius: 2, fontWeight: 700,
-                        letterSpacing: "0.08em", textTransform: "uppercase",
-                      }}>open</span>
-                    )}
-                    {f.archived && (
-                      <span style={{
-                        fontSize: 8, fontFamily: "var(--v2-font-mono)",
-                        color: "var(--v2-text-muted)", padding: "1px 4px",
-                        border: "1px solid var(--v2-border-medium)", borderRadius: 2,
-                        letterSpacing: "0.08em", textTransform: "uppercase",
-                      }}>archived</span>
-                    )}
-                  </div>
-
-                  <div style={{
-                    fontSize: 10, fontFamily: "var(--v2-font-mono)",
-                    color: "var(--v2-text-muted)", letterSpacing: "0.04em",
-                    position: "relative", zIndex: 2,
-                  }}>
-                    {f.jobCount} {f.jobCount === 1 ? "job" : "jobs"}
-                  </div>
-
-                  {!f.archived && (
-                    <button
-                      onClick={() => void handleToggleActive(f.name)}
-                      disabled={busy === `open:${f.name}`}
-                      style={{
-                        width: "100%", padding: "5px 6px",
-                        background: isActive ? "transparent" : "var(--v2-accent-deep)",
-                        border: `1px solid var(--v2-accent-brand)`,
-                        color: "var(--v2-accent-brand)", borderRadius: 2,
-                        fontSize: 9, fontFamily: "var(--v2-font-mono)",
-                        letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 600,
-                        cursor: busy ? "wait" : "pointer",
-                        position: "relative", zIndex: 2,
-                      }}
-                    >{busy === `open:${f.name}` ? "…" : isActive ? "Close in design" : "Open in design"}</button>
+                  {/* check de seleção */}
+                  {isSel && (
+                    <div style={{ position: "absolute", top: 10, right: 10, color: acc, zIndex: 3 }}><Check size={14} strokeWidth={3} /></div>
                   )}
 
-                  <div style={{ display: "flex", gap: 6, position: "relative", zIndex: 2 }}>
-                    <button
-                      onClick={() => setRenaming({ from: f.name, to: f.name })}
-                      disabled={isRenaming}
-                      style={{
-                        flex: 1, padding: "4px 6px",
-                        background: "transparent",
-                        border: "1px solid var(--v2-border-medium)",
-                        color: "var(--v2-text-secondary)", borderRadius: 2,
-                        fontSize: 9, fontFamily: "var(--v2-font-mono)",
-                        letterSpacing: "0.06em", textTransform: "uppercase",
-                        cursor: isRenaming ? "default" : "pointer",
-                      }}
-                    >Rename</button>
-                    {!f.archived && (
+                  {/* topo: ícone + ID + ações hover */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
+                    <div style={{
+                      width: 34, height: 34, borderRadius: "50%",
+                      border: `1px solid color-mix(in srgb, var(--v2-accent-brand) 30%, transparent)`,
+                      display: "grid", placeItems: "center", color: acc,
+                    }}>
+                      <Folder size={16} strokeWidth={1.5} />
+                    </div>
+                    <div className="fmd-hoveract" style={{ display: "flex", gap: 6, alignItems: "center" }} onClick={(e) => e.stopPropagation()}>
                       <button
-                        onClick={() => void handleArchive(f.name)}
-                        style={{
-                          flex: 1, padding: "4px 6px",
-                          background: "transparent",
-                          border: "1px solid var(--v2-border-medium)",
-                          color: "var(--v2-text-secondary)", borderRadius: 2,
-                          fontSize: 9, fontFamily: "var(--v2-font-mono)",
-                          letterSpacing: "0.06em", textTransform: "uppercase",
-                          cursor: "pointer",
-                        }}
-                      >Archive</button>
-                    )}
-                    <button
-                      onClick={() => setConfirmDelete({ name: f.name, typed: "" })}
+                        title={isVisible ? "Visível no monitor — ocultar" : "Oculto no monitor — mostrar"}
+                        onClick={() => toggleVisible(f.name)}
+                        className="fmd-iconbtn"
+                        style={iconBtn()}
+                      >{isVisible ? <Eye size={13} /> : <EyeOff size={13} />}</button>
+                      {!f.archived && (
+                        <button title="Renomear" onClick={() => setRenaming({ from: f.name, to: f.name })} className="fmd-iconbtn" style={iconBtn()}><Pencil size={12} /></button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* nome (serif) */}
+                  {isRenaming ? (
+                    <input
+                      autoFocus value={renaming.to}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => setRenaming({ from: renaming.from, to: e.target.value })}
+                      onKeyDown={(e) => { if (e.key === "Enter") void handleRename(); else if (e.key === "Escape") setRenaming(null); }}
+                      onBlur={() => void handleRename()}
                       style={{
-                        flex: 1, padding: "4px 6px",
-                        background: "transparent",
-                        border: "1px solid #7f1d1d",
-                        color: "#fca5a5", borderRadius: 2,
-                        fontSize: 9, fontFamily: "var(--v2-font-mono)",
-                        letterSpacing: "0.06em", textTransform: "uppercase",
-                        cursor: "pointer",
+                        width: "100%", boxSizing: "border-box", padding: "2px 6px", marginBottom: 6,
+                        background: "var(--v2-bg-canvas)", border: `1px solid ${acc}`,
+                        color: "var(--v2-text-primary)", borderRadius: 3,
+                        fontSize: 19, fontFamily: "var(--v2-font-serif)",
                       }}
-                    >Delete</button>
+                    />
+                  ) : (
+                    <h3 style={{
+                      margin: "0 0 8px", fontFamily: "var(--v2-font-serif)", fontSize: 20, fontWeight: 500,
+                      color: "var(--v2-text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                    }}>{f.name}</h3>
+                  )}
+
+                  {/* status + badges */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: active ? "#3fb950" : "var(--v2-text-disabled)" }} />
+                    <span style={{ fontSize: 9, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>
+                      {active ? "Active" : "Idle"}
+                    </span>
+                    {isOpen && (
+                      <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#000", background: acc, padding: "1px 5px", borderRadius: 2 }}>open</span>
+                    )}
+                    {f.archived && (
+                      <span style={{ fontSize: 8, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--v2-text-muted)", border: "1px solid var(--v2-border-medium)", padding: "1px 4px", borderRadius: 2 }}>archived</span>
+                    )}
+                  </div>
+
+                  {/* rodapé */}
+                  <div style={{
+                    marginTop: "auto", paddingTop: 14, borderTop: "1px solid var(--v2-border-subtle)",
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                  }}>
+                    <span style={{ fontSize: 10, fontStyle: "italic", color: "var(--v2-text-secondary)", fontFamily: "var(--v2-font-sans)" }}>
+                      {f.jobCount ?? 0} {(f.jobCount ?? 0) === 1 ? "job" : "jobs"}
+                    </span>
+                    <span style={{ fontSize: 8, letterSpacing: "0.05em", color: "var(--v2-text-disabled)", fontFamily: "var(--v2-font-mono)" }}>{assetId(f.name)}</span>
                   </div>
                 </div>
               );
             })}
           </div>
         </div>
+
+        {/* ── Action bar flutuante ── */}
+        {selected.size > 0 && (
+          <div style={{
+            position: "absolute", bottom: 24, left: "50%",
+            background: "var(--v2-bg-canvas)", border: `1px solid color-mix(in srgb, var(--v2-accent-brand) 50%, var(--v2-border-medium))`,
+            padding: "12px 24px", borderRadius: 999, zIndex: 20,
+            boxShadow: "0 16px 40px rgba(0,0,0,.6)",
+            display: "flex", alignItems: "center", gap: 18,
+            animation: "fmdBarIn .3s cubic-bezier(.4,0,.2,1)",
+          }}>
+            <span style={{ color: acc, fontSize: 12, fontWeight: 500 }}>
+              {selected.size} {selected.size === 1 ? "selecionada" : "selecionadas"}
+            </span>
+            <Sep />
+            {selectedHasClosed && <BarBtn onClick={() => void openSelected()} disabled={!!busy} icon={<FolderOpen size={12} />}>Abrir no Design</BarBtn>}
+            {selectedHasOpen && <BarBtn onClick={closeSelected} disabled={!!busy} icon={<X size={12} />}>Fechar</BarBtn>}
+            <BarBtn onClick={() => void archiveSelected()} disabled={!!busy} icon={<Archive size={12} />}>Arquivar</BarBtn>
+            <BarBtn onClick={() => setConfirmDelete({ names: [...selected], typed: "" })} disabled={!!busy} danger icon={<Trash2 size={12} />}>Excluir</BarBtn>
+            <Sep />
+            <BarBtn onClick={clearSelection} muted>Cancelar</BarBtn>
+          </div>
+        )}
       </div>
 
-      {/* Confirm delete dialog */}
+      {/* ── Confirm delete ── */}
       {confirmDelete && (
         <div
           onClick={(e) => { e.stopPropagation(); setConfirmDelete(null); }}
-          style={{
-            position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)",
-            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 110,
-          }}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 130 }}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "min(420px, 90vw)",
-              padding: 18,
-              background: "var(--v2-bg-surface)",
-              border: "1px solid #7f1d1d",
-              borderRadius: 4,
-            }}
-          >
-            <div style={{ fontSize: 13, fontWeight: 600, color: "#fca5a5", marginBottom: 8 }}>
-              Delete folder "{confirmDelete.name}"?
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(440px, 92vw)", padding: 22, background: "var(--v2-bg-surface)", border: "1px solid #7f1d1d", borderRadius: 6 }}>
+            <div style={{ fontFamily: "var(--v2-font-serif)", fontSize: 18, color: "#fca5a5", marginBottom: 10 }}>
+              Excluir {confirmDelete.names.length} {confirmDelete.names.length === 1 ? "folder" : "folders"}?
             </div>
-            {(folders.find((x) => x.name === confirmDelete.name)?.jobCount ?? 0) > 0 ? (
+            {delJobsTotal > 0 ? (
               <>
                 <div style={{ fontSize: 11, color: "var(--v2-text-secondary)", marginBottom: 10, lineHeight: 1.5 }}>
-                  This folder contains{" "}
-                  <strong style={{ color: "var(--v2-text-primary)" }}>
-                    {folders.find((x) => x.name === confirmDelete.name)?.jobCount} jobs
-                  </strong>
-                  . Type the folder name to confirm.
+                  Contêm <strong style={{ color: "var(--v2-text-primary)" }}>{delJobsTotal} jobs</strong> no total. Digite <strong>EXCLUIR</strong> para confirmar.
                 </div>
                 <input
-                  type="text"
-                  autoFocus
-                  value={confirmDelete.typed}
+                  autoFocus value={confirmDelete.typed}
                   onChange={(e) => setConfirmDelete({ ...confirmDelete, typed: e.target.value })}
                   onKeyDown={(e) => { if (e.key === "Enter") void handleDelete(); }}
-                  placeholder={confirmDelete.name}
-                  style={{
-                    width: "100%", padding: "6px 10px", marginBottom: 10,
-                    background: "var(--v2-bg-elevated)",
-                    border: "1px solid var(--v2-border-medium)",
-                    color: "var(--v2-text-primary)", borderRadius: 3,
-                    fontSize: 11, fontFamily: "var(--v2-font-mono)",
-                  }}
+                  placeholder="EXCLUIR"
+                  style={{ width: "100%", boxSizing: "border-box", padding: "7px 10px", marginBottom: 12, background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)", color: "var(--v2-text-primary)", borderRadius: 3, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}
                 />
               </>
             ) : (
-              <div style={{ fontSize: 11, color: "var(--v2-text-secondary)", marginBottom: 10 }}>
-                The folder is empty. This action cannot be undone.
+              <div style={{ fontSize: 11, color: "var(--v2-text-secondary)", marginBottom: 12 }}>
+                {confirmDelete.names.length === 1 ? "A folder está vazia." : "Folders vazias."} Esta ação não pode ser desfeita.
               </div>
             )}
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button
-                onClick={() => setConfirmDelete(null)}
-                style={{
-                  padding: "6px 14px", background: "transparent",
-                  border: "1px solid var(--v2-border-medium)",
-                  color: "var(--v2-text-secondary)", borderRadius: 3,
-                  fontSize: 10, fontFamily: "var(--v2-font-mono)",
-                  letterSpacing: "0.06em", textTransform: "uppercase", cursor: "pointer",
-                }}
-              >Cancel</button>
+              <button onClick={() => setConfirmDelete(null)} style={luxBtn(false)}>Cancelar</button>
               <button
                 onClick={() => void handleDelete()}
-                style={{
-                  padding: "6px 14px", background: "#7f1d1d",
-                  border: "1px solid #991b1b",
-                  color: "#fee2e2", borderRadius: 3,
-                  fontSize: 10, fontFamily: "var(--v2-font-mono)",
-                  letterSpacing: "0.06em", textTransform: "uppercase",
-                  cursor: "pointer", fontWeight: 600,
-                }}
-              >Delete</button>
+                disabled={delJobsTotal > 0 && confirmDelete.typed.trim().toUpperCase() !== "EXCLUIR"}
+                style={{ padding: "6px 16px", background: "#7f1d1d", border: "1px solid #991b1b", color: "#fee2e2", borderRadius: 4, fontSize: 10, fontFamily: "var(--v2-font-mono)", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700, cursor: "pointer" }}
+              >Excluir</button>
             </div>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+/* ── helpers de estilo/UI ── */
+function cardBase(_acc: string): React.CSSProperties {
+  return {
+    padding: 18, borderRadius: 6, minHeight: 168,
+    background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)",
+    display: "flex", flexDirection: "column", position: "relative", isolation: "isolate",
+  };
+}
+function luxBtn(filled: boolean, acc = "var(--v2-accent-brand)"): React.CSSProperties {
+  return {
+    display: "inline-flex", alignItems: "center",
+    padding: "6px 16px", borderRadius: 4,
+    border: `1px solid ${acc}`,
+    background: filled ? acc : "transparent",
+    color: filled ? "#000" : acc,
+    fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase",
+    fontFamily: "var(--v2-font-mono)", cursor: "pointer",
+  };
+}
+function iconBtn(): React.CSSProperties {
+  return {
+    width: 24, height: 24, display: "grid", placeItems: "center",
+    background: "transparent", border: "1px solid var(--v2-border-medium)",
+    color: "var(--v2-text-secondary)", borderRadius: 4, cursor: "pointer",
+  };
+}
+function Empty({ children }: { children: React.ReactNode }) {
+  return <div style={{ padding: 36, textAlign: "center", color: "var(--v2-text-muted)", fontSize: 12, lineHeight: 1.6 }}>{children}</div>;
+}
+function Sep() {
+  return <div style={{ width: 1, height: 16, background: "var(--v2-border-medium)" }} />;
+}
+function BarBtn({ children, onClick, disabled, danger, muted, icon }: {
+  children: React.ReactNode; onClick: () => void; disabled?: boolean; danger?: boolean; muted?: boolean; icon?: React.ReactNode;
+}) {
+  const [hover, setHover] = useState(false);
+  const color = danger ? "#f87171" : muted ? "var(--v2-text-muted)" : hover ? "var(--v2-accent-brand)" : "var(--v2-text-secondary)";
+  return (
+    <button
+      onClick={onClick} disabled={disabled}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 6,
+        background: "transparent", border: "none", cursor: disabled ? "wait" : "pointer",
+        color, opacity: disabled ? 0.5 : 1,
+        fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase",
+        fontFamily: "var(--v2-font-mono)", transition: "color .2s",
+      }}
+    >{icon}{children}</button>
   );
 }
