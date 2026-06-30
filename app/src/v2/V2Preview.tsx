@@ -73,7 +73,7 @@ import { GitStatusBadge } from "./GitStatusBadge";
 import { PRBannerHost } from "./PRBannerHost";
 import { PublishButton } from "./PublishButton";
 import { getDesignSessionId, setDesignSessionId, onDesignSessionChange, onDesignSessionConflict } from "@/lib/server-client";
-import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, createDesignSession, openSessionFolder, createSessionFolder, type SessionStatus } from "@/lib/design-session-api";
+import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, createDesignSession, openSessionFolder, createSessionFolder, type SessionStatus, type PublishResult } from "@/lib/design-session-api";
 import { toast, ToastHost } from "./Toast";
 import EdgeConditionModal from "./EdgeConditionModal";
 import { getGitInfo, commitUrl } from "@/lib/git-info";
@@ -907,14 +907,18 @@ function V2PreviewInner() {
     const trimmed = name.trim();
     if (!trimmed) return;
     let sid = designSessionId;
+    const creatingSession = !sid;
     if (!sid) {
       const sess = await createDesignSession([], []);
       sid = sess.id;
-      setDesignSessionId(sid);
     }
+    // Cria/abre a folder na session ANTES de publicar o sid no global. Assim, quando
+    // o effect [designSessionId] refetcha getDesignSession, a folder já existe →
+    // sem corrida que zere activeFolders/newFolders (bug do "Publish não apareceu").
     const res = action === "open"
       ? await openSessionFolder(sid, trimmed)
       : await createSessionFolder(sid, trimmed);
+    if (creatingSession) setDesignSessionId(sid);
     setActiveFolders((prev) => {
       const next = new Set(prev ?? []);
       next.add(res.name);
@@ -935,6 +939,42 @@ function V2PreviewInner() {
       return next;
     });
   }, []);
+
+  // Publish/Discard da design-session — extraídos para reuso na topbar E dentro do
+  // modal de FOLDERS (o commit precisa estar visível na própria tela de criação).
+  const handlePublished = useCallback(async (res: PublishResult) => {
+    if (res.mode === "noop") {
+      toast.info("Nada a publicar", { detail: "Working tree limpa — faça alguma edição antes." });
+      return;
+    }
+    setDesignSessionId(null);
+    setDesignSessionNewFolders([]);
+    if (res.prUrl) {
+      toast.success(`Publicado como PR #${res.prNumber}`, { linkUrl: res.prUrl, linkLabel: `PR #${res.prNumber} no GitHub` });
+    } else {
+      const st = await getGitInfo();
+      toast.success("Publicado no GitHub", {
+        detail: `commit ${res.commitSha?.slice(0, 7)}`,
+        linkUrl: commitUrl(st, res.commitSha) ?? undefined,
+        linkLabel: res.commitSha ? `ver commit ${res.commitSha.slice(0, 7)}` : undefined,
+      });
+    }
+    await reloadDefinitions();
+  }, []);
+
+  const handleDiscardSession = useCallback(async () => {
+    if (!window.confirm("Descartar a sessão? Todas as edições não publicadas serão perdidas.")) return;
+    try {
+      const sid = designSessionId;
+      setDesignSessionId(null);
+      setDesignSessionNewFolders([]);
+      if (sid) {
+        const { deleteDesignSession } = await import("@/lib/design-session-api");
+        await deleteDesignSession(sid).catch(() => {});
+      }
+      await reloadDefinitions();
+    } catch { /* ignore */ }
+  }, [designSessionId]);
 
   // Trava de pan. Monitoring: topo do conteúdo (folders) alinhado com o ACTIVE JOBS;
   // livre pros lados e pra CIMA (revelar mais jobs abaixo), nunca abaixo do topo.
@@ -1659,45 +1699,10 @@ function V2PreviewInner() {
             <PublishButton
               sessionId={designSessionId}
               newFolderCount={designSessionNewFolders.length}
-              onPublished={async (res) => {
-                // P4 (2026-04-26) — empty publish: server retorna mode=noop
-                // sem commit/push; não fechamos a session, só avisamos.
-                if (res.mode === "noop") {
-                  toast.info("Nada a publicar", { detail: "Working tree limpa — faça alguma edição antes." });
-                  return;
-                }
-                setDesignSessionId(null);
-                setDesignSessionNewFolders([]);
-                if (res.prUrl) {
-                  toast.success(`Publicado como PR #${res.prNumber}`, {
-                    linkUrl: res.prUrl,
-                    linkLabel: `PR #${res.prNumber} no GitHub`,
-                  });
-                } else {
-                  const st = await getGitInfo();
-                  toast.success("Publicado no GitHub", {
-                    detail: `commit ${res.commitSha?.slice(0, 7)}`,
-                    linkUrl: commitUrl(st, res.commitSha) ?? undefined,
-                    linkLabel: res.commitSha ? `ver commit ${res.commitSha.slice(0, 7)}` : undefined,
-                  });
-                }
-                await reloadDefinitions();
-              }}
+              onPublished={handlePublished}
             />
             <button
-              onClick={async () => {
-                if (!window.confirm("Descartar a sessão? Todas as edições não publicadas serão perdidas.")) return;
-                try {
-                  const sid = designSessionId;
-                  setDesignSessionId(null);
-                  setDesignSessionNewFolders([]);
-                  if (sid) {
-                    const { deleteDesignSession } = await import("@/lib/design-session-api");
-                    await deleteDesignSession(sid).catch(() => {});
-                  }
-                  await reloadDefinitions();
-                } catch { /* ignore */ }
-              }}
+              onClick={() => void handleDiscardSession()}
               style={{ background: "transparent", color: "#a66", border: "1px solid #533", padding: "5px 10px", borderRadius: 4, cursor: "pointer", fontSize: 11 }}
             >
               Descartar
@@ -1887,6 +1892,10 @@ function V2PreviewInner() {
             onOpenFolder={(name) => addFolder("open", name)}
             onCreateFolder={(name) => addFolder("create", name)}
             onCloseFolder={closeFolder}
+            sessionId={designSessionId}
+            newFolderCount={designSessionNewFolders.length}
+            onPublished={handlePublished}
+            onDiscardSession={handleDiscardSession}
             onClose={() => setShowFolderManager(false)}
           />
         )}

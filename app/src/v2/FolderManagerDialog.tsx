@@ -24,6 +24,8 @@ import {
   archiveFolder,
 } from "@/lib/folder-api";
 import { isServerMode } from "@/lib/server-client";
+import type { PublishResult } from "@/lib/design-session-api";
+import { PublishButton } from "./PublishButton";
 import {
   Folder, Eye, EyeOff, Pencil, Check,
   Plus, X, Trash2, Archive, FolderOpen,
@@ -40,6 +42,14 @@ interface Props {
   onCreateFolder: (name: string) => Promise<void>;
   /** Fecha uma folder do working set (só visão; não toca no Git). */
   onCloseFolder: (name: string) => void;
+  /** Design-session ativa (null = sem alterações pendentes). */
+  sessionId: string | null;
+  /** Quantas folders novas pendentes (força PR no publish). */
+  newFolderCount: number;
+  /** Publica a session (commit/PR). Fecha a session ao concluir. */
+  onPublished: (res: PublishResult) => void;
+  /** Descarta a session (perde edições não publicadas). */
+  onDiscardSession: () => void;
   onClose: () => void;
 }
 
@@ -57,6 +67,10 @@ export default function FolderManagerDialog({
   onOpenFolder,
   onCreateFolder,
   onCloseFolder,
+  sessionId,
+  newFolderCount,
+  onPublished,
+  onDiscardSession,
   onClose,
 }: Props) {
   const [folders, setFolders] = useState<FolderInfo[]>([]);
@@ -477,10 +491,39 @@ export default function FolderManagerDialog({
           </div>
         </div>
 
+        {/* ── Footer de commit: aparece quando há sessão (alterações pendentes).
+              O commit fica DENTRO da tela de Folders, não escondido na topbar. ── */}
+        {sessionId && (
+          <div style={{
+            borderTop: `1px solid color-mix(in srgb, var(--v2-accent-brand) 35%, var(--v2-border-medium))`,
+            background: "var(--v2-bg-canvas)",
+            padding: "12px 28px", position: "relative", zIndex: 5,
+            display: "flex", alignItems: "center", gap: 16,
+          }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <span style={{ fontSize: 11, color: acc, fontWeight: 600, fontFamily: "var(--v2-font-mono)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                Alterações não publicadas
+              </span>
+              <span style={{ fontSize: 10, color: "var(--v2-text-muted)" }}>
+                {newFolderCount > 0
+                  ? `${newFolderCount} folder(s) nova(s) — Publish abre um PR`
+                  : "Edições na sessão — Publish faz commit + push"}
+              </span>
+            </div>
+            <div style={{ flex: 1 }} />
+            <PublishButton
+              sessionId={sessionId}
+              newFolderCount={newFolderCount}
+              onPublished={(res) => { onPublished(res); void refresh(); }}
+            />
+            <button onClick={onDiscardSession} style={{ ...luxBtn(false), borderColor: "#7f1d1d", color: "#f87171" }}>Descartar</button>
+          </div>
+        )}
+
         {/* ── Action bar flutuante ── */}
         {selected.size > 0 && (
           <div style={{
-            position: "absolute", bottom: 24, left: "50%",
+            position: "absolute", bottom: sessionId ? 88 : 24, left: "50%",
             background: "var(--v2-bg-canvas)", border: `1px solid color-mix(in srgb, var(--v2-accent-brand) 50%, var(--v2-border-medium))`,
             padding: "12px 24px", borderRadius: 999, zIndex: 20,
             boxShadow: "0 16px 40px rgba(0,0,0,.6)",
