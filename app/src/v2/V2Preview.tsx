@@ -443,22 +443,27 @@ function NavMinimap({ nodes, width, height }: { nodes: Node[]; width: number; he
   if (jobs.length === 0) {
     return <div style={{ width, height, display: "grid", placeItems: "center", fontSize: 11, color: "var(--v2-text-muted)" }}>sem jobs</div>;
   }
-  const PAD = 60; // respiro em torno dos jobs
+  const MARGIN = 8; // respiro dentro da caixa do minimap
   const xs = jobs.map((n) => n.position.x);
   const ys = jobs.map((n) => n.position.y);
-  // Área visível atual em coords de fluxo (pra o retângulo do viewport caber mesmo
-  // quando o usuário navega além dos jobs).
-  const viewMinX = -tx / tzoom, viewMinY = -ty / tzoom;
-  const viewMaxX = (vpW - tx) / tzoom, viewMaxY = (vpH - ty) / tzoom;
-  const minX = Math.min(Math.min(...xs) - PAD, viewMinX);
-  const maxX = Math.max(Math.max(...xs) + NODE_W + PAD, viewMaxX);
-  const minY = Math.min(Math.min(...ys) - PAD, viewMinY);
-  const maxY = Math.max(Math.max(...ys) + NODE_H + PAD, viewMaxY);
+  // Bounds SÓ dos jobs (âncora no canto de cima/esquerda). NÃO entra o viewport aqui
+  // de propósito: a escala do minimap fica ESTÁVEL, sempre mostrando toda a grade de
+  // jobs "no zoom out", independente de quanto o monitoring está com zoom.
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  const maxX = Math.max(...xs) + NODE_W;
+  const maxY = Math.max(...ys) + NODE_H;
   const bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
-  const scale = Math.min(width / bw, height / bh);
-  const offX = (width - bw * scale) / 2, offY = (height - bh * scale) / 2;
+  const scale = Math.min((width - 2 * MARGIN) / bw, (height - 2 * MARGIN) / bh);
+  // Ancorado no topo-esquerdo (não centraliza) — reflete a organização real: 1ª
+  // coluna/linha no canto, seguindo pra direita conforme a grade.
+  const offX = MARGIN, offY = MARGIN;
   const toX = (fx: number) => offX + (fx - minX) * scale;
   const toY = (fy: number) => offY + (fy - minY) * scale;
+  // Área visível atual (em coords de fluxo) só p/ o retângulo do viewport — clipado
+  // pela caixa do minimap quando o usuário navega além dos jobs.
+  const viewMinX = -tx / tzoom, viewMinY = -ty / tzoom;
+  const viewMaxX = (vpW - tx) / tzoom, viewMaxY = (vpH - ty) / tzoom;
   // Quadradinho na proporção real do card (mín. legível).
   const sw = Math.max(3, NODE_W * scale);
   const sh = Math.max(2, NODE_H * scale);

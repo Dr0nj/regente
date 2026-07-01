@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import type { JobNodeData } from "@/lib/job-config";
-import { todayOrderDate } from "@/lib/orchestrator-model";
 import { useResizablePanel, ResizeHandle } from "./resizable";
 
 /* ──────────────────────────────────────────────────────────────
@@ -139,6 +138,7 @@ export default function MonitoringSidebarV2({
         </span>
         <span
           style={{
+            marginLeft: "auto",
             fontSize: 10,
             fontFamily: "var(--v2-font-mono)",
             color: "var(--v2-text-muted)",
@@ -148,9 +148,6 @@ export default function MonitoringSidebarV2({
           }}
         >
           {filtered.length}/{jobs.length}
-        </span>
-        <span style={{ marginLeft: "auto", fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>
-          {todayOrderDate()}
         </span>
       </div>
 
@@ -364,14 +361,13 @@ export default function MonitoringSidebarV2({
           borderTop: "1px solid var(--v2-border-subtle)",
           padding: "6px 12px",
           display: "flex",
-          justifyContent: "space-between",
+          justifyContent: "flex-end",
           fontSize: 10,
           fontFamily: "var(--v2-font-mono)",
           color: "var(--v2-text-muted)",
           letterSpacing: "0.04em",
         }}
       >
-        <span>NEXT TICK +23s</span>
         <span style={{ color: "var(--v2-accent-brand)" }}>● live</span>
       </div>
     </aside>
