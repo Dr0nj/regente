@@ -395,7 +395,17 @@ VITE_REGENTE_SERVER_URL=http://localhost:8080   # vazio = modo local (localStora
 VITE_REGENTE_TOKEN=dev-token
 ```
 
+`VITE_REGENTE_SERVER_URL=@origin` = **same-origin**: o server Go serve o SPA na mesma
+porta (`-spa-dir`), então a UI usa `window.location.origin` em runtime — é o modo usado
+pra hospedar a demo atrás de um túnel (a URL pode mudar sem rebuildar o front).
+
 Login padrão de dev: `admin` / `admin`.
+
+### Hospedar pra outras pessoas testarem (demo com link público)
+
+Pra convidar amigos a testar a UI (criar e executar jobs) num link https, o server serve
+o SPA single-origin (`-spa-dir`) e um agente roda isolado em Docker. Passo-a-passo,
+script (`host-demo.ps1`) e notas de segurança em [`deploy/demo/README.md`](deploy/demo/README.md).
 
 ### Estrutura (frontend)
 
