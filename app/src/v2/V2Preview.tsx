@@ -6,6 +6,7 @@ import {
   Background,
   BackgroundVariant,
   useReactFlow,
+  useStore,
   type Node,
   type Edge,
   type Connection,
@@ -428,31 +429,73 @@ function composeColumns<T extends { id: string; team?: string }>(
 // garantida), sem depender do MiniMap do ReactFlow (que filtra nós custom sem dimensão
 // medida — motivo de os jobs nunca aparecerem). Clique navega o canvas até o ponto.
 function NavMinimap({ nodes, width, height }: { nodes: Node[]; width: number; height: number }) {
-  const { setCenter, getViewport } = useReactFlow();
-  if (nodes.length === 0) {
+  const { setCenter } = useReactFlow();
+  // Viewport ao vivo (transform + tamanho do canvas) p/ desenhar o retângulo da
+  // área visível — é o que "leva em consideração o alinhamento da tela".
+  const tx = useStore((s) => s.transform[0]);
+  const ty = useStore((s) => s.transform[1]);
+  const tzoom = useStore((s) => s.transform[2]);
+  const vpW = useStore((s) => s.width);
+  const vpH = useStore((s) => s.height);
+
+  // Mostra APENAS os jobs (ignora lanes/containers e outros nós).
+  const jobs = nodes.filter((n) => n.type === "jobV2");
+  if (jobs.length === 0) {
     return <div style={{ width, height, display: "grid", placeItems: "center", fontSize: 11, color: "var(--v2-text-muted)" }}>sem jobs</div>;
   }
-  const NW = 170, NH = 56, PAD = 80; // estimativa do card + respiro p/ os bounds
-  const xs = nodes.map((n) => n.position.x);
-  const ys = nodes.map((n) => n.position.y);
-  const minX = Math.min(...xs) - PAD, maxX = Math.max(...xs) + NW + PAD;
-  const minY = Math.min(...ys) - PAD, maxY = Math.max(...ys) + NH + PAD;
+  const PAD = 60; // respiro em torno dos jobs
+  const xs = jobs.map((n) => n.position.x);
+  const ys = jobs.map((n) => n.position.y);
+  // Área visível atual em coords de fluxo (pra o retângulo do viewport caber mesmo
+  // quando o usuário navega além dos jobs).
+  const viewMinX = -tx / tzoom, viewMinY = -ty / tzoom;
+  const viewMaxX = (vpW - tx) / tzoom, viewMaxY = (vpH - ty) / tzoom;
+  const minX = Math.min(Math.min(...xs) - PAD, viewMinX);
+  const maxX = Math.max(Math.max(...xs) + NODE_W + PAD, viewMaxX);
+  const minY = Math.min(Math.min(...ys) - PAD, viewMinY);
+  const maxY = Math.max(Math.max(...ys) + NODE_H + PAD, viewMaxY);
   const bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
   const scale = Math.min(width / bw, height / bh);
   const offX = (width - bw * scale) / 2, offY = (height - bh * scale) / 2;
+  const toX = (fx: number) => offX + (fx - minX) * scale;
+  const toY = (fy: number) => offY + (fy - minY) * scale;
+  // Quadradinho na proporção real do card (mín. legível).
+  const sw = Math.max(3, NODE_W * scale);
+  const sh = Math.max(2, NODE_H * scale);
+
   const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
     const fx = minX + (e.clientX - r.left - offX) / scale;
     const fy = minY + (e.clientY - r.top - offY) / scale;
-    setCenter(fx, fy, { zoom: getViewport().zoom, duration: 400 });
+    setCenter(fx, fy, { zoom: tzoom, duration: 400 });
   };
   return (
     <svg width={width} height={height} onClick={handleClick} style={{ display: "block", cursor: "pointer" }}>
-      {nodes.map((n) => {
-        const cx = offX + (n.position.x + NW / 2 - minX) * scale;
-        const cy = offY + (n.position.y + NH / 2 - minY) * scale;
-        return <circle key={n.id} cx={cx} cy={cy} r={4} fill={miniNodeColor(n)} stroke="#06080c" strokeWidth={1} />;
-      })}
+      {jobs.map((n) => (
+        <rect
+          key={n.id}
+          x={toX(n.position.x)}
+          y={toY(n.position.y)}
+          width={sw}
+          height={sh}
+          rx={1}
+          fill={miniNodeColor(n)}
+          stroke="#06080c"
+          strokeWidth={0.5}
+        />
+      ))}
+      {/* Retângulo do viewport — mostra onde a tela está sobre o conteúdo. */}
+      <rect
+        x={toX(viewMinX)}
+        y={toY(viewMinY)}
+        width={(viewMaxX - viewMinX) * scale}
+        height={(viewMaxY - viewMinY) * scale}
+        fill="rgba(255,255,255,0.05)"
+        stroke="var(--v2-accent-brand)"
+        strokeWidth={1}
+        rx={2}
+        pointerEvents="none"
+      />
     </svg>
   );
 }
@@ -1011,12 +1054,29 @@ function V2PreviewInner() {
     setViewport({ x: vp.x, y: TOP_ANCHOR - minY * vp.zoom, zoom: vp.zoom }, { duration });
   }, [canvas.nodes, fitView, getViewport, setViewport]);
 
-  // Entrar ancorado um pouco abaixo do topo (Monitoring E Design).
+  // Ref sempre com o organizeView mais recente (fecha sobre os canvas.nodes atuais)
+  // sem forçar o effect de entrada a rodar a cada re-layout.
+  const organizeViewRef = useRef(organizeView);
+  useEffect(() => { organizeViewRef.current = organizeView; }, [organizeView]);
+
+  // Chave do CONTEXTO de visão: muda quando o usuário troca de modo ou o conjunto
+  // de folders muda. NÃO muda quando só chegam updates de dado (status via WS/tick,
+  // Run Daily materializando, Force). É o que decide quando reancorar a câmera.
+  const viewContextKey = useMemo(() => {
+    if (mode === "design") return "design:" + [...(activeFolders ?? [])].sort().join(",");
+    return "monitoring:" + (visibleFolders ? [...visibleFolders].sort().join(",") : "*");
+  }, [mode, activeFolders, visibleFolders]);
+
+  // Auto-organiza (ancora o topo) SÓ ao entrar num contexto ou quando os jobs
+  // aparecem pela 1ª vez. Depende só de [viewContextKey, hasNodes] — churn de dado
+  // (Force/Run Daily/WS) NÃO reancora, então a câmera não "pula" nem volta ao
+  // centro sozinha, e os jobs não somem exigindo F5.
+  const hasNodes = canvas.nodes.length > 0;
   useEffect(() => {
-    if (canvas.nodes.length === 0) return;
-    const t = setTimeout(() => organizeView(220), 140);
+    if (!hasNodes) return;
+    const t = setTimeout(() => organizeViewRef.current(220), 140);
     return () => clearTimeout(t);
-  }, [mode, canvas.nodes, organizeView]);
+  }, [viewContextKey, hasNodes]);
 
   const monitoringJobs = useMemo(() => {
     const defsById = new Map(defs.map((d) => [d.id, d] as const));
@@ -1060,6 +1120,20 @@ function V2PreviewInner() {
     setSelectedInstanceId(instId);
     focusNode(`m-${instId}`);
   }, [focusNode]);
+
+  // Foco pendente: centraliza num job assim que o nó aparece no canvas (ex.: após
+  // Force Order — o instance é criado async, então esperamos ele materializar).
+  // Mantém o zoom atual (não dá aquele salto), e some depois de focar 1×.
+  const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pendingFocusId) return;
+    const node = canvas.nodes.find((n) => n.id === `m-${pendingFocusId}`);
+    if (!node) return; // ainda não materializou — espera o próximo re-layout
+    setCenter(node.position.x + NODE_W / 2, node.position.y + NODE_H / 2, {
+      zoom: getViewport().zoom, duration: 350,
+    });
+    setPendingFocusId(null);
+  }, [pendingFocusId, canvas.nodes, setCenter, getViewport]);
 
   /* ── Canvas node click ── */
   const onNodeClick: NodeMouseHandler = useCallback((_, node) => {
@@ -1156,20 +1230,21 @@ function V2PreviewInner() {
   const handleRunDaily = useCallback(() => {
     const created = runDaily(defs);
     setLastDaily(new Date().toISOString());
+    // NÃO reenquadramos aqui: se o board estava vazio, o gate de entrada ancora os
+    // jobs quando eles aparecem (0→N); se já havia jobs, a câmera fica onde está
+    // (antes um fitView aqui fazia os jobs "sumirem" e exigia F5).
     if (container.storageBackend === "server") {
       // server mode: refresh é assíncrono via WS; UI re-renderiza sozinha
-      setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 200);
       return;
     }
     if (created.length > 0) {
       setInstances(getTodayInstances());
-      setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 50);
     } else {
       toast.info("Nenhuma definition elegível", {
         detail: "Sem schedule habilitado ou instances já materializadas hoje.",
       });
     }
-  }, [defs, fitView]);
+  }, [defs]);
 
   const handleRerunInstance = useCallback((id: string) => {
     Promise.resolve(rerunInstance(id)).then((fresh) => {
@@ -1270,7 +1345,12 @@ function V2PreviewInner() {
   const handleForce = useCallback((def: JobDefinition) => {
     setForceMenuOpen(false);
     Promise.resolve(forceInstance(def)).then((fresh) => {
-      if (fresh) setSelectedInstanceId(fresh.id);
+      if (fresh) {
+        setSelectedInstanceId(fresh.id);
+        // Direciona a câmera pro job recém-forçado quando ele materializar (não
+        // reenquadra o board inteiro — só centraliza no novo, mantendo o zoom).
+        setPendingFocusId(fresh.id);
+      }
     }).catch((err) => {
       console.error("[force] failed", err);
       toast.error("Force Order falhou", { detail: err?.message ?? String(err) });
