@@ -8,8 +8,17 @@
 type Env = Record<string, string | undefined>;
 const env = (import.meta as unknown as { env: Env }).env ?? {};
 
+// `@origin` = same-origin (o servidor Go serve o SPA na mesma porta, ex.: atrás de um
+// Cloudflare Tunnel). Resolve pra window.location.origin em runtime, então a URL do
+// túnel pode mudar sem precisar rebuildar o front. Vazio = local mode; URL absoluta =
+// server remoto explícito (Vite dev → localhost:9090).
 const RAW_URL = env.VITE_REGENTE_SERVER_URL?.trim();
-export const SERVER_URL: string | null = RAW_URL ? RAW_URL.replace(/\/$/, "") : null;
+export const SERVER_URL: string | null =
+  RAW_URL === "@origin"
+    ? (typeof window !== "undefined" ? window.location.origin : null)
+    : RAW_URL
+      ? RAW_URL.replace(/\/$/, "")
+      : null;
 const ENV_TOKEN: string = env.VITE_REGENTE_TOKEN?.trim() || "dev-token";
 const LS_TOKEN_KEY = "regente:authToken";
 

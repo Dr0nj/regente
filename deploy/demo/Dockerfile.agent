@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1
+# Agente regente em CONTAINER DESCARTÁVEL (sandbox) — pra hospedar a demo e deixar
+# amigos criarem/executarem jobs sem dar acesso à sua máquina.
+#
+# Diferente da imagem do server (distroless), aqui a imagem final tem SHELL de
+# propósito: jobs COMMAND/SCRIPT rodam comandos shell DENTRO do container — que não
+# tem volumes do host montados, roda como usuário não-root e com limites de recurso
+# (ver deploy/demo/host-demo.ps1). Ou seja: os comandos dos amigos ficam presos aqui.
+#
+# Build a partir da raiz do repo:
+#   docker build -f deploy/demo/Dockerfile.agent -t regente-agent .
+
+FROM golang:1.25-alpine AS build
+WORKDIR /src
+# Cache de deps: só o go.mod/go.sum do módulo agent primeiro.
+COPY agent/go.mod agent/go.sum ./
+RUN go mod download
+COPY agent/ ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/regente-agent .
+
+# Runtime: alpine (tem /bin/sh pros jobs). Usuário não-root sem privilégios.
+FROM alpine:3.20
+RUN adduser -D -u 10001 runner
+COPY --from=build /out/regente-agent /usr/local/bin/regente-agent
+USER runner
+WORKDIR /home/runner
+ENTRYPOINT ["regente-agent"]

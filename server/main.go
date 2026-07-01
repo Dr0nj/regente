@@ -42,6 +42,7 @@ import (
 func main() {
 	var (
 		addr      = flag.String("addr", envOr("REGENTE_ADDR", ":8080"), "HTTP listen address")
+		spaDir    = flag.String("spa-dir", envOr("REGENTE_SPA_DIR", ""), "Hosting single-origin: serve o SPA buildado deste diretório (UI+API+WS na mesma porta). Vazio = só API")
 		workspace = flag.String("workspace", envOr("REGENTE_WORKSPACE", "./workspace"), "Path to regente workspace (contains definitions/)")
 		dbPath    = flag.String("db", envOr("REGENTE_DB", "./regente.db"), "DB DSN: caminho do arquivo SQLite, ou connection string Postgres quando -db-driver=postgres")
 		dbDriver  = flag.String("db-driver", envOr("REGENTE_DB_DRIVER", "sqlite"), "State store backend: sqlite | postgres")
@@ -436,7 +437,12 @@ func main() {
 		OIDC:      oidcProvider,
 		AppURL:    *appURL,
 		Audit:     auditSink,
+		SPADir:    *spaDir,
 	})
+
+	if *spaDir != "" {
+		log.Printf("[spa] servindo o frontend de %s (single-origin: UI+API+WS na porta %s)", *spaDir, *addr)
+	}
 
 	// Segurança — TLS/mTLS opcional. Sem -tls-cert segue em HTTP plano.
 	tlsCfg, mtlsOn, tlsErr := sectls.ServerTLS(*tlsCert, *tlsKey, *tlsClientCA)

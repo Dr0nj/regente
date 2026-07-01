@@ -4,6 +4,9 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path"
+	"path/filepath"
 
 	"github.com/Dr0nj/regente-server/internal/audit"
 	"github.com/Dr0nj/regente-server/internal/auth"
@@ -34,6 +37,10 @@ type Config struct {
 	AppURL string // destino do redirect pós-login OIDC (ex.: http://localhost:5173)
 	// Segurança — exportação de auditoria p/ SIEM (login, writes). nil = no-op.
 	Audit *audit.Sink
+	// Hosting single-origin: se != "", serve o SPA buildado deste diretório (UI+API+WS
+	// na mesma porta, sem CORS). Rotas não-API caem no NotFound → asset direto ou
+	// index.html (fallback do roteamento do SPA). Vazio = só API (comportamento legado).
+	SPADir string
 }
 
 type server struct {
@@ -222,7 +229,35 @@ func NewRouter(cfg Config) http.Handler {
 	// F13.3 — webhook GitHub (público; auth via HMAC do payload)
 	r.Post("/api/git/webhook", s.gitWebhook)
 
+	// Hosting single-origin: rotas não registradas acima (/, /design, /assets/*, etc.)
+	// caem aqui e servem o SPA. As rotas de API/WS/metrics já foram casadas antes, então
+	// nunca chegam no NotFound. Vazio = mantém o 404 padrão (só API).
+	if cfg.SPADir != "" {
+		r.NotFound(serveSPA(cfg.SPADir))
+	}
+
 	return r
+}
+
+// serveSPA devolve um handler que serve o build do frontend: se o caminho aponta pra
+// um arquivo existente (assets com hash, logo, etc.) serve direto; senão devolve o
+// index.html pra o roteamento client-side do SPA. GET/HEAD apenas.
+func serveSPA(dir string) http.HandlerFunc {
+	fileServer := http.FileServer(http.Dir(dir))
+	index := filepath.Join(dir, "index.html")
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.NotFound(w, r)
+			return
+		}
+		// path.Clean + filepath.Join mantêm o alvo DENTRO de dir (barra traversal).
+		full := filepath.Join(dir, filepath.FromSlash(path.Clean("/"+r.URL.Path)))
+		if st, err := os.Stat(full); err == nil && !st.IsDir() {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		http.ServeFile(w, r, index)
+	}
 }
 
 func cors(next http.Handler) http.Handler {
