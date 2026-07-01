@@ -1824,7 +1824,7 @@ function V2PreviewInner() {
             hint="Abra ou crie uma folder para começar a trabalhar. Sem folder ativa, não há onde colocar jobs."
           />
         )}
-        {mode === "design" && hasActiveFolders && !hasDefs && (
+        {mode === "design" && hasActiveFolders && designDefsWithDraft.length === 0 && (
           <EmptyState
             title="Nenhuma definition"
             hint="Arraste um tipo da palette para o canvas para criar o primeiro job."
@@ -1896,6 +1896,8 @@ function V2PreviewInner() {
             newFolderCount={designSessionNewFolders.length}
             onPublished={handlePublished}
             onDiscardSession={handleDiscardSession}
+            inDesignMode={mode === "design"}
+            onOpened={() => { setMode("design"); setShowFolderManager(false); }}
             onClose={() => setShowFolderManager(false)}
           />
         )}

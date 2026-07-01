@@ -50,6 +50,10 @@ interface Props {
   onPublished: (res: PublishResult) => void;
   /** Descarta a session (perde edições não publicadas). */
   onDiscardSession: () => void;
+  /** Já estamos no modo Design? Ajusta o texto do botão de abrir ("Abrir" vs "Abrir no Design"). */
+  inDesignMode: boolean;
+  /** Chamado após abrir folder(s) selecionadas com sucesso — parent fecha o modal e vai pro Design. */
+  onOpened: () => void;
   onClose: () => void;
 }
 
@@ -71,6 +75,8 @@ export default function FolderManagerDialog({
   newFolderCount,
   onPublished,
   onDiscardSession,
+  inDesignMode,
+  onOpened,
   onClose,
 }: Props) {
   const [folders, setFolders] = useState<FolderInfo[]>([]);
@@ -175,10 +181,11 @@ export default function FolderManagerDialog({
     try {
       for (const n of targets) await onOpenFolder(n);
       clearSelection();
+      onOpened();
     } catch (e: unknown) {
       setErr((e as Error).message ?? "open failed");
     } finally { setBusy(null); }
-  }, [selected, folders, activeFolders, onOpenFolder, clearSelection]);
+  }, [selected, folders, activeFolders, onOpenFolder, clearSelection, onOpened]);
 
   const closeSelected = useCallback(() => {
     for (const n of selected) if (activeFolders.has(n)) onCloseFolder(n);
@@ -539,7 +546,7 @@ export default function FolderManagerDialog({
               {selected.size} {selected.size === 1 ? "selecionada" : "selecionadas"}
             </span>
             <Sep />
-            {selectedHasClosed && <BarBtn onClick={() => void openSelected()} disabled={!!busy} icon={<FolderOpen size={12} />}>Abrir no Design</BarBtn>}
+            {selectedHasClosed && <BarBtn onClick={() => void openSelected()} disabled={!!busy} icon={<FolderOpen size={12} />}>{inDesignMode ? "Abrir" : "Abrir no Design"}</BarBtn>}
             {selectedHasOpen && <BarBtn onClick={closeSelected} disabled={!!busy} icon={<X size={12} />}>Fechar</BarBtn>}
             <BarBtn onClick={() => void archiveSelected()} disabled={!!busy} icon={<Archive size={12} />}>Arquivar</BarBtn>
             <BarBtn onClick={() => setConfirmDelete({ names: [...selected], typed: "" })} disabled={!!busy} danger icon={<Trash2 size={12} />}>Excluir</BarBtn>

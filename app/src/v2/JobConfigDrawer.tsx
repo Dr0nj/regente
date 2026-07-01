@@ -174,8 +174,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
       <div style={{ flex: 1, overflowY: "auto", padding: "12px", display: "flex", flexDirection: "column", gap: 12 }}>
         {tab === "general" && (
           <>
-            <Field label="ID"><Input value={id} onChange={setId} disabled={!isNew} mono /></Field>
-            <Field label="Label"><Input value={label} onChange={setLabel} /></Field>
+            <Field label="Job Name"><Input value={label} onChange={setLabel} /></Field>
             <Field label="Job Type">
               <select value={jobType} onChange={(e) => setJobType(e.target.value as JobType)} style={selectStyle}>
                 {JOB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
