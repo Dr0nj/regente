@@ -96,17 +96,20 @@ export default function InstanceDetailsDrawer({
       className="v2-grain v2-edge-highlight"
       style={{
         position: "absolute",
-        top: 0,
-        right: 0,
-        bottom: 0,
+        top: 10,
+        right: 10,
+        bottom: 10,
         width,
         background: "var(--v2-bg-surface)",
-        borderLeft: "1px solid var(--v2-border-medium)",
+        border: "1px solid var(--v2-border-medium)",
+        borderRadius: 16,
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04), 0 10px 30px rgba(0,0,0,0.35)",
         display: "flex",
         flexDirection: "column",
         zIndex: 10,
         fontFamily: "var(--v2-font-sans)",
         color: "var(--v2-text-primary)",
+        overflow: "hidden",
       }}
     >
       <ResizeHandle edge="left" onMouseDown={onMouseDown} onReset={reset} />
