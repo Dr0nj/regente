@@ -134,8 +134,10 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
 
   return (
     <aside style={{
-      position: "absolute", top: 0, right: 0, bottom: 0, width,
-      background: "var(--v2-bg-surface)", borderLeft: "1px solid var(--v2-border-medium)",
+      position: "absolute", top: 10, right: 10, bottom: 10, width,
+      background: "var(--v2-bg-surface)",
+      border: "1px solid var(--v2-border-medium)", borderRadius: 16,
+      boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
       display: "flex", flexDirection: "column", fontFamily: "var(--v2-font-sans)", zIndex: 5, overflow: "hidden",
     }}>
       <ResizeHandle edge="left" onMouseDown={onMouseDown} onReset={reset} />
