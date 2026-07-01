@@ -554,8 +554,13 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   podia nascer fora da tela — não era perda de dado, só a câmera não reenquadrava; agora dá `fitView`
   ao salvar job novo); e a **aba Folders da sidebar esquerda lista os jobs de cada folder como linhas
   clicáveis** que navegam/centralizam o canvas no nó.
-- [ ] **Minimap revisto**: repensar o `NavMinimap` p/ refletir a nova grade de jobs soltos + volume alto —
-  navegação clara, densidade legível, viewport-box arrastável, on/off por contexto.
+- [x] **Viewport fluido do canvas + minimap revisto** ✅ (2026-07-01): a causa dos jobs "sumindo" ao
+  clicar Run Daily/Force (e da câmera voltar ao centro sozinha após cada refresh) era o reancoramento
+  do topo disparando a CADA update de dado (status via WS/tick a cada 2s, Run Daily, Force) — agora só
+  reancora ao trocar de modo/folders ou quando os jobs aparecem pela 1ª vez; churn de dado não mexe na
+  câmera. **Force** passa a centralizar no job forçado quando ele materializa (mantendo o zoom). O
+  **minimap** mostra só os jobs em **quadradinhos** (proporção do card) em vez de bolinhas, e desenha o
+  **retângulo do viewport** (área visível) refletindo o alinhamento da tela.
 - [ ] **Cap de 2000 do Monitoring legado**: `LEGACY_CAP=2000` (canvas/ACTIVE JOBS não-virtualizados) é arbitrário
   e mostra "2000/2000" como se fosse o total. Fix: **virtualizar a sidebar ACTIVE JOBS** (mostra o dia inteiro),
   header com o **total real** do `/summary` ("2000 carregados de 1.000.000"), e cap do canvas configurável/maior
