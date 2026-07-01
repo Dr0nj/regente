@@ -544,9 +544,11 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   selecionadas o modal **fecha e cai direto no canvas**; corrigido bug feio de "Nenhuma definition"
   aparecer sobreposto ao 1º job arrastado numa folder vazia (overlay checava `hasDefs` global em vez
   do rascunho não-salvo já visível no canvas); JobConfigDrawer — "Label" virou **"Job Name"** e o
-  campo **ID some da UI** (segue existindo internamente: nome do YAML/chave de dependências); e o
-  painel Edit Job virou **flutuante arredondado** (margens + `borderRadius:16` + boxShadow, igual à
-  sidebar de palette) em vez de colar nas bordas sem raio.
+  campo **ID some da UI** (segue existindo internamente: nome do YAML/chave de dependências); e
+  **os 4 drawers docados foram padronizados no visual flutuante arredondado** (margens +
+  `borderRadius:16` + boxShadow) — o Edit Job (`JobConfigDrawer`) e o detalhe do Monitoring
+  (`InstanceDetailsDrawer`) colavam nas bordas sem raio; agora batem com as sidebars de palette/monitor
+  (`ScaleMonitor` fica de fora por ser view full-screen).
 - [ ] **Minimap revisto**: repensar o `NavMinimap` p/ refletir a nova grade de jobs soltos + volume alto —
   navegação clara, densidade legível, viewport-box arrastável, on/off por contexto.
 - [ ] **Cap de 2000 do Monitoring legado**: `LEGACY_CAP=2000` (canvas/ACTIVE JOBS não-virtualizados) é arbitrário
