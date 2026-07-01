@@ -34,6 +34,11 @@ export function setAuthToken(token: string | null): void {
   if (typeof window === "undefined") return;
   if (token) window.localStorage.setItem(LS_TOKEN_KEY, token);
   else window.localStorage.removeItem(LS_TOKEN_KEY);
+  // Token mudou (login/logout): o WS aberto está autenticado com o token ANTIGO
+  // (ou nem conectou, se o mount rodou antes do login). Reconecta já com o novo —
+  // o "_connected" emitido no onopen faz os stores ressincronizarem (defs+instances),
+  // sem exigir F5 depois de logar.
+  reconnectNow();
 }
 
 // Listeners para eventos de auth (401 / logout)
@@ -193,30 +198,45 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let backoffMs = 1000;
 const MAX_BACKOFF = 15000;
 
+function emit(ev: ServerEvent): void {
+  for (const fn of listeners) {
+    try { fn(ev); } catch (err) { console.error("[regente-ws] listener error", err); }
+  }
+}
+
 function connect(): void {
   if (!SERVER_URL) return;
+  let sock: WebSocket;
   try {
     const url = `${wsUrl("/ws/web")}?token=${encodeURIComponent(getAuthToken())}`;
-    ws = new WebSocket(url);
+    sock = new WebSocket(url);
   } catch (err) {
     console.error("[regente-ws] construct failed", err);
     scheduleReconnect();
     return;
   }
+  ws = sock;
 
-  ws.onopen = () => { backoffMs = 1000; };
-  ws.onmessage = (msg) => {
+  sock.onopen = () => {
+    backoffMs = 1000;
+    // Evento sintético local (não vem do server): sinaliza "canal ao vivo de novo".
+    // Stores usam isso pra ressincronizar estado perdido enquanto o WS esteve fora
+    // (reconexão de rede, login com token novo, server reiniciado).
+    emit({ event: "_connected" });
+  };
+  sock.onmessage = (msg) => {
     try {
-      const data = JSON.parse(String(msg.data)) as ServerEvent;
-      for (const fn of listeners) {
-        try { fn(data); } catch (err) { console.error("[regente-ws] listener error", err); }
-      }
+      emit(JSON.parse(String(msg.data)) as ServerEvent);
     } catch (err) {
       console.error("[regente-ws] bad message", err, msg.data);
     }
   };
-  ws.onclose = () => { ws = null; scheduleReconnect(); };
-  ws.onerror = () => { try { ws?.close(); } catch { /* */ } };
+  // Guard `ws === sock`: um reconnectNow() pode já ter aberto um socket novo;
+  // o onclose do antigo não pode derrubar/agendar por cima do atual.
+  sock.onclose = () => {
+    if (ws === sock) { ws = null; scheduleReconnect(); }
+  };
+  sock.onerror = () => { try { sock.close(); } catch { /* */ } };
 }
 
 function scheduleReconnect(): void {
@@ -226,6 +246,20 @@ function scheduleReconnect(): void {
     connect();
   }, backoffMs);
   backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF);
+}
+
+/** Derruba o socket atual (se houver) e reconecta imediatamente com o token vigente. */
+function reconnectNow(): void {
+  if (!isServerMode() || listeners.size === 0) return;
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  backoffMs = 1000;
+  const old = ws;
+  ws = null;
+  if (old) {
+    old.onclose = null;
+    try { old.close(); } catch { /* */ }
+  }
+  connect();
 }
 
 /** Subscribe a eventos do server. Lazy-connect na primeira subscription. */

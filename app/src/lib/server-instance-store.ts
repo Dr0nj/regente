@@ -143,11 +143,28 @@ async function refresh(date = todayOrderDate()): Promise<void> {
   notify();
 }
 
+// Retry da carga inicial: um 401 pré-login, um hiccup do tunnel ou o server ainda
+// subindo NÃO podem deixar o board vazio até o usuário dar F5. Reagenda até a
+// primeira carga bem-sucedida (para de tentar quando lastFetchDate é de hoje).
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleInitialRetry(): void {
+  if (retryTimer) return;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    if (lastFetchDate === todayOrderDate()) return;
+    refresh().catch((err) => {
+      console.warn("[server-instances] retry load failed", err);
+      scheduleInitialRetry();
+    });
+  }, 5000);
+}
+
 function ensureLoaded(): Promise<void> {
   if (lastFetchDate === todayOrderDate()) return Promise.resolve();
   if (!initialLoad) {
     initialLoad = refresh().catch((err) => {
       console.error("[server-instances] initial load failed", err);
+      scheduleInitialRetry();
     }).finally(() => { initialLoad = null; });
   }
   return initialLoad;
@@ -171,6 +188,11 @@ function ensureWs(): void {
       }
       case "daily.started":
         void refresh();
+        break;
+      // WS (re)conectou: ressincroniza tudo — cobre eventos perdidos offline e o
+      // primeiro load que falhou com 401 antes do login (token novo já vale aqui).
+      case "_connected":
+        void refresh().catch(() => scheduleInitialRetry());
         break;
     }
   });

@@ -571,7 +571,29 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   câmera. **Force** passa a centralizar no job forçado quando ele materializa (mantendo o zoom). O
   **minimap** mostra só os jobs em **quadradinhos** (proporção do card) em vez de bolinhas, e desenha o
   **retângulo do viewport** (área visível) refletindo o alinhamento da tela.
-- [ ] **Cap de 2000 do Monitoring legado**: `LEGACY_CAP=2000` (canvas/ACTIVE JOBS não-virtualizados) é arbitrário
+- [x] **Câmera do canvas consistente com a trava + board nunca mais vazio sem F5** ✅ (2026-07-01):
+  três raízes distintas fechadas de vez. (1) **Pulo pra "posição travada"** ao mexer depois de
+  centralizar/organizar/forçar: o `translateExtent` (trava de pan) é em px de **mundo** e estático,
+  mas a âncora/centralização posicionavam a câmera em px de **tela** — em zoom < 1 (ou centralizando
+  job do topo) a câmera ficava FORA do extent, e o ReactFlow só clampa pan do usuário (movimento
+  programático passa direto) → o 1º arrasto reaplicava a trava = pulo. Agora TODO movimento
+  programático clampa pelo mesmo limite (`clampTy` + `focusOnPoint`; usado por Organizar, clique na
+  sidebar, Force/pendingFocus e minimap), e o extent tem folga de `PAN_SLACK_TOP=176` px de mundo
+  (cobre a âncora de 88px de tela até o minZoom 0.5) — de quebra dá a "puxada pra baixo" maior.
+  Centralizar job do topo agora "centraliza até onde a trava deixa" e mexer depois NÃO salta.
+  (2) **`fitView` do RF v12 é assíncrono** (e o promise nem resolve chamado logo após o mount):
+  `organizeView` não usa mais `fitView` — o fit é **calculado na mão** (bounds das lanes + pane via
+  `useStoreApi`), síncrono e determinístico; o prop `fitView` do `<ReactFlow>` saiu (corria contra a
+  âncora de entrada); o gate de entrada agora espera `paneReady` (dimensões do pane via `useStore`) —
+  cobre o mount pós-login em que os nodes já existiam antes do canvas montar. (3) **Abrir o app e o
+  board vir vazio até F5**: a carga inicial rodava antes do login com token errado (401 silencioso,
+  sem retry) e nada re-buscava depois de logar. Agora `setAuthToken` **reconecta o WS** com o token
+  novo; o `onopen` emite o evento sintético `_connected` que ressincroniza instances (store) e
+  definitions (UI); a carga inicial tem **retry de 5s** até a 1ª carga boa; e o listener de
+  instances não refiltra mais por `todayOrderDate()` do browser (zerava o board no 1º evento WS
+  quando o dia do cliente ≠ dia do server — acesso remoto/virada de dia). Validado ao vivo (90 defs
+  + 102 instances): entrada=Organizar=âncora idêntica (`ty=76`@zoom .5), drag pós-centralização sem
+  snap, Force ×2 com câmera imóvel, login → board aparece sem F5. `LEGACY_CAP=2000` (canvas/ACTIVE JOBS não-virtualizados) é arbitrário
   e mostra "2000/2000" como se fosse o total. Fix: **virtualizar a sidebar ACTIVE JOBS** (mostra o dia inteiro),
   header com o **total real** do `/summary` ("2000 carregados de 1.000.000"), e cap do canvas configurável/maior
   com aviso "abra o ViewPoint". (O ViewPoint já mostra 100k–1M.)

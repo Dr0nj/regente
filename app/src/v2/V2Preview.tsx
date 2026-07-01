@@ -7,6 +7,7 @@ import {
   BackgroundVariant,
   useReactFlow,
   useStore,
+  useStoreApi,
   type Node,
   type Edge,
   type Connection,
@@ -96,6 +97,13 @@ const NODE_H = 72;
 // do topo da área (px de tela). Um pouco mais baixo que a trava antiga (24) — mesma
 // sensação do "Organizar". Vale pro Monitoring e pro Design.
 const TOP_ANCHOR = 88;
+// Folga do translateExtent ACIMA do conteúdo, em px de MUNDO. O extent é estático
+// (não conhece o zoom), então precisa cobrir a âncora de TOP_ANCHOR px de TELA no
+// pior caso: TOP_ANCHOR / minZoom (0.5 do ReactFlow) = 176. Com menos que isso, a
+// âncora/centralização deixava a câmera FORA do extent e o primeiro pan "pulava"
+// pra posição travada. Todo movimento programático clampa por este mesmo limite
+// (clampTy), então câmera e trava nunca divergem.
+const PAN_SLACK_TOP = 176;
 // Design — margem (px de mundo) ao redor da caixa dos jobs para o limite de pan:
 // dá folga pros lados/baixo sem deixar "se perder" no vazio.
 const DESIGN_PAN_MARGIN_X = 360;
@@ -428,8 +436,14 @@ function composeColumns<T extends { id: string; team?: string }>(
 // Minimap próprio: desenha um ponto por job a partir de canvas.nodes (que têm posição
 // garantida), sem depender do MiniMap do ReactFlow (que filtra nós custom sem dimensão
 // medida — motivo de os jobs nunca aparecerem). Clique navega o canvas até o ponto.
-function NavMinimap({ nodes, width, height }: { nodes: Node[]; width: number; height: number }) {
-  const { setCenter } = useReactFlow();
+function NavMinimap({ nodes, width, height, onNavigate }: {
+  nodes: Node[];
+  width: number;
+  height: number;
+  // Navegação clamp-aware do pai (focusOnPoint) — setCenter cru deixaria a câmera
+  // fora do translateExtent ao clicar perto do topo (pulo no próximo pan).
+  onNavigate: (fx: number, fy: number, zoom: number) => void;
+}) {
   // Viewport ao vivo (transform + tamanho do canvas) p/ desenhar o retângulo da
   // área visível — é o que "leva em consideração o alinhamento da tela".
   const tx = useStore((s) => s.transform[0]);
@@ -472,7 +486,7 @@ function NavMinimap({ nodes, width, height }: { nodes: Node[]; width: number; he
     const r = e.currentTarget.getBoundingClientRect();
     const fx = minX + (e.clientX - r.left - offX) / scale;
     const fy = minY + (e.clientY - r.top - offY) / scale;
-    setCenter(fx, fy, { zoom: tzoom, duration: 400 });
+    onNavigate(fx, fy, tzoom);
   };
   return (
     <svg width={width} height={height} onClick={handleClick} style={{ display: "block", cursor: "pointer" }}>
@@ -744,7 +758,8 @@ function V2PreviewInner() {
   // F11.9 — multi-selection no canvas (ReactFlow nativo via Shift+click / drag rect)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const rfInstance = useRef<ReactFlowInstance | null>(null);
-  const { setCenter, fitView, getViewport, setViewport } = useReactFlow();
+  const { getViewport, setViewport } = useReactFlow();
+  const storeApi = useStoreApi();
 
   const nodeTypes = useMemo(() => ({ jobV2: JobNodeV2, laneLabel: LaneLabelNode }), []);
 
@@ -789,8 +804,12 @@ function V2PreviewInner() {
       updateSchedulerDefs([...list]);
     });
     setInstances(getTodayInstances());
+    // SEM refiltro por todayOrderDate aqui: getTodayInstances já resolve o "hoje"
+    // em cada modo (local filtra por data local; server devolve o dia que o SERVER
+    // materializou). Refiltrar pela data local do browser zerava o board no primeiro
+    // evento WS quando o dia do cliente ≠ dia do server (acesso remoto/virada de dia).
     const unsubInst = onInstanceChange(() => {
-      setInstances(getTodayInstances().filter((i) => i.orderDate === todayOrderDate()));
+      setInstances(getTodayInstances());
     });
     startScheduler(2000);
 
@@ -798,6 +817,13 @@ function V2PreviewInner() {
     let unsubWs: (() => void) | null = null;
     if (isServerMode()) {
       unsubWs = onServerEvent((ev) => {
+        // WS (re)conectou — inclui o pós-login (setAuthToken reconecta com o token
+        // novo). Recarrega defs que podem ter falhado no mount (401) ou mudado
+        // enquanto o canal esteve fora. Instances ressincronizam no próprio store.
+        if (ev.event === "_connected") {
+          void reloadDefinitions().then((list) => setDefs([...list]));
+          return;
+        }
         if (ev.event === "definition.changed" || ev.event === "definition.deleted") {
           void reloadDefinitions().then((list) => setDefs([...list]));
           // Loop GitHub→UI fechado: mudança veio do webhook (push/PR merged no
@@ -1032,7 +1058,7 @@ function V2PreviewInner() {
     if (canvas.nodes.length === 0) return undefined;
     const top = Math.min(...canvas.nodes.map((n) => n.position.y));
     if (mode === "monitoring") {
-      return [[-100000, top - TOP_ANCHOR], [100000, 100000]];
+      return [[-100000, top - PAN_SLACK_TOP], [100000, 100000]];
     }
     // Design — caixa [minX,minY]..[maxX,maxY] dos jobs + margem.
     const xs = canvas.nodes.map((n) => n.position.x);
@@ -1042,10 +1068,31 @@ function V2PreviewInner() {
     const minY = Math.min(...ys);
     const maxY = Math.max(...ys) + NODE_H;
     return [
-      [minX - DESIGN_PAN_MARGIN_X, minY - TOP_ANCHOR],
+      [minX - DESIGN_PAN_MARGIN_X, minY - PAN_SLACK_TOP],
       [maxX + DESIGN_PAN_MARGIN_X, maxY + DESIGN_PAN_MARGIN_BOTTOM],
     ];
   }, [mode, canvas.nodes]);
+
+  // clampTy — aplica ao movimento PROGRAMÁTICO (organizar/centralizar/minimap) o
+  // MESMO limite superior do translateExtent. O ReactFlow só clampa pan/zoom do
+  // usuário; setViewport/setCenter passam direto — e uma câmera fora do extent
+  // "pula" pra posição travada no primeiro pan (o bug da centralização).
+  const clampTy = useCallback((ty: number, zoom: number): number => {
+    if (canvas.nodes.length === 0) return ty;
+    const top = Math.min(...canvas.nodes.map((n) => n.position.y));
+    return Math.min(ty, (PAN_SLACK_TOP - top) * zoom);
+  }, [canvas.nodes]);
+
+  // focusOnPoint — centraliza um ponto do mundo na tela SEM sair do extent.
+  // Substitui o setCenter cru: para jobs perto do topo, "centraliza até onde a
+  // trava deixa" (job fica visível no alto) e a câmera permanece numa posição
+  // legal — mexer depois não salta.
+  const focusOnPoint = useCallback((px: number, py: number, zoom: number, duration = 350) => {
+    const { width, height } = storeApi.getState();
+    const tx = width / 2 - px * zoom;
+    const ty = clampTy(height / 2 - py * zoom, zoom);
+    setViewport({ x: tx, y: ty, zoom }, { duration });
+  }, [storeApi, clampTy, setViewport]);
 
   // organizeView — re-enquadra ancorando o TOPO do conteúdo em TOP_ANCHOR (em vez
   // de centralizar verticalmente, que jogaria o conteúdo mais pra baixo). Fonte
@@ -1053,11 +1100,36 @@ function V2PreviewInner() {
   // exatamente no mesmo limite (era o bug: o botão fazia fitView puro = mais baixo).
   const organizeView = useCallback((duration: number) => {
     if (canvas.nodes.length === 0) return;
-    fitView({ padding: 0.12, duration: 0 });
-    const vp = getViewport();
-    const minY = Math.min(...canvas.nodes.map((n) => n.position.y));
-    setViewport({ x: vp.x, y: TOP_ANCHOR - minY * vp.zoom, zoom: vp.zoom }, { duration });
-  }, [canvas.nodes, fitView, getViewport, setViewport]);
+    // Fit calculado NA MÃO (sem fitView): o fitView do RF v12 é assíncrono e o
+    // promise nem resolve quando chamado logo após o mount (nós ainda medindo) —
+    // era a corrida que deixava a entrada ora centralizada (fora do extent → pulo
+    // no 1º pan), ora em 0,0. Bounds vêm das lanes (contêm todos os jobs), o pane
+    // vem do store — tudo síncrono e determinístico.
+    const { width, height } = storeApi.getState();
+    if (!width || !height) return;
+    const L = canvas.lanes;
+    const b = L.length > 0
+      ? {
+          minX: Math.min(...L.map((l) => l.x)),
+          maxX: Math.max(...L.map((l) => l.x + l.width)),
+          minY: Math.min(...L.map((l) => l.y)),
+          maxY: Math.max(...L.map((l) => l.y + l.height)),
+        }
+      : {
+          minX: Math.min(...canvas.nodes.map((n) => n.position.x)),
+          maxX: Math.max(...canvas.nodes.map((n) => n.position.x + NODE_W)),
+          minY: Math.min(...canvas.nodes.map((n) => n.position.y)),
+          maxY: Math.max(...canvas.nodes.map((n) => n.position.y + NODE_H)),
+        };
+    const bw = Math.max(1, b.maxX - b.minX);
+    const bh = Math.max(1, b.maxY - b.minY);
+    const PADDING = 0.12; // fração do pane, como o fitView fazia
+    const zoomFit = Math.min((width * (1 - PADDING * 2)) / bw, (height * (1 - PADDING * 2)) / bh);
+    const zoom = Math.max(0.5, Math.min(1, zoomFit)); // não afasta além do minZoom nem amplia >1
+    const tx = width / 2 - ((b.minX + b.maxX) / 2) * zoom;
+    const ty = clampTy(TOP_ANCHOR - b.minY * zoom, zoom);
+    setViewport({ x: tx, y: ty, zoom }, { duration });
+  }, [canvas.nodes, canvas.lanes, storeApi, setViewport, clampTy]);
 
   // Ref sempre com o organizeView mais recente (fecha sobre os canvas.nodes atuais)
   // sem forçar o effect de entrada a rodar a cada re-layout.
@@ -1077,11 +1149,16 @@ function V2PreviewInner() {
   // (Force/Run Daily/WS) NÃO reancora, então a câmera não "pula" nem volta ao
   // centro sozinha, e os jobs não somem exigindo F5.
   const hasNodes = canvas.nodes.length > 0;
+  // paneReady: o <ReactFlow> pode montar DEPOIS dos nodes existirem (ex.: login —
+  // os dados chegam via _connected enquanto o LoginForm ainda cobre a tela) e o
+  // onInit dispara ANTES do pane ser medido (width/height=0 → organize no-op).
+  // Assinar as dimensões do store reativa o gate assim que o pane ganha tamanho.
+  const paneReady = useStore((s) => s.width > 0 && s.height > 0);
   useEffect(() => {
-    if (!hasNodes) return;
+    if (!hasNodes || !paneReady) return;
     const t = setTimeout(() => organizeViewRef.current(220), 140);
     return () => clearTimeout(t);
-  }, [viewContextKey, hasNodes]);
+  }, [viewContextKey, hasNodes, paneReady]);
 
   const monitoringJobs = useMemo(() => {
     const defsById = new Map(defs.map((d) => [d.id, d] as const));
@@ -1118,8 +1195,8 @@ function V2PreviewInner() {
     if (!node) return;
     const px = node.position.x + NODE_W / 2;
     const py = node.position.y + NODE_H / 2;
-    setCenter(px, py, { zoom: 1.1, duration: 350 });
-  }, [canvas.nodes, setCenter]);
+    focusOnPoint(px, py, 1.1);
+  }, [canvas.nodes, focusOnPoint]);
 
   const handleSidebarSelect = useCallback((instId: string) => {
     setSelectedInstanceId(instId);
@@ -1134,11 +1211,9 @@ function V2PreviewInner() {
     if (!pendingFocusId) return;
     const node = canvas.nodes.find((n) => n.id === `m-${pendingFocusId}`);
     if (!node) return; // ainda não materializou — espera o próximo re-layout
-    setCenter(node.position.x + NODE_W / 2, node.position.y + NODE_H / 2, {
-      zoom: getViewport().zoom, duration: 350,
-    });
+    focusOnPoint(node.position.x + NODE_W / 2, node.position.y + NODE_H / 2, getViewport().zoom);
     setPendingFocusId(null);
-  }, [pendingFocusId, canvas.nodes, setCenter, getViewport]);
+  }, [pendingFocusId, canvas.nodes, focusOnPoint, getViewport]);
 
   /* ── Canvas node click ── */
   const onNodeClick: NodeMouseHandler = useCallback((_, node) => {
@@ -1218,8 +1293,10 @@ function V2PreviewInner() {
     setEditingDef(null);
     // Job NOVO: reenquadra pra garantir que ele (e os já existentes) fiquem visíveis.
     // Sem isso, com zoom/pan o nó recém-criado pode nascer fora da tela e "sumir".
-    if (wasNew) setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 200);
-  }, [editingDef, fitView]);
+    // organizeView (e não fitView cru): fitView centraliza vertical = câmera fora
+    // do extent = pulo no próximo pan.
+    if (wasNew) setTimeout(() => organizeViewRef.current(300), 200);
+  }, [editingDef]);
   const handleDeleteDef = useCallback(async (id: string) => {
     await deleteDefinition(id);
     // também remove referências upstream em outras definitions
@@ -1833,8 +1910,9 @@ function V2PreviewInner() {
           nodes={canvas.nodes}
           edges={canvas.edges}
           nodeTypes={nodeTypes}
-          fitView
-          fitViewOptions={{ padding: 0.25 }}
+          // (sem o prop fitView: o fit inicial embutido do RF aplicava DEPOIS do
+          // organizeView de entrada — corrida — e deixava a câmera descentrada/fora
+          // do extent. A entrada é 100% do organizeView, no gate 0→N.)
           proOptions={{ hideAttribution: true }}
           nodesDraggable={mode === "design"}
           nodesConnectable={mode === "design"}
@@ -1869,7 +1947,7 @@ function V2PreviewInner() {
                 boxShadow: "0 6px 20px rgba(0,0,0,0.4)",
               }}
             >
-              <NavMinimap nodes={canvas.nodes} width={miniSize.w} height={miniSize.h} />
+              <NavMinimap nodes={canvas.nodes} width={miniSize.w} height={miniSize.h} onNavigate={focusOnPoint} />
             </div>
             <div
               title="Redimensionar minimap"
