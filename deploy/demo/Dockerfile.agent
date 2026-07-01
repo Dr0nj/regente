@@ -7,15 +7,15 @@
 # tem volumes do host montados, roda como usuário não-root e com limites de recurso
 # (ver deploy/demo/host-demo.ps1). Ou seja: os comandos dos amigos ficam presos aqui.
 #
-# Build a partir da raiz do repo:
-#   docker build -f deploy/demo/Dockerfile.agent -t regente-agent .
+# Build com a pasta agent/ como CONTEXTO (evita subir app/node_modules e .git):
+#   docker build -f deploy/demo/Dockerfile.agent -t regente-agent agent/
 
 FROM golang:1.25-alpine AS build
 WORKDIR /src
 # Cache de deps: só o go.mod/go.sum do módulo agent primeiro.
-COPY agent/go.mod agent/go.sum ./
+COPY go.mod go.sum ./
 RUN go mod download
-COPY agent/ ./
+COPY . ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/regente-agent .
 
 # Runtime: alpine (tem /bin/sh pros jobs). Usuário não-root sem privilégios.

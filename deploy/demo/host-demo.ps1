@@ -72,7 +72,7 @@ Write-Host "   servidor PID $($srv.Id)  (token de API: $Token)" -ForegroundColor
 
 # --- 4) Agente em container Docker descartável (sandbox — jobs rodam isolados).
 Write-Host "`n[4/5] Buildando + subindo o agente em Docker (sandbox)..." -ForegroundColor Yellow
-docker build -f (Join-Path $repo "deploy\demo\Dockerfile.agent") -t regente-agent:demo $repo
+docker build -f (Join-Path $repo "deploy\demo\Dockerfile.agent") -t regente-agent:demo (Join-Path $repo "agent")
 docker rm -f regente-sandbox 2>$null | Out-Null
 docker run -d --name regente-sandbox --rm `
   --cap-drop ALL --security-opt no-new-privileges `
