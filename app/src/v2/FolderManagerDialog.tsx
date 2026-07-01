@@ -546,7 +546,7 @@ export default function FolderManagerDialog({
               {selected.size} {selected.size === 1 ? "selecionada" : "selecionadas"}
             </span>
             <Sep />
-            {selectedHasClosed && <BarBtn onClick={() => void openSelected()} disabled={!!busy} icon={<FolderOpen size={12} />}>{inDesignMode ? "Abrir" : "Abrir no Design"}</BarBtn>}
+            {selectedHasClosed && <BarBtn primary onClick={() => void openSelected()} disabled={!!busy} icon={<FolderOpen size={14} />}>{inDesignMode ? "Abrir" : "Abrir no Design"}</BarBtn>}
             {selectedHasOpen && <BarBtn onClick={closeSelected} disabled={!!busy} icon={<X size={12} />}>Fechar</BarBtn>}
             <BarBtn onClick={() => void archiveSelected()} disabled={!!busy} icon={<Archive size={12} />}>Arquivar</BarBtn>
             <BarBtn onClick={() => setConfirmDelete({ names: [...selected], typed: "" })} disabled={!!busy} danger icon={<Trash2 size={12} />}>Excluir</BarBtn>
@@ -631,10 +631,32 @@ function Empty({ children }: { children: React.ReactNode }) {
 function Sep() {
   return <div style={{ width: 1, height: 16, background: "var(--v2-border-medium)" }} />;
 }
-function BarBtn({ children, onClick, disabled, danger, muted, icon }: {
-  children: React.ReactNode; onClick: () => void; disabled?: boolean; danger?: boolean; muted?: boolean; icon?: React.ReactNode;
+function BarBtn({ children, onClick, disabled, danger, muted, primary, icon }: {
+  children: React.ReactNode; onClick: () => void; disabled?: boolean; danger?: boolean; muted?: boolean; primary?: boolean; icon?: React.ReactNode;
 }) {
   const [hover, setHover] = useState(false);
+  // Primary = ação principal (Abrir): preenchido no accent, maior e com glow.
+  if (primary) {
+    return (
+      <button
+        onClick={onClick} disabled={disabled}
+        onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 7,
+          background: "var(--v2-accent-brand)", border: "none", borderRadius: 999,
+          cursor: disabled ? "wait" : "pointer",
+          color: "var(--v2-bg-canvas)", opacity: disabled ? 0.5 : 1,
+          fontSize: 12, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase",
+          fontFamily: "var(--v2-font-mono)", padding: "8px 18px",
+          boxShadow: hover
+            ? "0 0 0 1px var(--v2-accent-brand), 0 0 20px var(--v2-accent-glow)"
+            : "0 0 14px var(--v2-accent-glow)",
+          transform: hover ? "translateY(-1px)" : "none",
+          transition: "box-shadow .2s, transform .2s",
+        }}
+      >{icon}{children}</button>
+    );
+  }
   const color = danger ? "#f87171" : muted ? "var(--v2-text-muted)" : hover ? "var(--v2-accent-brand)" : "var(--v2-text-secondary)";
   return (
     <button
