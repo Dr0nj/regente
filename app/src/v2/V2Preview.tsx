@@ -633,7 +633,7 @@ function V2PreviewInner() {
   const [unreadAlerts, setUnreadAlerts] = useState<number>(0);
 
   // === Design sessions (Etapa 3+4+5, 2026-04-26) ===
-  // sessionId === null → mostra DesignFolderPickerModal quando entrar em Design.
+  // sessionId === null → picker de folders (FolderManagerDialog) quando entrar em Design.
   // sessionId !== null → habilita PublishButton, e a UI de Design opera no clone.
   const [designSessionId, setDesignSessionIdState] = useState<string | null>(getDesignSessionId());
   const [designSessionNewFolders, setDesignSessionNewFolders] = useState<string[]>([]);
