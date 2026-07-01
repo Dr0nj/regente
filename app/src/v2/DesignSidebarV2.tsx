@@ -55,7 +55,14 @@ const JOB_TYPES: Array<{
   { id: "STEP_FUNCTION", label: "Step Function", hint: "State machine (fim do roadmap)",       Icon: Workflow, stub: true },
 ];
 
-export default function DesignSidebarV2({ definitions = [] }: { definitions?: JobDefinition[] }) {
+export default function DesignSidebarV2({
+  definitions = [],
+  onJobClick,
+}: {
+  definitions?: JobDefinition[];
+  /** Clique num job da aba Folders → centraliza/navega até o nó no canvas. */
+  onJobClick?: (defId: string) => void;
+}) {
   const [tab, setTab] = useState<Tab>("palette");
   const [gitLine, setGitLine] = useState<string | null>(null);
 
@@ -68,15 +75,21 @@ export default function DesignSidebarV2({ definitions = [] }: { definitions?: Jo
     return () => { cancel = true; };
   }, []);
 
-  // Agrupa definitions por folder (campo `team` na model — vocabulário legado)
+  // Agrupa definitions por folder (campo `team` na model — vocabulário legado),
+  // guardando os jobs de cada folder pra listar clicáveis embaixo do nome.
   const folders = (() => {
-    const m = new Map<string, number>();
+    const m = new Map<string, JobDefinition[]>();
     for (const d of definitions) {
       const t = (d.team ?? "").trim() || "—";
-      m.set(t, (m.get(t) ?? 0) + 1);
+      const arr = m.get(t) ?? [];
+      arr.push(d);
+      m.set(t, arr);
     }
     return [...m.entries()]
-      .map(([name, count]) => ({ name, count }))
+      .map(([name, jobs]) => ({
+        name,
+        jobs: jobs.slice().sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id)),
+      }))
       .sort((a, b) => a.name.localeCompare(b.name));
   })();
 
@@ -268,34 +281,39 @@ export default function DesignSidebarV2({ definitions = [] }: { definitions?: Jo
                 </div>
               )}
               {folders.map((t) => (
-                <div
-                  key={t.name}
-                  style={{
-                    padding: "8px 12px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    borderBottom: "1px solid var(--v2-border-subtle)",
-                  }}
-                >
-                  <Folder size={12} style={{ color: "var(--v2-accent-dark)", flexShrink: 0 }} />
-                  <span
+                <div key={t.name} style={{ borderBottom: "1px solid var(--v2-border-subtle)" }}>
+                  {/* Cabeçalho da folder */}
+                  <div
                     style={{
-                      flex: 1,
-                      fontSize: 12,
-                      color: "var(--v2-text-primary)",
-                      fontFamily: "var(--v2-font-mono)",
-                      letterSpacing: "0.04em",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
+                      padding: "8px 12px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
                     }}
                   >
-                    {t.name}
-                  </span>
-                  <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>
-                    {t.count} job{t.count === 1 ? "" : "s"}
-                  </span>
+                    <Folder size={12} style={{ color: "var(--v2-accent-dark)", flexShrink: 0 }} />
+                    <span
+                      style={{
+                        flex: 1,
+                        fontSize: 12,
+                        color: "var(--v2-text-primary)",
+                        fontFamily: "var(--v2-font-mono)",
+                        letterSpacing: "0.04em",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {t.name}
+                    </span>
+                    <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>
+                      {t.jobs.length} job{t.jobs.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  {/* Jobs clicáveis — clique navega até o nó no canvas */}
+                  {t.jobs.map((j) => (
+                    <JobRow key={j.id} label={j.label || j.id} onClick={() => onJobClick?.(j.id)} />
+                  ))}
                 </div>
               ))}
             </div>
@@ -331,5 +349,45 @@ export default function DesignSidebarV2({ definitions = [] }: { definitions?: Jo
         )}
       </div>
     </aside>
+  );
+}
+
+/* Linha de job clicável na aba Folders — hover destaca; clique navega até o nó. */
+function JobRow({ label, onClick }: { label: string; onClick: () => void }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      title={`Ir para "${label}" no canvas`}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "5px 12px 5px 30px",
+        background: hover ? "var(--v2-bg-elevated)" : "transparent",
+        border: "none",
+        borderLeft: `2px solid ${hover ? "var(--v2-accent-brand)" : "transparent"}`,
+        cursor: "pointer",
+        textAlign: "left",
+      }}
+    >
+      <FileCode size={11} style={{ color: hover ? "var(--v2-accent-brand)" : "var(--v2-text-muted)", flexShrink: 0 }} />
+      <span
+        style={{
+          flex: 1,
+          fontSize: 11,
+          color: hover ? "var(--v2-text-primary)" : "var(--v2-text-secondary)",
+          fontFamily: "var(--v2-font-mono)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </span>
+    </button>
   );
 }

@@ -1134,9 +1134,13 @@ function V2PreviewInner() {
 
   /* ── Save/Delete definition ── */
   const handleSaveDef = useCallback(async (def: JobDefinition) => {
+    const wasNew = editingDef?.isNew ?? false;
     await saveDefinition(def);
     setEditingDef(null);
-  }, []);
+    // Job NOVO: reenquadra pra garantir que ele (e os já existentes) fiquem visíveis.
+    // Sem isso, com zoom/pan o nó recém-criado pode nascer fora da tela e "sumir".
+    if (wasNew) setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 200);
+  }, [editingDef, fitView]);
   const handleDeleteDef = useCallback(async (id: string) => {
     await deleteDefinition(id);
     // também remove referências upstream em outras definitions
@@ -1843,7 +1847,12 @@ function V2PreviewInner() {
         ) : (
           // Fase 1: palette de drag só aparece com folder ativa.
           // Sem folder, não há destino válido para drop → esconde para evitar UX quebrada.
-          hasActiveFolders ? <DesignSidebarV2 definitions={defs} /> : null
+          hasActiveFolders ? (
+            <DesignSidebarV2
+              definitions={defs}
+              onJobClick={(id) => focusNode(`d-${id}`)}
+            />
+          ) : null
         )}
 
         {mode === "monitoring" && selectedInstance && (
