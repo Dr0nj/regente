@@ -45,6 +45,18 @@ Na raiz do repo, no PowerShell:
 .\deploy\demo\host-demo.ps1
 ```
 
+Se aparecer **"a execução de scripts foi desabilitada neste sistema"** (política padrão do
+Windows), rode de uma destas formas — **nenhuma precisa de admin**:
+
+```powershell
+# opção A — só desta vez, sem mudar nada no sistema:
+powershell -ExecutionPolicy Bypass -File .\deploy\demo\host-demo.ps1
+
+# opção B — libera scripts locais pro seu usuário de vez (roda 1x e pronto):
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+.\deploy\demo\host-demo.ps1
+```
+
 O script: builda o front (`@origin`), builda e sobe o server em `:9091` servindo tudo
 numa origem só, builda e sobe o agente em Docker, e abre o Cloudflare Tunnel. **Copie o
 link `https://<...>.trycloudflare.com`** que aparecer e mande pros amigos.
