@@ -539,16 +539,18 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   viram uma **grade** (N colunas, default 10; 11º quebra pra linha 2; ao passar de N linhas alarga colunas em vez
   de crescer pra baixo). DEPENDENTES seguem o fluxo top-down (dagre). Por folder. `columns`/`máx. linhas`
   configuráveis em **Settings › Geral › Visualização**; botão **Organizar** (re-enquadra). Vale Monitoring + Design.
-- [x] **4 fixes de Folders/Design (UX)** ✅ (2026-07-01): botão bulk da tela Folders mostra **"Abrir"**
+- [x] **5 fixes de Folders/Design (UX)** ✅ (2026-07-01): botão bulk da tela Folders mostra **"Abrir"**
   (não "Abrir no Design", redundante já que FOLDERS só existe em modo Design) e ao abrir folder(s)
   selecionadas o modal **fecha e cai direto no canvas**; corrigido bug feio de "Nenhuma definition"
   aparecer sobreposto ao 1º job arrastado numa folder vazia (overlay checava `hasDefs` global em vez
   do rascunho não-salvo já visível no canvas); JobConfigDrawer — "Label" virou **"Job Name"** e o
-  campo **ID some da UI** (segue existindo internamente: nome do YAML/chave de dependências); e
+  campo **ID some da UI** (segue existindo internamente: nome do YAML/chave de dependências);
   **os 4 drawers docados foram padronizados no visual flutuante arredondado** (margens +
   `borderRadius:16` + boxShadow) — o Edit Job (`JobConfigDrawer`) e o detalhe do Monitoring
   (`InstanceDetailsDrawer`) colavam nas bordas sem raio; agora batem com as sidebars de palette/monitor
-  (`ScaleMonitor` fica de fora por ser view full-screen).
+  (`ScaleMonitor` fica de fora por ser view full-screen); e o botão **"Abrir"** da action bar virou
+  **primary em destaque** (maior, preenchido no accent, pílula com glow) por ser a ação principal
+  quando há folder selecionada.
 - [ ] **Minimap revisto**: repensar o `NavMinimap` p/ refletir a nova grade de jobs soltos + volume alto —
   navegação clara, densidade legível, viewport-box arrastável, on/off por contexto.
 - [ ] **Cap de 2000 do Monitoring legado**: `LEGACY_CAP=2000` (canvas/ACTIVE JOBS não-virtualizados) é arbitrário
