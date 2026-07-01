@@ -20,7 +20,7 @@ Resiliência operacional    █████████████████�
 Agent-native (MCP)         █████████████████░░░  85%  🟢 servidor MCP ✅ (6 tools read + 2 write gated) · falta NL-query + writes ricos
 Diferenciais               ██████████░░░░░░░░░░  50%  🟡 Explain·Diff·Blast·Dry Run ✅ · falta Job Neighborhood · RCA · Event log
 Aprofundamento Control-M   ████████░░░░░░░░░░░░  35%  🟡 daily lifecycle ✅ · Actions/On-Do ✅ (motor + UI) · falta variáveis · FILE_WATCH · calendários
-Refinamento UI             ████████████████░░░░  82%  🟡 grade de jobs soltos ✅ · aba de agentes+ping ✅ · seletor de folder (FOLDERS) ✅ + fix snapshot do monitoring ✅ · fix botão "Abrir"+auto-nav ✅ · fix bug "Nenhuma definition" no drag ✅ · Job Name/ID no drawer ✅ · painel Edit Job flutuante arredondado ✅ · minimap revisto (jobs quadrados + viewport rect) ✅ · viewport fluido (sem sumir/pular no Run Daily/Force/refresh) ✅ · falta LEGACY_CAP virtualizado
+Refinamento UI             ████████████████░░░░  82%  🟡 grade de jobs soltos ✅ · aba de agentes+ping ✅ · seletor de folder (FOLDERS) ✅ + fix snapshot do monitoring ✅ · fix botão "Abrir"+auto-nav ✅ · fix bug "Nenhuma definition" no drag ✅ · Job Name/ID no drawer ✅ · painel Edit Job flutuante arredondado ✅ · minimap revisto (jobs quadrados + viewport rect, escala estável top-left) ✅ · viewport fluido (sem sumir/pular no Run Daily/Force/refresh) ✅ · limpeza de ruído (NEXT TICK fake + data duplicada) ✅ · falta LEGACY_CAP virtualizado
 Fase Z — divulgação        ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ case study + post LinkedIn (agora com a história agent-native)
 ```
 
