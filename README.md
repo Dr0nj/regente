@@ -539,12 +539,14 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   viram uma **grade** (N colunas, default 10; 11º quebra pra linha 2; ao passar de N linhas alarga colunas em vez
   de crescer pra baixo). DEPENDENTES seguem o fluxo top-down (dagre). Por folder. `columns`/`máx. linhas`
   configuráveis em **Settings › Geral › Visualização**; botão **Organizar** (re-enquadra). Vale Monitoring + Design.
-- [x] **3 fixes de Folders/Design (UX)** ✅ (2026-07-01): botão bulk da tela Folders mostra **"Abrir"**
+- [x] **4 fixes de Folders/Design (UX)** ✅ (2026-07-01): botão bulk da tela Folders mostra **"Abrir"**
   (não "Abrir no Design", redundante já que FOLDERS só existe em modo Design) e ao abrir folder(s)
   selecionadas o modal **fecha e cai direto no canvas**; corrigido bug feio de "Nenhuma definition"
   aparecer sobreposto ao 1º job arrastado numa folder vazia (overlay checava `hasDefs` global em vez
   do rascunho não-salvo já visível no canvas); JobConfigDrawer — "Label" virou **"Job Name"** e o
-  campo **ID some da UI** (segue existindo internamente: nome do YAML/chave de dependências).
+  campo **ID some da UI** (segue existindo internamente: nome do YAML/chave de dependências); e o
+  painel Edit Job virou **flutuante arredondado** (margens + `borderRadius:16` + boxShadow, igual à
+  sidebar de palette) em vez de colar nas bordas sem raio.
 - [ ] **Minimap revisto**: repensar o `NavMinimap` p/ refletir a nova grade de jobs soltos + volume alto —
   navegação clara, densidade legível, viewport-box arrastável, on/off por contexto.
 - [ ] **Cap de 2000 do Monitoring legado**: `LEGACY_CAP=2000` (canvas/ACTIVE JOBS não-virtualizados) é arbitrário
