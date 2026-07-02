@@ -82,10 +82,12 @@ import {
   instanceToMonitoring,
   buildMonitoringCanvas,
   buildDesignCanvas,
+  type AgentAvailability,
   type Canvas,
   type LayoutConfig,
   type Mode,
 } from "./canvas-layout";
+import { listAgents } from "@/lib/agents-api";
 import NavMinimap from "./NavMinimap";
 import { useCanvasCamera } from "./hooks/useCanvasCamera";
 import { useOrchestratorData } from "./hooks/useOrchestratorData";
@@ -209,6 +211,25 @@ function V2PreviewInner() {
 
   const nodeTypes = useMemo(() => ({ jobV2: JobNodeV2, laneLabel: LaneLabelNode }), []);
 
+  // Disponibilidade de agentes p/ o card WAIT AGENT (azul claro). null = ainda
+  // não carregou (canvas não acusa nada). Atualiza em agent.changed/_connected —
+  // NÃO por polling: sem agente, nada muda até um agente (re)conectar.
+  const [agentAvail, setAgentAvail] = useState<AgentAvailability | null>(null);
+  const refreshAgents = useCallback(() => {
+    if (!isServerMode()) return;
+    void listAgents().then((list) => {
+      const ids = new Set<string>();
+      const caps = new Set<string>();
+      for (const a of list) {
+        if (!a.online) continue;
+        ids.add(a.id);
+        for (const c of a.capabilities ?? []) caps.add(c.trim().toUpperCase());
+      }
+      setAgentAvail({ ids, caps });
+    }).catch(() => {});
+  }, []);
+  useEffect(() => { refreshAgents(); }, [refreshAgents]);
+
   // Server mode: o "daily HH:MM" do rodapé vem do SERVER (daily_runs via
   // /api/daily/status), não de localStorage — quem roda a daily é o server, no
   // relógio DELE (meia-noite ou settings.daily_at). Local mode: no-op (null).
@@ -235,6 +256,10 @@ function V2PreviewInner() {
       if (ev.event === "daily.started" || ev.event === "settings.changed") {
         refreshDailyStatus();
       }
+      // Agente conectou/desconectou: re-deriva os cards WAIT AGENT.
+      if (ev.event === "agent.changed") {
+        refreshAgents();
+      }
       // Phase 8 — alerta disparado no server: toast + atualiza o badge.
       if (ev.event === "alert.fired") {
         const p = (ev.payload ?? {}) as { ruleName?: string; message?: string; severity?: string };
@@ -253,6 +278,7 @@ function V2PreviewInner() {
       if (ev.event === "_connected") {
         void fetchUnacknowledgedCount().then(setUnreadAlerts);
         refreshDailyStatus();
+        refreshAgents();
         if (SERVER_URL) {
           fetch(`${SERVER_URL}/api/env`)
             .then((r) => (r.ok ? r.json() : null))
@@ -264,7 +290,7 @@ function V2PreviewInner() {
         }
       }
     });
-  }, [refreshDailyStatus]);
+  }, [refreshDailyStatus, refreshAgents]);
 
   // Alerting (Phase 8) — surface fired alerts as toasts and keep the topbar
   // badge in sync. In local mode the notifier is invoked from instance-store;
@@ -367,8 +393,8 @@ function V2PreviewInner() {
   }, [instances, defs, effectiveFolders]);
 
   const canvas = useMemo<Canvas>(
-    () => (mode === "monitoring" ? buildMonitoringCanvas(filteredInstances, filteredDefs, layoutCfg) : buildDesignCanvas(designDefsWithDraft, layoutCfg)),
-    [mode, filteredInstances, filteredDefs, designDefsWithDraft, layoutCfg],
+    () => (mode === "monitoring" ? buildMonitoringCanvas(filteredInstances, filteredDefs, layoutCfg, agentAvail) : buildDesignCanvas(designDefsWithDraft, layoutCfg)),
+    [mode, filteredInstances, filteredDefs, designDefsWithDraft, layoutCfg, agentAvail],
   );
 
   // Abrir/criar folder no Design — absorvido do antigo FolderOpener pro botão

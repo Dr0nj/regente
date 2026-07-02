@@ -643,6 +643,17 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   arquivo; preview: 1/ago sáb → next=03/ago, prev=31/jul). O roadmap ganhou a seção **Backlog
   Enterprise E1–E6** com specs implementáveis (timezone da daily, auditoria com retenção/export, RBAC
   por ação operacional, fila assíncrona de eventos, relatório/SLO da daily, importador Control-M).
+- [x] **WAIT AGENT (azul claro) + zero churn sem agente** ✅ (2026-07-02): bug report do usuário — sem
+  agente conectado (lab do INICIAR-REGENTE.bat), o tick reivindicava cada job elegível e revertia a
+  cada 2s: log spam, evento spam e a UI "piscando"/sumindo jobs. Agora a disponibilidade de agente é um
+  **gate** (`WAIT_AGENT` no gateInstance, fonte única do Explain): sem agente com a capability (ou com
+  o agente pinado offline), o job NEM é reivindicado — fica WAITING quieto, card **azul claro "WAIT
+  AGENT"** no canvas (derivado de `GET /api/agents` + evento `agent.changed`). Quando o agente conecta,
+  o ws handler faz broadcast + **cutuca um Tick** → os jobs presos disparam NA HORA (não espera o
+  próximo ciclo). `HasAgent` novo no Bus enxerga presença REMOTA no NATS (checar só o hub local
+  starvaria dispatch multi-nó). Validado ao vivo: sem agente = statuses estáveis 6s+ (zero flicker),
+  zero eventos `started`, Explain WAIT_AGENT, card rgb(56,189,248); agente conectou → var-echo OK /
+  nc-pai FAIL / fw-espera RUNNING em <1.5s. Teste `TestTick_NoAgentNoClaim`.
 - [ ] **Cap de 2000 do Monitoring legado**: `LEGACY_CAP=2000` (canvas/ACTIVE JOBS não-virtualizados) é arbitrário
   e mostra "2000/2000" como se fosse o total. Fix: **virtualizar a sidebar ACTIVE JOBS** (mostra o dia inteiro),
   header com o **total real** do `/summary` ("2000 carregados de 1.000.000"), e cap do canvas configurável/maior

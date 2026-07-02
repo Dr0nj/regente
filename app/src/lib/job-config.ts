@@ -153,4 +153,10 @@ export interface JobNodeData {
    * (que fica para espera de horário/janela).
    */
   waitEvent?: boolean;
+  /**
+   * WAITING porque NÃO há agente online com a capability (ou o agente pinado
+   * está offline). Card em AZUL CLARO "WAIT AGENT"; quando o agente conectar,
+   * o server dispara o job na hora (tick nudge no ws handler).
+   */
+  waitAgent?: boolean;
 }

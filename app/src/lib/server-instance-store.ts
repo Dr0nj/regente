@@ -271,7 +271,7 @@ export async function fetchInstanceEvents(id: string): Promise<InstanceEvent[]> 
 /* ── Explain ("por que esse job não rodou?") ── */
 
 export interface ExplainBlocker {
-  kind: "WAIT_WINDOW" | "WAIT_DEP" | "BLOCKED_DEP" | "WAIT_CONDITION" | "WAIT_RESOURCE";
+  kind: "WAIT_WINDOW" | "WAIT_DEP" | "BLOCKED_DEP" | "WAIT_CONDITION" | "WAIT_AGENT" | "WAIT_RESOURCE";
   detail: string;
   upstream?: string;
   upstreamStatus?: string;

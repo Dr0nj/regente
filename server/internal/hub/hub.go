@@ -128,6 +128,17 @@ func (h *Hub) GetAgent(id string) *Client {
 	return h.agents[id]
 }
 
+// HasAgent — existe agente capaz de receber este dispatch AGORA? (id pinado,
+// ou qualquer um com a capability). Usado pelo scheduler ANTES do claim: job
+// sem agente fica parado em WAITING (WAIT AGENT), sem o churn RUNNING↔WAITING
+// de reivindicar e reverter a cada tick.
+func (h *Hub) HasAgent(agentID, capability string) bool {
+	if agentID != "" {
+		return h.GetAgent(agentID) != nil
+	}
+	return h.PickAgent(capability) != nil
+}
+
 // DispatchOutcome — resultado de uma tentativa de entrega de dispatch a um agent.
 type DispatchOutcome int
 

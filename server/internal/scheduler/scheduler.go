@@ -84,6 +84,10 @@ type Bus interface {
 	// Dispatch entrega o payload a um agent — local (hub) ou, no bus distribuído
 	// (R5/NATS), roteado ao nó dono do agent. Retorna o resultado e o id escolhido.
 	Dispatch(agentID, capability string, raw []byte) (hub.DispatchOutcome, string)
+	// HasAgent — há agente (local ou remoto) capaz de receber este dispatch agora?
+	// O tick usa ANTES do claim: sem agente, a instance fica WAITING (WAIT AGENT)
+	// sem churn de estado — nada de RUNNING↔WAITING piscando a cada tick.
+	HasAgent(agentID, capability string) bool
 }
 
 // Leader — G1 HA. Só o nó líder roda a daily automática e o tick de dispatch;
@@ -832,8 +836,13 @@ func (s *Scheduler) tickOnce() {
 		if !ok {
 			continue
 		}
-		// Forced bypassa deps (Control-M parity).
+		// Forced bypassa deps (Control-M parity) — mas NÃO o agente: sem agente
+		// disponível, nem o forced é reivindicado (senão pisca RUNNING↔WAITING).
 		if r.Forced {
+			if !s.agentAvailable(def) {
+				s.maybeEmitNoAgent(r.ID, def.JobType)
+				continue
+			}
 			s.startInstance(r.ID, def)
 			continue
 		}
@@ -850,6 +859,11 @@ func (s *Scheduler) tickOnce() {
 		// padrão de operação. Quem nunca ficar elegível morre na virada da daily
 		// (WAITING-nunca-rodou não carrega), como no Control-M.
 		if blockers := s.gateInstance(r, def, instByDef, now, true); len(blockers) > 0 {
+			// Sem agente: registra 1 evento com throttle (5min) pra visibilidade
+			// no histórico — o estado NÃO muda (segue WAITING, sem broadcast).
+			if blockers[0].Kind == GateAgent {
+				s.maybeEmitNoAgent(r.ID, def.JobType)
+			}
 			continue
 		}
 		// Gates read-only passaram → reserva ATÔMICA do recurso (a única etapa com
@@ -873,6 +887,15 @@ func (s *Scheduler) tickOnce() {
 
 	// Actions/On-Do — dimensão "runtime": shouts por duração nas instances RUNNING.
 	s.evaluateRuntimeActions(now)
+}
+
+// agentAvailable — há agente AGORA pra este job? SSH é agentless (roda no
+// próprio server) e DemoMode dispensa (mock-finish). Checado ANTES do claim.
+func (s *Scheduler) agentAvailable(def domain.JobDefinition) bool {
+	if s.DemoMode || strings.EqualFold(def.JobType, "SSH") {
+		return true
+	}
+	return s.hub.HasAgent(def.AgentID, def.JobType)
 }
 
 // maybeEmitNoAgent — registra o evento "no agent online" com throttle de 5 min

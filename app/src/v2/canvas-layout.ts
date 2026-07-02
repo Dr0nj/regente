@@ -362,7 +362,23 @@ function composeColumns<T extends { id: string; team?: string }>(
   return { nodes, lanes };
 }
 
-export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT): Canvas {
+/** Disponibilidade de agentes (derivada de GET /api/agents) p/ o card WAIT AGENT. */
+export interface AgentAvailability {
+  ids: Set<string>;   // ids de agentes ONLINE
+  caps: Set<string>;  // capabilities anunciadas pelos agentes online (UPPERCASE)
+}
+
+// Job tem agente disponível? Pinado (actionConfig._agentId) exige o id online;
+// senão basta alguém anunciar a capability do jobType. SSH é agentless.
+function hasAgentFor(def: JobDefinition | undefined, jobType: string, agents: AgentAvailability): boolean {
+  const jt = (jobType || "").toUpperCase();
+  if (jt === "SSH" || jt === "") return true;
+  const pinned = (def?.actionConfig as Record<string, unknown> | undefined)?._agentId;
+  if (typeof pinned === "string" && pinned) return agents.ids.has(pinned);
+  return agents.caps.has(jt);
+}
+
+export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT, agents?: AgentAvailability | null): Canvas {
   // Edges a partir do upstream da definition, resolvidas para instances do mesmo dia.
   const defsById = new Map(defs.map((d) => [d.id, d] as const));
 
@@ -440,6 +456,11 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
         mode: "monitoring",
         forced: inst.manual,
         waitEvent: waitingOnDeps.has(inst.id),
+        // WAIT AGENT (azul claro): WAITING sem bloqueio de dependência e sem
+        // agente online capaz de executar. Só deriva quando a lista de agentes
+        // já carregou (agents != null) — sem info, não acusa nada.
+        waitAgent: !!agents && inst.status === "WAITING" && !waitingOnDeps.has(inst.id) &&
+          !hasAgentFor(defsById.get(inst.definitionId), inst.jobType, agents),
       } as JobNodeData,
       draggable: false,
       zIndex: 10,

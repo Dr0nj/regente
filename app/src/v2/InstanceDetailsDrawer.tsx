@@ -414,6 +414,7 @@ const BLOCKER_COLOR: Record<ExplainBlocker["kind"], string> = {
   WAIT_DEP:      "var(--v2-status-waiting)",
   BLOCKED_DEP:   "var(--v2-status-failed)",
   WAIT_CONDITION:"var(--v2-status-waiting)",
+  WAIT_AGENT:    "#38bdf8",
   WAIT_RESOURCE: "var(--v2-accent-brand)",
 };
 const BLOCKER_LABEL: Record<ExplainBlocker["kind"], string> = {
@@ -421,6 +422,7 @@ const BLOCKER_LABEL: Record<ExplainBlocker["kind"], string> = {
   WAIT_DEP:      "DEPENDÊNCIA",
   BLOCKED_DEP:   "BLOQUEADO",
   WAIT_CONDITION:"CONDITION",
+  WAIT_AGENT:    "AGENTE",
   WAIT_RESOURCE: "RECURSO",
 };
 

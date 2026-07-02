@@ -32,8 +32,12 @@ const STATUS_LABEL: Record<JobStatus, string> = {
   INACTIVE: "IDLE",
 };
 
+// WAIT AGENT — azul claro (sky): WAITING sem agente online pra executar.
+const WAIT_AGENT_COLOR = "#38bdf8";
+
 function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
-  const statusColor = STATUS_COLOR[data.status];
+  const waitAgent = data.status === "WAITING" && !!data.waitAgent;
+  const statusColor = waitAgent ? WAIT_AGENT_COLOR : STATUS_COLOR[data.status];
   const isRunning = data.status === "RUNNING";
 
   return (
@@ -129,9 +133,11 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
                   animation: isRunning ? "v2-dot-pulse 1.2s ease-in-out infinite" : "none",
                 }}
               />
-              {/* Control-M parity: WAITING preso por dependência (pai não rodou /
-                  rodando / falhou) lê "WAIT EVENT"; "WAIT" fica pra espera de horário. */}
-              {data.status === "WAITING" && data.waitEvent ? "WAIT EVENT" : STATUS_LABEL[data.status]}
+              {/* Control-M parity: WAITING preso por dependência lê "WAIT EVENT";
+                  sem agente online lê "WAIT AGENT" (azul claro); "WAIT" = horário. */}
+              {waitAgent ? "WAIT AGENT"
+                : data.status === "WAITING" && data.waitEvent ? "WAIT EVENT"
+                : STATUS_LABEL[data.status]}
             </span>
             {data.lastRun && (
               <>

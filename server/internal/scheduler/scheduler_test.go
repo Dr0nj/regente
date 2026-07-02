@@ -72,6 +72,7 @@ type panicBus struct{}
 func (panicBus) BroadcastWeb(string, interface{}) {}
 func (panicBus) PickAgent(string) *hub.Client     { return nil }
 func (panicBus) GetAgent(string) *hub.Client      { return nil }
+func (panicBus) HasAgent(string, string) bool     { return true }
 func (panicBus) Dispatch(string, string, []byte) (hub.DispatchOutcome, string) {
 	panic("boom no Dispatch")
 }
@@ -170,5 +171,51 @@ func TestDailyAt_FromSettings(t *testing.T) {
 	}
 	if got := s.DailyAt(); got != "00:00" {
 		t.Fatalf("valor inválido deve cair no default 00:00, veio %s", got)
+	}
+}
+
+// Sem agente e sem demo-mode: o tick NÃO reivindica (nada de RUNNING↔WAITING
+// piscando a cada tick, sem spam de evento) — o job fica WAITING ("WAIT AGENT")
+// e o Explain diz o porquê. Forced idem.
+func TestTick_NoAgentNoClaim(t *testing.T) {
+	s := newTestScheduler(t)
+	s.DemoMode = false
+	today := time.Now().Format("2006-01-02")
+	def := domain.JobDefinition{ID: "na", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true}}
+	seedInst(t, s, "na-1", today, string(domain.StatusWaiting), def)
+	forced := domain.JobDefinition{ID: "naf", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true}}
+	seedInst(t, s, "naf-1", today, string(domain.StatusWaiting), forced)
+	if _, err := s.db.Exec(`UPDATE instances SET forced=1 WHERE id='naf-1'`); err != nil {
+		t.Fatalf("mark forced: %v", err)
+	}
+
+	for i := 0; i < 4; i++ {
+		s.Tick()
+	}
+	if _, st, _, _ := carriedState(t, s, "na-1"); st != string(domain.StatusWaiting) {
+		t.Fatalf("sem agente o job deve permanecer WAITING, está %s", st)
+	}
+	if _, st, _, _ := carriedState(t, s, "naf-1"); st != string(domain.StatusWaiting) {
+		t.Fatalf("forced sem agente também deve permanecer WAITING, está %s", st)
+	}
+	// Nenhum claim = nenhum evento "started".
+	var started int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM instance_events WHERE instance_id IN ('na-1','naf-1') AND kind='started'`).Scan(&started)
+	if started != 0 {
+		t.Fatalf("claim indevido sem agente: %d eventos started", started)
+	}
+	// Throttle: no máximo 1 evento de no-agent por instance apesar de 4 ticks.
+	var evs int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM instance_events WHERE instance_id='na-1'`).Scan(&evs)
+	if evs > 1 {
+		t.Fatalf("spam de eventos sem agente: %d (esperado <=1)", evs)
+	}
+	// Explain expõe o motivo (WAIT_AGENT) — fonte única.
+	ex, err := s.Explain("na-1")
+	if err != nil {
+		t.Fatalf("explain: %v", err)
+	}
+	if hasKind(ex.Blockers, GateAgent) == nil {
+		t.Fatalf("Explain deveria apontar WAIT_AGENT, veio %+v", ex.Blockers)
 	}
 }

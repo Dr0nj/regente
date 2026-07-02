@@ -121,6 +121,16 @@ func (d *Distributed) BroadcastWeb(event string, payload interface{}) {
 func (d *Distributed) PickAgent(capability string) *hub.Client { return d.local.PickAgent(capability) }
 func (d *Distributed) GetAgent(id string) *hub.Client          { return d.local.GetAgent(id) }
 
+// HasAgent — disponibilidade local OU remota (presença R5 com TTL). O guard do
+// scheduler usa isto; checar só o hub local starvaria dispatch roteado via NATS.
+func (d *Distributed) HasAgent(agentID, capability string) bool {
+	if d.local.HasAgent(agentID, capability) {
+		return true
+	}
+	node, _ := d.findRemote(agentID, capability)
+	return node != ""
+}
+
 func (d *Distributed) Dispatch(agentID, capability string, raw []byte) (hub.DispatchOutcome, string) {
 	// 1. Agent local? mantém a semântica exata do hub (Sent/QueueFull).
 	if out, id := d.local.Dispatch(agentID, capability, raw); out != hub.DispatchNoAgent {

@@ -23,6 +23,7 @@ const (
 	GateDep        GateKind = "WAIT_DEP"       // upstream ainda não satisfez a condição
 	GateDepBlocked GateKind = "BLOCKED_DEP"    // upstream tornou a dep impossível → CANCELLED
 	GateCondition  GateKind = "WAIT_CONDITION" // falta uma condition IN (F16)
+	GateAgent      GateKind = "WAIT_AGENT"     // nenhum agente online com a capability (ou o pinado offline)
 	GateResource   GateKind = "WAIT_RESOURCE"  // recurso/quota indisponível (F15)
 )
 
@@ -146,7 +147,22 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, instByDef 
 		}
 	}
 
-	// 4) Recursos / quotas (F15) — read-only.
+	// 4) Agente disponível — SEM agente com a capability (ou com o agente pinado
+	//    offline), o job NÃO é reivindicado: fica WAITING ("WAIT AGENT" na UI),
+	//    sem churn de estado (nada de RUNNING↔WAITING piscando a cada tick, nem
+	//    spam de log/evento). Quando um agente conecta, o ws handler cutuca um
+	//    Tick e o job dispara NA HORA. SSH é agentless; DemoMode dispensa (mock).
+	if !s.agentAvailable(def) {
+		detail := "nenhum agente online com a capability " + def.JobType
+		if def.AgentID != "" {
+			detail = "agente '" + def.AgentID + "' offline"
+		}
+		if add(Blocker{Kind: GateAgent, Detail: detail}) {
+			return out
+		}
+	}
+
+	// 5) Recursos / quotas (F15) — read-only.
 	if len(def.Resources) > 0 && s.resources != nil {
 		for _, sf := range s.resources.Shortfalls(def.Resources) {
 			if add(Blocker{
