@@ -289,6 +289,8 @@ func executeJob(jobType string, params map[string]interface{}, timeoutSec int, e
 		return runScript(params, timeoutSec, emit)
 	case "HTTP", "REST":
 		return runREST(params, timeoutSec)
+	case "FILE_WATCH", "FILEWATCH":
+		return runFileWatch(params, timeoutSec, emit)
 	case "WASM":
 		return runWASM(params, timeoutSec, emit)
 	case "K8S_JOB", "K8S":

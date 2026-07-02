@@ -11,6 +11,7 @@ import {
   Terminal,
   FileCode,
   Network,
+  FileSearch,
 } from "lucide-react";
 
 /* ──────────────────────────────────────────────────────────────
@@ -27,6 +28,7 @@ export type JobType =
   | "SCRIPT"
   | "SSH"
   | "HTTP"
+  | "FILE_WATCH"
   | "LAMBDA"
   | "BATCH"
   | "GLUE"
@@ -80,6 +82,7 @@ export const JOB_TYPES: Record<JobType, JobTypeConfig> = {
   PARALLEL:      make("Parallel",      "Execução concorrente",    Layers),
   WAIT:          make("Wait",          "Delay / timer",           Clock),
   HTTP:          make("HTTP",          "Chamada REST",            Globe),
+  FILE_WATCH:    make("File Watch",    "Espera arquivo chegar no agente", FileSearch),
 };
 
 /* ── Status ──────────────────────────────────────────────── */

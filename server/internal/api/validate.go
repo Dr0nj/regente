@@ -48,6 +48,10 @@ func validateActionConfig(def domain.JobDefinition) error {
 		if cfg == nil || !isNonEmptyString(cfg["stateMachineArn"]) {
 			return errors.New("STEP_FUNCTION.stateMachineArn required")
 		}
+	case "FILE_WATCH", "FILEWATCH":
+		if cfg == nil || !isNonEmptyString(cfg["path"]) {
+			return errors.New("FILE_WATCH.path required (caminho do arquivo no host do agente)")
+		}
 	case "WAIT":
 		if cfg == nil {
 			return nil // wait sem config = noop, ok

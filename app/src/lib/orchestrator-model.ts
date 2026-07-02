@@ -86,6 +86,10 @@ export interface JobSchedule {
   monthsOfYear?: number[];
   /** advanced: regra nomeada */
   advancedRule?: AdvancedRule;
+  /** Shift (Control-M "roll"): dia nominal inelegível (feriado/fim de semana) →
+   *  "" | "none" = não roda; "next-businessday" = rola pro próximo dia útil;
+   *  "prev-businessday" = antecipa pro dia útil anterior. */
+  shift?: "" | "none" | "next-businessday" | "prev-businessday";
 }
 
 /** Vínculo de calendar a um job (chamar/negar). */

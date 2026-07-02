@@ -68,6 +68,21 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
         </Section>
       );
 
+    case "FILE_WATCH":
+      return (
+        <Section label="File Watch (espera arquivo no host do agente)">
+          <Row label="Caminho do arquivo (no host do agente)">
+            <Input mono value={str("path")} placeholder="/data/in/carga.csv   ou   C:\\entrada\\arquivo.dat" onChange={v => set("path", v)} />
+          </Row>
+          <Row label="Intervalo do poll em segundos (default 5)">
+            <Input mono value={num("intervalSec") ? String(num("intervalSec")) : ""} placeholder="5" onChange={v => set("intervalSec", Number(v) || 0)} />
+          </Row>
+          <Row label="Estabilidade em segundos (0 = basta existir; >0 = tamanho parado por N s)">
+            <Input mono value={num("stableSec") ? String(num("stableSec")) : ""} placeholder="0" onChange={v => set("stableSec", Number(v) || 0)} />
+          </Row>
+        </Section>
+      );
+
     case "HTTP":
       return (
         <Section label="HTTP request">

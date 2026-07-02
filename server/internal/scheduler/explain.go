@@ -61,7 +61,10 @@ func edgeState(cond domain.EdgeCondition, upStatus string, exists bool) (satisfi
 		return false, false
 	}
 	switch cond {
-	case domain.CondOnSuccess:
+	// Condition VAZIA = on-success (default do produto, igual ao front). Antes
+	// "" caía em on-complete — uma def YAML escrita à mão sem `condition:`
+	// rodava o filho mesmo com o pai NOTOK. Default seguro: só sucesso libera.
+	case domain.CondOnSuccess, "":
 		if upStatus == string(domain.StatusOK) {
 			return true, false
 		}
@@ -77,7 +80,7 @@ func edgeState(cond domain.EdgeCondition, upStatus string, exists bool) (satisfi
 			return false, true
 		}
 		return false, false
-	case domain.CondOnComplete, "":
+	case domain.CondOnComplete:
 		if upStatus == string(domain.StatusOK) || upStatus == string(domain.StatusNotOK) {
 			return true, false
 		}
@@ -160,7 +163,7 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, instByDef 
 
 func condLabel(c domain.EdgeCondition) string {
 	if c == "" {
-		return string(domain.CondOnComplete)
+		return string(domain.CondOnSuccess) // default do produto (= front)
 	}
 	return string(c)
 }

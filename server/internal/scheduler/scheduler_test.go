@@ -44,7 +44,11 @@ func newTestScheduler(t *testing.T) *Scheduler {
 	if err := db.Migrate(database); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	return New(storage.NewFileStore(t.TempDir(), false), database, hub.New(), 10*time.Millisecond)
+	s := New(storage.NewFileStore(t.TempDir(), false), database, hub.New(), 10*time.Millisecond)
+	// Testes rodam sem agente conectado: DemoMode mantém o mock-finish (OK em 1s),
+	// que é o comportamento que os cenários de dispatch/retry/alerting assumem.
+	s.DemoMode = true
+	return s
 }
 
 // R2 — watchdog: Tick() deve carimbar lastTickAt (loop de scheduling vivo).

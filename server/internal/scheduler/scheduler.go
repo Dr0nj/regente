@@ -47,6 +47,15 @@ type Scheduler struct {
 	settings   Settings
 	lastTickAt time.Time // R2 — watchdog: instante do último ciclo de scheduling
 
+	// DemoMode — SEM agente online: true = mock-finaliza OK (demo/playground);
+	// false (default, honesto) = a instance volta pra WAITING e o tick re-tenta
+	// quando um agente com a capability conectar. Flag -demo-mode no main.
+	DemoMode bool
+
+	// noAgentAt — throttle do evento "no agent online" por instance (sem isso o
+	// tick de 2s inundaria instance_events enquanto não houver agente).
+	noAgentAt map[string]time.Time
+
 	// === Bloco 2 — engines opcionais ===
 	calStore   *storage.CalendarStore // F14
 	resources  *ResourceTracker       // F15
@@ -86,12 +95,13 @@ type Leader interface{ IsLeader() bool }
 
 func New(store *storage.FileStore, db *db.DB, bus Bus, tick time.Duration) *Scheduler {
 	return &Scheduler{
-		store:    store,
-		db:       db,
-		hub:      bus,
-		tick:     tick,
-		running:  map[string]bool{},
-		settings: Settings{DailyAt: "00:00", Timezone: "America/Sao_Paulo"},
+		store:     store,
+		db:        db,
+		hub:       bus,
+		tick:      tick,
+		running:   map[string]bool{},
+		noAgentAt: map[string]time.Time{},
+		settings:  Settings{DailyAt: "00:00", Timezone: "America/Sao_Paulo"},
 	}
 }
 
@@ -121,8 +131,15 @@ func (s *Scheduler) Calendars() *storage.CalendarStore { return s.calStore }
 func (s *Scheduler) Variables() *storage.VariableStore { return s.variables }
 
 // buildVarContext \u2014 BuildContext + globals injetados do VariableStore (F18).
+// orderDate vem da PR\u00d3PRIA instance (n\u00e3o de time.Now()): %%ODATE precisa ser a
+// data da ordem mesmo em rerun tardio ou instance carregada da di\u00e1ria anterior.
 func (s *Scheduler) buildVarContext(def domain.JobDefinition, instanceID string) VarContext {
-	ctx := BuildContext(def, instanceID, time.Now().Format("2006-01-02"), nil, "")
+	orderDate := time.Now().Format("2006-01-02")
+	var od string
+	if err := s.db.QueryRow(`SELECT order_date FROM instances WHERE id=?`, instanceID).Scan(&od); err == nil && od != "" {
+		orderDate = od
+	}
+	ctx := BuildContext(def, instanceID, orderDate, nil, "")
 	if s.variables != nil {
 		ctx.Global = s.variables.Snapshot()
 	}
@@ -858,6 +875,23 @@ func (s *Scheduler) tickOnce() {
 	s.evaluateRuntimeActions(now)
 }
 
+// maybeEmitNoAgent — registra o evento "no agent online" com throttle de 5 min
+// por instance (o tick roda a cada 2s; sem throttle o event log inundaria).
+func (s *Scheduler) maybeEmitNoAgent(id, jobType string) {
+	s.mu.Lock()
+	last, seen := s.noAgentAt[id]
+	now := time.Now()
+	if seen && now.Sub(last) < 5*time.Minute {
+		s.mu.Unlock()
+		return
+	}
+	s.noAgentAt[id] = now
+	s.mu.Unlock()
+	s.emitEvent(id, "submitted", "scheduler",
+		"no agent online for capability "+jobType+" — waiting (re-tenta a cada tick)")
+	log.Printf("[scheduler] %s: sem agente online p/ %s — instance segue WAITING", id, jobType)
+}
+
 // evalDeps avalia todas as upstreams; retorna (ready, permanentlyBlocked).
 // Thin loop sobre edgeState (a regra por-aresta, fonte única compartilhada com o
 // Explain). Para na 1ª aresta não-satisfeita — mesma semântica de short-circuit
@@ -949,10 +983,24 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 		// um decisor único, sem dupla-execução entre nós.
 		switch out, agentID := s.hub.Dispatch(def.AgentID, def.JobType, raw); out {
 		case hub.DispatchNoAgent:
-			// Mock finaliza em 1s para não bloquear o scheduler.
-			s.emitEvent(id, "submitted", "scheduler", "no agent online — mock")
-			time.Sleep(1 * time.Second)
-			s.FinishInstance(id, domain.StatusOK, 0, "(no agent online, mocked)")
+			if s.DemoMode {
+				// Demo/playground: mock finaliza em 1s para não bloquear a demo.
+				s.emitEvent(id, "submitted", "scheduler", "no agent online — mock (demo-mode)")
+				time.Sleep(1 * time.Second)
+				s.FinishInstance(id, domain.StatusOK, 0, "(no agent online, mocked — demo-mode)")
+				return
+			}
+			// Produção (default): SEM agente NÃO é sucesso. Reverte o claim —
+			// a instance volta pra WAITING e o tick re-tenta a cada ciclo; quando
+			// um agente com a capability conectar, despacha de verdade. A frota
+			// de agentes já é monitorada pelo selfmon (R7) → alerta operacional.
+			_, _ = s.db.Exec(`UPDATE instances SET status=?, started_at=NULL WHERE id=?`,
+				string(domain.StatusWaiting), id)
+			if len(def.Resources) > 0 && s.resources != nil {
+				s.resources.Release(id)
+			}
+			s.maybeEmitNoAgent(id, def.JobType)
+			s.hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusWaiting)})
 		case hub.DispatchQueueFull:
 			s.emitEvent(id, "submitted", "scheduler", "agent queue full")
 			s.FinishInstance(id, domain.StatusNotOK, -1, "agent queue full")

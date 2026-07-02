@@ -98,22 +98,78 @@ func (s *Scheduler) SchedulePreview(d domain.JobDefinition, from, to time.Time) 
 
 // IsScheduledOn decide se a definition deve ser ordenada na data dada,
 // combinando: filtro de meses + recorrência (Frequency) + calendars do job
-// (include/exclude). É a regra usada pela daily.
+// (include/exclude) + shift (roll para dia útil). É a regra usada pela daily —
+// e, por ser fonte única, DryRun e SchedulePreview enxergam o shift de graça.
 func IsScheduledOn(d domain.JobDefinition, date time.Time, store calLookup) bool {
-	sched := d.Schedule
+	// Caminho normal: o dia nominal da recorrência é elegível.
+	if nominalScheduledOn(d, date, store) && shiftEligible(d, date, store) {
+		return true
+	}
 
-	// 1) Filtro de meses (vale para qualquer frequência).
+	// Shift (Control-M "roll"): o dia NOMINAL caiu num dia não-elegível e a
+	// execução rola pro dia elegível mais próximo (adiante ou atrás). A data
+	// avaliada `date` só "herda" a execução se for esse dia mais próximo.
+	const shiftLookback = 31 // dias — cobre qualquer feriado/ponte realista
+	switch d.Schedule.Shift {
+	case "next-businessday":
+		// `date` roda se é elegível E existe um dia nominal B < date não-elegível
+		// com TODOS os dias entre B e date também não-elegíveis.
+		if !shiftEligible(d, date, store) {
+			return false
+		}
+		for b := date.AddDate(0, 0, -1); date.Sub(b) <= shiftLookback*24*time.Hour; b = b.AddDate(0, 0, -1) {
+			if shiftEligible(d, b, store) {
+				return false // achou dia elegível antes de um nominal → não herda
+			}
+			if nominalScheduledOn(d, b, store) {
+				return true // nominal caiu em dia ruim; `date` é o 1º dia bom depois
+			}
+		}
+		return false
+	case "prev-businessday":
+		// Espelho: `date` roda se é elegível E existe um nominal B > date
+		// não-elegível com todos os dias entre date e B não-elegíveis.
+		if !shiftEligible(d, date, store) {
+			return false
+		}
+		for b := date.AddDate(0, 0, 1); b.Sub(date) <= shiftLookback*24*time.Hour; b = b.AddDate(0, 0, 1) {
+			if shiftEligible(d, b, store) {
+				return false
+			}
+			if nominalScheduledOn(d, b, store) {
+				return true // nominal cairá em dia ruim; `date` é o último dia bom antes
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// nominalScheduledOn — o componente "dia nominal" do schedule: meses + recorrência.
+// NÃO inclui calendars (a elegibilidade fica em shiftEligible p/ o shift poder rolar).
+func nominalScheduledOn(d domain.JobDefinition, date time.Time, store calLookup) bool {
+	sched := d.Schedule
 	if len(sched.MonthsOfYear) > 0 && !containsInt(sched.MonthsOfYear, int(date.Month())) {
 		return false
 	}
+	return matchesFrequency(d, date, store)
+}
 
-	// 2) Recorrência (em quais dias).
-	if !matchesFrequency(d, date, store) {
-		return false
-	}
-
-	// 3) Calendars do job: include (todos) + exclude (nenhum). Legado Calendar=include.
+// shiftEligible — elegibilidade do DIA para fins de calendário/shift:
+//   - job COM calendars → include (todos) + exclude (nenhum), como sempre;
+//   - job SEM calendars e COM shift configurado → dia útil Mon-Fri (senão o
+//     shift seria um no-op silencioso; "monthly dia 5, rola se cair no fim de
+//     semana" funciona sem precisar criar calendar);
+//   - job sem calendars e sem shift → sempre elegível (comportamento clássico).
+func shiftEligible(d domain.JobDefinition, date time.Time, store calLookup) bool {
 	refs := effectiveCalendarRefs(d)
+	if len(refs) == 0 {
+		if d.Schedule.Shift == "next-businessday" || d.Schedule.Shift == "prev-businessday" {
+			wd := date.Weekday()
+			return wd != time.Saturday && wd != time.Sunday
+		}
+		return true
+	}
 	for _, ref := range refs {
 		cal, err := store.Get(ref.Name)
 		if err != nil || cal == nil {

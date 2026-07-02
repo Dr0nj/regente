@@ -625,6 +625,24 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   filho WAITING por 4+ ticks (Explain: BLOCKED_DEP) → Set OK no pai → filho rodou sozinho; pai RUNNING
   20s → filho WAIT EVENT (Explain: WAIT_DEP) → pai OK → filho rodou. +2 testes Go
   (`TestTick_BlockedSuccessorWaitsAndRunsAfterSetOK`, `TestDailyAt_FromSettings`).
+- [x] **Lote enterprise + paridade Control-M core FECHADA** ✅ (2026-07-02): seis entregas num commit.
+  (1) **Condition vazia = on-success** no server (def YAML sem `condition:` não roda mais o filho com
+  pai NOTOK — era furo semântico; front e server agora têm o MESMO default). (2) **API aceita `params`
+  e `actionConfig`** no JSON (antes `params` era ignorado em silêncio e o job despachava sem comando).
+  (3) **Mock-finish atrás de `-demo-mode`** — default honesto: sem agente online a instance fica
+  WAITING (com release de recursos e evento throttled) e o tick re-tenta quando o agente conectar;
+  nada de "tudo OK" fake em produção. (4) **Variáveis `%%`** (Control-M AutoEdit): `%%ODATE`,
+  `%%RUNDATE`, `%%TIME`, `%%JOBNAME`, `%%FOLDER` etc. + variáveis do job e globais por nome, mesma
+  resolução do `${var.NAME}`; ODATE lido da PRÓPRIA instance (correto em rerun/carry). (5)
+  **FILE_WATCH** ponta-a-ponta: novo jobType que espera arquivo chegar no host do agente (poll
+  configurável + estabilidade de tamanho + timeout=NOTOK), palette/editor na UI, capability no agente.
+  (6) **Shift de calendário** (Control-M roll): `schedule.shift = next/prev-businessday` — dia nominal
+  em feriado/fim de semana rola pro dia útil mais próximo; implementado na FONTE ÚNICA
+  (`IsScheduledOn`), então daily, Dry Run e o preview do ScheduleEditor refletem juntos. Tudo validado
+  ao vivo com agente real (output `ODATE=20260702` interpolado; FILE_WATCH RUNNING→OK ao criar o
+  arquivo; preview: 1/ago sáb → next=03/ago, prev=31/jul). O roadmap ganhou a seção **Backlog
+  Enterprise E1–E6** com specs implementáveis (timezone da daily, auditoria com retenção/export, RBAC
+  por ação operacional, fila assíncrona de eventos, relatório/SLO da daily, importador Control-M).
 - [ ] **Cap de 2000 do Monitoring legado**: `LEGACY_CAP=2000` (canvas/ACTIVE JOBS não-virtualizados) é arbitrário
   e mostra "2000/2000" como se fosse o total. Fix: **virtualizar a sidebar ACTIVE JOBS** (mostra o dia inteiro),
   header com o **total real** do `/summary` ("2000 carregados de 1.000.000"), e cap do canvas configurável/maior

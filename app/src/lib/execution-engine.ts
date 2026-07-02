@@ -128,6 +128,7 @@ const JOB_DURATION_MS: Record<JobType, [number, number]> = {
   PARALLEL: [200, 500],
   WAIT: [1000, 2000],
   HTTP: [300, 1000], // fallback for simulated HTTP (no config)
+  FILE_WATCH: [1000, 3000], // simulação local; no server o agente polla de verdade
 };
 
 const FAILURE_RATE = 0.12; // 12% chance of failure per attempt

@@ -17,7 +17,6 @@ import (
 	"net/http"
 
 	"github.com/Dr0nj/regente-server/internal/auth"
-	"github.com/Dr0nj/regente-server/internal/domain"
 	"github.com/Dr0nj/regente-server/internal/storage"
 	"github.com/go-chi/chi/v5"
 )
@@ -165,8 +164,8 @@ func (s *server) saveSessionDefinition(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var def domain.JobDefinition
-	if err := json.NewDecoder(r.Body).Decode(&def); err != nil {
+	def, err := decodeDefinition(r.Body)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

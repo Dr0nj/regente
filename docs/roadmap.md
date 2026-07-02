@@ -19,7 +19,7 @@ Resiliência operacional    █████████████████�
 ── Próximas fases ──────────────────────────────────────────────────────────
 Agent-native (MCP)         █████████████████░░░  85%  🟢 servidor MCP ✅ (6 tools read + 2 write gated) · falta NL-query + writes ricos
 Diferenciais               ██████████░░░░░░░░░░  50%  🟡 Explain·Diff·Blast·Dry Run ✅ · falta Job Neighborhood · RCA · Event log
-Aprofundamento Control-M   ████████░░░░░░░░░░░░  35%  🟡 daily lifecycle ✅ · Actions/On-Do ✅ (motor + UI) · falta variáveis · FILE_WATCH · calendários
+Aprofundamento Control-M   ██████████████████░░  90%  🟢 daily lifecycle ✅ · Actions/On-Do ✅ (motor + UI) · daily server-side configurável ✅ · WAIT EVENT ✅ · variáveis %% ✅ · FILE_WATCH ✅ · calendários+shift ✅ · falta cyclic runtime
 Refinamento UI             ████████████████░░░░  82%  🟡 grade de jobs soltos ✅ · aba de agentes+ping ✅ · seletor de folder (FOLDERS) ✅ + fix snapshot do monitoring ✅ · fix botão "Abrir"+auto-nav ✅ · fix bug "Nenhuma definition" no drag ✅ · Job Name/ID no drawer ✅ · painel Edit Job flutuante arredondado ✅ · minimap revisto (jobs quadrados + viewport rect, escala estável top-left) ✅ · viewport fluido (sem sumir/pular no Run Daily/Force/refresh) ✅ · câmera consistente com a trava de pan (centralizar/Organizar/minimap clampados, sem pulo) + board sem F5 (resync pós-login/reconexão WS) ✅ · limpeza de ruído (NEXT TICK fake + data duplicada) ✅ · falta LEGACY_CAP virtualizado
 Fase Z — divulgação        ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ case study + post LinkedIn (agora com a história agent-native)
 ```
@@ -362,11 +362,118 @@ contra Postgres 16 real (Docker); restante pendente:
 | ✅ | ~~Daily server-side configurável + WAIT EVENT (paridade Control-M)~~ | **Feito (2026-07-02):** (1) **daily_at configurável**: `autoDailyIfDue` agora lê `settings.daily_at` (HH:MM validado; inválido loga e cai no default 00:00) a cada verificação — muda em runtime pela UI (Settings → Geral, admin) sem restart; relógio de referência = SEMPRE o do server. Novo `GET /api/daily/status` {orderDate, dailyAt, lastRunDate, lastRunAt, serverNow} = fonte do rodapé (fim do flag em localStorage em server mode; refetch em daily.started/settings.changed/_connected). Validado ao vivo: boot às 08:28 com daily_at=08:30 NÃO materializou; às 08:30:01 materializou 8 instances. (2) **Sucessor = Wait Event**: o tick cancelava o sucessor ~2s após o pai falhar (GateDepBlocked→CANCELLED) — CANCELLED é terminal, então rerun/Set OK no pai não revivia nada (fluxo de operação quebrado). Removido o auto-cancel: sucessor fica **WAITING** com pai falho/rodando/não-ordenado; rerun/Set OK destravam e o tick despacha sozinho; WAITING-nunca-rodou morre na virada (carry rules, como Control-M). UI: card mostra **WAIT EVENT** quando o WAITING é por dependência (waitEvent derivado em buildMonitoringCanvas da MESMA fonte visual das edges; "WAIT" fica pra espera de horário). Validado ao vivo com agente real: NOTOK→filho WAITING 4+ ticks (Explain BLOCKED_DEP)→Set OK→filho rodou; RUNNING 20s→filho WAIT EVENT (WAIT_DEP)→OK→filho rodou. Testes: TestTick_BlockedSuccessorWaitsAndRunsAfterSetOK + TestDailyAt_FromSettings. GOTCHA descoberto no caminho: agente Windows roda COMMAND via **powershell -Command** (não cmd) — `> NUL` falha; e o campo JSON de params da definition é **`actionConfig`** (tag json), `params` só no YAML. |
 | ✅ | ~~Hardening pós-review (SQLITE_BUSY · V2Preview modular · resync total)~~ | **Feito (2026-07-01):** os 3 pontos de atenção da avaliação. (1) **SQLITE_BUSY em rajada**: pragmas iam via `Exec` numa conexão só do pool (`database/sql`) — as demais ficavam SEM `busy_timeout` e a daily perdia eventos de auditoria em rajada. Fix em `internal/db`: `sqliteDSN()` anexa `_pragma=busy_timeout(5000)/journal_mode(WAL)/foreign_keys(1)` ao DSN → o modernc/sqlite aplica em CADA conexão nova. Validado: rajada de 95 jobs, zero "database is locked", eventos todos persistidos. (2) **V2Preview.tsx desmontado** (2223→1485 linhas): `canvas-layout.ts` (constantes+builders dagre, puro), `NavMinimap.tsx`, `hooks/useCanvasCamera.ts` (panExtent+clampTy+focusOnPoint+organizeView+gate de entrada+pendingFocus — todo movimento programático clampado), `hooks/useOrchestratorData.ts` (defs+instances, bootstrap, subscribes, scheduler, WS de dados incl. `_connected`; expõe `reloadDefs`/`syncInstances`). Eventos de UI (alert.fired/changed) ficam no componente. tsc limpo; eslint = paridade exata com baseline (7 apontamentos pré-existentes que só mudaram de arquivo). (3) **Resync `_connected` ampliado**: badge de alertas, env label e `/me` se recuperam na reconexão (fecha a classe "fetch-once-e-confia-no-WS"). Regressão completa ao vivo pós-refactor: entrada=Organizar (`ty=76`@.5) · centralização anima até o clamp exato e FICA (`ty=167.2`@1.1) · drags sem pulo · Force ×2 câmera imóvel · recuperação de 401 no mount sem F5. |
 | ✅ | ~~Hosting single-origin + demo pra amigos~~ | **Feito (2026-07-01):** server serve o SPA buildado na mesma porta da API+WS (flag `-spa-dir`; frontend `@origin` → `window.location.origin`, adapta a qualquer URL de túnel sem rebuild). `deploy/demo/`: Dockerfile.agent (agente sandbox em alpine descartável), `host-demo.ps1` (build + server GitOps-direct + agente Docker + Cloudflare Tunnel) e README com segurança. Validado ao vivo: app carregado de :9091 faz todas as chamadas same-origin (200); traversal barrado. |
-| **1** | **Aprofundamento Control-M** — variáveis runtime %% · FILE_WATCH · calendários complexos | Maior gap de PARIDADE. Actions/On-Do (motor + UI) ✅; agora variáveis/file-watch/calendários. |
+| ✅ | ~~Lote enterprise 1-3 + %% + FILE_WATCH + shift de calendário~~ | **Feito (2026-07-02):** (1) **condition vazia = on-success** no server (`edgeState` case `""` movido de on-complete → on-success; era furo de segurança semântico: def YAML sem `condition:` rodava o filho com pai NOTOK; validado ao vivo — filho de YAML sem condition ficou WAITING/BLOCKED_DEP com pai NOTOK). (2) **API aceita `params` E `actionConfig`** no JSON (`decodeDefinition` em definitions+sessions; actionConfig vence se ambos; antes "params" era ignorado em silêncio e o job despachava sem comando; `TestDecodeDefinition_ParamsAlias`). (3) **mock-finish atrás de `-demo-mode`** (env `REGENTE_DEMO_MODE=1`): default OFF = sem agente, a instance REVERTE o claim pra WAITING (release de recursos + evento com throttle de 5min por instance) e o tick re-tenta quando um agente com a capability conectar; frota já alarmada pelo selfmon R7; testes usam DemoMode=true (comportamento antigo preservado). Validado: boot sem agente → 4 WAITING e 3 eventos (não dezenas); agente conectou → despachou tudo. (4) **Variáveis `%%`** (Control-M AutoEdit): `%%NAME` equivale a `${var.NAME}` (nome = letra+word-chars; dotted names só na sintaxe `${var.}`); tokens runtime em MAIÚSCULAS: **ODATE** (YYYYMMDD da ordem — lido da PRÓPRIA instance, correto em rerun/carry), ORDERDATE, RUNDATE, TIME, JOBNAME, JOBLABEL, FOLDER, INSTANCEID; resolve def.variables e globais (F18) por nome; não-resolvido fica INTACTO. Validado ao vivo: output real `ODATE=20260702 JOB=var-echo FOLDER=lote3`. 3 testes. (5) **FILE_WATCH** ponta-a-ponta: executor no agente (`agent/filewatch.go`: poll `path` a cada `intervalSec` (def 5s), opcional `stableSec` = tamanho estável por N s, timeout do job = NOTOK com motivo; capability `FILE_WATCH` no `-caps`); validação server (`FILE_WATCH.path required`); front: palette + editor de params + tipo. 4 testes de agente + validado ao vivo (RUNNING pollando → arquivo criado → OK). (6) **Shift de calendário** (Control-M roll): `schedule.shift = next-businessday \| prev-businessday` — dia nominal inelegível (feriado/exclude; sem calendar, fim de semana) rola pro dia elegível mais próximo; implementado DENTRO de `IsScheduledOn` (fonte única → daily, DryRun e SchedulePreview ganham juntos; `nominalScheduledOn`+`shiftEligible`); select no ScheduleEditor; 4 testes + validado via `/api/schedule/preview` (1/ago sáb: next→03/ago, prev→31/jul). |
+| **1** | **Aprofundamento Control-M (restante)** — variáveis %%✅ · FILE_WATCH✅ · calendários+shift✅ · falta: cyclic runtime (IntervalMin dentro da janela) e ações de shift compostas (ex.: "next-businessday-same-month") | Paridade core FECHADA; o que resta é refinamento. |
 | **2** | **Diferenciais (cont.)** — Job Neighborhood · RCA automático · Event log CQRS-lite · NL-query | Próxima leva de observabilidade (NL-query usa o transporte QUERY documentado). |
 | 3 | **Refinamento UI** — grade de jobs soltos · minimap revisto · virtualizar ACTIVE JOBS (LEGACY_CAP) | Polimento que melhora a demo (alimenta a Fase Z). |
 | 🏁 | **Fase Z** — case study + post LinkedIn | **ÚLTIMO gate, por definição.** Só quando o backlog acima estiver onde você quer. NÃO é o próximo passo. |
 | 4 | **Fase Z** — case study + post LinkedIn | Último gate, com tudo sólido. |
+
+---
+
+## 🏢 Backlog Enterprise (specs implementáveis — E1..E6, 2026-07-02)
+
+Itens da avaliação enterprise, especificados para implementação SEM ambiguidade.
+Regras gerais para TODOS os itens: (a) mudanças de schema = nova migration versionada
+em `internal/db` (SQLite E Postgres); (b) settings novos via tabela `settings`
+(editáveis por `PUT /api/settings`, admin-only) com fallback no default do processo;
+(c) todo item entrega testes Go + validação ao vivo documentada no commit; (d) nada
+quebra o modo demo/single-node — features avançadas são opt-in com default seguro.
+
+### E1 — Timezone da daily (settings.daily_timezone)
+**Contexto:** a daily roda no relógio LOCAL do server (`time.Now()` em `autoDailyIfDue`);
+em produção o server costuma rodar em UTC e o negócio pensa em `America/Sao_Paulo`.
+**Spec:** novo setting `daily_timezone` (string IANA, ex. `America/Sao_Paulo`; vazio =
+local do server, comportamento atual). Em `scheduler.autoDailyIfDue`: carregar via
+`time.LoadLocation` (cache no struct; recarregar se o setting mudar); `now :=
+time.Now().In(loc)`; `today` e `dailyTime` derivam de `now` NESSA location. O
+`order_date` gravado é o dia NA TIMEZONE configurada. `GET /api/daily/status` passa a
+incluir `"timezone"`. UI: campo texto ao lado do "Horário da daily" em Settings→Geral
+(validar com uma lista de sugestões; valor inválido → loga e cai no local).
+**Aceite:** teste com `daily_timezone=America/Sao_Paulo` e clock UTC fake (injetar
+`nowFn func() time.Time` no Scheduler p/ testabilidade — refactor pequeno permitido):
+às 02:59Z de 03/jul não roda (ainda 23:59 de 02/jul em SP); às 03:00Z roda com
+`order_date=2026-07-03`. Cuidado: `parseHHMM` continua igual; só a base muda.
+
+### E2 — Auditoria enterprise (retenção + export + audit de settings)
+**Contexto:** o event log (`instance_events`) e o audit (`audit` pkg, SIEM URL opcional)
+existem, mas sem retenção nem trilha de mudanças de configuração.
+**Spec (3 partes independentes):**
+1. *Retenção:* setting `audit_retention_days` (int, 0 = infinito/default). GC diário
+   (rodar logo após a daily, só no líder): `DELETE FROM instance_events WHERE ts <
+   date('now', '-N days')` (dialect-safe via rebind; em lotes de 10k p/ não travar).
+   Logar quantas linhas saíram.
+2. *Audit de settings:* `PUT /api/settings` emite evento de auditoria (pkg `audit`)
+   com actor + LISTA DE CHAVES alteradas e valores de→para — EXCETO chaves secretas
+   (as mesmas mascaradas no GET: github_token, webhook_secret, alert_*_password/key).
+3. *Export:* endpoint `GET /api/audit/export?from=&to=&format=jsonl` (admin-only,
+   streaming, max 100k linhas por chamada com cursor `after_id`) devolvendo
+   instance_events + audit events unificados `{ts, kind, actor, instanceId?, detail}`.
+**Aceite:** testes: GC remove só o que passou do prazo; PUT settings gera evento sem
+vazar segredo; export pagina com after_id estável.
+
+### E3 — RBAC de escrita por AÇÃO OPERACIONAL (folder-scoped)
+**Contexto:** definitions já checam `auth.CanWriteFolder` (ACL por folder), mas as
+ações de OPERAÇÃO em instances (hold/release/cancel/rerun/set-ok/force/bulk) usam só
+`requireWriterMW` (role global operator+) — um operator do time FIN consegue cancelar
+job do time RISCO.
+**Spec:** nos handlers de `instances.go` (hold/release/cancel/rerun/set-ok) e
+`bulk.go`: após carregar a instance, resolver a folder (coluna `team` da instance;
+vazio → team da definition viva; vazio → permitir) e exigir
+`auth.CanWriteFolder(db, user, team)` além do writer role. `forceOrder` idem (team da
+definition). Bulk: checar POR ITEM e reportar 403 por item no resultado (não abortar
+o lote inteiro). Bearer token legado (api-token) segue admin (bypassa).
+**Aceite:** teste API: user operator com ACL write=[FIN] consegue rerun em instance
+FIN e leva 403 em instance RISCO; bulk misto retorna ok/failed por item.
+**NÃO fazer:** UI de gestão de ACL nesta entrega (já existe API de ACL) — só enforcement.
+
+### E4 — Fila assíncrona de eventos de instance (protege o hot path)
+**Contexto:** `emitEvent` faz INSERT síncrono no caminho do tick/dispatch; em Postgres
+sob carga extrema compete com o scheduling. (No SQLite o busy_timeout no DSN já
+resolveu a rajada.)
+**Spec:** `internal/scheduler/eventqueue.go`: canal buffered (cap 10_000) + goroutine
+writer que agrega e grava em LOTE (INSERT multi-values, flush a cada 250ms OU 500
+eventos, o que vier primeiro — mesmo padrão do insertDailyBatch). `emitEvent` vira
+enqueue; se a fila estiver CHEIA, grava síncrono (degradação, nunca perde). Flush
+final no shutdown (context). Métrica `regente_event_queue_depth` no /metrics.
+Ordem por instance preservada (fila única FIFO).
+**Aceite:** teste com 10k emits concorrentes → todas as linhas no banco, ordem por
+instance preservada, zero perdas com fila cheia (modo síncrono cobre).
+
+### E5 — Relatório/SLO da daily (o artefato que operação cobra)
+**Contexto:** hoje o resultado da daily se observa olhando o board; operação de
+verdade quer um resumo por dia: o que rodou, o que falhou, atraso.
+**Spec:** `GET /api/daily/report?date=YYYY-MM-DD` (default hoje) → `{date, dailyAt,
+startedAt, counts:{ordered, ok, notok, waiting, running, cancelled, carried},
+lateStart: bool (startedAt > dailyAt+5min), failures:[{defId, team, exitCode,
+finishedAt} cap 100], slaBreaches:[...via SLAEngine se disponível]}`. Fonte: 1 query
+agregada em `instances` (order_date=date) + `daily_runs`. Push opcional: setting
+`daily_report_channels` (csv: slack/webhook/email — REUSAR os sinks do alerting) —
+enviar quando a daily "fecha" (nenhuma instance WAITING/RUNNING; checar no tick 1×/min,
+flag em daily_runs `report_sent_at` p/ idempotência) OU às `daily_report_at` (HH:MM).
+UI: card compacto no topo do Monitoring com ok/notok/atraso do dia (dados do endpoint).
+**Aceite:** teste do agregado (seeds em vários status → counts exatos); teste de
+idempotência do envio (report_sent_at); UI mostra counts do endpoint (não recalcula).
+
+### E6 — Importador Control-M (redutor de fricção nº 1 p/ adoção)
+**Contexto:** empresas que avaliarem o Regente têm CENTENAS de jobs no Control-M;
+migrar na mão mata a adoção.
+**Spec:** novo binário `server/cmd/importctm` (pure-Go, sem deps novas): lê o XML de
+export do Control-M (`DEFTABLE`/`FOLDER`/`JOB` do ctm export/forecast) e gera um
+workspace Regente (`definitions/<folder>/<job>.yaml` + `calendars/*.yaml`).
+Mapeamentos v1 (documentar TODOS no README do cmd):
+`SUB_APPLICATION/DATACENTER→ignorar com warning · JOBNAME→id (slug) · DESCRIPTION→label ·
+PARENT_FOLDER→team · TASKTYPE Job/Command→COMMAND (CMDLINE→params.command) ·
+FileWatcher→FILE_WATCH · INCOND→upstream (quando o OUTCOND correspondente é de 1 job
+só; senão conditions F16 com o MESMO nome) · OUTCOND(+)→conditionsOut · TIMEFROM→runAt ·
+DAYS/WEEKDAYS→frequency/daysOfWeek/daysOfMonth · DAYSCAL/WEEKSCAL→calendars include ·
+CONFCAL+SHIFT→schedule.shift · SHOUT→actions notify · MAXRERUN→retries · CYCLIC→cyclic`.
+Tudo que não mapear → `# TODO-import:` comentado no YAML + linha no relatório final
+(`import-report.md`: N jobs ok, N parciais, N pulados e por quê). Flags: `-in export.xml
+-out ./workspace [-dry-run] [-folder-filter X]`. NUNCA push — gera arquivos locais pro
+usuário revisar e commitar.
+**Aceite:** golden test com um XML de exemplo (fixture) cobrindo cada mapeamento;
+`-dry-run` não escreve nada; relatório lista os não-mapeados.
 
 ---
 

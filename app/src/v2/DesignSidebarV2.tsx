@@ -15,6 +15,7 @@ import {
   Terminal,
   FileCode,
   Network,
+  FileSearch,
   type LucideIcon,
 } from "lucide-react";
 import type { JobDefinition } from "@/lib/orchestrator-model";
@@ -46,6 +47,7 @@ const JOB_TYPES: Array<{
   { id: "SCRIPT",        label: "Script",        hint: "Script .sh/.bat/.ps1 no agente",       Icon: FileCode },
   { id: "SSH",           label: "SSH",           hint: "Comando remoto via SSH (sem agente)",  Icon: Network },
   { id: "HTTP",          label: "HTTP",          hint: "Chamada REST com validação de status", Icon: Globe },
+  { id: "FILE_WATCH",    label: "File Watch",    hint: "Espera arquivo chegar no agente",      Icon: FileSearch },
   { id: "WAIT",          label: "Wait",          hint: "Delay / espera programada",            Icon: Clock },
   { id: "CHOICE",        label: "Choice",        hint: "Desvio condicional",                   Icon: GitFork },
   { id: "PARALLEL",      label: "Parallel",      hint: "Execução concorrente",                 Icon: Layers },

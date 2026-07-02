@@ -69,7 +69,8 @@ func TestEdgeState(t *testing.T) {
 		{"on-failure OK bloqueia perm", domain.CondOnFailure, OK, true, false, true},
 		{"on-complete OK satisfaz", domain.CondOnComplete, OK, true, true, false},
 		{"on-complete NOTOK satisfaz", domain.CondOnComplete, NOK, true, true, false},
-		{"vazio = on-complete", domain.EdgeCondition(""), OK, true, true, false},
+		{"vazio = on-success (default do produto)", domain.EdgeCondition(""), OK, true, true, false},
+		{"vazio com pai NOTOK bloqueia (nao e on-complete)", domain.EdgeCondition(""), NOK, true, false, true},
 		{"always satisfaz sempre", domain.CondAlways, WAIT, true, true, false},
 		{"inexistente espera", domain.CondOnComplete, "", false, false, false},
 	}

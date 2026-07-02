@@ -48,6 +48,7 @@ interface ServerSchedule {
   nthBusinessDays?: number[];
   monthsOfYear?: number[];
   advancedRule?: string;
+  shift?: string;
   cronExpression?: string;
 }
 
@@ -91,6 +92,7 @@ function scheduleToWeb(s: ServerSchedule): JobDefinition["schedule"] {
     nthBusinessDays: s.nthBusinessDays,
     monthsOfYear: s.monthsOfYear,
     advancedRule: s.advancedRule as JobDefinition["schedule"]["advancedRule"],
+    shift: s.shift as JobDefinition["schedule"]["shift"],
   };
 }
 
@@ -109,6 +111,7 @@ function scheduleToServer(s: JobDefinition["schedule"]): ServerSchedule {
     nthBusinessDays: s.nthBusinessDays?.length ? s.nthBusinessDays : undefined,
     monthsOfYear: s.monthsOfYear?.length ? s.monthsOfYear : undefined,
     advancedRule: s.advancedRule || undefined,
+    shift: s.shift && s.shift !== "none" ? s.shift : undefined,
     cronExpression: s.cronExpression || undefined,
   };
 }

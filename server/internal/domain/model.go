@@ -62,6 +62,13 @@ type Schedule struct {
 	MonthsOfYear    []int    `yaml:"monthsOfYear,omitempty" json:"monthsOfYear,omitempty"`
 	AdvancedRule    string   `yaml:"advancedRule,omitempty" json:"advancedRule,omitempty"`
 
+	// Shift (Control-M "roll") — o que fazer quando o dia NOMINAL da recorrência
+	// cai num dia não-elegível (feriado/exclude do calendar; sem calendar, fim de
+	// semana): "" | "none" = não roda (comportamento clássico);
+	// "next-businessday" = rola pro PRÓXIMO dia elegível;
+	// "prev-businessday" = ANTECIPA pro dia elegível anterior.
+	Shift string `yaml:"shift,omitempty" json:"shift,omitempty"`
+
 	// Legado: cron de 5 campos. Se presente e Frequency vazio, é a fonte.
 	CronExpression string `yaml:"cronExpression,omitempty" json:"cronExpression,omitempty"`
 }

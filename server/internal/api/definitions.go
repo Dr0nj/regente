@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 
 	"github.com/Dr0nj/regente-server/internal/auth"
@@ -9,6 +10,31 @@ import (
 	"github.com/Dr0nj/regente-server/internal/storage"
 	"github.com/go-chi/chi/v5"
 )
+
+// decodeDefinition — decodifica uma JobDefinition do body JSON aceitando o campo
+// de parâmetros sob DOIS nomes: `actionConfig` (tag json oficial, o que o front
+// manda) E `params` (o nome do YAML — integrações externas mandavam "params" e o
+// campo era IGNORADO em silêncio, o job despachava sem comando). actionConfig
+// vence quando ambos vierem.
+func decodeDefinition(r io.Reader) (domain.JobDefinition, error) {
+	body, err := io.ReadAll(r)
+	if err != nil {
+		return domain.JobDefinition{}, err
+	}
+	var def domain.JobDefinition
+	if err := json.Unmarshal(body, &def); err != nil {
+		return domain.JobDefinition{}, err
+	}
+	if def.Params == nil {
+		var alias struct {
+			Params map[string]interface{} `json:"params"`
+		}
+		if err := json.Unmarshal(body, &alias); err == nil && alias.Params != nil {
+			def.Params = alias.Params
+		}
+	}
+	return def, nil
+}
 
 func (s *server) listDefinitions(w http.ResponseWriter, r *http.Request) {
 	defs, err := s.cfg.Store.List()
@@ -31,8 +57,8 @@ func (s *server) listDefinitions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) saveDefinition(w http.ResponseWriter, r *http.Request) {
-	var def domain.JobDefinition
-	if err := json.NewDecoder(r.Body).Decode(&def); err != nil {
+	def, err := decodeDefinition(r.Body)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

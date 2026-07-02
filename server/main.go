@@ -70,6 +70,7 @@ func main() {
 		otelService      = flag.String("otel-service", envOr("OTEL_SERVICE_NAME", "regente-server"), "service.name nos traces")
 		gitEnable        = flag.Bool("git-commit", false, "Commit saves via git (workspace must be a git repo)")
 		apiToken         = flag.String("api-token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token for API + WS")
+		demoMode         = flag.Bool("demo-mode", envOr("REGENTE_DEMO_MODE", "") == "1", "Demo/playground: sem agente online, jobs são mock-finalizados OK. Default OFF (produção): sem agente = instance fica WAITING e re-tenta quando um agente conectar")
 
 		// F13 GitOps — defaults apontam pro regente-workspace (padrão, não configuração)
 		gitSource    = flag.String("git-source", envOr("REGENTE_GIT_SOURCE", "https://github.com/Dr0nj/regente-workspace.git"), "Git remote URL for workspace source-of-truth")
@@ -274,6 +275,10 @@ func main() {
 	}
 
 	sched := scheduler.New(store, database, theBus, time.Duration(*tickMs)*time.Millisecond)
+	sched.DemoMode = *demoMode
+	if *demoMode {
+		log.Printf("[scheduler] DEMO MODE — sem agente online, jobs são mock-finalizados OK (não use em produção)")
+	}
 
 	// Opção B (2026-04-26) — daily lê definitions de Git fresh.
 	// Sem GitOps atachado, daily cai pro modo legado (lê só do disco local).

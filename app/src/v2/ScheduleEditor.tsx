@@ -141,6 +141,24 @@ export default function ScheduleEditor({ value, onChange, calendars, onCalendars
         </Hint>
       </Group>
 
+      {/* Shift — Control-M "roll": dia nominal em feriado/fim de semana */}
+      <Group label="Se cair em dia não útil (shift)">
+        <select
+          value={s.shift ?? ""}
+          onChange={(e) => patch({ shift: e.target.value as NonNullable<typeof s.shift> })}
+          style={{ ...inputBase, width: "100%" }}
+        >
+          <option value="">Não roda (padrão)</option>
+          <option value="next-businessday">Rola pro PRÓXIMO dia útil</option>
+          <option value="prev-businessday">Antecipa pro dia útil ANTERIOR</option>
+        </select>
+        <Hint>
+          Vale quando o dia da recorrência cai num dia inelegível: feriado/exclude dos
+          calendários do job — ou, sem calendário, sábado/domingo. O preview abaixo já
+          reflete o shift (mesma regra da daily).
+        </Hint>
+      </Group>
+
       {/* PREVIEW — embaixo de todas as regras. Gist em texto + calendário REAL (dias
           destacados = dias que o job roda, pela mesma regra da daily). */}
       <SchedulePreview schedule={s} calendars={calendars} calDefs={availableCalendars} />
