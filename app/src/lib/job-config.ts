@@ -144,4 +144,10 @@ export interface JobNodeData {
    * scheduled/condition-satisfied.
    */
   forced?: boolean;
+  /**
+   * WAITING segurado por DEPENDÊNCIA (pai não rodou / rodando / falhou) —
+   * Control-M "Wait Event". O card mostra "WAIT EVENT" em vez de "WAIT"
+   * (que fica para espera de horário/janela).
+   */
+  waitEvent?: boolean;
 }

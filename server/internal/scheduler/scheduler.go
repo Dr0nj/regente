@@ -298,6 +298,38 @@ func (s *Scheduler) EmitEvent(instanceID, kind, actor, message string) {
 	s.emitEvent(instanceID, kind, actor, message)
 }
 
+// DailyAt — horário efetivo da daily ("HH:MM"): settings.daily_at (configurável
+// em runtime pela UI/API, admin-only) com fallback no default do processo. O
+// relógio de referência é SEMPRE o do servidor (time.Now local) — o cliente não
+// agenda nada em server mode.
+func (s *Scheduler) DailyAt() string {
+	var v string
+	if err := s.db.QueryRow(`SELECT value FROM settings WHERE key='daily_at'`).Scan(&v); err == nil {
+		v = strings.TrimSpace(v)
+		if _, _, ok := parseHHMM(v); ok {
+			return v
+		}
+		if v != "" {
+			log.Printf("[scheduler] settings daily_at %q inválido (esperado HH:MM) — usando %s", v, s.settings.DailyAt)
+		}
+	}
+	return s.settings.DailyAt
+}
+
+// parseHHMM valida "HH:MM" (00:00–23:59).
+func parseHHMM(v string) (hh, mm int, ok bool) {
+	parts := strings.Split(v, ":")
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	hh, errH := strconv.Atoi(parts[0])
+	mm, errM := strconv.Atoi(parts[1])
+	if errH != nil || errM != nil || hh < 0 || hh > 23 || mm < 0 || mm > 59 {
+		return 0, 0, false
+	}
+	return hh, mm, true
+}
+
 func (s *Scheduler) autoDailyIfDue() {
 	now := time.Now()
 	today := now.Format("2006-01-02")
@@ -308,12 +340,10 @@ func (s *Scheduler) autoDailyIfDue() {
 		return // já rodou hoje
 	}
 
-	parts := strings.Split(s.settings.DailyAt, ":")
-	if len(parts) != 2 {
+	hh, mm, ok := parseHHMM(s.DailyAt())
+	if !ok {
 		return
 	}
-	hh, _ := strconv.Atoi(parts[0])
-	mm, _ := strconv.Atoi(parts[1])
 	dailyTime := time.Date(now.Year(), now.Month(), now.Day(), hh, mm, 0, 0, now.Location())
 	if now.Before(dailyTime) {
 		return
@@ -793,15 +823,16 @@ func (s *Scheduler) tickOnce() {
 		// Gating pela FONTE ÚNICA (gateInstance) — o MESMO avaliador que o Explain
 		// usa pra dizer o porquê. short-circuit no 1º bloqueio (hot path). Nenhum
 		// gate bloqueia o dispatch sem aparecer aqui, então o Explain nunca diverge.
+		//
+		// Paridade Control-M (2026-07-02): dep "permanentemente" impossível NÃO
+		// cancela mais o sucessor — ele fica WAITING (Wait Event) até o operador
+		// agir. O flip é reversível na prática: rerun do pai (NOTOK→WAITING→OK) ou
+		// Set OK destravam a aresta e o tick despacha o sucessor sozinho. O
+		// auto-CANCEL antigo matava o sucessor ~2s após o pai falhar, e o Set OK
+		// no pai não revivia ninguém (CANCELLED é terminal) — quebrava o fluxo
+		// padrão de operação. Quem nunca ficar elegível morre na virada da daily
+		// (WAITING-nunca-rodou não carrega), como no Control-M.
 		if blockers := s.gateInstance(r, def, instByDef, now, true); len(blockers) > 0 {
-			// Dep permanentemente impossível → CANCELLED (o 1º bloqueio é o
-			// determinante por causa do short-circuit, na mesma ordem do gate).
-			if blockers[0].Kind == GateDepBlocked {
-				_, _ = s.db.Exec(`UPDATE instances SET status=?, finished_at=CURRENT_TIMESTAMP WHERE id=?`,
-					string(domain.StatusCancelled), r.ID)
-				s.emitEvent(r.ID, "cancelled", "scheduler", "upstream condition permanently unsatisfiable")
-				s.hub.BroadcastWeb("instance.changed", map[string]string{"id": r.ID, "status": string(domain.StatusCancelled)})
-			}
 			continue
 		}
 		// Gates read-only passaram → reserva ATÔMICA do recurso (a única etapa com

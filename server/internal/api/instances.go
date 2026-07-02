@@ -350,6 +350,24 @@ func (s *server) runDaily(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]interface{}{"orderDate": today, "created": created})
 }
 
+// dailyStatus — estado da daily pelo relógio do SERVIDOR: última execução
+// (daily_runs) + horário configurado (settings.daily_at, editável na UI). É a
+// fonte da verdade do rodapé do Monitoring — o front NÃO persiste mais isso em
+// localStorage em server mode.
+func (s *server) dailyStatus(w http.ResponseWriter, r *http.Request) {
+	var lastDate, lastAt string
+	_ = s.cfg.DB.QueryRow(
+		`SELECT order_date, started_at FROM daily_runs ORDER BY order_date DESC LIMIT 1`,
+	).Scan(&lastDate, &lastAt)
+	writeJSON(w, 200, map[string]interface{}{
+		"orderDate":   time.Now().Format("2006-01-02"),
+		"dailyAt":     s.cfg.Scheduler.DailyAt(),
+		"lastRunDate": lastDate,
+		"lastRunAt":   lastAt,
+		"serverNow":   time.Now().Format(time.RFC3339),
+	})
+}
+
 // dryRunDaily — Diferencial "simular a daily de uma data futura SEM materializar":
 // quem roda, quem espera (depois de quem) e quem nunca dispara (e por quê). Default
 // date = amanhã. Não toca o banco.

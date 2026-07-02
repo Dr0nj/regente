@@ -47,6 +47,8 @@ import {
 import {
   runDaily,
   getLastDailyRun,
+  fetchDailyStatus,
+  normalizeDbTime,
 } from "@/lib/runtime-bridge";
 import { container } from "@/lib/container";
 import { onServerEvent, isServerMode, onAuthEvent, setAuthToken, SERVER_URL } from "@/lib/server-client";
@@ -207,6 +209,16 @@ function V2PreviewInner() {
 
   const nodeTypes = useMemo(() => ({ jobV2: JobNodeV2, laneLabel: LaneLabelNode }), []);
 
+  // Server mode: o "daily HH:MM" do rodapé vem do SERVER (daily_runs via
+  // /api/daily/status), não de localStorage — quem roda a daily é o server, no
+  // relógio DELE (meia-noite ou settings.daily_at). Local mode: no-op (null).
+  const refreshDailyStatus = useCallback(() => {
+    void fetchDailyStatus().then((st) => {
+      if (st?.lastRunAt) setLastDaily(normalizeDbTime(st.lastRunAt));
+    });
+  }, []);
+  useEffect(() => { refreshDailyStatus(); }, [refreshDailyStatus]);
+
   /* ── Eventos de UI vindos do WS ──
      Dados (defs/instances) ressincronizam no useOrchestratorData/store; aqui
      ficam só os efeitos de UI: alertas (toast + badge) e, no "_connected", o
@@ -218,6 +230,11 @@ function V2PreviewInner() {
   useEffect(() => {
     if (!isServerMode()) return;
     return onServerEvent((ev) => {
+      // Daily rodou no server (auto ou manual) ou settings mudaram (daily_at):
+      // atualiza o carimbo do rodapé pela fonte da verdade.
+      if (ev.event === "daily.started" || ev.event === "settings.changed") {
+        refreshDailyStatus();
+      }
       // Phase 8 — alerta disparado no server: toast + atualiza o badge.
       if (ev.event === "alert.fired") {
         const p = (ev.payload ?? {}) as { ruleName?: string; message?: string; severity?: string };
@@ -235,6 +252,7 @@ function V2PreviewInner() {
       }
       if (ev.event === "_connected") {
         void fetchUnacknowledgedCount().then(setUnreadAlerts);
+        refreshDailyStatus();
         if (SERVER_URL) {
           fetch(`${SERVER_URL}/api/env`)
             .then((r) => (r.ok ? r.json() : null))
@@ -246,7 +264,7 @@ function V2PreviewInner() {
         }
       }
     });
-  }, []);
+  }, [refreshDailyStatus]);
 
   // Alerting (Phase 8) — surface fired alerts as toasts and keep the topbar
   // badge in sync. In local mode the notifier is invoked from instance-store;

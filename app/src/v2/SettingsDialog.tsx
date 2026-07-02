@@ -54,10 +54,15 @@ export function SettingsDialog({ onClose }: Props) {
   const [cleanBusy, setCleanBusy] = useState(false);
   const [webhookInput, setWebhookInput] = useState("");
 
+  // Horário da daily (settings.daily_at) — o SERVER roda a daily neste horário,
+  // pelo relógio DELE (vazio = default 00:00, meia-noite).
+  const [dailyAt, setDailyAt] = useState("");
+
   useEffect(() => {
     getSettings().then((s) => {
       setSettings(s);
       setEnvLabel(s.env_label ?? "");
+      setDailyAt(s.daily_at ?? "");
       setLoaded(true);
     });
     fetchGitStatus().then(setGit).catch(() => {});
@@ -66,7 +71,7 @@ export function SettingsDialog({ onClose }: Props) {
   async function handleSave() {
     setSaving(true);
     try {
-      const updated = await putSettings({ ...settings, env_label: envLabel });
+      const updated = await putSettings({ ...settings, env_label: envLabel, daily_at: dailyAt });
       setSettings(updated);
       onClose(); // salva e fecha o diálogo (o tema já aplica na hora ao selecionar)
     } finally {
@@ -277,6 +282,27 @@ export function SettingsDialog({ onClose }: Props) {
               <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 4, display: "block" }}>
                 Deixe vazio para ocultar a tag. Ex: "QA", "Production", "DEV".
               </span>
+
+              <div style={{ marginTop: 12, borderTop: "1px solid var(--v2-border-subtle)", paddingTop: 10 }}>
+                <label style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
+                  Horário da daily (New Day)
+                </label>
+                <input
+                  type="time"
+                  value={dailyAt}
+                  onChange={(e) => setDailyAt(e.target.value)}
+                  style={{
+                    padding: "6px 10px", fontSize: 13,
+                    background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)",
+                    borderRadius: 4, color: "var(--v2-text-primary)", outline: "none",
+                    colorScheme: "dark",
+                  }}
+                />
+                <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 4, display: "block", lineHeight: 1.5 }}>
+                  O servidor materializa a diária neste horário, pelo relógio DELE (vazio = 00:00,
+                  meia-noite). Aplica sem restart; se a daily de hoje já rodou, vale a partir de amanhã.
+                </span>
+              </div>
             </fieldset>
 
             {/* GitHub token (via UI — substitui subir o server com GITHUB_TOKEN) */}

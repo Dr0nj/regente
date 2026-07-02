@@ -129,7 +129,9 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
                   animation: isRunning ? "v2-dot-pulse 1.2s ease-in-out infinite" : "none",
                 }}
               />
-              {STATUS_LABEL[data.status]}
+              {/* Control-M parity: WAITING preso por dependência (pai não rodou /
+                  rodando / falhou) lê "WAIT EVENT"; "WAIT" fica pra espera de horário. */}
+              {data.status === "WAITING" && data.waitEvent ? "WAIT EVENT" : STATUS_LABEL[data.status]}
             </span>
             {data.lastRun && (
               <>

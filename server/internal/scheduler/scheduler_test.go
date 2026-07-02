@@ -104,3 +104,67 @@ func TestDispatch_PanicRecovered(t *testing.T) {
 		t.Fatalf("após panic no dispatch a instance deveria ser NOTOK, veio %q", status)
 	}
 }
+
+// Paridade Control-M (2026-07-02): sucessor com pai NOTOK/RUNNING fica WAITING
+// ("Wait Event") — o tick NÃO cancela mais quando a dep é "permanentemente"
+// impossível, porque o flip é reversível na operação (rerun/Set OK no pai).
+// Set OK no pai destrava a aresta e o PRÓPRIO tick despacha o sucessor.
+func TestTick_BlockedSuccessorWaitsAndRunsAfterSetOK(t *testing.T) {
+	s := newTestScheduler(t)
+	today := time.Now().Format("2006-01-02")
+
+	parent := domain.JobDefinition{ID: "pai", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true}}
+	child := domain.JobDefinition{
+		ID: "filho", JobType: "COMMAND",
+		Schedule: domain.Schedule{Enabled: true},
+		Upstream: []domain.Upstream{{From: "pai", Condition: domain.CondOnSuccess}},
+	}
+	runningParent := domain.JobDefinition{ID: "pai2", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true}}
+	child2 := domain.JobDefinition{
+		ID: "filho2", JobType: "COMMAND",
+		Schedule: domain.Schedule{Enabled: true},
+		Upstream: []domain.Upstream{{From: "pai2", Condition: domain.CondOnSuccess}},
+	}
+	seedInst(t, s, "pai-1", today, string(domain.StatusNotOK), parent)
+	seedInst(t, s, "filho-1", today, string(domain.StatusWaiting), child)
+	seedInst(t, s, "pai2-1", today, string(domain.StatusRunning), runningParent)
+	seedInst(t, s, "filho2-1", today, string(domain.StatusWaiting), child2)
+
+	s.Tick()
+	if _, st, _, _ := carriedState(t, s, "filho-1"); st != string(domain.StatusWaiting) {
+		t.Fatalf("sucessor de pai NOTOK deve permanecer WAITING (Wait Event), está %s", st)
+	}
+	if _, st, _, _ := carriedState(t, s, "filho2-1"); st != string(domain.StatusWaiting) {
+		t.Fatalf("sucessor de pai RUNNING deve permanecer WAITING (Wait Event), está %s", st)
+	}
+
+	// Operador: Set OK no pai → aresta on-success satisfeita → tick despacha o filho.
+	if err := s.SetOK("pai-1"); err != nil {
+		t.Fatalf("set-ok: %v", err)
+	}
+	s.Tick()
+	if _, st, _, _ := carriedState(t, s, "filho-1"); st == string(domain.StatusWaiting) || st == string(domain.StatusCancelled) {
+		t.Fatalf("após Set OK no pai o filho deveria despachar, está %s", st)
+	}
+}
+
+// daily_at configurável em runtime via settings: valor válido vence o default;
+// inválido/ausente cai no default do processo.
+func TestDailyAt_FromSettings(t *testing.T) {
+	s := newTestScheduler(t)
+	if got := s.DailyAt(); got != "00:00" {
+		t.Fatalf("default esperado 00:00, veio %s", got)
+	}
+	if _, err := s.db.Exec(`INSERT INTO settings(key,value) VALUES('daily_at','03:30')`); err != nil {
+		t.Fatalf("seed setting: %v", err)
+	}
+	if got := s.DailyAt(); got != "03:30" {
+		t.Fatalf("esperado 03:30 do settings, veio %s", got)
+	}
+	if _, err := s.db.Exec(`UPDATE settings SET value='25:99' WHERE key='daily_at'`); err != nil {
+		t.Fatalf("update setting: %v", err)
+	}
+	if got := s.DailyAt(); got != "00:00" {
+		t.Fatalf("valor inválido deve cair no default 00:00, veio %s", got)
+	}
+}

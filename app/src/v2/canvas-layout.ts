@@ -383,6 +383,12 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
   const instByDefId = new Map<string, JobInstance>();
   for (const i of instances) instByDefId.set(i.definitionId, i);
 
+  // WAIT EVENT (paridade Control-M): instance WAITING cuja dependência ainda não
+  // liberou — pai não rodou / rodando / falhou. O card mostra "WAIT EVENT" em vez
+  // de "WAIT" pra distinguir de "esperando o horário". Mesma fonte visual das
+  // edges (evaluateDepState): aresta âmbar/vermelha ⇔ card em WAIT EVENT.
+  const waitingOnDeps = new Set<string>();
+
   const edges: Edge[] = [];
   const rawEdges: Array<{ source: string; target: string }> = [];
   for (const inst of instances) {
@@ -390,7 +396,14 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
     if (!def?.upstream?.length) continue;
     for (const u of def.upstream) {
       const parent = instByDefId.get(u.from);
-      if (!parent) continue;
+      if (!parent) {
+        // Pai ainda não materializado neste dia = dependência não satisfeita.
+        if (inst.status === "WAITING") waitingOnDeps.add(inst.id);
+        continue;
+      }
+      if (inst.status === "WAITING" && evaluateDepState(parent.status) !== "satisfied") {
+        waitingOnDeps.add(inst.id);
+      }
       const condition = u.condition ?? EDGE_CONDITION_DEFAULT;
       const src = `m-${parent.id}`;
       const tgt = `m-${inst.id}`;
@@ -426,6 +439,7 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
         lastRun: inst.startedAt ? fmtHm(inst.startedAt) : undefined,
         mode: "monitoring",
         forced: inst.manual,
+        waitEvent: waitingOnDeps.has(inst.id),
       } as JobNodeData,
       draggable: false,
       zIndex: 10,

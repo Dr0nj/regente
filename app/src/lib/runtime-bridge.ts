@@ -115,3 +115,12 @@ export const updateSchedulerDefs = isServerMode()
 export const getLastDailyRun = isServerMode()
   ? serverScheduler.getLastDailyRun
   : localScheduler.getLastDailyRun;
+
+export type DailyStatus = serverScheduler.DailyStatus;
+export { normalizeDbTime } from "@/lib/server-scheduler-runtime";
+
+// Status da daily pelo relógio do SERVER (última execução + horário configurado).
+// Local mode: null (o footer usa o flag local).
+export const fetchDailyStatus = isServerMode()
+  ? serverScheduler.fetchDailyStatus
+  : async (): Promise<serverScheduler.DailyStatus | null> => null;

@@ -15,6 +15,33 @@ export function getLastDailyRun(): string | null {
   return window.localStorage.getItem(DAILY_FLAG_KEY);
 }
 
+/* ── Daily status (fonte da verdade = relógio/DB do SERVER) ── */
+
+export interface DailyStatus {
+  orderDate: string;
+  dailyAt: string;       // "HH:MM" configurado (settings.daily_at, default 00:00)
+  lastRunDate?: string;
+  lastRunAt?: string;    // timestamp do daily_runs (UTC do SQLite, sem sufixo Z)
+  serverNow?: string;
+}
+
+// SQLite grava CURRENT_TIMESTAMP como "YYYY-MM-DD HH:MM:SS" em UTC SEM
+// timezone; new Date() interpretaria como hora LOCAL. Normaliza pra ISO+Z
+// quando não vier com offset explícito.
+export function normalizeDbTime(s: string): string {
+  if (!s) return s;
+  if (/Z$|[+-]\d{2}:?\d{2}$/.test(s)) return s;
+  return s.replace(" ", "T") + "Z";
+}
+
+export async function fetchDailyStatus(): Promise<DailyStatus | null> {
+  try {
+    return await api<DailyStatus>("/api/daily/status");
+  } catch {
+    return null;
+  }
+}
+
 /** Dispara daily/run no server. A lista local de defs é ignorada (server usa YAML). */
 export function runDaily(_defs: JobDefinition[]): JobInstance[] {
   void _defs;

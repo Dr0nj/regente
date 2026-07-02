@@ -609,6 +609,22 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   reconecta com fallback → board completo SEM F5 nem login manual (em dev; no hosted o LoginForm segue
   gateando). Regressão completa verde pós-refactor: entrada=Organizar (`ty=76`@.5), centralização anima
   até o clamp exato (`ty=167.2`@1.1) e fica, drags sem pulo, Force ×2 com câmera imóvel.
+- [x] **Daily 100% server-side (horário configurável) + WAIT EVENT (paridade Control-M)** ✅ (2026-07-02):
+  dois focos pedidos pelo usuário. (1) **Daily**: o server já materializava à meia-noite pelo relógio
+  DELE, mas o horário era hardcoded — agora `settings.daily_at` (editável em Settings → Geral → "Horário
+  da daily", admin-only, sem restart) vence o default 00:00; valor inválido loga e cai no default. Novo
+  `GET /api/daily/status` (última daily + horário configurado + relógio do server) vira a fonte do
+  rodapé — o front NÃO usa mais localStorage pra isso em server mode. Validado ao vivo: boot 08:28 com
+  `daily_at=08:30` ficou parado; materializou às 08:30:01 em ponto. (2) **Sucessores**: o tick
+  auto-CANCELAVA o sucessor ~2s depois do pai falhar (dep "permanentemente impossível") — e como
+  CANCELLED é terminal, o Set OK/rerun no pai não revivia ninguém: o fluxo padrão do operador estava
+  quebrado. Agora o sucessor **fica WAITING (Wait Event)** com pai falho/rodando/não-rodado; rerun ou
+  Set OK no pai destravam e o próprio tick despacha (quem nunca ficar elegível morre na virada, como no
+  Control-M). O card do canvas mostra **"WAIT EVENT"** (vs "WAIT" de espera de horário), derivado da
+  mesma fonte visual das edges. Validado ao vivo com agente REAL (exit 1 / Start-Sleep): pai NOTOK →
+  filho WAITING por 4+ ticks (Explain: BLOCKED_DEP) → Set OK no pai → filho rodou sozinho; pai RUNNING
+  20s → filho WAIT EVENT (Explain: WAIT_DEP) → pai OK → filho rodou. +2 testes Go
+  (`TestTick_BlockedSuccessorWaitsAndRunsAfterSetOK`, `TestDailyAt_FromSettings`).
 - [ ] **Cap de 2000 do Monitoring legado**: `LEGACY_CAP=2000` (canvas/ACTIVE JOBS não-virtualizados) é arbitrário
   e mostra "2000/2000" como se fosse o total. Fix: **virtualizar a sidebar ACTIVE JOBS** (mostra o dia inteiro),
   header com o **total real** do `/summary` ("2000 carregados de 1.000.000"), e cap do canvas configurável/maior

@@ -129,6 +129,7 @@ func NewRouter(cfg Config) http.Handler {
 
 		r.Get("/daily/diff", s.diffDaily)              // diferencial: o que mudou entre duas diárias
 		r.Get("/daily/dryrun", s.dryRunDaily)          // diferencial: simular uma daily futura sem materializar
+		r.Get("/daily/status", s.dailyStatus)          // última daily (relógio do server) + horário configurado
 		r.Post("/schedule/preview", s.schedulePreview) // calendário-preview: dias que o schedule rodaria (read-only)
 
 		// Daily + Force (Control-M parity)
