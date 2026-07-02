@@ -1319,7 +1319,7 @@ function V2PreviewInner() {
           // Sem folder, não há destino válido para drop → esconde para evitar UX quebrada.
           hasActiveFolders ? (
             <DesignSidebarV2
-              definitions={defs}
+              definitions={filteredDefs}
               onJobClick={(id) => focusNode(`d-${id}`)}
             />
           ) : null
