@@ -1,15 +1,10 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Dagre from "@dagrejs/dagre";
 import {
   ReactFlow,
   ReactFlowProvider,
   Background,
   BackgroundVariant,
-  useReactFlow,
-  useStore,
-  useStoreApi,
   type Node,
-  type Edge,
   type Connection,
   type NodeMouseHandler,
   type OnConnect,
@@ -17,7 +12,7 @@ import {
 } from "@xyflow/react";
 import JobNodeV2 from "./JobNodeV2";
 import LaneLabelNode from "./LaneLabelNode";
-import MonitoringSidebarV2, { type MonitoringJob } from "./MonitoringSidebarV2";
+import MonitoringSidebarV2 from "./MonitoringSidebarV2";
 import ScaleMonitor from "./ScaleMonitor";
 import DailyDiffModal from "./DailyDiffModal";
 import DryRunModal from "./DryRunModal";
@@ -27,16 +22,14 @@ import JobConfigDrawer from "./JobConfigDrawer";
 import CanvasContextMenu, { type ContextMenuItem } from "./CanvasContextMenu";
 import FolderManagerDialog from "./FolderManagerDialog";
 import BulkActionBar from "./BulkActionBar";
-import type { JobNodeData, JobType } from "@/lib/job-config";
+import type { JobType } from "@/lib/job-config";
 import type {
   JobInstance,
   JobDefinition,
   EdgeCondition,
 } from "@/lib/orchestrator-model";
-import { todayOrderDate, EDGE_CONDITION_DEFAULT, TEAMS } from "@/lib/orchestrator-model";
+import { todayOrderDate } from "@/lib/orchestrator-model";
 import {
-  getTodayInstances,
-  onInstanceChange,
   holdInstance,
   releaseInstance,
   cancelInstance,
@@ -46,8 +39,6 @@ import {
   forceInstance,
 } from "@/lib/runtime-bridge";
 import {
-  loadDefinitions,
-  onDefinitionsChange,
   getDefinitions,
   saveDefinition,
   deleteDefinition,
@@ -55,9 +46,6 @@ import {
 } from "@/lib/definition-store";
 import {
   runDaily,
-  startScheduler,
-  stopScheduler,
-  updateSchedulerDefs,
   getLastDailyRun,
 } from "@/lib/runtime-bridge";
 import { container } from "@/lib/container";
@@ -85,563 +73,20 @@ import "@xyflow/react/dist/style.css";
 import "@/index.css";
 import "./tokens.css";
 
-type Mode = "design" | "monitoring";
-
-/* ──────────────────────────────────────────────────────────────
-   Constantes de layout (folders como colunas — Control-M style)
-   ────────────────────────────────────────────────────────────── */
-
-const NODE_W = 220;
-const NODE_H = 72;
-// Âncora vertical de entrada do canvas: o topo do conteúdo fica este tanto abaixo
-// do topo da área (px de tela). Um pouco mais baixo que a trava antiga (24) — mesma
-// sensação do "Organizar". Vale pro Monitoring e pro Design.
-const TOP_ANCHOR = 88;
-// Folga do translateExtent ACIMA do conteúdo, em px de MUNDO. O extent é estático
-// (não conhece o zoom), então precisa cobrir a âncora de TOP_ANCHOR px de TELA no
-// pior caso: TOP_ANCHOR / minZoom (0.5 do ReactFlow) = 176. Com menos que isso, a
-// âncora/centralização deixava a câmera FORA do extent e o primeiro pan "pulava"
-// pra posição travada. Todo movimento programático clampa por este mesmo limite
-// (clampTy), então câmera e trava nunca divergem.
-const PAN_SLACK_TOP = 176;
-// Design — margem (px de mundo) ao redor da caixa dos jobs para o limite de pan:
-// dá folga pros lados/baixo sem deixar "se perder" no vazio.
-const DESIGN_PAN_MARGIN_X = 360;
-const DESIGN_PAN_MARGIN_BOTTOM = 480;
-const NODE_GAP_Y = 28; // ranksep dagre (dep vertical)
-const NODE_GAP_X = 36; // nodesep dagre (jobs paralelos na mesma linha)
-const COL_PADDING_X = 24;
-// Grade dos jobs SOLTOS (sem dependência interna). Configurável em Settings (Fase 2).
-const LAYOUT_COLUMNS = 10; // colunas-base da grade (cap soft)
-const LAYOUT_MAX_ROWS = 30; // ao passar disso, alarga colunas em vez de crescer pra baixo
-type LayoutConfig = { columns: number; maxRows: number };
-const DEFAULT_LAYOUT: LayoutConfig = { columns: LAYOUT_COLUMNS, maxRows: LAYOUT_MAX_ROWS };
-
-// readLayoutConfig — lê a config de layout do localStorage (default 10/30), com
-// clamp sensato. Mesma estratégia do toggle do minimap (pref de visão por browser).
-function readLayoutConfig(): LayoutConfig {
-  if (typeof window === "undefined") return DEFAULT_LAYOUT;
-  const num = (k: string, def: number, min: number, max: number) => {
-    const v = parseInt(window.localStorage.getItem(k) ?? "", 10);
-    return Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : def;
-  };
-  return {
-    columns: num("regente:layoutCols", LAYOUT_COLUMNS, 1, 40),
-    maxRows: num("regente:layoutMaxRows", LAYOUT_MAX_ROWS, 1, 200),
-  };
-}
-const COL_PADDING_TOP = 40; // espaço pro header da folder
-const COL_PADDING_BOTTOM = 24;
-const COL_GAP = 28; // gap horizontal entre folders
-const CANVAS_PADDING = 24;
-
-const INSTANCE_TO_UI_STATUS: Record<JobInstance["status"], JobNodeData["status"]> = {
-  OK: "SUCCESS",
-  NOTOK: "FAILED",
-  RUNNING: "RUNNING",
-  WAITING: "WAITING",
-  HOLD: "INACTIVE",
-  CANCELLED: "INACTIVE",
-};
-
-function instanceToMonitoring(inst: JobInstance): MonitoringJob {
-  return {
-    id: inst.id,
-    label: inst.label,
-    team: inst.team ?? "—",
-    jobType: inst.jobType as JobNodeData["jobType"],
-    status: INSTANCE_TO_UI_STATUS[inst.status],
-    durationMs: inst.durationMs ?? (inst.startedAt ? Date.now() - inst.startedAt : undefined),
-    startedAt: inst.startedAt ? fmtHm(inst.startedAt) : undefined,
-  };
-}
-
-function fmtHm(ms: number): string {
-  return new Date(ms).toLocaleTimeString("en-GB", { hour12: false }).slice(0, 5);
-}
-
-/** Resumo curto do schedule estruturado para exibir no node do canvas. */
-function scheduleSummary(s: JobDefinition["schedule"]): string {
-  const wd: Record<string, string> = { mon: "seg", tue: "ter", wed: "qua", thu: "qui", fri: "sex", sat: "sáb", sun: "dom" };
-  let base = "";
-  switch (s.frequency ?? "daily") {
-    case "weekly": base = (s.daysOfWeek ?? []).map((d) => wd[d] ?? d).join(",") || "semanal"; break;
-    case "monthly": base = "dia " + ((s.daysOfMonth ?? []).map((d) => d === -1 ? "últ" : d).join(",") || "?"); break;
-    case "businessday": base = (s.nthBusinessDays ?? []).map((d) => d === -1 ? "últ útil" : `${d}º út`).join(",") || "dia útil"; break;
-    case "advanced": base = s.advancedRule ?? "regra"; break;
-    default: base = "diário";
-  }
-  return s.runAt ? `${base} ${s.runAt}` : base;
-}
-
-/* ──────────────────────────────────────────────────────────────
-   Canvas builders (folders como colunas, dagre TB dentro)
-   ────────────────────────────────────────────────────────────── */
-
-interface Canvas { nodes: Node[]; edges: Edge[]; lanes: LaneInfo[] }
-interface LaneInfo { team: string; x: number; y: number; width: number; height: number; count: number }
-
-function groupByTeam<T extends { team?: string }>(items: T[]): Map<string, T[]> {
-  const map = new Map<string, T[]>();
-  // garante ordem: TEAMS canônicos primeiro, depois custom
-  for (const t of TEAMS) map.set(t, []);
-  for (const it of items) {
-    const team = (it.team ?? "—").trim() || "—";
-    if (!map.has(team)) map.set(team, []);
-    map.get(team)!.push(it);
-  }
-  // remove lanes vazias
-  for (const [k, v] of [...map.entries()]) if (v.length === 0) map.delete(k);
-  return map;
-}
-
-/**
- * Estado de satisfação de uma dependência (Control-M semantics).
- *
- * Regra do operador (definida pelo usuário):
- *   - Pai NOTOK/CANCELLED → vermelho SEMPRE, independente do tipo
- *     de condição. Só "Set OK" (converte NOTOK→OK manualmente) libera.
- *   - Pai OK → verde (condição satisfeita visualmente).
- *   - Pai WAITING/RUNNING/HOLD → âmbar (pendente).
- *
- * Mesmo que o filho tenha sido FORCED/Run Now e esteja rodando, a
- * edge para um pai vermelho permanece vermelha — ela representa o
- * estado da DEPENDÊNCIA, não do filho.
- */
-type DepState = "satisfied" | "blocked" | "pending";
-
-function evaluateDepState(parentStatus: JobInstance["status"]): DepState {
-  if (parentStatus === "OK") return "satisfied";
-  if (parentStatus === "NOTOK" || parentStatus === "CANCELLED") return "blocked";
-  return "pending"; // WAITING/RUNNING/HOLD
-}
-
-function edgeStyleForState(state: DepState, _condition: EdgeCondition) {
-  // Padrão visual idêntico para condições do mesmo estado.
-  // Todas as edges são tracejadas (uniformidade visual).
-  const dash = "5 4";
-  if (state === "satisfied") {
-    return { stroke: "#11C76F", labelFill: "#11C76F", labelBg: "#052e19", dash };
-  }
-  if (state === "blocked") {
-    return { stroke: "#dc2626", labelFill: "#fca5a5", labelBg: "#450a0a", dash };
-  }
-  // pending — neutro/cinza, sem label
-  return { stroke: "#525252", labelFill: "#a3a3a3", labelBg: "#1c1917", dash };
-}
-
-/**
- * Detecta violação de invariante: o par (status pai, status filho, condição)
- * representa um estado que jamais deveria existir num scheduler correto.
- * Ex.: filho RUNNING/OK antes do pai terminar com on-success.
- *
- * Isto é APENAS detecção/warning; o scheduler-runtime é quem previne
- * promoção. Este guard captura stale data do localStorage.
- */
-function isConditionInvariantViolated(
-  parentStatus: JobInstance["status"],
-  childStatus: JobInstance["status"],
-  condition: EdgeCondition,
-): boolean {
-  const childStarted = childStatus === "RUNNING" || childStatus === "OK" || childStatus === "NOTOK";
-  if (!childStarted) return false;
-  if (condition === "on-success") return parentStatus !== "OK";
-  if (condition === "on-failure") return parentStatus !== "NOTOK";
-  if (condition === "on-complete" || condition === "always") {
-    return parentStatus !== "OK" && parentStatus !== "NOTOK";
-  }
-  return false;
-}
-
-function makeEdge(
-  source: string,
-  target: string,
-  condition: EdgeCondition,
-  parentStatus: JobInstance["status"],
-): Edge {
-  const state = evaluateDepState(parentStatus);
-  const s = edgeStyleForState(state, condition);
-  const label = state === "satisfied" ? "✓" : state === "blocked" ? "✗" : "";
-  return {
-    id: `e-${source}-${target}`,
-    source,
-    target,
-    label,
-    data: { condition, state },
-    style: {
-      stroke: s.stroke,
-      strokeWidth: 1.5,
-      strokeDasharray: s.dash,
-    },
-    labelStyle: { fill: s.labelFill, fontSize: 12, fontFamily: "JetBrains Mono, monospace", fontWeight: 700 },
-    labelBgStyle: { fill: s.labelBg },
-  };
-}
-
-/**
- * Roda dagre TB isolado em cada team usando só edges internas; retorna
- * posições LOCAIS (origem 0,0) e bounding box. Offset horizontal é
- * aplicado pelo chamador para empilhar colunas.
- */
-interface InnerLayout {
-  team: string;
-  positions: Map<string, { x: number; y: number }>;
-  width: number;
-  height: number;
-  count: number;
-}
-
-function layoutFolderInner<T extends { id: string; team?: string }>(
-  team: string,
-  members: T[],
-  nodeIdOf: (t: T) => string,
-  allEdges: Array<{ source: string; target: string }>,
-  cfg: LayoutConfig = DEFAULT_LAYOUT,
-): InnerLayout {
-  const memberIds = new Set(members.map((m) => nodeIdOf(m)));
-  const innerEdges = allEdges.filter((e) => memberIds.has(e.source) && memberIds.has(e.target));
-
-  // Particiona a folder: CONECTADOS (≥1 aresta interna) vs SOLTOS (sem aresta interna).
-  // Dependentes mantêm o fluxo top-down do dagre; soltos vão pra uma GRADE (evita a
-  // fila horizontal infinita que o dagre faz quando todo nó cai no rank 0).
-  const connectedIds = new Set<string>();
-  for (const e of innerEdges) { connectedIds.add(e.source); connectedIds.add(e.target); }
-  const connected = members.filter((m) => connectedIds.has(nodeIdOf(m)));
-  const standalone = members.filter((m) => !connectedIds.has(nodeIdOf(m)));
-
-  const positions = new Map<string, { x: number; y: number }>();
-  let flowW = 0, flowH = 0;
-
-  // 1) CONECTADOS → dagre TB (camadas: A em cima, B/C lado a lado embaixo, etc.).
-  if (connected.length > 0) {
-    const g = new Dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
-    g.setGraph({ rankdir: "TB", nodesep: NODE_GAP_X, ranksep: NODE_GAP_Y, marginx: 0, marginy: 0 });
-    for (const m of connected) g.setNode(nodeIdOf(m), { width: NODE_W, height: NODE_H });
-    for (const e of innerEdges) g.setEdge(e.source, e.target);
-    Dagre.layout(g);
-
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    const raw = new Map<string, { x: number; y: number }>();
-    for (const m of connected) {
-      const dn = g.node(nodeIdOf(m));
-      const x0 = dn.x - NODE_W / 2;
-      const y0 = dn.y - NODE_H / 2;
-      raw.set(nodeIdOf(m), { x: x0, y: y0 });
-      if (x0 < minX) minX = x0;
-      if (y0 < minY) minY = y0;
-      if (x0 + NODE_W > maxX) maxX = x0 + NODE_W;
-      if (y0 + NODE_H > maxY) maxY = y0 + NODE_H;
-    }
-    for (const [id, p] of raw) positions.set(id, { x: p.x - minX, y: p.y - minY });
-    flowW = maxX - minX;
-    flowH = maxY - minY;
-  }
-
-  // 2) SOLTOS → GRADE com wrap + alargamento, ABAIXO da zona de fluxos.
-  //    cols-base = LAYOUT_COLUMNS; passou de LAYOUT_MAX_ROWS linhas, alarga em vez
-  //    de crescer pra baixo (cols = max(base, ceil(N/maxRows))). Ordem estável p/ id.
-  let gridW = 0, gridH = 0;
-  const gap = flowH > 0 && standalone.length > 0 ? NODE_GAP_Y * 3 : 0;
-  if (standalone.length > 0) {
-    const sorted = [...standalone].sort((a, b) => nodeIdOf(a).localeCompare(nodeIdOf(b)));
-    const cols = Math.max(cfg.columns, Math.ceil(sorted.length / cfg.maxRows));
-    const cellW = NODE_W + NODE_GAP_X;
-    const cellH = NODE_H + NODE_GAP_Y;
-    const baseY = flowH + gap;
-    let usedCols = 0, usedRows = 0;
-    sorted.forEach((m, k) => {
-      const c = k % cols;
-      const r = Math.floor(k / cols);
-      positions.set(nodeIdOf(m), { x: c * cellW, y: baseY + r * cellH });
-      if (c + 1 > usedCols) usedCols = c + 1;
-      if (r + 1 > usedRows) usedRows = r + 1;
-    });
-    gridW = usedCols * cellW - NODE_GAP_X;
-    gridH = usedRows * cellH - NODE_GAP_Y;
-  }
-
-  return {
-    team,
-    positions,
-    width: Math.max(flowW, gridW),
-    height: flowH + gap + gridH,
-    count: members.length,
-  };
-}
-
-/**
- * Posiciona colunas lado-a-lado e emite:
- *  - lane node (container/retângulo) por folder
- *  - job nodes posicionados absolutamente dentro da coluna
- */
-function composeColumns<T extends { id: string; team?: string }>(
-  prefix: "m" | "d",
-  items: T[],
-  buildJobNode: (t: T, absX: number, absY: number) => Node,
-  allEdges: Array<{ source: string; target: string }>,
-  nodeIdOf: (t: T) => string,
-  cfg: LayoutConfig = DEFAULT_LAYOUT,
-): { nodes: Node[]; lanes: LaneInfo[] } {
-  const grouped = groupByTeam(items);
-  const layouts: InnerLayout[] = [];
-  for (const [team, members] of grouped) {
-    layouts.push(layoutFolderInner(team, members, nodeIdOf, allEdges, cfg));
-  }
-
-  const nodes: Node[] = [];
-  const lanes: LaneInfo[] = [];
-  let cursorX = CANVAS_PADDING;
-  const topY = CANVAS_PADDING;
-
-  for (const L of layouts) {
-    const colWidth = L.width + COL_PADDING_X * 2;
-    const colHeight = L.height + COL_PADDING_TOP + COL_PADDING_BOTTOM;
-
-    // Container/retângulo da folder (atrás dos jobs)
-    nodes.push({
-      id: `lane-${prefix}-${L.team}`,
-      type: "laneLabel",
-      position: { x: cursorX, y: topY },
-      data: { team: L.team, count: L.count, width: colWidth, height: colHeight },
-      draggable: false,
-      selectable: false,
-      connectable: false,
-      zIndex: 0,
-    });
-
-    lanes.push({
-      team: L.team,
-      x: cursorX,
-      y: topY,
-      width: colWidth,
-      height: colHeight,
-      count: L.count,
-    });
-
-    // Jobs dentro da coluna
-    const members = grouped.get(L.team)!;
-    for (const m of members) {
-      const local = L.positions.get(nodeIdOf(m))!;
-      const absX = cursorX + COL_PADDING_X + local.x;
-      const absY = topY + COL_PADDING_TOP + local.y;
-      nodes.push(buildJobNode(m, absX, absY));
-    }
-
-    cursorX += colWidth + COL_GAP;
-  }
-
-  return { nodes, lanes };
-}
-
-// Minimap próprio: desenha um ponto por job a partir de canvas.nodes (que têm posição
-// garantida), sem depender do MiniMap do ReactFlow (que filtra nós custom sem dimensão
-// medida — motivo de os jobs nunca aparecerem). Clique navega o canvas até o ponto.
-function NavMinimap({ nodes, width, height, onNavigate }: {
-  nodes: Node[];
-  width: number;
-  height: number;
-  // Navegação clamp-aware do pai (focusOnPoint) — setCenter cru deixaria a câmera
-  // fora do translateExtent ao clicar perto do topo (pulo no próximo pan).
-  onNavigate: (fx: number, fy: number, zoom: number) => void;
-}) {
-  // Viewport ao vivo (transform + tamanho do canvas) p/ desenhar o retângulo da
-  // área visível — é o que "leva em consideração o alinhamento da tela".
-  const tx = useStore((s) => s.transform[0]);
-  const ty = useStore((s) => s.transform[1]);
-  const tzoom = useStore((s) => s.transform[2]);
-  const vpW = useStore((s) => s.width);
-  const vpH = useStore((s) => s.height);
-
-  // Mostra APENAS os jobs (ignora lanes/containers e outros nós).
-  const jobs = nodes.filter((n) => n.type === "jobV2");
-  if (jobs.length === 0) {
-    return <div style={{ width, height, display: "grid", placeItems: "center", fontSize: 11, color: "var(--v2-text-muted)" }}>sem jobs</div>;
-  }
-  const MARGIN = 8; // respiro dentro da caixa do minimap
-  const xs = jobs.map((n) => n.position.x);
-  const ys = jobs.map((n) => n.position.y);
-  // Bounds SÓ dos jobs (âncora no canto de cima/esquerda). NÃO entra o viewport aqui
-  // de propósito: a escala do minimap fica ESTÁVEL, sempre mostrando toda a grade de
-  // jobs "no zoom out", independente de quanto o monitoring está com zoom.
-  const minX = Math.min(...xs);
-  const minY = Math.min(...ys);
-  const maxX = Math.max(...xs) + NODE_W;
-  const maxY = Math.max(...ys) + NODE_H;
-  const bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
-  const scale = Math.min((width - 2 * MARGIN) / bw, (height - 2 * MARGIN) / bh);
-  // Ancorado no topo-esquerdo (não centraliza) — reflete a organização real: 1ª
-  // coluna/linha no canto, seguindo pra direita conforme a grade.
-  const offX = MARGIN, offY = MARGIN;
-  const toX = (fx: number) => offX + (fx - minX) * scale;
-  const toY = (fy: number) => offY + (fy - minY) * scale;
-  // Área visível atual (em coords de fluxo) só p/ o retângulo do viewport — clipado
-  // pela caixa do minimap quando o usuário navega além dos jobs.
-  const viewMinX = -tx / tzoom, viewMinY = -ty / tzoom;
-  const viewMaxX = (vpW - tx) / tzoom, viewMaxY = (vpH - ty) / tzoom;
-  // Quadradinho na proporção real do card (mín. legível).
-  const sw = Math.max(3, NODE_W * scale);
-  const sh = Math.max(2, NODE_H * scale);
-
-  const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    const fx = minX + (e.clientX - r.left - offX) / scale;
-    const fy = minY + (e.clientY - r.top - offY) / scale;
-    onNavigate(fx, fy, tzoom);
-  };
-  return (
-    <svg width={width} height={height} onClick={handleClick} style={{ display: "block", cursor: "pointer" }}>
-      {jobs.map((n) => (
-        <rect
-          key={n.id}
-          x={toX(n.position.x)}
-          y={toY(n.position.y)}
-          width={sw}
-          height={sh}
-          rx={1}
-          fill={miniNodeColor(n)}
-          stroke="#06080c"
-          strokeWidth={0.5}
-        />
-      ))}
-      {/* Retângulo do viewport — mostra onde a tela está sobre o conteúdo. */}
-      <rect
-        x={toX(viewMinX)}
-        y={toY(viewMinY)}
-        width={(viewMaxX - viewMinX) * scale}
-        height={(viewMaxY - viewMinY) * scale}
-        fill="rgba(255,255,255,0.05)"
-        stroke="var(--v2-accent-brand)"
-        strokeWidth={1}
-        rx={2}
-        pointerEvents="none"
-      />
-    </svg>
-  );
-}
-
-// Cor do nó no minimap por status (hex p/ o fill SVG do minimap).
-function miniNodeColor(n: Node): string {
-  const s = String((n.data as { status?: string } | undefined)?.status ?? "");
-  if (s === "FAILED" || s === "NOTOK") return "#ef4444";
-  if (s === "RUNNING") return "#22d3ee";
-  if (s === "SUCCESS" || s === "OK") return "#11C76F";
-  if (s === "WAITING") return "#737373";
-  return "#3a3a3a";
-}
-
-function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT): Canvas {
-  // Edges a partir do upstream da definition, resolvidas para instances do mesmo dia.
-  const defsById = new Map(defs.map((d) => [d.id, d] as const));
-
-  // Enriquecimento: server mode devolve instances sem team/label/jobType
-  // (server-instance-store.toWeb hardcoda undefined). Fundimos a partir
-  // da definition correspondente para que folder/label apareçam no monitoring.
-  const instances: JobInstance[] = rawInstances.map((inst) => {
-    const def = defsById.get(inst.definitionId);
-    if (!def) return inst;
-    return {
-      ...inst,
-      team: inst.team || def.team,
-      label: inst.label && inst.label !== inst.definitionId ? inst.label : def.label,
-      jobType: inst.jobType || def.jobType,
-    };
-  });
-
-  const instByDefId = new Map<string, JobInstance>();
-  for (const i of instances) instByDefId.set(i.definitionId, i);
-
-  const edges: Edge[] = [];
-  const rawEdges: Array<{ source: string; target: string }> = [];
-  for (const inst of instances) {
-    const def = defsById.get(inst.definitionId);
-    if (!def?.upstream?.length) continue;
-    for (const u of def.upstream) {
-      const parent = instByDefId.get(u.from);
-      if (!parent) continue;
-      const condition = u.condition ?? EDGE_CONDITION_DEFAULT;
-      const src = `m-${parent.id}`;
-      const tgt = `m-${inst.id}`;
-      rawEdges.push({ source: src, target: tgt });
-
-      // Detecta violação de invariante apenas para console warning
-      // (não afeta visual: a cor da edge segue o estado do pai).
-      // EXCEÇÃO: instances forçadas (manual) bypassam deps por design
-      // (Control-M "Order Force") — não é violação, é intencional.
-      const violated = !inst.manual && isConditionInvariantViolated(parent.status, inst.status, condition);
-      if (violated && typeof console !== "undefined") {
-        // eslint-disable-next-line no-console
-        console.warn(
-          `[regente] dependency invariant suspicious: ${parent.label}(${parent.status}) -${condition}-> ${inst.label}(${inst.status})`,
-        );
-      }
-      edges.push(makeEdge(src, tgt, condition, parent.status));
-    }
-  }
-
-  const { nodes, lanes } = composeColumns(
-    "m",
-    instances,
-    (inst, x, y) => ({
-      id: `m-${inst.id}`,
-      type: "jobV2",
-      position: { x, y },
-      data: {
-        label: inst.label,
-        jobType: inst.jobType,
-        status: INSTANCE_TO_UI_STATUS[inst.status],
-        team: inst.team,
-        lastRun: inst.startedAt ? fmtHm(inst.startedAt) : undefined,
-        mode: "monitoring",
-        forced: inst.manual,
-      } as JobNodeData,
-      draggable: false,
-      zIndex: 10,
-    }),
-    rawEdges,
-    (inst) => `m-${inst.id}`,
-    cfg,
-  );
-
-  return { nodes, edges, lanes };
-}
-
-function buildDesignCanvas(defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT): Canvas {
-  const edges: Edge[] = [];
-  const rawEdges: Array<{ source: string; target: string }> = [];
-  for (const def of defs) {
-    if (!def.upstream?.length) continue;
-    for (const u of def.upstream) {
-      const src = `d-${u.from}`;
-      const tgt = `d-${def.id}`;
-      rawEdges.push({ source: src, target: tgt });
-      edges.push(makeEdge(src, tgt, u.condition ?? EDGE_CONDITION_DEFAULT, "WAITING"));
-    }
-  }
-
-  const { nodes, lanes } = composeColumns(
-    "d",
-    defs,
-    (def, x, y) => ({
-      id: `d-${def.id}`,
-      type: "jobV2",
-      position: { x, y },
-      data: {
-        label: def.label,
-        jobType: def.jobType as JobNodeData["jobType"],
-        status: def.schedule.enabled ? "WAITING" : "INACTIVE",
-        team: def.team,
-        schedule: scheduleSummary(def.schedule),
-        mode: "design",
-      } as JobNodeData,
-      zIndex: 10,
-    }),
-    rawEdges,
-    (def) => `d-${def.id}`,
-    cfg,
-  );
-
-  return { nodes, edges, lanes };
-}
+// Layout puro (constantes + builders) e minimap extraídos p/ módulos próprios;
+// câmera e bootstrap de dados viraram hooks (2026-07-01).
+import {
+  readLayoutConfig,
+  instanceToMonitoring,
+  buildMonitoringCanvas,
+  buildDesignCanvas,
+  type Canvas,
+  type LayoutConfig,
+  type Mode,
+} from "./canvas-layout";
+import NavMinimap from "./NavMinimap";
+import { useCanvasCamera } from "./hooks/useCanvasCamera";
+import { useOrchestratorData } from "./hooks/useOrchestratorData";
 
 /* ──────────────────────────────────────────────────────────────
    Inner component (tem acesso a useReactFlow)
@@ -653,8 +98,9 @@ function V2PreviewInner() {
   const [scaleView, setScaleView] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const [showDryRun, setShowDryRun] = useState(false);
-  const [instances, setInstances] = useState<JobInstance[]>([]);
-  const [defs, setDefs] = useState<JobDefinition[]>([]);
+  // Dados do canvas (defs + instances) e ciclo de vida deles (carga inicial,
+  // subscribes, scheduler local, resync via WS) vivem no hook.
+  const { defs, instances, reloadDefs, syncInstances } = useOrchestratorData();
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
   const [editingDef, setEditingDef] = useState<{ def: JobDefinition; isNew: boolean } | null>(null);
   const [lastDaily, setLastDaily] = useState<string | null>(getLastDailyRun());
@@ -758,116 +204,49 @@ function V2PreviewInner() {
   // F11.9 — multi-selection no canvas (ReactFlow nativo via Shift+click / drag rect)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const rfInstance = useRef<ReactFlowInstance | null>(null);
-  const { getViewport, setViewport } = useReactFlow();
-  const storeApi = useStoreApi();
 
   const nodeTypes = useMemo(() => ({ jobV2: JobNodeV2, laneLabel: LaneLabelNode }), []);
 
-  /* ── Mount: load definitions + subscribe ── */
+  /* ── Eventos de UI vindos do WS ──
+     Dados (defs/instances) ressincronizam no useOrchestratorData/store; aqui
+     ficam só os efeitos de UI: alertas (toast + badge) e, no "_connected", o
+     resync dos itens "fetch-once" sem outro caminho de recuperação (badge de
+     alertas, env label e o /me — server fora do ar no mount deixava o
+     LoginForm mesmo com token válido). */
+  const meRef = useRef(me);
+  useEffect(() => { meRef.current = me; }, [me]);
   useEffect(() => {
-    const serverMode = container.storageBackend === "server";
-
-    if (!serverMode) {
-      // One-shot migration: limpa os 15 fakes do seed v1 que ficaram no
-      // localStorage em sessões anteriores. Qualquer instance hoje que
-      // venha de uma definition inexistente é órfã e deve sumir.
-      if (typeof window !== "undefined") {
-        const oldSeedFlag = window.localStorage.getItem("regente:v2-seeded:v1");
-        if (oldSeedFlag) {
-          window.localStorage.removeItem("regente:instances");
-          window.localStorage.removeItem("regente:v2-seeded:v1");
-          window.localStorage.removeItem("regente:daily-run-at");
+    if (!isServerMode()) return;
+    return onServerEvent((ev) => {
+      // Phase 8 — alerta disparado no server: toast + atualiza o badge.
+      if (ev.event === "alert.fired") {
+        const p = (ev.payload ?? {}) as { ruleName?: string; message?: string; severity?: string };
+        const title = p.ruleName ?? "Alerta";
+        if (p.severity === "critical" || p.severity === "warning") {
+          toast.error(title, { detail: p.message });
+        } else {
+          toast.info(title, { detail: p.message });
+        }
+        void fetchUnacknowledgedCount().then(setUnreadAlerts);
+      }
+      // Ciclo de vida: alertas tratados (rerun/set-ok) no server → atualiza o badge.
+      if (ev.event === "alert.changed") {
+        void fetchUnacknowledgedCount().then(setUnreadAlerts);
+      }
+      if (ev.event === "_connected") {
+        void fetchUnacknowledgedCount().then(setUnreadAlerts);
+        if (SERVER_URL) {
+          fetch(`${SERVER_URL}/api/env`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data) => { if (data?.label) setEnvLabel(data.label); })
+            .catch(() => {});
+        }
+        if (!meRef.current) {
+          void fetchMe().then((u) => { if (u) setMe(u); });
         }
       }
-    }
-
-    void loadDefinitions().then((list) => {
-      setDefs(list);
-      // Purga instances órfãs (sem definition correspondente) — só local mode.
-      if (!serverMode && typeof window !== "undefined") {
-        const raw = window.localStorage.getItem("regente:instances");
-        if (raw) {
-          try {
-            const arr = JSON.parse(raw) as JobInstance[];
-            const ids = new Set(list.map((d) => d.id));
-            const cleaned = arr.filter((i) => ids.has(i.definitionId));
-            if (cleaned.length !== arr.length) {
-              window.localStorage.setItem("regente:instances", JSON.stringify(cleaned));
-            }
-          } catch { /* ignore */ }
-        }
-      }
-      setInstances(getTodayInstances());
     });
-    const unsubDefs = onDefinitionsChange((list) => {
-      setDefs([...list]);
-      updateSchedulerDefs([...list]);
-    });
-    setInstances(getTodayInstances());
-    // SEM refiltro por todayOrderDate aqui: getTodayInstances já resolve o "hoje"
-    // em cada modo (local filtra por data local; server devolve o dia que o SERVER
-    // materializou). Refiltrar pela data local do browser zerava o board no primeiro
-    // evento WS quando o dia do cliente ≠ dia do server (acesso remoto/virada de dia).
-    const unsubInst = onInstanceChange(() => {
-      setInstances(getTodayInstances());
-    });
-    startScheduler(2000);
-
-    // Server mode: subscribe a WS para recarregar defs quando mudarem no server
-    let unsubWs: (() => void) | null = null;
-    if (isServerMode()) {
-      unsubWs = onServerEvent((ev) => {
-        // WS (re)conectou — inclui o pós-login (setAuthToken reconecta com o token
-        // novo). Recarrega defs que podem ter falhado no mount (401) ou mudado
-        // enquanto o canal esteve fora. Instances ressincronizam no próprio store.
-        if (ev.event === "_connected") {
-          void reloadDefinitions().then((list) => setDefs([...list]));
-          return;
-        }
-        if (ev.event === "definition.changed" || ev.event === "definition.deleted") {
-          void reloadDefinitions().then((list) => setDefs([...list]));
-          // Loop GitHub→UI fechado: mudança veio do webhook (push/PR merged no
-          // GitHub) → avisa o usuário que as caixinhas mudaram sozinhas.
-          const payload = (ev.payload ?? {}) as { reason?: string; sha?: string };
-          if (payload.reason === "git-webhook") {
-            toast.info("Workspace atualizado via GitHub", {
-              detail: payload.sha ? `main agora em ${payload.sha}` : "novo commit no main",
-            });
-          }
-        }
-        // F11.8 — folder.changed: foldermanager já faz refresh interno; aqui só
-        // garantimos que defs sigam coerentes (rename/delete podem ter movido jobs).
-        if (ev.event === "folder.changed") {
-          void reloadDefinitions().then((list) => setDefs([...list]));
-        }
-        // Phase 8 — alerta disparado no server: toast + atualiza o badge.
-        if (ev.event === "alert.fired") {
-          const p = (ev.payload ?? {}) as { ruleName?: string; message?: string; severity?: string };
-          const title = p.ruleName ?? "Alerta";
-          if (p.severity === "critical" || p.severity === "warning") {
-            toast.error(title, { detail: p.message });
-          } else {
-            toast.info(title, { detail: p.message });
-          }
-          void fetchUnacknowledgedCount().then(setUnreadAlerts);
-        }
-        // Ciclo de vida: alertas tratados (rerun/set-ok) no server → atualiza o badge.
-        if (ev.event === "alert.changed") {
-          void fetchUnacknowledgedCount().then(setUnreadAlerts);
-        }
-      });
-    }
-
-    return () => {
-      unsubDefs();
-      unsubInst();
-      if (unsubWs) unsubWs();
-      stopScheduler();
-    };
   }, []);
-
-  // Mantém scheduler com defs atuais
-  useEffect(() => { updateSchedulerDefs(defs); }, [defs]);
 
   // Alerting (Phase 8) — surface fired alerts as toasts and keep the topbar
   // badge in sync. In local mode the notifier is invoked from instance-store;
@@ -1050,92 +429,6 @@ function V2PreviewInner() {
     } catch { /* ignore */ }
   }, [designSessionId]);
 
-  // Trava de pan. Monitoring: topo do conteúdo (folders) alinhado com o ACTIVE JOBS;
-  // livre pros lados e pra CIMA (revelar mais jobs abaixo), nunca abaixo do topo.
-  // Design: BOUNDED na caixa dos jobs da folder + margem — só puxa pros lados quando
-  // os jobs passam da tela, e com LIMITE pra não "se perder" no vazio.
-  const panExtent = useMemo<[[number, number], [number, number]] | undefined>(() => {
-    if (canvas.nodes.length === 0) return undefined;
-    const top = Math.min(...canvas.nodes.map((n) => n.position.y));
-    if (mode === "monitoring") {
-      return [[-100000, top - PAN_SLACK_TOP], [100000, 100000]];
-    }
-    // Design — caixa [minX,minY]..[maxX,maxY] dos jobs + margem.
-    const xs = canvas.nodes.map((n) => n.position.x);
-    const ys = canvas.nodes.map((n) => n.position.y);
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs) + NODE_W;
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys) + NODE_H;
-    return [
-      [minX - DESIGN_PAN_MARGIN_X, minY - PAN_SLACK_TOP],
-      [maxX + DESIGN_PAN_MARGIN_X, maxY + DESIGN_PAN_MARGIN_BOTTOM],
-    ];
-  }, [mode, canvas.nodes]);
-
-  // clampTy — aplica ao movimento PROGRAMÁTICO (organizar/centralizar/minimap) o
-  // MESMO limite superior do translateExtent. O ReactFlow só clampa pan/zoom do
-  // usuário; setViewport/setCenter passam direto — e uma câmera fora do extent
-  // "pula" pra posição travada no primeiro pan (o bug da centralização).
-  const clampTy = useCallback((ty: number, zoom: number): number => {
-    if (canvas.nodes.length === 0) return ty;
-    const top = Math.min(...canvas.nodes.map((n) => n.position.y));
-    return Math.min(ty, (PAN_SLACK_TOP - top) * zoom);
-  }, [canvas.nodes]);
-
-  // focusOnPoint — centraliza um ponto do mundo na tela SEM sair do extent.
-  // Substitui o setCenter cru: para jobs perto do topo, "centraliza até onde a
-  // trava deixa" (job fica visível no alto) e a câmera permanece numa posição
-  // legal — mexer depois não salta.
-  const focusOnPoint = useCallback((px: number, py: number, zoom: number, duration = 350) => {
-    const { width, height } = storeApi.getState();
-    const tx = width / 2 - px * zoom;
-    const ty = clampTy(height / 2 - py * zoom, zoom);
-    setViewport({ x: tx, y: ty, zoom }, { duration });
-  }, [storeApi, clampTy, setViewport]);
-
-  // organizeView — re-enquadra ancorando o TOPO do conteúdo em TOP_ANCHOR (em vez
-  // de centralizar verticalmente, que jogaria o conteúdo mais pra baixo). Fonte
-  // ÚNICA usada tanto na ENTRADA quanto no botão "Organizar" — assim os dois caem
-  // exatamente no mesmo limite (era o bug: o botão fazia fitView puro = mais baixo).
-  const organizeView = useCallback((duration: number) => {
-    if (canvas.nodes.length === 0) return;
-    // Fit calculado NA MÃO (sem fitView): o fitView do RF v12 é assíncrono e o
-    // promise nem resolve quando chamado logo após o mount (nós ainda medindo) —
-    // era a corrida que deixava a entrada ora centralizada (fora do extent → pulo
-    // no 1º pan), ora em 0,0. Bounds vêm das lanes (contêm todos os jobs), o pane
-    // vem do store — tudo síncrono e determinístico.
-    const { width, height } = storeApi.getState();
-    if (!width || !height) return;
-    const L = canvas.lanes;
-    const b = L.length > 0
-      ? {
-          minX: Math.min(...L.map((l) => l.x)),
-          maxX: Math.max(...L.map((l) => l.x + l.width)),
-          minY: Math.min(...L.map((l) => l.y)),
-          maxY: Math.max(...L.map((l) => l.y + l.height)),
-        }
-      : {
-          minX: Math.min(...canvas.nodes.map((n) => n.position.x)),
-          maxX: Math.max(...canvas.nodes.map((n) => n.position.x + NODE_W)),
-          minY: Math.min(...canvas.nodes.map((n) => n.position.y)),
-          maxY: Math.max(...canvas.nodes.map((n) => n.position.y + NODE_H)),
-        };
-    const bw = Math.max(1, b.maxX - b.minX);
-    const bh = Math.max(1, b.maxY - b.minY);
-    const PADDING = 0.12; // fração do pane, como o fitView fazia
-    const zoomFit = Math.min((width * (1 - PADDING * 2)) / bw, (height * (1 - PADDING * 2)) / bh);
-    const zoom = Math.max(0.5, Math.min(1, zoomFit)); // não afasta além do minZoom nem amplia >1
-    const tx = width / 2 - ((b.minX + b.maxX) / 2) * zoom;
-    const ty = clampTy(TOP_ANCHOR - b.minY * zoom, zoom);
-    setViewport({ x: tx, y: ty, zoom }, { duration });
-  }, [canvas.nodes, canvas.lanes, storeApi, setViewport, clampTy]);
-
-  // Ref sempre com o organizeView mais recente (fecha sobre os canvas.nodes atuais)
-  // sem forçar o effect de entrada a rodar a cada re-layout.
-  const organizeViewRef = useRef(organizeView);
-  useEffect(() => { organizeViewRef.current = organizeView; }, [organizeView]);
-
   // Chave do CONTEXTO de visão: muda quando o usuário troca de modo ou o conjunto
   // de folders muda. NÃO muda quando só chegam updates de dado (status via WS/tick,
   // Run Daily materializando, Force). É o que decide quando reancorar a câmera.
@@ -1144,21 +437,10 @@ function V2PreviewInner() {
     return "monitoring:" + (visibleFolders ? [...visibleFolders].sort().join(",") : "*");
   }, [mode, activeFolders, visibleFolders]);
 
-  // Auto-organiza (ancora o topo) SÓ ao entrar num contexto ou quando os jobs
-  // aparecem pela 1ª vez. Depende só de [viewContextKey, hasNodes] — churn de dado
-  // (Force/Run Daily/WS) NÃO reancora, então a câmera não "pula" nem volta ao
-  // centro sozinha, e os jobs não somem exigindo F5.
-  const hasNodes = canvas.nodes.length > 0;
-  // paneReady: o <ReactFlow> pode montar DEPOIS dos nodes existirem (ex.: login —
-  // os dados chegam via _connected enquanto o LoginForm ainda cobre a tela) e o
-  // onInit dispara ANTES do pane ser medido (width/height=0 → organize no-op).
-  // Assinar as dimensões do store reativa o gate assim que o pane ganha tamanho.
-  const paneReady = useStore((s) => s.width > 0 && s.height > 0);
-  useEffect(() => {
-    if (!hasNodes || !paneReady) return;
-    const t = setTimeout(() => organizeViewRef.current(220), 140);
-    return () => clearTimeout(t);
-  }, [viewContextKey, hasNodes, paneReady]);
+  // Câmera do canvas (trava de pan + âncora de entrada + centralizações) — todo
+  // movimento programático é clampado pelo mesmo limite do translateExtent.
+  const { panExtent, organizeView, focusOnPoint, focusNode, setPendingFocusId } =
+    useCanvasCamera(canvas, mode, viewContextKey);
 
   const monitoringJobs = useMemo(() => {
     const defsById = new Map(defs.map((d) => [d.id, d] as const));
@@ -1189,31 +471,11 @@ function V2PreviewInner() {
     return c;
   }, [filteredInstances]);
 
-  /* ── Sidebar click → centralize node ── */
-  const focusNode = useCallback((nodeId: string) => {
-    const node = canvas.nodes.find((n) => n.id === nodeId);
-    if (!node) return;
-    const px = node.position.x + NODE_W / 2;
-    const py = node.position.y + NODE_H / 2;
-    focusOnPoint(px, py, 1.1);
-  }, [canvas.nodes, focusOnPoint]);
-
+  /* ── Sidebar click → centralize node (focusNode vem do useCanvasCamera) ── */
   const handleSidebarSelect = useCallback((instId: string) => {
     setSelectedInstanceId(instId);
     focusNode(`m-${instId}`);
   }, [focusNode]);
-
-  // Foco pendente: centraliza num job assim que o nó aparece no canvas (ex.: após
-  // Force Order — o instance é criado async, então esperamos ele materializar).
-  // Mantém o zoom atual (não dá aquele salto), e some depois de focar 1×.
-  const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
-  useEffect(() => {
-    if (!pendingFocusId) return;
-    const node = canvas.nodes.find((n) => n.id === `m-${pendingFocusId}`);
-    if (!node) return; // ainda não materializou — espera o próximo re-layout
-    focusOnPoint(node.position.x + NODE_W / 2, node.position.y + NODE_H / 2, getViewport().zoom);
-    setPendingFocusId(null);
-  }, [pendingFocusId, canvas.nodes, focusOnPoint, getViewport]);
 
   /* ── Canvas node click ── */
   const onNodeClick: NodeMouseHandler = useCallback((_, node) => {
@@ -1294,9 +556,10 @@ function V2PreviewInner() {
     // Job NOVO: reenquadra pra garantir que ele (e os já existentes) fiquem visíveis.
     // Sem isso, com zoom/pan o nó recém-criado pode nascer fora da tela e "sumir".
     // organizeView (e não fitView cru): fitView centraliza vertical = câmera fora
-    // do extent = pulo no próximo pan.
-    if (wasNew) setTimeout(() => organizeViewRef.current(300), 200);
-  }, [editingDef]);
+    // do extent = pulo no próximo pan. (organizeView tem identidade estável e
+    // implementação sempre fresca — seguro dentro do setTimeout.)
+    if (wasNew) setTimeout(() => organizeView(300), 200);
+  }, [editingDef, organizeView]);
   const handleDeleteDef = useCallback(async (id: string) => {
     await deleteDefinition(id);
     // também remove referências upstream em outras definitions
@@ -1320,13 +583,13 @@ function V2PreviewInner() {
       return;
     }
     if (created.length > 0) {
-      setInstances(getTodayInstances());
+      syncInstances();
     } else {
       toast.info("Nenhuma definition elegível", {
         detail: "Sem schedule habilitado ou instances já materializadas hoje.",
       });
     }
-  }, [defs]);
+  }, [defs, syncInstances]);
 
   const handleRerunInstance = useCallback((id: string) => {
     Promise.resolve(rerunInstance(id)).then((fresh) => {
@@ -1383,13 +646,13 @@ function V2PreviewInner() {
         } else {
           toast.success(`${res.ok} job${res.ok === 1 ? "" : "s"} movido${res.ok === 1 ? "" : "s"} para ${targetFolder}`);
         }
-        await reloadDefinitions().then((list) => setDefs([...list]));
+        await reloadDefs();
       } catch (e) {
         toast.error("Bulk move falhou", { detail: e instanceof Error ? e.message : String(e) });
       }
       clearSelection();
     },
-    [designSessionId, clearSelection],
+    [designSessionId, clearSelection, reloadDefs],
   );
 
   const handleBulkDeleteDefs = useCallback(
@@ -1437,7 +700,7 @@ function V2PreviewInner() {
       console.error("[force] failed", err);
       toast.error("Force Order falhou", { detail: err?.message ?? String(err) });
     });
-  }, []);
+  }, [setPendingFocusId]);
 
   /* ── Context menu (right-click no canvas) ── */
   const onNodeContextMenu = useCallback(

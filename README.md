@@ -593,7 +593,23 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   instances não refiltra mais por `todayOrderDate()` do browser (zerava o board no 1º evento WS
   quando o dia do cliente ≠ dia do server — acesso remoto/virada de dia). Validado ao vivo (90 defs
   + 102 instances): entrada=Organizar=âncora idêntica (`ty=76`@zoom .5), drag pós-centralização sem
-  snap, Force ×2 com câmera imóvel, login → board aparece sem F5. `LEGACY_CAP=2000` (canvas/ACTIVE JOBS não-virtualizados) é arbitrário
+  snap, Force ×2 com câmera imóvel, login → board aparece sem F5.
+- [x] **Hardening pós-review** ✅ (2026-07-01): os 3 pontos de atenção apontados na avaliação do projeto.
+  (1) **SQLITE_BUSY em rajada resolvido de verdade** — os pragmas (`busy_timeout`/WAL/foreign_keys) eram
+  aplicados via `Exec` numa conexão SÓ do pool do `database/sql`; as demais ficavam sem `busy_timeout` e a
+  materialização da daily perdia eventos de auditoria ("database is locked"). Agora vão no **DSN**
+  (`_pragma=`), que o modernc/sqlite executa em CADA conexão nova — validado: mesma rajada de 95 jobs,
+  **zero** SQLITE_BUSY, eventos `ordered/started/submitted/finished` todos persistidos. (2) **V2Preview
+  desmontado em módulos** (2223→1485 linhas): layout puro em `canvas-layout.ts` (constantes + builders +
+  dagre), minimap em `NavMinimap.tsx`, câmera em `hooks/useCanvasCamera.ts` (trava + âncora + clamp +
+  centralizações + gate de entrada) e bootstrap/sync de dados em `hooks/useOrchestratorData.ts` — os três
+  bugs de ciclo de vida da sessão anterior moravam todos nesse arquivo; agora cada preocupação tem dono.
+  (3) **Resync `_connected` cobre os "fetch-once" restantes** — badge de alertas, env label e `/me` se
+  recuperam na reconexão; bônus emergente validado ao vivo: token inválido no mount → 401 → limpa token →
+  reconecta com fallback → board completo SEM F5 nem login manual (em dev; no hosted o LoginForm segue
+  gateando). Regressão completa verde pós-refactor: entrada=Organizar (`ty=76`@.5), centralização anima
+  até o clamp exato (`ty=167.2`@1.1) e fica, drags sem pulo, Force ×2 com câmera imóvel.
+- [ ] **Cap de 2000 do Monitoring legado**: `LEGACY_CAP=2000` (canvas/ACTIVE JOBS não-virtualizados) é arbitrário
   e mostra "2000/2000" como se fosse o total. Fix: **virtualizar a sidebar ACTIVE JOBS** (mostra o dia inteiro),
   header com o **total real** do `/summary` ("2000 carregados de 1.000.000"), e cap do canvas configurável/maior
   com aviso "abra o ViewPoint". (O ViewPoint já mostra 100k–1M.)

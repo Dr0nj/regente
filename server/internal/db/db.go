@@ -124,17 +124,34 @@ func Open(dialect Dialect, dsn string) (*DB, error) {
 		}
 		return &DB{DB: sdb, dialect: Postgres}, nil
 	case SQLite, "":
-		sdb, err := sql.Open("sqlite", dsn)
+		// Pragmas via DSN (`_pragma=`), NÃO via Exec: o database/sql mantém um POOL
+		// de conexões e um `Exec("PRAGMA busy_timeout...")` só aplica na conexão que
+		// o executou — as demais ficavam sem busy_timeout e estouravam SQLITE_BUSY
+		// em rajada (ex.: emitEvent perdendo eventos de auditoria ao materializar a
+		// daily). journal_mode=WAL até persiste no arquivo, mas busy_timeout e
+		// foreign_keys são POR-CONEXÃO; no DSN o driver aplica em cada conexão nova.
+		sdb, err := sql.Open("sqlite", sqliteDSN(dsn))
 		if err != nil {
-			return nil, err
-		}
-		if _, err := sdb.Exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;`); err != nil {
 			return nil, err
 		}
 		return &DB{DB: sdb, dialect: SQLite}, nil
 	default:
 		return nil, fmt.Errorf("dialeto não suportado %q", dialect)
 	}
+}
+
+// sqliteDSN anexa os pragmas per-connection ao path do arquivo. O modernc/sqlite
+// executa cada `_pragma=` na ABERTURA de cada conexão do pool (applyQueryParams).
+// Se o chamador já configurou `_pragma=` explicitamente, respeita e não mexe.
+func sqliteDSN(path string) string {
+	if strings.Contains(path, "_pragma=") {
+		return path
+	}
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	return path + sep + "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
 }
 
 // ---------------------------------------------------------------------------
