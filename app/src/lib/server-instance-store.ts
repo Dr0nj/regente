@@ -85,6 +85,16 @@ const cache = new Map<string, JobInstance>();
 let lastFetchDate: string | null = null;
 let initialLoad: Promise<void> | null = null;
 
+// Anti-race do refresh (bug: forçar N jobs fazia cards sumirem até F5).
+// Cada força/evento WS disparava um GET /api/instances concorrente e cada um
+// dava cache.clear()+repopula; uma resposta ANTIGA chegando por último apagava
+// instances recém-criadas — e no monitoring nó do canvas = instance.
+// - touchedAt: última mutação via WS por id; snapshot iniciado ANTES do evento
+//   não pode deletar nem regredir esse id (o refresh de cauda reconcilia).
+// - tombstones: ids deletados via WS; snapshot antigo não os ressuscita.
+const touchedAt = new Map<string, number>();
+const tombstones = new Map<string, number>();
+
 type Listener = (instances: JobInstance[]) => void;
 const listeners = new Set<Listener>();
 
@@ -100,6 +110,7 @@ function notify(): void {
 }
 
 function applyInstance(s: ServerInstance): void {
+  touchedAt.set(s.id, Date.now());
   cache.set(s.id, toWeb(s));
   notify();
 }
@@ -110,7 +121,8 @@ function upsertFromEvent(payload: unknown): void {
   // Server broadcasts partial payloads em ações (hold/release/cancel). Se vier
   // com id+status mas sem orderDate, faz refresh completo para manter cache íntegro.
   if (!p.orderDate || !p.scheduledAt) {
-    const existing = cache.get(p.id);
+    if (p.id) touchedAt.set(p.id, Date.now());
+    const existing = p.id ? cache.get(p.id) : undefined;
     if (existing && p.status) {
       const next: JobInstance = {
         ...existing,
@@ -119,10 +131,10 @@ function upsertFromEvent(payload: unknown): void {
       cache.set(p.id, next);
       notify();
       // também agenda um refresh full para reconciliar
-      void refresh();
+      refresh().catch((err) => console.warn("[server-instances] refresh failed", err));
       return;
     }
-    void refresh();
+    refresh().catch((err) => console.warn("[server-instances] refresh failed", err));
     return;
   }
   applyInstance(p);
@@ -133,14 +145,69 @@ function upsertFromEvent(payload: unknown): void {
 // (ScaleMonitor), que pagina/filtra no servidor e aguenta 100k–1M. P3/escala.
 const LEGACY_CAP = 2000;
 
-async function refresh(date = todayOrderDate()): Promise<void> {
+// doFetch — UMA rodada de GET + reconcile por MERGE (nunca cache.clear()).
+// gen guard: se um fetch mais novo começou enquanto este aguardava a resposta,
+// a resposta velha é descartada inteira — resposta fora de ordem não pode
+// reescrever o board com um snapshot do passado.
+let fetchGen = 0;
+
+async function doFetch(date: string): Promise<void> {
+  const gen = ++fetchGen;
+  const startedAt = Date.now();
   const arr = await api<ServerInstance[]>(
     `/api/instances?date=${encodeURIComponent(date)}&limit=${LEGACY_CAP}`,
   );
-  cache.clear();
-  for (const s of arr ?? []) cache.set(s.id, toWeb(s));
+  if (gen !== fetchGen) return; // obsoleto: fetch mais novo já em voo/aplicado
+
+  const seen = new Set<string>();
+  for (const s of arr ?? []) {
+    seen.add(s.id);
+    // Deletado via WS durante o fetch → snapshot antigo não ressuscita.
+    if ((tombstones.get(s.id) ?? 0) >= startedAt) continue;
+    // Mutado via WS durante o fetch → snapshot não regride status; o refresh
+    // de cauda (agendado pelo próprio evento) reconcilia com dados completos.
+    if (cache.has(s.id) && (touchedAt.get(s.id) ?? 0) >= startedAt) continue;
+    cache.set(s.id, toWeb(s));
+  }
+  for (const id of [...cache.keys()]) {
+    if (seen.has(id)) continue;
+    // Instance criada/mutada via WS depois do snapshot ser tirado (ex.: força
+    // em lote) — NÃO deletar; o refresh de cauda traz o registro completo.
+    if ((touchedAt.get(id) ?? 0) >= startedAt) continue;
+    cache.delete(id);
+  }
+  // Marcas antigas já cumpriram o papel (só protegem contra snapshots que
+  // começaram antes delas; futuros snapshots começam depois de agora).
+  for (const [id, ts] of touchedAt) if (ts < startedAt) touchedAt.delete(id);
+  for (const [id, ts] of tombstones) if (ts < startedAt) tombstones.delete(id);
+
   lastFetchDate = date;
   notify();
+}
+
+// refresh — single-flight com rodada de cauda coalescida. Nunca há dois GETs
+// em voo; qualquer gatilho DURANTE um fetch agenda exatamente UMA rodada extra
+// disparada depois dele (portanto depois do commit que originou o gatilho).
+// Rajada de N forças/eventos = no máximo 2 fetches, e o último sempre vê tudo.
+let inFlight: Promise<void> | null = null;
+let trailing: Promise<void> | null = null;
+let trailingDate: string | null = null;
+
+function refresh(date = todayOrderDate()): Promise<void> {
+  if (inFlight) {
+    trailingDate = date;
+    if (!trailing) {
+      trailing = inFlight.catch(() => {}).then(() => {
+        trailing = null;
+        const d = trailingDate ?? todayOrderDate();
+        trailingDate = null;
+        return refresh(d);
+      });
+    }
+    return trailing;
+  }
+  inFlight = doFetch(date).finally(() => { inFlight = null; });
+  return inFlight;
 }
 
 // Retry da carga inicial: um 401 pré-login, um hiccup do tunnel ou o server ainda
@@ -183,11 +250,15 @@ function ensureWs(): void {
         break;
       case "instance.deleted": {
         const p = ev.payload as { id?: string } | undefined;
-        if (p?.id && cache.delete(p.id)) notify();
+        if (p?.id) {
+          tombstones.set(p.id, Date.now());
+          touchedAt.delete(p.id);
+          if (cache.delete(p.id)) notify();
+        }
         break;
       }
       case "daily.started":
-        void refresh();
+        refresh().catch((err) => console.warn("[server-instances] refresh failed", err));
         break;
       // WS (re)conectou: ressincroniza tudo — cobre eventos perdidos offline e o
       // primeiro load que falhou com 401 antes do login (token novo já vale aqui).
