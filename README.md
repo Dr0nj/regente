@@ -654,6 +654,22 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   starvaria dispatch multi-nó). Validado ao vivo: sem agente = statuses estáveis 6s+ (zero flicker),
   zero eventos `started`, Explain WAIT_AGENT, card rgb(56,189,248); agente conectou → var-echo OK /
   nc-pai FAIL / fw-espera RUNNING em <1.5s. Teste `TestTick_NoAgentNoClaim`.
+- [x] **Jobs sumindo do canvas ao forçar em rajada (race de refresh) — morto de vez** ✅ (2026-07-02):
+  bug recorrente reportado pelo usuário (~6 forces seguidos → cards somem → só F5 traz de volta). Causa
+  raiz: o `server-instance-store` disparava um `GET /api/instances` COMPLETO por força e por evento WS
+  parcial (todos os broadcasts `instance.changed` são parciais, só id+status) → rajada de N forças ≈
+  3-4×N GETs concorrentes, cada um `cache.clear()`+repopula → uma resposta ANTIGA (snapshot tirado
+  antes dos últimos INSERTs) chegando POR ÚLTIMO apagava do cache as instances recém-criadas — e no
+  monitoring **nó do canvas = instance**, então os cards sumiam e nada re-disparava refresh até o F5.
+  Três defesas no store: (1) **`refresh()` single-flight com rodada de cauda coalescida** — nunca há
+  dois GETs em voo; gatilho durante um fetch agenda UMA rodada extra disparada DEPOIS dele (portanto
+  depois do commit que originou o gatilho); rajada de N eventos = ≤2 fetches e o último sempre vê tudo;
+  (2) **gen guard** — resposta de fetch obsoleto é descartada inteira; (3) **reconcile por MERGE**
+  (nunca mais `cache.clear()`) — id mutado via WS durante o fetch não é deletado nem regride status
+  pelo snapshot antigo (`touchedAt`; o refresh de cauda reconcilia) e id deletado não ressuscita
+  (`tombstones`). Validado ao vivo: rajada de 10 forças paralelas + segunda rajada de 6 com
+  hold/release no meio → 16/16 cards firmes no canvas, 8 GETs coalescidos para ~30 eventos WS, zero
+  erros de console, sem F5.
 - [ ] **Cap de 2000 do Monitoring legado**: `LEGACY_CAP=2000` (canvas/ACTIVE JOBS não-virtualizados) é arbitrário
   e mostra "2000/2000" como se fosse o total. Fix: **virtualizar a sidebar ACTIVE JOBS** (mostra o dia inteiro),
   header com o **total real** do `/summary` ("2000 carregados de 1.000.000"), e cap do canvas configurável/maior
