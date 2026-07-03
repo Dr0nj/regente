@@ -178,6 +178,34 @@ func (m *mcpServer) dispatch(name string, args map[string]interface{}) (string, 
 			return "", err
 		}
 		return m.get("/api/instances/" + url.PathEscape(id) + "/blast-radius")
+	case "job_neighborhood":
+		id, err := requireID()
+		if err != nil {
+			return "", err
+		}
+		q := map[string]string{}
+		if n := intArg(args, "radius"); n > 0 {
+			q["radius"] = strconv.Itoa(n)
+		}
+		return m.get("/api/instances/" + url.PathEscape(id) + "/neighborhood" + qs(q))
+	case "root_cause":
+		id, err := requireID()
+		if err != nil {
+			return "", err
+		}
+		return m.get("/api/instances/" + url.PathEscape(id) + "/rca")
+	case "event_log":
+		q := map[string]string{"date": str("date"), "kind": str("kind"), "actor": str("actor"), "folder": str("folder"), "instance": str("instance")}
+		if n := intArg(args, "limit"); n > 0 {
+			q["limit"] = strconv.Itoa(n)
+		}
+		return m.get("/api/events" + qs(q))
+	case "query":
+		q := str("q")
+		if q == "" {
+			return "", fmt.Errorf("q (pergunta) é obrigatório")
+		}
+		return m.postJSON("/api/query", map[string]string{"q": q})
 	case "diff_daily":
 		return m.get("/api/daily/diff" + qs(map[string]string{"from": str("from"), "to": str("to"), "folder": str("folder")}))
 	case "dry_run":
@@ -264,6 +292,38 @@ func (m *mcpServer) tools() []map[string]interface{} {
 			"inputSchema": schema(map[string]interface{}{"date": strProp("YYYY-MM-DD (default amanhã)")}),
 			"annotations": readOnly,
 		},
+		{
+			"name":        "job_neighborhood",
+			"description": "Grafo LOCAL de um job: ancestrais (de quem depende) e descendentes (quem depende dele) até `radius` saltos, com o status de cada um no dia. Contexto de vizinhança antes de agir.",
+			"inputSchema": schema(map[string]interface{}{
+				"instanceId": strProp("id da instance"),
+				"radius":     map[string]interface{}{"type": "integer", "description": "saltos em cada direção (default 1, máx 4)"},
+			}, "instanceId"),
+			"annotations": readOnly,
+		},
+		{
+			"name":        "root_cause",
+			"description": "Causa raiz de uma falha/bloqueio: sobe a cadeia de upstreams falhos e aponta o job que falhou por conta própria e derrubou o resto. Responde 'por que esse cluster inteiro travou?'.",
+			"inputSchema": schema(map[string]interface{}{"instanceId": strProp("id da instance")}, "instanceId"),
+			"annotations": readOnly,
+		},
+		{
+			"name":        "event_log",
+			"description": "Feed de eventos do dia (cross-instance): ordered/started/finished/retry/cyclic/set-ok/held/…, filtrável por kind, actor, folder ou instance. Timeline operacional / auditoria.",
+			"inputSchema": schema(map[string]interface{}{
+				"date": strProp("YYYY-MM-DD (default hoje)"), "kind": strProp("lista separada por vírgula"),
+				"actor": strProp("scheduler|operator|agent (LIKE)"), "folder": strProp("folder/team exato"),
+				"instance": strProp("instance_id exato"),
+				"limit":    map[string]interface{}{"type": "integer", "description": "máx de linhas (default 200)"},
+			}),
+			"annotations": readOnly,
+		},
+		{
+			"name":        "query",
+			"description": "Pergunta em linguagem natural sobre o dia (PT/EN) → resposta determinística. Ex.: 'o que falhou hoje na folder PIX', 'quantos rodando', 'resumo do dia'. Devolve a interpretação junto (sem chute).",
+			"inputSchema": schema(map[string]interface{}{"q": strProp("a pergunta em texto")}, "q"),
+			"annotations": readOnly,
+		},
 	}
 	if m.allowWrites {
 		out = append(out,
@@ -288,6 +348,27 @@ func (m *mcpServer) tools() []map[string]interface{} {
 
 func (m *mcpServer) get(path string) (string, error)  { return m.call("GET", path) }
 func (m *mcpServer) post(path string) (string, error) { return m.call("POST", path) }
+
+// postJSON envia um corpo JSON (usado pelo tool `query`).
+func (m *mcpServer) postJSON(path string, body interface{}) (string, error) {
+	raw, _ := json.Marshal(body)
+	req, err := http.NewRequest("POST", m.baseURL+path, bytes.NewReader(raw))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+m.token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := m.http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	out, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(out)))
+	}
+	return string(out), nil
+}
 
 func (m *mcpServer) call(method, path string) (string, error) {
 	req, err := http.NewRequest(method, m.baseURL+path, nil)

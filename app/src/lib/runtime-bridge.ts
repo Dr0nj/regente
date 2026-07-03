@@ -91,6 +91,19 @@ export const fetchBlastRadius = isServerMode()
   ? serverInstance.fetchBlastRadius
   : async (_id: string): Promise<serverInstance.BlastRadius | null> => null;
 
+export type Neighborhood = serverInstance.Neighborhood;
+export type NeighborNode = serverInstance.NeighborNode;
+export type RCA = serverInstance.RCA;
+export type RCACause = serverInstance.RCACause;
+
+// Neighborhood + RCA só existem no server mode (grafo de deps do scheduler).
+export const fetchNeighborhood = isServerMode()
+  ? serverInstance.fetchNeighborhood
+  : async (_id: string, _radius?: number): Promise<serverInstance.Neighborhood | null> => null;
+export const fetchRCA = isServerMode()
+  ? serverInstance.fetchRCA
+  : async (_id: string): Promise<serverInstance.RCA | null> => null;
+
 export type DryRun = serverInstance.DryRun;
 export type DryRunJob = serverInstance.DryRunJob;
 

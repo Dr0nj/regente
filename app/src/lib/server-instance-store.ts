@@ -413,6 +413,43 @@ export async function fetchBlastRadius(id: string): Promise<BlastRadius> {
   return api<BlastRadius>(`/api/instances/${encodeURIComponent(id)}/blast-radius`);
 }
 
+/* ── Job Neighborhood (grafo local) ── */
+
+export interface NeighborNode { defId: string; label?: string; team?: string; status?: string; depth: number; condition?: string; hasSla?: boolean }
+export interface Neighborhood {
+  instanceId: string;
+  definitionId: string;
+  label?: string;
+  team?: string;
+  status: string;
+  orderDate: string;
+  radius: number;
+  upstream: NeighborNode[];
+  downstream: NeighborNode[];
+  truncated: boolean;
+}
+
+export async function fetchNeighborhood(id: string, radius = 1): Promise<Neighborhood> {
+  return api<Neighborhood>(`/api/instances/${encodeURIComponent(id)}/neighborhood?radius=${radius}`);
+}
+
+/* ── RCA (causa raiz) ── */
+
+export interface RCACause { defId: string; label?: string; team?: string; status: string; depth: number; reason?: string }
+export interface RCA {
+  instanceId: string;
+  definitionId: string;
+  status: string;
+  orderDate: string;
+  summary: string;
+  roots: RCACause[];
+  chain?: string[];
+}
+
+export async function fetchRCA(id: string): Promise<RCA> {
+  return api<RCA>(`/api/instances/${encodeURIComponent(id)}/rca`);
+}
+
 /* ── Dry Run ("simular uma daily futura sem materializar") ── */
 
 export type DryRunOutcome = "RUN" | "WAIT" | "BLOCKED" | "NOT_SCHEDULED";

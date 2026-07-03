@@ -8,6 +8,11 @@ import {
   type ExplainBlocker,
   fetchBlastRadius,
   type BlastRadius,
+  fetchNeighborhood,
+  type Neighborhood,
+  type NeighborNode,
+  fetchRCA,
+  type RCA,
 } from "@/lib/runtime-bridge";
 import { useResizablePanel, ResizeHandle } from "./resizable";
 
@@ -214,9 +219,13 @@ export default function InstanceDetailsDrawer({
         {(status === "WAITING" || status === "CANCELLED") && (
           <ExplainPanel instanceId={instance.id} status={status} onConfirm={handlers.onConfirm} />
         )}
+        {(status === "NOTOK" || status === "CANCELLED" || status === "WAITING") && (
+          <RCAPanel instanceId={instance.id} />
+        )}
         {(status === "WAITING" || status === "HOLD" || status === "RUNNING") && (
           <BlastPanel instanceId={instance.id} />
         )}
+        <NeighborhoodPanel instanceId={instance.id} />
 
         <Section title="Timeline">
           <Field label="Ordered"    value={fmtTime(instance.createdAt)} />
@@ -575,6 +584,140 @@ function BlastPanel({ instanceId }: { instanceId: string }) {
               </div>
             )}
           </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── RCA ("qual a causa raiz da falha?") — auto-carrega p/ NOTOK/bloqueado ── */
+
+function RCAPanel({ instanceId }: { instanceId: string }) {
+  const [rca, setRca] = useState<RCA | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetchRCA(instanceId)
+      .then((r) => { if (!cancelled) setRca(r); })
+      .catch(() => { if (!cancelled) setRca(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [instanceId]);
+
+  // Modo local (null) ou sem raízes → não mostra o painel (evita ruído em job OK).
+  if (!loading && (!rca || rca.roots.length === 0)) return null;
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>
+        Causa raiz
+      </div>
+      <div style={{ padding: "8px 10px", background: "var(--v2-bg-deep)", border: "1px solid var(--v2-status-failed)", borderRadius: 3 }}>
+        {loading && <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>rastreando…</span>}
+        {!loading && rca && (
+          <>
+            <div style={{ fontSize: 11, color: "var(--v2-text-primary)", lineHeight: 1.5 }}>{rca.summary}</div>
+            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+              {rca.roots.map((r) => (
+                <div key={r.defId} style={{ display: "flex", gap: 7, alignItems: "baseline", fontSize: 10, fontFamily: "var(--v2-font-mono)" }}>
+                  <span style={{ color: "var(--v2-status-failed)", fontSize: 8, border: "1px solid var(--v2-status-failed)", borderRadius: 2, padding: "0 3px" }}>{r.status}</span>
+                  <span style={{ color: "var(--v2-text-primary)" }}>{r.label || r.defId}</span>
+                  <span style={{ color: "var(--v2-text-muted)" }}>· {r.depth === 0 ? "este job" : `${r.depth} salto(s) acima`}</span>
+                  {r.team && <span style={{ color: "var(--v2-accent-brand)", marginLeft: "auto" }}>{r.team}</span>}
+                </div>
+              ))}
+            </div>
+            {rca.chain && rca.chain.length > 1 && (
+              <div style={{ marginTop: 8, fontSize: 9.5, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>
+                cadeia: {rca.chain.join(" → ")}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Job Neighborhood ("quem me trava, quem eu travo?") — opt-in ── */
+
+function NeighborhoodPanel({ instanceId }: { instanceId: string }) {
+  const [nb, setNb] = useState<Neighborhood | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [opened, setOpened] = useState(false);
+  const [radius, setRadius] = useState(1);
+
+  const load = (r: number) => {
+    setOpened(true);
+    setLoading(true);
+    setRadius(r);
+    fetchNeighborhood(instanceId, r)
+      .then((n) => setNb(n))
+      .catch(() => setNb(null))
+      .finally(() => setLoading(false));
+  };
+
+  if (!opened) {
+    return (
+      <div style={{ marginBottom: 14 }}>
+        <button
+          onClick={() => load(1)}
+          style={{
+            width: "100%", padding: "7px 10px", fontSize: 10, fontFamily: "var(--v2-font-mono)",
+            letterSpacing: "0.05em", textTransform: "uppercase", cursor: "pointer",
+            border: "1px solid var(--v2-border-medium)", background: "transparent",
+            color: "var(--v2-text-secondary)", borderRadius: 3, fontWeight: 600,
+          }}
+        >
+          ⇅ Vizinhança do job
+        </button>
+      </div>
+    );
+  }
+
+  const row = (n: NeighborNode) => (
+    <div key={n.defId} style={{ display: "flex", gap: 7, alignItems: "baseline", fontSize: 10, fontFamily: "var(--v2-font-mono)" }}>
+      <span style={{ color: "var(--v2-text-muted)", width: 16, textAlign: "right" }}>{n.depth}·</span>
+      <span style={{ color: "var(--v2-text-primary)" }}>{n.label || n.defId}</span>
+      {n.status && <span style={{ color: "var(--v2-text-muted)", fontSize: 8 }}>{n.status}</span>}
+      {n.condition && <span style={{ color: "var(--v2-accent-brand)", fontSize: 8 }}>{n.condition}</span>}
+      {n.team && <span style={{ color: "var(--v2-accent-brand)", marginLeft: "auto" }}>{n.team}</span>}
+    </div>
+  );
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
+        <span style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+          Vizinhança
+        </span>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 3 }}>
+          {[1, 2, 3].map((r) => (
+            <button key={r} onClick={() => load(r)} disabled={loading} style={{
+              fontSize: 9, fontFamily: "var(--v2-font-mono)", cursor: "pointer", padding: "1px 6px", borderRadius: 2,
+              background: radius === r ? "var(--v2-accent-deep)" : "transparent",
+              border: `1px solid ${radius === r ? "var(--v2-accent-brand)" : "var(--v2-border-medium)"}`,
+              color: radius === r ? "var(--v2-accent-brand)" : "var(--v2-text-muted)",
+            }}>±{r}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ padding: "8px 10px", background: "var(--v2-bg-deep)", border: "1px solid var(--v2-border-medium)", borderRadius: 3 }}>
+        {loading && <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>carregando…</span>}
+        {!loading && !nb && <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>indisponível</span>}
+        {!loading && nb && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 260, overflowY: "auto" }}>
+            <div>
+              <div style={{ fontSize: 8.5, color: "var(--v2-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Depende de ({nb.upstream.length})</div>
+              {nb.upstream.length === 0 ? <span style={{ fontSize: 10, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>— nenhum</span> : nb.upstream.map(row)}
+            </div>
+            <div>
+              <div style={{ fontSize: 8.5, color: "var(--v2-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Dispara ({nb.downstream.length})</div>
+              {nb.downstream.length === 0 ? <span style={{ fontSize: 10, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>— nenhum</span> : nb.downstream.map(row)}
+            </div>
+          </div>
         )}
       </div>
     </div>

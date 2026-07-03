@@ -125,9 +125,13 @@ func NewRouter(cfg Config) http.Handler {
 		r.With(s.requireWriterMW).Post("/instances/{id}/set-ok", s.setOKInstance)
 		r.With(s.requireWriterMW).Post("/instances/{id}/confirm", s.confirmInstance) // Control-M Confirm (confirm:true)
 		r.Get("/instances/{id}/events", s.listInstanceEvents)
-		r.Get("/instances/{id}/explain", s.explainInstance)  // diferencial: "por que não rodou?"
-		r.Get("/instances/{id}/blast-radius", s.blastRadius) // diferencial: impacto de cancelar/segurar
+		r.Get("/instances/{id}/explain", s.explainInstance)   // diferencial: "por que não rodou?"
+		r.Get("/instances/{id}/blast-radius", s.blastRadius)  // diferencial: impacto de cancelar/segurar
+		r.Get("/instances/{id}/neighborhood", s.neighborhood) // diferencial: grafo local (up/downstream)
+		r.Get("/instances/{id}/rca", s.rca)                   // diferencial: causa raiz da falha/bloqueio
 
+		r.Get("/events", s.listEventLog)               // diferencial: event log CQRS-lite (feed do dia)
+		r.Post("/query", s.runQuery)                   // diferencial: NL-query (texto → consulta estruturada)
 		r.Get("/daily/diff", s.diffDaily)              // diferencial: o que mudou entre duas diárias
 		r.Get("/daily/dryrun", s.dryRunDaily)          // diferencial: simular uma daily futura sem materializar
 		r.Get("/daily/status", s.dailyStatus)          // última daily (relógio do server) + horário configurado

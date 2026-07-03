@@ -515,6 +515,37 @@ func (s *server) blastRadius(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, br)
 }
 
+// neighborhood — Diferencial "grafo local do job": ancestrais (de quem depende) e
+// descendentes (quem depende dele) até `radius` saltos, com status por instance.
+// Contexto de vizinhança antes de agir. Read-only.
+func (s *server) neighborhood(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	radius := 1
+	if v := r.URL.Query().Get("radius"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			radius = n
+		}
+	}
+	nb, err := s.cfg.Scheduler.Neighborhood(id, radius)
+	if err != nil {
+		http.Error(w, "instance não encontrada", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, 200, nb)
+}
+
+// rca — Diferencial "causa raiz": sobe a cadeia de upstreams falhos e aponta o job
+// que falhou por conta própria e derrubou o resto. Read-only.
+func (s *server) rca(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	res, err := s.cfg.Scheduler.RCA(id)
+	if err != nil {
+		http.Error(w, "instance não encontrada", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, 200, res)
+}
+
 func (s *server) listInstanceEvents(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	rows, err := s.cfg.DB.Query(

@@ -89,7 +89,7 @@ func TestMCP_ToolsList_ReadOnlyByDefault(t *testing.T) {
 	}
 
 	ro := names(newM(ts, false))
-	for _, want := range []string{"daily_summary", "list_instances", "explain_job", "blast_radius", "diff_daily", "dry_run"} {
+	for _, want := range []string{"daily_summary", "list_instances", "explain_job", "blast_radius", "diff_daily", "dry_run", "job_neighborhood", "root_cause", "event_log", "query"} {
 		if !ro[want] {
 			t.Errorf("tool de leitura %q faltando", want)
 		}
