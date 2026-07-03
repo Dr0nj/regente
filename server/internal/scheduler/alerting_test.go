@@ -14,7 +14,12 @@ import (
 
 func newTestDB(t *testing.T) *db.DB {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "test.db")
+	// DSN sem WAL (busy_timeout explícito → sqliteDSN respeita e NÃO adiciona
+	// journal_mode(WAL)): no modo demo o mock de dispatch escreve numa goroutine
+	// que pode terminar DEPOIS do Close do teste; com WAL isso deixa -wal/-shm
+	// pra trás e o RemoveAll do t.TempDir() falha ("directory not empty"). Sem WAL
+	// (journal DELETE, limpo por commit) não sobra arquivo.
+	path := filepath.Join(t.TempDir(), "test.db") + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
 	database, err := db.Open(db.SQLite, path)
 	if err != nil {
 		t.Fatalf("open db: %v", err)

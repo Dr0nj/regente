@@ -36,7 +36,11 @@ func TestDefForInstance_PrefersSnapshot(t *testing.T) {
 // newTestScheduler — Scheduler real sobre SQLite num arquivo temporário.
 func newTestScheduler(t *testing.T) *Scheduler {
 	t.Helper()
-	database, err := db.Open(db.SQLite, filepath.Join(t.TempDir(), "t.db"))
+	// DSN sem WAL (busy_timeout explícito → sqliteDSN respeita e não força WAL):
+	// no modo demo o mock de dispatch escreve numa goroutine que pode terminar
+	// depois do Close do teste; com WAL sobra -wal/-shm e o RemoveAll do t.TempDir()
+	// falha ("directory not empty"). Journal DELETE é limpo por commit.
+	database, err := db.Open(db.SQLite, filepath.Join(t.TempDir(), "t.db")+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
 	if err != nil {
 		t.Fatalf("db open: %v", err)
 	}
