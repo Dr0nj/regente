@@ -116,14 +116,25 @@ export default function ScheduleEditor({ value, onChange, calendars, onCalendars
           <Sub label="Janela de"><TimeInput value={s.windowFrom ?? ""} onChange={(v) => patch({ windowFrom: v })} placeholder="--:--" /></Sub>
           <Sub label="Janela até"><TimeInput value={s.windowTo ?? ""} onChange={(v) => patch({ windowTo: v })} placeholder="--:--" /></Sub>
         </div>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)", marginTop: 8 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)", marginTop: 8, flexWrap: "wrap" }}>
           <input type="checkbox" checked={!!s.cyclic} onChange={(e) => patch({ cyclic: e.target.checked })} />
           Cíclico — repete a cada
           <input type="number" min={1} value={s.intervalMin ?? 0} disabled={!s.cyclic}
             onChange={(e) => patch({ intervalMin: Number(e.target.value) || 0 })}
             style={{ width: 56, ...inputBase, opacity: s.cyclic ? 1 : 0.4 }} />
-          min (dentro da janela)
+          min, no máx.
+          <input type="number" min={0} value={s.cyclicMaxRuns ?? 0} disabled={!s.cyclic}
+            onChange={(e) => patch({ cyclicMaxRuns: Math.max(0, Number(e.target.value) || 0) })}
+            style={{ width: 56, ...inputBase, opacity: s.cyclic ? 1 : 0.4 }} />
+          voltas (0 = sem teto)
         </label>
+        {s.cyclic && (
+          <Hint>
+            A cada volta OK o job re-arma pra rodar em {s.intervalMin || "N"}min. O ciclo encerra ao
+            atingir o teto de voltas, passar da &quot;Janela até&quot;, ou virar a diária. Falha (NOTOK) NÃO
+            cicla — espera rerun/Set OK.
+          </Hint>
+        )}
       </Group>
 
       {/* Ciclo de vida na diária — carry-over Control-M (Keep Active) */}

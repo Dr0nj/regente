@@ -47,6 +47,10 @@ type Schedule struct {
 	Cyclic      bool   `yaml:"cyclic,omitempty" json:"cyclic,omitempty"`
 	IntervalMin int    `yaml:"intervalMin,omitempty" json:"intervalMin,omitempty"`
 
+	// CyclicMaxRuns — teto de execuções do ciclo (0 = sem teto; o ciclo é
+	// limitado pela janela WindowTo e, sem janela, pela virada da daily).
+	CyclicMaxRuns int `yaml:"cyclicMaxRuns,omitempty" json:"cyclicMaxRuns,omitempty"`
+
 	// KeepActive (Control-M-like) — quantas diárias EXTRA o job sobrevive se NÃO
 	// terminou OK (carry-over entre diárias). 0 = comportamento DEFAULT (um NOTOK
 	// não-tratado ainda persiste +1 diária; um WAITING que nunca rodou NÃO persiste).
@@ -99,6 +103,12 @@ type JobDefinition struct {
 	// JSON wire usa "actionConfig" (frontend); YAML em disco mantem "params" (legado).
 	Params  map[string]interface{} `yaml:"params,omitempty" json:"actionConfig,omitempty"`
 	AgentID string                 `yaml:"agentId,omitempty" json:"agentId,omitempty"`
+
+	// Confirm (Control-M "Wait for confirmation") — a instance NÃO roda até um
+	// operador confirmar (POST /instances/{id}/confirm). Vale também para Force
+	// Order (no Control-M a confirmação é um wait de runtime, não de schedule);
+	// rerun re-exige confirmação. Gate WAIT_CONFIRM no gateInstance (fonte única).
+	Confirm bool `yaml:"confirm,omitempty" json:"confirm,omitempty"`
 
 	// === Bloco 2 — Control-M parity ===
 

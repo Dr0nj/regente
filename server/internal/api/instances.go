@@ -26,24 +26,26 @@ type instanceRow struct {
 	Output       string     `json:"output,omitempty"`
 	Forced       bool       `json:"forced,omitempty"`
 	CarriedFrom  string     `json:"carriedFrom,omitempty"` // ciclo de vida da daily: dia de origem se foi carregada da diária anterior.
+	Confirmed    bool       `json:"confirmed,omitempty"`   // Control-M Confirm: operador liberou (job confirm:true).
+	CycleRuns    int        `json:"cycleRuns,omitempty"`   // cyclic runtime: voltas OK completadas no dia.
 }
 
 const instanceCols = `id, definition_id, COALESCE(team,''), order_date, status, scheduled_at,
 	started_at, finished_at,
 	COALESCE(agent_id,''), COALESCE(exit_code,0), COALESCE(output,''), COALESCE(forced,0),
-	COALESCE(carried_from,'')`
+	COALESCE(carried_from,''), COALESCE(confirmed,0), COALESCE(cycle_runs,0)`
 
 func scanInstances(rows *sql.Rows) []instanceRow {
 	out := []instanceRow{}
 	for rows.Next() {
 		var ir instanceRow
 		var startedAt, finishedAt sql.NullTime
-		var forcedInt int
+		var forcedInt, confirmedInt int
 		if err := rows.Scan(
 			&ir.ID, &ir.DefinitionID, &ir.Team, &ir.OrderDate, &ir.Status, &ir.ScheduledAt,
 			&startedAt, &finishedAt,
 			&ir.AgentID, &ir.ExitCode, &ir.Output, &forcedInt,
-			&ir.CarriedFrom,
+			&ir.CarriedFrom, &confirmedInt, &ir.CycleRuns,
 		); err != nil {
 			continue
 		}
@@ -56,6 +58,7 @@ func scanInstances(rows *sql.Rows) []instanceRow {
 			ir.FinishedAt = &t
 		}
 		ir.Forced = forcedInt == 1
+		ir.Confirmed = confirmedInt == 1
 		out = append(out, ir)
 	}
 	return out
@@ -308,13 +311,41 @@ func (s *server) cancelInstance(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"id": id, "status": string(domain.StatusCancelled)})
 }
 
+// confirmInstance — Control-M "Confirm": libera um job definido com
+// confirm:true (gate WAIT_CONFIRM). Vale para WAITING e HELD (confirmar um job
+// em hold conta; ele roda quando for liberado). Cutuca o tick — confirmou,
+// disparou.
+func (s *server) confirmInstance(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !s.requireInstanceWrite(w, r, id) {
+		return
+	}
+	res, err := s.cfg.DB.Exec(`UPDATE instances SET confirmed=1 WHERE id=? AND status IN (?,?)`,
+		id, string(domain.StatusWaiting), string(domain.StatusHeld))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		http.Error(w, "instance not found or not in WAITING/HELD", http.StatusBadRequest)
+		return
+	}
+	s.cfg.Scheduler.EmitEvent(id, "confirmed", "operator", "")
+	var status string
+	_ = s.cfg.DB.QueryRow(`SELECT status FROM instances WHERE id=?`, id).Scan(&status)
+	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]interface{}{"id": id, "status": status, "confirmed": true})
+	go s.cfg.Scheduler.Tick()
+	writeJSON(w, 200, map[string]interface{}{"id": id, "status": status, "confirmed": true})
+}
+
 func (s *server) rerunInstance(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
+	// confirmed=0: rerun re-exige Confirm em jobs confirm:true (Control-M).
 	_, err := s.cfg.DB.Exec(
-		`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL WHERE id=?`,
+		`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL, confirmed=0 WHERE id=?`,
 		string(domain.StatusWaiting), id,
 	)
 	if err != nil {

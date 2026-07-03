@@ -27,7 +27,7 @@ export interface JobConfigHandlers {
   onClose: () => void;
 }
 
-const JOB_TYPES: JobType[] = ["COMMAND", "SCRIPT", "SSH", "HTTP", "LAMBDA", "BATCH", "GLUE", "STEP_FUNCTION", "CHOICE", "PARALLEL", "WAIT"];
+const JOB_TYPES: JobType[] = ["COMMAND", "SCRIPT", "SSH", "HTTP", "FILE_WATCH", "DATABASE", "LAMBDA", "BATCH", "GLUE", "STEP_FUNCTION", "CHOICE", "PARALLEL", "WAIT"];
 type Tab = "general" | "schedule" | "action" | "ondo" | "deps";
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "general", label: "Geral" },
@@ -57,6 +57,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   const [retries, setRetries] = useState(definition.retries ?? 2);
   const [timeout, setTimeoutS] = useState(definition.timeout ?? 300);
   const [dryRun, setDryRun] = useState(definition.dryRun ?? false);
+  const [confirmReq, setConfirmReq] = useState(definition.confirm ?? false);
   const [actionConfig, setActionConfig] = useState<Record<string, unknown>>(definition.actionConfig ?? {});
   const [calendars, setCalendars] = useState<CalendarRef[]>(definition.calendars ?? []);
   const [actions, setActions] = useState<ActionRule[]>(definition.actions ?? []);
@@ -78,7 +79,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     setTeam(definition.team ?? (availableFolders.length === 1 ? availableFolders[0] : ""));
     setSchedule(definition.schedule);
     setRetries(definition.retries ?? 2); setTimeoutS(definition.timeout ?? 300);
-    setDryRun(definition.dryRun ?? false); setActionConfig(definition.actionConfig ?? {});
+    setDryRun(definition.dryRun ?? false); setConfirmReq(definition.confirm ?? false); setActionConfig(definition.actionConfig ?? {});
     setCalendars(definition.calendars ?? []); setActions(definition.actions ?? []); setUpstream(definition.upstream ?? []);
     setAgentId(typeof definition.actionConfig?._agentId === "string" ? (definition.actionConfig._agentId as string) : "");
     setErr(null); setValidationErr(null);
@@ -107,7 +108,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
       ...definition,
       id: id.trim(), label: label.trim(), jobType, team: team.trim(),
       schedule: { ...schedule, enabled: schedule.enabled ?? true },
-      retries, timeout, dryRun,
+      retries, timeout, dryRun, confirm: confirmReq || undefined,
       // _agentId é o canal que o ServerApiAdapter usa p/ mapear actionConfig→agentId.
       actionConfig: { ...actionConfig, _agentId: agentId.trim() || undefined },
       calendars: calendars.length ? calendars : undefined,
@@ -215,6 +216,10 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)" }}>
               <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
               Dry run (log only, não executa)
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)" }}>
+              <input type="checkbox" checked={confirmReq} onChange={(e) => setConfirmReq(e.target.checked)} />
+              Exigir confirmação (Control-M Confirm — só roda após o operador confirmar)
             </label>
           </>
         )}

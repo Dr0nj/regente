@@ -46,7 +46,7 @@ func main() {
 		server    = flag.String("server", "ws://localhost:8080/ws/agent", "regente-server WebSocket URL")
 		token     = flag.String("token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token")
 		agentID   = flag.String("id", hostnameOr("agent-local"), "Agent ID (unique)")
-		caps      = flag.String("caps", "COMMAND,SCRIPT,HTTP,REST,WASM", "Comma-separated capabilities advertised")
+		caps      = flag.String("caps", "COMMAND,SCRIPT,HTTP,REST,WASM,DATABASE,FILE_WATCH", "Comma-separated capabilities advertised")
 		transport = flag.String("transport", envOr("REGENTE_AGENT_TRANSPORT", "ws"), "Transporte: ws (WebSocket) | http (long-poll, serverless-friendly)")
 	)
 	flag.Parse()
@@ -291,6 +291,8 @@ func executeJob(jobType string, params map[string]interface{}, timeoutSec int, e
 		return runREST(params, timeoutSec)
 	case "FILE_WATCH", "FILEWATCH":
 		return runFileWatch(params, timeoutSec, emit)
+	case "DATABASE", "DB":
+		return runDatabase(params, timeoutSec, emit)
 	case "WASM":
 		return runWASM(params, timeoutSec, emit)
 	case "K8S_JOB", "K8S":

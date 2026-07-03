@@ -52,6 +52,13 @@ func validateActionConfig(def domain.JobDefinition) error {
 		if cfg == nil || !isNonEmptyString(cfg["path"]) {
 			return errors.New("FILE_WATCH.path required (caminho do arquivo no host do agente)")
 		}
+	case "DATABASE", "DB":
+		if cfg == nil || !isNonEmptyString(cfg["driver"]) || !isNonEmptyString(cfg["dsn"]) || !isNonEmptyString(cfg["sql"]) {
+			return errors.New("DATABASE requires driver + dsn + sql")
+		}
+		if d, _ := cfg["driver"].(string); !isDBDriver(d) {
+			return errors.New("DATABASE.driver must be postgres|mysql|sqlite")
+		}
 	case "WAIT":
 		if cfg == nil {
 			return nil // wait sem config = noop, ok
@@ -90,6 +97,14 @@ func isNonEmptyString(v interface{}) bool {
 func isHTTPMethod(s string) bool {
 	switch strings.ToUpper(s) {
 	case "GET", "POST", "PUT", "PATCH", "DELETE":
+		return true
+	}
+	return false
+}
+
+func isDBDriver(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "postgres", "postgresql", "pg", "pgx", "mysql", "mariadb", "sqlite", "sqlite3":
 		return true
 	}
 	return false

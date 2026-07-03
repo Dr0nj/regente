@@ -68,6 +68,8 @@ export interface JobSchedule {
   windowTo?: string;
   cyclic?: boolean;
   intervalMin?: number;
+  /** Cyclic: teto de execuções (0/ausente = sem teto; limitado por windowTo/daily). */
+  cyclicMaxRuns?: number;
 
   /** Ciclo de vida da daily (Control-M Keep Active): quantas diárias EXTRA o job
    *  sobrevive se NÃO terminou OK (carry-over). 0/ausente = DEFAULT (um NOTOK
@@ -126,6 +128,9 @@ export interface JobDefinition {
   variables?: Array<{ key: string; value: string }>;
   /** If true, log intent without executing */
   dryRun?: boolean;
+  /** Control-M "Wait for confirmation": a instance não roda até o operador
+   *  confirmar (botão Confirm no Monitoring). Rerun re-exige confirmação. */
+  confirm?: boolean;
   /** F14 — calendar legado (include). Preferir `calendars`. */
   calendar?: string;
   /** F14+ — calendars chamados no job, cada um include ou exclude (negar). */
@@ -223,6 +228,10 @@ export interface JobInstance {
   timeout: number;
   variables?: Array<{ key: string; value: string }>;
   dryRun?: boolean;
+  /** Control-M Confirm: o operador já liberou esta instance (confirm:true). */
+  confirmed?: boolean;
+  /** Cyclic runtime: voltas OK completadas neste dia (job cyclic). */
+  cycleRuns?: number;
 }
 
 /* ── Order Date Helper ── */

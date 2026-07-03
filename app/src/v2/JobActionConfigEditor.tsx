@@ -83,6 +83,26 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
         </Section>
       );
 
+    case "DATABASE":
+      return (
+        <Section label="Database (SQL pelo agente)">
+          <Row label="Driver">
+            <select value={str("driver") || "postgres"} onChange={e => set("driver", e.target.value)} style={selectStyle}>
+              {["postgres", "mysql", "sqlite"].map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </Row>
+          <Row label="DSN / conexão">
+            <Input mono value={str("dsn")} placeholder="postgres://user:pw@host:5432/db?sslmode=disable" onChange={v => set("dsn", v)} />
+          </Row>
+          <Row label="SQL (SELECT renderiza linhas; DML mostra rows affected)">
+            <TextArea mono rows={5} value={str("sql")} placeholder="SELECT count(*) FROM cargas WHERE dt = '%%ORDERDATE'" onChange={v => set("sql", v)} />
+          </Row>
+          <Row label="Máx. de linhas no output (SELECT, default 100)">
+            <Input mono value={num("maxRows") ? String(num("maxRows")) : ""} placeholder="100" onChange={v => set("maxRows", Number(v) || 0)} />
+          </Row>
+        </Section>
+      );
+
     case "HTTP":
       return (
         <Section label="HTTP request">

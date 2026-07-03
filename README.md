@@ -124,6 +124,13 @@ daily ou via Force Order manual.
   rodar, calculados pelo backend com a **mesma regra da daily** — `POST /api/schedule/preview`).
   ("Dia útil"/regra avançada saíram da frequência: dia útil depende do calendário de feriados de cada lugar.)
 - 🟢 **Dependências entre jobs** com condições (on-success/failure/complete/always).
+- 🟢 **Aprofundamento Control-M** — **execução cíclica** (o job re-arma sozinho a cada
+  N min dentro da janela, com teto de voltas), **Confirm** (job só roda após liberação
+  manual do operador — gate `WAIT_CONFIRM`, nem o Force bypassa), job **DATABASE** (SQL
+  em Postgres/MySQL/SQLite pelo agente, sem client instalado), **variáveis SET em runtime**
+  (um job imprime `%%SET NOME=VALOR` e outro lê) e **cálculo de datas** `%%ODATE±N`/`±NB`
+  (offset em dias corridos ou úteis, ciente do calendário do job). Janela que fecha vira
+  gate `WINDOW_CLOSED`. Toda a lógica de gating passa pela **mesma fonte única** do Explain.
 - 🟢 **Engines de paridade** — calendars, resources/quotas, conditions, variáveis
   globais (interpolação), SLA e forecast/analytics.
 - 🟢 **Token do GitHub pela UI** — configurável em runtime (Settings), persistido

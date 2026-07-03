@@ -36,6 +36,7 @@ import {
   rerunInstance,
   skipInstance,
   bypassInstance,
+  confirmInstance,
   forceInstance,
 } from "@/lib/runtime-bridge";
 import {
@@ -1456,6 +1457,7 @@ function V2PreviewInner() {
               onSkip: skipInstance,
               onBypass: bypassInstance,
               onRerun: handleRerunInstance,
+              onConfirm: confirmInstance,
               onClose: () => setSelectedInstanceId(null),
             }}
           />

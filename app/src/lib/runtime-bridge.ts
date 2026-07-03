@@ -51,6 +51,11 @@ export const bypassInstance = isServerMode()
   ? serverInstance.bypassInstance
   : localInstance.bypassInstance;
 
+// Confirm (Control-M) só existe no server mode; no local vira no-op.
+export const confirmInstance = isServerMode()
+  ? serverInstance.confirmInstance
+  : async (_id: string): Promise<void> => {};
+
 export const forceInstance = isServerMode()
   ? serverInstance.forceInstance
   : localInstance.forceInstance;

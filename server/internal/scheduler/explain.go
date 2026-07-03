@@ -19,12 +19,14 @@ import (
 type GateKind string
 
 const (
-	GateWindow     GateKind = "WAIT_WINDOW"    // ainda não chegou o horário agendado
-	GateDep        GateKind = "WAIT_DEP"       // upstream ainda não satisfez a condição
-	GateDepBlocked GateKind = "BLOCKED_DEP"    // upstream tornou a dep impossível → CANCELLED
-	GateCondition  GateKind = "WAIT_CONDITION" // falta uma condition IN (F16)
-	GateAgent      GateKind = "WAIT_AGENT"     // nenhum agente online com a capability (ou o pinado offline)
-	GateResource   GateKind = "WAIT_RESOURCE"  // recurso/quota indisponível (F15)
+	GateWindow       GateKind = "WAIT_WINDOW"    // ainda não chegou o horário agendado
+	GateWindowClosed GateKind = "WINDOW_CLOSED"  // a janela (WindowTo) já fechou hoje — não submete mais
+	GateConfirm      GateKind = "WAIT_CONFIRM"   // Control-M Confirm: aguarda liberação do operador
+	GateDep          GateKind = "WAIT_DEP"       // upstream ainda não satisfez a condição
+	GateDepBlocked   GateKind = "BLOCKED_DEP"    // upstream tornou a dep impossível → CANCELLED
+	GateCondition    GateKind = "WAIT_CONDITION" // falta uma condition IN (F16)
+	GateAgent        GateKind = "WAIT_AGENT"     // nenhum agente online com a capability (ou o pinado offline)
+	GateResource     GateKind = "WAIT_RESOURCE"  // recurso/quota indisponível (F15)
 )
 
 // Blocker — um motivo ATIVO de uma instance WAITING não estar rodando. Carrega
@@ -114,6 +116,25 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, instByDef 
 			return out
 		}
 	}
+	// 1b) Janela fechou (Control-M time window): passou de WindowTo, não submete
+	// mais hoje. A instance morre na virada da daily (WAITING nunca-rodou).
+	if hh, mm, okW := parseHHMM(def.Schedule.WindowTo); okW {
+		if t, err := time.Parse("2006-01-02", r.OrderDate); err == nil {
+			windowEnd := time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.Local)
+			if now.After(windowEnd) {
+				if add(Blocker{Kind: GateWindowClosed, Detail: "janela de execução fechou às " + def.Schedule.WindowTo}) {
+					return out
+				}
+			}
+		}
+	}
+	// 1c) Confirmação do operador (Control-M "Wait for confirmation"): def com
+	// confirm:true não roda até o Confirm — nem forçada (checado também no tick).
+	if def.Confirm && !r.Confirmed {
+		if add(Blocker{Kind: GateConfirm, Detail: "aguardando confirmação do operador (job exige Confirm)"}) {
+			return out
+		}
+	}
 
 	// 2) Dependências upstream.
 	for _, u := range def.Upstream {
@@ -188,16 +209,17 @@ func condLabel(c domain.EdgeCondition) string {
 // modo coletar-tudo; para os demais estados, descreve a situação terminal/ativa.
 func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 	var r instRow
-	var forcedInt int
+	var forcedInt, confirmedInt int
 	err := s.db.QueryRow(
 		`SELECT id, definition_id, order_date, status, scheduled_at, started_at, carried_at,
-		        COALESCE(forced,0), COALESCE(definition_snapshot,'')
+		        COALESCE(forced,0), COALESCE(confirmed,0), COALESCE(definition_snapshot,'')
 		 FROM instances WHERE id=?`, instanceID,
-	).Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.Snapshot)
+	).Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &confirmedInt, &r.Snapshot)
 	if err != nil {
 		return Explanation{}, err
 	}
 	r.Forced = forcedInt == 1
+	r.Confirmed = confirmedInt == 1
 
 	ex := Explanation{InstanceID: r.ID, DefID: r.DefID, Status: r.Status, Blockers: []Blocker{}}
 
@@ -237,6 +259,11 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 		return ex, nil
 	}
 	if r.Forced {
+		if def.Confirm && !r.Confirmed {
+			ex.Blockers = []Blocker{{Kind: GateConfirm, Detail: "aguardando confirmação do operador (job exige Confirm)"}}
+			ex.Summary = "Force Order aguardando Confirm — a confirmação não é bypassada (Control-M)."
+			return ex, nil
+		}
 		ex.Runnable = true
 		ex.Summary = "Force Order — roda no próximo tick (bypassa deps, conditions e recursos)."
 		return ex, nil

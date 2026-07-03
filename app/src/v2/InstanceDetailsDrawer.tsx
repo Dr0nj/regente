@@ -25,6 +25,8 @@ export interface InstanceActionHandlers {
   onRerun: (id: string) => void;
   onSkip: (id: string) => void;
   onBypass: (id: string) => void;
+  /** Control-M Confirm — libera um job confirm:true parado no gate WAIT_CONFIRM. */
+  onConfirm: (id: string) => void;
   onClose: () => void;
 }
 
@@ -210,7 +212,7 @@ export default function InstanceDetailsDrawer({
       {tab === "details" ? (
       <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px", fontSize: 11 }}>
         {(status === "WAITING" || status === "CANCELLED") && (
-          <ExplainPanel instanceId={instance.id} status={status} />
+          <ExplainPanel instanceId={instance.id} status={status} onConfirm={handlers.onConfirm} />
         )}
         {(status === "WAITING" || status === "HOLD" || status === "RUNNING") && (
           <BlastPanel instanceId={instance.id} />
@@ -411,6 +413,8 @@ function fmtTS(ts: string): string {
 
 const BLOCKER_COLOR: Record<ExplainBlocker["kind"], string> = {
   WAIT_WINDOW:   "var(--v2-status-waiting)",
+  WINDOW_CLOSED: "var(--v2-status-failed)",
+  WAIT_CONFIRM:  "#a78bfa",
   WAIT_DEP:      "var(--v2-status-waiting)",
   BLOCKED_DEP:   "var(--v2-status-failed)",
   WAIT_CONDITION:"var(--v2-status-waiting)",
@@ -419,6 +423,8 @@ const BLOCKER_COLOR: Record<ExplainBlocker["kind"], string> = {
 };
 const BLOCKER_LABEL: Record<ExplainBlocker["kind"], string> = {
   WAIT_WINDOW:   "JANELA",
+  WINDOW_CLOSED: "JANELA FECHADA",
+  WAIT_CONFIRM:  "CONFIRMAÇÃO",
   WAIT_DEP:      "DEPENDÊNCIA",
   BLOCKED_DEP:   "BLOQUEADO",
   WAIT_CONDITION:"CONDITION",
@@ -426,7 +432,7 @@ const BLOCKER_LABEL: Record<ExplainBlocker["kind"], string> = {
   WAIT_RESOURCE: "RECURSO",
 };
 
-function ExplainPanel({ instanceId, status }: { instanceId: string; status: JobInstance["status"] }) {
+function ExplainPanel({ instanceId, status, onConfirm }: { instanceId: string; status: JobInstance["status"]; onConfirm: (id: string) => void }) {
   const [exp, setExp] = useState<Explanation | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -450,6 +456,10 @@ function ExplainPanel({ instanceId, status }: { instanceId: string; status: JobI
 
   const runnable = exp?.runnable ?? false;
   const accent = runnable ? "var(--v2-status-ok)" : "var(--v2-status-waiting)";
+  // Control-M Confirm: quando o gate WAIT_CONFIRM está ativo, é AQUI (onde o
+  // motivo aparece) que o operador libera — sinal preciso vindo do próprio
+  // Explain, sem depender de flag denormalizada na lista.
+  const needsConfirm = exp?.blockers.some((b) => b.kind === "WAIT_CONFIRM") ?? false;
 
   return (
     <div style={{ marginBottom: 14 }}>
@@ -477,6 +487,18 @@ function ExplainPanel({ instanceId, status }: { instanceId: string; status: JobI
               </div>
             ))}
           </div>
+        )}
+        {needsConfirm && (
+          <button
+            onClick={() => onConfirm(instanceId)}
+            style={{
+              marginTop: 10, width: "100%", padding: "6px 10px", fontSize: 11, fontWeight: 700,
+              fontFamily: "var(--v2-font-mono)", letterSpacing: "0.04em", cursor: "pointer",
+              background: "#a78bfa", color: "#1a1030", border: "none", borderRadius: 4,
+            }}
+          >
+            ✓ Confirmar execução
+          </button>
         )}
       </div>
     </div>

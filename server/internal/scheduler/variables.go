@@ -20,6 +20,7 @@ package scheduler
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,11 +35,46 @@ var varToken = regexp.MustCompile(`\$\{var\.([A-Za-z0-9_.-]+)\}`)
 // usam a sintaxe ${var.NAME}. "%%" sem nome válido depois fica intacto.
 var ctmToken = regexp.MustCompile(`%%([A-Za-z][A-Za-z0-9_]*)`)
 
+// Cálculo de datas (Control-M %%CALCDATE): token de data com OFFSET —
+// %%ODATE+3 · %%ORDERDATE-2 · ${var.ODATE+1B}. Sufixo B = dias ÚTEIS (pula
+// fim de semana; com calendar no job, feriados também — ctx.BusinessDay).
+// Resolvidos ANTES dos tokens simples (senão %%ODATE consumiria o prefixo e
+// o "+3" ficaria solto no texto). O B é opcional e GULOSO: um "B" imediato
+// após o número conta como marcador de dia útil (ex. "%%ODATE+1Backup" =
+// +1 dia útil + "ackup" — sintaxe ambígua é responsabilidade de quem escreve;
+// use separador claro tipo "%%ODATE+1_backup" pra evitar).
+var ctmCalcToken = regexp.MustCompile(`%%(ODATE|ORDERDATE|RUNDATE)([+-]\d{1,3})(B?)`)
+var varCalcToken = regexp.MustCompile(`\$\{var\.(ODATE|ORDERDATE|RUNDATE)([+-]\d{1,3})(B?)\}`)
+
+// layout de cada token-base de data (o resultado preserva o formato do token).
+var calcLayouts = map[string]string{
+	"ODATE":     "20060102",
+	"ORDERDATE": "2006-01-02",
+	"RUNDATE":   "20060102",
+}
+
+// setVarDirective — SET de variável em runtime (Control-M ctmvar): o job
+// ATRIBUI uma variável GLOBAL imprimindo, em linha própria do output:
+//
+//	%%SET NOME=VALOR
+//
+// O scheduler varre o output no término (FinishInstance) e grava no
+// VariableStore — qualquer job seguinte lê via %%NOME / ${var.NOME}.
+var setVarDirective = regexp.MustCompile(`(?m)^\s*%%SET\s+([A-Za-z][A-Za-z0-9_.-]*)\s*=\s*(.*?)\s*$`)
+
+// maxSetVarsPerJob — teto de diretivas %%SET aplicadas por término (defesa
+// contra output que gera lixo em massa no VariableStore).
+const maxSetVarsPerJob = 20
+
 // VarContext combina escopos para resolução.
 type VarContext struct {
 	Runtime    map[string]string
 	Definition map[string]string
 	Global     map[string]string
+
+	// BusinessDay — "este dia conta como útil?" para offsets B (ex.: %%ODATE+3B).
+	// nil = Mon–Fri puro. O scheduler injeta o calendar do job (feriados etc.).
+	BusinessDay func(t time.Time) bool
 }
 
 func (ctx VarContext) lookup(name string) (string, bool) {
@@ -54,9 +90,30 @@ func (ctx VarContext) lookup(name string) (string, bool) {
 	return "", false
 }
 
-// InterpolateString substitui ${var.X} e %%X no input.
+// InterpolateString substitui ${var.X} e %%X no input. Tokens de CÁLCULO de
+// data (%%ODATE+3, ${var.ODATE-1B}) resolvem primeiro — ver ctmCalcToken.
 func InterpolateString(s string, ctx VarContext) string {
-	out := varToken.ReplaceAllStringFunc(s, func(match string) string {
+	out := varCalcToken.ReplaceAllStringFunc(s, func(match string) string {
+		m := varCalcToken.FindStringSubmatch(match)
+		if len(m) != 4 {
+			return match
+		}
+		if v, ok := resolveDateCalc(ctx, m[1], m[2], m[3] == "B"); ok {
+			return v
+		}
+		return match
+	})
+	out = ctmCalcToken.ReplaceAllStringFunc(out, func(match string) string {
+		m := ctmCalcToken.FindStringSubmatch(match)
+		if len(m) != 4 {
+			return match
+		}
+		if v, ok := resolveDateCalc(ctx, m[1], m[2], m[3] == "B"); ok {
+			return v
+		}
+		return match
+	})
+	out = varToken.ReplaceAllStringFunc(out, func(match string) string {
 		m := varToken.FindStringSubmatch(match)
 		if len(m) != 2 {
 			return match
@@ -76,6 +133,53 @@ func InterpolateString(s string, ctx VarContext) string {
 		}
 		return match // intacto (visibilidade de token não resolvido)
 	})
+}
+
+// resolveDateCalc — %%ODATE+3 / %%ORDERDATE-2B: pega o valor do token-base no
+// contexto, soma o offset (dias corridos, ou ÚTEIS com sufixo B) e devolve no
+// MESMO formato do token. Falha (token ausente/data inválida) = fica intacto.
+func resolveDateCalc(ctx VarContext, base, offsetStr string, business bool) (string, bool) {
+	layout, ok := calcLayouts[base]
+	if !ok {
+		return "", false
+	}
+	raw, ok := ctx.lookup(base)
+	if !ok {
+		return "", false
+	}
+	t, err := time.Parse(layout, raw)
+	if err != nil {
+		return "", false
+	}
+	n, err := strconv.Atoi(offsetStr)
+	if err != nil {
+		return "", false
+	}
+	if !business {
+		return t.AddDate(0, 0, n).Format(layout), true
+	}
+	isBiz := ctx.BusinessDay
+	if isBiz == nil {
+		isBiz = func(d time.Time) bool {
+			wd := d.Weekday()
+			return wd != time.Saturday && wd != time.Sunday
+		}
+	}
+	step := 1
+	if n < 0 {
+		step, n = -1, -n
+	}
+	const guard = 1000 // defesa: calendar sem nenhum dia útil não trava o loop
+	for i := 0; n > 0 && i < guard; i++ {
+		t = t.AddDate(0, 0, step)
+		if isBiz(t) {
+			n--
+		}
+	}
+	if n > 0 {
+		return "", false
+	}
+	return t.Format(layout), true
 }
 
 // InterpolateValue aplica recursivamente em strings dentro de

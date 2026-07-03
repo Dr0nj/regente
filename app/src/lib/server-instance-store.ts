@@ -28,6 +28,8 @@ interface ServerInstance {
   output?: string;
   forced?: boolean;
   carriedFrom?: string;
+  confirmed?: boolean;
+  cycleRuns?: number;
 }
 
 function parseTime(s?: string): number | undefined {
@@ -69,6 +71,8 @@ function toWeb(s: ServerInstance): JobInstance {
     attempts: 0,
     manual: !!s.forced,
     carriedFrom: s.carriedFrom || undefined,
+    confirmed: s.confirmed,
+    cycleRuns: s.cycleRuns,
     output: {
       text: s.output ?? "",
       exitCode: s.exitCode ?? 0,
@@ -326,6 +330,12 @@ export async function bypassInstance(id: string): Promise<void> {
   await refresh();
 }
 
+export async function confirmInstance(id: string): Promise<void> {
+  // Control-M Confirm: libera um job confirm:true parado no gate WAIT_CONFIRM.
+  await api<void>(`/api/instances/${encodeURIComponent(id)}/confirm`, { method: "POST" });
+  await refresh();
+}
+
 export interface InstanceEvent {
   id: number;
   instanceId: string;
@@ -342,7 +352,7 @@ export async function fetchInstanceEvents(id: string): Promise<InstanceEvent[]> 
 /* ── Explain ("por que esse job não rodou?") ── */
 
 export interface ExplainBlocker {
-  kind: "WAIT_WINDOW" | "WAIT_DEP" | "BLOCKED_DEP" | "WAIT_CONDITION" | "WAIT_AGENT" | "WAIT_RESOURCE";
+  kind: "WAIT_WINDOW" | "WINDOW_CLOSED" | "WAIT_CONFIRM" | "WAIT_DEP" | "BLOCKED_DEP" | "WAIT_CONDITION" | "WAIT_AGENT" | "WAIT_RESOURCE";
   detail: string;
   upstream?: string;
   upstreamStatus?: string;

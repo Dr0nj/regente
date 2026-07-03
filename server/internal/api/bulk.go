@@ -68,9 +68,9 @@ func (s *server) bulkInstances(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch req.Action {
-	case "hold", "release", "cancel", "rerun", "set-ok":
+	case "hold", "release", "cancel", "rerun", "set-ok", "confirm":
 	default:
-		http.Error(w, "unknown action (expected hold|release|cancel|rerun|set-ok)", http.StatusBadRequest)
+		http.Error(w, "unknown action (expected hold|release|cancel|rerun|set-ok|confirm)", http.StatusBadRequest)
 		return
 	}
 
@@ -92,6 +92,10 @@ func (s *server) bulkInstances(w http.ResponseWriter, r *http.Request) {
 	s.cfg.Hub.BroadcastWeb("instance.bulk", map[string]any{
 		"action": req.Action, "total": resp.Total, "ok": resp.Ok, "failed": resp.Failed, "actor": actor,
 	})
+	// Confirm em lote destrava jobs no gate WAIT_CONFIRM — cutuca o tick uma vez.
+	if req.Action == "confirm" && resp.Ok > 0 {
+		go s.cfg.Scheduler.Tick()
+	}
 	writeJSON(w, 200, resp)
 }
 
@@ -167,8 +171,9 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 		return string(domain.StatusCancelled), nil
 
 	case "rerun":
+		// confirmed=0: rerun re-exige Confirm em jobs confirm:true (Control-M).
 		res, err := s.cfg.DB.Exec(
-			`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL WHERE id=?`,
+			`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL, confirmed=0 WHERE id=?`,
 			string(domain.StatusWaiting), id,
 		)
 		if err != nil {
@@ -186,6 +191,19 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 			return "", err
 		}
 		return string(domain.StatusOK), nil
+
+	case "confirm":
+		res, err := s.cfg.DB.Exec(`UPDATE instances SET confirmed=1 WHERE id=? AND status IN (?,?)`,
+			id, string(domain.StatusWaiting), string(domain.StatusHeld))
+		if err != nil {
+			return "", err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return "", fmt.Errorf("not in WAITING/HELD (confirm skipped)")
+		}
+		s.cfg.Scheduler.EmitEvent(id, "confirmed", actor, "bulk confirm")
+		s.cfg.Hub.BroadcastWeb("instance.changed", map[string]interface{}{"id": id, "confirmed": true})
+		return "confirmed", nil
 	}
 	return "", fmt.Errorf("unknown action")
 }
@@ -202,6 +220,8 @@ type bulkDefinitionPatch struct {
 	Timeout  *int    `json:"timeout,omitempty"`
 	AgentID  *string `json:"agentId,omitempty"`
 	Calendar *string `json:"calendar,omitempty"`
+	Enabled  *bool   `json:"enabled,omitempty"` // schedule.enabled em lote (Find & Update)
+	RunAt    *string `json:"runAt,omitempty"`   // schedule.runAt em lote ("" limpa)
 }
 
 func (s *server) bulkSessionDefinitions(w http.ResponseWriter, r *http.Request) {
@@ -308,6 +328,12 @@ func (s *server) bulkSessionDefinitions(w http.ResponseWriter, r *http.Request) 
 			}
 			if req.Patch.Calendar != nil {
 				def.Calendar = *req.Patch.Calendar
+			}
+			if req.Patch.Enabled != nil {
+				def.Schedule.Enabled = *req.Patch.Enabled
+			}
+			if req.Patch.RunAt != nil {
+				def.Schedule.RunAt = *req.Patch.RunAt
 			}
 			if err := validateDefinition(def); err != nil {
 				results = append(results, bulkItemResult{ID: id, Error: err.Error()})

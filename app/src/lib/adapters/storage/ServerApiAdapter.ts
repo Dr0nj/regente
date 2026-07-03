@@ -41,6 +41,7 @@ interface ServerSchedule {
   windowTo?: string;
   cyclic?: boolean;
   intervalMin?: number;
+  cyclicMaxRuns?: number;
   keepActive?: number;
   frequency?: string;
   daysOfWeek?: string[];
@@ -63,6 +64,7 @@ interface ServerDefinition {
   retries?: number;
   timeout?: number;
   dryRun?: boolean;
+  confirm?: boolean;
   calendar?: string;
   calendars?: ServerCalendarRef[];
   upstream?: Array<{ from: string; condition: EdgeCondition }>;
@@ -85,6 +87,7 @@ function scheduleToWeb(s: ServerSchedule): JobDefinition["schedule"] {
     windowTo: s.windowTo,
     cyclic: s.cyclic,
     intervalMin: s.intervalMin,
+    cyclicMaxRuns: s.cyclicMaxRuns,
     keepActive: s.keepActive,
     frequency: (s.frequency as JobDefinition["schedule"]["frequency"]) || "daily",
     daysOfWeek: s.daysOfWeek,
@@ -104,6 +107,7 @@ function scheduleToServer(s: JobDefinition["schedule"]): ServerSchedule {
     windowTo: s.windowTo || undefined,
     cyclic: s.cyclic || undefined,
     intervalMin: s.intervalMin || undefined,
+    cyclicMaxRuns: s.cyclicMaxRuns || undefined,
     keepActive: s.keepActive || undefined,
     frequency: s.frequency || "daily",
     daysOfWeek: s.daysOfWeek?.length ? s.daysOfWeek : undefined,
@@ -132,6 +136,7 @@ function toWeb(d: ServerDefinition): JobDefinition {
       _agentId: d.agentId,
     },
     dryRun: d.dryRun,
+    confirm: d.confirm,
     upstream: d.upstream,
     actions: d.actions?.length ? d.actions : undefined,
   };
@@ -150,6 +155,7 @@ function toServer(d: JobDefinition): ServerDefinition {
     retries: d.retries,
     timeout: d.timeout,
     dryRun: d.dryRun,
+    confirm: d.confirm || undefined,
     calendar: d.calendar || undefined,
     calendars: d.calendars?.length ? d.calendars : undefined,
     upstream: d.upstream,

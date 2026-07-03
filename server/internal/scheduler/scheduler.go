@@ -147,7 +147,35 @@ func (s *Scheduler) buildVarContext(def domain.JobDefinition, instanceID string)
 	if s.variables != nil {
 		ctx.Global = s.variables.Snapshot()
 	}
+	// Offsets de dia ÚTIL (%%ODATE+3B) contam pelo calendar do job (feriados),
+	// caindo em Mon–Fri puro sem calendar — mesma régua do schedule/forecast.
+	if s.calStore != nil {
+		cal := businessCalendar(def, s.calStore)
+		ctx.BusinessDay = func(t time.Time) bool { return isBusinessDay(t, cal) }
+	}
 	return ctx
+}
+
+// applySetVarDirectives — SET de variável em runtime (Control-M ctmvar): varre
+// o output terminal por linhas "%%SET NOME=VALOR" e grava as globais no
+// VariableStore (auditado por evento "set-var" + broadcast variables.changed).
+func (s *Scheduler) applySetVarDirectives(id, output string) {
+	if s.variables == nil || output == "" || !strings.Contains(output, "%%SET") {
+		return
+	}
+	matches := setVarDirective.FindAllStringSubmatch(output, maxSetVarsPerJob)
+	if len(matches) == 0 {
+		return
+	}
+	for _, m := range matches {
+		name, value := m[1], m[2]
+		if _, err := s.variables.Set(name, value, "job:"+id); err != nil {
+			log.Printf("[scheduler] %s: set-var %s: %v", id, name, err)
+			continue
+		}
+		s.emitEvent(id, "set-var", "scheduler", name+"="+value)
+	}
+	s.hub.BroadcastWeb("variables.changed", map[string]interface{}{"by": id})
 }
 
 // Defs returns a snapshot of loaded definitions (for forecast).
@@ -704,13 +732,14 @@ func (s *Scheduler) insertDailyChunk(date, commitSHA string, chunk []pendingInst
 
 func computeScheduledAt(d domain.JobDefinition, date string) time.Time {
 	t, _ := time.Parse("2006-01-02", date)
-	if d.Schedule.RunAt != "" {
-		parts := strings.Split(d.Schedule.RunAt, ":")
-		if len(parts) == 2 {
-			hh, _ := strconv.Atoi(parts[0])
-			mm, _ := strconv.Atoi(parts[1])
-			return time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.Local)
-		}
+	// RunAt manda; sem RunAt, a janela (WindowFrom) segura o início — um job
+	// cyclic "a cada 10min das 08:00 às 18:00" começa às 08:00, não à meia-noite.
+	at := d.Schedule.RunAt
+	if at == "" {
+		at = d.Schedule.WindowFrom
+	}
+	if hh, mm, ok := parseHHMM(at); ok {
+		return time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.Local)
 	}
 	return t // imediatamente
 }
@@ -721,6 +750,7 @@ type instRow struct {
 	StartedAt                    sql.NullTime
 	CarriedAt                    sql.NullTime // virada da daily: re-arma o watchdog de stuck-running.
 	Forced                       bool
+	Confirmed                    bool   // Control-M Confirm: operador liberou um job confirm:true.
 	Snapshot                     string // Fase A: def congelada na ordem (JSON); "" em instances legadas.
 }
 
@@ -774,7 +804,7 @@ func (s *Scheduler) tickOnce() {
 	// evalDeps precisa enxergar pais OK/NOTOK para decidir corretamente.
 	rows, err := s.db.Query(
 		`SELECT id, definition_id, order_date, status, scheduled_at,
-		        started_at, carried_at, COALESCE(forced,0), COALESCE(definition_snapshot,'')
+		        started_at, carried_at, COALESCE(forced,0), COALESCE(confirmed,0), COALESCE(definition_snapshot,'')
 		 FROM instances WHERE order_date=?`,
 		today,
 	)
@@ -784,9 +814,10 @@ func (s *Scheduler) tickOnce() {
 	insts := []instRow{}
 	for rows.Next() {
 		var r instRow
-		var forcedInt int
-		_ = rows.Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.Snapshot)
+		var forcedInt, confirmedInt int
+		_ = rows.Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &confirmedInt, &r.Snapshot)
 		r.Forced = forcedInt == 1
+		r.Confirmed = confirmedInt == 1
 		insts = append(insts, r)
 	}
 	rows.Close()
@@ -838,7 +869,12 @@ func (s *Scheduler) tickOnce() {
 		}
 		// Forced bypassa deps (Control-M parity) — mas NÃO o agente: sem agente
 		// disponível, nem o forced é reivindicado (senão pisca RUNNING↔WAITING).
+		// Também NÃO bypassa o Confirm: no Control-M a confirmação é um wait de
+		// runtime (o job forçado continua "Wait User" até o operador confirmar).
 		if r.Forced {
+			if def.Confirm && !r.Confirmed {
+				continue
+			}
 			if !s.agentAvailable(def) {
 				s.maybeEmitNoAgent(r.ID, def.JobType)
 				continue
@@ -1090,6 +1126,71 @@ func (s *Scheduler) FinishInstance(id string, status domain.InstanceStatus, exit
 			s.applyActions(id, orderDate, def, actionEvent{kind: "result", status: status})
 		}
 	}
+	// SET de variável em runtime (Control-M ctmvar): o job ATRIBUI variáveis
+	// globais imprimindo "%%SET NOME=VALOR" no output — outro job lê via
+	// %%NOME / ${var.NOME}. Varre em OK e NOTOK (a diretiva impressa rodou).
+	if status == domain.StatusOK || status == domain.StatusNotOK {
+		s.applySetVarDirectives(id, output)
+	}
+	// Cyclic runtime (Control-M cyclic): terminou OK → re-arma a MESMA instance
+	// pra próxima volta (IntervalMin), enquanto a janela/teto permitirem. NOTOK
+	// NÃO cicla (espera operador — rerun/Set OK), como no Control-M.
+	if status == domain.StatusOK {
+		s.maybeCycle(id)
+	}
+}
+
+// maybeCycle — cyclic runtime: re-arma um job cyclic que terminou OK para rodar
+// de novo em IntervalMin minutos. A MESMA instance volta pra WAITING com
+// scheduled_at futuro (o gate de janela mostra "próxima volta às HH:MM") e
+// attempts resetado (orçamento de retry renova POR VOLTA). O ciclo encerra
+// quando: (a) a próxima volta cairia depois de WindowTo; (b) CyclicMaxRuns
+// atingido; (c) a daily vira (WAITING nunca-rodou não carrega — a nova daily
+// materializa uma instance fresca, como o New Day do Control-M).
+func (s *Scheduler) maybeCycle(id string) {
+	def, orderDate, _, ok := s.instanceContext(id)
+	if !ok || !def.Schedule.Cyclic || def.Schedule.IntervalMin <= 0 {
+		return
+	}
+	var runs int
+	if err := s.db.QueryRow(`SELECT COALESCE(cycle_runs,0) FROM instances WHERE id=?`, id).Scan(&runs); err != nil {
+		return
+	}
+	done := runs + 1 // voltas OK completadas, incluindo a que acabou de terminar
+	if def.Schedule.CyclicMaxRuns > 0 && done >= def.Schedule.CyclicMaxRuns {
+		s.emitEvent(id, "cyclic-done", "scheduler",
+			fmt.Sprintf("ciclo encerrado: %d voltas (máx %d)", done, def.Schedule.CyclicMaxRuns))
+		return
+	}
+	next := time.Now().Add(time.Duration(def.Schedule.IntervalMin) * time.Minute)
+	if hh, mm, okW := parseHHMM(def.Schedule.WindowTo); okW {
+		if t, err := time.Parse("2006-01-02", orderDate); err == nil {
+			windowEnd := time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.Local)
+			if next.After(windowEnd) {
+				s.emitEvent(id, "cyclic-done", "scheduler",
+					fmt.Sprintf("ciclo encerrado: janela até %s fechou (%d voltas)", def.Schedule.WindowTo, done))
+				return
+			}
+		}
+	}
+	// Guard AND status='OK': se um operador agiu no meio (cancel/hold), não re-arma.
+	res, err := s.db.Exec(
+		`UPDATE instances SET status=?, scheduled_at=?, cycle_runs=?, attempts=1, exit_code=NULL, finished_at=NULL
+		 WHERE id=? AND status=?`,
+		string(domain.StatusWaiting), next, done, id, string(domain.StatusOK),
+	)
+	if err != nil {
+		log.Printf("[scheduler] cyclic re-arm %s: %v", id, err)
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return
+	}
+	s.emitEvent(id, "cyclic", "scheduler",
+		fmt.Sprintf("volta %d OK — próxima às %s (intervalo %dmin)", done, next.Format("15:04:05"), def.Schedule.IntervalMin))
+	s.hub.BroadcastWeb("instance.changed", map[string]interface{}{
+		"id": id, "status": string(domain.StatusWaiting), "cyclic": true,
+	})
 }
 
 // buildAlertContext monta o AlertContext a partir da instance finalizada e do
@@ -1267,6 +1368,13 @@ func (s *Scheduler) ForceOrder(defID string) (string, error) {
 	}
 	s.emitEvent(id, "force-ordered", "operator", msg)
 	s.hub.BroadcastWeb("instance.changed", map[string]interface{}{"id": id, "status": "WAITING", "forced": true})
+	// Confirm não é bypassado nem no Force (Control-M: wait de runtime) — a
+	// instance fica WAITING no gate WAIT_CONFIRM; o Confirm do operador cutuca
+	// o tick e ela dispara na hora.
+	if def.Confirm {
+		s.emitEvent(id, "submitted", "operator", "force aguardando Confirm do operador")
+		return id, nil
+	}
 	go s.startInstance(id, *def)
 	return id, nil
 }

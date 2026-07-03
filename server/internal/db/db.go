@@ -476,6 +476,7 @@ var sqliteMigrations = []migration{
 	{version: 5, sql: schemaV5("DATETIME")},
 	{version: 6, sql: schemaV6("DATETIME")},
 	{version: 7, sql: schemaV7("DATETIME")},
+	{version: 8, sql: schemaV8(sqliteID, "DATETIME")},
 }
 
 var pgMigrations = []migration{
@@ -486,6 +487,7 @@ var pgMigrations = []migration{
 	{version: 5, sql: schemaV5("TIMESTAMPTZ")},
 	{version: 6, sql: schemaV6("TIMESTAMPTZ")},
 	{version: 7, sql: schemaV7("TIMESTAMPTZ")},
+	{version: 8, sql: schemaV8(pgID, "TIMESTAMPTZ")},
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
@@ -557,4 +559,28 @@ func schemaV7(ts string) string {
 	fired_at    ` + ts + ` DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY (instance_id, action_key)
 )`
+}
+
+// schemaV8 — Aprofundamento Control-M (2026-07-03): cyclic runtime + CONFIRM +
+// ViewPoints salvos.
+//   - cycle_runs: execuções OK completadas de um job cyclic (a MESMA instance
+//     re-arma pra WAITING a cada IntervalMin dentro da janela — ver maybeCycle).
+//   - confirmed: Control-M "Wait for confirmation" — def com confirm:true só é
+//     reivindicada depois do Confirm do operador (gate WAIT_CONFIRM).
+//   - viewpoints: filtros nomeados do Monitoring (por usuário; shared=1 visível
+//     a todos), base dos dashboards prontos.
+//
+// ALTERs idênticos em SQLite e Postgres; instances antigas ficam com defaults.
+func schemaV8(idDef, ts string) string {
+	return `ALTER TABLE instances ADD COLUMN cycle_runs INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE instances ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS viewpoints (
+	id           ` + idDef + `,
+	owner        TEXT NOT NULL,
+	name         TEXT NOT NULL,
+	filters_json TEXT NOT NULL DEFAULT '{}',
+	shared       INTEGER NOT NULL DEFAULT 0,
+	created_at   ` + ts + ` DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_viewpoints_owner ON viewpoints(owner)`
 }

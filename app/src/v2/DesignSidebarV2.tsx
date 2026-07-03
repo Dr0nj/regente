@@ -48,6 +48,7 @@ const JOB_TYPES: Array<{
   { id: "SSH",           label: "SSH",           hint: "Comando remoto via SSH (sem agente)",  Icon: Network },
   { id: "HTTP",          label: "HTTP",          hint: "Chamada REST com validação de status", Icon: Globe },
   { id: "FILE_WATCH",    label: "File Watch",    hint: "Espera arquivo chegar no agente",      Icon: FileSearch },
+  { id: "DATABASE",      label: "Database",      hint: "SQL em Postgres/MySQL/SQLite pelo agente", Icon: Database },
   { id: "WAIT",          label: "Wait",          hint: "Delay / espera programada",            Icon: Clock },
   { id: "CHOICE",        label: "Choice",        hint: "Desvio condicional",                   Icon: GitFork },
   { id: "PARALLEL",      label: "Parallel",      hint: "Execução concorrente",                 Icon: Layers },

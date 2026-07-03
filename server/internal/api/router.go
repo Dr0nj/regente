@@ -123,6 +123,7 @@ func NewRouter(cfg Config) http.Handler {
 		r.With(s.requireWriterMW).Post("/instances/{id}/cancel", s.cancelInstance)
 		r.With(s.requireWriterMW).Post("/instances/{id}/rerun", s.rerunInstance)
 		r.With(s.requireWriterMW).Post("/instances/{id}/set-ok", s.setOKInstance)
+		r.With(s.requireWriterMW).Post("/instances/{id}/confirm", s.confirmInstance) // Control-M Confirm (confirm:true)
 		r.Get("/instances/{id}/events", s.listInstanceEvents)
 		r.Get("/instances/{id}/explain", s.explainInstance)  // diferencial: "por que não rodou?"
 		r.Get("/instances/{id}/blast-radius", s.blastRadius) // diferencial: impacto de cancelar/segurar
@@ -205,6 +206,11 @@ func NewRouter(cfg Config) http.Handler {
 		r.With(s.requireWriterMW).Post("/alerts/rules/{id}/toggle", s.toggleAlertRule)
 		r.With(s.requireWriterMW).Put("/alerts/rules/{id}/channels", s.setAlertRuleChannels)
 		r.With(s.requireWriterMW).Put("/alerts/rules/{id}/cooldown", s.setAlertRuleCooldown)
+		// ViewPoints salvos (filtros nomeados do Monitoring; base dos dashboards)
+		r.Get("/viewpoints", s.listViewpoints)
+		r.Post("/viewpoints", s.createViewpoint)
+		r.Delete("/viewpoints/{id}", s.deleteViewpoint)
+
 		// F21 Forecast
 		r.Get("/forecast", s.getForecast)
 		// F22 Analytics
