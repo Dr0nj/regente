@@ -452,7 +452,9 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 
 ## 🗺 Roadmap
 
-> Versão visual e consolidada (progresso por trilha): [`docs/roadmap.md`](docs/roadmap.md).
+> **Esta seção é um resumo.** O roadmap completo e vivo — status por trilha, changelog por
+> data/commit, backlog com specs e a lista autoritativa de **"o que falta"** — mora em
+> **[`docs/roadmap.md`](docs/roadmap.md)** (fonte única de status). Se algo aqui divergir de lá, lá vence.
 
 - [x] **GitOps** — Publish, webhook, drift, deep-links, PAT seguro + token via UI
 - [x] **Paridade Control-M** — calendars, resources, conditions, variáveis, SLA, forecast
@@ -506,177 +508,41 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
   + **carga REAL** (`hey` contra o binário, TCP real: /readyz **11.6k req/s** com 100 conexões, p99 34ms, 0 erros)
   + **reconciler de drift** (`-drift-reconcile-sec`: só o líder; alerta o drift GitOps pelos canais do R7, ou auto-sync).
 
-### Aprofundamento Control-M (testar a fundo + aprimorar)
-- [ ] **Calendários complexos**: validar que o job entra na daily exatamente quando deve — 1º dia útil
-  do mês, só segundas, 1º dia útil que NÃO é segunda, N-ésimo dia útil, regras avançadas, include/exclude,
-  feriados, meses específicos. Cobrir todas as combinações; corrigir o gating onde divergir.
-- [ ] **Controle de recursos**: jobs que não podem concorrer (lock exclusivo), máximo de jobs simultâneos
-  por host/pool, quantitative (N slots), fila quando esgota e liberação correta.
-- [x] **Actions / On-Do do job** — motor backend ✅ (2026-06-29): regras "On `<gatilho>` Do `<ação>`" por job nas
-  **3 dimensões** — **(a) por nº de tentativa** (`on: attempt` — dispara na N-ésima tentativa que falhou, cobrindo a
-  final; complementa o retry automático `retries`); **(b) por resultado** (`on: result` OK/NOTOK, transição terminal);
-  **(c) por tempo de execução** (`on: runtime` — RUNNING há >N min, shouts escalonáveis 30/40/60min). **4 ações**
-  reusando os substratos: `notify` (Slack/webhook/e-mail/PagerDuty), `set-condition` (destrava sucessores), `run-job`
-  (Force Order de outro job), `set-ok` (auto-heal NOTOK→OK). Idempotente — cada regra dispara 1× por instance (ledger
-  durável `action_fires`, migration v7); decisor puro testável. 14 testes + validado ao vivo no binário (`notify`→
-  `/api/alerts`, `set-condition`→`/api/conditions`). **UI ✅** (2026-06-30): aba **"On/Do"** no JobConfigDrawer
-  (`OnDoEditor`) — regras On‹gatilho›Do‹ação› com add/remove, campos contextuais por tipo, chips de canais e
-  **tradução em linguagem natural** por regra. `ActionRule` no modelo TS + map no `ServerApiAdapter`; backend já
-  fazia round-trip nativo (handler decodifica `domain.JobDefinition` → YAML). Round-trip provado
-  (`TestFileStore_ActionsRoundTrip`).
-- [ ] **Job FILE_WATCH**: espera a chegada de arquivo (path/glob, polling/evento, tamanho estável) antes
-  de concluir e disparar o sucessor. Novo jobType + capability.
-- [ ] **Forecast**: testar a previsão de ≥ 1 semana à frente (quais jobs rodam por dia) contra o gating real.
-- [x] **Ciclo de vida na daily (Keep Active / carry-over)** ✅ (2026-06-24): **RUNNING na virada não some**
-  (segue na daily pra tracking até terminar); `keepActive=N` (job que não rodou OK sobrevive N diárias);
-  **default** NOTOK não tratado persiste +1 diária; **HOLD** atravessa as diárias enquanto em hold. A ordem
-  AVANÇA o order_date (mesmo id/status/snapshot/eventos) e SUBSTITUI a fresca do dia (sem duplicar); migration
-  v5 (`carry_budget`/`carried_from`/`carried_at`); badge ↩ no ViewPoint; editável no Design (`keepActive`).
-  Idempotente. 11 testes + validado ao vivo no binário (40 ontem → 15 migraram, 25 ficaram, 1 carry-over).
-- [ ] **CONFIRM**: job que precisa de ação manual (Confirm) para sair do estado e prosseguir (semântica Control-M).
-- [ ] **Job tipo DATABASE**: plugin com conectores (JDBC e outros); corpo = procedure ou SQL numa telinha
-  PL/SQL amigável (editor). Novo jobType + capability.
-- [ ] **Sistema de variáveis completo** (estilo Control-M `%%`): **globais de runtime** (um job atribui,
-  outro lê — passagem entre jobs), **locais por job**, **nativas/sistema** (`%DataAtual`, `%DiaAtual`,
-  `%AnoAtualYYYY`, último dia do mês…) e **cálculo de datas com template** — aritmética tipo `%DiaAtual+3`
-  resolvendo p/ data numérica ciente de dia útil/feriado; interpolação em qualquer campo + inspetor por instância.
-- [ ] **ViewPoint (Monitoring)**: viewpoints salvos — mostrar só certas folders (não todas) no Monitoring.
-- [ ] **Dashboards prontos (ViewPoint de dashboard)**: painel por folder(s) ou do ambiente inteiro com
-  gráficos (pizza e outros) e estatísticas em tempo real — jobs em execução/hold/waiting/confirm, totais,
-  OK/failed, nomes dos últimos executados e dos últimos com erro, métricas por folder. (Analytics base já no Control Panel.)
-- [ ] **Mass Update / Find & Update (Design)**: alteração em massa nas folders abertas por regex/critério de
-  campo — buscar e substituir/adicionar em N jobs (descrição vazia, add action/evento, find-replace em
-  qualquer campo, tags/conditions em lote), com preview/undo. (bulk básico já existe via `/api/bulk`.)
-- [ ] **Janela de info do job (drawer)**: deixar mais friendly — ações claras, output/log legível, layout.
-- [x] **Layout de jobs — grade pros soltos, fluxo pros dependentes** ✅ (2026-06-25): jobs SEM dependência
-  viram uma **grade** (N colunas, default 10; 11º quebra pra linha 2; ao passar de N linhas alarga colunas em vez
-  de crescer pra baixo). DEPENDENTES seguem o fluxo top-down (dagre). Por folder. `columns`/`máx. linhas`
-  configuráveis em **Settings › Geral › Visualização**; botão **Organizar** (re-enquadra). Vale Monitoring + Design.
-- [x] **Fixes de Folders/Design (UX)** ✅ (2026-07-01): botão bulk da tela Folders mostra **"Abrir"**
-  (não "Abrir no Design", redundante já que FOLDERS só existe em modo Design) e ao abrir folder(s)
-  selecionadas o modal **fecha e cai direto no canvas**; corrigido bug feio de "Nenhuma definition"
-  aparecer sobreposto ao 1º job arrastado numa folder vazia (overlay checava `hasDefs` global em vez
-  do rascunho não-salvo já visível no canvas); JobConfigDrawer — "Label" virou **"Job Name"** e o
-  campo **ID some da UI** (segue existindo internamente: nome do YAML/chave de dependências);
-  **os 4 drawers docados foram padronizados no visual flutuante arredondado** (margens +
-  `borderRadius:16` + boxShadow) — o Edit Job (`JobConfigDrawer`) e o detalhe do Monitoring
-  (`InstanceDetailsDrawer`) colavam nas bordas sem raio; agora batem com as sidebars de palette/monitor
-  (`ScaleMonitor` fica de fora por ser view full-screen); o botão **"Abrir"** da action bar virou
-  **primary em destaque** (maior, preenchido no accent, pílula com glow) por ser a ação principal
-  quando há folder selecionada; corrigido o **job que "sumia" ao ser criado** (com zoom/pan o nó novo
-  podia nascer fora da tela — não era perda de dado, só a câmera não reenquadrava; agora dá `fitView`
-  ao salvar job novo); e a **aba Folders da sidebar esquerda lista os jobs de cada folder como linhas
-  clicáveis** que navegam/centralizam o canvas no nó.
-- [x] **Viewport fluido do canvas + minimap revisto** ✅ (2026-07-01): a causa dos jobs "sumindo" ao
-  clicar Run Daily/Force (e da câmera voltar ao centro sozinha após cada refresh) era o reancoramento
-  do topo disparando a CADA update de dado (status via WS/tick a cada 2s, Run Daily, Force) — agora só
-  reancora ao trocar de modo/folders ou quando os jobs aparecem pela 1ª vez; churn de dado não mexe na
-  câmera. **Force** passa a centralizar no job forçado quando ele materializa (mantendo o zoom). O
-  **minimap** mostra só os jobs em **quadradinhos** (proporção do card) em vez de bolinhas, e desenha o
-  **retângulo do viewport** (área visível) refletindo o alinhamento da tela.
-- [x] **Câmera do canvas consistente com a trava + board nunca mais vazio sem F5** ✅ (2026-07-01):
-  três raízes distintas fechadas de vez. (1) **Pulo pra "posição travada"** ao mexer depois de
-  centralizar/organizar/forçar: o `translateExtent` (trava de pan) é em px de **mundo** e estático,
-  mas a âncora/centralização posicionavam a câmera em px de **tela** — em zoom < 1 (ou centralizando
-  job do topo) a câmera ficava FORA do extent, e o ReactFlow só clampa pan do usuário (movimento
-  programático passa direto) → o 1º arrasto reaplicava a trava = pulo. Agora TODO movimento
-  programático clampa pelo mesmo limite (`clampTy` + `focusOnPoint`; usado por Organizar, clique na
-  sidebar, Force/pendingFocus e minimap), e o extent tem folga de `PAN_SLACK_TOP=176` px de mundo
-  (cobre a âncora de 88px de tela até o minZoom 0.5) — de quebra dá a "puxada pra baixo" maior.
-  Centralizar job do topo agora "centraliza até onde a trava deixa" e mexer depois NÃO salta.
-  (2) **`fitView` do RF v12 é assíncrono** (e o promise nem resolve chamado logo após o mount):
-  `organizeView` não usa mais `fitView` — o fit é **calculado na mão** (bounds das lanes + pane via
-  `useStoreApi`), síncrono e determinístico; o prop `fitView` do `<ReactFlow>` saiu (corria contra a
-  âncora de entrada); o gate de entrada agora espera `paneReady` (dimensões do pane via `useStore`) —
-  cobre o mount pós-login em que os nodes já existiam antes do canvas montar. (3) **Abrir o app e o
-  board vir vazio até F5**: a carga inicial rodava antes do login com token errado (401 silencioso,
-  sem retry) e nada re-buscava depois de logar. Agora `setAuthToken` **reconecta o WS** com o token
-  novo; o `onopen` emite o evento sintético `_connected` que ressincroniza instances (store) e
-  definitions (UI); a carga inicial tem **retry de 5s** até a 1ª carga boa; e o listener de
-  instances não refiltra mais por `todayOrderDate()` do browser (zerava o board no 1º evento WS
-  quando o dia do cliente ≠ dia do server — acesso remoto/virada de dia). Validado ao vivo (90 defs
-  + 102 instances): entrada=Organizar=âncora idêntica (`ty=76`@zoom .5), drag pós-centralização sem
-  snap, Force ×2 com câmera imóvel, login → board aparece sem F5.
-- [x] **Hardening pós-review** ✅ (2026-07-01): os 3 pontos de atenção apontados na avaliação do projeto.
-  (1) **SQLITE_BUSY em rajada resolvido de verdade** — os pragmas (`busy_timeout`/WAL/foreign_keys) eram
-  aplicados via `Exec` numa conexão SÓ do pool do `database/sql`; as demais ficavam sem `busy_timeout` e a
-  materialização da daily perdia eventos de auditoria ("database is locked"). Agora vão no **DSN**
-  (`_pragma=`), que o modernc/sqlite executa em CADA conexão nova — validado: mesma rajada de 95 jobs,
-  **zero** SQLITE_BUSY, eventos `ordered/started/submitted/finished` todos persistidos. (2) **V2Preview
-  desmontado em módulos** (2223→1485 linhas): layout puro em `canvas-layout.ts` (constantes + builders +
-  dagre), minimap em `NavMinimap.tsx`, câmera em `hooks/useCanvasCamera.ts` (trava + âncora + clamp +
-  centralizações + gate de entrada) e bootstrap/sync de dados em `hooks/useOrchestratorData.ts` — os três
-  bugs de ciclo de vida da sessão anterior moravam todos nesse arquivo; agora cada preocupação tem dono.
-  (3) **Resync `_connected` cobre os "fetch-once" restantes** — badge de alertas, env label e `/me` se
-  recuperam na reconexão; bônus emergente validado ao vivo: token inválido no mount → 401 → limpa token →
-  reconecta com fallback → board completo SEM F5 nem login manual (em dev; no hosted o LoginForm segue
-  gateando). Regressão completa verde pós-refactor: entrada=Organizar (`ty=76`@.5), centralização anima
-  até o clamp exato (`ty=167.2`@1.1) e fica, drags sem pulo, Force ×2 com câmera imóvel.
-- [x] **Daily 100% server-side (horário configurável) + WAIT EVENT (paridade Control-M)** ✅ (2026-07-02):
-  dois focos pedidos pelo usuário. (1) **Daily**: o server já materializava à meia-noite pelo relógio
-  DELE, mas o horário era hardcoded — agora `settings.daily_at` (editável em Settings → Geral → "Horário
-  da daily", admin-only, sem restart) vence o default 00:00; valor inválido loga e cai no default. Novo
-  `GET /api/daily/status` (última daily + horário configurado + relógio do server) vira a fonte do
-  rodapé — o front NÃO usa mais localStorage pra isso em server mode. Validado ao vivo: boot 08:28 com
-  `daily_at=08:30` ficou parado; materializou às 08:30:01 em ponto. (2) **Sucessores**: o tick
-  auto-CANCELAVA o sucessor ~2s depois do pai falhar (dep "permanentemente impossível") — e como
-  CANCELLED é terminal, o Set OK/rerun no pai não revivia ninguém: o fluxo padrão do operador estava
-  quebrado. Agora o sucessor **fica WAITING (Wait Event)** com pai falho/rodando/não-rodado; rerun ou
-  Set OK no pai destravam e o próprio tick despacha (quem nunca ficar elegível morre na virada, como no
-  Control-M). O card do canvas mostra **"WAIT EVENT"** (vs "WAIT" de espera de horário), derivado da
-  mesma fonte visual das edges. Validado ao vivo com agente REAL (exit 1 / Start-Sleep): pai NOTOK →
-  filho WAITING por 4+ ticks (Explain: BLOCKED_DEP) → Set OK no pai → filho rodou sozinho; pai RUNNING
-  20s → filho WAIT EVENT (Explain: WAIT_DEP) → pai OK → filho rodou. +2 testes Go
-  (`TestTick_BlockedSuccessorWaitsAndRunsAfterSetOK`, `TestDailyAt_FromSettings`).
-- [x] **Lote enterprise + paridade Control-M core FECHADA** ✅ (2026-07-02): seis entregas num commit.
-  (1) **Condition vazia = on-success** no server (def YAML sem `condition:` não roda mais o filho com
-  pai NOTOK — era furo semântico; front e server agora têm o MESMO default). (2) **API aceita `params`
-  e `actionConfig`** no JSON (antes `params` era ignorado em silêncio e o job despachava sem comando).
-  (3) **Mock-finish atrás de `-demo-mode`** — default honesto: sem agente online a instance fica
-  WAITING (com release de recursos e evento throttled) e o tick re-tenta quando o agente conectar;
-  nada de "tudo OK" fake em produção. (4) **Variáveis `%%`** (Control-M AutoEdit): `%%ODATE`,
-  `%%RUNDATE`, `%%TIME`, `%%JOBNAME`, `%%FOLDER` etc. + variáveis do job e globais por nome, mesma
-  resolução do `${var.NAME}`; ODATE lido da PRÓPRIA instance (correto em rerun/carry). (5)
-  **FILE_WATCH** ponta-a-ponta: novo jobType que espera arquivo chegar no host do agente (poll
-  configurável + estabilidade de tamanho + timeout=NOTOK), palette/editor na UI, capability no agente.
-  (6) **Shift de calendário** (Control-M roll): `schedule.shift = next/prev-businessday` — dia nominal
-  em feriado/fim de semana rola pro dia útil mais próximo; implementado na FONTE ÚNICA
-  (`IsScheduledOn`), então daily, Dry Run e o preview do ScheduleEditor refletem juntos. Tudo validado
-  ao vivo com agente real (output `ODATE=20260702` interpolado; FILE_WATCH RUNNING→OK ao criar o
-  arquivo; preview: 1/ago sáb → next=03/ago, prev=31/jul). O roadmap ganhou a seção **Backlog
-  Enterprise E1–E6** com specs implementáveis (timezone da daily, auditoria com retenção/export, RBAC
-  por ação operacional, fila assíncrona de eventos, relatório/SLO da daily, importador Control-M).
-- [x] **WAIT AGENT (azul claro) + zero churn sem agente** ✅ (2026-07-02): bug report do usuário — sem
-  agente conectado (lab do INICIAR-REGENTE.bat), o tick reivindicava cada job elegível e revertia a
-  cada 2s: log spam, evento spam e a UI "piscando"/sumindo jobs. Agora a disponibilidade de agente é um
-  **gate** (`WAIT_AGENT` no gateInstance, fonte única do Explain): sem agente com a capability (ou com
-  o agente pinado offline), o job NEM é reivindicado — fica WAITING quieto, card **azul claro "WAIT
-  AGENT"** no canvas (derivado de `GET /api/agents` + evento `agent.changed`). Quando o agente conecta,
-  o ws handler faz broadcast + **cutuca um Tick** → os jobs presos disparam NA HORA (não espera o
-  próximo ciclo). `HasAgent` novo no Bus enxerga presença REMOTA no NATS (checar só o hub local
-  starvaria dispatch multi-nó). Validado ao vivo: sem agente = statuses estáveis 6s+ (zero flicker),
-  zero eventos `started`, Explain WAIT_AGENT, card rgb(56,189,248); agente conectou → var-echo OK /
-  nc-pai FAIL / fw-espera RUNNING em <1.5s. Teste `TestTick_NoAgentNoClaim`.
-- [x] **Jobs sumindo do canvas ao forçar em rajada (race de refresh) — morto de vez** ✅ (2026-07-02):
-  bug recorrente reportado pelo usuário (~6 forces seguidos → cards somem → só F5 traz de volta). Causa
-  raiz: o `server-instance-store` disparava um `GET /api/instances` COMPLETO por força e por evento WS
-  parcial (todos os broadcasts `instance.changed` são parciais, só id+status) → rajada de N forças ≈
-  3-4×N GETs concorrentes, cada um `cache.clear()`+repopula → uma resposta ANTIGA (snapshot tirado
-  antes dos últimos INSERTs) chegando POR ÚLTIMO apagava do cache as instances recém-criadas — e no
-  monitoring **nó do canvas = instance**, então os cards sumiam e nada re-disparava refresh até o F5.
-  Três defesas no store: (1) **`refresh()` single-flight com rodada de cauda coalescida** — nunca há
-  dois GETs em voo; gatilho durante um fetch agenda UMA rodada extra disparada DEPOIS dele (portanto
-  depois do commit que originou o gatilho); rajada de N eventos = ≤2 fetches e o último sempre vê tudo;
-  (2) **gen guard** — resposta de fetch obsoleto é descartada inteira; (3) **reconcile por MERGE**
-  (nunca mais `cache.clear()`) — id mutado via WS durante o fetch não é deletado nem regride status
-  pelo snapshot antigo (`touchedAt`; o refresh de cauda reconcilia) e id deletado não ressuscita
-  (`tombstones`). Validado ao vivo: rajada de 10 forças paralelas + segunda rajada de 6 com
-  hold/release no meio → 16/16 cards firmes no canvas, 8 GETs coalescidos para ~30 eventos WS, zero
-  erros de console, sem F5.
-- [ ] **Cap de 2000 do Monitoring legado**: `LEGACY_CAP=2000` (canvas/ACTIVE JOBS não-virtualizados) é arbitrário
-  e mostra "2000/2000" como se fosse o total. Fix: **virtualizar a sidebar ACTIVE JOBS** (mostra o dia inteiro),
-  header com o **total real** do `/summary` ("2000 carregados de 1.000.000"), e cap do canvas configurável/maior
-  com aviso "abra o ViewPoint". (O ViewPoint já mostra 100k–1M.)
+### 🆕 Entregue recentemente (destaques)
+
+> Changelog completo por data/commit → [`docs/roadmap.md`](docs/roadmap.md).
+
+- **Drafts do Design à prova de F5** — a sessão de edição sobrevive a reload/troca de tela; sessão órfã com
+  trabalho não publicado vira banner *Retomar/Descartar*; o server nunca apaga trabalho não publicado.
+- **Paridade Control-M — core FECHADA**: **WAIT EVENT** (sucessor de job falho/rodando fica WAITING, não é mais
+  auto-cancelado) · **WAIT AGENT** (sem agente, o job nem é reivindicado — zero churn; card azul claro) ·
+  **variáveis `%%`** (AutoEdit: `%%ODATE`, `%%JOBNAME`…) · **FILE_WATCH** · **shift de calendário**
+  (`next/prev-businessday`) · **condition vazia = on-success** · **Actions/On-Do** por job (motor + UI).
+- **Daily 100% server-side** com horário configurável (`settings.daily_at`, sem restart) + `GET /api/daily/status`.
+- **Ciclo de vida na daily** (carry-over / Keep Active): RUNNING/HELD atravessam a virada; NOTOK persiste +1 diária.
+- **Refino de canvas/UX**: grade pros jobs soltos · viewport fluido (jobs não somem no Run Daily/Force) · câmera
+  consistente com a trava de pan · board sem F5 · minimap revisto · tela de Folders redesenhada · lista de jobs
+  da folder na sidebar · anti-race de refresh (forçar em rajada não some mais cards) · hardening SQLITE_BUSY.
+
+### 🚧 O que falta
+
+> Lista autoritativa, detalhada e com specs → **[`docs/roadmap.md`](docs/roadmap.md)** (seção "O que falta").
+
+**Aprofundamento Control-M** (paridade core fechada; resta refino):
+- [ ] Cyclic runtime · CONFIRM (ação manual) · job tipo DATABASE (SQL/procedure)
+- [ ] Variáveis de runtime *SET* por um job lido por outro + cálculo de datas por template (`%DiaAtual+3` ciente de dia útil)
+- [ ] Baterias de teste: calendários complexos · controle de recursos · Forecast ≥ 1 semana
+- [ ] ViewPoint salvos (filtrar folders no Monitoring) · dashboards prontos · Mass Update/Find & Update completo
+
+**Refinamento UI:**
+- [ ] Virtualizar a sidebar ACTIVE JOBS (hoje capada em 2000; o ViewPoint já mostra 100k–1M) · drawer do job mais amigável
+
+**Enterprise** (specs prontas — E1..E6 em [`docs/roadmap.md`](docs/roadmap.md)):
+- [ ] Timezone da daily · auditoria (retenção/export/audit de settings) · RBAC por ação operacional ·
+  fila assíncrona de eventos · relatório/SLO da daily · importador Control-M
+
+**Camada agent-native (MCP)** — servidor pronto; falta NL-query + writes ricos. **Diferenciais** e **🏁 Fase Z**
+(case study + LinkedIn, último gate): ver seções abaixo e [`docs/roadmap.md`](docs/roadmap.md).
 
 ### Diferenciais — além do Control-M (visão de produto) — detalhe em [`docs/roadmap.md`](docs/roadmap.md)
 Onde o Regente **passa** o Control-M (longo prazo, depois do núcleo sólido):

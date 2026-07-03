@@ -1,6 +1,12 @@
 # 🎼 Regente — Roadmap
 
-> Documento vivo · revisão 2026-06-24.
+> **Fonte única de status (single source of truth).** Este arquivo é a verdade sobre
+> "o que está pronto / o que falta". O roadmap do [`../README.md`](../README.md) é só um
+> **resumo** que aponta pra cá — se algo divergir, ESTE arquivo vence. Ao entregar algo,
+> atualize AQUI (a barra da trilha + a seção "O que falta" + o changelog "Próximos
+> movimentos"); o README carrega apenas destaques de 1 linha.
+>
+> Documento vivo · revisão **2026-07-02**.
 > Estratégia de arquitetura em [`arquitetura-futuro.md`](arquitetura-futuro.md);
 > detalhe de produto no [`../README.md`](../README.md).
 
@@ -19,8 +25,8 @@ Resiliência operacional    █████████████████�
 ── Próximas fases ──────────────────────────────────────────────────────────
 Agent-native (MCP)         █████████████████░░░  85%  🟢 servidor MCP ✅ (6 tools read + 2 write gated) · falta NL-query + writes ricos
 Diferenciais               ██████████░░░░░░░░░░  50%  🟡 Explain·Diff·Blast·Dry Run ✅ · falta Job Neighborhood · RCA · Event log
-Aprofundamento Control-M   ██████████████████░░  90%  🟢 daily lifecycle ✅ · Actions/On-Do ✅ (motor + UI) · daily server-side configurável ✅ · WAIT EVENT ✅ · variáveis %% ✅ · FILE_WATCH ✅ · calendários+shift ✅ · falta cyclic runtime
-Refinamento UI             ████████████████░░░░  82%  🟡 grade de jobs soltos ✅ · aba de agentes+ping ✅ · seletor de folder (FOLDERS) ✅ + fix snapshot do monitoring ✅ · fix botão "Abrir"+auto-nav ✅ · fix bug "Nenhuma definition" no drag ✅ · Job Name/ID no drawer ✅ · painel Edit Job flutuante arredondado ✅ · minimap revisto (jobs quadrados + viewport rect, escala estável top-left) ✅ · viewport fluido (sem sumir/pular no Run Daily/Force/refresh) ✅ · câmera consistente com a trava de pan (centralizar/Organizar/minimap clampados, sem pulo) + board sem F5 (resync pós-login/reconexão WS) ✅ · anti-race de refresh no store (forçar em rajada não some mais cards; single-flight+merge) ✅ · limpeza de ruído (NEXT TICK fake + data duplicada) ✅ · falta LEGACY_CAP virtualizado
+Aprofundamento Control-M   ███████████████████░  92%  🟢 PARIDADE CORE FECHADA: daily lifecycle ✅ · Actions/On-Do ✅ (motor + UI) · daily server-side configurável ✅ · WAIT EVENT ✅ · WAIT AGENT ✅ · variáveis %% ✅ · FILE_WATCH ✅ · calendários+shift ✅ · condition vazia=on-success ✅ · falta: cyclic runtime · CONFIRM · DATABASE · SET de var em runtime · baterias de teste (calendários/recursos/forecast)
+Refinamento UI             ██████████████████░░  88%  🟡 grade de jobs soltos ✅ · aba de agentes+ping ✅ · seletor de folder (FOLDERS) redesenhado ✅ + fix snapshot do monitoring ✅ · fix botão "Abrir"+auto-nav ✅ · fix bug "Nenhuma definition" no drag ✅ · Job Name/ID no drawer ✅ · painel Edit Job flutuante arredondado ✅ · lista de jobs da folder na sidebar ✅ · minimap revisto (jobs quadrados + viewport rect) ✅ · viewport fluido (sem sumir/pular no Run Daily/Force/refresh) ✅ · câmera consistente com a trava de pan + board sem F5 ✅ · anti-race de refresh no store ✅ · draft do Design à prova de F5 (retomada de sessão) ✅ · limpeza de ruído ✅ · falta: LEGACY_CAP virtualizado · drawer do job mais amigável
 Fase Z — divulgação        ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ case study + post LinkedIn (agora com a história agent-native)
 ```
 
@@ -30,6 +36,42 @@ Fase Z — divulgação        ░░░░░░░░░░░░░░░░�
 > instantâneo, folder aberta em ~39ms, lista virtualizada, sem nunca baixar o dia inteiro.
 
 Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · 🔴 prioridade
+
+---
+
+## 🎯 O que falta (lista autoritativa)
+
+> Pergunta "o que falta?" → responde aqui. Tudo abaixo é o que **ainda não** está pronto;
+> o que não aparece aqui está entregue (detalhe nas seções e no changelog "Próximos
+> movimentos"). Todas as trilhas ESTRUTURAIS (núcleo · UI · alerting · resiliência ·
+> serverless · enterprise · escala 100k–1M) estão **100%**.
+
+**Aprofundamento Control-M** — paridade core fechada; resta refino:
+- ⬜ **Cyclic runtime** — job que repete a cada N min dentro de uma janela (IntervalMin).
+- ⬜ **CONFIRM** — job que espera ação MANUAL (Confirm) pra sair do estado e prosseguir.
+- ⬜ **Job tipo DATABASE** — conector JDBC/etc., corpo = SQL/procedure num editor.
+- ⬜ **Variáveis de runtime (SET)** — um job ATRIBUI valor lido por outro + cálculo de
+  datas por template (`%DiaAtual+3` ciente de dia útil). Interpolação `%%`/`${}` já feita.
+- ⬜ **Baterias de teste** — calendários complexos · controle de recursos · Forecast ≥1 semana.
+- ⬜ **ViewPoint salvos** (filtrar folders no Monitoring) · **dashboards prontos** ·
+  **Mass Update / Find & Update** completo (bulk básico já existe).
+
+**Refinamento UI:**
+- ⬜ **Virtualizar a sidebar ACTIVE JOBS** (`LEGACY_CAP=2000` engana; o ViewPoint já faz 100k–1M).
+- ⬜ **Drawer de info do job** mais amigável (ações claras, log legível).
+
+**Enterprise (specs prontas — §Backlog Enterprise E1..E6):**
+- ⬜ E1 timezone da daily · E2 auditoria (retenção/export/audit de settings) · E3 RBAC por
+  ação operacional · E4 fila assíncrona de eventos · E5 relatório/SLO da daily · E6 importador Control-M.
+
+**Camada agent-native (MCP)** — 85%: falta NL-query + writes ricos.
+
+**Diferenciais (além do Control-M)** — 50%: Explain·Diff·Blast·Dry Run ✅; falta Job Neighborhood ·
+RCA automático · Event log CQRS-lite · query estruturado/NL · orquestração híbrida/stateful ·
+DevEx (schedule-as-code / `regente test` / `regente dev daily`) · promotion · policy-as-code ·
+chaos inject · "wow" (Gantt · templates · self-service · mobile). Detalhe em §Diferenciais.
+
+**🏁 Fase Z** — case study + post LinkedIn. **Último gate por definição** — só com o backlog acima onde você quer.
 
 ---
 
@@ -70,8 +112,9 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
    (a MESMA regra da daily, fonte única; destacado=roda, apagado=não roda). 4 testes Go + endpoint validado
    ao vivo. Aba "Calendars" do drawer removida. (browser-mode sem server: mostra aviso, calendário exato exige server.)
 ⬜ Janela de info do job (drawer) — deixar mais friendly: ações claras, output/log legível, layout melhor
-⬜ Design: LISTA de labels dos jobs da folder — mostrar, no Design, a lista dos jobs (labels) que estão na
-   folder aberta (além do canvas), pra localização rápida sem caçar nó por nó.
+✅ Design: LISTA de labels dos jobs da folder (ENTREGUE 2026-07-01) — a aba Folders da `DesignSidebarV2`
+   lista os jobs de cada folder aberta como linhas clicáveis (`JobRow`, hover destaca) que navegam/
+   centralizam o canvas no nó (`onJobClick`→`focusNode`), pra localização rápida sem caçar nó por nó.
 ✅ Seletor de folder do Design REDESENHADO (ENTREGUE 2026-06-30) — removido o botão flutuante "open/create
    folder" (FolderOpener deletado). O botão único "FOLDERS" abre o modal (FolderManagerDialog) que agora
    CONTROLA TUDO: criar nova folder ("+ New folder", força PR no Publish via design-session), abrir/fechar
@@ -114,9 +157,9 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
      (default 30 — análise: 50 vira ~6000px de scroll; 30 mantém usável e só alarga após ~300 soltos numa
      folder, raro). Range sugerido columns 4–20.
    Vale pro Monitoring e Design. Plano de implementação detalhado: ver docs/plano-layout-jobs.md.
-⬜ Minimap REVISTO — repensar o `NavMinimap` (hoje desenha pontos de `canvas.nodes`): comportamento/usabilidade
-   com a nova grade de jobs soltos + volume alto; precisa refletir o layout em wrap, navegação clara e densidade
-   legível (avaliar viewport-box arrastável, escala por densidade, on/off por contexto).
+✅ Minimap REVISTO (ENTREGUE 2026-07-01) — `NavMinimap` reescrito: desenha só os jobs em QUADRADINHOS
+   (proporção do card, por `node.position`) em vez de bolinhas + RETÂNGULO do viewport (área visível, via
+   `useStore` transform/width/height) refletindo a tela; escala estável top-left; clique navega. Opt-in em Settings.
 ⬜ Cap de 2000 do Monitoring legado é POUCO + ENGANA — `LEGACY_CAP=2000` no canvas/ACTIVE JOBS (sidebar e
    ReactFlow não-virtualizados → cap evita travar) é arbitrário e mostra "2000/2000" como se fosse o total.
    Fix: (1) VIRTUALIZAR a sidebar ACTIVE JOBS (como o `ScaleMonitor`) → mostra o dia inteiro sem travar, cap
@@ -199,10 +242,10 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ## 🏢 Enterprise readiness
 
 ```
-🟡 Escala     → Postgres plugável + migrations ✔ · stateless (estado durável externo; só o líder agenda) ·
+✅ Escala     → Postgres plugável + migrations ✔ · stateless (estado durável externo; só o líder agenda) ·
                  **write-path 1M/dia** (P1: lote, 1M em 17s) ✓ · **read-path paginado/filtrado** (P2: /page +
-                 /summary + `team` na instance, RBAC por conjunto — 51ms/18ms @100k) ✓ — ver §Escala Control-M
-                 ⬜ só falta a UI por ViewPoint server-driven (P3) p/ OPERAR 100k+ na tela
+                 /summary + `team` na instance, RBAC por conjunto — 51ms/18ms @100k) ✓ · **UI por ViewPoint
+                 server-driven** (P3: ScaleMonitor, VALIDADO AO VIVO @1M) ✓ — ver §Escala Control-M
 ✅ HA         → leader election (advisory lock) ✔failover · hub distribuído (R5) ✔ · backup/DR (R6) ✔ ·
                  **quotas sobrevivem a failover** (RebuildResourcesFromRunning reconstrói o tracker do RUNNING)
 ✅ Segurança  → secrets · SSO/OIDC opt-in · RBAC/ACL (roles + por-folder) · mTLS opt-in (`-tls-client-ca`,
@@ -240,10 +283,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
         lista de 200 folders (byFolder) + tabela VIRTUALIZADA por folder via /page (cursor). Nunca baixa o dia
         inteiro: abrir uma folder = 1ª página em ~39ms; DOM cai de 36.777→932 nós (legado capado + não montado
         sob o ViewPoint). O canvas legado (ReactFlow) ganhou cap de 2.000 (`LEGACY_CAP`) p/ nunca travar.
-⬜ P3 · UI por ViewPoint server-driven — o front hoje BAIXA todas as instances e joga no ReactFlow sem
-        virtualização. Fazer: Monitoring carrega só um working set filtrado/paginado (o ViewPoint do Control-M
-        já está no backlog) + virtualização do que renderiza + dashboard/contadores pro total. Ninguém renderiza
-        1M nós — o modelo é mostrar centenas, guardar milhões.
+        (Resta só VIRTUALIZAR a sidebar ACTIVE JOBS legada — ver "O que falta".)
 ```
 
 ---
@@ -365,11 +405,11 @@ contra Postgres 16 real (Docker); restante pendente:
 | ✅ | ~~WAIT AGENT (azul claro) + zero churn sem agente~~ | **Feito (2026-07-02):** sem agente, o tick reivindicava (WAITING→RUNNING) e revertia a cada 2s — log/evento spam + UI piscando + jobs "sumindo" (bug report do lab .bat, que não sobe agente). Fix: disponibilidade de agente virou GATE (`GateAgent`/`WAIT_AGENT` no gateInstance = fonte única; forced também checa) — sem agente o job NEM é reivindicado (zero broadcast/evento/log; `maybeEmitNoAgent` 1×/5min). `Bus.HasAgent(agentID, capability)`: hub local + presença remota do NATS (`Distributed.findRemote`) — pré-check só no hub local starvaria dispatch multi-nó. Agente conecta → ws handler broadcast `agent.changed` + `go Tick()` (nudge) → jobs presos disparam NA HORA. UI: card **azul claro (#38bdf8) "WAIT AGENT"** derivado de `GET /api/agents` (refetch em agent.changed/_connected, SEM polling); prioridade WAIT EVENT (dep) > WAIT AGENT; badge AGENTE no Explain do drawer. Validado ao vivo: sem agente = 6s+ estável, zero `started`; conectou = dispatch <1.5s. `TestTick_NoAgentNoClaim` (WAITING estável em 4 ticks, throttle, Explain). |
 | ✅ | ~~Lote enterprise 1-3 + %% + FILE_WATCH + shift de calendário~~ | **Feito (2026-07-02):** (1) **condition vazia = on-success** no server (`edgeState` case `""` movido de on-complete → on-success; era furo de segurança semântico: def YAML sem `condition:` rodava o filho com pai NOTOK; validado ao vivo — filho de YAML sem condition ficou WAITING/BLOCKED_DEP com pai NOTOK). (2) **API aceita `params` E `actionConfig`** no JSON (`decodeDefinition` em definitions+sessions; actionConfig vence se ambos; antes "params" era ignorado em silêncio e o job despachava sem comando; `TestDecodeDefinition_ParamsAlias`). (3) **mock-finish atrás de `-demo-mode`** (env `REGENTE_DEMO_MODE=1`): default OFF = sem agente, a instance REVERTE o claim pra WAITING (release de recursos + evento com throttle de 5min por instance) e o tick re-tenta quando um agente com a capability conectar; frota já alarmada pelo selfmon R7; testes usam DemoMode=true (comportamento antigo preservado). Validado: boot sem agente → 4 WAITING e 3 eventos (não dezenas); agente conectou → despachou tudo. (4) **Variáveis `%%`** (Control-M AutoEdit): `%%NAME` equivale a `${var.NAME}` (nome = letra+word-chars; dotted names só na sintaxe `${var.}`); tokens runtime em MAIÚSCULAS: **ODATE** (YYYYMMDD da ordem — lido da PRÓPRIA instance, correto em rerun/carry), ORDERDATE, RUNDATE, TIME, JOBNAME, JOBLABEL, FOLDER, INSTANCEID; resolve def.variables e globais (F18) por nome; não-resolvido fica INTACTO. Validado ao vivo: output real `ODATE=20260702 JOB=var-echo FOLDER=lote3`. 3 testes. (5) **FILE_WATCH** ponta-a-ponta: executor no agente (`agent/filewatch.go`: poll `path` a cada `intervalSec` (def 5s), opcional `stableSec` = tamanho estável por N s, timeout do job = NOTOK com motivo; capability `FILE_WATCH` no `-caps`); validação server (`FILE_WATCH.path required`); front: palette + editor de params + tipo. 4 testes de agente + validado ao vivo (RUNNING pollando → arquivo criado → OK). (6) **Shift de calendário** (Control-M roll): `schedule.shift = next-businessday \| prev-businessday` — dia nominal inelegível (feriado/exclude; sem calendar, fim de semana) rola pro dia elegível mais próximo; implementado DENTRO de `IsScheduledOn` (fonte única → daily, DryRun e SchedulePreview ganham juntos; `nominalScheduledOn`+`shiftEligible`); select no ScheduleEditor; 4 testes + validado via `/api/schedule/preview` (1/ago sáb: next→03/ago, prev→31/jul). |
 | ✅ | ~~Jobs sumindo do canvas ao forçar em rajada (race de refresh)~~ | **Feito (2026-07-02, commit `0cc167e`):** bug recorrente (~6 forces seguidos → cards somem → só F5 volta). Causa raiz: `server-instance-store` disparava `GET /api/instances` COMPLETO por força E por evento WS parcial (todo broadcast `instance.changed` é parcial: só id+status) → rajada de N forças ≈ 3-4×N GETs concorrentes, cada um `cache.clear()`+repopula → resposta ANTIGA (snapshot pré-INSERTs) chegando POR ÚLTIMO apagava instances recém-criadas — e no monitoring nó do canvas = instance (`buildMonitoringCanvas`), então os cards sumiam e NADA re-disparava refresh até o F5. Três defesas no store: (1) `refresh()` **single-flight + rodada de cauda coalescida** (nunca 2 GETs em voo; gatilho durante fetch agenda UMA rodada extra DEPOIS dele = depois do commit que o originou; rajada de N eventos = ≤2 fetches e o último vê tudo; callers que aguardam — forceInstance/rerun — recebem a promise da cauda); (2) **gen guard** (`fetchGen`: resposta de fetch obsoleto descartada inteira); (3) **reconcile por MERGE**, nunca `cache.clear()` (`touchedAt`: id mutado via WS durante o fetch não é deletado/regredido pelo snapshot antigo; `tombstones`: deletado não ressuscita; marcas < startedAt podadas por fetch). Validado ao vivo (server demo-mode offline + preview): 10 forças paralelas + 2ª rajada de 6 com hold/release no meio → 16/16 cards firmes, 8 GETs coalescidos p/ ~30 eventos WS, zero console errors, sem F5. Descobertos no caminho (pendentes): ForceOrder gera id com resolução de SEGUNDO (`-FORCE-HHMMSS`, id é PK → 500 ao forçar o MESMO job 2× no mesmo segundo); cada evento WS refaz `GET /api/alerts?limit=500` sem coalesce. |
-| **1** | **Aprofundamento Control-M (restante)** — variáveis %%✅ · FILE_WATCH✅ · calendários+shift✅ · falta: cyclic runtime (IntervalMin dentro da janela) e ações de shift compostas (ex.: "next-businessday-same-month") | Paridade core FECHADA; o que resta é refinamento. |
+| ✅ | ~~Refinamento UI: drafts do Design à prova de F5 (retomada de sessão)~~ | **Feito (2026-07-02, commit `317ecd0`):** bug do usuário — abrir folder → Monitoring/F5 → Design voltava VAZIO; reabrir folder criava OUTRA session por cima da esquecida (trabalho invisível, "folders bugam"). Causa: o `designSessionId` vivia só em memória de módulo — o clone com o trabalho seguia vivo no server (P6: DB+disco), mas a UI perdia o PONTEIRO sem caminho de recuperação. Fix em 3 camadas: (1) **ponteiro persistido** (`localStorage regente:designSessionId` + restore no boot com claim P7; 404 limpa, erro transiente NÃO derruba); (2) **recuperação/auto-descarte** (effect pós-auth lista sessions do actor: valida posse do sid, auto-descarta LIMPAS idle >10min, SUJAS viram banner Retomar/Descartar no canvas; addFolder sem session RETOMA a suja mais recente em vez de criar por cima); (3) **server protege trabalho** (`DesignSession.Dirty()`; GC por TTL PULA sessions sujas — antes 24h idle apagava trabalho; `sweepCleanIdle(actor,10min)` no Create; `dirty` exposto no list/get via `sessionView`). `session_test.go` (TestDesignSessionDirtyProtection). Validado ao vivo: F5 retoma com o job no canvas; banner recupera órfã; abrir folder-2 por cima reusa a MESMA session (escopo f1+f2, dirty intacto); limpa idle auto-descartada. go test ./... + tsc + build ok. |
+| **1** | **Aprofundamento Control-M (restante)** — variáveis %% interpolação✅ · FILE_WATCH✅ · calendários+shift✅ · Actions/On-Do✅ · falta: cyclic runtime · CONFIRM · DATABASE · SET de var em runtime + cálculo de datas · baterias de teste (calendários/recursos/forecast) | Paridade core FECHADA; o que resta é refino + testes. |
 | **2** | **Diferenciais (cont.)** — Job Neighborhood · RCA automático · Event log CQRS-lite · NL-query | Próxima leva de observabilidade (NL-query usa o transporte QUERY documentado). |
 | 3 | **Refinamento UI** — grade de jobs soltos · minimap revisto · virtualizar ACTIVE JOBS (LEGACY_CAP) | Polimento que melhora a demo (alimenta a Fase Z). |
 | 🏁 | **Fase Z** — case study + post LinkedIn | **ÚLTIMO gate, por definição.** Só quando o backlog acima estiver onde você quer. NÃO é o próximo passo. |
-| 4 | **Fase Z** — case study + post LinkedIn | Último gate, com tudo sólido. |
 
 ---
 
@@ -488,26 +528,25 @@ usuário revisar e commitar.
 ⬜ Calendários complexos — validar que o job entra na daily exatamente quando deve: 1º dia útil do mês ·
    só segundas · 1º dia útil que NÃO é segunda · N-ésimo dia útil · regras avançadas · include/exclude ·
    feriados · meses específicos. Cobrir todas as combinações; corrigir o gating onde divergir.
+   (Base pronta: o gating é fonte única `IsScheduledOn`; `schedule.shift` next/prev-businessday ✅ já entregue.)
 ⬜ Controle de recursos — testar e aprimorar: quantitative (N slots), jobs que NÃO podem concorrer
    (lock exclusivo), máximo de jobs simultâneos por host/pool, fila quando esgota, liberação correta.
-◑ Actions / On-Do do job — motor de regras configuráveis por job, em 3 dimensões. MOTOR BACKEND
-   ENTREGUE (2026-06-29); falta só a config na UI (form por job) + ações extras opcionais. As 3 dimensões:
-   (a) por Nº DE TENTATIVA (escada de rerun): On attempt N → ação (dispara na N-ésima tentativa que falhou,
-       cobrindo a final; complementa o retry automático def.Retries); ✅
-   (b) por RESULTADO: On result OK/NOTOK → ação (transição terminal, após esgotar retries); ✅
-   (c) por TEMPO DE EXECUÇÃO ("shouts" estilo Control-M): On runtime >N min → ação, avaliado a cada tick
-       sobre o conjunto RUNNING (escalonamento por duração, ex.: 30/40/60min com destinos distintos). ✅
-   Ações entregues, reusando os substratos: notify (Slack/webhook/e-mail/PagerDuty via AlertEngine) ·
-   set-condition (destrava sucessores) · run-job (Force Order de outro job) · set-ok (auto-heal NOTOK→OK). ✅
-   Idempotência: cada regra dispara 1× por instance (ledger durável action_fires, migration v7). Decisor PURO
-   testável (actionMatches). server/internal/scheduler/actions.go + 14 testes (engine real sobre SQLite real) +
-   VALIDADO AO VIVO no binário (notify→/api/alerts + set-condition→/api/conditions disparando de verdade).
-   FALTA: form de config por job na UI (Design) + ações extras opcionais (rerun explícito, abrir chamado
-   dedicado) + expor o histórico de disparos (action_fires) no drawer.
-⬜ Job FILE_WATCH — espera a chegada de arquivo (path/glob · polling/evento · tamanho estável) antes de
-   concluir; dispara o sucessor quando o arquivo chega. Novo jobType + capability.
+✅ Actions / On-Do do job — ENTREGUE (motor 2026-06-29 + UI 2026-06-30). Regras On‹gatilho›Do‹ação› nas
+   3 dimensões: (a) por Nº DE TENTATIVA (On attempt N — dispara na N-ésima falha, cobre a final) ·
+   (b) por RESULTADO (On result OK/NOTOK, transição terminal) · (c) por TEMPO DE EXECUÇÃO (On runtime >N min,
+   "shouts" avaliados a cada tick sobre o RUNNING, escalonáveis 30/40/60min). 4 ações reusando os substratos:
+   notify (Slack/webhook/e-mail/PagerDuty) · set-condition (destrava sucessores) · run-job (Force Order) ·
+   set-ok (auto-heal NOTOK→OK). Idempotente (ledger durável action_fires, migration v7). Decisor puro testável.
+   server/internal/scheduler/actions.go + 14 testes + VALIDADO AO VIVO. UI: aba "On/Do" no JobConfigDrawer
+   (`OnDoEditor`) — add/remove, campos contextuais por tipo, chips de canais e tradução em linguagem natural
+   por regra (`ActionRule` no modelo TS + map no ServerApiAdapter; round-trip `TestFileStore_ActionsRoundTrip`).
+   FALTA (opcional, não bloqueia): expor o histórico de disparos (action_fires) no drawer.
+✅ Job FILE_WATCH — ENTREGUE (2026-07-02). jobType + capability `FILE_WATCH`: o agente (`agent/filewatch.go`)
+   pesa `path` a cada `intervalSec` (def 5s) com estabilidade de tamanho opcional (`stableSec`) e timeout=NOTOK;
+   palette + editor de params na UI; validação server (`FILE_WATCH.path required`). 4 testes de agente +
+   validado ao vivo (RUNNING pollando → arquivo criado → OK → dispara o sucessor).
 ⬜ Forecast — testar a previsão de ≥ 1 semana à frente (quais jobs rodam por dia, sem executar); validar
-   contra o gating real (calendars + deps + conditions + recursos).
+   contra o gating real (calendars + deps + conditions + recursos). (Dry Run de 1 dia ✅; falta a bateria ≥1 semana.)
 ✅ Ciclo de vida na daily (Keep Active / carry-over entre diárias) — ENTREGUE (2026-06-24):
    • RUNNING persiste (REGRA) — job EM EXECUÇÃO na virada da daily NÃO some: segue na daily até terminar,
      para o tracking da execução (jamais perder a instância no rollover). ✓
@@ -539,15 +578,17 @@ usuário revisar e commitar.
    evento em TODOS / selecionados / que atendem critério; buscar string e substituir em qualquer campo;
    add/remove tag/condition/upstream em lote. Find & Update completo (busca + substituição + adição) com
    preview e undo, transacional por item. (bulk básico já existe via /api/bulk e /api/design/sessions/{sid}/bulk.)
-⬜ Sistema de variáveis completo (estilo Control-M %%):
-   • GLOBAIS de runtime — um job ATRIBUI valor e jobs posteriores LEEM (passagem entre jobs; hoje há globais
-     interpoláveis via VariableStore, falta o SET em runtime por um job).
-   • LOCAIS por job — escopo só do próprio job.
-   • NATIVAS/sistema — %DataAtual · %DiaAtual · %AnoAtualYYYY · %MesAtual · último dia do mês · dia útil…
-   • CÁLCULO de datas com template — aritmética sobre variáveis de data (ex.: %DiaAtual+3) resolvendo p/
-     data numérica, ciente de dia útil/feriado/calendar. Ex.: arquivo gerado na sexta com a data de segunda
-     no nome → %DiaAtual+3 = sexta + 3 dias → display da próxima data útil.
-   • Interpolação em QUALQUER campo string (command/url/path/body) + inspetor de resolução por instância.
+◑ Sistema de variáveis (estilo Control-M %%) — INTERPOLAÇÃO ENTREGUE (2026-07-02); falta o SET em runtime:
+   ✅ Sintaxe `%%NAME` (AutoEdit) equivale a `${var.NAME}`; tokens de runtime em MAIÚSCULAS: %%ODATE (lido da
+      PRÓPRIA instance, correto em rerun/carry), %%ORDERDATE, %%RUNDATE, %%TIME, %%JOBNAME, %%JOBLABEL, %%FOLDER,
+      %%INSTANCEID; resolve `def.variables` e globais (F18) por nome. Interpolação em QUALQUER campo string
+      (command/url/path/body); não-resolvido fica intacto. 3 testes + validado ao vivo (`ODATE=20260702`).
+   ⬜ GLOBAIS de runtime (SET) — um job ATRIBUI valor e jobs posteriores LEEM (passagem entre jobs; hoje as
+      globais são só interpoláveis via VariableStore, falta o SET em runtime por um job).
+   ⬜ LOCAIS por job — escopo só do próprio job.
+   ⬜ NATIVAS extras — último dia do mês · dia útil… (além dos tokens de runtime já entregues).
+   ⬜ CÁLCULO de datas com template — aritmética sobre datas (ex.: `%DiaAtual+3`) resolvendo p/ data numérica,
+      ciente de dia útil/feriado/calendar (sexta + 3 = próxima data útil). + inspetor de resolução por instância.
 ```
 
 ## ⬜ Features avançadas *(depois do núcleo sólido)*
