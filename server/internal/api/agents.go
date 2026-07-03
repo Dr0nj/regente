@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Dr0nj/regente-server/internal/bus"
 	"github.com/Dr0nj/regente-server/internal/hub"
 	"github.com/go-chi/chi/v5"
 )
@@ -95,6 +96,8 @@ type agentRow struct {
 	Version      string     `json:"version,omitempty"`
 	Capabilities []string   `json:"capabilities"`
 	Online       bool       `json:"online"`
+	Node         string     `json:"node,omitempty"`  // R5 — em qual nó do cluster está conectado
+	Local        bool       `json:"local,omitempty"` // conectado NESTE nó (pingável via ws local)
 	StartedAt    *time.Time `json:"startedAt,omitempty"`   // início do processo (uptime)
 	ConnectedAt  *time.Time `json:"connectedAt,omitempty"` // conectou neste servidor (sessão)
 	FirstSeen    *time.Time `json:"firstSeen,omitempty"`
@@ -102,8 +105,19 @@ type agentRow struct {
 }
 
 // listAgents — GET /api/agents: frota CONSOLIDADA (online + offline com last-seen).
-// Online = verdade do hub deste nó; metadata/last-seen vêm da tabela agents (v6).
+// Online = verdade do hub deste nó UNIÃO a presença cross-nó (R5): um agent
+// conectado em OUTRO nó do cluster aparece online (node = nó dono), não fantasma
+// offline. Só o local (this node) é pingável — `local` diz isso pra UI.
+// Metadata/last-seen vêm da tabela agents (v6, compartilhada entre nós no PG).
 func (s *server) listAgents(w http.ResponseWriter, r *http.Request) {
+	// Presença remota (bus distribuído): agentID -> nó dono. Vazio em single-node.
+	remote := map[string]bus.RemoteAgent{}
+	if s.cfg.Presence != nil {
+		for _, ra := range s.cfg.Presence.RemoteAgents() {
+			remote[ra.ID] = ra
+		}
+	}
+
 	rows, err := s.cfg.DB.Query(
 		`SELECT id, os, arch, host, version, capabilities, started_at, connected_at, first_seen, last_seen_at
 		 FROM agents ORDER BY id`,
@@ -113,6 +127,7 @@ func (s *server) listAgents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
+	seen := map[string]bool{}
 	out := []agentRow{}
 	for rows.Next() {
 		var a agentRow
@@ -126,14 +141,48 @@ func (s *server) listAgents(w http.ResponseWriter, r *http.Request) {
 		} else {
 			a.Capabilities = []string{}
 		}
-		a.Online = s.cfg.Hub != nil && s.cfg.Hub.IsOnline(a.ID)
 		a.StartedAt = nullTimePtr(started)
 		a.ConnectedAt = nullTimePtr(connected)
 		a.FirstSeen = nullTimePtr(first)
 		a.LastSeen = nullTimePtr(last)
+		s.applyPresence(&a, remote)
+		seen[a.ID] = true
+		out = append(out, a)
+	}
+	// Agents online em outro nó SEM linha no DB deste nó (nós com DBs separados):
+	// ainda assim aparecem na frota do cluster.
+	for id, ra := range remote {
+		if seen[id] {
+			continue
+		}
+		a := agentRow{ID: id, Capabilities: append([]string(nil), ra.Caps...)}
+		if a.Capabilities == nil {
+			a.Capabilities = []string{}
+		}
+		last := ra.LastSeen
+		a.LastSeen = &last
+		s.applyPresence(&a, remote)
 		out = append(out, a)
 	}
 	writeJSON(w, 200, out)
+}
+
+// applyPresence resolve online/node/local de um agent: preferência ao hub LOCAL
+// (conexão viva neste nó, pingável), senão à presença remota (R5, outro nó).
+func (s *server) applyPresence(a *agentRow, remote map[string]bus.RemoteAgent) {
+	if s.cfg.Hub != nil && s.cfg.Hub.IsOnline(a.ID) {
+		a.Online = true
+		a.Local = true
+		a.Node = s.cfg.NodeID
+		return
+	}
+	if ra, ok := remote[a.ID]; ok {
+		a.Online = true
+		a.Node = ra.Node
+		// A presença remota é mais fresca que o last_seen do DB deste nó.
+		last := ra.LastSeen
+		a.LastSeen = &last
+	}
 }
 
 func nullTimePtr(t sql.NullTime) *time.Time {

@@ -149,6 +149,36 @@ func (d *Distributed) Dispatch(agentID, capability string, raw []byte) (hub.Disp
 	return hub.DispatchSent, id
 }
 
+// RemoteAgent — presença de um agent conectado em OUTRO nó (snapshot p/ a UI de
+// Agentes). É o que faltava pra frota refletir a frota do CLUSTER, não só deste nó.
+type RemoteAgent struct {
+	ID       string
+	Node     string
+	Caps     []string
+	LastSeen time.Time
+}
+
+// RemoteAgents devolve os agents vistos em OUTROS nós dentro do TTL de presença.
+// Alimenta GET /api/agents pra mostrar quem está online no cluster inteiro (R5).
+func (d *Distributed) RemoteAgents() []RemoteAgent {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	now := time.Now()
+	out := make([]RemoteAgent, 0, len(d.remote))
+	for id, ra := range d.remote {
+		if now.Sub(ra.lastSeen) > d.ttl {
+			continue // presença expirada (o nó dono parou de publicar)
+		}
+		out = append(out, RemoteAgent{
+			ID:       id,
+			Node:     ra.node,
+			Caps:     append([]string(nil), ra.caps...),
+			LastSeen: ra.lastSeen,
+		})
+	}
+	return out
+}
+
 func (d *Distributed) findRemote(agentID, capability string) (node, id string) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()

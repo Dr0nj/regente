@@ -50,8 +50,12 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 CONFIRM · Job DATABASE (Postgres/MySQL/SQLite) · SET de var em runtime + cálculo de
 datas (`%%ODATE±NB` ciente de dia útil) · janela fechada (WINDOW_CLOSED) · ViewPoints
 salvos · Find & Update estendido — todos entregues com testes + validação ao vivo.
-- ⬜ **Dashboards prontos** (presets do /summary na UI) — só o "wow" de apresentação
-  falta; o backing store (ViewPoints) já existe. Fica como polimento da Fase Z.
+- ✅ **Dashboards prontos** (presets do /summary na UI) — ENTREGUE 2026-07-03. Barra de
+  dashboards clicáveis no ViewPoint (ScaleMonitor): "Visão geral" + um preset por estado
+  (Rodando/Aguardando/Concluídos/**Falhas**/Em espera). Zero backend novo — é o `/summary?status=`
+  (que já filtrava): o preset reescopa total + lista de folders (só as que têm jobs nesse estado)
+  + os jobs da folder aberta; os cards de estado seguem mostrando o dia inteiro. Validado ao vivo
+  (5k jobs seed → "Falhas" = 625 de 5.000 em 3 folders; reset volta pra 12 folders/5.000).
 
 **Refinamento UI:**
 - ⬜ **Virtualizar a sidebar ACTIVE JOBS** (`LEGACY_CAP=2000` engana; o ViewPoint já faz 100k–1M).
@@ -169,12 +173,18 @@ policy-as-code · chaos inject · "wow" (Gantt · templates · self-service · m
       migration v6 enriquece a tabela `agents`; `GET /api/agents` = online (verdade do hub) + DB. CLIQUE →
       MODAL de detalhe (SO/arch, host, versão, UPTIME, conectado há, 1ª vez visto, último sinal, capabilities).
       Auto-refresh 5s. Gestão de tokens junto. `AgentsManager.tsx`. 2 testes + validado ao vivo (2 agentes
-      reais → offline com last-seen ao matar). Multi-nó: online é por-nó (cross-nó via R5 presence fica p/ depois).
+      reais → offline com last-seen ao matar).
    ✅ PING ATIVO (ENTREGUE 2026-06-25): round-trip ping/pong pelo /ws/agent (server manda {event:ping,pingId},
       agente responde {event:pong}); `POST /api/agents/{id}/ping` → {online, ok, latencyMs, error} (timeout 5s);
       `pingRegistry` correlaciona o pong; botão "ping" por agente + "ping todos" na UI, chip com latência/timeout/
       offline. 1 teste (WS real in-process) + validado ao vivo (agente real → ok; inexistente → offline).
-   ⬜ Cross-nó (multi-node R5): refletir agentes conectados em OUTROS nós (presence do bus), não só deste.
+   ✅ CROSS-NÓ (multi-node R5) — ENTREGUE 2026-07-03: a frota reflete o CLUSTER inteiro, não só este nó.
+      `bus.Distributed.RemoteAgents()` expõe a presença R5 (agents vistos em outros nós, com TTL); `GET
+      /api/agents` faz a UNIÃO hub-local ∪ presença-remota → um agent conectado no node-2 aparece ONLINE
+      (campo `node` = nó dono) em vez de fantasma offline, e `local` diz se é pingável daqui (só o do próprio
+      nó). Agent remoto sem linha no DB deste nó ainda entra na frota. Config `Presence`/`NodeID` (nil =
+      single-node, comportamento idêntico ao anterior). UI: chip "⇄ node" no agent remoto + linha "Nó" no
+      detalhe; "ping" só nos locais. 1 teste (`TestAgents_CrossNodePresence`, presença mockada sem NATS).
 
 ## 🔔 Alerting
 
@@ -375,6 +385,7 @@ contra Postgres 16 real (Docker); restante pendente:
 
 | ⭐ | Frente | Por quê |
 |----|--------|---------|
+| ✅ | ~~**Dashboards prontos** (presets do /summary na UI) + **Cross-nó** (frota multi-node R5)~~ | **Feito (2026-07-03):** dois polimentos de apresentação. (1) **Dashboards prontos** — barra de presets clicáveis no ViewPoint (`ScaleMonitor`): "Visão geral" + um por estado (Rodando/Aguardando/Concluídos/**Falhas**/Em espera). **Zero backend novo** — reusa `GET /instances/summary?status=` (que já filtrava): o preset ativo reescopa o total, a lista de folders (só as que têm jobs naquele estado) e a página de jobs da folder aberta, enquanto os cards de estado continuam mostrando o dia inteiro (o "dashboard"). 2º `/summary` filtrado só quando há preset; reset volta ao global. Validado ao vivo (5k jobs seed, server:9090): "Falhas" → **625 de 5.000 em 3 folders** (APP_002/006/010, batendo o backend); "Visão geral" → 12 folders/5.000. (2) **Cross-nó (R5)** — a tela de Agentes reflete o **CLUSTER**, não só este nó: `bus.Distributed.RemoteAgents()` expõe a presença R5 (agents vistos em outros nós, com TTL) e `GET /api/agents` faz a UNIÃO hub-local ∪ presença-remota → agent conectado no node-2 aparece **online** (campo `node`) em vez de fantasma offline; `local` marca quem é pingável daqui (só o do próprio nó → botão "ping" só neles); agent remoto sem linha no DB deste nó ainda entra na frota. `Config.Presence`/`NodeID` (nil = single-node idêntico ao anterior). UI: chip "⇄ node" + linha "Nó" no detalhe. `TestAgents_CrossNodePresence` (presença mockada, sem NATS) + build/tsc/go test verdes. |
 | ✅ | ~~Diferenciais: Job Neighborhood · RCA · Event log · NL-query~~ | **Feito (2026-07-03):** 4 diferenciais de observabilidade, todos **read-only e aditivos** (não tocam tick/dispatch/gating). (1) **Job Neighborhood** (`scheduler/neighborhood.go`, `GET /instances/{id}/neighborhood?radius=`): BFS bidirecional (ancestrais + descendentes até 4 saltos) com status por instance e a condição da aresta nos vizinhos diretos — "quem me trava, quem eu travo". (2) **RCA** (`scheduler/rca.go`, `GET /instances/{id}/rca`): sobe a cadeia de upstreams FALHOS (NOTOK/CANCELLED) e aponta a(s) raiz(es) que falharam por conta própria + a cadeia até elas; trata alvo-é-a-própria-raiz e job-OK-sem-causa. (3) **Event log CQRS-lite** (`api/events.go`, `GET /events`): read-model cross-instance sobre `instance_events` JOIN `instances` (filtros date/kind/actor/folder/instance, cursor keyset por id, RBAC por conjunto) — timeline/auditoria do dia sem tocar o write-side. (4) **NL-query** (`api/query.go`, `POST /query {q}`): parser de intenção **determinístico** PT/EN (summary·list·count·explain, extração de folder e de job-ref por "\<job\> (não) rodou/falhou" ou "job \<X\>") → consulta estruturada reusando os mesmos filtros/RBAC, devolvendo a interpretação junto (sem chute; fora de escopo → "não entendi" com sugestões). Os 4 viram **tools MCP** (`job_neighborhood`·`root_cause`·`event_log`·`query`), read-only. UI: painéis **Causa raiz** (auto em NOTOK/bloqueado) e **Vizinhança** (opt-in, ±1/2/3) no InstanceDetailsDrawer. 20 testes Go novos + validação ao vivo headless (neighborhood ±2 · RCA · event feed+filtro · query summary/count/list/explain/unknown). |
 | ✅ | ~~Aprofundamento Control-M: FECHAR a trilha (cyclic · CONFIRM · DATABASE · SET var · baterias · ViewPoints)~~ | **Feito (2026-07-03):** (1) **Cyclic runtime** — job que termina OK re-arma a MESMA instance pra rodar em `intervalMin` (`maybeCycle`): a volta vira WAITING com `scheduled_at` futuro (gate de janela mostra "próxima às HH:MM"), `attempts` reseta por volta, `cycle_runs` conta; encerra em `cyclicMaxRuns`, ao passar de `windowTo`, ou na virada da daily (WAITING-nunca-rodou não carrega). NOTOK NÃO cicla (espera operador). Validado ao vivo: volta 1 OK → re-armou pra +10min. (2) **CONFIRM** (Control-M "Wait for confirmation") — `def.confirm:true` vira gate `WAIT_CONFIRM` no `gateInstance` (fonte única): nem o tick nem o Force reivindicam até `POST /instances/{id}/confirm` (rerun re-exige; bulk `confirm`). Botão "Confirmar execução" no ExplainPanel (keyed no blocker, sem flag denormalizada). Validado ao vivo: WAIT_CONFIRM → confirm → OK. (3) **Job DATABASE** — executor no agente (`agent/database.go`) roda SQL em **Postgres/MySQL/SQLite** via drivers pure-Go (sem CGO/JDBC): SELECT renderiza linhas (maxRows), DML mostra rows-affected, auto-detecção query/exec; capability `DATABASE`, validação server (driver+dsn+sql), palette + editor de params. 4 testes contra SQLite real. (4) **SET de var em runtime** (ctmvar) — job imprime `%%SET NOME=VALOR` no output → grava global no VariableStore (auditado, teto 20/job); **cálculo de datas** `%%ODATE±N` / `±NB` (dias úteis cientes do calendar do job) em `%%` e `${var.}`. (5) **Janela fechada** — WAITING depois de `windowTo` vira gate `WINDOW_CLOSED` (não submete mais hoje). (6) **ViewPoints salvos** — filtros nomeados do Monitoring (`/api/viewpoints`, upsert por nome, shared) + Find & Update estendido (enabled/runAt em lote). Baterias de teste (calendários complexos · recursos sob concorrência/all-or-nothing · Forecast ≥1 semana) + 9 testes de feature + validação ao vivo headless. |
 | ✅ | ~~Validar R1/R3 em chaos/HA 2-nós real~~ | **Feito (2026-06-23):** failover ~4s · /readyz gate em DB-down · rejoin sem split-brain. |

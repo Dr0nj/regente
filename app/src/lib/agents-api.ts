@@ -6,6 +6,8 @@ export interface AgentInfo {
   id: string;
   capabilities: string[];
   online: boolean;
+  node?: string;   // R5 — nó do cluster em que o agente está conectado
+  local?: boolean; // conectado NESTE nó (pingável); false = online em outro nó
   os?: string;
   arch?: string;
   host?: string;

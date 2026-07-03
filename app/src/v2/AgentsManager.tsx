@@ -88,10 +88,10 @@ export default function AgentsManager() {
           Frota — {online} de {agents.length} online
         </legend>
 
-        {online > 0 && (
+        {agents.some((a) => a.local) && (
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
             <button
-              onClick={() => agents.filter((a) => a.online).forEach((a) => doPing(a.id))}
+              onClick={() => agents.filter((a) => a.local).forEach((a) => doPing(a.id))}
               style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", textTransform: "uppercase", letterSpacing: "0.05em",
                 background: "transparent", border: "1px solid var(--v2-accent-brand)", color: "var(--v2-accent-brand)",
                 borderRadius: 3, padding: "3px 10px", cursor: "pointer" }}
@@ -121,11 +121,17 @@ export default function AgentsManager() {
                   {a.id}
                 </span>
                 {a.os && <span style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", border: "1px solid var(--v2-border-subtle)", borderRadius: 3, padding: "1px 5px" }}>{a.os}{a.arch ? `/${a.arch}` : ""}</span>}
+                {a.online && a.node && !a.local && (
+                  <span title={`Conectado em outro nó do cluster (${a.node})`}
+                    style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-accent-brand)", border: "1px solid var(--v2-accent-brand)", borderRadius: 3, padding: "1px 5px", whiteSpace: "nowrap" }}>
+                    ⇄ {a.node}
+                  </span>
+                )}
                 <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginLeft: "auto", whiteSpace: "nowrap" }}>
                   {a.online ? `up ${uptimeOf(a.startedAt)}` : `visto ${relativeOf(a.lastSeen)}`}
                 </span>
                 <PingChip state={pings[a.id]} />
-                {a.online && (
+                {a.local && (
                   <button
                     onClick={(e) => { e.stopPropagation(); doPing(a.id); }}
                     disabled={pings[a.id] === "pending"}
@@ -204,12 +210,13 @@ function AgentDetailModal({ agent, onClose }: { agent: AgentInfo; onClose: () =>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "var(--v2-font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.id}</div>
             <div style={{ fontSize: 10, color: a.online ? "var(--v2-status-ok)" : "var(--v2-text-muted)", letterSpacing: "0.06em", textTransform: "uppercase", marginTop: 1 }}>
-              {a.online ? "online" : "offline"}
+              {a.online ? (a.local ? "online" : `online · nó ${a.node}`) : "offline"}
             </div>
           </div>
           <button onClick={onClose} aria-label="close" style={{ background: "transparent", border: "none", color: "var(--v2-text-muted)", cursor: "pointer", fontSize: 16, padding: 4 }}>×</button>
         </div>
         <div style={{ padding: "10px 16px" }}>
+          {a.online && a.node && <Row label="Nó" value={a.local ? `${a.node} (este nó)` : a.node} />}
           <Row label="Sistema" value={a.os ? `${a.os}${a.arch ? ` / ${a.arch}` : ""}` : "—"} />
           <Row label="Host" value={a.host || "—"} />
           <Row label="Versão" value={a.version || "—"} />

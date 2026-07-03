@@ -259,6 +259,7 @@ func main() {
 	// No modo distribuído, eventos web fazem fan-out entre nós e o dispatch é roteado
 	// ao nó dono do agent — então o failover do líder não estranda agentes.
 	var theBus scheduler.Bus = h
+	var remotePresence api.RemotePresence // R5 — frota cross-nó na tela de Agentes; nil = single-node
 	if strings.EqualFold(*busMode, "nats") {
 		tr, err := bus.DialNATS(*natsURL)
 		if err != nil {
@@ -269,6 +270,7 @@ func main() {
 			log.Fatalf("[bus] start distribuído: %v", err)
 		}
 		theBus = dbus
+		remotePresence = dbus
 		log.Printf("[bus] distribuído via NATS url=%s node=%s", *natsURL, *nodeID)
 	} else {
 		log.Printf("[bus] local (hub por-processo)")
@@ -443,6 +445,8 @@ func main() {
 		AppURL:    *appURL,
 		Audit:     auditSink,
 		SPADir:    *spaDir,
+		Presence:  remotePresence,
+		NodeID:    *nodeID,
 	})
 
 	if *spaDir != "" {

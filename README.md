@@ -103,8 +103,9 @@ daily ou via Force Order manual.
 - 🟢 **Tela de Agentes** (Settings → Agentes) — frota **consolidada** (online + offline com last-seen) +
   contador "N de M online"; clique num agente abre um **modal de detalhe** (SO/arch, host, versão, **uptime**,
   conectado há, 1ª vez visto, último sinal, capabilities). O agente reporta a metadata no handshake; gestão
-  de tokens junto. **Ping ativo** (round-trip ping/pong, latência) por agente e "ping todos". `GET /api/agents`
-  · `POST /api/agents/{id}/ping`.
+  de tokens junto. **Ping ativo** (round-trip ping/pong, latência) por agente e "ping todos". **Cross-nó (R5):**
+  com `-bus=nats` a frota reflete o **cluster inteiro** — um agente conectado em OUTRO nó aparece online (com o
+  nó dono), não fantasma offline (só os do próprio nó são pingáveis). `GET /api/agents` · `POST /api/agents/{id}/ping`.
 - 🟢 **Retry de execution** — re-tentativa automática em falha (respeita `retries`).
 - 🟢 **Observabilidade** — `/metrics` em formato Prometheus.
 - 🟢 **Alerting (Fase 8)** — regras configuráveis avaliadas ao fim de cada
@@ -535,11 +536,11 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 
 > Lista autoritativa, detalhada e com specs → **[`docs/roadmap.md`](docs/roadmap.md)** (seção "O que falta").
 
-**Aprofundamento Control-M** (paridade core fechada; resta refino):
-- [ ] Cyclic runtime · CONFIRM (ação manual) · job tipo DATABASE (SQL/procedure)
-- [ ] Variáveis de runtime *SET* por um job lido por outro + cálculo de datas por template (`%DiaAtual+3` ciente de dia útil)
-- [ ] Baterias de teste: calendários complexos · controle de recursos · Forecast ≥ 1 semana
-- [ ] ViewPoint salvos (filtrar folders no Monitoring) · dashboards prontos · Mass Update/Find & Update completo
+**Aprofundamento Control-M** — ✅ **TRILHA FECHADA (2026-07-03):**
+- [x] Cyclic runtime · CONFIRM (ação manual) · job tipo DATABASE (Postgres/MySQL/SQLite)
+- [x] Variáveis de runtime *SET* por um job lido por outro + cálculo de datas (`%%ODATE±NB` ciente de dia útil)
+- [x] Baterias de teste: calendários complexos · controle de recursos · Forecast ≥ 1 semana
+- [x] ViewPoint salvos · **dashboards prontos** (presets do /summary no ViewPoint) · Find & Update estendido
 
 **Refinamento UI:**
 - [ ] Virtualizar a sidebar ACTIVE JOBS (hoje capada em 2000; o ViewPoint já mostra 100k–1M) · drawer do job mais amigável

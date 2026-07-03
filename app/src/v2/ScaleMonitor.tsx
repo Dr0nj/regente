@@ -52,31 +52,60 @@ function fmtInt(n: number): string {
   return n.toLocaleString("pt-BR");
 }
 
+// Dashboards prontos — presets fixos da UI sobre o MESMO shape do /summary (que já
+// honra ?status=). "Visão geral" = sem filtro; cada estado é um dashboard clicável
+// que reescopa o total, a lista de folders (só as que têm jobs nesse estado) e os
+// jobs da folder aberta. Zero backend novo: é o /summary com um filtro.
+const PRESETS: { key: string; label: string; status: string }[] = [
+  { key: "RUNNING", label: "Rodando", status: "RUNNING" },
+  { key: "WAITING", label: "Aguardando", status: "WAITING" },
+  { key: "OK", label: "Concluídos", status: "OK" },
+  { key: "NOTOK", label: "Falhas", status: "NOTOK" },
+  { key: "HELD", label: "Em espera", status: "HELD" },
+];
+
 export default function ScaleMonitor({ onClose }: { onClose?: () => void }) {
   const date = todayOrderDate();
   const [summary, setSummary] = useState<Summary | null>(null);
+  // Dashboard pronto ativo: "" = visão geral; senão a chave de um PRESET.
+  const [presetKey, setPresetKey] = useState<string>("");
+  // Summary reescopado pelo preset (só quando há preset) — dá total + folders do estado.
+  const [viewSummary, setViewSummary] = useState<Summary | null>(null);
   const [folderQuery, setFolderQuery] = useState("");
   const [folder, setFolder] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>("");
   const [items, setItems] = useState<PageInstance[]>([]);
   const [cursor, setCursor] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [loadMs, setLoadMs] = useState<number | null>(null);
 
+  const activeStatus = useMemo(
+    () => (presetKey ? PRESETS.find((p) => p.key === presetKey)?.status ?? "" : ""),
+    [presetKey],
+  );
+
   const loadSummary = useCallback(async () => {
     try {
+      // Global (sem filtro): alimenta SEMPRE os cards de estado (a visão do dia inteiro).
       const s = await api<Summary>(`/api/instances/summary?date=${encodeURIComponent(date)}`);
       setSummary(s);
+      // Preset ativo: 2º /summary com ?status= → total + folders reescopados ao estado.
+      if (activeStatus) {
+        const v = await api<Summary>(
+          `/api/instances/summary?date=${encodeURIComponent(date)}&status=${encodeURIComponent(activeStatus)}`,
+        );
+        setViewSummary(v);
+      } else {
+        setViewSummary(null);
+      }
     } catch (e) {
       console.error("[scale] summary", e);
     }
-  }, [date]);
+  }, [date, activeStatus]);
 
   // Carrega a 1ª página de uma folder (reseta o working set).
   const openFolder = useCallback(
     async (f: string, status: string) => {
       setFolder(f);
-      setStatusFilter(status);
       setLoading(true);
       const t0 = performance.now();
       try {
@@ -103,7 +132,7 @@ export default function ScaleMonitor({ onClose }: { onClose?: () => void }) {
     setLoading(true);
     try {
       const qs = new URLSearchParams({ date, folder, limit: String(PAGE_LIMIT), cursor });
-      if (statusFilter) qs.set("status", statusFilter);
+      if (activeStatus) qs.set("status", activeStatus);
       const p = await api<PageResp>(`/api/instances/page?${qs.toString()}`);
       setItems((prev) => [...prev, ...(p.items ?? [])]);
       setCursor(p.nextCursor ?? "");
@@ -112,7 +141,7 @@ export default function ScaleMonitor({ onClose }: { onClose?: () => void }) {
     } finally {
       setLoading(false);
     }
-  }, [date, folder, cursor, statusFilter, loading]);
+  }, [date, folder, cursor, activeStatus, loading]);
 
   useEffect(() => {
     void loadSummary();
@@ -122,13 +151,22 @@ export default function ScaleMonitor({ onClose }: { onClose?: () => void }) {
     return off;
   }, [loadSummary]);
 
+  // Trocar de dashboard reescopa a folder já aberta (jobs batem com o preset).
+  useEffect(() => {
+    if (folder) void openFolder(folder, activeStatus);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStatus]);
+
+  // A "view" ativa é o summary do preset (reescopado) ou o global (visão geral).
+  const activeView = presetKey ? viewSummary : summary;
+
   const folders = useMemo(() => {
-    if (!summary) return [];
-    return Object.entries(summary.byFolder)
+    if (!activeView) return [];
+    return Object.entries(activeView.byFolder)
       .map(([name, count]) => ({ name: name || "—", count }))
       .filter((f) => !folderQuery || f.name.toLowerCase().includes(folderQuery.toLowerCase()))
       .sort((a, b) => b.count - a.count);
-  }, [summary, folderQuery]);
+  }, [activeView, folderQuery]);
 
   return (
     <div
@@ -156,38 +194,53 @@ export default function ScaleMonitor({ onClose }: { onClose?: () => void }) {
         <div style={{ display: "flex", flexDirection: "column" }}>
           <span style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>
             VIEWPOINT · {date}
+            {presetKey && <span style={{ color: "var(--v2-accent-brand)" }}> · {PRESETS.find((p) => p.key === presetKey)?.label}</span>}
           </span>
           <span style={{ fontSize: 26, fontWeight: 700, color: "var(--v2-text-primary)", lineHeight: 1.1 }}>
-            {summary ? fmtInt(summary.total) : "…"}
-            <span style={{ fontSize: 12, fontWeight: 500, color: "var(--v2-text-muted)", marginLeft: 6 }}>jobs no dia</span>
+            {activeView ? fmtInt(activeView.total) : "…"}
+            <span style={{ fontSize: 12, fontWeight: 500, color: "var(--v2-text-muted)", marginLeft: 6 }}>
+              {presetKey ? `de ${summary ? fmtInt(summary.total) : "…"} no dia` : "jobs no dia"}
+            </span>
           </span>
         </div>
-        <div style={{ display: "flex", gap: 8, marginLeft: 8, flexWrap: "wrap" }}>
-          {["RUNNING", "WAITING", "OK", "NOTOK", "HELD"].map((st) => {
-            const n = summary?.byStatus[st] ?? 0;
+        {/* Dashboards prontos — cada card de estado é um preset clicável do /summary. */}
+        <div style={{ display: "flex", gap: 8, marginLeft: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <PresetChip
+            active={!presetKey}
+            label="Visão geral"
+            onClick={() => setPresetKey("")}
+          />
+          {PRESETS.map((p) => {
+            const n = summary?.byStatus[p.status] ?? 0;
+            const active = presetKey === p.key;
             return (
-              <div
-                key={st}
+              <button
+                key={p.key}
+                onClick={() => setPresetKey(active ? "" : p.key)}
+                title={`Dashboard: ${p.label}`}
                 style={{
                   display: "flex",
                   alignItems: "center",
                   gap: 6,
                   padding: "5px 10px",
                   borderRadius: 6,
-                  border: "1px solid var(--v2-border-subtle)",
-                  background: "var(--v2-bg-elevated)",
+                  border: active ? "1px solid var(--v2-accent-brand)" : "1px solid var(--v2-border-subtle)",
+                  background: active ? "var(--v2-accent-deep)" : "var(--v2-bg-elevated)",
+                  boxShadow: active ? "0 0 0 1px var(--v2-accent-brand) inset" : "none",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
                 }}
               >
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: STATUS_COLOR[st] ?? "var(--v2-text-muted)" }} />
-                <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-secondary)", letterSpacing: "0.04em" }}>{st}</span>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: STATUS_COLOR[p.status] ?? "var(--v2-text-muted)" }} />
+                <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: active ? "var(--v2-text-primary)" : "var(--v2-text-secondary)", letterSpacing: "0.04em" }}>{p.status}</span>
                 <span style={{ fontSize: 13, fontWeight: 600, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-primary)" }}>{fmtInt(n)}</span>
-              </div>
+              </button>
             );
           })}
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
           <span style={{ fontSize: 10, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>
-            {summary ? `${fmtInt(folders.length)} folders` : ""}
+            {activeView ? `${fmtInt(folders.length)} folders` : ""}
           </span>
           {onClose && (
             <button
@@ -242,10 +295,15 @@ export default function ScaleMonitor({ onClose }: { onClose?: () => void }) {
             />
           </div>
           <div style={{ flex: 1, overflowY: "auto" }}>
+            {folders.length === 0 && presetKey && (
+              <div style={{ padding: "12px 14px", fontSize: 11, color: "var(--v2-text-muted)", lineHeight: 1.5 }}>
+                Nenhuma folder com jobs em <strong style={{ color: "var(--v2-text-secondary)" }}>{PRESETS.find((p) => p.key === presetKey)?.label}</strong>.
+              </div>
+            )}
             {folders.map((f) => (
               <div
                 key={f.name}
-                onClick={() => void openFolder(f.name, statusFilter)}
+                onClick={() => void openFolder(f.name, activeStatus)}
                 style={{
                   height: 30,
                   padding: "0 12px",
@@ -287,7 +345,9 @@ export default function ScaleMonitor({ onClose }: { onClose?: () => void }) {
             {folder ? (
               <>
                 <strong style={{ color: "var(--v2-text-primary)", fontFamily: "var(--v2-font-mono)", letterSpacing: "0.04em" }}>{folder}</strong>
-                <span style={{ color: "var(--v2-text-muted)" }}>· {fmtInt(summary?.byFolder[folder] ?? 0)} jobs</span>
+                <span style={{ color: "var(--v2-text-muted)" }}>
+                  · {fmtInt(activeView?.byFolder[folder] ?? 0)} jobs{presetKey ? ` em ${PRESETS.find((p) => p.key === presetKey)?.label}` : ""}
+                </span>
                 <span style={{ color: "var(--v2-text-muted)" }}>· {fmtInt(items.length)} carregados</span>
                 {loadMs !== null && <span style={{ color: "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)" }}>· 1ª página em {loadMs}ms</span>}
               </>
@@ -299,6 +359,30 @@ export default function ScaleMonitor({ onClose }: { onClose?: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/* Chip de preset (ex.: "Visão geral") — o reset da barra de dashboards prontos. */
+function PresetChip({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: "5px 12px",
+        borderRadius: 6,
+        border: active ? "1px solid var(--v2-accent-brand)" : "1px solid var(--v2-border-subtle)",
+        background: active ? "var(--v2-accent-deep)" : "var(--v2-bg-elevated)",
+        boxShadow: active ? "0 0 0 1px var(--v2-accent-brand) inset" : "none",
+        color: active ? "var(--v2-text-primary)" : "var(--v2-text-secondary)",
+        fontSize: 11,
+        fontWeight: 600,
+        cursor: "pointer",
+        fontFamily: "inherit",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 

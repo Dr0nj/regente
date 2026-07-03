@@ -10,6 +10,7 @@ import (
 
 	"github.com/Dr0nj/regente-server/internal/audit"
 	"github.com/Dr0nj/regente-server/internal/auth"
+	"github.com/Dr0nj/regente-server/internal/bus"
 	"github.com/Dr0nj/regente-server/internal/db"
 	"github.com/Dr0nj/regente-server/internal/hub"
 	"github.com/Dr0nj/regente-server/internal/oidc"
@@ -25,6 +26,10 @@ type Config struct {
 	Hub       *hub.Hub
 	Scheduler *scheduler.Scheduler
 	Token     string
+	// R5 — presença cross-nó de agents (bus distribuído). nil = single-node/local:
+	// a frota mostra só os agents deste nó. Com o bus NATS, reflete o cluster inteiro.
+	Presence RemotePresence
+	NodeID   string // ID deste nó (rótulo da frota); "" em single-node
 	// F13 GitOps (todos opcionais; se nil = modo legado direct sem git remote)
 	Git       *storage.GitOps
 	GitHub    *storage.GitHubClient
@@ -41,6 +46,13 @@ type Config struct {
 	// na mesma porta, sem CORS). Rotas não-API caem no NotFound → asset direto ou
 	// index.html (fallback do roteamento do SPA). Vazio = só API (comportamento legado).
 	SPADir string
+}
+
+// RemotePresence — agents conectados em OUTROS nós (bus R5). Implementado por
+// *bus.Distributed; nil no modo local. Mantido como interface pra não acoplar o
+// handler ao transporte e pra ser mockável nos testes.
+type RemotePresence interface {
+	RemoteAgents() []bus.RemoteAgent
 }
 
 type server struct {

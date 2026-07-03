@@ -5,8 +5,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Dr0nj/regente-server/internal/bus"
 	"github.com/Dr0nj/regente-server/internal/hub"
 )
+
+// fakePresence — RemotePresence mockado (agents em outros nós), p/ testar R5 sem NATS.
+type fakePresence struct{ agents []bus.RemoteAgent }
+
+func (f fakePresence) RemoteAgents() []bus.RemoteAgent { return f.agents }
 
 func findAgent(fleet []agentRow, id string) *agentRow {
 	for i := range fleet {
@@ -66,6 +72,52 @@ func TestAgents_Fleet(t *testing.T) {
 	}
 	if a.LastSeen == nil || b.LastSeen == nil {
 		t.Fatal("last_seen deveria estar setado nos dois")
+	}
+}
+
+// R5 — presença cross-nó: um agent conectado em OUTRO nó aparece ONLINE (não
+// fantasma offline), com node do nó dono e local=false (não é pingável daqui);
+// um agent remoto SEM linha no DB deste nó ainda entra na frota do cluster.
+func TestAgents_CrossNodePresence(t *testing.T) {
+	d := newTestDB(t)
+	h := hub.New()
+	presence := fakePresence{agents: []bus.RemoteAgent{
+		// agent-remote: metadata no DB (offline aqui), mas online no node-2.
+		{ID: "agent-remote", Node: "node-2", Caps: []string{"COMMAND"}, LastSeen: time.Now()},
+		// agent-ghost: só presença remota, sem linha no DB deste nó.
+		{ID: "agent-ghost", Node: "node-3", Caps: []string{"WASM"}, LastSeen: time.Now()},
+	}}
+	cfg := Config{DB: d, Hub: h, Token: "test-token", Presence: presence, NodeID: "node-1"}
+	s := &server{cfg: cfg}
+	srv := httptest.NewServer(NewRouter(cfg))
+	defer srv.Close()
+	defer d.Close()
+
+	// Local online (node-1) + o remoto que também tem linha no DB.
+	local := &hub.Client{ID: "agent-local", Kind: hub.ClientAgent, Capabilities: []string{"COMMAND"}, OS: "linux"}
+	h.Register(local)
+	s.recordAgentConnect(local)
+	s.recordAgentConnect(&hub.Client{ID: "agent-remote", Kind: hub.ClientAgent, Capabilities: []string{"COMMAND"}, OS: "linux"})
+
+	var fleet []agentRow
+	getJSON(t, srv, "/api/agents", &fleet)
+	if len(fleet) != 3 {
+		t.Fatalf("esperava 3 (local + remoto-no-DB + ghost), veio %d: %+v", len(fleet), fleet)
+	}
+
+	loc := findAgent(fleet, "agent-local")
+	if loc == nil || !loc.Online || !loc.Local || loc.Node != "node-1" {
+		t.Fatalf("agent-local deveria ser online+local no node-1, veio %+v", loc)
+	}
+
+	rem := findAgent(fleet, "agent-remote")
+	if rem == nil || !rem.Online || rem.Local || rem.Node != "node-2" {
+		t.Fatalf("agent-remote deveria ser online (node-2) e NÃO local, veio %+v", rem)
+	}
+
+	ghost := findAgent(fleet, "agent-ghost")
+	if ghost == nil || !ghost.Online || ghost.Local || ghost.Node != "node-3" {
+		t.Fatalf("agent-ghost (só presença) deveria aparecer online no node-3, veio %+v", ghost)
 	}
 }
 
