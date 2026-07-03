@@ -49,7 +49,10 @@ Dois mundos separados, estilo Control-M:
 - **Design** — onde as definitions são editadas. Pelo botão **FOLDERS** você cria,
   abre/fecha (multi-select) e gerencia *folders* — abrir uma folder monta um clone
   Git efêmero por sessão; você edita no canvas drag-and-drop e dá **Publish**
-  (único caminho de escrita pro GitHub).
+  (único caminho de escrita pro GitHub). **Drafts não se perdem**: F5/troca de
+  tela retoma a sessão onde parou; sessão esquecida com edições não publicadas
+  vira banner *Retomar/Descartar* (o server nunca apaga trabalho não publicado —
+  só sessões limpas expiram).
 
 **A Daily** roda 1×/dia à meia-noite (BRT): lê o Git, decide o que roda hoje
 (schedule + calendars + dependências + conditions) e materializa *instances*
