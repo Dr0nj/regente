@@ -12,6 +12,8 @@ export interface DesignSession {
   baseSha: string;
   createdAt: string;
   lastTouch: string;
+  /** true = working tree do clone tem trabalho não publicado (list/get). */
+  dirty?: boolean;
 }
 
 export interface PublishResult {

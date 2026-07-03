@@ -65,7 +65,7 @@ import { GitStatusBadge } from "./GitStatusBadge";
 import { PRBannerHost } from "./PRBannerHost";
 import { PublishButton } from "./PublishButton";
 import { getDesignSessionId, setDesignSessionId, onDesignSessionChange, onDesignSessionConflict } from "@/lib/server-client";
-import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, createDesignSession, openSessionFolder, createSessionFolder, type SessionStatus, type PublishResult } from "@/lib/design-session-api";
+import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, createDesignSession, openSessionFolder, createSessionFolder, listDesignSessions, deleteDesignSession, type DesignSession, type SessionStatus, type PublishResult } from "@/lib/design-session-api";
 import { toast, ToastHost } from "./Toast";
 import EdgeConditionModal from "./EdgeConditionModal";
 import { getGitInfo, commitUrl } from "@/lib/git-info";
@@ -181,9 +181,20 @@ function V2PreviewInner() {
         setActiveFolders(new Set(all));
         setDesignSessionNewFolders(s.newFolders ?? []);
       })
-      .catch(() => {
+      .catch((e: unknown) => {
         if (cancel) return;
-        // Falhou (404 = session expirou). Limpa para não filtrar erradamente.
+        if ((e as { status?: number })?.status === 404) {
+          // Session morreu no server (GC/descartada em outra aba): solta o sid
+          // persistido pra não continuar apontando pra um draft que não existe.
+          // O listener onDesignSessionChange re-roda este effect com null.
+          setDesignSessionId(null);
+          toast.info("Sessão de design expirou no servidor", {
+            detail: "O working set foi liberado — abra as folders novamente.",
+          });
+          return;
+        }
+        // Erro transiente (rede/server fora): NÃO derruba o sid — a session
+        // provavelmente ainda existe; sem folders a UI degrada pro empty state.
         setActiveFolders(null);
         setDesignSessionNewFolders([]);
       });
@@ -202,6 +213,52 @@ function V2PreviewInner() {
     const id = window.setInterval(tick, 30_000);
     return () => { cancel = true; window.clearInterval(id); };
   }, [designSessionId]);
+  // Recuperação de drafts (2026-07-02) — o clone da session sobrevive no server;
+  // o que o F5 perdia era só o PONTEIRO (agora persistido no server-client). Aqui:
+  //   1. valida a posse do sid restaurado (user trocou no mesmo browser → solta);
+  //   2. sessions SUJAS esquecidas do actor viram banner Retomar/Descartar;
+  //   3. sessions LIMPAS idosas são auto-descartadas (nada a perder) — o corte de
+  //      10min protege uma session limpa ativa em outra aba (polling toca a cada 30s).
+  const [orphanSessions, setOrphanSessions] = useState<DesignSession[]>([]);
+  useEffect(() => {
+    if (!isServerMode() || !me) { setOrphanSessions([]); return; }
+    let cancel = false;
+    void listDesignSessions()
+      .then((all) => {
+        if (cancel) return;
+        const mine = all.filter((s) => s.actor === me.username);
+        if (designSessionId && !mine.some((s) => s.id === designSessionId)) {
+          setDesignSessionId(null);
+          return; // effect re-roda com sid=null e reclassifica as órfãs
+        }
+        const others = mine.filter((s) => s.id !== designSessionId);
+        const idleMs = 10 * 60_000;
+        for (const s of others) {
+          if (!s.dirty && Date.now() - new Date(s.lastTouch).getTime() > idleMs) {
+            void deleteDesignSession(s.id).catch(() => {});
+          }
+        }
+        const dirty = others.filter((s) => s.dirty);
+        dirty.sort((a, b) => (a.lastTouch < b.lastTouch ? 1 : -1));
+        setOrphanSessions(dirty);
+      })
+      .catch(() => { /* transiente — reavalia no próximo trigger (login/sid) */ });
+    return () => { cancel = true; };
+  }, [me, designSessionId]);
+
+  const resumeOrphanSession = useCallback(async (sid: string) => {
+    setDesignSessionId(sid);
+    setOrphanSessions((prev) => prev.filter((s) => s.id !== sid));
+    setMode("design");
+    // Defs passam a vir do clone da session (roteamento por sid no adapter).
+    await reloadDefinitions();
+  }, []);
+
+  const discardOrphanSession = useCallback(async (sid: string) => {
+    if (!window.confirm("Descartar esta sessão? As edições não publicadas dela serão perdidas.")) return;
+    await deleteDesignSession(sid).catch(() => {});
+    setOrphanSessions((prev) => prev.filter((s) => s.id !== sid));
+  }, []);
   // F20 — environment label (visual tag)
   const [envLabel, setEnvLabel] = useState<string>("");
   const [showSettings, setShowSettings] = useState(false);
@@ -406,8 +463,24 @@ function V2PreviewInner() {
     let sid = designSessionId;
     const creatingSession = !sid;
     if (!sid) {
-      const sess = await createDesignSession([], []);
-      sid = sess.id;
+      // Sem session ativa: se existe session SUJA esquecida deste actor, RETOMA
+      // ela em vez de criar outra por cima (era isso que "bugava" abrir folder
+      // sobre folder pós-F5: duas sessions do mesmo actor, trabalho invisível).
+      // Sessions limpas não retomam — o server auto-descarta as idle no Create.
+      const dirtyMine = orphanSessions.length > 0
+        ? orphanSessions
+        : (await listDesignSessions().catch(() => [] as DesignSession[]))
+            .filter((s) => s.actor === (me?.username ?? "") && s.dirty)
+            .sort((a, b) => (a.lastTouch < b.lastTouch ? 1 : -1));
+      if (dirtyMine.length > 0) {
+        sid = dirtyMine[0].id;
+        toast.info("Retomando sessão não publicada", {
+          detail: `Suas edições anteriores (${dirtyMine[0].folders.join(", ") || "sem folders"}) continuam nela — publique ou descarte quando quiser.`,
+        });
+      } else {
+        const sess = await createDesignSession([], []);
+        sid = sess.id;
+      }
     }
     // Cria/abre a folder na session ANTES de publicar o sid no global. Assim, quando
     // o effect [designSessionId] refetcha getDesignSession, a folder já existe →
@@ -425,7 +498,7 @@ function V2PreviewInner() {
       setDesignSessionNewFolders((prev) => prev.includes(res.name) ? prev : [...prev, res.name]);
     }
     await reloadDefinitions();
-  }, [designSessionId]);
+  }, [designSessionId, orphanSessions, me]);
 
   // Fechar folder do working set: só remove da visão (não toca no Git nem na session).
   const closeFolder = useCallback((name: string) => {
@@ -466,7 +539,6 @@ function V2PreviewInner() {
       setDesignSessionId(null);
       setDesignSessionNewFolders([]);
       if (sid) {
-        const { deleteDesignSession } = await import("@/lib/design-session-api");
         await deleteDesignSession(sid).catch(() => {});
       }
       await reloadDefinitions();
@@ -1303,6 +1375,55 @@ function V2PreviewInner() {
             title="Nenhuma definition"
             hint="Arraste um tipo da palette para o canvas para criar o primeiro job."
           />
+        )}
+
+        {/* Recuperação de draft: sessions sujas esquecidas deste actor (F5, aba
+            fechada, outra máquina). Retomar volta EXATAMENTE onde parou. */}
+        {mode === "design" && orphanSessions.length > 0 && (
+          <div style={{
+            position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)",
+            zIndex: 30, display: "flex", flexDirection: "column", gap: 8, maxWidth: "min(680px, 90%)",
+          }}>
+            {orphanSessions.map((s) => (
+              <div key={s.id} style={{
+                display: "flex", alignItems: "center", gap: 12, padding: "10px 14px",
+                background: "var(--v2-bg-surface)",
+                border: "1px solid var(--v2-accent-brand)", borderRadius: 8,
+                boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
+              }}>
+                <GitCommitHorizontal size={15} style={{ color: "var(--v2-accent-brand)", flexShrink: 0 }} />
+                <div style={{ fontSize: 11, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, color: "var(--v2-text-primary)" }}>
+                    Sessão com edições não publicadas
+                  </div>
+                  <div style={{ color: "var(--v2-text-secondary)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {(s.folders.length > 0 ? s.folders.join(", ") : "sem folders abertas")}
+                    {" · última edição "}
+                    {new Date(s.lastTouch).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                  </div>
+                </div>
+                <div style={{ flex: 1 }} />
+                <button
+                  onClick={() => void resumeOrphanSession(s.id)}
+                  style={{
+                    padding: "6px 14px", background: "var(--v2-accent-brand)", border: "none",
+                    color: "var(--v2-bg-canvas)", borderRadius: 4, cursor: "pointer",
+                    fontSize: 10, fontWeight: 700, fontFamily: "var(--v2-font-mono)",
+                    letterSpacing: "0.06em", textTransform: "uppercase", flexShrink: 0,
+                  }}
+                >Retomar</button>
+                <button
+                  onClick={() => void discardOrphanSession(s.id)}
+                  style={{
+                    padding: "6px 12px", background: "transparent", border: "1px solid #533",
+                    color: "#a66", borderRadius: 4, cursor: "pointer", fontSize: 10,
+                    fontFamily: "var(--v2-font-mono)", letterSpacing: "0.06em",
+                    textTransform: "uppercase", flexShrink: 0,
+                  }}
+                >Descartar</button>
+              </div>
+            ))}
+          </div>
         )}
 
         {mode === "monitoring" ? (

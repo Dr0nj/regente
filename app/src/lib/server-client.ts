@@ -101,10 +101,31 @@ function ensureBC(): BroadcastChannel | null {
   return _bc;
 }
 
+// Retomada pós-reload: a session vive no server (clone + DB), então o sid é
+// persistido por browser e restaurado no boot — F5/troca de tela não perde mais
+// o working set do Design. Validação (404 = expirou, actor ≠ me) é do V2Preview.
+// O claim P7 é anunciado no restore pra manter a política "última aba ativa vence".
+const LS_SESSION_KEY = "regente:designSessionId";
+if (typeof window !== "undefined" && SERVER_URL) {
+  try {
+    const saved = window.localStorage.getItem(LS_SESSION_KEY);
+    if (saved) {
+      _designSessionId = saved;
+      ensureBC()?.postMessage({ type: "session-claim", sid: saved, tabId: TAB_ID, ts: Date.now() } satisfies TabBroadcastMsg);
+    }
+  } catch { /* localStorage indisponível */ }
+}
+
 export function getDesignSessionId(): string | null { return _designSessionId; }
 export function setDesignSessionId(sid: string | null): void {
   const prev = _designSessionId;
   _designSessionId = sid;
+  if (typeof window !== "undefined") {
+    try {
+      if (sid) window.localStorage.setItem(LS_SESSION_KEY, sid);
+      else window.localStorage.removeItem(LS_SESSION_KEY);
+    } catch { /* localStorage indisponível */ }
+  }
   if (sid && sid !== prev) {
     const bc = ensureBC();
     bc?.postMessage({ type: "session-claim", sid, tabId: TAB_ID, ts: Date.now() } satisfies TabBroadcastMsg);

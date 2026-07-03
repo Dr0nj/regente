@@ -10,8 +10,12 @@
 //   - A daily continua lendo do workspace principal (./workspace) — sessions
 //     são totalmente ortogonais (Opção B já entregue na Etapa 2).
 //
-// Sessions são in-memory (perdidas em restart). MVP: sem GC automático, sem
-// proteção contra 2 abas no mesmo browser. Aceito como tradeoff registrado.
+// Persistência/ciclo de vida (P3/P6/P7 + recuperação de draft 2026-07-02):
+//   - sessions persistem em DB (design_sessions) + clone no disco; Restore() no boot;
+//   - GC por TTL remove só sessions LIMPAS — Dirty() (trabalho não publicado) é
+//     imune a remoção automática (GC e sweepCleanIdle);
+//   - Create varre sessions limpas idle do actor (auto-descarte de esquecidas);
+//   - 2 abas no mesmo browser: BroadcastChannel no front (P7, last-claim-wins).
 package storage
 
 import (
@@ -232,28 +236,53 @@ func (m *SessionManager) StopGC() {
 }
 
 // gcSweep — coleta sessions expiradas e as deleta (fora do lock).
+// Sessions SUJAS (trabalho não publicado) nunca são coletadas: expirar uma
+// session limpa custa um re-clone; expirar uma suja perde trabalho humano.
+// Elas ficam vivas até o dono retomar/descartar (UI oferece os dois).
 func (m *SessionManager) gcSweep() {
 	now := time.Now()
 	m.mu.Lock()
 	ttl := m.ttl
-	expired := make([]string, 0)
-	for sid, s := range m.items {
+	expired := make([]*DesignSession, 0)
+	for _, s := range m.items {
 		if now.Sub(s.LastTouch) > ttl {
-			expired = append(expired, sid)
+			expired = append(expired, s)
 		}
 	}
 	m.mu.Unlock()
-	for _, sid := range expired {
-		// Recupera idle real para log antes de deletar.
-		m.mu.Lock()
-		s := m.items[sid]
-		var idle time.Duration
-		if s != nil {
-			idle = now.Sub(s.LastTouch)
+	for _, s := range expired {
+		idle := now.Sub(s.LastTouch)
+		if s.Dirty() {
+			log.Printf("[design-gc] keeping dirty session=%s idle=%s (unpublished work)", s.ID, idle.Round(time.Second))
+			continue
 		}
-		m.mu.Unlock()
-		if err := m.Delete(sid); err == nil {
-			log.Printf("[design-gc] removed session=%s idle=%s", sid, idle.Round(time.Second))
+		if err := m.Delete(s.ID); err == nil {
+			log.Printf("[design-gc] removed session=%s idle=%s", s.ID, idle.Round(time.Second))
+		}
+	}
+}
+
+// sweepCleanIdle — auto-descarte: remove sessions LIMPAS do actor que estão
+// idle há mais que `minIdle`. Chamado no Create pra não acumular clones órfãos
+// de sessions esquecidas (F5 sem retomar, aba fechada etc.). O minIdle protege
+// sessions limpas em uso ativo em outra aba — o polling de status (30s) e
+// qualquer list/save tocam LastTouch via Get. Sujas nunca são removidas.
+func (m *SessionManager) sweepCleanIdle(actor string, minIdle time.Duration) {
+	now := time.Now()
+	m.mu.Lock()
+	candidates := make([]*DesignSession, 0)
+	for _, s := range m.items {
+		if s.Actor == actor && now.Sub(s.LastTouch) > minIdle {
+			candidates = append(candidates, s)
+		}
+	}
+	m.mu.Unlock()
+	for _, s := range candidates {
+		if s.Dirty() {
+			continue
+		}
+		if err := m.Delete(s.ID); err == nil {
+			log.Printf("[design-sweep] removed clean session=%s actor=%s idle=%s", s.ID, actor, now.Sub(s.LastTouch).Round(time.Second))
 		}
 	}
 }
@@ -273,6 +302,9 @@ func (m *SessionManager) Create(actor string, folders, newFolders []string) (*De
 	if actor == "" {
 		actor = "anon"
 	}
+	// Auto-descarte: sessions limpas esquecidas do mesmo actor não sobrevivem à
+	// criação de uma nova (10min de idle = ninguém está usando; ver sweepCleanIdle).
+	m.sweepCleanIdle(actor, 10*time.Minute)
 	sid := newSessionID(actor)
 	sessionPath := filepath.Join(m.root, sid)
 	if err := os.MkdirAll(sessionPath, 0o755); err != nil {
@@ -362,6 +394,17 @@ func (m *SessionManager) Delete(sid string) error {
 	}
 	log.Printf("[session %s] deleted", sid)
 	return nil
+}
+
+// Dirty informa se a session tem trabalho não publicado (working tree suja).
+// Em erro de leitura do repo, assume suja — o custo de proteger uma session
+// vazia é um clone órfão; o custo de descartar uma suja é trabalho perdido.
+func (s *DesignSession) Dirty() bool {
+	clean, err := s.Git.IsClean()
+	if err != nil {
+		return true
+	}
+	return !clean
 }
 
 // AddNewFolder registra que um folder novo foi criado durante a sessão.

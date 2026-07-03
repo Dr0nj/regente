@@ -8,8 +8,10 @@
 //   - POST /api/design/sessions/{sid}/publish faz commit+push pro Git.
 //     Se a sessão tem newFolders, força PR (Etapa 5).
 //
-// Sessions são in-memory. Restart do server perde sessions abertas — usuário
-// precisa reabrir. Aceito como tradeoff MVP (registro: memory/decisions/...).
+// Sessions sobrevivem a restart (P6: DB + clone em disco, Restore no boot) e o
+// front persiste o sid por browser — F5 retoma onde parou. List/Get expõem
+// `dirty` pra UI diferenciar draft com trabalho (Retomar/Descartar) de session
+// vazia (auto-descartável). Trabalho não publicado nunca é removido pelo server.
 package api
 
 import (
@@ -35,6 +37,18 @@ func (s *server) sessionFromURL(w http.ResponseWriter, r *http.Request) (*storag
 		return nil, false
 	}
 	return sess, true
+}
+
+// sessionView — DesignSession + dirty computado na hora da resposta.
+// O flag permite à UI distinguir session esquecida COM trabalho não publicado
+// (oferecer retomada) de session vazia (auto-descartável sem perda).
+type sessionView struct {
+	*storage.DesignSession
+	Dirty bool `json:"dirty"`
+}
+
+func toSessionView(sess *storage.DesignSession) sessionView {
+	return sessionView{DesignSession: sess, Dirty: sess.Dirty()}
 }
 
 // === Lifecycle ===
@@ -84,7 +98,12 @@ func (s *server) listDesignSessions(w http.ResponseWriter, r *http.Request) {
 	if u, ok := auth.FromContext(r.Context()); ok && u != nil && u.Role.CanAdmin() {
 		filter = ""
 	}
-	writeJSON(w, 200, s.cfg.Sessions.List(filter))
+	items := s.cfg.Sessions.List(filter)
+	out := make([]sessionView, 0, len(items))
+	for _, sess := range items {
+		out = append(out, toSessionView(sess))
+	}
+	writeJSON(w, 200, out)
 }
 
 // GET /api/design/sessions/{sid}
@@ -93,7 +112,7 @@ func (s *server) getDesignSession(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, 200, sess)
+	writeJSON(w, 200, toSessionView(sess))
 }
 
 // GET /api/design/sessions/{sid}/status
