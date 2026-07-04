@@ -549,7 +549,7 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 - [ ] Timezone da daily · auditoria (retenção/export/audit de settings) · RBAC por ação operacional ·
   fila assíncrona de eventos · relatório/SLO da daily · importador Control-M
 
-**Camada agent-native (MCP)** — servidor pronto; falta NL-query + writes ricos. **Diferenciais** e **🏁 Fase Z**
+**Camada agent-native (MCP)** — servidor pronto (NL-query `query` ✅); falta writes ricos. **Diferenciais** e **🏁 Fase Z**
 (case study + LinkedIn, último gate): ver seções abaixo e [`docs/roadmap.md`](docs/roadmap.md).
 
 ### Diferenciais — além do Control-M (visão de produto) — detalhe em [`docs/roadmap.md`](docs/roadmap.md)

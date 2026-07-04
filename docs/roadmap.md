@@ -6,6 +6,15 @@
 > atualize AQUI (a barra da trilha + a seção "O que falta" + o changelog "Próximos
 > movimentos"); o README carrega apenas destaques de 1 linha.
 >
+> ⛔ **REGRA DE STATUS — LEIA ANTES DE MARCAR CAIXINHA.** A **§🎯 O que falta** é o
+> **ÚNICO registro de status** e lista **TODO** item em aberto — nada de pendente pode
+> existir só numa seção de baixo. As seções detalhadas (Aprofundamento Control-M,
+> Diferenciais §1–5, Features avançadas, Backlog Enterprise) são **SPEC/histórico**, não
+> status: as marcações `⬜`/`✅` nelas podem estar DESATUALIZADAS e **não valem** — se
+> divergirem da §O que falta, a §O que falta vence. Ao entregar/abrir um item: mexa na
+> §O que falta (tirar/adicionar a linha) + na barra da trilha + no changelog. Se um item
+> não está na §O que falta, ele está **entregue** (ou nunca foi escopo) — ponto.
+>
 > Documento vivo · revisão **2026-07-02**.
 > Estratégia de arquitetura em [`arquitetura-futuro.md`](arquitetura-futuro.md);
 > detalhe de produto no [`../README.md`](../README.md).
@@ -39,40 +48,77 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ---
 
-## 🎯 O que falta (lista autoritativa)
+## 🎯 O que falta (registro ÚNICO e COMPLETO)
 
-> Pergunta "o que falta?" → responde aqui. Tudo abaixo é o que **ainda não** está pronto;
-> o que não aparece aqui está entregue (detalhe nas seções e no changelog "Próximos
-> movimentos"). Todas as trilhas ESTRUTURAIS (núcleo · UI · alerting · resiliência ·
-> serverless · enterprise · escala 100k–1M) estão **100%**.
+> Pergunta "o que falta?" → responde AQUI e **só** aqui. Esta lista contém **TODO** item
+> em aberto do documento inteiro (varredura de 2026-07-04): se não está listado abaixo,
+> está **entregue** ou nunca foi escopo. Cada item tem um **ID estável** e um **ponteiro
+> `→ §…`** pra spec detalhada. As caixinhas espalhadas nas seções de baixo **não valem**
+> como status (ver ⛔ REGRA DE STATUS no topo).
+>
+> Todas as trilhas ESTRUTURAIS (núcleo · UI · alerting · resiliência · serverless ·
+> enterprise · escala 100k–1M) estão **100%**. O que falta é polimento + camadas
+> avançadas + divulgação.
 
-**Aprofundamento Control-M** — ✅ **TRILHA FECHADA (2026-07-03).** cyclic runtime ·
-CONFIRM · Job DATABASE (Postgres/MySQL/SQLite) · SET de var em runtime + cálculo de
-datas (`%%ODATE±NB` ciente de dia útil) · janela fechada (WINDOW_CLOSED) · ViewPoints
-salvos · Find & Update estendido — todos entregues com testes + validação ao vivo.
-- ✅ **Dashboards prontos** (presets do /summary na UI) — ENTREGUE 2026-07-03. Barra de
-  dashboards clicáveis no ViewPoint (ScaleMonitor): "Visão geral" + um preset por estado
-  (Rodando/Aguardando/Concluídos/**Falhas**/Em espera). Zero backend novo — é o `/summary?status=`
-  (que já filtrava): o preset reescopa total + lista de folders (só as que têm jobs nesse estado)
-  + os jobs da folder aberta; os cards de estado seguem mostrando o dia inteiro. Validado ao vivo
-  (5k jobs seed → "Falhas" = 625 de 5.000 em 3 folders; reset volta pra 12 folders/5.000).
+### Refinamento UI
+- [ ] **UI-1** — Virtualizar a sidebar ACTIVE JOBS legada (`LEGACY_CAP=2000` engana; mostra
+  "2000/2000" como se fosse o total; o ViewPoint já faz 100k–1M). → §Identidade visual/UI, §Escala P3
+- [ ] **UI-2** — Drawer de info do job mais amigável (ações claras, output/log legível, layout). → §Identidade visual/UI
 
-**Refinamento UI:**
-- ⬜ **Virtualizar a sidebar ACTIVE JOBS** (`LEGACY_CAP=2000` engana; o ViewPoint já faz 100k–1M).
-- ⬜ **Drawer de info do job** mais amigável (ações claras, log legível).
+### Enterprise — specs prontas, prontas pra implementar (→ §Backlog Enterprise E1..E6)
+- [ ] **E1** — Timezone da daily (`settings.daily_timezone`, IANA). → §E1
+- [ ] **E2** — Auditoria enterprise: retenção + export JSONL + audit de mudanças de settings. → §E2
+- [ ] **E3** — RBAC de escrita por AÇÃO OPERACIONAL (folder-scoped: hold/release/cancel/rerun/set-ok/force/bulk). → §E3
+- [ ] **E4** — Fila assíncrona de eventos de instance (protege o hot path do tick/dispatch). → §E4
+- [ ] **E5** — Relatório/SLO da daily (`GET /api/daily/report` + push opcional). → §E5
+- [ ] **E6** — Importador Control-M (`cmd/importctm`: XML export → workspace YAML). → §E6
 
-**Enterprise (specs prontas — §Backlog Enterprise E1..E6):**
-- ⬜ E1 timezone da daily · E2 auditoria (retenção/export/audit de settings) · E3 RBAC por
-  ação operacional · E4 fila assíncrona de eventos · E5 relatório/SLO da daily · E6 importador Control-M.
+### Camada agent-native (MCP) — 85%
+- [ ] **MCP-1** — Writes ricos via MCP (hoje 6 read + 2 write gated; NL-query `query` ✅ já entregue). → §changelog "Camada agent-native"
 
-**Camada agent-native (MCP)** — 85%: falta writes ricos (NL-query ✅ entregue como tool `query`).
+### Aprofundamento Control-M — núcleo 100%; resíduos deixados marcados `⬜` na spec
+> ⚠️ A trilha está marcada 100% no topo, mas estes 3 sub-itens ficaram `⬜` na seção
+> detalhada. **Decisão pendente sua: entregues, ou descopo?** Enquanto não confirmar,
+> ficam listados aqui (não somem).
+- [ ] **CTM-1** — Variáveis `%%`: escopo LOCAL por job (hoje só globais interpoláveis). → §Aprofundamento Control-M
+- [ ] **CTM-2** — Variáveis `%%`: NATIVAS extras (último dia do mês, dia útil…) além dos tokens de runtime já entregues. → §Aprofundamento Control-M
+- [ ] **CTM-3** — **Mass Update / Find & Update RICO** (Design): busca por regex/critério de campo → substituir/adicionar em massa em N jobs, com **preview + undo**, transacional por item. (O bulk BÁSICO por conjunto de IDs já existe: `POST /api/bulk/instances` e `POST /api/design/sessions/{sid}/bulk`.) → §Aprofundamento Control-M
 
-**Diferenciais (além do Control-M)** — 75%: Explain·Diff·Blast·Dry Run·**Job Neighborhood·RCA·Event
-log CQRS-lite·NL-query** ✅ (todos read-only, endpoint + MCP + testes + ao vivo); falta orquestração
-híbrida/stateful · DevEx (schedule-as-code / `regente test` / `regente dev daily`) · promotion ·
-policy-as-code · chaos inject · "wow" (Gantt · templates · self-service · mobile).
+### Diferenciais além do Control-M — 75% (→ §Diferenciais)
+> Entregues (não voltam à lista): Explain · Diff de Daily · Blast Radius · Dry Run · Job
+> Neighborhood · RCA · Event log CQRS-lite · NL-query. Abertos:
+- [ ] **D-1** — Human-in-the-loop nativo + long-running (workflows de dias/semanas). → §Diferenciais §1
+- [ ] **D-2** — Pausa/resume com ESTADO preservado (além de Hold). → §Diferenciais §1
+- [ ] **D-3** — Event-driven confiável (reagir a eventos externos, não só polling). → §Diferenciais §1
+- [ ] **D-4** — Performance forecasting com gráficos no Monitoring. → §Diferenciais §2
+- [ ] **D-5** — Query estruturado / busca rica (endpoint composto tipado; decisão de transporte `QUERY` já registrada, não implementado). → §Diferenciais §2
+- [ ] **D-6** — Schedule as Code completo (YAML + DSL Go/Python no repo, sync com a UI). → §Diferenciais §3
+- [ ] **D-7** — Testing framework (`regente test job.yaml` com mocks). → §Diferenciais §3
+- [ ] **D-8** — Local dev mode (`regente dev daily`). → §Diferenciais §3
+- [ ] **D-9** — Multi-environment promotion (Dev→Staging→Prod) Git-native. → §Diferenciais §4
+- [ ] **D-10** — Policy as Code (todo job tem SLA/retry/owner…). → §Diferenciais §4
+- [ ] **D-11** — Chaos engineering ("Inject Failure"). → §Diferenciais §4
+- [ ] **D-12** — Visual Schedule Editor com timeline (Gantt-like) da daily. → §Diferenciais §5
+- [ ] **D-13** — Bulk Schedule Actions + templates reutilizáveis. → §Diferenciais §5
+- [ ] **D-14** — Self-Service Portal (negócio roda jobs aprovados sem tocar no Design). → §Diferenciais §5
+- [ ] **D-15** — Mobile-friendly alerts com ações rápidas (rerun/set-ok). → §Diferenciais §5
 
-**🏁 Fase Z** — case study + post LinkedIn. **Último gate por definição** — só com o backlog acima onde você quer.
+### Features avançadas — pós-núcleo (→ §Features avançadas)
+- [ ] **ADV-1** — Job types com schema dedicado por tipo.
+- [ ] **ADV-2** — Multi-ambiente/multi-site (relaciona D-9).
+- [ ] **ADV-3** — What-If / Forecast / Statistics (relaciona D-4).
+- [ ] **ADV-4** — MFT (FILE_TRANSFER nativo).
+- [ ] **ADV-5** — Archives / Retention (relaciona E2).
+- [ ] **ADV-6** — CLI / SDK.
+- [ ] **ADV-7** — Site de docs.
+- [ ] **ADV-8** — Executores AWS extras (Batch/Glue/Step) — validação em conta paga fora de escopo por decisão.
+
+### Validação em infra real — resíduos (→ §Validação em infra real)
+- [ ] **VAL-1** — Secrets via provider (env / `-secrets-file`): resolver `github_token`/`webhook_secret`.
+- [ ] **VAL-2** — SSH: agente instalado como serviço (systemd / Task Windows) em host com sshd.
+
+### 🏁 Fase Z — ÚLTIMO gate
+- [ ] **Z** — Case study técnico + post LinkedIn. **Só quando o backlog acima estiver onde você quer.** Não é o próximo passo.
 
 ---
 
@@ -534,8 +580,15 @@ usuário revisar e commitar.
 
 ---
 
-## 🧩 Aprofundamento Control-M *(testar a fundo + aprimorar)*
+## 🧩 Aprofundamento Control-M *(SPEC/histórico — status canônico só na §O que falta)*
 
+> ⚠️ **As marcações `⬜`/`✅` abaixo estão DESATUALIZADAS e NÃO valem como status.** A
+> trilha foi FECHADA (núcleo 100%, 2026-07-03); vários itens aqui ainda marcados `⬜` já
+> foram entregues (cyclic · CONFIRM · DATABASE · SET de var + cálculo de datas ·
+> WINDOW_CLOSED · ViewPoints salvos · Dashboards · baterias de calendário/recursos/forecast
+> — ver changelog). O que REALMENTE resta desta trilha está na **§O que falta** como
+> **CTM-1/CTM-2/CTM-3**. Esta seção fica só como referência de spec.
+>
 > O núcleo de paridade existe, mas precisa de **bateria de testes** cobrindo os casos reais do
 > Control-M e refino onde faltar. Cada item = testar TODAS as possibilidades + fechar os gaps.
 
@@ -606,7 +659,7 @@ usuário revisar e commitar.
       ciente de dia útil/feriado/calendar (sexta + 3 = próxima data útil). + inspetor de resolução por instância.
 ```
 
-## ⬜ Features avançadas *(depois do núcleo sólido)*
+## ⬜ Features avançadas *(depois do núcleo sólido — SPEC; status na §O que falta como ADV-1..ADV-8)*
 
 - Job types com schema dedicado · Multi-ambiente/multi-site · What-If/Forecast/Statistics
 - MFT (FILE_TRANSFER nativo) · Archives/Retention · Import de Control-M · CLI/SDK · site de docs
@@ -617,6 +670,10 @@ usuário revisar e commitar.
 
 > Não é paridade — é onde o Regente **passa** o Control-M. Visão de longo prazo; entra
 > depois do núcleo sólido. Organizado por tema.
+>
+> ⚠️ **As marcações `⬜`/`✅` abaixo são SPEC, não status** — algumas `⬜` já foram entregues
+> (Job Neighborhood · RCA · Event log CQRS-lite · Explain · Diff · Blast · Dry Run). O status
+> canônico e os itens realmente abertos (D-1..D-15) estão na **§O que falta**.
 
 ### 1. Orquestração híbrida e stateful *(grande gap do Control-M)*
 ```
