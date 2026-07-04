@@ -8,7 +8,7 @@
  * travada no primeiro pan (era o bug da centralização).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useReactFlow, useStore, useStoreApi } from "@xyflow/react";
 import {
   NODE_W,
@@ -56,16 +56,36 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
     return Math.min(ty, (PAN_SLACK_TOP - top) * zoom);
   }, [canvas.nodes]);
 
-  // focusOnPoint — centraliza um ponto do mundo na tela SEM sair do extent.
-  // Substitui o setCenter cru: para jobs perto do topo, "centraliza até onde a
-  // trava deixa" (job fica visível no alto) e a câmera permanece numa posição
-  // legal — mexer depois não salta.
+  // visibleInsets — o <ReactFlow> ocupa a largura INTEIRA do palco; a sidebar
+  // (esquerda) e o drawer de detalhes (direita) são overlays absolutos POR CIMA
+  // do pane. Centralizar em `width/2` (meio do pane) joga o conteúdo pro meio da
+  // JANELA, não da FAIXA VISÍVEL — no Design (sem drawer) isso puxava tudo pra
+  // esquerda (metade da sidebar). Medimos os overlays (marcados com
+  // data-canvas-inset) pra centralizar no espaço que o usuário realmente vê.
+  const visibleInsets = useCallback((): { left: number; right: number } => {
+    if (typeof document === "undefined") return { left: 0, right: 0 };
+    const pane = document.querySelector(".react-flow")?.getBoundingClientRect();
+    if (!pane) return { left: 0, right: 0 };
+    const l = document.querySelector('[data-canvas-inset="left"]')?.getBoundingClientRect();
+    const r = document.querySelector('[data-canvas-inset="right"]')?.getBoundingClientRect();
+    return {
+      left: l ? Math.max(0, l.right - pane.left) : 0,
+      right: r ? Math.max(0, pane.right - r.left) : 0,
+    };
+  }, []);
+
+  // focusOnPoint — centraliza um ponto do mundo na FAIXA VISÍVEL (descontando
+  // sidebar/drawer) SEM sair do extent. Substitui o setCenter cru: para jobs
+  // perto do topo, "centraliza até onde a trava deixa" (job fica visível no alto)
+  // e a câmera permanece numa posição legal — mexer depois não salta.
   const focusOnPoint = useCallback((px: number, py: number, zoom: number, duration = 350) => {
     const { width, height } = storeApi.getState();
-    const tx = width / 2 - px * zoom;
+    const { left, right } = visibleInsets();
+    const visW = Math.max(1, width - left - right);
+    const tx = left + visW / 2 - px * zoom;
     const ty = clampTy(height / 2 - py * zoom, zoom);
     setViewport({ x: tx, y: ty, zoom }, { duration });
-  }, [storeApi, clampTy, setViewport]);
+  }, [storeApi, clampTy, setViewport, visibleInsets]);
 
   // organizeView — re-enquadra ancorando o TOPO do conteúdo em TOP_ANCHOR (em vez
   // de centralizar verticalmente, que jogaria o conteúdo mais pra baixo). Fonte
@@ -96,13 +116,17 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
         };
     const bw = Math.max(1, b.maxX - b.minX);
     const bh = Math.max(1, b.maxY - b.minY);
+    // Faixa visível (desconta sidebar/drawer): o fit e a centralização usam ela,
+    // não a largura total do pane — senão o conteúdo cai atrás dos overlays.
+    const { left, right } = visibleInsets();
+    const visW = Math.max(1, width - left - right);
     const PADDING = 0.12; // fração do pane, como o fitView fazia
-    const zoomFit = Math.min((width * (1 - PADDING * 2)) / bw, (height * (1 - PADDING * 2)) / bh);
+    const zoomFit = Math.min((visW * (1 - PADDING * 2)) / bw, (height * (1 - PADDING * 2)) / bh);
     const zoom = Math.max(0.5, Math.min(1, zoomFit)); // não afasta além do minZoom nem amplia >1
-    const tx = width / 2 - ((b.minX + b.maxX) / 2) * zoom;
+    const tx = left + visW / 2 - ((b.minX + b.maxX) / 2) * zoom;
     const ty = clampTy(TOP_ANCHOR - b.minY * zoom, zoom);
     setViewport({ x: tx, y: ty, zoom }, { duration });
-  }, [canvas.nodes, canvas.lanes, storeApi, setViewport, clampTy]);
+  }, [canvas.nodes, canvas.lanes, storeApi, setViewport, clampTy, visibleInsets]);
 
   // Identidade ESTÁVEL + implementação sempre fresca: quem captura organizeView
   // em closures antigas (setTimeout do pós-save, gate de entrada) chama a versão
@@ -111,20 +135,48 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
   useEffect(() => { organizeViewRef.current = organizeViewImpl; }, [organizeViewImpl]);
   const organizeView = useCallback((duration: number) => organizeViewRef.current(duration), []);
 
-  // Auto-organiza (ancora o topo) SÓ ao entrar num contexto ou quando os jobs
-  // aparecem pela 1ª vez. Churn de dado (Force/Run Daily/WS) NÃO reancora, então
-  // a câmera não "pula" nem volta ao centro sozinha.
   const hasNodes = canvas.nodes.length > 0;
   // paneReady: o <ReactFlow> pode montar DEPOIS dos nodes existirem (ex.: login —
   // os dados chegam via _connected enquanto o LoginForm ainda cobre a tela) e o
   // onInit dispara ANTES do pane ser medido (width/height=0 → organize no-op).
   // Assinar as dimensões do store reativa o gate assim que o pane ganha tamanho.
   const paneReady = useStore((s) => s.width > 0 && s.height > 0);
-  useEffect(() => {
+
+  // Câmera GUARDADA por contexto de visão (modo+folders). Trocar de aba
+  // (Monitoring↔Design) NÃO re-enquadra: cada view volta EXATAMENTE pra onde o
+  // usuário a deixou (era o "desalinha e realinha" + perder o centro ao voltar).
+  // Só enquadra a 1ª vez que a view aparece (sem posição salva); depois disso a
+  // posição só muda se o usuário pedir (Organizar / focar num job / pan/zoom).
+  // useLayoutEffect: restaura ANTES do paint → sem flash da posição antiga.
+  const savedViewports = useRef(new Map<string, { x: number; y: number; zoom: number }>());
+
+  // Salva a posição da view que está SAINDO — só quando o viewContextKey MUDA de
+  // fato (troca de aba/folders), nunca no churn de load. (Salvar a cada flip de
+  // hasNodes/paneReady gravaria o viewport inicial 0,0 e o "restore" nunca
+  // organizaria.) getViewport aqui ainda devolve a posição da view antiga, pois o
+  // efeito de restaurar (declarado ABAIXO) só roda depois deste.
+  const prevKeyRef = useRef(viewContextKey);
+  useLayoutEffect(() => {
+    if (prevKeyRef.current !== viewContextKey) {
+      savedViewports.current.set(prevKeyRef.current, getViewport());
+      prevKeyRef.current = viewContextKey;
+    }
+  });
+
+  // Ao ENTRAR numa view: restaura a posição salva (sem animar → sem "desalinha e
+  // realinha") ou, se é a 1ª vez, enquadra. hasNodes é boolean (0↔N), então churn
+  // de dado (Force/Run Daily/WS) NÃO re-dispara e a câmera fica onde o usuário
+  // deixou; trocar de aba muda viewContextKey e cai aqui.
+  useLayoutEffect(() => {
     if (!hasNodes || !paneReady) return;
-    const t = setTimeout(() => organizeViewRef.current(220), 140);
+    const saved = savedViewports.current.get(viewContextKey);
+    if (saved) {
+      setViewport(saved);
+      return;
+    }
+    const t = setTimeout(() => organizeViewRef.current(220), 140); // 1ª vez: enquadra
     return () => clearTimeout(t);
-  }, [viewContextKey, hasNodes, paneReady]);
+  }, [viewContextKey, hasNodes, paneReady, setViewport]);
 
   /* ── Centralizar um nó (clique na sidebar / aba Folders) ── */
   const focusNode = useCallback((nodeId: string) => {

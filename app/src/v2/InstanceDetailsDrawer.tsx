@@ -101,6 +101,7 @@ export default function InstanceDetailsDrawer({
   return (
     <aside
       className="v2-grain v2-edge-highlight"
+      data-canvas-inset="right"
       style={{
         position: "absolute",
         top: 10,

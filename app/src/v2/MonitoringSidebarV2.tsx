@@ -105,6 +105,7 @@ export default function MonitoringSidebarV2({
 
   return (
     <aside
+      data-canvas-inset="left"
       style={{
         position: "absolute",
         top: 10,

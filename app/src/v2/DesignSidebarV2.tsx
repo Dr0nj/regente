@@ -108,6 +108,7 @@ export default function DesignSidebarV2({
 
   return (
     <aside
+      data-canvas-inset="left"
       style={{
         position: "absolute",
         top: 10,
