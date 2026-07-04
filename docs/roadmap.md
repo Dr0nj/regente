@@ -34,7 +34,7 @@ Resiliência operacional    █████████████████�
 ── Próximas fases ──────────────────────────────────────────────────────────
 Agent-native (MCP)         █████████████████░░░  85%  🟢 servidor MCP ✅ (6 tools read + 2 write gated) · falta NL-query + writes ricos
 Diferenciais               ███████████████░░░░░  75%  🟡 Explain·Diff·Blast·Dry Run·**Job Neighborhood·RCA·Event log·NL-query** ✅ · falta orquestração híbrida/stateful · DevEx · promotion · policy-as-code · "wow"
-Aprofundamento Control-M   ██████████████████████ 100%  ✅ TRILHA FECHADA: daily lifecycle · Actions/On-Do (motor + UI) · daily server-side configurável · WAIT EVENT · WAIT AGENT · variáveis %% · FILE_WATCH · calendários+shift · condition vazia=on-success · **cyclic runtime** · **CONFIRM** · **DATABASE** (Postgres/MySQL/SQLite) · **SET de var em runtime + cálculo de datas %%ODATE±NB** · **janela fechada (WINDOW_CLOSED)** · baterias de teste
+Aprofundamento Control-M   █████████████████████░  ~97% 🟢 NÚCLEO FECHADO: daily lifecycle · Actions/On-Do (motor + UI) · daily server-side configurável · WAIT EVENT · WAIT AGENT · variáveis %% (interpolação) · FILE_WATCH · calendários+shift · condition vazia=on-success · **cyclic runtime** · **CONFIRM** · **DATABASE** (Postgres/MySQL/SQLite) · **SET de var GLOBAL + cálculo de datas %%ODATE±NB** · **janela fechada (WINDOW_CLOSED)** · baterias de teste · **FALTA (verificado no código 2026-07-04): CTM-1 var %% LOCAL por job · CTM-2 nativas EOM/dia-útil · CTM-3 Mass Update/Find&Update RICO** — ver §O que falta
 Refinamento UI             ██████████████████░░  88%  🟡 grade de jobs soltos ✅ · aba de agentes+ping ✅ · seletor de folder (FOLDERS) redesenhado ✅ + fix snapshot do monitoring ✅ · fix botão "Abrir"+auto-nav ✅ · fix bug "Nenhuma definition" no drag ✅ · Job Name/ID no drawer ✅ · painel Edit Job flutuante arredondado ✅ · lista de jobs da folder na sidebar ✅ · minimap revisto (jobs quadrados + viewport rect) ✅ · viewport fluido (sem sumir/pular no Run Daily/Force/refresh) ✅ · câmera consistente com a trava de pan + board sem F5 ✅ · anti-race de refresh no store ✅ · draft do Design à prova de F5 (retomada de sessão) ✅ · limpeza de ruído ✅ · falta: LEGACY_CAP virtualizado · drawer do job mais amigável
 Fase Z — divulgação        ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ case study + post LinkedIn (agora com a história agent-native)
 ```
@@ -76,13 +76,20 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ### Camada agent-native (MCP) — 85%
 - [ ] **MCP-1** — Writes ricos via MCP (hoje 6 read + 2 write gated; NL-query `query` ✅ já entregue). → §changelog "Camada agent-native"
 
-### Aprofundamento Control-M — núcleo 100%; resíduos deixados marcados `⬜` na spec
-> ⚠️ A trilha está marcada 100% no topo, mas estes 3 sub-itens ficaram `⬜` na seção
-> detalhada. **Decisão pendente sua: entregues, ou descopo?** Enquanto não confirmar,
-> ficam listados aqui (não somem).
-- [ ] **CTM-1** — Variáveis `%%`: escopo LOCAL por job (hoje só globais interpoláveis). → §Aprofundamento Control-M
-- [ ] **CTM-2** — Variáveis `%%`: NATIVAS extras (último dia do mês, dia útil…) além dos tokens de runtime já entregues. → §Aprofundamento Control-M
-- [ ] **CTM-3** — **Mass Update / Find & Update RICO** (Design): busca por regex/critério de campo → substituir/adicionar em massa em N jobs, com **preview + undo**, transacional por item. (O bulk BÁSICO por conjunto de IDs já existe: `POST /api/bulk/instances` e `POST /api/design/sessions/{sid}/bulk`.) → §Aprofundamento Control-M
+### Aprofundamento Control-M — núcleo fechado; 3 sub-itens EM ABERTO (verificados no código 2026-07-04)
+> ✅ Verificação de 2026-07-04 (olhando `scheduler/variables.go` + `api/bulk.go` + git log/stash/branches):
+> os 3 abaixo **NÃO foram entregues** — não há trabalho perdido, sem commit não-pushado, sem branch
+> escondida. A trilha foi marcada "100% fechada" cedo demais; estes são o que realmente resta dela.
+- [ ] **CTM-1** — Variáveis `%%`: escopo LOCAL por job em runtime. Hoje há 3 escopos (Runtime/sistema,
+  Definition=`def.Variables` do YAML, Global=VariableStore); o `%%SET NOME=VALOR` grava **só no GLOBAL** —
+  falta um SET runtime cujo valor viva só dentro do próprio job. → §Aprofundamento Control-M
+- [ ] **CTM-2** — Variáveis `%%`: tokens NATIVOS extras — último dia do mês (EOM) e "próximo dia útil" como
+  VALOR. Hoje só existe aritmética de OFFSET (`%%ODATE+3`, `±NB`), não os tokens nativos. → §Aprofundamento Control-M
+- [ ] **CTM-3** — **Mass Update / Find & Update RICO** (Design): busca por regex/critério de campo →
+  substituir/adicionar em massa em N jobs, com **preview + undo**, transacional por item. Hoje só há bulk
+  BÁSICO por lista de IDs com patch de campos fixos (`POST /api/bulk/instances` e
+  `POST /api/design/sessions/{sid}/bulk`: move-folder/patch/delete + enabled/runAt) — sem regex, sem
+  seleção por critério, sem find-and-replace em campo arbitrário, sem preview, sem undo. → §Aprofundamento Control-M
 
 ### Diferenciais além do Control-M — 75% (→ §Diferenciais)
 > Entregues (não voltam à lista): Explain · Diff de Daily · Blast Radius · Dry Run · Job
