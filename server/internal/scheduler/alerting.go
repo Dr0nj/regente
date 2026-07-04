@@ -160,8 +160,11 @@ func (e *AlertEngine) fire(r AlertRule, cond alertCondition, ctx AlertContext) {
 			"acknowledged": false,
 		})
 	}
-	// Routing externo (best-effort, async) — Slack / webhook genérico.
-	go e.route(r, ctx, msg, fmt.Sprintf("%d", id), tsMs)
+	// Routing externo (best-effort, async) — Slack / webhook genérico. Só spawna
+	// se há sink configurado (ver hasExternalSink): sem canal, seria no-op.
+	if e.hasExternalSink() {
+		go e.route(r, ctx, msg, fmt.Sprintf("%d", id), tsMs)
+	}
 }
 
 // FireSystem emite um alerta do CONTROL PLANE (R7) — auto-monitoramento do próprio
@@ -194,7 +197,9 @@ func (e *AlertEngine) FireSystem(signalKey, name, severity, message string, cool
 	// Regra sintética SEM canais → channelWanted roteia p/ todos os sinks configurados.
 	r := AlertRule{ID: "rule-control-plane", Name: name, Severity: severity, Channels: ""}
 	ctx := AlertContext{WorkflowID: "control-plane", WorkflowName: "Control Plane"}
-	go e.route(r, ctx, message, fmt.Sprintf("%d", id), tsMs)
+	if e.hasExternalSink() {
+		go e.route(r, ctx, message, fmt.Sprintf("%d", id), tsMs)
+	}
 }
 
 // FireAction emite um alerta vindo de uma regra Actions/On-Do de um job (ação
@@ -227,10 +232,26 @@ func (e *AlertEngine) FireAction(workflowID, workflowName, name, severity, messa
 	}
 	r := AlertRule{ID: "rule-action", Name: name, Severity: severity, Channels: strings.Join(channels, ",")}
 	ctx := AlertContext{WorkflowID: workflowID, WorkflowName: workflowName}
-	go e.route(r, ctx, message, fmt.Sprintf("%d", id), tsMs)
+	if e.hasExternalSink() {
+		go e.route(r, ctx, message, fmt.Sprintf("%d", id), tsMs)
+	}
 }
 
 /* ── Alert routing — sinks externos (Slack / webhook) ── */
+
+// hasExternalSink diz se ALGUM sink externo (Slack/webhook/SMTP/PagerDuty) está
+// configurado. Chamado ANTES de spawnar a goroutine de routing: sem sink, o
+// routing é no-op, então nem criamos a goroutine — poupa trabalho no caso comum
+// (nenhum canal externo, o default) e, crucialmente, elimina a goroutine que lia
+// o DB DEPOIS do teste terminar, correndo com o RemoveAll do t.TempDir() (flake
+// "directory not empty" da CI em TestAlertEngine_*). A leitura aqui é síncrona,
+// no caminho de quem dispara o alerta.
+func (e *AlertEngine) hasExternalSink() bool {
+	return e.setting("alert_slack_webhook") != "" ||
+		e.setting("alert_webhook_url") != "" ||
+		e.setting("alert_smtp_host") != "" ||
+		e.setting("alert_pagerduty_routing_key") != ""
+}
 
 // route entrega o alerta nos sinks externos configurados em settings, conforme
 // os canais escolhidos POR REGRA:

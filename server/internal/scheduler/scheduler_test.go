@@ -52,6 +52,11 @@ func newTestScheduler(t *testing.T) *Scheduler {
 	// Testes rodam sem agente conectado: DemoMode mantém o mock-finish (OK em 1s),
 	// que é o comportamento que os cenários de dispatch/retry/alerting assumem.
 	s.DemoMode = true
+	// Para as goroutines de fundo (mock-finish/retry) ANTES do Close do DB (LIFO:
+	// registrado depois do Close → roda antes dele). Sem isso o mock-finish de 1s
+	// escrevia no DB durante o RemoveAll do t.TempDir() → flake "directory not
+	// empty" na CI (TestTick_BlockedSuccessorWaitsAndRunsAfterSetOK et al.).
+	t.Cleanup(s.Stop)
 	return s
 }
 

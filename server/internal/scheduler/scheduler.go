@@ -69,6 +69,15 @@ type Scheduler struct {
 
 	// === G1 (2026-06-14) — HA: só o líder materializa a daily + dispatch ===
 	leader Leader
+
+	// Ciclo de vida das goroutines de fundo (dispatch, mock-finish do DemoMode,
+	// backoff de retry). Stop() fecha quit e espera as em voo — sem isso um write
+	// tardio (ex.: o mock-finish de 1s do DemoMode) escapa do teardown do teste e
+	// corre com o RemoveAll do t.TempDir() ("directory not empty"), o flake
+	// recorrente da CI. Em produção o Run(ctx) não precisa chamar Stop.
+	quit     chan struct{}
+	wg       sync.WaitGroup
+	stopOnce sync.Once
 }
 
 // Bus — Fase 2 (futuro serverless): transporte do control-plane. Abstrai a
@@ -106,7 +115,29 @@ func New(store *storage.FileStore, db *db.DB, bus Bus, tick time.Duration) *Sche
 		running:   map[string]bool{},
 		noAgentAt: map[string]time.Time{},
 		settings:  Settings{DailyAt: "00:00", Timezone: "America/Sao_Paulo"},
+		quit:      make(chan struct{}),
 	}
+}
+
+// sleepOrStop dorme d, ou retorna false na hora se Stop() foi chamado — deixa os
+// sleeps de fundo (mock-finish do DemoMode, backoff de retry) abortáveis no
+// teardown em vez de escreverem no DB depois que o teste/processo já encerrou.
+func (s *Scheduler) sleepOrStop(d time.Duration) bool {
+	select {
+	case <-time.After(d):
+		return true
+	case <-s.quit:
+		return false
+	}
+}
+
+// Stop sinaliza as goroutines de fundo (dispatch/mock-finish/retry) a abortar e
+// espera as em voo terminarem. Idempotente. Usado no teardown dos testes (ANTES
+// do Close do DB) para garantir que nenhum write sobreviva ao RemoveAll do
+// t.TempDir(); também disponível para um shutdown gracioso do processo.
+func (s *Scheduler) Stop() {
+	s.stopOnce.Do(func() { close(s.quit) })
+	s.wg.Wait()
 }
 
 // === Bloco 2 setters (chamados em main após construir as engines) ===
@@ -1004,7 +1035,9 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 	s.emitEvent(id, "started", "scheduler", "")
 	s.hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusRunning)})
 
+	s.wg.Add(1)
 	go func() {
+		defer s.wg.Done()
 		// R2 — panic-recovery por dispatch: um panic aqui (executor, hub, codec)
 		// NÃO derruba o processo. Libera o running-guard e finaliza a instance
 		// como NOTOK para ela não ficar pendurada em RUNNING.
@@ -1045,7 +1078,9 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 			if s.DemoMode {
 				// Demo/playground: mock finaliza em 1s para não bloquear a demo.
 				s.emitEvent(id, "submitted", "scheduler", "no agent online — mock (demo-mode)")
-				time.Sleep(1 * time.Second)
+				if !s.sleepOrStop(1 * time.Second) {
+					return // Stop() pediu parada — não escreve no DB pós-teardown
+				}
 				s.FinishInstance(id, domain.StatusOK, 0, "(no agent online, mocked — demo-mode)")
 				return
 			}
@@ -1295,16 +1330,24 @@ func (s *Scheduler) maybeRetry(id, output string) bool {
 	s.emitEvent(id, "retry", "scheduler", fmt.Sprintf("falhou — retry %d/%d", next, maxAttempts))
 	s.hub.BroadcastWeb("instance.changed", map[string]interface{}{"id": id, "status": string(domain.StatusWaiting)})
 	// backoff curto antes de re-dispatchar (running[id] já foi liberado).
-	// R2 — recover: o timer roda em goroutine própria; um panic na parte síncrona
-	// de startInstance (antes de spawnar a dela) não pode derrubar o processo.
-	time.AfterFunc(5*time.Second, func() {
+	// Goroutine rastreada + sleep abortável (ver Stop/sleepOrStop): sem isso o
+	// AfterFunc tardio re-disparava startInstance DEPOIS do teardown do teste,
+	// escrevendo no DB durante o RemoveAll do t.TempDir() (flake da CI).
+	// R2 — recover: um panic na parte síncrona de startInstance não pode derrubar
+	// o processo.
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("[scheduler] PANIC no retry de %s recuperado: %v", id, r)
 			}
 		}()
+		if !s.sleepOrStop(5 * time.Second) {
+			return // Stop() — aborta o backoff sem re-disparar pós-teardown
+		}
 		s.startInstance(id, def)
-	})
+	}()
 	return true
 }
 
