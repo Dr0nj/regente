@@ -8,7 +8,8 @@
  */
 
 import Dagre from "@dagrejs/dagre";
-import type { Node, Edge } from "@xyflow/react";
+import { Position } from "@xyflow/react";
+import type { Node, Edge, NodeHandle } from "@xyflow/react";
 import type { JobNodeData } from "@/lib/job-config";
 import type { JobInstance, JobDefinition, EdgeCondition } from "@/lib/orchestrator-model";
 import { EDGE_CONDITION_DEFAULT, TEAMS } from "@/lib/orchestrator-model";
@@ -22,6 +23,26 @@ export type Mode = "design" | "monitoring";
 
 export const NODE_W = 220;
 export const NODE_H = 72;
+
+// Handles estáticos do card de job — fallback de geometria pro RF v12 renderizar
+// a LINHA DE DEPENDÊNCIA antes do ResizeObserver medir o nó. Sem isto, toda vez
+// que o array de nós é reconstruído (cada update de status) o RF zera
+// internals.handleBounds pra `undefined` — porque parseHandles() só preserva a
+// medição anterior quando userNode.measured existe, e nossos nós não carregam
+// `measured`. Com handleBounds nulo, getEdgePosition() retorna null e a EDGE SOME
+// (mesma raiz do "cards somem", camada 3, agora na aresta: sob rajada o re-measure
+// não chega e a linha fica sumida até um F5). Declarando os handles, o fallback
+// `toHandleBounds(node.handles)` mantém a aresta sempre posicionável; a medição
+// real do DOM assume depois (getEdgePosition prefere internals.handleBounds).
+// Geometria = padrão do RF pro card 200×55 com nub de 6px (centro horizontal,
+// 3px além de cada ponta), pra o fallback coincidir com o measured — sem "pulo".
+const HANDLE_PX = 6;
+const CARD_VISUAL_W = 200; // largura do JobNodeV2 (≠ NODE_W=220, a célula de layout)
+const CARD_VISUAL_H = 55; // altura renderizada do card (medida no lab)
+const JOB_HANDLES: NodeHandle[] = [
+  { type: "target", position: Position.Top, x: (CARD_VISUAL_W - HANDLE_PX) / 2, y: -HANDLE_PX / 2, width: HANDLE_PX, height: HANDLE_PX },
+  { type: "source", position: Position.Bottom, x: (CARD_VISUAL_W - HANDLE_PX) / 2, y: CARD_VISUAL_H - HANDLE_PX / 2, width: HANDLE_PX, height: HANDLE_PX },
+];
 // Âncora vertical de entrada do canvas: o topo do conteúdo fica este tanto abaixo
 // do topo da área (px de tela). Um pouco mais baixo que a trava antiga (24) — mesma
 // sensação do "Organizar". Vale pro Monitoring e pro Design.
@@ -459,6 +480,9 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
       // enquanto mede — sob rajada a medição pode não chegar e o card some.
       initialWidth: NODE_W,
       initialHeight: NODE_H,
+      // Handles estáticos (ver JOB_HANDLES): mantém a LINHA de dependência
+      // posicionável mesmo antes/sem a medição — sob rajada a edge não some.
+      handles: JOB_HANDLES,
       data: {
         label: inst.label,
         jobType: inst.jobType,
@@ -509,6 +533,9 @@ export function buildDesignCanvas(defs: JobDefinition[], cfg: LayoutConfig = DEF
       // enquanto mede — sob rajada a medição pode não chegar e o card some.
       initialWidth: NODE_W,
       initialHeight: NODE_H,
+      // Handles estáticos (ver JOB_HANDLES): mantém a LINHA de dependência
+      // posicionável mesmo antes/sem a medição — sob rajada a edge não some.
+      handles: JOB_HANDLES,
       data: {
         label: def.label,
         jobType: def.jobType as JobNodeData["jobType"],
