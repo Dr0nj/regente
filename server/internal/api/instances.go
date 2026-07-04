@@ -35,7 +35,13 @@ const instanceCols = `id, definition_id, COALESCE(team,''), order_date, status, 
 	COALESCE(agent_id,''), COALESCE(exit_code,0), COALESCE(output,''), COALESCE(forced,0),
 	COALESCE(carried_from,''), COALESCE(confirmed,0), COALESCE(cycle_runs,0)`
 
-func scanInstances(rows *sql.Rows) []instanceRow {
+// scanInstances materializa as linhas. CRÍTICO: propaga rows.Err() e qualquer
+// erro de Scan em vez de engolir e devolver lista PARCIAL. Um erro de leitura no
+// meio da iteração (ex.: SQLITE_BUSY sob rajada de writes) fazia Next() parar e
+// o handler responder 200 com uma lista truncada — o cliente tratava isso como
+// snapshot completo e apagava do board tudo que "faltou" (cards sumindo, só
+// voltando com F5). Melhor falhar (o cliente preserva o estado atual em erro).
+func scanInstances(rows *sql.Rows) ([]instanceRow, error) {
 	out := []instanceRow{}
 	for rows.Next() {
 		var ir instanceRow
@@ -47,7 +53,7 @@ func scanInstances(rows *sql.Rows) []instanceRow {
 			&ir.AgentID, &ir.ExitCode, &ir.Output, &forcedInt,
 			&ir.CarriedFrom, &confirmedInt, &ir.CycleRuns,
 		); err != nil {
-			continue
+			return nil, err
 		}
 		if startedAt.Valid {
 			t := startedAt.Time
@@ -61,7 +67,7 @@ func scanInstances(rows *sql.Rows) []instanceRow {
 		ir.Confirmed = confirmedInt == 1
 		out = append(out, ir)
 	}
-	return out
+	return out, rows.Err()
 }
 
 // instanceQuery — P2/escala: filtros server-side de /api/instances*. Tudo opcional
@@ -190,7 +196,12 @@ func (s *server) listInstances(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	writeJSON(w, 200, scanInstances(rows))
+	list, err := scanInstances(rows)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, 200, list)
 }
 
 // pageInstances — GET /api/instances/page. Paginação por CURSOR (keyset estável em
@@ -219,7 +230,11 @@ func (s *server) pageInstances(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	items := scanInstances(rows)
+	items, err := scanInstances(rows)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	next := ""
 	if len(items) > limit {
 		next = items[limit-1].ID

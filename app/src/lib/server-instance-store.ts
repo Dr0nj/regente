@@ -153,6 +153,16 @@ const LEGACY_CAP = 2000;
 // gen guard: se um fetch mais novo começou enquanto este aguardava a resposta,
 // a resposta velha é descartada inteira — resposta fora de ordem não pode
 // reescrever o board com um snapshot do passado.
+//
+// RAIZ DO "cards somem em rajada e só voltam com F5" (fechada de vez):
+// O GET /api/instances é um snapshot POSITIVO — prova o que EXISTE, nunca prova
+// que o resto sumiu. Dentro de um mesmo order_date o runtime NUNCA apaga instance
+// (não há DELETE FROM instances em produção — só o seed dev; e o server nem emite
+// instance.deleted). Logo, uma resposta same-date "menor" que o cache é SEMPRE um
+// snapshot parcial (SQLITE_BUSY/erro transitório de leitura truncando a lista num
+// 200 sob rajada de rerun/cancel/set-OK), jamais uma remoção real. Por isso NÃO se
+// deleta por ausência no mesmo dia: fazer isso era o que apagava o board. Remoção
+// por ausência só faz sentido em TROCA DE DATA (limpar o que é de outra data).
 let fetchGen = 0;
 
 async function doFetch(date: string): Promise<void> {
@@ -163,9 +173,8 @@ async function doFetch(date: string): Promise<void> {
   );
   if (gen !== fetchGen) return; // obsoleto: fetch mais novo já em voo/aplicado
 
-  const seen = new Set<string>();
+  // Upsert positivo do snapshot.
   for (const s of arr ?? []) {
-    seen.add(s.id);
     // Deletado via WS durante o fetch → snapshot antigo não ressuscita.
     if ((tombstones.get(s.id) ?? 0) >= startedAt) continue;
     // Mutado via WS durante o fetch → snapshot não regride status; o refresh
@@ -173,12 +182,14 @@ async function doFetch(date: string): Promise<void> {
     if (cache.has(s.id) && (touchedAt.get(s.id) ?? 0) >= startedAt) continue;
     cache.set(s.id, toWeb(s));
   }
-  for (const id of [...cache.keys()]) {
-    if (seen.has(id)) continue;
-    // Instance criada/mutada via WS depois do snapshot ser tirado (ex.: força
-    // em lote) — NÃO deletar; o refresh de cauda traz o registro completo.
-    if ((touchedAt.get(id) ?? 0) >= startedAt) continue;
-    cache.delete(id);
+  // Remoção por AUSÊNCIA só em troca de data (ver bloco acima). No mesmo dia,
+  // um id que "faltou" no snapshot é truncamento transitório — preserva.
+  if (date !== lastFetchDate) {
+    for (const [id, inst] of [...cache]) {
+      if (inst.orderDate === date) continue; // é do dia consultado → mantém
+      if ((touchedAt.get(id) ?? 0) >= startedAt) continue; // mutado via WS agora → mantém
+      cache.delete(id);
+    }
   }
   // Marcas antigas já cumpriram o papel (só protegem contra snapshots que
   // começaram antes delas; futuros snapshots começam depois de agora).

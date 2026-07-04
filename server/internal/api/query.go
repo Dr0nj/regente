@@ -180,8 +180,12 @@ func (s *server) runQuery(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		items := scanInstances(rows)
+		items, scanErr := scanInstances(rows)
 		rows.Close()
+		if scanErr != nil {
+			http.Error(w, scanErr.Error(), http.StatusInternalServerError)
+			return
+		}
 		resp["answer"] = map[string]any{"text": listText(items, intent), "items": items, "count": len(items)}
 
 	case "explain":
