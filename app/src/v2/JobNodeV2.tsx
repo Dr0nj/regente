@@ -96,6 +96,25 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
                 ⚡FORCED
               </span>
             )}
+            {data.dryRun && (
+              <span
+                title="Dry run — o job entra na daily e 'roda', mas NÃO executa nada (log only)"
+                style={{
+                  fontSize: "var(--v2-text-xs)",
+                  fontFamily: "var(--v2-font-mono)",
+                  fontWeight: 700,
+                  letterSpacing: "0.08em",
+                  color: "#c4b5fd",
+                  padding: "1px 4px",
+                  border: "1px solid #4c1d95",
+                  background: "rgba(196,181,253,0.08)",
+                  borderRadius: "var(--v2-radius-sm)",
+                  flexShrink: 0,
+                }}
+              >
+                👻GHOST
+              </span>
+            )}
           </div>
 
           {/* Linha 2: type + status */}

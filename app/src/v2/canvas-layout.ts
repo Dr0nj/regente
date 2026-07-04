@@ -491,6 +491,10 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
         lastRun: inst.startedAt ? fmtHm(inst.startedAt) : undefined,
         mode: "monitoring",
         forced: inst.manual,
+        // Job "que roda sem fazer nada": flag dryRun da definition (log only,
+        // não executa). Propriedade estática do def — lê via defsById (não
+        // depende do server materializar dryRun na instance). Selo 👻GHOST no card.
+        dryRun: !!defsById.get(inst.definitionId)?.dryRun,
         waitEvent: waitingOnDeps.has(inst.id),
         // WAIT AGENT (azul claro): WAITING sem bloqueio de dependência e sem
         // agente online capaz de executar. Só deriva quando a lista de agentes
