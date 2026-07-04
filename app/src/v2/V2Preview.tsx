@@ -105,7 +105,7 @@ function V2PreviewInner() {
   const [showDryRun, setShowDryRun] = useState(false);
   // Dados do canvas (defs + instances) e ciclo de vida deles (carga inicial,
   // subscribes, scheduler local, resync via WS) vivem no hook.
-  const { defs, instances, reloadDefs, syncInstances } = useOrchestratorData();
+  const { defs, instances, ready, reloadDefs, syncInstances } = useOrchestratorData();
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
   const [editingDef, setEditingDef] = useState<{ def: JobDefinition; isNew: boolean } | null>(null);
   const [lastDaily, setLastDaily] = useState<string | null>(getLastDailyRun());
@@ -1356,8 +1356,9 @@ function V2PreviewInner() {
           </>
         )}
 
-        {/* Empty state overlay */}
-        {mode === "monitoring" && !hasInstances && (
+        {/* Empty state overlay — só depois do bootstrap assentar (ready): no F5 as
+            instances chegam async e o "Ambiente vazio" piscava antes do board. */}
+        {mode === "monitoring" && !hasInstances && ready && (
           <EmptyState
             title={hasDefs ? "Nenhuma instance hoje" : "Ambiente vazio"}
             hint={hasDefs

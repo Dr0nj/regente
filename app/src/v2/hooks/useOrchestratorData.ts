@@ -30,6 +30,11 @@ import { toast } from "../Toast";
 export function useOrchestratorData() {
   const [instances, setInstances] = useState<JobInstance[]>([]);
   const [defs, setDefs] = useState<JobDefinition[]>([]);
+  // ready — bootstrap inicial (defs + 1ª carga de instances) já assentou. Enquanto
+  // false, a UI NÃO mostra o empty state "Ambiente vazio": no server mode as
+  // instances chegam async e o overlay piscava antes do board materializar no F5.
+  const [defsLoaded, setDefsLoaded] = useState(false);
+  const [instancesLoaded, setInstancesLoaded] = useState(!isServerMode());
 
   /* ── Mount: load definitions + subscribe ── */
   useEffect(() => {
@@ -66,6 +71,7 @@ export function useOrchestratorData() {
         }
       }
       setInstances(getTodayInstances());
+      setDefsLoaded(true);
     });
     const unsubDefs = onDefinitionsChange((list) => {
       setDefs([...list]);
@@ -78,6 +84,7 @@ export function useOrchestratorData() {
     // evento WS quando o dia do cliente ≠ dia do server (acesso remoto/virada de dia).
     const unsubInst = onInstanceChange(() => {
       setInstances(getTodayInstances());
+      setInstancesLoaded(true);
     });
     startScheduler(2000);
 
@@ -89,7 +96,7 @@ export function useOrchestratorData() {
         // novo). Recarrega defs que podem ter falhado no mount (401) ou mudado
         // enquanto o canal esteve fora. Instances ressincronizam no próprio store.
         if (ev.event === "_connected") {
-          void reloadDefinitions().then((list) => setDefs([...list]));
+          void reloadDefinitions().then((list) => { setDefs([...list]); setDefsLoaded(true); });
           return;
         }
         if (ev.event === "definition.changed" || ev.event === "definition.deleted") {
@@ -133,5 +140,5 @@ export function useOrchestratorData() {
     setInstances(getTodayInstances());
   }, []);
 
-  return { defs, instances, reloadDefs, syncInstances };
+  return { defs, instances, ready: defsLoaded && instancesLoaded, reloadDefs, syncInstances };
 }

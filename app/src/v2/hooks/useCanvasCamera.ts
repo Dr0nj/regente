@@ -21,6 +21,25 @@ import {
   type Mode,
 } from "../canvas-layout";
 
+type SavedViewport = { x: number; y: number; zoom: number };
+
+// Câmeras guardadas por contexto de visão, POR ABA (sessionStorage), pra sobreviver
+// ao F5 sem re-enquadrar. Antes o mapa era só em memória: no reload ele nascia vazio
+// → o gate de entrada re-organizava (140ms + anim) e o board "pulava" da posição
+// default (0,0) pra enquadrada. Com o snapshot restaurado, o setViewport do
+// useLayoutEffect recoloca a câmera ANTES do paint dos nós → reload sem variação.
+const VIEWPORTS_STORAGE_KEY = "regente:viewports";
+
+function loadPersistedViewports(): Map<string, SavedViewport> {
+  const m = new Map<string, SavedViewport>();
+  if (typeof window === "undefined") return m;
+  try {
+    const raw = window.sessionStorage.getItem(VIEWPORTS_STORAGE_KEY);
+    if (raw) for (const [k, v] of JSON.parse(raw) as [string, SavedViewport][]) m.set(k, v);
+  } catch { /* ignore */ }
+  return m;
+}
+
 export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: string) {
   const { getViewport, setViewport } = useReactFlow();
   const storeApi = useStoreApi();
@@ -148,7 +167,10 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
   // Só enquadra a 1ª vez que a view aparece (sem posição salva); depois disso a
   // posição só muda se o usuário pedir (Organizar / focar num job / pan/zoom).
   // useLayoutEffect: restaura ANTES do paint → sem flash da posição antiga.
-  const savedViewports = useRef(new Map<string, { x: number; y: number; zoom: number }>());
+  // Lazy: hidrata do sessionStorage 1× (não a cada render). null! + guarda = idiom
+  // de ref preguiçosa tipada como Map não-nulo nos usos abaixo.
+  const savedViewports = useRef<Map<string, SavedViewport>>(null!);
+  if (!savedViewports.current) savedViewports.current = loadPersistedViewports();
 
   // Salva a posição da view que está SAINDO — só quando o viewContextKey MUDA de
   // fato (troca de aba/folders), nunca no churn de load. (Salvar a cada flip de
@@ -162,6 +184,23 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
       prevKeyRef.current = viewContextKey;
     }
   });
+
+  // Persiste as câmeras (views visitadas + a ATIVA) ao sair/recarregar, pra que o
+  // F5 restaure exatamente onde o usuário estava. pagehide cobre reload e fechar
+  // aba; prevKeyRef.current é a view ativa neste instante.
+  useEffect(() => {
+    const flush = () => {
+      try {
+        savedViewports.current.set(prevKeyRef.current, getViewport());
+        window.sessionStorage.setItem(
+          VIEWPORTS_STORAGE_KEY,
+          JSON.stringify([...savedViewports.current]),
+        );
+      } catch { /* ignore */ }
+    };
+    window.addEventListener("pagehide", flush);
+    return () => window.removeEventListener("pagehide", flush);
+  }, [getViewport]);
 
   // Ao ENTRAR numa view: restaura a posição salva (sem animar → sem "desalinha e
   // realinha") ou, se é a 1ª vez, enquadra. hasNodes é boolean (0↔N), então churn
