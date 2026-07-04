@@ -162,4 +162,11 @@ export interface JobNodeData {
    * o server dispara o job na hora (tick nudge no ws handler).
    */
   waitAgent?: boolean;
+  /**
+   * Instance em HOLD — segurada manualmente por um operador (Control-M "Hold").
+   * Não roda até um Release. Como HOLD colapsa para INACTIVE na cor de status
+   * (igual a CANCELLED), o card sinaliza o estado com um cadeado sobreposto no
+   * canto superior esquerdo — sem cadeado é IDLE de verdade (cancelado/ocioso).
+   */
+  held?: boolean;
 }

@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
+import { Lock } from "lucide-react";
 import type { JobNodeData, JobStatus } from "@/lib/job-config";
 
 /* ──────────────────────────────────────────────────────────────
@@ -44,6 +45,7 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
     <div
       className="v2-grain-card v2-edge-highlight"
       style={{
+        position: "relative",
         width: 200,
         background: "var(--v2-bg-surface)",
         border: `1px solid ${selected ? "var(--v2-accent-dark)" : "var(--v2-border-medium)"}`,
@@ -52,6 +54,25 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
         overflow: "hidden",
       }}
     >
+      {/* HOLD manual — cadeado sobreposto no canto superior esquerdo, fundo
+          transparente. HOLD colapsa para INACTIVE na cor de status (igual a
+          CANCELLED); o cadeado é o que diferencia "segurado por operador" de
+          "ocioso/cancelado". */}
+      {data.held && (
+        <div
+          title="Em HOLD — segurado manualmente por um operador; não roda até um Release"
+          style={{
+            position: "absolute",
+            top: 3,
+            left: 5,
+            zIndex: 2,
+            display: "flex",
+            pointerEvents: "none",
+          }}
+        >
+          <Lock size={11} strokeWidth={2.5} color="#c4b5fd" />
+        </div>
+      )}
       {/* Status bar — 2px colorida à esquerda, não gradiente */}
       <div style={{ display: "flex" }}>
         <div
@@ -63,7 +84,9 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
         />
         <div style={{ flex: 1, padding: "8px 10px", minWidth: 0 }}>
           {/* Linha 1: label (sem badge de folder — a folder já é contexto da lane) */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {/* paddingLeft reserva o espaço do cadeado sobreposto quando em HOLD,
+              pra ele não cobrir as primeiras letras do label. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: data.held ? 13 : 0 }}>
             <span
               style={{
                 fontSize: "var(--v2-text-md)",

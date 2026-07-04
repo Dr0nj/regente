@@ -501,6 +501,9 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
         // materializados em tempo real (o "ghost fantasma"). O snapshot vem do
         // server (coluna dry_run, schemaV9) e do createInstance no path local.
         dryRun: !!inst.dryRun,
+        // HOLD manual (operador): colapsa para INACTIVE na cor, então o card
+        // sinaliza com um cadeado sobreposto — snapshot da própria instância.
+        held: inst.status === "HOLD",
         waitEvent: waitingOnDeps.has(inst.id),
         // WAIT AGENT (azul claro): WAITING sem bloqueio de dependência e sem
         // agente online capaz de executar. Só deriva quando a lista de agentes
