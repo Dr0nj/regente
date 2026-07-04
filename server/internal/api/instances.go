@@ -28,12 +28,17 @@ type instanceRow struct {
 	CarriedFrom  string     `json:"carriedFrom,omitempty"` // ciclo de vida da daily: dia de origem se foi carregada da diária anterior.
 	Confirmed    bool       `json:"confirmed,omitempty"`   // Control-M Confirm: operador liberou (job confirm:true).
 	CycleRuns    int        `json:"cycleRuns,omitempty"`   // cyclic runtime: voltas OK completadas no dia.
+	// DryRun CONGELADO na ordem (coluna dry_run, ver schemaV9). É a fonte da flag
+	// "job roda sem fazer nada" (selo 👻GHOST) no Monitoring — deliberadamente NÃO
+	// derivada da definition viva, senão ligar dryRun no Design reescreveria cards
+	// de jobs já ordenados. Monitoring é imutável; só a próxima ordem reflete a def.
+	DryRun bool `json:"dryRun,omitempty"`
 }
 
 const instanceCols = `id, definition_id, COALESCE(team,''), order_date, status, scheduled_at,
 	started_at, finished_at,
 	COALESCE(agent_id,''), COALESCE(exit_code,0), COALESCE(output,''), COALESCE(forced,0),
-	COALESCE(carried_from,''), COALESCE(confirmed,0), COALESCE(cycle_runs,0)`
+	COALESCE(carried_from,''), COALESCE(confirmed,0), COALESCE(cycle_runs,0), COALESCE(dry_run,0)`
 
 // scanInstances materializa as linhas. CRÍTICO: propaga rows.Err() e qualquer
 // erro de Scan em vez de engolir e devolver lista PARCIAL. Um erro de leitura no
@@ -46,12 +51,12 @@ func scanInstances(rows *sql.Rows) ([]instanceRow, error) {
 	for rows.Next() {
 		var ir instanceRow
 		var startedAt, finishedAt sql.NullTime
-		var forcedInt, confirmedInt int
+		var forcedInt, confirmedInt, dryRunInt int
 		if err := rows.Scan(
 			&ir.ID, &ir.DefinitionID, &ir.Team, &ir.OrderDate, &ir.Status, &ir.ScheduledAt,
 			&startedAt, &finishedAt,
 			&ir.AgentID, &ir.ExitCode, &ir.Output, &forcedInt,
-			&ir.CarriedFrom, &confirmedInt, &ir.CycleRuns,
+			&ir.CarriedFrom, &confirmedInt, &ir.CycleRuns, &dryRunInt,
 		); err != nil {
 			return nil, err
 		}
@@ -65,6 +70,7 @@ func scanInstances(rows *sql.Rows) ([]instanceRow, error) {
 		}
 		ir.Forced = forcedInt == 1
 		ir.Confirmed = confirmedInt == 1
+		ir.DryRun = dryRunInt == 1
 		out = append(out, ir)
 	}
 	return out, rows.Err()

@@ -228,3 +228,58 @@ func TestTick_NoAgentNoClaim(t *testing.T) {
 		t.Fatalf("Explain deveria apontar WAIT_AGENT, veio %+v", ex.Blockers)
 	}
 }
+
+// Imutabilidade do Monitoring (bug 👻GHOST, 2026-07-04): a flag dryRun de uma
+// instância JÁ ORDENADA é congelada na ordem (coluna dry_run, schemaV9) e NÃO
+// pode ser reescrita ao mexer na definition viva. Antes, o front derivava o selo
+// GHOST da def viva — ligar dryRun no Design + publicar acendia o selo em cards de
+// jobs já materializados em tempo real, o que o Monitoring nunca deve fazer.
+func TestDryRun_FrozenOnOrder_NotRewrittenByLiveDef(t *testing.T) {
+	s := newTestScheduler(t)
+	s.DemoMode = false // só interessa a materialização (INSERT), não o dispatch.
+
+	// Def SEM dryRun no momento da ordem.
+	def := domain.JobDefinition{ID: "gh", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true}, DryRun: false}
+	s.mu.Lock()
+	s.defs = []domain.JobDefinition{def}
+	s.mu.Unlock()
+
+	const date = "2026-07-04"
+	if created := s.RunDaily(date); created != 1 {
+		t.Fatalf("esperava 1 instance materializada, veio %d", created)
+	}
+
+	readDryRun := func() int {
+		var dr int
+		if err := s.db.QueryRow(`SELECT COALESCE(dry_run,0) FROM instances WHERE definition_id='gh' AND order_date=?`, date).Scan(&dr); err != nil {
+			t.Fatalf("read dry_run: %v", err)
+		}
+		return dr
+	}
+
+	if dr := readDryRun(); dr != 0 {
+		t.Fatalf("instância nasceu com dry_run=%d, esperava 0 (def não era dryRun na ordem)", dr)
+	}
+
+	// Simula "ligar dryRun no Design e publicar": a def VIVA muda...
+	s.mu.Lock()
+	s.defs = []domain.JobDefinition{{ID: "gh", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true}, DryRun: true}}
+	s.mu.Unlock()
+
+	// ...mas a instância JÁ ORDENADA continua imutável (só a próxima ordem reflete).
+	if dr := readDryRun(); dr != 0 {
+		t.Fatalf("mexer na def viva reescreveu a instância (dry_run=%d) — Monitoring deveria ser imutável", dr)
+	}
+
+	// A PRÓXIMA ordem (força manual) sim carrega o novo valor congelado.
+	if _, err := s.ForceOrder("gh"); err != nil {
+		t.Fatalf("force: %v", err)
+	}
+	var forcedDR int
+	if err := s.db.QueryRow(`SELECT COALESCE(dry_run,0) FROM instances WHERE definition_id='gh' AND forced=1`).Scan(&forcedDR); err != nil {
+		t.Fatalf("read forced dry_run: %v", err)
+	}
+	if forcedDR != 1 {
+		t.Fatalf("nova ordem (force) deveria congelar dry_run=1, veio %d", forcedDR)
+	}
+}

@@ -30,6 +30,7 @@ interface ServerInstance {
   carriedFrom?: string;
   confirmed?: boolean;
   cycleRuns?: number;
+  dryRun?: boolean;
 }
 
 function parseTime(s?: string): number | undefined {
@@ -73,6 +74,11 @@ function toWeb(s: ServerInstance): JobInstance {
     carriedFrom: s.carriedFrom || undefined,
     confirmed: s.confirmed,
     cycleRuns: s.cycleRuns,
+    // Snapshot da ordem (coluna dry_run no server, ver schemaV9): a flag que
+    // acende o selo 👻GHOST no Monitoring vem CONGELADA da instância, não da def
+    // viva. Assim, ligar dryRun no Design + publicar NÃO reescreve cards de jobs
+    // já ordenados — o Monitoring só muda na próxima ordem (daily/force/manual).
+    dryRun: s.dryRun,
     output: {
       text: s.output ?? "",
       exitCode: s.exitCode ?? 0,

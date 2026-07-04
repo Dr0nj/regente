@@ -491,10 +491,16 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
         lastRun: inst.startedAt ? fmtHm(inst.startedAt) : undefined,
         mode: "monitoring",
         forced: inst.manual,
-        // Job "que roda sem fazer nada": flag dryRun da definition (log only,
-        // não executa). Propriedade estática do def — lê via defsById (não
-        // depende do server materializar dryRun na instance). Selo 👻GHOST no card.
-        dryRun: !!defsById.get(inst.definitionId)?.dryRun,
+        // Selo 👻GHOST ("job roda sem fazer nada — log only"): lê o dryRun
+        // CONGELADO na própria instância (snapshot da ordem), NUNCA a def viva.
+        //
+        // Por quê (bug corrigido em 2026-07-04): o Monitoring é IMUTÁVEL — uma
+        // instância já ordenada só muda numa NOVA ordem (daily/force/manual).
+        // Antes, isto lia `defsById.get(inst.definitionId)?.dryRun` (a def VIVA),
+        // então ligar dryRun no Design + publicar reescrevia o selo de jobs já
+        // materializados em tempo real (o "ghost fantasma"). O snapshot vem do
+        // server (coluna dry_run, schemaV9) e do createInstance no path local.
+        dryRun: !!inst.dryRun,
         waitEvent: waitingOnDeps.has(inst.id),
         // WAIT AGENT (azul claro): WAITING sem bloqueio de dependência e sem
         // agente online capaz de executar. Só deriva quando a lista de agentes

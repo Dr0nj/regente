@@ -477,6 +477,7 @@ var sqliteMigrations = []migration{
 	{version: 6, sql: schemaV6("DATETIME")},
 	{version: 7, sql: schemaV7("DATETIME")},
 	{version: 8, sql: schemaV8(sqliteID, "DATETIME")},
+	{version: 9, sql: schemaV9()},
 }
 
 var pgMigrations = []migration{
@@ -488,6 +489,7 @@ var pgMigrations = []migration{
 	{version: 6, sql: schemaV6("TIMESTAMPTZ")},
 	{version: 7, sql: schemaV7("TIMESTAMPTZ")},
 	{version: 8, sql: schemaV8(pgID, "TIMESTAMPTZ")},
+	{version: 9, sql: schemaV9()},
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
@@ -583,4 +585,20 @@ CREATE TABLE IF NOT EXISTS viewpoints (
 	created_at   ` + ts + ` DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_viewpoints_owner ON viewpoints(owner)`
+}
+
+// schemaV9 — dry_run SNAPSHOTADO na instance (2026-07-04). Igual ao `team` (v4), a
+// flag dryRun ("job roda sem fazer nada — log only") passa a ser CONGELADA na
+// instância no momento da ordem, em vez de lida da definition viva.
+//
+// Por quê: um job já materializado no Monitoring é IMUTÁVEL — só muda numa NOVA
+// ordem (daily/force/manual). Se o selo 👻GHOST fosse derivado da def viva, ligar
+// dryRun no Design e publicar reescreveria o card de um job já ordenado (o "ghost
+// fantasma" que não devia existir). Congelando aqui, o Monitoring reflete o dia
+// COMO FOI SCHEDULADO; a mudança no Design só aparece na próxima ordem.
+//
+// ALTER idêntico em SQLite e Postgres; instances antigas ficam com dry_run=0
+// (default seguro: sem selo até a próxima daily reescrever com o valor real).
+func schemaV9() string {
+	return `ALTER TABLE instances ADD COLUMN dry_run INTEGER NOT NULL DEFAULT 0`
 }
