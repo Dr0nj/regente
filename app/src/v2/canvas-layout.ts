@@ -331,6 +331,14 @@ function composeColumns<T extends { id: string; team?: string }>(
       id: `lane-${prefix}-${L.team}`,
       type: "laneLabel",
       position: { x: cursorX, y: topY },
+      // initialWidth/Height: o RF v12 mantém o nó `visibility:hidden` até seu
+      // ResizeObserver medir as dimensões. Sob rajada de comandos esse observer
+      // estoura ("ResizeObserver loop completed with undelivered notifications")
+      // e a medida nunca chega → o nó fica invisível e o board "some" até um F5.
+      // Como o layout é determinístico, damos a dimensão de cara: hasDimensions
+      // fica true na 1ª render e o nó nunca depende da medição pra aparecer.
+      initialWidth: colWidth,
+      initialHeight: colHeight,
       data: { team: L.team, count: L.count, width: colWidth, height: colHeight },
       draggable: false,
       selectable: false,
@@ -447,6 +455,10 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
       id: `m-${inst.id}`,
       type: "jobV2",
       position: { x, y },
+      // Dimensão de cara (ver nota na lane): evita o `visibility:hidden` do RF
+      // enquanto mede — sob rajada a medição pode não chegar e o card some.
+      initialWidth: NODE_W,
+      initialHeight: NODE_H,
       data: {
         label: inst.label,
         jobType: inst.jobType,
@@ -493,6 +505,10 @@ export function buildDesignCanvas(defs: JobDefinition[], cfg: LayoutConfig = DEF
       id: `d-${def.id}`,
       type: "jobV2",
       position: { x, y },
+      // Dimensão de cara (ver nota na lane): evita o `visibility:hidden` do RF
+      // enquanto mede — sob rajada a medição pode não chegar e o card some.
+      initialWidth: NODE_W,
+      initialHeight: NODE_H,
       data: {
         label: def.label,
         jobType: def.jobType as JobNodeData["jobType"],
