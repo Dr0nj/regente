@@ -23,6 +23,46 @@ import {
 
 type SavedViewport = { x: number; y: number; zoom: number };
 
+// ── Sensibilidade do input do canvas (mouse) ─────────────────────────────────
+// O ReactFlow v12 NÃO expõe prop de velocidade de zoom/pan (o fator do wheel é
+// fixo no @xyflow/system e o arrasto é 1:1). Então desativamos o zoomOnScroll e o
+// panOnDrag nativos e reimplementamos os dois AQUI, com ganho reduzido — pedido do
+// usuário: "diminuir a velocidade de reação tanto pra puxar pros lados quanto pra
+// dar zoom". Ajuste fino é só mexer nestas duas constantes.
+const MIN_ZOOM = 0.5; // = default do ReactFlow (usado no clamp do fit)
+const MAX_ZOOM = 2;   // = default do ReactFlow
+// Ganho do zoom por unidade de deltaY. O nativo equivale a ~ln2 (0.693, pois faz
+// 2^x); 0.35 ≈ metade da velocidade → passo mais suave por "clique" da roda.
+const WHEEL_ZOOM_GAIN = 0.35;
+// Fração do movimento do mouse aplicada ao pan no arrasto. 1 = 1:1 (nativo);
+// 0.6 = a câmera anda 60% do que a mão anda → puxada mais devagar/calma.
+const DRAG_PAN_SENS = 0.6;
+
+const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
+
+// clampToExtent — replica a restrição do translateExtent do d3-zoom para um
+// viewport {x,y,zoom} qualquer (o setViewport programático NÃO passa por ela).
+// Mantém o pan/zoom custom dentro do MESMO limite que o ReactFlow usaria.
+function clampToExtent(
+  x: number,
+  y: number,
+  zoom: number,
+  w: number,
+  h: number,
+  extent: [[number, number], [number, number]] | undefined,
+): SavedViewport {
+  if (!extent) return { x, y, zoom };
+  const [[x0, y0], [x1, y1]] = extent;
+  const minX = w - x1 * zoom;
+  const maxX = -x0 * zoom;
+  const minY = h - y1 * zoom;
+  const maxY = -y0 * zoom;
+  // Se o extent é MENOR que o pane (min > max), o d3 centraliza — replicamos.
+  const cx = minX <= maxX ? clamp(x, minX, maxX) : (minX + maxX) / 2;
+  const cy = minY <= maxY ? clamp(y, minY, maxY) : (minY + maxY) / 2;
+  return { x: cx, y: cy, zoom };
+}
+
 // Câmeras guardadas por contexto de visão, POR ABA (sessionStorage), pra sobreviver
 // ao F5 sem re-enquadrar. Antes o mapa era só em memória: no reload ele nascia vazio
 // → o gate de entrada re-organizava (140ms + anim) e o board "pulava" da posição
@@ -43,6 +83,11 @@ function loadPersistedViewports(): Map<string, SavedViewport> {
 export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: string) {
   const { getViewport, setViewport } = useReactFlow();
   const storeApi = useStoreApi();
+
+  // Espelhos sempre-frescos p/ os listeners nativos (anexados 1× — não podem
+  // fechar sobre `mode`/`panExtent` de um render antigo).
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
 
   // Trava de pan. Monitoring: topo do conteúdo (folders) alinhado com o ACTIVE JOBS;
   // livre pros lados e pra CIMA (revelar mais jobs abaixo), nunca abaixo do topo.
@@ -66,6 +111,82 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
       [maxX + DESIGN_PAN_MARGIN_X, maxY + DESIGN_PAN_MARGIN_BOTTOM],
     ];
   }, [mode, canvas.nodes]);
+  const extentRef = useRef(panExtent);
+  extentRef.current = panExtent;
+
+  // attachStage — ref-callback pro <main> do palco. Anexa listeners NATIVOS de
+  // wheel (zoom custom, non-passive p/ poder preventDefault — o onWheel do React é
+  // passivo) e de mousedown (pan por arrasto com sensibilidade < 1). Ambos filtram
+  // por `.react-flow` no target, então minimap/drawers (irmãos no <main>) e a
+  // ScaleMonitor (quando o canvas nem monta) passam batido. Reanexa sozinho em
+  // remount do canvas (React chama com null→elemento).
+  const cleanupStageRef = useRef<(() => void) | null>(null);
+  const attachStage = useCallback((el: HTMLElement | null) => {
+    cleanupStageRef.current?.();
+    cleanupStageRef.current = null;
+    if (!el) return;
+
+    let pan: { cx: number; cy: number; vx: number; vy: number; zoom: number } | null = null;
+    const insideFlow = (t: EventTarget | null): t is Element =>
+      t instanceof Element && !!t.closest(".react-flow");
+
+    const onWheel = (e: WheelEvent) => {
+      const t = e.target;
+      if (!insideFlow(t)) return;
+      if (t.closest(".nowheel")) return; // deixa o scroll interno rolar
+      e.preventDefault();
+      const { x, y, zoom } = getViewport();
+      const rect = el.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      // Mesma normalização de deltaMode do @xyflow/system (px/linha/página).
+      const perUnit = e.deltaMode === 1 ? 0.05 : e.deltaMode === 2 ? 1 : 0.002;
+      const nz = clamp(zoom * Math.exp(-e.deltaY * perUnit * WHEEL_ZOOM_GAIN), MIN_ZOOM, MAX_ZOOM);
+      if (nz === zoom) return;
+      // Zoom ancorado no cursor: mantém o ponto do MUNDO sob o ponteiro fixo.
+      const wx = (sx - x) / zoom;
+      const wy = (sy - y) / zoom;
+      const { width, height } = storeApi.getState();
+      setViewport(clampToExtent(sx - wx * nz, sy - wy * nz, nz, width, height, extentRef.current));
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!pan) return;
+      const dx = (e.clientX - pan.cx) * DRAG_PAN_SENS;
+      const dy = (e.clientY - pan.cy) * DRAG_PAN_SENS;
+      const { width, height } = storeApi.getState();
+      setViewport(clampToExtent(pan.vx + dx, pan.vy + dy, pan.zoom, width, height, extentRef.current));
+    };
+    const endPan = () => {
+      if (!pan) return;
+      pan = null;
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", endPan);
+    };
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0 && e.button !== 1) return; // só esquerdo/meio (direito = ctx menu)
+      if (e.shiftKey) return; // Shift+drag = seleção retangular do ReactFlow
+      const t = e.target;
+      if (!insideFlow(t)) return;
+      // No Design os nós/handles são arrastáveis — não pana se o arrasto começa neles.
+      if (modeRef.current === "design" && (t.closest(".react-flow__node") || t.closest(".react-flow__handle"))) return;
+      if (e.button === 1) e.preventDefault(); // corta o autoscroll do botão do meio
+      const vp = getViewport();
+      pan = { cx: e.clientX, cy: e.clientY, vx: vp.x, vy: vp.y, zoom: vp.zoom };
+      document.body.style.userSelect = "none";
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", endPan);
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false, capture: true });
+    el.addEventListener("mousedown", onMouseDown);
+    cleanupStageRef.current = () => {
+      el.removeEventListener("wheel", onWheel, true);
+      el.removeEventListener("mousedown", onMouseDown);
+      endPan();
+    };
+  }, [getViewport, setViewport, storeApi]);
 
   // clampTy — aplica ao movimento PROGRAMÁTICO (organizar/centralizar/minimap) o
   // MESMO limite superior do translateExtent.
@@ -238,5 +359,5 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
     setPendingFocusId(null);
   }, [pendingFocusId, canvas.nodes, focusOnPoint, getViewport]);
 
-  return { panExtent, organizeView, focusOnPoint, focusNode, setPendingFocusId };
+  return { panExtent, organizeView, focusOnPoint, focusNode, setPendingFocusId, attachStage };
 }

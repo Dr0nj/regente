@@ -556,7 +556,7 @@ function V2PreviewInner() {
 
   // Câmera do canvas (trava de pan + âncora de entrada + centralizações) — todo
   // movimento programático é clampado pelo mesmo limite do translateExtent.
-  const { panExtent, organizeView, focusOnPoint, focusNode, setPendingFocusId } =
+  const { panExtent, organizeView, focusOnPoint, focusNode, setPendingFocusId, attachStage } =
     useCanvasCamera(canvas, mode, viewContextKey);
 
   const monitoringJobs = useMemo(() => {
@@ -1280,6 +1280,7 @@ function V2PreviewInner() {
 
       {/* Stage */}
       <main
+        ref={attachStage}
         style={{ flex: 1, position: "relative", minHeight: 0 }}
         onDragOver={onDragOver}
         onDrop={onDrop}
@@ -1297,11 +1298,12 @@ function V2PreviewInner() {
           nodesDraggable={mode === "design"}
           nodesConnectable={mode === "design"}
           elementsSelectable
-          // Pan: left button (default UX). Selection rect: Shift+drag.
-          // panOnDrag={[0,1]} cobre left+middle; right (2) fica livre p/ ctx menu.
-          panOnDrag={[0, 1]}
+          // Pan (arrasto) e zoom (roda) NATIVOS desligados: reimplementados em
+          // useCanvasCamera.attachStage com sensibilidade reduzida (o ReactFlow não
+          // expõe knob de velocidade). Seleção retangular segue no Shift+drag.
+          panOnDrag={false}
           translateExtent={panExtent}
-          zoomOnScroll
+          zoomOnScroll={false}
           selectionOnDrag={false}
           selectionKeyCode="Shift"
           multiSelectionKeyCode={["Shift", "Meta", "Control"]}
