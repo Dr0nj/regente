@@ -478,6 +478,7 @@ var sqliteMigrations = []migration{
 	{version: 7, sql: schemaV7("DATETIME")},
 	{version: 8, sql: schemaV8(sqliteID, "DATETIME")},
 	{version: 9, sql: schemaV9()},
+	{version: 10, sql: schemaV10()},
 }
 
 var pgMigrations = []migration{
@@ -490,6 +491,7 @@ var pgMigrations = []migration{
 	{version: 7, sql: schemaV7("TIMESTAMPTZ")},
 	{version: 8, sql: schemaV8(pgID, "TIMESTAMPTZ")},
 	{version: 9, sql: schemaV9()},
+	{version: 10, sql: schemaV10()},
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
@@ -601,4 +603,13 @@ CREATE INDEX IF NOT EXISTS idx_viewpoints_owner ON viewpoints(owner)`
 // (default seguro: sem selo até a próxima daily reescrever com o valor real).
 func schemaV9() string {
 	return `ALTER TABLE instances ADD COLUMN dry_run INTEGER NOT NULL DEFAULT 0`
+}
+
+// schemaV10 — CTM-1 (2026-07-06): variáveis LOCAIS da instance (%%SETLOCAL).
+// JSON {nome: valor} gravado pelo scheduler ao término de cada tentativa e lido
+// na interpolação dos params da MESMA instance (retries/reruns/voltas cyclic).
+// Escopo morre com a instance — nunca vaza pro VariableStore global.
+// ALTER idêntico em SQLite e Postgres; instances antigas ficam com ” (sem vars).
+func schemaV10() string {
+	return `ALTER TABLE instances ADD COLUMN local_vars TEXT NOT NULL DEFAULT ''`
 }

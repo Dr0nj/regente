@@ -170,11 +170,19 @@ func (s *Scheduler) Variables() *storage.VariableStore { return s.variables }
 // data da ordem mesmo em rerun tardio ou instance carregada da di\u00e1ria anterior.
 func (s *Scheduler) buildVarContext(def domain.JobDefinition, instanceID string) VarContext {
 	orderDate := time.Now().Format("2006-01-02")
-	var od string
-	if err := s.db.QueryRow(`SELECT order_date FROM instances WHERE id=?`, instanceID).Scan(&od); err == nil && od != "" {
+	var od, localJSON string
+	if err := s.db.QueryRow(`SELECT order_date, COALESCE(local_vars,'') FROM instances WHERE id=?`, instanceID).Scan(&od, &localJSON); err == nil && od != "" {
 		orderDate = od
 	}
 	ctx := BuildContext(def, instanceID, orderDate, nil, "")
+	// CTM-1 — vars locais da instance (%%SETLOCAL): escopo acima da definition,
+	// abaixo do runtime; visíveis SÓ pela própria instance.
+	if localJSON != "" {
+		local := map[string]string{}
+		if err := json.Unmarshal([]byte(localJSON), &local); err == nil && len(local) > 0 {
+			ctx.Local = local
+		}
+	}
 	if s.variables != nil {
 		ctx.Global = s.variables.Snapshot()
 	}
@@ -207,6 +215,41 @@ func (s *Scheduler) applySetVarDirectives(id, output string) {
 		s.emitEvent(id, "set-var", "scheduler", name+"="+value)
 	}
 	s.hub.BroadcastWeb("variables.changed", map[string]interface{}{"by": id})
+}
+
+// applyLocalSetVarDirectives — CTM-1: SET de variável com escopo LOCAL
+// ("%%SETLOCAL NOME=VALOR" no output). Persiste em instances.local_vars (JSON):
+// o valor vive SÓ na própria instance — lido pela interpolação dos params dela
+// (retries/reruns/voltas cyclic) e invisível para qualquer outro job. Aplicado
+// a CADA término de tentativa (antes do retry), então uma tentativa falha
+// passa estado para a próxima.
+func (s *Scheduler) applyLocalSetVarDirectives(id, output string) {
+	if output == "" || !strings.Contains(output, "%%SETLOCAL") {
+		return
+	}
+	matches := setLocalVarDirective.FindAllStringSubmatch(output, maxSetVarsPerJob)
+	if len(matches) == 0 {
+		return
+	}
+	cur := map[string]string{}
+	var raw string
+	if err := s.db.QueryRow(`SELECT COALESCE(local_vars,'') FROM instances WHERE id=?`, id).Scan(&raw); err != nil {
+		return // instance sumiu — nada a persistir
+	}
+	if raw != "" {
+		_ = json.Unmarshal([]byte(raw), &cur)
+	}
+	for _, m := range matches {
+		cur[m[1]] = m[2]
+		s.emitEvent(id, "set-var-local", "scheduler", m[1]+"="+m[2])
+	}
+	buf, err := json.Marshal(cur)
+	if err != nil {
+		return
+	}
+	if _, err := s.db.Exec(`UPDATE instances SET local_vars=? WHERE id=?`, string(buf), id); err != nil {
+		log.Printf("[scheduler] %s: set-var-local: %v", id, err)
+	}
 }
 
 // Defs returns a snapshot of loaded definitions (for forecast).
@@ -1113,6 +1156,9 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 
 // FinishInstance — chamado pelo ws handler quando o agent publica "result".
 func (s *Scheduler) FinishInstance(id string, status domain.InstanceStatus, exitCode int, output string) {
+	// CTM-1 — %%SETLOCAL: aplicado ANTES do retry (diferente do %%SET global,
+	// que é terminal-only): a próxima tentativa da MESMA instance já lê o estado.
+	s.applyLocalSetVarDirectives(id, output)
 	// Actions/On-Do — dimensão "attempt": a tentativa que ACABOU de rodar falhou.
 	// Avaliada ANTES do retry, para cobrir TODA tentativa falha (inclusive a final).
 	if status == domain.StatusNotOK {
