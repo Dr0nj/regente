@@ -192,6 +192,12 @@ func NewRouter(cfg Config) http.Handler {
 		r.With(s.requireWriterMW).Post("/design/sessions/{sid}/publish", s.publishDesignSession)
 		// F11.8 — bulk em definitions DA SESSION (move-folder/patch/delete)
 		r.With(s.requireWriterMW).Post("/design/sessions/{sid}/bulk", s.bulkSessionDefinitions)
+		// Job-as-code — o working set como YAML multi-doc (modo código do Design)
+		r.Get("/design/sessions/{sid}/code", s.getSessionCode)
+		r.With(s.requireWriterMW).Post("/design/sessions/{sid}/code", s.applySessionCode)
+		// CTM-3 — Mass Update rico (critério/regex → preview → apply → undo)
+		r.With(s.requireWriterMW).Post("/design/sessions/{sid}/massupdate", s.massUpdateSession)
+		r.With(s.requireWriterMW).Post("/design/sessions/{sid}/massupdate/undo", s.massUpdateUndo)
 
 		// === Bloco 2 — Control-M parity ===
 		// F14 Calendars

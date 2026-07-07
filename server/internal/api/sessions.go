@@ -142,6 +142,7 @@ func (s *server) deleteDesignSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
+	massUndo.clear(sid) // CTM-3: undo morre com a session
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -337,5 +338,6 @@ func (s *server) publishDesignSession(w http.ResponseWriter, r *http.Request) {
 	}
 	// Limpa session após publish bem-sucedido.
 	_ = s.cfg.Sessions.Delete(sess.ID)
+	massUndo.clear(sess.ID) // CTM-3: undo morre com a session
 	writeJSON(w, 200, res)
 }

@@ -34,13 +34,16 @@ type Upstream struct {
 //   - "weekly"          weekday ∈ DaysOfWeek (["mon","tue",...])
 //   - "monthly"         dia-do-mês ∈ DaysOfMonth (1..31; -1 = último dia)
 //   - "businessday"     é o N-ésimo dia útil do mês ∈ NthBusinessDays
-//                       (5 = 5º dia útil; -1 = último dia útil)
+//     (5 = 5º dia útil; -1 = último dia útil)
 //   - "advanced"        AdvancedRule (enum de regras nomeadas)
 //
 // MonthsOfYear (1..12) filtra meses em qualquer frequência (vazio = todos).
 // A elegibilidade final ainda passa pelos Calendars do job (include/exclude).
 type Schedule struct {
-	Enabled     bool   `yaml:"enabled" json:"enabled"`
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// Description — texto livre exibido na UI (o front sempre enviou; o server
+	// dropava por falta do campo). Persistido no YAML para não perder no publish.
+	Description string `yaml:"description,omitempty" json:"description,omitempty"`
 	RunAt       string `yaml:"runAt,omitempty" json:"runAt,omitempty"`
 	WindowFrom  string `yaml:"windowFrom,omitempty" json:"windowFrom,omitempty"`
 	WindowTo    string `yaml:"windowTo,omitempty" json:"windowTo,omitempty"`
