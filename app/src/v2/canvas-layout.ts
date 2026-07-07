@@ -47,17 +47,19 @@ const JOB_HANDLES: NodeHandle[] = [
 // do topo da área (px de tela). Um pouco mais baixo que a trava antiga (24) — mesma
 // sensação do "Organizar". Vale pro Monitoring e pro Design.
 export const TOP_ANCHOR = 88;
-// Folga do translateExtent ACIMA do conteúdo, em px de MUNDO. O extent é estático
-// (não conhece o zoom), então precisa cobrir a âncora de TOP_ANCHOR px de TELA no
-// pior caso: TOP_ANCHOR / minZoom (0.5 do ReactFlow) = 176. Com menos que isso, a
-// âncora/centralização deixava a câmera FORA do extent e o primeiro pan "pulava"
-// pra posição travada. Todo movimento programático clampa por este mesmo limite
-// (clampTy no useCanvasCamera), então câmera e trava nunca divergem.
-export const PAN_SLACK_TOP = 176;
-// Design — margem (px de mundo) ao redor da caixa dos jobs para o limite de pan:
-// dá folga pros lados/baixo sem deixar "se perder" no vazio.
+// ── Folgas do limite de pan (câmera presa ao CONTEÚDO — regra do usuário:
+// "não tem porque rolar telas e telas em preto") ──
+// Acima do conteúdo, em px de TELA: um tico além da âncora do Organizar — puxar a
+// tela pra baixo para logo acima de onde o Organizar deixaria.
+export const PAN_SLACK_TOP_SCREEN = TOP_ANCHOR + 32;
+// Abaixo do último job, em px de TELA: "puxar pra cima tem limite = o último job".
+export const PAN_SLACK_BOTTOM_SCREEN = 200;
+// Monitoring — px de MUNDO além da travessia completa: o último job da direita pode
+// sumir na esquerda "por pouco" (e vice-versa); este é o "pouco".
+export const PAN_CROSS_SLACK = 40;
+// Design — margem (px de mundo) pros LADOS da caixa dos jobs: visão mais contida
+// que o Monitoring — não atravessa, só respira ao redor do conteúdo.
 export const DESIGN_PAN_MARGIN_X = 360;
-export const DESIGN_PAN_MARGIN_BOTTOM = 480;
 const NODE_GAP_Y = 28; // ranksep dagre (dep vertical)
 const NODE_GAP_X = 36; // nodesep dagre (jobs paralelos na mesma linha)
 const COL_PADDING_X = 24;
@@ -130,6 +132,30 @@ function scheduleSummary(s: JobDefinition["schedule"]): string {
 
 export interface Canvas { nodes: Node[]; edges: Edge[]; lanes: LaneInfo[] }
 export interface LaneInfo { team: string; x: number; y: number; width: number; height: number; count: number }
+
+export interface ContentBounds { minX: number; minY: number; maxX: number; maxY: number }
+
+// contentBounds — caixa do CONTEÚDO do canvas (lanes contêm todos os jobs +
+// padding; fallback nos nós quando não há lane). Fonte única pro limite de pan e
+// pro Organizar — os dois derivam da MESMA caixa, então nunca divergem.
+export function contentBounds(canvas: Canvas): ContentBounds | null {
+  const L = canvas.lanes;
+  if (L.length > 0) {
+    return {
+      minX: Math.min(...L.map((l) => l.x)),
+      maxX: Math.max(...L.map((l) => l.x + l.width)),
+      minY: Math.min(...L.map((l) => l.y)),
+      maxY: Math.max(...L.map((l) => l.y + l.height)),
+    };
+  }
+  if (canvas.nodes.length === 0) return null;
+  return {
+    minX: Math.min(...canvas.nodes.map((n) => n.position.x)),
+    maxX: Math.max(...canvas.nodes.map((n) => n.position.x + NODE_W)),
+    minY: Math.min(...canvas.nodes.map((n) => n.position.y)),
+    maxY: Math.max(...canvas.nodes.map((n) => n.position.y + NODE_H)),
+  };
+}
 
 function groupByTeam<T extends { team?: string }>(items: T[]): Map<string, T[]> {
   const map = new Map<string, T[]>();

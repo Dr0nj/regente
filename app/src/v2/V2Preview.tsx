@@ -554,13 +554,11 @@ function V2PreviewInner() {
     } catch { /* ignore */ }
   }, [designSessionId]);
 
-  // Chave do CONTEXTO de visão: muda quando o usuário troca de modo ou o conjunto
-  // de folders muda. NÃO muda quando só chegam updates de dado (status via WS/tick,
-  // Run Daily materializando, Force). É o que decide quando reancorar a câmera.
-  const viewContextKey = useMemo(() => {
-    if (mode === "design") return "design:" + [...(activeFolders ?? [])].sort().join(",");
-    return "monitoring:" + (visibleFolders ? [...visibleFolders].sort().join(",") : "*");
-  }, [mode, activeFolders, visibleFolders]);
+  // Chave do CONTEXTO de visão: SÓ o modo (Design/Monitoring). Mudar folders,
+  // filtros ou dado NUNCA re-enquadra — a câmera é do usuário e cada aba volta
+  // exatamente pra onde ele a deixou; se o conteúdo mudar e ela ficar fora do
+  // limite, o clamp do useCanvasCamera puxa de volta o mínimo necessário.
+  const viewContextKey = mode === "design" ? "design" : "monitoring";
 
   // Câmera do canvas (trava de pan + âncora de entrada + centralizações) — todo
   // movimento programático é clampado pelo mesmo limite do translateExtent.
@@ -675,16 +673,11 @@ function V2PreviewInner() {
 
   /* ── Save/Delete definition ── */
   const handleSaveDef = useCallback(async (def: JobDefinition) => {
-    const wasNew = editingDef?.isNew ?? false;
     await saveDefinition(def);
     setEditingDef(null);
-    // Job NOVO: reenquadra pra garantir que ele (e os já existentes) fiquem visíveis.
-    // Sem isso, com zoom/pan o nó recém-criado pode nascer fora da tela e "sumir".
-    // organizeView (e não fitView cru): fitView centraliza vertical = câmera fora
-    // do extent = pulo no próximo pan. (organizeView tem identidade estável e
-    // implementação sempre fresca — seguro dentro do setTimeout.)
-    if (wasNew) setTimeout(() => organizeView(300), 200);
-  }, [editingDef, organizeView]);
+    // Job novo NÃO re-enquadra (regra: a câmera só anda por comando do usuário).
+    // Pra achar o job: clique nele na sidebar (centraliza) ou botão Organizar.
+  }, []);
   const handleDeleteDef = useCallback(async (id: string) => {
     await deleteDefinition(id);
     // também remove referências upstream em outras definitions
@@ -1351,12 +1344,16 @@ function V2PreviewInner() {
           nodesDraggable={mode === "design"}
           nodesConnectable={mode === "design"}
           elementsSelectable
-          // Pan (arrasto) e zoom (roda) NATIVOS desligados: reimplementados em
-          // useCanvasCamera.attachStage com sensibilidade reduzida (o ReactFlow não
-          // expõe knob de velocidade). Seleção retangular segue no Shift+drag.
+          // Pan (arrasto) e zoom (roda/pinch/dbl-click) NATIVOS desligados:
+          // reimplementados em useCanvasCamera.attachStage com sensibilidade
+          // reduzida e clamp por conteúdo (o ReactFlow não expõe knob de
+          // velocidade e só clamparia input nativo). Seleção segue no Shift+drag;
+          // translateExtent fica só de cinto de segurança.
           panOnDrag={false}
           translateExtent={panExtent}
           zoomOnScroll={false}
+          zoomOnPinch={false}
+          zoomOnDoubleClick={false}
           selectionOnDrag={false}
           selectionKeyCode="Shift"
           multiSelectionKeyCode={["Shift", "Meta", "Control"]}

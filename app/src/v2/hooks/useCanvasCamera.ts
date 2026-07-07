@@ -1,11 +1,24 @@
 /**
- * useCanvasCamera — dono ÚNICO da câmera do canvas (trava de pan + âncora de
- * entrada + centralizações). Extraído do V2Preview.tsx (2026-07-01).
+ * useCanvasCamera — dono ÚNICO da câmera do canvas.
  *
- * Regra de ouro: TODO movimento programático passa pelo clamp do MESMO limite
- * do translateExtent. O ReactFlow só clampa pan/zoom do USUÁRIO — setViewport/
- * setCenter passam direto — e uma câmera fora do extent "pula" pra posição
- * travada no primeiro pan (era o bug da centralização).
+ * Princípio (reforma 2026-07-06, pedido do usuário): A CÂMERA É DO USUÁRIO.
+ * Ela SÓ se move por comando explícito — arrastar/roda, clicar num job na
+ * sidebar, botão "Organizar", Force Order (foca o job forçado). Criar job,
+ * abrir/fechar drawer, trocar de aba, mudar folders, churn de dado: NADA disso
+ * re-enquadra. A única exceção é o 1º paint de um modo sem câmera salva
+ * (enquadra ANTES de pintar — não é percebido como movimento).
+ *
+ * Limites de pan derivam do CONTEÚDO (nada de rolar telas de preto):
+ *  - Monitoring: pros lados dá pra atravessar o conteúdo até o último job sumir
+ *    "por pouco" (1 tela + PAN_CROSS_SLACK); em cima folga pequena; embaixo o
+ *    limite é o último job (+PAN_SLACK_BOTTOM_SCREEN).
+ *  - Design: visão presa à caixa dos jobs ± DESIGN_PAN_MARGIN_X; vazio = câmera
+ *    travada na origem.
+ * O extent é DINÂMICO (função de zoom + tamanho do pane) e TODO movimento —
+ * user (pan/wheel custom) e programático (organizar/focar/minimap) — passa pelo
+ * MESMO clamp, então câmera e trava nunca divergem (o ReactFlow só clamparia
+ * pan/zoom nativo, que está desligado; o translateExtent que exportamos é só
+ * cinto de segurança).
  */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -14,21 +27,24 @@ import {
   NODE_W,
   NODE_H,
   TOP_ANCHOR,
-  PAN_SLACK_TOP,
+  PAN_SLACK_TOP_SCREEN,
+  PAN_SLACK_BOTTOM_SCREEN,
+  PAN_CROSS_SLACK,
   DESIGN_PAN_MARGIN_X,
-  DESIGN_PAN_MARGIN_BOTTOM,
+  contentBounds,
   type Canvas,
   type Mode,
 } from "../canvas-layout";
 
 type SavedViewport = { x: number; y: number; zoom: number };
+type Extent = [[number, number], [number, number]];
 
 // ── Sensibilidade do input do canvas (mouse) ─────────────────────────────────
 // O ReactFlow v12 NÃO expõe prop de velocidade de zoom/pan (o fator do wheel é
 // fixo no @xyflow/system e o arrasto é 1:1). Então desativamos o zoomOnScroll e o
 // panOnDrag nativos e reimplementamos os dois AQUI, com ganho reduzido — pedido do
-// usuário: "diminuir a velocidade de reação tanto pra puxar pros lados quanto pra
-// dar zoom". Ajuste fino é só mexer nestas duas constantes.
+// usuário: "velocidade de puxar um pouco mais baixa que o normal". Ajuste fino é
+// só mexer nestas duas constantes.
 const MIN_ZOOM = 0.5; // = default do ReactFlow (usado no clamp do fit)
 const MAX_ZOOM = 2;   // = default do ReactFlow
 // Ganho do zoom por unidade de deltaY. O nativo equivale a ~ln2 (0.693, pois faz
@@ -42,16 +58,14 @@ const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min)
 
 // clampToExtent — replica a restrição do translateExtent do d3-zoom para um
 // viewport {x,y,zoom} qualquer (o setViewport programático NÃO passa por ela).
-// Mantém o pan/zoom custom dentro do MESMO limite que o ReactFlow usaria.
 function clampToExtent(
   x: number,
   y: number,
   zoom: number,
   w: number,
   h: number,
-  extent: [[number, number], [number, number]] | undefined,
+  extent: Extent,
 ): SavedViewport {
-  if (!extent) return { x, y, zoom };
   const [[x0, y0], [x1, y1]] = extent;
   const minX = w - x1 * zoom;
   const maxX = -x0 * zoom;
@@ -63,11 +77,10 @@ function clampToExtent(
   return { x: cx, y: cy, zoom };
 }
 
-// Câmeras guardadas por contexto de visão, POR ABA (sessionStorage), pra sobreviver
-// ao F5 sem re-enquadrar. Antes o mapa era só em memória: no reload ele nascia vazio
-// → o gate de entrada re-organizava (140ms + anim) e o board "pulava" da posição
-// default (0,0) pra enquadrada. Com o snapshot restaurado, o setViewport do
-// useLayoutEffect recoloca a câmera ANTES do paint dos nós → reload sem variação.
+// Câmeras guardadas POR MODO ("design"/"monitoring"), por aba (sessionStorage),
+// pra sobreviver ao F5 e a remounts do <ReactFlow> (ViewPoint/CodeMode cobrem o
+// palco) sem re-enquadrar. Chave por MODO — e não por conjunto de folders — é o
+// que garante "mudar folders não move a câmera".
 const VIEWPORTS_STORAGE_KEY = "regente:viewports";
 
 function loadPersistedViewports(): Map<string, SavedViewport> {
@@ -85,34 +98,83 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
   const storeApi = useStoreApi();
 
   // Espelhos sempre-frescos p/ os listeners nativos (anexados 1× — não podem
-  // fechar sobre `mode`/`panExtent` de um render antigo).
+  // fechar sobre `mode`/bounds de um render antigo).
   const modeRef = useRef(mode);
   modeRef.current = mode;
 
-  // Trava de pan. Monitoring: topo do conteúdo (folders) alinhado com o ACTIVE JOBS;
-  // livre pros lados e pra CIMA (revelar mais jobs abaixo), nunca abaixo do topo.
-  // Design: BOUNDED na caixa dos jobs da folder + margem — só puxa pros lados quando
-  // os jobs passam da tela, e com LIMITE pra não "se perder" no vazio.
-  const panExtent = useMemo<[[number, number], [number, number]] | undefined>(() => {
-    if (canvas.nodes.length === 0) return undefined;
-    const top = Math.min(...canvas.nodes.map((n) => n.position.y));
-    if (mode === "monitoring") {
-      return [[-100000, top - PAN_SLACK_TOP], [100000, 100000]];
+  const bounds = useMemo(() => contentBounds(canvas), [canvas]);
+  const boundsRef = useRef(bounds);
+  boundsRef.current = bounds;
+
+  const hasNodes = canvas.nodes.length > 0;
+  const hasNodesRef = useRef(hasNodes);
+  hasNodesRef.current = hasNodes;
+
+  // extentFor — limite de pan DINÂMICO (px de mundo) pra um zoom/pane dados.
+  // As folgas verticais são em px de TELA (÷ zoom): o "quanto dá pra puxar" é
+  // constante aos olhos, em qualquer zoom.
+  const extentFor = useCallback((zoom: number, w: number, h: number): Extent => {
+    const b = boundsRef.current;
+    if (!b) return [[0, 0], [w / zoom, h / zoom]]; // vazio: câmera travada na origem
+    const y0 = b.minY - PAN_SLACK_TOP_SCREEN / zoom;
+    let y1 = b.maxY + PAN_SLACK_BOTTOM_SCREEN / zoom;
+    // Conteúdo mais BAIXO que a tela: estende o fundo até caber 1 viewport —
+    // trava o topo na folga (sem isso o d3 centralizaria na vertical e o
+    // Organizar/limite de cima perderiam o sentido).
+    if (y1 - y0 < h / zoom) y1 = y0 + h / zoom;
+    if (modeRef.current === "monitoring") {
+      // Travessia completa + um "pouco": dá pra empurrar o conteúdo inteiro pra
+      // fora da tela por PAN_CROSS_SLACK px de mundo, e nada além.
+      const cross = w / zoom + PAN_CROSS_SLACK;
+      return [[b.minX - cross, y0], [b.maxX + cross, y1]];
     }
-    // Design — caixa [minX,minY]..[maxX,maxY] dos jobs + margem.
-    const xs = canvas.nodes.map((n) => n.position.x);
-    const ys = canvas.nodes.map((n) => n.position.y);
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs) + NODE_W;
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys) + NODE_H;
+    return [[b.minX - DESIGN_PAN_MARGIN_X, y0], [b.maxX + DESIGN_PAN_MARGIN_X, y1]];
+  }, []);
+
+  // clampCamera — TODO movimento (user ou programático) passa aqui.
+  const clampCamera = useCallback((vp: SavedViewport): SavedViewport => {
+    const { width, height } = storeApi.getState();
+    if (!width || !height) return vp;
+    return clampToExtent(vp.x, vp.y, vp.zoom, width, height, extentFor(vp.zoom, width, height));
+  }, [storeApi, extentFor]);
+
+  // Hidrata as câmeras salvas 1× (não a cada render). null! + guarda = ref
+  // preguiçosa tipada como Map não-nulo nos usos abaixo.
+  const savedViewports = useRef<Map<string, SavedViewport>>(null!);
+  if (!savedViewports.current) savedViewports.current = loadPersistedViewports();
+  const prevKeyRef = useRef(viewContextKey);
+
+  // remember — grava a câmera da view ATIVA a cada movimento. É o que faz
+  // remount do <ReactFlow> (abrir/fechar ViewPoint/CodeMode) e troca de aba
+  // voltarem EXATAMENTE pra onde o usuário deixou. Canvas vazio não conta:
+  // posição sem conteúdo não é posição do usuário (bloquearia o enquadre de
+  // 1ª vez quando a view ganhar jobs).
+  const remember = useCallback((vp: SavedViewport) => {
+    if (!hasNodesRef.current) return;
+    savedViewports.current.set(prevKeyRef.current, vp);
+  }, []);
+
+  // apply — clampa + aplica + lembra. Único caminho de escrita da câmera.
+  const apply = useCallback((vp: SavedViewport, duration = 0): SavedViewport => {
+    const c = clampCamera(vp);
+    setViewport(c, duration > 0 ? { duration } : undefined);
+    remember(c);
+    return c;
+  }, [clampCamera, setViewport, remember]);
+
+  // translateExtent pro <ReactFlow> — SÓ cinto de segurança (pan/zoom nativos
+  // estão desligados; todo movimento real passa no clampCamera). Superset do
+  // extent dinâmico no pior caso (zoom mínimo), pra nunca brigar com ele.
+  const panExtent = useMemo<Extent | undefined>(() => {
+    if (!bounds) return undefined;
+    const vw = (typeof window !== "undefined" ? window.innerWidth : 1920) / MIN_ZOOM;
+    const vh = (typeof window !== "undefined" ? window.innerHeight : 1080) / MIN_ZOOM;
+    const sideSlack = mode === "monitoring" ? vw + PAN_CROSS_SLACK : DESIGN_PAN_MARGIN_X;
     return [
-      [minX - DESIGN_PAN_MARGIN_X, minY - PAN_SLACK_TOP],
-      [maxX + DESIGN_PAN_MARGIN_X, maxY + DESIGN_PAN_MARGIN_BOTTOM],
+      [bounds.minX - sideSlack, bounds.minY - PAN_SLACK_TOP_SCREEN / MIN_ZOOM],
+      [bounds.maxX + sideSlack, bounds.maxY + Math.max(PAN_SLACK_BOTTOM_SCREEN / MIN_ZOOM, vh)],
     ];
-  }, [mode, canvas.nodes]);
-  const extentRef = useRef(panExtent);
-  extentRef.current = panExtent;
+  }, [mode, bounds]);
 
   // attachStage — ref-callback pro <main> do palco. Anexa listeners NATIVOS de
   // wheel (zoom custom, non-passive p/ poder preventDefault — o onWheel do React é
@@ -120,6 +182,7 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
   // por `.react-flow` no target, então minimap/drawers (irmãos no <main>) e a
   // ScaleMonitor (quando o canvas nem monta) passam batido. Reanexa sozinho em
   // remount do canvas (React chama com null→elemento).
+  const panActiveRef = useRef(false);
   const cleanupStageRef = useRef<(() => void) | null>(null);
   const attachStage = useCallback((el: HTMLElement | null) => {
     cleanupStageRef.current?.();
@@ -146,20 +209,19 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
       // Zoom ancorado no cursor: mantém o ponto do MUNDO sob o ponteiro fixo.
       const wx = (sx - x) / zoom;
       const wy = (sy - y) / zoom;
-      const { width, height } = storeApi.getState();
-      setViewport(clampToExtent(sx - wx * nz, sy - wy * nz, nz, width, height, extentRef.current));
+      apply({ x: sx - wx * nz, y: sy - wy * nz, zoom: nz });
     };
 
     const onMouseMove = (e: MouseEvent) => {
       if (!pan) return;
       const dx = (e.clientX - pan.cx) * DRAG_PAN_SENS;
       const dy = (e.clientY - pan.cy) * DRAG_PAN_SENS;
-      const { width, height } = storeApi.getState();
-      setViewport(clampToExtent(pan.vx + dx, pan.vy + dy, pan.zoom, width, height, extentRef.current));
+      apply({ x: pan.vx + dx, y: pan.vy + dy, zoom: pan.zoom });
     };
     const endPan = () => {
       if (!pan) return;
       pan = null;
+      panActiveRef.current = false;
       document.body.style.userSelect = "";
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", endPan);
@@ -174,6 +236,7 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
       if (e.button === 1) e.preventDefault(); // corta o autoscroll do botão do meio
       const vp = getViewport();
       pan = { cx: e.clientX, cy: e.clientY, vx: vp.x, vy: vp.y, zoom: vp.zoom };
+      panActiveRef.current = true;
       document.body.style.userSelect = "none";
       window.addEventListener("mousemove", onMouseMove);
       window.addEventListener("mouseup", endPan);
@@ -186,15 +249,7 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
       el.removeEventListener("mousedown", onMouseDown);
       endPan();
     };
-  }, [getViewport, setViewport, storeApi]);
-
-  // clampTy — aplica ao movimento PROGRAMÁTICO (organizar/centralizar/minimap) o
-  // MESMO limite superior do translateExtent.
-  const clampTy = useCallback((ty: number, zoom: number): number => {
-    if (canvas.nodes.length === 0) return ty;
-    const top = Math.min(...canvas.nodes.map((n) => n.position.y));
-    return Math.min(ty, (PAN_SLACK_TOP - top) * zoom);
-  }, [canvas.nodes]);
+  }, [getViewport, apply]);
 
   // visibleInsets — o <ReactFlow> ocupa a largura INTEIRA do palco; a sidebar
   // (esquerda) e o drawer de detalhes (direita) são overlays absolutos POR CIMA
@@ -215,45 +270,27 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
   }, []);
 
   // focusOnPoint — centraliza um ponto do mundo na FAIXA VISÍVEL (descontando
-  // sidebar/drawer) SEM sair do extent. Substitui o setCenter cru: para jobs
-  // perto do topo, "centraliza até onde a trava deixa" (job fica visível no alto)
-  // e a câmera permanece numa posição legal — mexer depois não salta.
+  // sidebar/drawer) SEM sair do extent (apply clampa). Usado SÓ em navegação
+  // explícita: clique na sidebar/Folders, minimap, Force Order.
   const focusOnPoint = useCallback((px: number, py: number, zoom: number, duration = 350) => {
     const { width, height } = storeApi.getState();
     const { left, right } = visibleInsets();
     const visW = Math.max(1, width - left - right);
-    const tx = left + visW / 2 - px * zoom;
-    const ty = clampTy(height / 2 - py * zoom, zoom);
-    setViewport({ x: tx, y: ty, zoom }, { duration });
-  }, [storeApi, clampTy, setViewport, visibleInsets]);
+    apply({ x: left + visW / 2 - px * zoom, y: height / 2 - py * zoom, zoom }, duration);
+  }, [storeApi, apply, visibleInsets]);
 
   // organizeView — re-enquadra ancorando o TOPO do conteúdo em TOP_ANCHOR (em vez
-  // de centralizar verticalmente, que jogaria o conteúdo mais pra baixo). Fonte
-  // ÚNICA usada na ENTRADA, no botão "Organizar" e no pós-save de job novo — assim
-  // todos caem exatamente no mesmo limite.
-  const organizeViewImpl = useCallback((duration: number) => {
-    if (canvas.nodes.length === 0) return;
+  // de centralizar verticalmente). SÓ roda no botão "Organizar" e no 1º paint de
+  // um modo sem câmera salva — nunca em reação a dado/aba/folder.
+  const organizeView = useCallback((duration: number) => {
+    const b = boundsRef.current;
+    if (!b) return;
     // Fit calculado NA MÃO (sem fitView): o fitView do RF v12 é assíncrono e o
-    // promise nem resolve quando chamado logo após o mount (nós ainda medindo) —
-    // era a corrida que deixava a entrada ora centralizada (fora do extent → pulo
-    // no 1º pan), ora em 0,0. Bounds vêm das lanes (contêm todos os jobs), o pane
-    // vem do store — tudo síncrono e determinístico.
+    // promise nem resolve quando chamado logo após o mount (nós ainda medindo).
+    // Bounds vêm do contentBounds (lanes → jobs), o pane vem do store — tudo
+    // síncrono e determinístico.
     const { width, height } = storeApi.getState();
     if (!width || !height) return;
-    const L = canvas.lanes;
-    const b = L.length > 0
-      ? {
-          minX: Math.min(...L.map((l) => l.x)),
-          maxX: Math.max(...L.map((l) => l.x + l.width)),
-          minY: Math.min(...L.map((l) => l.y)),
-          maxY: Math.max(...L.map((l) => l.y + l.height)),
-        }
-      : {
-          minX: Math.min(...canvas.nodes.map((n) => n.position.x)),
-          maxX: Math.max(...canvas.nodes.map((n) => n.position.x + NODE_W)),
-          minY: Math.min(...canvas.nodes.map((n) => n.position.y)),
-          maxY: Math.max(...canvas.nodes.map((n) => n.position.y + NODE_H)),
-        };
     const bw = Math.max(1, b.maxX - b.minX);
     const bh = Math.max(1, b.maxY - b.minY);
     // Faixa visível (desconta sidebar/drawer): o fit e a centralização usam ela,
@@ -262,57 +299,45 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
     const visW = Math.max(1, width - left - right);
     const PADDING = 0.12; // fração do pane, como o fitView fazia
     const zoomFit = Math.min((visW * (1 - PADDING * 2)) / bw, (height * (1 - PADDING * 2)) / bh);
-    const zoom = Math.max(0.5, Math.min(1, zoomFit)); // não afasta além do minZoom nem amplia >1
+    const zoom = Math.max(MIN_ZOOM, Math.min(1, zoomFit)); // não afasta além do minZoom nem amplia >1
     const tx = left + visW / 2 - ((b.minX + b.maxX) / 2) * zoom;
-    const ty = clampTy(TOP_ANCHOR - b.minY * zoom, zoom);
-    setViewport({ x: tx, y: ty, zoom }, { duration });
-  }, [canvas.nodes, canvas.lanes, storeApi, setViewport, clampTy, visibleInsets]);
+    const ty = TOP_ANCHOR - b.minY * zoom;
+    apply({ x: tx, y: ty, zoom }, duration);
+  }, [storeApi, apply, visibleInsets]);
 
-  // Identidade ESTÁVEL + implementação sempre fresca: quem captura organizeView
-  // em closures antigas (setTimeout do pós-save, gate de entrada) chama a versão
-  // com os canvas.nodes atuais, sem re-disparar effects a cada re-layout.
-  const organizeViewRef = useRef(organizeViewImpl);
-  useEffect(() => { organizeViewRef.current = organizeViewImpl; }, [organizeViewImpl]);
-  const organizeView = useCallback((duration: number) => organizeViewRef.current(duration), []);
-
-  const hasNodes = canvas.nodes.length > 0;
   // paneReady: o <ReactFlow> pode montar DEPOIS dos nodes existirem (ex.: login —
   // os dados chegam via _connected enquanto o LoginForm ainda cobre a tela) e o
   // onInit dispara ANTES do pane ser medido (width/height=0 → organize no-op).
   // Assinar as dimensões do store reativa o gate assim que o pane ganha tamanho.
   const paneReady = useStore((s) => s.width > 0 && s.height > 0);
 
-  // Câmera GUARDADA por contexto de visão (modo+folders). Trocar de aba
-  // (Monitoring↔Design) NÃO re-enquadra: cada view volta EXATAMENTE pra onde o
-  // usuário a deixou (era o "desalinha e realinha" + perder o centro ao voltar).
-  // Só enquadra a 1ª vez que a view aparece (sem posição salva); depois disso a
-  // posição só muda se o usuário pedir (Organizar / focar num job / pan/zoom).
-  // useLayoutEffect: restaura ANTES do paint → sem flash da posição antiga.
-  // Lazy: hidrata do sessionStorage 1× (não a cada render). null! + guarda = idiom
-  // de ref preguiçosa tipada como Map não-nulo nos usos abaixo.
-  const savedViewports = useRef<Map<string, SavedViewport>>(null!);
-  if (!savedViewports.current) savedViewports.current = loadPersistedViewports();
-
-  // Salva a posição da view que está SAINDO — só quando o viewContextKey MUDA de
-  // fato (troca de aba/folders), nunca no churn de load. (Salvar a cada flip de
-  // hasNodes/paneReady gravaria o viewport inicial 0,0 e o "restore" nunca
-  // organizaria.) getViewport aqui ainda devolve a posição da view antiga, pois o
-  // efeito de restaurar (declarado ABAIXO) só roda depois deste.
-  const prevKeyRef = useRef(viewContextKey);
+  // Salva a posição da view que está SAINDO quando o viewContextKey muda (troca
+  // de aba). Redundante com o remember-por-movimento, mas cobre drift (ex.:
+  // setViewport animado interrompido). Declarado ANTES do efeito de restaurar:
+  // getViewport aqui ainda devolve a posição da view antiga.
+  //
+  // SÓ salva se a view que sai TINHA conteúdo: câmera de canvas vazio não é
+  // posição do usuário — salvá-la bloquearia o enquadre de 1ª vez quando o modo
+  // finalmente ganhar jobs (ex.: visitar o Design vazio e voltar depois).
+  // prevHasNodesRef = hasNodes do render ANTERIOR (a troca de key troca o canvas
+  // no MESMO render, então o hasNodes atual já é o da view nova).
+  const prevHasNodesRef = useRef(false);
   useLayoutEffect(() => {
     if (prevKeyRef.current !== viewContextKey) {
-      savedViewports.current.set(prevKeyRef.current, getViewport());
+      if (prevHasNodesRef.current) savedViewports.current.set(prevKeyRef.current, getViewport());
       prevKeyRef.current = viewContextKey;
     }
+    prevHasNodesRef.current = hasNodes;
   });
 
-  // Persiste as câmeras (views visitadas + a ATIVA) ao sair/recarregar, pra que o
-  // F5 restaure exatamente onde o usuário estava. pagehide cobre reload e fechar
-  // aba; prevKeyRef.current é a view ativa neste instante.
+  // Persiste as câmeras ao sair/recarregar, pra que o F5 restaure exatamente onde
+  // o usuário estava. pagehide cobre reload e fechar aba. A câmera ATIVA só entra
+  // se o canvas tem conteúdo (recarregar na tela de login não pode gravar o
+  // viewport default por cima da posição real).
   useEffect(() => {
     const flush = () => {
       try {
-        savedViewports.current.set(prevKeyRef.current, getViewport());
+        if (hasNodesRef.current) savedViewports.current.set(prevKeyRef.current, getViewport());
         window.sessionStorage.setItem(
           VIEWPORTS_STORAGE_KEY,
           JSON.stringify([...savedViewports.current]),
@@ -323,20 +348,37 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
     return () => window.removeEventListener("pagehide", flush);
   }, [getViewport]);
 
-  // Ao ENTRAR numa view: restaura a posição salva (sem animar → sem "desalinha e
-  // realinha") ou, se é a 1ª vez, enquadra. hasNodes é boolean (0↔N), então churn
-  // de dado (Force/Run Daily/WS) NÃO re-dispara e a câmera fica onde o usuário
-  // deixou; trocar de aba muda viewContextKey e cai aqui.
+  // Ao ENTRAR numa view (troca de aba / remount do canvas): restaura a posição
+  // salva SEM animar; se é a 1ª vez do modo, enquadra SINCRONAMENTE antes do
+  // paint (duration 0, sem timeout) — aparece já enquadrado, sem pulo visível.
+  // hasNodes é boolean (0↔N), então churn de dado (Force/Run Daily/WS) NÃO
+  // re-dispara e a câmera fica onde o usuário deixou.
   useLayoutEffect(() => {
     if (!hasNodes || !paneReady) return;
     const saved = savedViewports.current.get(viewContextKey);
     if (saved) {
-      setViewport(saved);
+      setViewport(clampCamera(saved)); // clampa: o conteúdo pode ter mudado
       return;
     }
-    const t = setTimeout(() => organizeViewRef.current(220), 140); // 1ª vez: enquadra
-    return () => clearTimeout(t);
-  }, [viewContextKey, hasNodes, paneReady, setViewport]);
+    organizeView(0); // 1ª vez do modo: enquadra antes do paint
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewContextKey, hasNodes, paneReady]);
+
+  // Conteúdo mudou (folders filtrados, publish, daily) e a câmera ficou FORA do
+  // novo limite? Puxa de volta com um ease curto — sem isso ela ficaria num mar
+  // de preto sem conteúdo (e "pularia" no próximo pan). Dentro do limite = não
+  // mexe (é o caso do churn normal). Deps nos VALORES da caixa: identidade do
+  // objeto muda a cada re-layout, os números não.
+  useEffect(() => {
+    if (!bounds || !paneReady || panActiveRef.current) return;
+    const vp = getViewport();
+    const c = clampCamera(vp);
+    if (Math.abs(c.x - vp.x) > 0.5 || Math.abs(c.y - vp.y) > 0.5) {
+      setViewport(c, { duration: 200 });
+      remember(c);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bounds?.minX, bounds?.minY, bounds?.maxX, bounds?.maxY, mode, paneReady]);
 
   /* ── Centralizar um nó (clique na sidebar / aba Folders) ── */
   const focusNode = useCallback((nodeId: string) => {
