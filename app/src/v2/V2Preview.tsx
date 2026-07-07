@@ -70,7 +70,9 @@ import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, creat
 import { toast, ToastHost } from "./Toast";
 import EdgeConditionModal from "./EdgeConditionModal";
 import { getGitInfo, commitUrl } from "@/lib/git-info";
-import { FolderOpen, Play, Zap, GitCommitHorizontal, GitCompare, FlaskConical, LayoutGrid, ChevronLeft, ChevronRight } from "lucide-react";
+import { FolderOpen, Play, Zap, GitCommitHorizontal, GitCompare, FlaskConical, LayoutGrid, ChevronLeft, ChevronRight, Code, Wand2 } from "lucide-react";
+import CodeModeView from "./CodeModeView";
+import MassUpdateDialog from "./MassUpdateDialog";
 
 import "@xyflow/react/dist/style.css";
 import "@/index.css";
@@ -121,6 +123,10 @@ function V2PreviewInner() {
     } catch { return null; }
   });
   const [showFolderManager, setShowFolderManager] = useState(false);
+  // Job-as-code (2026-07-06): o palco do Design vira editor YAML (estética Matrix).
+  const [codeMode, setCodeMode] = useState(false);
+  // CTM-3 — Find & Update rico (critério/regex → preview → apply → undo).
+  const [showMassUpdate, setShowMassUpdate] = useState(false);
   // F11.10 — auth state
   const [me, setMe] = useState<AuthUser | null>(() => loadCachedUser());
   const [authChecked, setAuthChecked] = useState<boolean>(!isServerMode());
@@ -157,6 +163,8 @@ function V2PreviewInner() {
   // P8 (2026-04-26): drift do clone da session vs origin/<branch>.
   const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null);
   useEffect(() => onDesignSessionChange((sid) => setDesignSessionIdState(sid)), []);
+  // Session morreu/publicada/descartada → sai do modo código (o editor edita a session).
+  useEffect(() => { if (!designSessionId) setCodeMode(false); }, [designSessionId]);
   // P7 (2026-04-26): outra aba assumiu a mesma session → libera essa aba.
   useEffect(() =>
     onDesignSessionConflict((sid) => {
@@ -1014,6 +1022,50 @@ function V2PreviewInner() {
         </button>
         )}
 
+        {/* Job-as-code — botão Matrix: o palco vira editor YAML do working set. */}
+        {mode === "design" && isServerMode() && (
+          <button
+            className={`matrix-toggle${codeMode ? " matrix-on" : ""}`}
+            disabled={!designSessionId || !hasActiveFolders}
+            title={
+              !designSessionId || !hasActiveFolders
+                ? "Abra uma folder primeiro — o modo código edita o working set da session"
+                : codeMode
+                  ? "Voltar ao canvas visual"
+                  : "Jobs as code — editar o working set como YAML (mesmo dialeto do Git)"
+            }
+            style={!designSessionId || !hasActiveFolders ? { opacity: 0.35, cursor: "not-allowed" } : undefined}
+            onClick={() => {
+              setEditingDef(null);
+              setCodeMode((v) => !v);
+            }}
+          >
+            <Code size={12} />
+            <span>{codeMode ? "canvas" : "code"}</span>
+          </button>
+        )}
+
+        {/* CTM-3 — Find & Update rico (mass update com preview + undo). */}
+        {mode === "design" && isServerMode() && designSessionId && hasActiveFolders && (
+          <button
+            onClick={() => setShowMassUpdate(true)}
+            title="Find & Update — busca por critério/regex e atualização em massa com preview e undo"
+            style={{
+              padding: "5px 10px",
+              background: "transparent",
+              border: "1px solid var(--v2-border-medium)",
+              color: "var(--v2-text-primary)",
+              borderRadius: 3,
+              fontSize: 10, fontFamily: "var(--v2-font-mono)",
+              letterSpacing: "0.06em", textTransform: "uppercase",
+              cursor: "pointer", fontWeight: 600,
+              display: "flex", alignItems: "center", gap: 6,
+            }}
+          >
+            <Wand2 size={11} /> Find &amp; Update
+          </button>
+        )}
+
         {mode === "monitoring" && (
           <>
             <button
@@ -1285,8 +1337,9 @@ function V2PreviewInner() {
         onDragOver={onDragOver}
         onDrop={onDrop}
       >
-        {/* P3/escala — não monta o canvas legado quando o ViewPoint cobre a tela */}
-        {!(mode === "monitoring" && scaleView) && (
+        {/* P3/escala — não monta o canvas legado quando o ViewPoint cobre a tela.
+            Job-as-code — nem quando o modo código cobre o palco do Design. */}
+        {!(mode === "monitoring" && scaleView) && !(mode === "design" && codeMode) && (
         <ReactFlow
           nodes={canvas.nodes}
           edges={canvas.edges}
@@ -1316,7 +1369,7 @@ function V2PreviewInner() {
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#1a1a1a" />
         </ReactFlow>
         )}
-        {showMinimap && !(mode === "monitoring" && scaleView) && (
+        {showMinimap && !(mode === "monitoring" && scaleView) && !(mode === "design" && codeMode) && (
           <>
             <div
               style={{
@@ -1374,10 +1427,20 @@ function V2PreviewInner() {
             hint="Abra ou crie uma folder para começar a trabalhar. Sem folder ativa, não há onde colocar jobs."
           />
         )}
-        {mode === "design" && hasActiveFolders && designDefsWithDraft.length === 0 && (
+        {mode === "design" && hasActiveFolders && designDefsWithDraft.length === 0 && !codeMode && (
           <EmptyState
             title="Nenhuma definition"
-            hint="Arraste um tipo da palette para o canvas para criar o primeiro job."
+            hint="Arraste um tipo da palette para o canvas — ou entre no modo CODE e crie os jobs como YAML."
+          />
+        )}
+
+        {/* Job-as-code — editor YAML cobre o palco do Design (estética Matrix). */}
+        {mode === "design" && codeMode && designSessionId && (
+          <CodeModeView
+            sessionId={designSessionId}
+            folders={activeFolders ? Array.from(activeFolders).sort() : []}
+            onExit={() => setCodeMode(false)}
+            onApplied={reloadDefs}
           />
         )}
 
@@ -1442,7 +1505,8 @@ function V2PreviewInner() {
         ) : (
           // Fase 1: palette de drag só aparece com folder ativa.
           // Sem folder, não há destino válido para drop → esconde para evitar UX quebrada.
-          hasActiveFolders ? (
+          // Modo código: o palco é o editor — palette não tem onde dropar.
+          hasActiveFolders && !codeMode ? (
             <DesignSidebarV2
               definitions={filteredDefs}
               onJobClick={(id) => focusNode(`d-${id}`)}
@@ -1512,6 +1576,18 @@ function V2PreviewInner() {
         )}
 
         {showControlM && <ControlMPanel onClose={() => setShowControlM(false)} />}
+
+        {/* CTM-3 — Find & Update rico (preview + undo, transacional por item). */}
+        {showMassUpdate && designSessionId && (
+          <MassUpdateDialog
+            sessionId={designSessionId}
+            folders={activeFolders ? Array.from(activeFolders).sort() : []}
+            defs={filteredDefs}
+            presetIds={selectedIds.size > 0 ? [...selectedIds] : undefined}
+            onClose={() => setShowMassUpdate(false)}
+            onChanged={reloadDefs}
+          />
+        )}
 
         {showAlerts && (
           <AlertsPanel

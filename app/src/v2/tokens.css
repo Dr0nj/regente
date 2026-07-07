@@ -499,3 +499,87 @@
     0 18px 50px rgba(0, 0, 0, 0.6);
 }
 
+/* ══════════════════════════════════════════════════════════════
+   Modo CÓDIGO (jobs as code) — estética Matrix, deliberadamente
+   FORA do tema: verde fósforo #00ff41 sobre preto, sempre.
+   ══════════════════════════════════════════════════════════════ */
+
+/* Botão CODE da topbar: gatilho do modo código. */
+.matrix-toggle {
+  position: relative;
+  padding: 5px 12px;
+  background: #000;
+  border: 1px solid #00ff41;
+  color: #00ff41;
+  border-radius: 3px;
+  font-size: 10px;
+  font-family: var(--v2-font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-shadow: 0 0 6px rgba(0, 255, 65, 0.6);
+  box-shadow: 0 0 8px rgba(0, 255, 65, 0.25), inset 0 0 8px rgba(0, 255, 65, 0.08);
+  transition: box-shadow 160ms, background 160ms;
+}
+.matrix-toggle::before {
+  /* colunas de "chuva" varrendo o botão */
+  content: "";
+  position: absolute;
+  inset: -100% 0;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 6px, rgba(0, 255, 65, 0.10) 6px 7px),
+    linear-gradient(180deg, transparent, rgba(0, 255, 65, 0.22), transparent);
+  animation: matrix-sweep 2.4s linear infinite;
+  pointer-events: none;
+}
+.matrix-toggle:hover {
+  background: #001a08;
+  box-shadow: 0 0 16px rgba(0, 255, 65, 0.55), inset 0 0 12px rgba(0, 255, 65, 0.15);
+}
+.matrix-toggle.matrix-on {
+  background: #00ff41;
+  color: #000;
+  text-shadow: none;
+  box-shadow: 0 0 18px rgba(0, 255, 65, 0.7);
+}
+@keyframes matrix-sweep {
+  0%   { transform: translateY(-30%); }
+  100% { transform: translateY(30%); }
+}
+
+/* Botões internos do modo código. */
+.matrix-btn {
+  font-family: var(--v2-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid #0a3d1a;
+  color: #7dffa8;
+  transition: border-color 120ms, background 120ms, box-shadow 120ms;
+}
+.matrix-btn:hover:not(:disabled) {
+  border-color: #00ff41;
+  background: #001a08;
+  box-shadow: 0 0 10px rgba(0, 255, 65, 0.35);
+}
+.matrix-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.matrix-btn-solid {
+  background: #00ff41;
+  border-color: #00ff41;
+  color: #000;
+}
+.matrix-btn-solid:hover:not(:disabled) {
+  background: #33ff67;
+  box-shadow: 0 0 14px rgba(0, 255, 65, 0.6);
+}
+

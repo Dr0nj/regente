@@ -141,3 +141,127 @@ export async function bulkInstancesApi(
     body: JSON.stringify({ action, ids }),
   });
 }
+
+// ── Job-as-code (modo código do Design, 2026-07-06) ─────────────────────────
+
+export interface SessionCode {
+  session: string;
+  folders: string[];
+  count: number;
+  code: string;
+}
+
+export interface CodePlan {
+  creates: string[];
+  updates: string[];
+  deletes: string[];
+  unchanged: number;
+}
+
+export interface CodeApplyResult {
+  session: string;
+  parsed: number;
+  plan: CodePlan;
+  errors: string[] | null;
+  applied: boolean;
+  results: BulkItemResult[] | null;
+}
+
+/** Working set (folders abertas) como YAML multi-doc — mesmo dialeto do Git. */
+export async function getSessionCode(sid: string, folders?: string[]): Promise<SessionCode> {
+  const q = folders && folders.length > 0 ? `?folders=${encodeURIComponent(folders.join(","))}` : "";
+  return await api<SessionCode>(`/api/design/sessions/${encodeURIComponent(sid)}/code${q}`);
+}
+
+/** Valida (apply=false) ou aplica (apply=true) o YAML de volta no working set. */
+export async function applySessionCode(
+  sid: string,
+  code: string,
+  opts: { folders?: string[]; apply: boolean; allowDelete?: boolean },
+): Promise<CodeApplyResult> {
+  return await api<CodeApplyResult>(`/api/design/sessions/${encodeURIComponent(sid)}/code`, {
+    method: "POST",
+    body: JSON.stringify({ code, folders: opts.folders, apply: opts.apply, allowDelete: opts.allowDelete ?? false }),
+  });
+}
+
+// ── CTM-3: Mass Update / Find & Update rico (2026-07-06) ────────────────────
+
+export interface MassCriteria {
+  ids?: string[];
+  folders?: string[];
+  jobType?: string;
+  field?: string;
+  regex?: string;
+  fieldEmpty?: string;
+}
+
+export interface MassOperation {
+  op:
+    | "set-field" | "find-replace"
+    | "add-action" | "remove-action"
+    | "add-upstream" | "remove-upstream"
+    | "set-variable" | "remove-variable"
+    | "add-condition-in" | "remove-condition-in";
+  field?: string;
+  value?: unknown;
+  onlyIfEmpty?: boolean;
+  find?: string;
+  replace?: string;
+  action?: Record<string, unknown>;
+  actionMatch?: Record<string, unknown>;
+  upstream?: { from: string; condition?: string };
+  key?: string;
+  val?: string;
+}
+
+export interface MassChange { field: string; before: string; after: string }
+
+export interface MassItem {
+  id: string;
+  team: string;
+  label: string;
+  changes: MassChange[] | null;
+  error?: string;
+  ok: boolean;
+}
+
+export interface MassUpdateResult {
+  session: string;
+  matched: number;
+  changed: number;
+  applied: boolean;
+  items: MassItem[];
+  undoDepth: number;
+}
+
+/** Preview (apply=false) ou aplicação (apply=true) do mass update. */
+export async function massUpdateSession(
+  sid: string,
+  criteria: MassCriteria,
+  operation: MassOperation,
+  apply: boolean,
+): Promise<MassUpdateResult> {
+  return await api<MassUpdateResult>(`/api/design/sessions/${encodeURIComponent(sid)}/massupdate`, {
+    method: "POST",
+    body: JSON.stringify({ criteria, operation, apply }),
+  });
+}
+
+export interface MassUndoResult {
+  session: string;
+  label: string;
+  total: number;
+  ok: number;
+  failed: number;
+  results: BulkItemResult[];
+  undoDepth: number;
+}
+
+/** Desfaz a última aplicação de mass update da session. */
+export async function massUpdateUndo(sid: string): Promise<MassUndoResult> {
+  return await api<MassUndoResult>(`/api/design/sessions/${encodeURIComponent(sid)}/massupdate/undo`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
