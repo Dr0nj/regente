@@ -520,6 +520,15 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 
 > Changelog completo por data/commit → [`docs/roadmap.md`](docs/roadmap.md).
 
+- **Jobs as code (modo CODE, estética Matrix)** — botão **CODE** no Design vira o palco num editor YAML
+  do working set (mesmo dialeto dos arquivos do workspace Git): dev cria/edita jobs como código, com
+  **Validar** (dry-run: plano criar/atualizar/deletar), **Aplicar** transacional por item e delete-por-ausência
+  confirmado. Digital rain + verde fósforo. Aperfeiçoamentos mapeados (CODE-1 no roadmap).
+- **Aprofundamento Control-M 100% FECHADO** (últimos 3 itens): **`%%SETLOCAL`** (variável de runtime com
+  escopo LOCAL por instance — sobrevive a retry/rerun/ciclo e não vaza pra outros jobs) · **tokens nativos
+  de data** (`%%EOM`/`%%BOM`/`%%EOY`/`%%BOY`/`%%NEXTBD`/`%%PREVBD`/`%%FIRSTBD`/`%%LASTBD`, cientes de
+  calendar e componíveis com offset `%%EOM-1B`) · **Mass Update / Find & Update RICO** (critério por
+  regex/campo-vazio/folder/jobType → preview com diff por job → apply transacional → **undo**).
 - **Drafts do Design à prova de F5** — a sessão de edição sobrevive a reload/troca de tela; sessão órfã com
   trabalho não publicado vira banner *Retomar/Descartar*; o server nunca apaga trabalho não publicado.
 - **Paridade Control-M — core FECHADA**: **WAIT EVENT** (sucessor de job falho/rodando fica WAITING, não é mais
@@ -536,11 +545,16 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 
 > Lista autoritativa, detalhada e com specs → **[`docs/roadmap.md`](docs/roadmap.md)** (seção "O que falta").
 
-**Aprofundamento Control-M** — ✅ **TRILHA FECHADA (2026-07-03):**
+**Aprofundamento Control-M** — ✅ **TRILHA 100% FECHADA (2026-07-06):**
 - [x] Cyclic runtime · CONFIRM (ação manual) · job tipo DATABASE (Postgres/MySQL/SQLite)
 - [x] Variáveis de runtime *SET* por um job lido por outro + cálculo de datas (`%%ODATE±NB` ciente de dia útil)
 - [x] Baterias de teste: calendários complexos · controle de recursos · Forecast ≥ 1 semana
 - [x] ViewPoint salvos · **dashboards prontos** (presets do /summary no ViewPoint) · Find & Update estendido
+- [x] **CTM-1** `%%SETLOCAL` (var LOCAL por instance) · **CTM-2** tokens nativos de data (EOM/NEXTBD/…) ·
+  **CTM-3** Mass Update/Find & Update **rico** (regex/critério → preview → apply → undo)
+
+**Jobs as code (modo CODE):** v1 ✅ — falta o aperfeiçoamento (CODE-1: editor rico, lint live, diff visual,
+sync live com o canvas, tabs por job — ver [`docs/roadmap.md`](docs/roadmap.md)).
 
 **Refinamento UI:**
 - [ ] Virtualizar a sidebar ACTIVE JOBS (hoje capada em 2000; o ViewPoint já mostra 100k–1M) · drawer do job mais amigável

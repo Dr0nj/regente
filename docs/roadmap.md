@@ -34,7 +34,8 @@ Resiliência operacional    █████████████████�
 ── Próximas fases ──────────────────────────────────────────────────────────
 Agent-native (MCP)         █████████████████░░░  85%  🟢 servidor MCP ✅ (6 tools read + 2 write gated) · falta NL-query + writes ricos
 Diferenciais               ███████████████░░░░░  75%  🟡 Explain·Diff·Blast·Dry Run·**Job Neighborhood·RCA·Event log·NL-query** ✅ · falta orquestração híbrida/stateful · DevEx · promotion · policy-as-code · "wow"
-Aprofundamento Control-M   █████████████████████░  ~97% 🟢 NÚCLEO FECHADO: daily lifecycle · Actions/On-Do (motor + UI) · daily server-side configurável · WAIT EVENT · WAIT AGENT · variáveis %% (interpolação) · FILE_WATCH · calendários+shift · condition vazia=on-success · **cyclic runtime** · **CONFIRM** · **DATABASE** (Postgres/MySQL/SQLite) · **SET de var GLOBAL + cálculo de datas %%ODATE±NB** · **janela fechada (WINDOW_CLOSED)** · baterias de teste · **FALTA (verificado no código 2026-07-04): CTM-1 var %% LOCAL por job · CTM-2 nativas EOM/dia-útil · CTM-3 Mass Update/Find&Update RICO** — ver §O que falta
+Aprofundamento Control-M   ██████████████████████ 100% ✅ FECHADO (2026-07-06): daily lifecycle · Actions/On-Do (motor + UI) · daily server-side configurável · WAIT EVENT · WAIT AGENT · variáveis %% (interpolação) · FILE_WATCH · calendários+shift · condition vazia=on-success · cyclic runtime · CONFIRM · DATABASE (Postgres/MySQL/SQLite) · SET de var GLOBAL + cálculo de datas %%ODATE±NB · janela fechada (WINDOW_CLOSED) · baterias de teste · **CTM-1 %%SETLOCAL (var por instance)** · **CTM-2 tokens nativos EOM/BOM/EOY/BOY/NEXTBD/PREVBD/FIRSTBD/LASTBD** · **CTM-3 Mass Update/Find&Update RICO (critério/regex → preview → apply → undo)**
+Jobs as code (modo CODE)   ████████████████░░░░░  80%  🟢 v1 entregue (2026-07-06): botão Matrix no Design → palco vira editor YAML do working set (GET/POST /code, plano creates/updates/deletes, dry-run, delete confirmado) · falta CODE-1 (aperfeiçoamentos — ver §O que falta)
 Refinamento UI             ██████████████████░░  88%  🟡 grade de jobs soltos ✅ · aba de agentes+ping ✅ · seletor de folder (FOLDERS) redesenhado ✅ + fix snapshot do monitoring ✅ · fix botão "Abrir"+auto-nav ✅ · fix bug "Nenhuma definition" no drag ✅ · Job Name/ID no drawer ✅ · painel Edit Job flutuante arredondado ✅ · lista de jobs da folder na sidebar ✅ · minimap revisto (jobs quadrados + viewport rect) ✅ · viewport fluido (sem sumir/pular no Run Daily/Force/refresh) ✅ · câmera consistente com a trava de pan + board sem F5 ✅ · anti-race de refresh no store ✅ · draft do Design à prova de F5 (retomada de sessão) ✅ · limpeza de ruído ✅ · falta: LEGACY_CAP virtualizado · drawer do job mais amigável
 Fase Z — divulgação        ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ case study + post LinkedIn (agora com a história agent-native)
 ```
@@ -76,20 +77,21 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ### Camada agent-native (MCP) — 85%
 - [ ] **MCP-1** — Writes ricos via MCP (hoje 6 read + 2 write gated; NL-query `query` ✅ já entregue). → §changelog "Camada agent-native"
 
-### Aprofundamento Control-M — núcleo fechado; 3 sub-itens EM ABERTO (verificados no código 2026-07-04)
-> ✅ Verificação de 2026-07-04 (olhando `scheduler/variables.go` + `api/bulk.go` + git log/stash/branches):
-> os 3 abaixo **NÃO foram entregues** — não há trabalho perdido, sem commit não-pushado, sem branch
-> escondida. A trilha foi marcada "100% fechada" cedo demais; estes são o que realmente resta dela.
-- [ ] **CTM-1** — Variáveis `%%`: escopo LOCAL por job em runtime. Hoje há 3 escopos (Runtime/sistema,
-  Definition=`def.Variables` do YAML, Global=VariableStore); o `%%SET NOME=VALOR` grava **só no GLOBAL** —
-  falta um SET runtime cujo valor viva só dentro do próprio job. → §Aprofundamento Control-M
-- [ ] **CTM-2** — Variáveis `%%`: tokens NATIVOS extras — último dia do mês (EOM) e "próximo dia útil" como
-  VALOR. Hoje só existe aritmética de OFFSET (`%%ODATE+3`, `±NB`), não os tokens nativos. → §Aprofundamento Control-M
-- [ ] **CTM-3** — **Mass Update / Find & Update RICO** (Design): busca por regex/critério de campo →
-  substituir/adicionar em massa em N jobs, com **preview + undo**, transacional por item. Hoje só há bulk
-  BÁSICO por lista de IDs com patch de campos fixos (`POST /api/bulk/instances` e
-  `POST /api/design/sessions/{sid}/bulk`: move-folder/patch/delete + enabled/runAt) — sem regex, sem
-  seleção por critério, sem find-and-replace em campo arbitrário, sem preview, sem undo. → §Aprofundamento Control-M
+### Aprofundamento Control-M — ✅ TRILHA 100% FECHADA (2026-07-06)
+> CTM-1 (`%%SETLOCAL` — var com escopo por instance), CTM-2 (tokens nativos de data
+> EOM/BOM/EOY/BOY/NEXTBD/PREVBD/FIRSTBD/LASTBD, com offset `%%EOM-1B`) e CTM-3 (Mass
+> Update/Find & Update rico com critério/regex, preview, apply transacional por item e
+> undo por session) foram entregues — ver linha do topo do changelog. Nada desta trilha
+> permanece em aberto.
+
+### Jobs as code (modo CODE no Design) — v1 entregue; aperfeiçoamento em aberto
+- [ ] **CODE-1** — Aperfeiçoar o modo código (v1 = textarea com highlight regex + dry-run + apply).
+  Ideias mapeadas: editor de verdade (CodeMirror/Monaco: autocomplete por schema, folding, múltiplos
+  cursores) · lint em tempo real enquanto digita (hoje só no Validar) · diff visual lado-a-lado
+  código↔working set antes do apply · sync bidirecional AO VIVO com o canvas (split view: editar YAML
+  reflete no grafo na hora) · edição por arquivo com tabs (1 tab por job) em vez de um doc único ·
+  templates/snippets por jobType · import/export de arquivo · git blame inline por job · modo código
+  também no Monitoring (read-only, ver a def congelada da instance). → §changelog "Jobs as code"
 
 ### Diferenciais além do Control-M — 75% (→ §Diferenciais)
 > Entregues (não voltam à lista): Explain · Diff de Daily · Blast Radius · Dry Run · Job
@@ -99,7 +101,9 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 - [ ] **D-3** — Event-driven confiável (reagir a eventos externos, não só polling). → §Diferenciais §1
 - [ ] **D-4** — Performance forecasting com gráficos no Monitoring. → §Diferenciais §2
 - [ ] **D-5** — Query estruturado / busca rica (endpoint composto tipado; decisão de transporte `QUERY` já registrada, não implementado). → §Diferenciais §2
-- [ ] **D-6** — Schedule as Code completo (YAML + DSL Go/Python no repo, sync com a UI). → §Diferenciais §3
+- [ ] **D-6** — Schedule as Code completo (YAML + DSL Go/Python no repo, sync com a UI). **Primeira
+  fatia entregue (2026-07-06):** modo CODE no Design edita o working set como YAML — o restante
+  (DSL Go/Python, sync live) segue aberto junto com CODE-1. → §Diferenciais §3
 - [ ] **D-7** — Testing framework (`regente test job.yaml` com mocks). → §Diferenciais §3
 - [ ] **D-8** — Local dev mode (`regente dev daily`). → §Diferenciais §3
 - [ ] **D-9** — Multi-environment promotion (Dev→Staging→Prod) Git-native. → §Diferenciais §4
@@ -438,6 +442,7 @@ contra Postgres 16 real (Docker); restante pendente:
 
 | ⭐ | Frente | Por quê |
 |----|--------|---------|
+| ✅ | ~~**Jobs as code (modo CODE Matrix) + FECHAMENTO do Aprofundamento Control-M (CTM-1/2/3)**~~ | **Feito (2026-07-06):** (1) **Jobs as code** — botão **CODE** estilizado Matrix na topbar do Design (verde fósforo `#00ff41`, varredura de "chuva" animada em CSS): o palco central vira um **editor YAML do working set** da design session (`CodeModeView`, com digital rain em canvas ~15fps ao fundo, gutter de linhas, highlight YAML por regex — chave/string/número/bool/comentário/`%%TOKEN` — via `<pre>` sob textarea transparente, zero dependência nova). Server: `GET/POST /api/design/sessions/{sid}/code` (`api/code.go`) — GET serializa as defs das folders abertas como **YAML multi-doc no MESMO dialeto dos arquivos do workspace Git** (ordenado por team/id, com comentário de path por doc); POST parseia **estrito** (campo desconhecido = erro, pega typo `retires:`), team default quando a folder é única, calcula o **plano creates/updates/deletes/unchanged** (igualdade por YAML canônico; job movido de folder = Save novo + Delete antigo), `apply=false` = dry-run (botão **Validar**), `apply=true` executa **transacional por item** (semântica do bulk) com ACL por folder, e **delete-por-ausência é gated** (`allowDelete` — o front pede confirmação listando os ids). Fluxo validado **AO VIVO E2E** (server single-origin + GitOps em bare repo local): editar → Validar (3 no doc, +1 criar) → Aplicar → job novo apareceu no canvas com a dependência. Fix de robustez: escopo de folders com chave estável no `CodeModeView` (array novo por render do pai refetchava e **apagava a edição**). Aperfeiçoamentos mapeados em **CODE-1**. (2) **CTM-1 `%%SETLOCAL NOME=VALOR`** — SET de variável com escopo **LOCAL por instance** (Control-M ctmvar local): persiste em `instances.local_vars` (JSON, migration **v10** SQLite+PG), aplicado a **cada término de tentativa ANTES do retry** (tentativa falha passa estado pra próxima — diferente do `%%SET` global, terminal-only), lido na interpolação da MESMA instance (novo escopo `Local` no `VarContext`, precedência Runtime > **Local** > Definition > Global), sobrevive a rerun e voltas cyclic, **nunca vaza** pro VariableStore nem pra outro job; evento de auditoria `set-var-local`; teto 20/término. (3) **CTM-2 tokens NATIVOS de data** — `%%EOM`/`%%BOM` (último/primeiro dia do mês), `%%EOY`/`%%BOY` (do ano), `%%NEXTBD`/`%%PREVBD` (próximo/anterior dia útil), `%%FIRSTBD`/`%%LASTBD` (1º/último dia útil do mês) como **VALOR direto** derivado do ODATE (formato compacto YYYYMMDD), cientes do **calendar do job** (`ctx.BusinessDay` — feriado desloca) e compostos com o offset existente (`%%EOM-1`, `%%LASTBD-1B`, `%%NEXTBD+2B`); nome definido pelo usuário tem precedência sobre o nativo; `${var.}` também resolve. (4) **CTM-3 Mass Update / Find & Update RICO** — `POST /api/design/sessions/{sid}/massupdate` (`api/massupdate.go`): **critério** (ids da seleção do canvas ∧ folders ∧ jobType ∧ **regex sobre campo** ∧ **campo vazio**) → **operação** (set-field c/ `onlyIfEmpty` · find-replace regex em campo arbitrário **ou em todos os strings de params** · add/remove-action · add/remove-upstream (self-loop no-op, condition default on-success) · set/remove-variable · add/remove-condition-in) → `apply=false` = **PREVIEW com diff por job** (field: before → after) → apply **transacional por item** (deep-copy p/ isolamento, validate+ACL por item) → **UNDO por session** (`/massupdate/undo`, pilha in-memory cap 10, morre com publish/discard/restart). Campo `schedule.description` adicionado ao modelo Go (o front sempre enviou e o server DROPAVA — bug de perda de dados corrigido de carona; casos "descrição vazia → preencher em lote" agora funcionam). UI: botão **FIND & UPDATE** na topbar do Design (`MassUpdateDialog`: critério → operação com campos contextuais → preview tabelado → aplicar → botão ↩ Desfazer). Validado **AO VIVO E2E**: preview 4 jobs (∅→valor), apply gravou, undo restaurou ∅; regex `-fin$` + find-replace em params conferidos via API. **17 testes Go novos** (scheduler: 5 CTM-1/2 · api: 12 code+massupdate) + suítes server/api/db + `scripts/verify.sh` verdes. |
 | ✅ | ~~**BUG 👻GHOST: selo do Monitoring mudava em tempo real ao publicar no Design** (imutabilidade)~~ | **Feito (2026-07-04):** o selo 👻GHOST acendia/apagava em jobs **já ordenados** ao ligar `dryRun` no Design e publicar — violação da regra de que o **Monitoring é IMUTÁVEL** (uma instância só muda numa NOVA ordem: daily/force/rerun). Raiz: era o ÚNICO atributo do card derivado da **definition VIVA** (`dryRun: !!defsById.get(inst.definitionId)?.dryRun` em `buildMonitoringCanvas`), enquanto `team` e o resto já vinham congelados na instância. Fix (mesmo padrão do `team`, schemaV4): **coluna `dry_run` snapshotada na ordem** (`schemaV9`, SQLite+PG), congelada nos DOIS INSERTs — daily batch (`insertDailyChunk`) e `ForceOrder` — a partir de `def.DryRun`; exposta na API (`instances.go`: instanceRow/instanceCols/scanInstances); carregada no `toWeb` (server-instance-store.ts); e o canvas passou a ler `!!inst.dryRun` (snapshot), NUNCA a def viva. Path local/demo já congelava certo via `createInstance`. Comentários em cada ponto explicando a invariante. Teste `TestDryRun_FrozenOnOrder_NotRewrittenByLiveDef` (mexer na def viva NÃO reescreve a instância; a próxima ordem/force sim congela o novo valor) + `go build`/`vet`/suítes scheduler·api·db + `tsc` verdes. |
 | ✅ | ~~**Selo 👻GHOST no card de job dry-run** (Refinamento UI)~~ | **Feito (2026-07-04):** job com `dryRun:true` (entra na daily e "roda", mas NÃO executa — log only) agora tem selo próprio no card do Monitoring, análogo ao ⚡FORCED do Force Order. `JobNodeV2` renderiza `👻GHOST` (lavanda `#c4b5fd`) ao lado do label quando `data.dryRun`; o flag vem do **snapshot da instância** (`inst.dryRun`, coluna `dry_run` congelada na ordem — ver a linha do bug de imutabilidade acima; a versão original lia a def viva e foi corrigida). Só monitoring (como o FORCED). tsc limpo + **validado AO VIVO** (server offline demo-mode, workspace c/ 1 job normal + 1 dryRun: card PIPELINE-GHOST com 👻GHOST, PIPELINE-REAL sem; cor computada `rgb(196,181,253)` confirmada no DevTools). |
 | ✅ | ~~**Cadeado no card de job em HOLD** (Refinamento UI)~~ | **Feito (2026-07-04):** job segurado manualmente por um operador (Control-M "Hold") agora é sinalizado no card do Monitoring com um **cadeado sobreposto no canto superior esquerdo**, fundo transparente, sobre a barra de status. Motivação: `HOLD` colapsa para `INACTIVE` na cor de status (igual a `CANCELLED`), então "segurado" e "ocioso/cancelado" ficavam visualmente idênticos — o cadeado é o que os distingue. `JobNodeV2` renderiza o `Lock` (lucide, lavanda `#c4b5fd`, `size 11`) em `position:absolute` (top-left, `pointerEvents:none`, tooltip explicativo); a Linha 1 ganha `paddingLeft` reservado quando `held` pra o cadeado não cobrir as primeiras letras do label. O flag vem do **snapshot da instância** (`held: inst.status === "HOLD"` em `buildMonitoringCanvas`, mesmo padrão do `dryRun`/`forced`); server manda `HELD`, o store mapeia → `HOLD`. Só monitoring. tsc limpo (2×) + **validado AO VIVO** (server offline :9090, def COMMAND → Force → `POST /instances/{id}/hold`: card com cadeado em x6/y4, label começa em x27 = **sem overlap**, tooltip e cor confirmados no DevTools; convive com o ⚡FORCED no mesmo card). |
@@ -593,11 +598,9 @@ usuário revisar e commitar.
 ## 🧩 Aprofundamento Control-M *(SPEC/histórico — status canônico só na §O que falta)*
 
 > ⚠️ **As marcações `⬜`/`✅` abaixo estão DESATUALIZADAS e NÃO valem como status.** A
-> trilha foi FECHADA (núcleo 100%, 2026-07-03); vários itens aqui ainda marcados `⬜` já
-> foram entregues (cyclic · CONFIRM · DATABASE · SET de var + cálculo de datas ·
-> WINDOW_CLOSED · ViewPoints salvos · Dashboards · baterias de calendário/recursos/forecast
-> — ver changelog). O que REALMENTE resta desta trilha está na **§O que falta** como
-> **CTM-1/CTM-2/CTM-3**. Esta seção fica só como referência de spec.
+> trilha está **100% FECHADA** (núcleo 2026-07-03; CTM-1/CTM-2/CTM-3 em 2026-07-06 —
+> `%%SETLOCAL` · tokens nativos de data · Mass Update rico, ver changelog). **Nada desta
+> trilha permanece em aberto.** Esta seção fica só como referência de spec.
 >
 > O núcleo de paridade existe, mas precisa de **bateria de testes** cobrindo os casos reais do
 > Control-M e refino onde faltar. Cada item = testar TODAS as possibilidades + fechar os gaps.
