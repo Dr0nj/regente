@@ -480,6 +480,7 @@ var sqliteMigrations = []migration{
 	{version: 9, sql: schemaV9()},
 	{version: 10, sql: schemaV10()},
 	{version: 11, sql: schemaV11(sqliteID, "DATETIME")},
+	{version: 12, sql: schemaV12("DATETIME")},
 }
 
 var pgMigrations = []migration{
@@ -494,6 +495,7 @@ var pgMigrations = []migration{
 	{version: 9, sql: schemaV9()},
 	{version: 10, sql: schemaV10()},
 	{version: 11, sql: schemaV11(pgID, "TIMESTAMPTZ")},
+	{version: 12, sql: schemaV12("TIMESTAMPTZ")},
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
@@ -635,4 +637,12 @@ func schemaV11(idDef, ts string) string {
 	detail  TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_audit_events_ts ON audit_events(ts)`
+}
+
+// schemaV12 — E5 (2026-07-07): relatório/SLO da daily. `report_sent_at` marca
+// que o push do relatório do dia (setting daily_report_channels) já foi enviado
+// — o claim é um UPDATE ... WHERE report_sent_at IS NULL, então o envio é
+// idempotente mesmo com múltiplos nós/ticks. ALTER idêntico SQLite/PG.
+func schemaV12(ts string) string {
+	return `ALTER TABLE daily_runs ADD COLUMN report_sent_at ` + ts
 }

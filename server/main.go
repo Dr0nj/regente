@@ -393,6 +393,11 @@ func main() {
 		sched.ReloadDefs()
 		log.Printf("[scheduler] mode=external — sem ticker interno; dirija via POST /api/scheduler/tick")
 	default:
+		// E4 — fila assíncrona de eventos: só no modo daemon (internal). No modo
+		// external/serverless fica desligada de propósito — o processo pode ser
+		// congelado entre requests e eventos bufferizados em memória morreriam;
+		// lá o write síncrono é o correto.
+		sched.StartEventQueue()
 		go sched.Run(ctx)
 		log.Printf("[scheduler] mode=internal — ticker a cada %s", time.Duration(*tickMs)*time.Millisecond)
 	}
@@ -503,6 +508,9 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 	_ = srv.Shutdown(shutdownCtx)
+	// E4 — flush final da fila de eventos (e teto das goroutines de fundo):
+	// Stop() drena o canal e grava o resto antes de retornar.
+	sched.Stop()
 }
 
 func envOr(key, def string) string {

@@ -88,6 +88,13 @@ type Scheduler struct {
 	tzMu  sync.Mutex
 	tzName string
 	tzLoc  *time.Location
+
+	// E4 — fila assíncrona de eventos (nil = desligada, write síncrono).
+	// Ligada por StartEventQueue() no modo internal; ver eventqueue.go.
+	eventCh chan eventRec
+
+	// E5 — throttle do check "daily fechou? manda o relatório" (1×/min no tick).
+	lastReportCheck time.Time
 }
 
 // Bus — Fase 2 (futuro serverless): transporte do control-plane. Abstrai a
@@ -313,6 +320,9 @@ func (s *Scheduler) Tick() {
 		return
 	}
 	s.autoDailyIfDue()
+	// E5 — se a daily de hoje fechou (ou bateu daily_report_at), envia o
+	// relatório 1× (claim em report_sent_at); throttle interno de 1 min.
+	s.maybeSendDailyReport()
 	s.tickOnce()
 }
 
@@ -417,6 +427,15 @@ func (s *Scheduler) dailySync() (sha string, err error) {
 func (s *Scheduler) emitEvent(instanceID, kind, actor, message string) {
 	if instanceID == "" || kind == "" {
 		return
+	}
+	// E4 — com a fila ligada, o hot path só enfileira (send não-bloqueante);
+	// fila cheia degrada pro INSERT síncrono de sempre — nunca perde evento.
+	if ch := s.eventQueue(); ch != nil {
+		select {
+		case ch <- eventRec{instanceID, kind, actor, message}:
+			return
+		default: // cheia (eventQueueCap pendentes) — degrada
+		}
 	}
 	_, err := s.db.Exec(
 		`INSERT INTO instance_events(instance_id, kind, actor, message) VALUES(?,?,?,?)`,

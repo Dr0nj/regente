@@ -427,6 +427,22 @@ func (s *server) dailyStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// dailyReport — E5: relatório/SLO da daily (o que rodou, o que falhou, atraso).
+// Default = a diária de HOJE na timezone de negócio. Fonte do card compacto do
+// Monitoring e do push opcional (daily_report_channels).
+func (s *server) dailyReport(w http.ResponseWriter, r *http.Request) {
+	date := r.URL.Query().Get("date")
+	if date == "" {
+		date = s.cfg.Scheduler.TodayDate()
+	}
+	rep, err := s.cfg.Scheduler.BuildDailyReport(date)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, 200, rep)
+}
+
 // dryRunDaily — Diferencial "simular a daily de uma data futura SEM materializar":
 // quem roda, quem espera (depois de quem) e quem nunca dispara (e por quê). Default
 // date = amanhã. Não toca o banco.

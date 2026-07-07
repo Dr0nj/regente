@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture do golden test: 1 folder cobrindo CADA mapeamento do README. -->
+<DEFTABLE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <FOLDER DATACENTER="CTM_PROD" FOLDER_NAME="FIN">
+    <JOB JOBNAME="EXTRACT_FIN" DESCRIPTION="Extrai movimento financeiro" TASKTYPE="Command"
+         CMDLINE="/opt/etl/extract.sh %%ODATE" PARENT_FOLDER="FIN" TIMEFROM="0130"
+         MAXRERUN="2" SUB_APPLICATION="CORE" RUN_AS="etluser">
+      <OUTCOND NAME="FIN-EXTRACT-OK" ODATE="ODAT" SIGN="+"/>
+      <VARIABLE NAME="%%TARGET" VALUE="s3://bucket/fin"/>
+    </JOB>
+    <JOB JOBNAME="LOAD_FIN" DESCRIPTION="Carrega o DW" TASKTYPE="Job" CMDLINE="/opt/etl/load.sh"
+         PARENT_FOLDER="FIN" WEEKDAYS="1,2,3,4,5" TIMETO="2200">
+      <INCOND NAME="FIN-EXTRACT-OK" ODATE="ODAT" AND_OR="A"/>
+      <INCOND NAME="MAINFRAME-READY" ODATE="ODAT" AND_OR="A"/>
+      <OUTCOND NAME="FIN-LOAD-OK" SIGN="+"/>
+      <SHOUT WHEN="NOTOK" URGENCY="U" DEST="EM" MESSAGE="carga do DW falhou"/>
+    </JOB>
+    <JOB JOBNAME="REPORT_FIN" TASKTYPE="Job" CMDLINE="/opt/etl/report.sh" PARENT_FOLDER="FIN"
+         DAYS="1,15,L" DAYSCAL="FERIADOS_BR" CONFCAL="FERIADOS_BR" SHIFT="&gt;">
+      <INCOND NAME="FIN-LOAD-OK" AND_OR="A"/>
+      <INCOND NAME="SHARED-COND" AND_OR="A"/>
+    </JOB>
+    <JOB JOBNAME="WATCH_FILE" TASKTYPE="FileWatcher" FILE_NAME="/in/dados.csv" PARENT_FOLDER="FIN"
+         CYCLIC="1" INTERVAL="00030M"/>
+    <JOB JOBNAME="EMIT_A" TASKTYPE="Command" CMDLINE="echo a" PARENT_FOLDER="FIN">
+      <OUTCOND NAME="SHARED-COND" SIGN="+"/>
+    </JOB>
+    <JOB JOBNAME="EMIT_B" TASKTYPE="Command" CMDLINE="echo b" PARENT_FOLDER="FIN">
+      <OUTCOND NAME="SHARED-COND" SIGN="+"/>
+      <OUTCOND NAME="OLD-COND" SIGN="-"/>
+    </JOB>
+    <JOB JOBNAME="LEGACY_TASK" TASKTYPE="Detached" CMDLINE="x" PARENT_FOLDER="FIN"/>
+    <JOB JOBNAME="ODD_JOB" TASKTYPE="Command" CMDLINE="echo odd" PARENT_FOLDER="FIN" CRITICAL="1"/>
+    <JOB JOBNAME="GHOST" TASKTYPE="Dummy" PARENT_FOLDER="FIN"/>
+  </FOLDER>
+</DEFTABLE>

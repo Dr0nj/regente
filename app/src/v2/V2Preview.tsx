@@ -56,6 +56,7 @@ import { onServerEvent, isServerMode, onAuthEvent, setAuthToken, SERVER_URL } fr
 import { fetchMe, loadCachedUser, type AuthUser } from "@/lib/auth-api";
 import { LoginForm } from "./LoginForm";
 import { UserMenu } from "./UserMenu";
+import { DailyReportCard } from "./DailyReportCard";
 import { UsersDialog } from "./UsersDialog";
 import { ControlMPanel } from "./ControlMPanel";
 import { AlertsPanel } from "./AlertsPanel";
@@ -1407,6 +1408,10 @@ function V2PreviewInner() {
             />
           </>
         )}
+
+        {/* E5 — card compacto do relatório da daily (números do /api/daily/report;
+            a UI não recalcula). Só no board clássico — o ScaleMonitor tem dashboard. */}
+        {mode === "monitoring" && !scaleView && isServerMode() && <DailyReportCard />}
 
         {/* Empty state overlay — só depois do bootstrap assentar (ready): no F5 as
             instances chegam async e o "Ambiente vazio" piscava antes do board. */}

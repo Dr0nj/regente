@@ -87,6 +87,14 @@ func (s *server) metrics(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "# HELP regente_is_leader 1 se este nó é o líder do scheduler (HA).")
 		fmt.Fprintln(w, "# TYPE regente_is_leader gauge")
 		fmt.Fprintf(w, "regente_is_leader %d\n", lead)
+
+		// E4 — profundidade da fila assíncrona de eventos (0 com fila vazia OU
+		// desligada; alerte se encostar na capacidade — o excedente degrada pra
+		// writes síncronos no hot path).
+		depth, _ := s.cfg.Scheduler.EventQueueDepth()
+		fmt.Fprintln(w, "# HELP regente_event_queue_depth Eventos de instance aguardando o flush em lote (E4).")
+		fmt.Fprintln(w, "# TYPE regente_event_queue_depth gauge")
+		fmt.Fprintf(w, "regente_event_queue_depth %d\n", depth)
 	}
 }
 
