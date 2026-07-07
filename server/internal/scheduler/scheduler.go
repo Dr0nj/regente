@@ -78,6 +78,16 @@ type Scheduler struct {
 	quit     chan struct{}
 	wg       sync.WaitGroup
 	stopOnce sync.Once
+
+	// === E1 (2026-07-07) — timezone da daily ===
+	// nowFn é o relógio-fonte, injetável nos testes (default time.Now); o "agora"
+	// de negócio é sempre nowFn().In(loc do settings.daily_timezone). tzName/tzLoc
+	// cacheiam o time.LoadLocation por NOME — mudar o setting recarrega no próximo
+	// uso, sem restart; nome inválido loga UMA vez e cai no relógio local.
+	nowFn func() time.Time
+	tzMu  sync.Mutex
+	tzName string
+	tzLoc  *time.Location
 }
 
 // Bus — Fase 2 (futuro serverless): transporte do control-plane. Abstrai a
@@ -116,6 +126,7 @@ func New(store *storage.FileStore, db *db.DB, bus Bus, tick time.Duration) *Sche
 		noAgentAt: map[string]time.Time{},
 		settings:  Settings{DailyAt: "00:00", Timezone: "America/Sao_Paulo"},
 		quit:      make(chan struct{}),
+		nowFn:     time.Now,
 	}
 }
 
@@ -439,6 +450,46 @@ func (s *Scheduler) DailyAt() string {
 	return s.settings.DailyAt
 }
 
+// DailyTimezone — E1: timezone de NEGÓCIO da daily (settings.daily_timezone,
+// nome IANA como "America/Sao_Paulo"). Vazio = relógio local do server
+// (comportamento clássico). Devolve o nome CONFIGURADO e a *time.Location
+// EFETIVA — nome inválido loga uma vez e cai no local, sem parar a daily.
+// O LoadLocation é cacheado por nome: editar o setting na UI recarrega no
+// próximo tick, sem restart.
+func (s *Scheduler) DailyTimezone() (string, *time.Location) {
+	var name string
+	_ = s.db.QueryRow(`SELECT value FROM settings WHERE key='daily_timezone'`).Scan(&name)
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", time.Local
+	}
+	s.tzMu.Lock()
+	defer s.tzMu.Unlock()
+	if name == s.tzName && s.tzLoc != nil {
+		return name, s.tzLoc
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		// Cacheia o fallback pelo MESMO nome: sem isso o tick de 2s logaria isto
+		// centenas de vezes por minuto. Corrigir o setting muda o nome → recarrega.
+		log.Printf("[scheduler] settings daily_timezone %q inválido (%v) — usando o relógio local do server", name, err)
+		loc = time.Local
+	}
+	s.tzName, s.tzLoc = name, loc
+	return name, loc
+}
+
+// NowLocal — E1: "agora" no relógio de negócio da daily. Toda decisão de
+// "hoje"/horário de daily parte daqui (nowFn é injetável nos testes).
+func (s *Scheduler) NowLocal() time.Time {
+	_, loc := s.DailyTimezone()
+	return s.nowFn().In(loc)
+}
+
+// TodayDate — E1: a data "de hoje" (YYYY-MM-DD) na timezone da daily. É o
+// order_date que uma ordem criada AGORA (auto ou manual) recebe.
+func (s *Scheduler) TodayDate() string { return s.NowLocal().Format("2006-01-02") }
+
 // parseHHMM valida "HH:MM" (00:00–23:59).
 func parseHHMM(v string) (hh, mm int, ok bool) {
 	parts := strings.Split(v, ":")
@@ -454,7 +505,11 @@ func parseHHMM(v string) (hh, mm int, ok bool) {
 }
 
 func (s *Scheduler) autoDailyIfDue() {
-	now := time.Now()
+	// E1 — o relógio de referência é o de NEGÓCIO (settings.daily_timezone; vazio
+	// = local do server): `today`, o horário-alvo e o order_date gravado derivam
+	// de `now` NESSA location. Server em UTC com negócio em America/Sao_Paulo
+	// cruza a meia-noite às 03:00Z e materializa com o order_date de SP.
+	now := s.NowLocal()
 	today := now.Format("2006-01-02")
 
 	var started sql.NullString
@@ -482,6 +537,10 @@ func (s *Scheduler) autoDailyIfDue() {
 		log.Printf("[scheduler] daily %s: synced workspace to %s", today, short(sha))
 	}
 	s.RunDaily(today)
+	// E2 — retenção de auditoria: 1×/dia, logo após a daily, só no líder (o
+	// caller já é leader-gated). Síncrono de propósito: roda em lotes curtos e
+	// uma goroutine solta escreveria no DB depois do teardown (o flake do TempDir).
+	s.auditGC()
 }
 
 func short(sha string) string {

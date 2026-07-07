@@ -397,26 +397,33 @@ func (s *server) setOKInstance(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) runDaily(w http.ResponseWriter, r *http.Request) {
-	today := time.Now().Format("2006-01-02")
+	// E1 — "hoje" é o dia na timezone de NEGÓCIO (settings.daily_timezone), o
+	// mesmo relógio da daily automática: rodar manualmente às 22h de SP com o
+	// server em UTC (01h do dia seguinte) NÃO pode materializar a diária de amanhã.
+	today := s.cfg.Scheduler.TodayDate()
 	created := s.cfg.Scheduler.RunDaily(today)
 	writeJSON(w, 200, map[string]interface{}{"orderDate": today, "created": created})
 }
 
-// dailyStatus — estado da daily pelo relógio do SERVIDOR: última execução
-// (daily_runs) + horário configurado (settings.daily_at, editável na UI). É a
-// fonte da verdade do rodapé do Monitoring — o front NÃO persiste mais isso em
-// localStorage em server mode.
+// dailyStatus — estado da daily pelo relógio de NEGÓCIO do servidor: última
+// execução (daily_runs) + horário (settings.daily_at) + timezone (E1,
+// settings.daily_timezone; "" = relógio local do server). É a fonte da verdade
+// do rodapé do Monitoring — o front NÃO persiste mais isso em localStorage em
+// server mode.
 func (s *server) dailyStatus(w http.ResponseWriter, r *http.Request) {
 	var lastDate, lastAt string
 	_ = s.cfg.DB.QueryRow(
 		`SELECT order_date, started_at FROM daily_runs ORDER BY order_date DESC LIMIT 1`,
 	).Scan(&lastDate, &lastAt)
+	tzName, _ := s.cfg.Scheduler.DailyTimezone()
+	now := s.cfg.Scheduler.NowLocal()
 	writeJSON(w, 200, map[string]interface{}{
-		"orderDate":   time.Now().Format("2006-01-02"),
+		"orderDate":   now.Format("2006-01-02"),
 		"dailyAt":     s.cfg.Scheduler.DailyAt(),
+		"timezone":    tzName,
 		"lastRunDate": lastDate,
 		"lastRunAt":   lastAt,
-		"serverNow":   time.Now().Format(time.RFC3339),
+		"serverNow":   now.Format(time.RFC3339),
 	})
 }
 

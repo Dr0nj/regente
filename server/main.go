@@ -22,6 +22,11 @@ import (
 	"syscall"
 	"time"
 
+	// E1 — base IANA de timezones EMBUTIDA no binário: settings.daily_timezone
+	// usa time.LoadLocation, e Windows/containers scratch não têm zoneinfo do
+	// sistema. Custa ~450KB e torna o binário auto-suficiente.
+	_ "time/tzdata"
+
 	"github.com/Dr0nj/regente-server/internal/api"
 	"github.com/Dr0nj/regente-server/internal/audit"
 	"github.com/Dr0nj/regente-server/internal/auth"

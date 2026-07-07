@@ -479,6 +479,7 @@ var sqliteMigrations = []migration{
 	{version: 8, sql: schemaV8(sqliteID, "DATETIME")},
 	{version: 9, sql: schemaV9()},
 	{version: 10, sql: schemaV10()},
+	{version: 11, sql: schemaV11(sqliteID, "DATETIME")},
 }
 
 var pgMigrations = []migration{
@@ -492,6 +493,7 @@ var pgMigrations = []migration{
 	{version: 8, sql: schemaV8(pgID, "TIMESTAMPTZ")},
 	{version: 9, sql: schemaV9()},
 	{version: 10, sql: schemaV10()},
+	{version: 11, sql: schemaV11(pgID, "TIMESTAMPTZ")},
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
@@ -612,4 +614,25 @@ func schemaV9() string {
 // ALTER idêntico em SQLite e Postgres; instances antigas ficam com ” (sem vars).
 func schemaV10() string {
 	return `ALTER TABLE instances ADD COLUMN local_vars TEXT NOT NULL DEFAULT ''`
+}
+
+// schemaV11 — E2 (2026-07-07): trilha de auditoria de segurança PERSISTIDA.
+// O pkg audit (SIEM) era transporte puro (JSON em stderr + POST opcional);
+// auditoria enterprise precisa de trilha durável — retenção configurável
+// (audit_retention_days, ver scheduler/auditgc.go) e export JSONL paginado
+// (GET /api/audit/export). Todo s.audit() da API (login, definition.write,
+// settings.write) passa a gravar aqui além de emitir pro sink.
+func schemaV11(idDef, ts string) string {
+	return `CREATE TABLE IF NOT EXISTS audit_events (
+	id      ` + idDef + `,
+	ts      ` + ts + ` DEFAULT CURRENT_TIMESTAMP,
+	kind    TEXT NOT NULL,
+	actor   TEXT NOT NULL DEFAULT '',
+	action  TEXT NOT NULL DEFAULT '',
+	target  TEXT NOT NULL DEFAULT '',
+	outcome TEXT NOT NULL DEFAULT '',
+	ip      TEXT NOT NULL DEFAULT '',
+	detail  TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_audit_events_ts ON audit_events(ts)`
 }

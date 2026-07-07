@@ -559,9 +559,11 @@ sync live com o canvas, tabs por job — ver [`docs/roadmap.md`](docs/roadmap.md
 **Refinamento UI:**
 - [ ] Virtualizar a sidebar ACTIVE JOBS (hoje capada em 2000; o ViewPoint já mostra 100k–1M) · drawer do job mais amigável
 
-**Enterprise** (specs prontas — E1..E6 em [`docs/roadmap.md`](docs/roadmap.md)):
-- [ ] Timezone da daily · auditoria (retenção/export/audit de settings) · RBAC por ação operacional ·
-  fila assíncrona de eventos · relatório/SLO da daily · importador Control-M
+**Enterprise** (E1–E3 ✅ 2026-07-07; E4..E6 com spec pronta em [`docs/roadmap.md`](docs/roadmap.md)):
+- [x] Timezone da daily (`daily_timezone` IANA, relógio de negócio) · auditoria (retenção +
+  export JSONL com cursor + audit de mudanças de settings sem vazar segredo) · RBAC por
+  ação operacional (folder-scoped em hold/cancel/rerun/…, 403 por item no bulk)
+- [ ] Fila assíncrona de eventos · relatório/SLO da daily · importador Control-M
 
 **Camada agent-native (MCP)** — servidor pronto (NL-query `query` ✅); falta writes ricos. **Diferenciais** e **🏁 Fase Z**
 (case study + LinkedIn, último gate): ver seções abaixo e [`docs/roadmap.md`](docs/roadmap.md).

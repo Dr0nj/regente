@@ -143,6 +143,7 @@ func NewRouter(cfg Config) http.Handler {
 		r.Get("/instances/{id}/rca", s.rca)                   // diferencial: causa raiz da falha/bloqueio
 
 		r.Get("/events", s.listEventLog)               // diferencial: event log CQRS-lite (feed do dia)
+		r.Get("/audit/export", s.auditExport)          // E2: export JSONL unificado (admin-only, cursor after_id)
 		r.Post("/query", s.runQuery)                   // diferencial: NL-query (texto → consulta estruturada)
 		r.Get("/daily/diff", s.diffDaily)              // diferencial: o que mudou entre duas diárias
 		r.Get("/daily/dryrun", s.dryRunDaily)          // diferencial: simular uma daily futura sem materializar

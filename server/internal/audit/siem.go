@@ -25,6 +25,7 @@ type Event struct {
 	Target  string `json:"target,omitempty"` // recurso afetado (ex.: "team/jobId")
 	Outcome string `json:"outcome"`          // "success" | "failure"
 	IP      string `json:"ip,omitempty"`
+	Detail  string `json:"detail,omitempty"` // E2 — contexto extra (ex.: settings "chave: de→para"); NUNCA valores secretos
 }
 
 // Sink emite eventos. Construído uma vez no boot e compartilhado.

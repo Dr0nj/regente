@@ -100,7 +100,11 @@ func (s *server) bulkInstances(w http.ResponseWriter, r *http.Request) {
 }
 
 // canWriteInstanceQuiet — variante de requireInstanceWrite que retorna erro em
-// vez de escrever a resposta HTTP (necessário para feedback por item no bulk).
+// vez de escrever a resposta HTTP (necessário para feedback por item no bulk:
+// E3 manda reportar 403 POR ITEM, não abortar o lote). Mesma semântica do
+// unitário: folder da coluna `team` da instance (fallback def viva); job solto
+// (team='') passa pelo CanWriteFolder("") — admin/operator irrestrito sim,
+// user em modo ACL-restrito não.
 func (s *server) canWriteInstanceQuiet(r *http.Request, instanceID string) error {
 	folder, err := s.instanceFolder(instanceID)
 	if err != nil {
@@ -110,17 +114,14 @@ func (s *server) canWriteInstanceQuiet(r *http.Request, instanceID string) error
 	if !ok || u == nil {
 		return fmt.Errorf("unauthorized")
 	}
-	if folder == "" {
-		if !u.Role.CanAdmin() {
-			return fmt.Errorf("orphan instance: admin only")
-		}
-		return nil
-	}
 	can, err := auth.CanWriteFolder(s.cfg.DB, u, folder)
 	if err != nil {
 		return err
 	}
 	if !can {
+		if folder == "" {
+			return fmt.Errorf("no write access (instance sem folder)")
+		}
 		return fmt.Errorf("no write access to folder %s", folder)
 	}
 	return nil

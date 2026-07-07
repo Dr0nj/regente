@@ -122,11 +122,19 @@ func (s *server) requireFolderWrite(w http.ResponseWriter, r *http.Request, fold
 	return true
 }
 
-// instanceFolder devolve a team da definition de uma instance.
+// instanceFolder devolve a folder dona de uma instance. E3 — fonte primária é
+// a coluna `team` SNAPSHOTADA na própria instance (v4; barata — 1 SELECT — e
+// imutável como o resto do card do Monitoring); só instances pré-v4 sem team
+// caem no fallback da definition viva. Ambas vazias = job "solto" (sem folder).
 func (s *server) instanceFolder(instanceID string) (string, error) {
-	var defID string
-	if err := s.cfg.DB.QueryRow(`SELECT definition_id FROM instances WHERE id=?`, instanceID).Scan(&defID); err != nil {
+	var team, defID string
+	if err := s.cfg.DB.QueryRow(
+		`SELECT COALESCE(team,''), definition_id FROM instances WHERE id=?`, instanceID,
+	).Scan(&team, &defID); err != nil {
 		return "", err
+	}
+	if team != "" || s.cfg.Store == nil {
+		return team, nil
 	}
 	defs, err := s.cfg.Store.List()
 	if err != nil {
@@ -141,20 +149,17 @@ func (s *server) instanceFolder(instanceID string) (string, error) {
 }
 
 // requireInstanceWrite valida que o user pode mutar a folder dona da instance.
+// E3 — enforcement das ações OPERACIONAIS (hold/release/cancel/rerun/set-ok/
+// confirm) por folder, além do writer role do middleware: operator com ACL
+// write=[FIN] não cancela job do RISCO. Instance sem folder (job solto) passa
+// pelo MESMO CanWriteFolder(""): admin e operator irrestrito podem; user em
+// modo ACL-restrito não (coerente com o read-path, que nem lista team='' pra
+// ele). Bearer legado vira pseudo-admin no middleware → bypassa, por design.
 func (s *server) requireInstanceWrite(w http.ResponseWriter, r *http.Request, instanceID string) bool {
 	folder, err := s.instanceFolder(instanceID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return false
-	}
-	if folder == "" {
-		// instance sem definition associada (orphan); so admin pode mutar.
-		u, ok := auth.FromContext(r.Context())
-		if !ok || u == nil || !u.Role.CanAdmin() {
-			http.Error(w, "forbidden: orphan instance, admin only", http.StatusForbidden)
-			return false
-		}
-		return true
 	}
 	return s.requireFolderWrite(w, r, folder)
 }

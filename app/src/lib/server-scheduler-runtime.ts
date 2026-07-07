@@ -18,11 +18,12 @@ export function getLastDailyRun(): string | null {
 /* ── Daily status (fonte da verdade = relógio/DB do SERVER) ── */
 
 export interface DailyStatus {
-  orderDate: string;
+  orderDate: string;     // "hoje" NA timezone da daily (E1) — a data de negócio
   dailyAt: string;       // "HH:MM" configurado (settings.daily_at, default 00:00)
+  timezone?: string;     // E1 — settings.daily_timezone (nome IANA); "" = relógio local do server
   lastRunDate?: string;
   lastRunAt?: string;    // timestamp do daily_runs (UTC do SQLite, sem sufixo Z)
-  serverNow?: string;
+  serverNow?: string;    // RFC3339 já na timezone da daily (com offset)
 }
 
 // SQLite grava CURRENT_TIMESTAMP como "YYYY-MM-DD HH:MM:SS" em UTC SEM

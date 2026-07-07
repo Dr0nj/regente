@@ -15,8 +15,22 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// audit emite um evento de segurança para o SIEM (no-op se não configurado).
-func (s *server) audit(e audit.Event) { s.cfg.Audit.Emit(e) }
+// audit emite um evento de segurança para o SIEM (no-op se não configurado) e
+// o PERSISTE em audit_events (E2) — a trilha durável que alimenta a retenção
+// (audit_retention_days) e o export JSONL (GET /api/audit/export).
+// Best-effort: falha de insert loga e não bloqueia o fluxo principal.
+func (s *server) audit(e audit.Event) {
+	s.cfg.Audit.Emit(e)
+	if s.cfg.DB == nil {
+		return
+	}
+	if _, err := s.cfg.DB.Exec(
+		`INSERT INTO audit_events(kind, actor, action, target, outcome, ip, detail) VALUES(?,?,?,?,?,?,?)`,
+		e.Type, e.Actor, e.Action, e.Target, e.Outcome, e.IP, e.Detail,
+	); err != nil {
+		writeLogf("[audit] persist em audit_events falhou: %v", err)
+	}
+}
 
 // clientIP extrai o IP do request (RemoteAddr já normalizado pelo middleware RealIP).
 func clientIP(r *http.Request) string {

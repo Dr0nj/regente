@@ -57,12 +57,16 @@ export function SettingsDialog({ onClose }: Props) {
   // Horário da daily (settings.daily_at) — o SERVER roda a daily neste horário,
   // pelo relógio DELE (vazio = default 00:00, meia-noite).
   const [dailyAt, setDailyAt] = useState("");
+  // E1 — timezone de NEGÓCIO da daily (settings.daily_timezone, nome IANA).
+  // Vazio = relógio local do server. Nome inválido: o server loga e cai no local.
+  const [dailyTz, setDailyTz] = useState("");
 
   useEffect(() => {
     getSettings().then((s) => {
       setSettings(s);
       setEnvLabel(s.env_label ?? "");
       setDailyAt(s.daily_at ?? "");
+      setDailyTz(s.daily_timezone ?? "");
       setLoaded(true);
     });
     fetchGitStatus().then(setGit).catch(() => {});
@@ -71,7 +75,7 @@ export function SettingsDialog({ onClose }: Props) {
   async function handleSave() {
     setSaving(true);
     try {
-      const updated = await putSettings({ ...settings, env_label: envLabel, daily_at: dailyAt });
+      const updated = await putSettings({ ...settings, env_label: envLabel, daily_at: dailyAt, daily_timezone: dailyTz.trim() });
       setSettings(updated);
       onClose(); // salva e fecha o diálogo (o tema já aplica na hora ao selecionar)
     } finally {
@@ -284,23 +288,52 @@ export function SettingsDialog({ onClose }: Props) {
               </span>
 
               <div style={{ marginTop: 12, borderTop: "1px solid var(--v2-border-subtle)", paddingTop: 10 }}>
-                <label style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
-                  Horário da daily (New Day)
-                </label>
-                <input
-                  type="time"
-                  value={dailyAt}
-                  onChange={(e) => setDailyAt(e.target.value)}
-                  style={{
-                    padding: "6px 10px", fontSize: 13,
-                    background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)",
-                    borderRadius: 4, color: "var(--v2-text-primary)", outline: "none",
-                    colorScheme: "dark",
-                  }}
-                />
+                <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+                  <div>
+                    <label style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
+                      Horário da daily (New Day)
+                    </label>
+                    <input
+                      type="time"
+                      value={dailyAt}
+                      onChange={(e) => setDailyAt(e.target.value)}
+                      style={{
+                        padding: "6px 10px", fontSize: 13,
+                        background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)",
+                        borderRadius: 4, color: "var(--v2-text-primary)", outline: "none",
+                        colorScheme: "dark",
+                      }}
+                    />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 180 }}>
+                    <label style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
+                      Timezone da daily
+                    </label>
+                    <input
+                      list="regente-tz-suggestions"
+                      value={dailyTz}
+                      onChange={(e) => setDailyTz(e.target.value)}
+                      placeholder="relógio local do server"
+                      spellCheck={false}
+                      style={{
+                        width: "100%", padding: "6px 10px", fontSize: 13, fontFamily: "var(--v2-font-mono)",
+                        background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)",
+                        borderRadius: 4, color: "var(--v2-text-primary)", outline: "none", boxSizing: "border-box",
+                      }}
+                    />
+                    <datalist id="regente-tz-suggestions">
+                      {["America/Sao_Paulo", "America/New_York", "America/Chicago", "America/Los_Angeles",
+                        "UTC", "Europe/London", "Europe/Madrid", "Europe/Berlin", "Asia/Tokyo",
+                        "Asia/Singapore", "Australia/Sydney"].map((tz) => <option key={tz} value={tz} />)}
+                    </datalist>
+                  </div>
+                </div>
                 <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 4, display: "block", lineHeight: 1.5 }}>
-                  O servidor materializa a diária neste horário, pelo relógio DELE (vazio = 00:00,
-                  meia-noite). Aplica sem restart; se a daily de hoje já rodou, vale a partir de amanhã.
+                  O servidor materializa a diária neste horário, no relógio de NEGÓCIO da timezone
+                  (nome IANA, ex. <code>America/Sao_Paulo</code>; vazio = relógio local do server —
+                  nome inválido cai no local e loga). O <code>order_date</code> é o dia nessa timezone:
+                  server em UTC com negócio em SP cruza a meia-noite às 03:00Z. Aplica sem restart;
+                  se a daily de hoje já rodou, vale a partir de amanhã.
                 </span>
               </div>
             </fieldset>
