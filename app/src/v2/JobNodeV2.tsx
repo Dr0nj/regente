@@ -48,10 +48,19 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
         position: "relative",
         width: 200,
         background: "var(--v2-bg-surface)",
-        border: `1px solid ${selected ? "var(--v2-accent-dark)" : "var(--v2-border-medium)"}`,
+        // Selecionado = borda + halo NEON na cor do tema (--v2-accent-brand/glow).
+        // Vale para 1 ou N jobs: cada card selecionado acende sozinho, em vez de
+        // uma caixa azul arrastada sobre a área inteira (essa foi neutralizada no
+        // .react-flow__nodesselection-rect em index.css). Funciona em Design e
+        // Monitoring — ambos usam o `selected` nativo do ReactFlow.
+        border: `1px solid ${selected ? "var(--v2-accent-brand)" : "var(--v2-border-medium)"}`,
+        boxShadow: selected
+          ? "0 0 0 1px var(--v2-accent-brand), 0 0 16px 2px var(--v2-accent-glow), inset 0 1px 0 rgba(255,255,255,0.04)"
+          : undefined,
         borderRadius: "var(--v2-radius)",
         fontFamily: "var(--v2-font-sans)",
         overflow: "hidden",
+        transition: "box-shadow 120ms ease, border-color 120ms ease",
       }}
     >
       {/* HOLD manual — cadeado sobreposto no canto superior esquerdo, fundo

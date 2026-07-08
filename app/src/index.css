@@ -133,3 +133,12 @@ html, body, #root {
 .react-flow__controls button:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
 .react-flow__minimap { background: var(--color-bg-surface) !important; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); }
 .react-flow__attribution { display: none; }
+/* Multi-seleção — o ReactFlow desenha por padrão uma caixa azul de bounding em
+   volta de TODOS os nós selecionados (o "azulzão arrastado tipo Windows na área
+   inteira"). Neutralizada: o destaque é NÓ A NÓ (borda/halo neon em cada card,
+   ver JobNodeV2), não uma caixa sobre a área. A caixa continua existindo
+   (permite arrastar o grupo junto), só fica invisível. */
+.react-flow__nodesselection-rect { background: transparent !important; border: none !important; }
+/* Retângulo de rubber-band (Shift+arrasto pra selecionar) — fino, na cor neon do
+   tema, no lugar do azul padrão do ReactFlow. */
+.react-flow__selection { background: var(--v2-accent-glow) !important; border: 1px solid var(--v2-accent-brand) !important; }

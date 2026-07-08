@@ -468,6 +468,22 @@ function V2PreviewInner() {
     [mode, filteredInstances, filteredDefs, designDefsWithDraft, layoutCfg, agentAvail],
   );
 
+  // Seleção threaded no prop CONTROLADO de nós. O ReactFlow guarda seleção no
+  // store interno, mas como passamos `nodes` controlado e o canvas é rebuildado
+  // a cada tick (monitoring) ou ao abrir o drawer (design), a seleção interna do
+  // RF era ZERADA no rebuild — o highlight piscava e sumia. Aqui reaplicamos
+  // `selected` a partir do selectedIds (fonte da verdade, alimentado pelo
+  // onSelectionChange) para que o destaque neon PERSISTA entre rebuilds.
+  // Sem seleção, devolvemos canvas.nodes intacto (o RF já mostra tudo sem halo).
+  // Geometria/câmera continuam em canvas.nodes — selecionar NÃO mexe na câmera.
+  const displayNodes = useMemo<Node[]>(() => {
+    if (selectedIds.size === 0) return canvas.nodes;
+    return canvas.nodes.map((n) => {
+      const sel = n.type !== "laneLabel" && selectedIds.has(n.id.replace(/^[md]-/, ""));
+      return sel === !!n.selected ? n : { ...n, selected: sel };
+    });
+  }, [canvas.nodes, selectedIds]);
+
   // Abrir/criar folder no Design — absorvido do antigo FolderOpener pro botão
   // FOLDERS (FolderManagerDialog). Mantém a semântica de design-session: cria a
   // session lazily, abre/cria via API da session, rastreia folders novas pro PR.
@@ -1369,7 +1385,7 @@ function V2PreviewInner() {
             Job-as-code — nem quando o modo código cobre o palco do Design. */}
         {!(mode === "monitoring" && scaleView) && !(mode === "design" && codeMode) && (
         <ReactFlow
-          nodes={canvas.nodes}
+          nodes={displayNodes}
           edges={canvas.edges}
           nodeTypes={nodeTypes}
           // (sem o prop fitView: o fit inicial embutido do RF aplicava DEPOIS do
