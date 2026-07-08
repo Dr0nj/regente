@@ -1,44 +1,54 @@
 # 🎼 Regente — Roadmap
 
-> **Fonte única de status (single source of truth).** Este arquivo é a verdade sobre
-> "o que está pronto / o que falta". O roadmap do [`../README.md`](../README.md) é só um
-> **resumo** que aponta pra cá — se algo divergir, ESTE arquivo vence. Ao entregar algo,
-> atualize AQUI (a barra da trilha + a seção "O que falta" + o changelog "Próximos
-> movimentos"); o README carrega apenas destaques de 1 linha.
+> **Fonte única de status (single source of truth) E tracking de tudo que foi entregue.**
+> Este arquivo é a verdade sobre "o que já foi feito / o que falta" — e o §✅ Entregue é
+> detalhado o suficiente pra cada tópico virar **doc/feature** depois. O README é só
+> **apresentação de produto** (conceito, capacidades, guias) e aponta pra cá; não repete
+> roadmap. Se algo divergir, ESTE arquivo vence.
 >
-> ⛔ **REGRA DE STATUS — LEIA ANTES DE MARCAR CAIXINHA.** A **§🎯 O que falta** é o
-> **ÚNICO registro de status** e lista **TODO** item em aberto — nada de pendente pode
-> existir só numa seção de baixo. As seções detalhadas (Aprofundamento Control-M,
-> Diferenciais §1–5, Features avançadas, Backlog Enterprise) são **SPEC/histórico**, não
-> status: as marcações `⬜`/`✅` nelas podem estar DESATUALIZADAS e **não valem** — se
-> divergirem da §O que falta, a §O que falta vence. Ao entregar/abrir um item: mexa na
-> §O que falta (tirar/adicionar a linha) + na barra da trilha + no changelog. Se um item
-> não está na §O que falta, ele está **entregue** (ou nunca foi escopo) — ponto.
+> **Estrutura:** [§🔜 Backlog](#-backlog-o-que-falta) = o que falta (a lista que a gente faz
+> crescer) · [§✅ Entregue](#-entregue-tracking-por-tópico) = tudo pronto, por tópico ·
+> [§📜 Changelog de entregas](#-changelog-de-entregas) = o mesmo em ordem cronológica, com o porquê.
+>
+> ⛔ **REGRA DE STATUS.** A **§🔜 Backlog** é o **ÚNICO registro do que está aberto** — nada
+> de pendente pode existir só numa seção de baixo. As seções marcadas *SPEC/histórico* (visão de
+> produto, features avançadas) descrevem o *racional*, não o status: se divergirem da §Backlog,
+> a §Backlog vence. Ao **entregar** um item: tire a linha do §Backlog, escreva o tópico detalhado
+> no §Entregue e some uma linha no §Changelog. Ao **abrir** um item novo: só adicione no §Backlog.
+> Sem barras de progresso nem porcentagens — de propósito (confundem mais do que ajudam).
 >
 > Documento vivo · revisão **2026-07-08**.
 > Estratégia de arquitetura em [`arquitetura-futuro.md`](arquitetura-futuro.md);
-> detalhe de produto no [`../README.md`](../README.md).
+> apresentação de produto no [`../README.md`](../README.md).
 
 ## 📊 Visão geral
 
-```
-── Trilhas estruturais (FECHADAS) ──────────────────────────────────────────
-Núcleo / Control-M         ██████████████████████ 100%  ✅ pronto
-Identidade visual / UI     ██████████████████████ 100%  ✅ logo, topbar, 13 temas, login vídeo, sidebars
-Alerting                   ██████████████████████ 100%  ✅ multi-canal + por-regra
-Serverless portátil        ██████████████████████ 100%  ✅ Knative/WASM/NATS/k8s ✓ · AWS/GCP (código+mock)
-Enterprise readiness       ██████████████████████ 100%  ✅ RBAC/mTLS/SIEM/OTel/SLOs · SSO+carga REAIS · zero-downtime · quotas-HA · drift · backlog E1–E6 ✅ COMPLETO (tz daily · auditoria retenção/export · RBAC operacional · fila de eventos · daily report · importador Control-M)
-Escala Control-M (100k–1M) ██████████████████████ 100%  ✅ P1 write 1M/17s · P2 API 51/18ms · P3 ViewPoint @1M
-Resiliência operacional    ██████████████████████ 100%  ✅ R1–R7 + chaos/HA validado em PG real
+> Sem barras de progresso ou porcentagens — de propósito: cada trilha ou está **Entregue**
+> (com tudo detalhado em §✅ Entregue, tópico a tópico, pra depois virar doc/feature) ou tem
+> itens no **Backlog** (§🔜 Backlog, a lista que a gente vai fazendo crescer). O que não está
+> em nenhum dos dois não é escopo ainda.
 
-── Próximas fases ──────────────────────────────────────────────────────────
-Agent-native (MCP)         █████████████████░░░  85%  🟢 servidor MCP ✅ (6 tools read + 2 write gated) · falta NL-query + writes ricos
-Diferenciais               ██████████████████████ 100% ✅ FECHADO (2026-07-08): Explain·Diff·Blast·Dry Run·Job Neighborhood·RCA·Event log·NL-query ✅ + **D-1..D-15**: retry-delay durável/long-running · pause-resume de workflow · event-driven (ingest idempotente) · forecast por histórico · query estruturada composta (POST+QUERY) · schedule-as-code (DSL Go) · `regente test`/`regente dev`/`regente promote` · policy-as-code · chaos inject · Gantt timeline · templates · self-service portal · quick-actions mobile assinadas
-Aprofundamento Control-M   ██████████████████████ 100% ✅ FECHADO (2026-07-06): daily lifecycle · Actions/On-Do (motor + UI) · daily server-side configurável · WAIT EVENT · WAIT AGENT · variáveis %% (interpolação) · FILE_WATCH · calendários+shift · condition vazia=on-success · cyclic runtime · CONFIRM · DATABASE (Postgres/MySQL/SQLite) · SET de var GLOBAL + cálculo de datas %%ODATE±NB · janela fechada (WINDOW_CLOSED) · baterias de teste · **CTM-1 %%SETLOCAL (var por instance)** · **CTM-2 tokens nativos EOM/BOM/EOY/BOY/NEXTBD/PREVBD/FIRSTBD/LASTBD** · **CTM-3 Mass Update/Find&Update RICO (critério/regex → preview → apply → undo)**
-Jobs as code (modo CODE)   ████████████████░░░░░  80%  🟢 v1 entregue (2026-07-06): botão Matrix no Design → palco vira editor YAML do working set (GET/POST /code, plano creates/updates/deletes, dry-run, delete confirmado) · falta CODE-1 (aperfeiçoamentos — ver §O que falta)
-Refinamento UI             ██████████████████░░  88%  🟡 grade de jobs soltos ✅ · aba de agentes+ping ✅ · seletor de folder (FOLDERS) redesenhado ✅ + fix snapshot do monitoring ✅ · fix botão "Abrir"+auto-nav ✅ · fix bug "Nenhuma definition" no drag ✅ · Job Name/ID no drawer ✅ · painel Edit Job flutuante arredondado ✅ · lista de jobs da folder na sidebar ✅ · minimap revisto (jobs quadrados + viewport rect) ✅ · viewport fluido (sem sumir/pular no Run Daily/Force/refresh) ✅ · câmera consistente com a trava de pan + board sem F5 ✅ · anti-race de refresh no store ✅ · draft do Design à prova de F5 (retomada de sessão) ✅ · limpeza de ruído ✅ · falta: LEGACY_CAP virtualizado · drawer do job mais amigável
-Fase Z — divulgação        ░░░░░░░░░░░░░░░░░░░░░   0%  ⬜ case study + post LinkedIn (agora com a história agent-native)
-```
+**Trilhas ENTREGUES** (detalhe em [§✅ Entregue](#-entregue-tracking-por-tópico)):
+
+- **Núcleo / Control-M** — GitOps, daily imutável, dependências com condições, Force Order, executores.
+- **Identidade visual / UI** — logo próprio, topbar premium, 13 temas, login, sidebars flutuantes, canvas.
+- **Alerting** — motor de regras + routing multi-canal por regra + cooldown + ciclo de vida.
+- **Resiliência operacional (R1–R7)** — supervisão, panic-recovery, health real, DR/backup, auto-SLO.
+- **Serverless portátil** — gatilho externo, transporte plugável, WASM, NATS, adapters de nuvem.
+- **Enterprise readiness** — Postgres/HA, segurança (RBAC/SSO/mTLS/SIEM), operação, qualidade, backlog E1–E6.
+- **Escala Control-M (100k–1M/dia)** — write-path (1M/17s), read-path paginado, UI ViewPoint validada @1M.
+- **Aprofundamento Control-M** — lifecycle da daily, On-Do, cyclic, CONFIRM, DATABASE, `%%` vars, CTM-1/2/3.
+- **Diferenciais além do Control-M** — Explain/Diff/Blast/Dry Run/Neighborhood/RCA/Event log/NL-query + D-1…D-15.
+- **Jobs as code (modo CODE) v1** — editor YAML do working set no Design (o aperfeiçoamento CODE-1 é backlog).
+
+**Trilhas com itens em ABERTO** (detalhe em [§🔜 Backlog](#-backlog-o-que-falta)):
+
+- **Refinamento UI** — polimento residual (virtualizar a sidebar legada · drawer do job mais amigável).
+- **Agent-native (MCP)** — servidor pronto (6 read + 2 write gated + NL-query); falta writes ricos.
+- **Jobs as code** — CODE-1 (editor rico, lint live, diff visual, sync com canvas, tabs por job).
+- **Features avançadas** — camadas opcionais pós-núcleo (schema por tipo, MFT, CLI/SDK, site de docs…).
+- **Validação em infra real** — resíduos (secrets via provider · SSH agente como serviço).
+- **Fase Z — divulgação** — case study + post LinkedIn (último gate, quando o backlog estiver onde você quer).
 
 > 🏁 **Marco (2026-06-24):** **todas as trilhas estruturais em 100%**, incluindo **Escala Control-M (100k–1M/dia)
 > end-to-end**: write-path materializa **1M em 17s** (P1), read-path serve **summary 51ms / page 18ms @100k**
@@ -49,39 +59,22 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ---
 
-## 🎯 O que falta (registro ÚNICO e COMPLETO)
+## 🔜 Backlog (o que falta)
 
-> Pergunta "o que falta?" → responde AQUI e **só** aqui. Esta lista contém **TODO** item
-> em aberto do documento inteiro (varredura de 2026-07-04): se não está listado abaixo,
-> está **entregue** ou nunca foi escopo. Cada item tem um **ID estável** e um **ponteiro
-> `→ §…`** pra spec detalhada. As caixinhas espalhadas nas seções de baixo **não valem**
-> como status (ver ⛔ REGRA DE STATUS no topo).
->
-> Todas as trilhas ESTRUTURAIS (núcleo · UI · alerting · resiliência · serverless ·
-> enterprise · escala 100k–1M) estão **100%**. O que falta é polimento + camadas
-> avançadas + divulgação.
+> **Pergunta "o que falta?" → responde AQUI e só aqui.** Esta lista contém **TODO** item
+> em aberto do projeto: se não está abaixo, está **entregue** (§✅ Entregue) ou nunca foi
+> escopo. Cada item tem um **ID estável** e um **ponteiro `→ §…`** pra spec. É a área que a
+> gente vai **fazendo crescer** — quando um item fecha, ele sai daqui e vira um tópico
+> detalhado em §✅ Entregue (+ linha no changelog). As caixinhas espalhadas nas seções de
+> baixo **não valem** como status (ver ⛔ REGRA DE STATUS no topo).
 
 ### Refinamento UI
 - [ ] **UI-1** — Virtualizar a sidebar ACTIVE JOBS legada (`LEGACY_CAP=2000` engana; mostra
   "2000/2000" como se fosse o total; o ViewPoint já faz 100k–1M). → §Identidade visual/UI, §Escala P3
 - [ ] **UI-2** — Drawer de info do job mais amigável (ações claras, output/log legível, layout). → §Identidade visual/UI
 
-### Enterprise — ✅ BACKLOG E1..E6 100% FECHADO (2026-07-07)
-> **E1 (timezone da daily) · E2 (auditoria: retenção+export+settings) · E3 (RBAC
-> operacional folder-scoped) · E4 (fila assíncrona de eventos) · E5 (relatório/SLO
-> da daily + push + card na UI) · E6 (importador Control-M `cmd/importctm`)** —
-> tudo entregue em 2026-07-07; ver as duas linhas do topo do changelog. Nada desta
-> trilha permanece em aberto.
-
-### Camada agent-native (MCP) — 85%
-- [ ] **MCP-1** — Writes ricos via MCP (hoje 6 read + 2 write gated; NL-query `query` ✅ já entregue). → §changelog "Camada agent-native"
-
-### Aprofundamento Control-M — ✅ TRILHA 100% FECHADA (2026-07-06)
-> CTM-1 (`%%SETLOCAL` — var com escopo por instance), CTM-2 (tokens nativos de data
-> EOM/BOM/EOY/BOY/NEXTBD/PREVBD/FIRSTBD/LASTBD, com offset `%%EOM-1B`) e CTM-3 (Mass
-> Update/Find & Update rico com critério/regex, preview, apply transacional por item e
-> undo por session) foram entregues — ver linha do topo do changelog. Nada desta trilha
-> permanece em aberto.
+### Camada agent-native (MCP)
+- [ ] **MCP-1** — Writes ricos via MCP (hoje 6 read + 2 write gated; NL-query `query` ✅ já entregue). → §Entregue "Agent-native (MCP)"
 
 ### Jobs as code (modo CODE no Design) — v1 entregue; aperfeiçoamento em aberto
 - [ ] **CODE-1** — Aperfeiçoar o modo código (v1 = textarea com highlight regex + dry-run + apply).
@@ -91,45 +84,6 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
   reflete no grafo na hora) · edição por arquivo com tabs (1 tab por job) em vez de um doc único ·
   templates/snippets por jobType · import/export de arquivo · git blame inline por job · modo código
   também no Monitoring (read-only, ver a def congelada da instance). → §changelog "Jobs as code"
-
-### Diferenciais além do Control-M — 100% ✅ FECHADO (2026-07-08) (→ §Diferenciais)
-> Entregues antes: Explain · Diff de Daily · Blast Radius · Dry Run · Job Neighborhood · RCA ·
-> Event log CQRS-lite · NL-query. **Leva 2 (D-1..D-15), 2026-07-08 — nada mais aberto:**
-- [x] **D-1** — Human-in-the-loop + long-running: `retryDelayMin` agenda o retry via `scheduled_at`
-  durável (sobrevive a restart/virada da daily — o carry-over trata WAITING-com-attempts>1 como NOTOK
-  em tratamento); compõe com Confirm/keepActive p/ "aprovação manual + retry após 3 dias". ✅
-- [x] **D-2** — Pause/resume de WORKFLOW com estado preservado: `POST /api/folders/{name}/pause|resume`
-  (WAITING↔HELD em massa, set-based; attempts/cycle_runs/scheduled_at/confirmed intactos; RUNNING não
-  é pausável; carry-over persiste HELD entre diárias). ✅
-- [x] **D-3** — Event-driven confiável: `POST /api/events/ingest` — evento externo idempotente (dedupe
-  por `id` do emissor = PK) seta conditions e/ou force-ordena, cutuca o tick (sem polling); `applied`
-  persistido p/ forense. ✅
-- [x] **D-4** — Performance forecasting: `GET /api/analytics/forecast` (p50/p90 + tendência linear +
-  previsão + ETA do RUNNING) → sparkline no drawer; `/api/analytics/durations` alimenta as barras
-  previstas da Timeline. ✅
-- [x] **D-5** — Query estruturada composta e tipada: `POST /api/instances/query` (ranges, IN, flags,
-  groupBy, keyset) + o método HTTP **`QUERY`** na mesma handler (transporte registrado, agora
-  implementado); parse estrito (campo desconhecido = 400). ✅
-- [x] **D-6** — Schedule as Code: modo CODE no Design (v1) + **DSL Go `pkg/jobdsl`** (builder fluente →
-  YAML byte-compatível com o workspace, `Validate()`, golden/example test). ✅
-- [x] **D-7** — Testing framework: **`regente test <job.yaml|ws>`** — parse estrito + validação +
-  grafo (deps órfãs/ciclos) + policy + simulação com o engine REAL (DryRun); exit 1 no CI, `-json`. ✅
-- [x] **D-8** — Local dev mode: **`regente dev daily`** — server local descartável (SQLite temp,
-  demo-mode, daily materializada no boot). ✅
-- [x] **D-9** — Multi-environment promotion Git-native: **`regente promote -from -to`** — snapshot da
-  origem substitui o destino (definitions+calendars+policies), diff/dry-run, commit+push no branch. ✅
-- [x] **D-10** — Policy as Code: `policies.yaml` versionado no workspace (`pkg/policy`); gate do
-  publish (422) e do `regente test`; feedback no modo CODE; `GET /api/policy`. ✅
-- [x] **D-11** — Chaos engineering: `POST /api/instances/{id}/inject-failure` (falha sintética pelo
-  fluxo REAL — retry/On-Do/alerting reagem); botão 💥 Chaos no drawer. ✅
-- [x] **D-12** — Visual Schedule Editor: **Timeline (Gantt)** da daily — barras reais (started→finished)
-  e previstas (p50 histórico, hachura), régua 00–24h, linha do agora; overlay no Monitoring. ✅
-- [x] **D-13** — Templates reutilizáveis: `job_templates` (CRUD) + "☆ Template" no drawer (salva a
-  FORMA, descarta id/team/upstream) + aba Templates na palette (instancia job novo). ✅
-- [x] **D-14** — Self-Service Portal: rota `/portal` (mobile-friendly) — só jobs `selfService:true`,
-  botão Rodar, gate próprio (qualquer logado; opt-in versionado no YAML). ✅
-- [x] **D-15** — Mobile-friendly alerts: quick-actions assinadas (HMAC, TTL, escopo único) anexadas aos
-  alertas Slack/webhook; rota pública `GET/POST /qa/{token}` (GET confirma, POST executa). ✅
 
 ### Features avançadas — pós-núcleo (→ §Features avançadas)
 - [ ] **ADV-1** — Job types com schema dedicado por tipo.
@@ -150,14 +104,25 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ---
 
+# ✅ Entregue *(tracking por tópico)*
+
+> Tudo que já foi construído e validado, agrupado por trilha e **detalhado o suficiente pra
+> virar doc/feature depois**. Quando um item do Backlog fecha, o detalhe vem pra cá. Para a
+> ordem cronológica (por data/commit), ver o [§📜 Changelog de entregas](#-changelog-de-entregas)
+> no fim. Convenção: `✅` entregue · `◑` parcial (o resto está no Backlog) · `○` opt-in futuro.
+
 ## 🟢 Fundação — *pronta*
 
 ```
 ✅ GitOps (Publish · webhook · drift · deep-links · PAT via UI)
 ✅ Paridade Control-M (calendars · resources · conditions · vars · SLA · forecast)
 ✅ Daily imutável · dependências com condições · Force Order
-✅ Executores: COMMAND · SCRIPT · HTTP · SSH agentless · WASM
-✅ Stream stdout/stderr · retry · /metrics Prometheus
+✅ Executores: COMMAND · SCRIPT · HTTP · SSH agentless · WASM · targeting por agente
+✅ Stream stdout/stderr · retry de execution · /metrics Prometheus
+✅ Auth por agente (token dedicado, além do token global) + gestão de tokens na UI
+✅ Agente instalável como serviço (systemd no Linux · Tarefa Agendada no Windows)
+✅ Webhook secret (HMAC do GitHub) configurável em runtime pela UI
+✅ Token do GitHub (PAT) configurável pela UI, persistido server-side (sem env obrigatória)
 ```
 
 ## 🎨 Identidade visual / UI
@@ -364,7 +329,118 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
         lista de 200 folders (byFolder) + tabela VIRTUALIZADA por folder via /page (cursor). Nunca baixa o dia
         inteiro: abrir uma folder = 1ª página em ~39ms; DOM cai de 36.777→932 nós (legado capado + não montado
         sob o ViewPoint). O canvas legado (ReactFlow) ganhou cap de 2.000 (`LEGACY_CAP`) p/ nunca travar.
-        (Resta só VIRTUALIZAR a sidebar ACTIVE JOBS legada — ver "O que falta".)
+        (Resta só VIRTUALIZAR a sidebar ACTIVE JOBS legada — UI-1 no §🔜 Backlog.)
+```
+
+## 🎛️ Aprofundamento Control-M *(trilha fechada — 2026-07-06)*
+
+```
+✅ Ciclo de vida da daily (carry-over / Keep Active) — RUNNING/HELD atravessam a virada;
+   NOTOK não-tratado persiste +1 diária (ou N via schedule.keepActive); order_date avança
+   mantendo id/status/histórico; idempotente. Migration v5.
+✅ Actions / On-Do (Control-M On/Do) — motor nas 3 dimensões (result/attempt/runtime) + 4 ações
+   (notify/set-condition/run-job/set-ok), idempotência por ledger (migration v7). UI: aba On/Do no drawer.
+✅ Daily server-side configurável — settings.daily_at (HH:MM, sem restart) + GET /api/daily/status.
+✅ WAIT EVENT — sucessor de job falho/rodando fica WAITING (não é mais auto-cancelado); rerun/Set OK destravam.
+✅ WAIT AGENT — sem agente, o job nem é reivindicado (zero churn/flicker); card azul claro; conectou → dispatch.
+✅ Variáveis %% (AutoEdit) — %%ODATE/RUNDATE/JOBNAME… interpoladas nos params; def.variables + globais F18.
+✅ FILE_WATCH — executor no agente (poll do arquivo + tamanho estável + timeout); capability própria.
+✅ Calendários + shift (roll) — schedule.shift next/prev-businessday na fonte única IsScheduledOn.
+✅ Condition vazia = on-success (fix de segurança semântico no edgeState).
+✅ Cyclic runtime — job OK re-arma a instance +intervalMin (cycleRuns/cyclicMaxRuns/windowTo); NOTOK não cicla.
+✅ CONFIRM (Wait for confirmation) — gate WAIT_CONFIRM; nem o Force bypassa; rerun re-exige.
+✅ Job DATABASE — SQL em Postgres/MySQL/SQLite pelo agente, drivers pure-Go (sem CGO/JDBC).
+✅ SET de var em runtime — %%SET NOME=VALOR no output → VariableStore global; cálculo de datas %%ODATE±N/±NB.
+✅ WINDOW_CLOSED — WAITING depois de windowTo (não submete mais no dia).
+✅ ViewPoints salvos (filtros nomeados do Monitoring) + dashboards de presets do /summary.
+✅ CTM-1 %%SETLOCAL — var com escopo LOCAL por instance (local_vars JSON, migration v10, aplicada antes do retry;
+   precedência Runtime > Local > Definition > Global; sobrevive a rerun/ciclo, nunca vaza).
+✅ CTM-2 tokens nativos de data — %%EOM/BOM/EOY/BOY/NEXTBD/PREVBD/FIRSTBD/LASTBD do ODATE, cientes do calendar
+   do job e componíveis com offset (%%EOM-1B).
+✅ CTM-3 Mass Update / Find & Update RICO — critério (ids/folder/jobType/regex/campo-vazio) → operação
+   (set-field/find-replace/add-remove de action/upstream/variable/condition) → preview com diff por job →
+   apply transacional por item → undo por session (pilha cap 10). Schedule.Description adicionado ao Go.
+```
+
+## 🤖 Agent-native (MCP)
+
+```
+✅ Servidor MCP (server/cmd/mcp, stdio JSON-RPC, pure-Go) — fachada read-only sobre a REST; validado por
+   pipe JSON-RPC como o Claude Desktop faz.
+✅ Tools read (6): daily_summary · explain_job · diff_daily · blast_radius · dry_run · query (NL-query).
+✅ Tools write (2, gated por -allow-writes + aprovação do cliente): rerun · set_ok.
+◑ MCP-1 (backlog): writes ricos além de rerun/set_ok. Ver §🔜 Backlog.
+```
+
+## 🌟 Diferenciais além do Control-M *(trilha fechada — leva 1: 2026-07-03 · leva 2 D-1..D-15: 2026-07-08)*
+
+> Onde o Regente **passa** o Control-M. Todos read-only-aditivos ou opt-in — nenhum toca o
+> tick/dispatch/gating sem passar pela fonte única do gateInstance.
+
+**Leva 1 — observabilidade (substratos do MCP):**
+```
+✅ Explain "por que não rodou?" — motor determinístico (sem IA): WAIT_WINDOW/DEP/CONDITION/RESOURCE/AGENT/
+   CONFIRM/WINDOW_CLOSED, construído como FONTE ÚNICA do gating (o mesmo avaliador do tick). GET /explain.
+✅ Diff de Daily — compara 2 order_date via snapshots congelados (commit_sha + definition_snapshot); diff
+   por-campo; fast-path same-commit. GET /api/daily/diff.
+✅ Blast Radius — "se eu cancelar/segurar X agora?": BFS reverso de deps (downstream/SLA/folders/cascata),
+   só o raio (barato a 1M). GET /api/instances/{id}/blast-radius.
+✅ Dry Run — simula a daily de qualquer data sem materializar (RUN/WAIT/BLOCKED/NOT_SCHEDULED + razão);
+   reusa IsScheduledOn. GET /api/daily/dryrun.
+✅ Job Neighborhood — grafo local (ancestrais + descendentes até N saltos, status por instance).
+✅ RCA — sobe a cadeia de upstreams falhos e aponta a raiz que caiu por conta própria.
+✅ Event log CQRS-lite — read-model cross-instance sobre instance_events (feed/auditoria do dia, cursor keyset).
+✅ NL-query — parser de intenção determinístico PT/EN (summary/list/count/explain) → consulta estruturada.
+```
+
+**Leva 2 — orquestração híbrida, DevEx, enterprise, "wow" (D-1..D-15):**
+```
+✅ D-1  Human-in-the-loop + long-running — retryDelayMin agenda o retry via scheduled_at DURÁVEL (sobrevive a
+        restart/virada da daily; carryDecision trata WAITING-com-attempts>1 como NOTOK-em-tratamento). Compõe
+        com Confirm/keepActive p/ "aprovação manual + retry após 3 dias". (scheduler.maybeRetry/carryOver)
+✅ D-2  Pause/resume de WORKFLOW com estado preservado — POST /api/folders/{name}/pause|resume: WAITING↔HELD
+        em massa, SET-BASED (1 UPDATE + INSERT…SELECT de eventos numa tx); attempts/cycle_runs/scheduled_at/
+        confirmed intactos; RUNNING não é pausável; carry-over persiste HELD entre diárias. (api/workflow.go)
+✅ D-3  Event-driven confiável — POST /api/events/ingest: evento externo IDEMPOTENTE (dedupe pela PK id do
+        emissor, migration v13) seta conditions e/ou force-ordena e cutuca o tick (sem polling); payload +
+        applied persistidos p/ forense. (api/ingest.go, external_events)
+✅ D-4  Performance forecasting — GET /api/analytics/forecast: p50/p90 + tendência (regressão linear) +
+        previsão + ETA do RUNNING, por histórico OK; /api/analytics/durations dá p50/def p/ a Timeline.
+        Front: ForecastPanel (sparkline SVG puro no drawer). (scheduler/perfforecast.go)
+✅ D-5  Query estruturada composta e tipada — POST /api/instances/query (ranges de data, IN de folders/
+        statuses, flags forced/carried/late, groupBy, keyset cursor; parse estrito → 400) + o método HTTP
+        QUERY (draft IETF, safe+idempotente com body) na MESMA handler. (api/instquery.go)
+✅ D-6  Schedule as Code — modo CODE no Design (v1) + DSL Go pkg/jobdsl (builder fluente → YAML byte-compatível
+        com o workspace, Validate(), output determinístico, golden/example test).
+✅ D-7  Testing framework — regente test <job.yaml|ws>: parse estrito + validação + grafo (deps órfãs/ciclos)
+        + policy + SIMULAÇÃO com o engine REAL (scheduler.DryRun); exit 1 no CI, -json. (server/cmd/regente)
+✅ D-8  Local dev mode — regente dev daily: server local descartável (SQLite temp, demo-mode, daily no boot).
+✅ D-9  Multi-environment promotion Git-native — regente promote -from -to: snapshot da origem SUBSTITUI o
+        destino (definitions+calendars+policies.yaml; add/update/delete, não merge), diff/-dry-run, commit+push.
+✅ D-10 Policy as Code — pkg/policy lê policies.yaml da raiz do workspace (requireSLA/Retries/Description/
+        Calendar/idPattern/allowedJobTypes/maxRetries/forbidDryRun; error|warn|off; exemptFolders); gate do
+        publish (422) e do regente test; feedback no modo CODE; GET /api/policy. Política quebrada BLOQUEIA.
+✅ D-11 Chaos engineering — POST /api/instances/{id}/inject-failure: falha sintética pelo FinishInstance REAL
+        (retry/On-Do/alerting reagem como numa falha orgânica); botão 💥 Chaos no drawer. (scheduler/chaos.go)
+✅ D-12 Visual Schedule Editor — Timeline (Gantt) da daily: barras reais (started→finished/agora) e previstas
+        (p50 histórico, hachura), régua 00–24h, linha do agora; overlay no Monitoring (cap 400 linhas).
+✅ D-13 Templates reutilizáveis — job_templates (CRUD, migration v13) + "☆ Template" no drawer (salva a FORMA,
+        descarta id/team/upstream) + aba Templates na palette (instancia job novo). (api/wow.go)
+✅ D-14 Self-Service Portal — def.selfService + rota /portal (mobile-friendly): só jobs expostos, botão Rodar,
+        gate próprio (qualquer logado; opt-in versionado no YAML; job não-exposto = 404, não vaza catálogo).
+✅ D-15 Mobile-friendly alerts — quick-actions assinadas (HMAC-SHA256, escopo instance+action+exp, TTL 24h,
+        allowlist sem cancel) anexadas aos alertas Slack/webhook; rota pública GET/POST /qa/{token} (GET
+        confirma, POST executa). (internal/quickaction)
+```
+
+## 💻 Jobs as code (modo CODE no Design) — v1
+
+```
+✅ Botão CODE (estética Matrix) no Design → o palco vira editor YAML do working set da session.
+✅ GET/POST /api/design/sessions/{sid}/code — multi-doc no dialeto do workspace, parse ESTRITO (KnownFields),
+   plano creates/updates/deletes/unchanged, dry-run (Validar), delete-por-ausência gated (allowDelete).
+✅ CodeModeView — digital rain + highlight YAML por regex, zero dependência nova; escopo com chave estável.
+◑ CODE-1 (backlog): editor rico (Monaco), lint live, diff visual, sync com o canvas, tabs por job. Ver §🔜 Backlog.
 ```
 
 ---
@@ -455,9 +531,12 @@ contra Postgres 16 real (Docker); restante pendente:
 
 ---
 
-## 🎯 Próximos movimentos de maior valor
+## 📜 Changelog de entregas
 
-| ⭐ | Frente | Por quê |
+> Log cronológico (mais recente primeiro) de tudo que foi entregue, com o "porquê" e os
+> detalhes de implementação/validação. Complementa o §✅ Entregue (que agrupa por tópico).
+
+| Quando | O que | Detalhe |
 |----|--------|---------|
 | ✅ | ~~**Diferenciais além do Control-M — FECHA a trilha (D-1..D-15): orquestração híbrida/stateful · DevEx (DSL + `regente test`/`dev`/`promote`) · policy-as-code · chaos · "wow" (Gantt · templates · portal · quick-actions)**~~ | **Feito (2026-07-08).** Fecha os 15 diferenciais em aberto, em 3 levas, tudo com teste Go/TS + validação AO VIVO (server demo + preview). **Leva A — orquestração & enterprise (backend):** (1) **D-1 human-in-the-loop/long-running** — `def.retryDelayMin>0` agenda o retry por `scheduled_at` DURÁVEL em vez de goroutine dormindo (sobrevive a restart/deploy); o carry-over passou a tratar `WAITING com attempts>1` como NOTOK-em-tratamento (`carryDecision` ganhou o parâmetro `attempts`), então um "retry após 3 dias" atravessa as viradas da daily; compõe com Confirm/keepActive. (2) **D-2 pause/resume de WORKFLOW** — `POST /api/folders/{name}/pause|resume` (`api/workflow.go`): WAITING↔HELD em massa **set-based** (1 UPDATE + INSERT…SELECT de eventos numa transação — pausar 50k jobs não é 50k round-trips), attempts/cycle_runs/scheduled_at/confirmed **intactos** (é pausa, não reset), RUNNING não é pausável, carry-over persiste HELD entre diárias (folder pausada por dias). (3) **D-3 event-driven confiável** — `POST /api/events/ingest` (`api/ingest.go`): evento externo IDEMPOTENTE (dedupe pela PK `id` do emissor — retry at-least-once responde `duplicate:true` sem re-aplicar) seta conditions e/ou force-ordena e cutuca o tick (destrava WAIT_CONDITION sem polling); `external_events` (migration **v13**) guarda o payload + `applied` p/ forense. (4) **D-5 query estruturada** — `POST /api/instances/query` (`api/instquery.go`): filtro COMPOSTO e TIPADO (ranges de data, IN de folders/statuses, flags forced/carried/late, groupBy, keyset cursor), parse **estrito** (campo desconhecido = 400), + o método HTTP **`QUERY`** (draft IETF, safe+idempotente com body) na MESMA handler (`chi.RegisterMethod`) — a decisão de transporte registrada em 2026-06-24, agora implementada. (5) **D-10 policy-as-code** — `pkg/policy` lê `policies.yaml` da RAIZ do workspace (versionado junto dos jobs): regras requireSLA/requireRetries/requireDescription/requireCalendar/idPattern/allowedJobTypes/maxRetries/forbidDryRun, enforcement error|warn|off, exemptFolders; **gate do publish** (session valida contra o policies.yaml do PRÓPRIO clone → 422 estruturado; warn publica com warnings), feedback no modo CODE, `GET /api/policy`; política quebrada (YAML/regex inválidos) BLOQUEIA (não falha aberto). (6) **D-11 chaos** — `POST /api/instances/{id}/inject-failure` (`scheduler/chaos.go`): falha SINTÉTICA pelo `FinishInstance` REAL (retry/On-Do/alerting reagem como numa falha orgânica), só WAITING/RUNNING/HELD, evento `chaos` auditável. **Leva B — DevEx/CLI (`server/cmd/regente` + `server/pkg/jobdsl`):** (7) **D-6 schedule-as-code** — pacote `jobdsl`: builder fluente Go (`w.Folder("fin").Job(...).Command(...).After(extract).SLA(...)`) → YAML **byte-compatível** com o workspace, `Validate()` (id dup/label/dep órfã), output determinístico; golden + example test. (8) **D-7 `regente test <job.yaml|ws>`** — parse ESTRITO + validação estrutural + grafo (deps órfãs/**ciclos** por DFS) + **policy** + **simulação com o engine REAL** (reusa `scheduler.DryRun`/`IsScheduledOn` — a MESMA decisão da daily): RUN/WAIT/BLOCKED por job; exit 1 no CI, `-json`. (9) **D-8 `regente dev daily`** — server local descartável (SQLite temp, demo-mode, daily materializada no boot, engines Control-M ligados) numa porta — loop editar→testar→ver rodar sem tocar produção. (10) **D-9 `regente promote -from -to`** — promoção multi-ambiente Git-NATIVA (ambientes = branches): clona o destino, faz o snapshot da origem (definitions+calendars+policies.yaml — código E política juntos) SUBSTITUIR o destino (add/update/**delete**, não merge), diff + `-dry-run`, commit+push; o server do ambiente pega pelo GitOps normal. Fix de carona: o `flag` do Go parava no 1º posicional → `-json`/`-date` após o path eram ignorados; `reorderArgs` move posicionais pro fim (flags em qualquer ordem). **Leva C — UI/wow (front + endpoints de apoio):** (11) **D-4 performance forecasting** — `scheduler/perfforecast.go` (`GET /api/analytics/forecast`): p50/p90 + tendência por regressão linear + previsão da próxima + **ETA do RUNNING**, a partir do histórico OK; `/api/analytics/durations` dá p50 por def p/ a Timeline; `ForecastPanel` desenha sparkline SVG puro no drawer (some com <2 execuções). (12) **D-12 Visual Schedule Editor** — `TimelineView`: **Gantt da daily** sobreposto ao Monitoring, uma linha por job agrupada por folder, régua 00–24h, **barras reais** (started→finished/agora) e **previstas** (p50, hachura), linha do "agora", SVG puro (cap 400 linhas). (13) **D-13 templates** — tabela `job_templates` (migration v13) + `api/wow.go` CRUD; "☆ Template" no JobConfigDrawer salva a FORMA (server descarta id/team/upstream) + aba **Templates** na palette do Design instancia um job novo a partir do molde. (14) **D-14 self-service portal** — `def.selfService:true` + rota **`/portal`** (`PortalView`, mobile-friendly): só jobs expostos, botão Rodar, gate PRÓPRIO (`api/wow.go` — qualquer logado, opt-in versionado no YAML; job não-exposto responde 404, não vaza catálogo). (15) **D-15 mobile-friendly alerts** — `pkg/quickaction`: tokens HMAC-SHA256 de escopo ÚNICO (instance+action+exp, TTL 24h, allowlist sem cancel) anexados aos alertas Slack/webhook; rota pública **`GET/POST /qa/{token}`** (`api/wow.go`) — GET mostra página de confirmação (preview de link não executa), POST executa; secret auto-gerado em settings. Validado AO VIVO: `regente test` pegou violação de policy (exit 1) + simulação 1RUN/1WAIT/1BLOCKED; ingest idempotente (applied→duplicate); QUERY verb; pause/resume; chaos (400 em OK, injected em RUNNING); self-service (lista+run, 404 no privado); quick-action (403 HTML em token ruim); forecast/durations/templates; UI com botão Timeline + Gantt (overlay 1380×747, 24h, 36 rows), botões ⏸/▶ por folder, `/portal` renderizado. **~30 testes Go/TS novos** (policy·quickaction·jobdsl·cmd/regente·scheduler retry-delay+forecast·api differentials2+wow) + `go vet ./...` + suíte completa + `tsc --noEmit` + `vite build` verdes. Com isto a trilha **Diferenciais fecha 100%** — resta só a Fase Z (divulgação). |
 | ✅ | ~~**Backlog Enterprise E4+E5+E6 (FECHA a trilha E1..E6): fila assíncrona de eventos · relatório/SLO da daily · importador Control-M**~~ | **Feito (2026-07-07):** (1) **E4 fila assíncrona de eventos** — `scheduler/eventqueue.go`: canal buffered (cap 10k) + goroutine writer única que grava em LOTE (INSERT multi-values; flush a cada 250ms OU 500 eventos — espírito do insertDailyBatch); `emitEvent` vira send não-bloqueante e **fila cheia degrada pro INSERT síncrono (nunca perde)**; ordem POR INSTANCE preservada no caminho da fila (canal FIFO único + writer único); **flush final no shutdown** (Stop() drena o canal — main agora chama sched.Stop() no SIGTERM; writer rastreado por quit+wg, zero goroutine órfã = sem flake do TempDir); métrica `regente_event_queue_depth` no /metrics; **opt-in por StartEventQueue()** — ligada no modo `-scheduler=internal`, DESLIGADA no external/serverless de propósito (scale-to-zero congela o processo e mataria eventos bufferizados; síncrono é o correto lá) e nos testes (determinismo). Testes: 10k emits concorrentes → zero perdas + ordem por instance; fila-cheia determinística (canal sem writer); lotes pequenos; flush no Stop. (2) **E5 relatório/SLO da daily** — `GET /api/daily/report?date=` (`scheduler/dailyreport.go`): counts {ordered/ok/notok/waiting/running/held/cancelled/carried} em 1 query agregada + `startedAt` do daily_runs + **`lateStart`** (started_at > daily_at+5min NO relógio de negócio E1) + `closed` + failures (NOTOK, cap 100, defId/team/exitCode/finishedAt) + slaBreaches (join sla_breaches × instances do dia) + `reportSent`. **Push opcional**: setting `daily_report_channels` (CSV slack/webhook/email/pagerduty — REUSA os sinks do alerting via `FireAction`, então cai no sino da UI + canais externos) enviado quando a daily **FECHA** (zero WAITING/RUNNING; check no tick com throttle 1min, leader-only) OU no horário `daily_report_at` (fallback p/ dias que nunca fecham, ex. cyclic); **idempotente por claim** `UPDATE daily_runs SET report_sent_at WHERE report_sent_at IS NULL` (migration **v12**) — 1 envio por diária mesmo multi-nó. UI: **card compacto no topo do Monitoring** (`DailyReportCard`: pill flutuante "DAILY <date> · N ok · N notok · N abertos · ⏰ atrasada · fechada ✓ report") com os números DO ENDPOINT (não recalcula; refresh no mount + daily.started/instance.bulk + 60s; só no board clássico — ScaleMonitor tem dashboard próprio). Testes: agregado exato multi-status; lateStart na tz de SP; envio idempotente; fallback por horário. (3) **E6 importador Control-M** — binário `server/cmd/importctm` (pure-Go, zero dep nova): lê XML de export (`DEFTABLE`/`FOLDER`/`SMART_FOLDER`/`JOB`) e gera workspace local (`definitions/<folder>/<job>.yaml` no dialeto EXATO do FileStore + `calendars/*.yaml` stubs + `import-report.md`). Mapeamentos v1 TODOS documentados no README do cmd: JOBNAME→id slug · DESCRIPTION→label · PARENT_FOLDER→team · TASKTYPE Job/Command→COMMAND(CMDLINE→params.command) · Dummy→COMMAND dryRun · FileWatcher→FILE_WATCH(path) · TIMEFROM/TIMETO→runAt/windowTo · WEEKDAYS→weekly · DAYS(1,15,L)→monthly(-1) · DAYSCAL/WEEKSCAL/CONFCAL→calendars include (dedupe) + SHIFT >/< → next/prev-businessday · **INCOND→upstream quando o OUTCOND tem 1 emissor; senão conditionsIn F16 com o MESMO nome** (OUTCOND+ de cond virada aresta é omitido; SIGN "-"→conditionsOutRemove) · SHOUT OK/NOTOK→actions notify (URGENCY V/U/R→critical/warning/info) · MAXRERUN→retries · CYCLIC+INTERVAL(M/H/D)→cyclic/intervalMin · %%VARIABLE→variables. SUB_APPLICATION/DATACENTER/RUN_AS/NODEID/…→ignorados COM AVISO; **qualquer atributo desconhecido → `# TODO-import:` no YAML + coluna Pendências no relatório** (nada se perde em silêncio); `-dry-run` não escreve NADA; `-folder-filter`; NUNCA push. Golden test com fixture cobrindo cada mapeamento + dry-run + filter. **Validado AO VIVO E2E**: importctm → workspace do server offline → Run Daily ordenou os 7 jobs importados (upstream extract_fin→load_fin funcionando), /api/daily/report refletiu 9/7/2 com lateStart, push chegou 1× no sino/alert_events e reportSent travou, card na UI com os números do endpoint, `regente_event_queue_depth` no /metrics e os eventos da daily fluindo pela fila. **13 testes Go novos** (4 eventqueue · 4 dailyreport · 3 importctm+2 sub-asserts) + verify.sh (server/agent/app) verde. |
@@ -510,7 +589,10 @@ contra Postgres 16 real (Docker); restante pendente:
 
 ---
 
-## 🏢 Backlog Enterprise (specs implementáveis — E1..E6, 2026-07-02)
+## 🏢 Backlog Enterprise E1..E6 *(SPEC/histórico — trilha ENTREGUE em 2026-07-07)*
+
+> ⚠️ **Já entregue** (ver o §📜 Changelog: "E1+E2+E3" e "E4+E5+E6"). Mantido aqui como a **spec
+> de implementação** que guiou o trabalho — vira doc de referência da feature. NÃO é backlog aberto.
 
 Itens da avaliação enterprise, especificados para implementação SEM ambiguidade.
 Regras gerais para TODOS os itens: (a) mudanças de schema = nova migration versionada
@@ -616,7 +698,7 @@ usuário revisar e commitar.
 
 ---
 
-## 🧩 Aprofundamento Control-M *(SPEC/histórico — status canônico só na §O que falta)*
+## 🧩 Aprofundamento Control-M *(SPEC/histórico — status resumido no §✅ Entregue)*
 
 > ⚠️ **As marcações `⬜`/`✅` abaixo estão DESATUALIZADAS e NÃO valem como status.** A
 > trilha está **100% FECHADA** (núcleo 2026-07-03; CTM-1/CTM-2/CTM-3 em 2026-07-06 —
@@ -693,109 +775,40 @@ usuário revisar e commitar.
       ciente de dia útil/feriado/calendar (sexta + 3 = próxima data útil). + inspetor de resolução por instância.
 ```
 
-## ⬜ Features avançadas *(depois do núcleo sólido — SPEC; status na §O que falta como ADV-1..ADV-8)*
+## ⬜ Features avançadas *(depois do núcleo sólido — SPEC; status no §🔜 Backlog como ADV-1..ADV-8)*
 
 - Job types com schema dedicado · Multi-ambiente/multi-site · What-If/Forecast/Statistics
 - MFT (FILE_TRANSFER nativo) · Archives/Retention · Import de Control-M · CLI/SDK · site de docs
 - **Executores AWS extras** (Batch/Glue/Step) — adapters por capability (Lambda já feito); validação em conta
   paga fora de escopo por decisão
 
-## 🌟 Diferenciais — além do Control-M *(visão de produto)*
+## 🌟 Diferenciais — visão de produto *(o racional)*
 
-> Não é paridade — é onde o Regente **passa** o Control-M. Visão de longo prazo; entra
-> depois do núcleo sólido. Organizado por tema.
->
-> ⚠️ **As marcações `⬜`/`✅` abaixo são SPEC, não status** — algumas `⬜` já foram entregues
-> (Job Neighborhood · RCA · Event log CQRS-lite · Explain · Diff · Blast · Dry Run). O status
-> canônico e os itens realmente abertos (D-1..D-15) estão na **§O que falta**.
+> **Onde o Regente passa o Control-M**, organizado por tema — o *porquê* de cada diferencial.
+> O **status e a implementação** de cada um estão no §✅ Entregue (seção "🌟 Diferenciais além do
+> Control-M", trilha fechada). Esta seção é a narrativa pra Fase Z / case study — não repete status.
 
-### 1. Orquestração híbrida e stateful *(grande gap do Control-M)*
-```
-⬜ Human-in-the-loop nativo + long-running — workflows que duram dias/semanas
-   (ex.: aprovação manual + retry após 3 dias)
-⬜ Pausa/resume com ESTADO preservado (além de Hold)
-⬜ Event-driven confiável — reage a eventos externos de forma confiável (não só polling)
-```
+1. **Orquestração híbrida e stateful** *(grande gap do Control-M)* — human-in-the-loop + long-running
+   (workflows de dias/semanas: "aprovação manual + retry após 3 dias"), pausa/resume com **estado** preservado
+   (além do Hold) e event-driven **confiável** (reage a evento externo sem polling). → D-1, D-2, D-3.
+2. **Observabilidade e análise avançada** — Explain ("por que não rodou?", sem IA) · Diff de Daily (barato
+   via Git-native) · Blast Radius (impacto de uma ação) · Dry Run (simular sem materializar) · Job Neighborhood ·
+   RCA · Event log CQRS-lite · forecasting com gráficos · query estruturada/busca rica. → Leva 1 + D-4, D-5.
+3. **Developer experience** *(onde o Control-M perde feio)* — schedule-as-code (YAML + DSL), `regente test`
+   (simula com o engine real), `regente dev daily` (daily local descartável). → D-6, D-7, D-8.
+4. **Enterprise & operação** — multi-environment promotion (Dev→Staging→Prod, Git-native), policy-as-code
+   (regras obrigatórias: SLA/retry/owner…), chaos ("Inject Failure"). → D-9, D-10, D-11.
+5. **Features "wow"** — Visual Schedule Editor (Gantt da daily), templates reutilizáveis, self-service portal
+   (negócio roda jobs aprovados sem tocar no Design), mobile alerts com ações rápidas. → D-12, D-13, D-14, D-15.
 
-### 2. Observabilidade e análise avançada
-```
-⬜ Job Neighborhood + Impact Analysis — clique no job → grafo de impacto up/downstream;
-   "se esse job atrasar, quais SLAs quebram?"
-⬜ Root Cause Analysis automático — sugere causas por histórico
-   ("80% das falhas ocorrem quando o job X roda ao mesmo tempo")
-⬜ Performance forecasting com gráficos no Monitoring
-✅ Diff de Daily — ENTREGUE (2026-06-24): compara dois order_date (default hoje vs diária anterior, ou
-   ?from&to&folder): adicionados (+) / removidos (-) / ALTERADOS com diff POR-CAMPO (schedule, deps, recursos,
-   conditions, params, SLA…). Aproveita o DNA Git-native (instance carrega commit_sha + snapshot congelado) →
-   EXATO e barato, sem reprocessar Git. Fast-path: commitA==commitB ⟹ nenhum comum mudou (pula a comparação).
-   Contadores exatos, listas capadas (truncated). `GET /api/daily/diff` + `DailyDiffModal` (botão "Diff" na
-   topbar). 4 testes + validado ao vivo. (`DiffDaily` é candidato natural a tool MCP `diff_daily()`.)
-✅ Blast Radius — ENTREGUE (2026-06-24): "se eu CANCELAR/segurar este job AGORA, qual o impacto?". BFS no
-   grafo reverso de deps a partir do alvo: jobs downstream que deixam de rodar em CASCATA · SLAs em risco ·
-   folders afetadas · profundidade da cascata. Análise de uma AÇÃO (não do grafo estático): só conta sucessores
-   por aresta NÃO-`always` ainda-não-rodados (WAITING/HELD); arestas `always` não propagam, jobs já rodados
-   param a cascata. Visita só o RAIO → barato a 1M. `GET /api/instances/{id}/blast-radius` + painel "⚠ Impacto
-   se cancelar/segurar" no drawer. 4 testes + validado ao vivo. (Candidato a tool MCP `blast_radius()`.)
-✅ Dry Run — ENTREGUE (2026-06-24): simula a daily de QUALQUER data SEM materializar: RUN (raiz elegível) ·
-   WAIT (depois de quais upstreams) · BLOCKED (agendado mas nunca dispara — dep não-`always` não-agendada ou
-   condition que ninguém seta; cascata transitiva) · NOT_SCHEDULED (fora do calendário/frequência), com razão
-   por job. Reusa `IsScheduledOn` (a MESMA decisão do RunDaily) como fonte única; recursos não entram
-   (contenção de runtime). `GET /api/daily/dryrun?date=` + `DryRunModal` (botão "Dry Run" + seletor de data).
-   3 testes + validado ao vivo. (Candidato a tool MCP `dry_run()`.)
-✅ Explain ("por que o job não rodou?") — ENTREGUE (2026-06-24): motor de EXPLICAÇÃO (sem IA): WAIT_WINDOW ·
-   WAIT_DEP / BLOCKED_DEP (qual upstream, condição, status) · WAIT_CONDITION (qual condition falta) ·
-   WAIT_RESOURCE (recurso, quer/uso/capacidade). **Construído como FONTE ÚNICA do gating**: `gateInstance`
-   é o avaliador que o TICK usa pra decidir E o Explain pra mostrar — nenhum gate bloqueia o dispatch sem
-   aparecer no Explain, então condição nova é absorvida de graça (sem checador paralelo / manutenção dupla).
-   `edgeState` (regra de aresta), `Conditions.Missing` e `Resources.Shortfalls` são read-only e fonte única
-   com evalDeps/TryAcquire. `GET /api/instances/{id}/explain` → {runnable, summary, blockers[]} estruturado;
-   painel "Por que (não) rodou?" no drawer. Custo O(upstreams), não O(daily) → vale a 1M. 21 testes + validado
-   ao vivo. **Substrato do futuro tool MCP `explain_job()`** (camada agent-native).
-⬜ Event log de primeira classe (CQRS-lite — NÃO Event Sourcing puro) — evoluir o `instance_events` (já é a
-   semente) para um log COMPLETO e CONFIÁVEL: emissão TRANSACIONAL (evento + mutação de estado no mesmo
-   commit), sequência global, + tipos que faltam (DailyCreated, ConditionAdded/Removed…). O estado mutável
-   segue como PROJEÇÃO (claim atômico intacto). Destrava replay / time-travel / forense ("estado às 08:14")
-   e outbox → NATS/observabilidade, SEM reescrever o core de correção. (ES puro foi avaliado e rejeitado por
-   ROI/risco: HA/DR/auditoria/histórico-de-config já cobertos por Postgres+leader · PITR · instance_events · Git.)
-⬜ Query estruturado / busca rica sobre o estado — endpoint de busca com filtro COMPOSTO (ranges, listas IN,
-   múltiplos campos, agregações) além do que `/api/instances?filtros` cobre hoje. Bounded e tipado (NÃO
-   SQL-sobre-HTTP). Consumidores: dashboards, integrações e a camada agent-native (tool MCP de query).
-   ── DECISÃO de transporte (2026-06-24): quando este item existir, usar **`POST /api/instances/query`
-   como baseline universal** + **aceitar o método HTTP `QUERY` na MESMA handler como opt-in** (progressive
-   enhancement p/ CLI/integrações/MCP). `QUERY` (draft IETF httpbis, novo verbo) é SAFE+idempotente como GET,
-   carrega body como POST e é CACHEÁVEL reusando o cache p/ a MESMA query (POST só semeia cache de GET/HEAD).
-   Em Go NÃO depende de release de framework (diferente do .NET 10): `net/http`+chi roteiam método custom hoje
-   (`r.Method("QUERY", h)`). NÃO adotar agora: os filtros atuais cabem na query string, a API é autenticada
-   sem CDN no meio (ganho de cache ≈ nulo) e ecossistema (proxies/caches que entendam QUERY) é imaturo —
-   seria enfeite com atrito. Adotar SÓ quando houver filtro-complexo-demais-pra-URL E/OU cache de
-   intermediário em jogo. Ref: vensas.de/en/blog/http-query-method-dotnet-10.
-```
-
-### 3. Developer Experience *(onde o Control-M perde feio)*
-```
-⬜ Schedule as Code completo — YAML + DSL Go/Python no repo, sincronizado com a UI
-⬜ Testing framework — `regente test job.yaml` simula execução com mocks
-⬜ Local development mode — `regente dev daily` roda a daily local (mock de agents/datas)
-```
-
-### 4. Enterprise & operação *(além do que já existe)*
-```
-⬜ Multi-environment promotion (Dev → Staging → Prod) com Git flow nativo
-⬜ Policy as Code — regras obrigatórias (todo job tem SLA / retry / owner…)
-⬜ Chaos engineering — botão "Inject Failure" pra testar resiliência de workflows
-```
-
-### 5. Features "wow" menores mas impactantes
-```
-⬜ Visual Schedule Editor com timeline (Gantt-like) da daily
-⬜ Bulk Schedule Actions + templates reutilizáveis
-⬜ Self-Service Portal — negócio roda jobs aprovados sem tocar no Design
-⬜ Mobile-friendly alerts com ações rápidas (rerun, set-ok)
-```
+> Decisão de arquitetura preservada (Event log): evoluir `instance_events` p/ um log CQRS-lite
+> (emissão transacional, sequência global) destrava replay/time-travel/forense — **ES puro foi
+> avaliado e rejeitado** por ROI/risco (HA/DR/auditoria/histórico-de-config já cobertos por
+> Postgres+leader · PITR · instance_events · Git). O que existe hoje (`GET /events`) é a projeção read-model.
 
 ---
 
 ## 🏁 Fase Z — ÚLTIMO GATE
 
-Case study técnico + post LinkedIn — **só com tudo sólido**, incluindo a trilha
-Resiliência (um orquestrador que cai e não volta sozinho não vira post).
+Case study técnico + post LinkedIn — **só com tudo sólido** e o Backlog onde você quiser. Um
+orquestrador que cai e não volta sozinho não vira post; a trilha Resiliência (R1–R7) já fecha isso.
