@@ -520,6 +520,15 @@ Login dev: `admin` / `admin`. Testes: `go test ./...` em `server/` e `agent/`.
 
 > Changelog completo por data/commit → [`docs/roadmap.md`](docs/roadmap.md).
 
+- **Diferenciais além do Control-M — TRILHA 100% FECHADA (D-1..D-15, 2026-07-08):** orquestração
+  híbrida/stateful (**retry durável de dias** via `scheduled_at`, **pause/resume de workflow** com estado
+  preservado, **event-driven confiável** por ingest idempotente `POST /api/events/ingest`), **DevEx**
+  (DSL Go `pkg/jobdsl` para schedule-as-code + **`regente test`** com simulação no engine real + **`regente
+  dev daily`** + **`regente promote`** multi-ambiente Git-nativo), **policy-as-code** (`policies.yaml`
+  versionado, gate do publish), **chaos** (`inject-failure` pelo fluxo real), **query estruturada** composta
+  e tipada (POST + método HTTP `QUERY`), e o "wow": **Timeline/Gantt** da daily, **templates** reutilizáveis,
+  **self-service portal** (`/portal`), **quick-actions** mobile assinadas nos alertas. Fecha os Diferenciais —
+  resta só a Fase Z (divulgação).
 - **Jobs as code (modo CODE, estética Matrix)** — botão **CODE** no Design vira o palco num editor YAML
   do working set (mesmo dialeto dos arquivos do workspace Git): dev cria/edita jobs como código, com
   **Validar** (dry-run: plano criar/atualizar/deletar), **Aplicar** transacional por item e delete-por-ausência
@@ -568,16 +577,16 @@ sync live com o canvas, tabs por job — ver [`docs/roadmap.md`](docs/roadmap.md
   idempotente pelos sinks do alerting + card no Monitoring) · **importador Control-M**
   (`server/cmd/importctm`: XML export → workspace YAML + calendars + `import-report.md`)
 
-**Camada agent-native (MCP)** — servidor pronto (NL-query `query` ✅); falta writes ricos. **Diferenciais** e **🏁 Fase Z**
-(case study + LinkedIn, último gate): ver seções abaixo e [`docs/roadmap.md`](docs/roadmap.md).
+**Camada agent-native (MCP)** — servidor pronto (NL-query `query` ✅); falta writes ricos. **Diferenciais**
+✅ **100% FECHADO (2026-07-08)** — ver abaixo. Resta só **🏁 Fase Z** (case study + LinkedIn, último gate).
 
-### Diferenciais — além do Control-M (visão de produto) — detalhe em [`docs/roadmap.md`](docs/roadmap.md)
-Onde o Regente **passa** o Control-M (longo prazo, depois do núcleo sólido):
-- **Orquestração híbrida/stateful**: human-in-the-loop + long-running (dias/semanas), pausa/resume com estado, event-driven confiável.
-- **Observabilidade avançada**: impact analysis · **blast radius** (cancelar X agora → N jobs caem, Y SLAs violados, atraso estimado) · **dry run** (simular daily futura sem criar instances) · **explain** ("por que o job não rodou?" — motor sem IA: resource/condition/deps) · root-cause automático · forecasting · **diff de daily** (barato via Git-native) · **event log de primeira classe** (CQRS-lite: log transacional/replayável; não ES puro — HA/DR/audit/config já cobertos).
-- **Developer experience**: schedule-as-code (YAML + DSL), `regente test`, `regente dev daily` (mock local).
-- **Enterprise**: promotion Dev→Staging→Prod via Git, **policy-as-code**, chaos ("Inject Failure").
-- **"Wow"**: editor visual **Gantt** da daily, bulk schedule + templates, **self-service portal**, mobile alerts com ações.
+### Diferenciais — além do Control-M ✅ 100% (2026-07-08) — detalhe em [`docs/roadmap.md`](docs/roadmap.md)
+Onde o Regente **passa** o Control-M — **trilha entregue** (D-1..D-15):
+- **Orquestração híbrida/stateful** ✅: human-in-the-loop + long-running (retry durável de dias via `scheduled_at`), **pause/resume de workflow** com estado preservado (`/api/folders/{name}/pause|resume`), **event-driven confiável** (`POST /api/events/ingest` idempotente → conditions/force sem polling).
+- **Observabilidade avançada** ✅: impact analysis · **blast radius** · **dry run** · **explain** (motor sem IA) · **root-cause** · **forecasting** (p50/p90 + tendência + ETA, sparkline no drawer) · **diff de daily** · **event log CQRS-lite** · **NL-query** + **query estruturada** composta (POST + método HTTP `QUERY`).
+- **Developer experience** ✅: schedule-as-code (DSL Go `pkg/jobdsl` → YAML do workspace), **`regente test`** (parse estrito + policy + simulação no engine real, exit-code CI), **`regente dev daily`** (server local descartável).
+- **Enterprise** ✅: **promotion** Dev→Staging→Prod via Git (`regente promote`, snapshot de código+política), **policy-as-code** (`policies.yaml` versionado, gate do publish), **chaos** ("Inject Failure" pelo fluxo real).
+- **"Wow"** ✅: editor visual **Gantt** da daily (Timeline), **templates** reutilizáveis, **self-service portal** (`/portal`), **mobile alerts** com ações rápidas assinadas (`/qa/{token}`).
 
 ### Serverless portátil (sem lock-in) — ver [`docs/arquitetura-futuro.md`](docs/arquitetura-futuro.md)
 Estratégia: **container scale-to-zero + estado/gatilho externalizados**, não FaaS.

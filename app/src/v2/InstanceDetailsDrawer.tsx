@@ -14,6 +14,10 @@ import {
   fetchRCA,
   type RCA,
 } from "@/lib/runtime-bridge";
+import { injectFailure } from "@/lib/differentials-api";
+import { isServerMode } from "@/lib/server-client";
+import ForecastPanel from "./ForecastPanel";
+import { toast } from "./Toast";
 import { useResizablePanel, ResizeHandle } from "./resizable";
 
 /* ──────────────────────────────────────────────────────────────
@@ -85,6 +89,18 @@ export default function InstanceDetailsDrawer({
   const color = STATUS_COLOR[status];
   const [tab, setTab] = useState<"details" | "log">("details");
 
+  // D-11 chaos — falha sintética pelo fluxo REAL (retry/actions/alerts reagem
+  // como numa falha orgânica). Server-mode only; confirmação explícita.
+  const chaosInject = async () => {
+    if (!window.confirm(`Injetar FALHA em "${instance.label}"?\n\nO job vira NOTOK pelo fluxo real — retry, On-Do e alertas disparam como numa falha de produção.`)) return;
+    try {
+      await injectFailure(instance.id);
+      toast.info("Falha injetada (chaos)", { detail: instance.id });
+    } catch (e) {
+      toast.error("Chaos falhou", { detail: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
   const actions: ActionButton[] = ([
     { label: "Hold",    onClick: () => handlers.onHold(instance.id),    tone: "neutral" as const, show: status === "WAITING" },
     { label: "Release", onClick: () => handlers.onRelease(instance.id), tone: "primary" as const, show: status === "HOLD" },
@@ -92,6 +108,8 @@ export default function InstanceDetailsDrawer({
     { label: "Skip",    onClick: () => handlers.onSkip(instance.id),    tone: "neutral" as const, show: status === "WAITING" || status === "HOLD" },
     { label: "Set OK", onClick: () => handlers.onBypass(instance.id), tone: "primary" as const, show: status === "NOTOK" || status === "CANCELLED" },
     { label: "Rerun",   onClick: () => handlers.onRerun(instance.id),   tone: "primary" as const, show: status === "NOTOK" },
+    { label: "💥 Chaos", onClick: chaosInject, tone: "danger" as const,
+      show: isServerMode() && (status === "WAITING" || status === "RUNNING" || status === "HOLD") },
   ]).filter((a) => a.show);
 
   const { width, onMouseDown, reset } = useResizablePanel({
@@ -227,6 +245,9 @@ export default function InstanceDetailsDrawer({
           <BlastPanel instanceId={instance.id} />
         )}
         <NeighborhoodPanel instanceId={instance.id} />
+
+        {/* D-4 — forecast de duração por histórico (some sem 2+ execuções OK) */}
+        <ForecastPanel defId={instance.definitionId} isRunning={status === "RUNNING"} />
 
         <Section title="Timeline">
           <Field label="Ordered"    value={fmtTime(instance.createdAt)} />

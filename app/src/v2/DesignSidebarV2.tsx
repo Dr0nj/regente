@@ -21,6 +21,9 @@ import {
 import type { JobDefinition } from "@/lib/orchestrator-model";
 import type { JobNodeData } from "@/lib/job-config";
 import { getGitInfo } from "@/lib/git-info";
+import { fetchTemplates, deleteTemplate, type JobTemplate } from "@/lib/differentials-api";
+import { isServerMode } from "@/lib/server-client";
+import { FileStack, Trash2 } from "lucide-react";
 import { useResizablePanel, ResizeHandle } from "./resizable";
 
 /* ──────────────────────────────────────────────────────────────
@@ -33,7 +36,7 @@ import { useResizablePanel, ResizeHandle } from "./resizable";
    - Footer com git info REAL (branch@sha do /api/git/status), não hardcode.
    ────────────────────────────────────────────────────────────── */
 
-type Tab = "palette" | "folders" | "variables";
+type Tab = "palette" | "templates" | "folders" | "variables";
 
 const JOB_TYPES: Array<{
   id: JobNodeData["jobType"];
@@ -61,13 +64,21 @@ const JOB_TYPES: Array<{
 export default function DesignSidebarV2({
   definitions = [],
   onJobClick,
+  onUseTemplate,
 }: {
   definitions?: JobDefinition[];
   /** Clique num job da aba Folders → centraliza/navega até o nó no canvas. */
   onJobClick?: (defId: string) => void;
+  /** D-13 — clique num template → cria um job novo a partir da forma dele. */
+  onUseTemplate?: (def: JobDefinition) => void;
 }) {
   const [tab, setTab] = useState<Tab>("palette");
   const [gitLine, setGitLine] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<JobTemplate[]>([]);
+  const serverMode = isServerMode();
+
+  const loadTemplates = () => { if (serverMode) void fetchTemplates().then(setTemplates); };
+  useEffect(() => { loadTemplates(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancel = false;
@@ -98,6 +109,7 @@ export default function DesignSidebarV2({
 
   const TABS: Array<{ id: Tab; Icon: LucideIcon; label: string }> = [
     { id: "palette",   Icon: LayoutGrid, label: "Components" },
+    ...(serverMode ? [{ id: "templates" as Tab, Icon: FileStack, label: "Templates" }] : []),
     { id: "folders",   Icon: Folder,     label: "Folders" },
     { id: "variables", Icon: Variable,   label: "Variables" },
   ];
@@ -201,7 +213,7 @@ export default function DesignSidebarV2({
               textTransform: "uppercase",
             }}
           >
-            {tab === "palette" ? "Components" : tab === "folders" ? "Folders" : "Variables"}
+            {tab === "palette" ? "Components" : tab === "templates" ? "Templates" : tab === "folders" ? "Folders" : "Variables"}
           </span>
         </div>
 
@@ -274,6 +286,53 @@ export default function DesignSidebarV2({
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {tab === "templates" && (
+            <div style={{ padding: "4px 0" }}>
+              {templates.length === 0 && (
+                <div style={{ padding: "12px 14px", fontSize: 11, color: "var(--v2-text-muted)", lineHeight: 1.5 }}>
+                  Nenhum template ainda. Abra um job e clique
+                  <br />
+                  <span style={{ fontFamily: "var(--v2-font-mono)" }}>☆ Template</span> para salvar a forma dele aqui.
+                </div>
+              )}
+              {templates.map((tpl) => (
+                <div
+                  key={tpl.name}
+                  onClick={() => onUseTemplate?.({ ...tpl.definition, label: tpl.definition.label || tpl.name })}
+                  title={`Criar um job a partir de "${tpl.name}" (${tpl.definition.jobType})`}
+                  style={{
+                    padding: "8px 12px", cursor: "pointer",
+                    borderBottom: "1px solid var(--v2-border-subtle)",
+                    display: "flex", alignItems: "center", gap: 10,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--v2-bg-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  <FileStack size={13} style={{ color: "var(--v2-accent-brand)", flexShrink: 0 }} />
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 500, color: "var(--v2-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {tpl.name}
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {tpl.definition.jobType}{tpl.description ? ` · ${tpl.description}` : ""}
+                    </div>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!window.confirm(`Excluir o template "${tpl.name}"?`)) return;
+                      void deleteTemplate(tpl.name).then(loadTemplates);
+                    }}
+                    title="Excluir template"
+                    style={{ background: "transparent", border: "none", color: "var(--v2-text-muted)", cursor: "pointer", padding: 2, display: "inline-flex", flexShrink: 0 }}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
 

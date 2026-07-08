@@ -1,9 +1,12 @@
 # --- Go binaries ---
 /server/regente-server
 /server/regente-server.exe
+/server/regente-cli.exe
+/server/regente.exe
 /agent/regente-agent
 /agent/regente-agent.exe
 *.exe~
+*.exe
 dist/
 
 # --- Runtime state (NUNCA versionar) ---
@@ -14,6 +17,7 @@ dist/
 /server/regente.db*
 /server/workspace/
 /server/sessions/
+/deploy/demo/sessions/
 
 # --- Logs ---
 *.log
@@ -32,3 +36,4 @@ Thumbs.db
 
 # --- Claude Code: overrides pessoais (settings versionado é o settings.json) ---
 .claude/settings.local.json
+.claude/launch.json

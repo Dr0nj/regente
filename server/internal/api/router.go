@@ -55,6 +55,10 @@ type RemotePresence interface {
 	RemoteAgents() []bus.RemoteAgent
 }
 
+// D-5 — o chi só roteia métodos que conhece: registra o verbo QUERY (draft
+// IETF httpbis) uma vez, no load do pacote, antes de qualquer r.Method("QUERY").
+func init() { chi.RegisterMethod("QUERY") }
+
 type server struct {
 	cfg         Config
 	agentBroker *agentBroker  // Fase 2 — transporte HTTP long-poll (nil se sem hub)
@@ -130,6 +134,10 @@ func NewRouter(cfg Config) http.Handler {
 		r.Get("/instances", s.listInstances)
 		r.Get("/instances/page", s.pageInstances)       // P2/escala: paginação por cursor
 		r.Get("/instances/summary", s.summaryInstances) // P2/escala: contadores agregados
+		// D-5 — query estruturada composta (POST baseline; QUERY = progressive
+		// enhancement, o verbo IETF safe+idempotente com body — mesma handler).
+		r.Post("/instances/query", s.queryInstances)
+		r.Method("QUERY", "/instances/query", http.HandlerFunc(s.queryInstances))
 		r.With(s.requireWriterMW).Post("/instances/{id}/hold", s.holdInstance)
 		r.With(s.requireWriterMW).Post("/instances/{id}/release", s.releaseInstance)
 		r.With(s.requireWriterMW).Post("/instances/{id}/cancel", s.cancelInstance)
@@ -141,10 +149,20 @@ func NewRouter(cfg Config) http.Handler {
 		r.Get("/instances/{id}/blast-radius", s.blastRadius)  // diferencial: impacto de cancelar/segurar
 		r.Get("/instances/{id}/neighborhood", s.neighborhood) // diferencial: grafo local (up/downstream)
 		r.Get("/instances/{id}/rca", s.rca)                   // diferencial: causa raiz da falha/bloqueio
+		// D-11 — chaos engineering: falha sintética pelo fluxo REAL de falha
+		r.With(s.requireWriterMW).Post("/instances/{id}/inject-failure", s.injectFailure)
+		// D-2 — pause/resume de workflow (folder) com estado preservado
+		r.With(s.requireWriterMW).Post("/folders/{name}/pause", s.pauseFolder)
+		r.With(s.requireWriterMW).Post("/folders/{name}/resume", s.resumeFolder)
 
 		r.Get("/events", s.listEventLog)               // diferencial: event log CQRS-lite (feed do dia)
 		r.Get("/audit/export", s.auditExport)          // E2: export JSONL unificado (admin-only, cursor after_id)
 		r.Post("/query", s.runQuery)                   // diferencial: NL-query (texto → consulta estruturada)
+		// D-3 — event-driven confiável: ingestão idempotente de eventos externos
+		r.With(s.requireWriterMW).Post("/events/ingest", s.ingestEvent)
+		r.Get("/events/external", s.listExternalEvents)
+		// D-10 — policy as code: política ativa + violações do workspace publicado
+		r.Get("/policy", s.getPolicy)
 		r.Get("/daily/diff", s.diffDaily)              // diferencial: o que mudou entre duas diárias
 		r.Get("/daily/dryrun", s.dryRunDaily)          // diferencial: simular uma daily futura sem materializar
 		r.Get("/daily/status", s.dailyStatus)          // última daily (relógio do server) + horário configurado
@@ -241,6 +259,18 @@ func NewRouter(cfg Config) http.Handler {
 		r.Get("/analytics/summary", s.analyticsSummary)
 		r.Get("/analytics/top-failing", s.analyticsTopFailing)
 		r.Get("/analytics/mttr", s.analyticsMTTR)
+		// D-4 — performance forecasting por histórico (gráfico do drawer + Timeline)
+		r.Get("/analytics/forecast", s.perfForecast)
+		r.Get("/analytics/durations", s.dayDurations)
+
+		// D-13 — job templates (writer p/ mutar; leitura livre)
+		r.Get("/templates", s.listTemplates)
+		r.With(s.requireWriterMW).Post("/templates", s.saveTemplate)
+		r.With(s.requireWriterMW).Delete("/templates/{name}", s.deleteTemplate)
+
+		// D-14 — self-service portal: gate PRÓPRIO (qualquer logado; opt-in por def)
+		r.Get("/selfservice/jobs", s.selfServiceJobs)
+		r.Post("/selfservice/run/{defId}", s.selfServiceRun)
 
 		// F20 Settings (admin-only for writes)
 		r.Get("/settings", s.getSettings)
@@ -259,6 +289,11 @@ func NewRouter(cfg Config) http.Handler {
 
 	// F13.3 — webhook GitHub (público; auth via HMAC do payload)
 	r.Post("/api/git/webhook", s.gitWebhook)
+
+	// D-15 — quick actions de alerta (públicas; a AUTH é o token HMAC assinado
+	// de escopo único). GET = página de confirmação; POST = executa.
+	r.Get("/qa/{token}", s.quickActionPage)
+	r.Post("/qa/{token}", s.quickActionExec)
 
 	// Hosting single-origin: rotas não registradas acima (/, /design, /assets/*, etc.)
 	// caem aqui e servem o SPA. As rotas de API/WS/metrics já foram casadas antes, então

@@ -10,6 +10,9 @@ import { ErrorDialog } from "./ErrorDialog";
 import { getGitInfo, definitionFileUrl } from "@/lib/git-info";
 import { listCalendars, type Calendar } from "@/lib/bloco2-api";
 import { listAgents, type AgentInfo } from "@/lib/agents-api";
+import { saveTemplate } from "@/lib/differentials-api";
+import { isServerMode } from "@/lib/server-client";
+import { toast } from "./Toast";
 import { useResizablePanel, ResizeHandle } from "./resizable";
 
 /* ──────────────────────────────────────────────────────────────
@@ -99,12 +102,10 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     return () => { cancel = true; };
   }, []);
 
-  async function handleSave() {
-    if (!label.trim()) { setValidationErr("label obrigatório"); setTab("general"); return; }
-    if (!team.trim()) { setValidationErr("folder obrigatória"); setTab("general"); return; }
-    if (!id.trim()) { setValidationErr("id obrigatório"); setTab("general"); return; }
-    setValidationErr(null);
-    const next: JobDefinition = {
+  // buildDef — a definition como está no formulário (usada pelo Save e pelo
+  // Salvar-como-template, D-13).
+  function buildDef(): JobDefinition {
+    return {
       ...definition,
       id: id.trim(), label: label.trim(), jobType, team: team.trim(),
       schedule: { ...schedule, enabled: schedule.enabled ?? true },
@@ -115,8 +116,29 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
       actions: actions.length ? actions : undefined,
       upstream: upstream.length ? upstream : undefined,
     };
+  }
+
+  async function handleSave() {
+    if (!label.trim()) { setValidationErr("label obrigatório"); setTab("general"); return; }
+    if (!team.trim()) { setValidationErr("folder obrigatória"); setTab("general"); return; }
+    if (!id.trim()) { setValidationErr("id obrigatório"); setTab("general"); return; }
+    setValidationErr(null);
+    const next = buildDef();
     setSaving(true); setErr(null);
     try { await handlers.onSave(next); } catch (e) { setErr(e); } finally { setSaving(false); }
+  }
+
+  // D-13 — salva a FORMA deste job como template reutilizável (o server
+  // descarta id/team/upstream: identidade e vínculos não viajam no molde).
+  async function handleSaveTemplate() {
+    const name = window.prompt("Nome do template:", id.trim() || label.trim());
+    if (!name?.trim()) return;
+    try {
+      await saveTemplate(name.trim(), label.trim(), buildDef());
+      toast.success(`Template "${name.trim()}" salvo`, { detail: "disponível na aba Templates da palette" });
+    } catch (e) {
+      toast.error("Falha ao salvar template", { detail: e instanceof Error ? e.message : String(e) });
+    }
   }
 
   async function handleDelete() {
@@ -270,6 +292,10 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
       <div style={{ borderTop: "1px solid var(--v2-border-subtle)", padding: "8px 12px", display: "flex", gap: 6 }}>
         <button onClick={handleDelete} disabled={saving} style={{ ...btnStyle, borderColor: "rgba(239,68,68,.4)", color: "var(--v2-status-failed)" }}>{isNew ? "Cancel" : "Delete"}</button>
         <div style={{ flex: 1 }} />
+        {isServerMode() && (
+          <button onClick={handleSaveTemplate} disabled={saving} title="Salvar a forma deste job como template reutilizável (D-13)"
+            style={btnStyle}>☆ Template</button>
+        )}
         <button onClick={handleSave} disabled={saving} style={{ ...btnStyle, borderColor: "var(--v2-accent-brand)", color: "var(--v2-accent-brand)", fontWeight: 600 }}>{saving ? "…" : "Save"}</button>
       </div>
     </aside>

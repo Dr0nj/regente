@@ -67,7 +67,7 @@ func (s *server) saveDefinition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// F12 — validação por jobType.
-	if err := validateDefinition(def); err != nil {
+	if err := domain.ValidateDefinition(def); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

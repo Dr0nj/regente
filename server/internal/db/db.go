@@ -481,6 +481,7 @@ var sqliteMigrations = []migration{
 	{version: 10, sql: schemaV10()},
 	{version: 11, sql: schemaV11(sqliteID, "DATETIME")},
 	{version: 12, sql: schemaV12("DATETIME")},
+	{version: 13, sql: schemaV13(sqliteID, "DATETIME")},
 }
 
 var pgMigrations = []migration{
@@ -496,6 +497,7 @@ var pgMigrations = []migration{
 	{version: 10, sql: schemaV10()},
 	{version: 11, sql: schemaV11(pgID, "TIMESTAMPTZ")},
 	{version: 12, sql: schemaV12("TIMESTAMPTZ")},
+	{version: 13, sql: schemaV13(pgID, "TIMESTAMPTZ")},
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
@@ -645,4 +647,32 @@ CREATE INDEX IF NOT EXISTS idx_audit_events_ts ON audit_events(ts)`
 // idempotente mesmo com múltiplos nós/ticks. ALTER idêntico SQLite/PG.
 func schemaV12(ts string) string {
 	return `ALTER TABLE daily_runs ADD COLUMN report_sent_at ` + ts
+}
+
+// schemaV13 — Diferenciais leva 2 (2026-07-07).
+//
+// external_events (D-3, event-driven confiável): ingestão idempotente de eventos
+// EXTERNOS (webhook de outro sistema → condition/force). O `id` vem do EMISSOR
+// (dedupe key): o INSERT com PK é o teste de duplicata — retry do emissor não
+// re-aplica o efeito. `applied` registra o que o evento causou (forense).
+//
+// job_templates (D-13): templates reutilizáveis de job — metadado operacional
+// (não versionado no workspace; a def criada a partir dele, sim).
+func schemaV13(idDef, ts string) string {
+	_ = idDef
+	return `CREATE TABLE IF NOT EXISTS external_events (
+	id          TEXT PRIMARY KEY,
+	source      TEXT NOT NULL DEFAULT '',
+	kind        TEXT NOT NULL DEFAULT '',
+	payload     TEXT NOT NULL DEFAULT '',
+	applied     TEXT NOT NULL DEFAULT '',
+	received_at ` + ts + ` DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS job_templates (
+	name        TEXT PRIMARY KEY,
+	description TEXT NOT NULL DEFAULT '',
+	definition  TEXT NOT NULL,
+	created_by  TEXT NOT NULL DEFAULT '',
+	created_at  ` + ts + ` DEFAULT CURRENT_TIMESTAMP
+)`
 }

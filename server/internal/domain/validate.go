@@ -1,12 +1,10 @@
-package api
+package domain
 
 import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/Dr0nj/regente-server/internal/domain"
-)
+	)
 
 /* ──────────────────────────────────────────────────────────────
    F12 — Validação de actionConfig por jobType
@@ -16,7 +14,7 @@ import (
    branches como []interface{} (frontend serializa JSON).
    ────────────────────────────────────────────────────────────── */
 
-func validateActionConfig(def domain.JobDefinition) error {
+func ValidateActionConfig(def JobDefinition) error {
 	cfg := def.Params
 	jt := strings.ToUpper(def.JobType)
 	switch jt {
@@ -110,7 +108,7 @@ func isDBDriver(s string) bool {
 	return false
 }
 
-func validateDefinition(def domain.JobDefinition) error {
+func ValidateDefinition(def JobDefinition) error {
 	if strings.TrimSpace(def.ID) == "" {
 		return errors.New("id required")
 	}
@@ -120,7 +118,7 @@ func validateDefinition(def domain.JobDefinition) error {
 	if strings.TrimSpace(def.Team) == "" {
 		return errors.New("team (folder) required")
 	}
-	if err := validateActionConfig(def); err != nil {
+	if err := ValidateActionConfig(def); err != nil {
 		return fmt.Errorf("actionConfig: %w", err)
 	}
 	return nil

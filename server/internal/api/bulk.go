@@ -336,7 +336,7 @@ func (s *server) bulkSessionDefinitions(w http.ResponseWriter, r *http.Request) 
 			if req.Patch.RunAt != nil {
 				def.Schedule.RunAt = *req.Patch.RunAt
 			}
-			if err := validateDefinition(def); err != nil {
+			if err := domain.ValidateDefinition(def); err != nil {
 				results = append(results, bulkItemResult{ID: id, Error: err.Error()})
 				continue
 			}

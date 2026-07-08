@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import type { JobNodeData } from "@/lib/job-config";
 import { useResizablePanel, ResizeHandle } from "./resizable";
 
@@ -40,14 +40,33 @@ function formatDuration(ms?: number): string {
   return `${Math.floor(ms / 60000)}m${Math.floor((ms % 60000) / 1000)}s`;
 }
 
+// D-2 — botões ⏸/▶ do header da folder (discretos; idempotentes no server).
+const folderActionBtn: CSSProperties = {
+  background: "transparent",
+  border: "1px solid var(--v2-border-subtle)",
+  color: "var(--v2-text-muted)",
+  borderRadius: 2,
+  fontSize: 8,
+  width: 18,
+  height: 16,
+  lineHeight: "12px",
+  padding: 0,
+  cursor: "pointer",
+};
+
 export default function MonitoringSidebarV2({
   jobs,
   selectedId,
   onSelect,
+  onPauseFolder,
+  onResumeFolder,
 }: {
   jobs: MonitoringJob[];
   selectedId?: string | null;
   onSelect?: (id: string) => void;
+  /** D-2 — pause/resume de workflow: segura/libera os WAITING da folder em massa. */
+  onPauseFolder?: (name: string) => void;
+  onResumeFolder?: (name: string) => void;
 }) {
   const [filter, setFilter] = useState<StatusFilter>("ALL");
   const [query, setQuery] = useState("");
@@ -274,6 +293,20 @@ export default function MonitoringSidebarV2({
                   >
                     {folder}
                   </span>
+                  {onPauseFolder && onResumeFolder && (
+                    <span style={{ display: "inline-flex", gap: 2 }} onClick={(e) => e.stopPropagation()}>
+                      <button
+                        title={`Pausar workflow: segura os WAITING de ${folder} (estado preservado)`}
+                        onClick={() => onPauseFolder(folder)}
+                        style={folderActionBtn}
+                      >⏸</button>
+                      <button
+                        title={`Retomar workflow: libera os HELD de ${folder}`}
+                        onClick={() => onResumeFolder(folder)}
+                        style={folderActionBtn}
+                      >▶</button>
+                    </span>
+                  )}
                   <span
                     style={{
                       fontSize: 9,

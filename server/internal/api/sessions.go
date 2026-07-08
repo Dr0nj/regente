@@ -19,6 +19,7 @@ import (
 	"net/http"
 
 	"github.com/Dr0nj/regente-server/internal/auth"
+	"github.com/Dr0nj/regente-server/internal/domain"
 	"github.com/Dr0nj/regente-server/internal/storage"
 	"github.com/go-chi/chi/v5"
 )
@@ -192,7 +193,7 @@ func (s *server) saveSessionDefinition(w http.ResponseWriter, r *http.Request) {
 	if !s.requireFolderWrite(w, r, def.Team) {
 		return
 	}
-	if err := validateDefinition(def); err != nil {
+	if err := domain.ValidateDefinition(def); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -308,6 +309,24 @@ func (s *server) publishDesignSession(w http.ResponseWriter, r *http.Request) {
 		Message string `json:"message"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
+	// D-10 Policy as Code — gate do publish: valida o working set contra o
+	// policies.yaml DO CLONE da session (política + jobs promovem juntos).
+	// enforcement=error → 422 estruturado; warn → publica e anexa warnings.
+	violations, blocking, polErr := checkSessionPolicy(sess.Store)
+	if polErr != nil {
+		http.Error(w, "policy: "+polErr.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+	if len(violations) > 0 && blocking {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error":      "policy",
+			"message":    policyViolationsSummary(violations),
+			"violations": violations,
+		})
+		return
+	}
 	res, err := s.cfg.Sessions.Publish(sess.ID, req.Message, s.cfg.WriteMode)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
@@ -339,5 +358,12 @@ func (s *server) publishDesignSession(w http.ResponseWriter, r *http.Request) {
 	// Limpa session após publish bem-sucedido.
 	_ = s.cfg.Sessions.Delete(sess.ID)
 	massUndo.clear(sess.ID) // CTM-3: undo morre com a session
+	if len(violations) > 0 { // enforcement=warn: publicou, mas avisa
+		writeJSON(w, 200, struct {
+			*storage.PublishResult
+			PolicyWarnings any `json:"policyWarnings"`
+		}{res, violations})
+		return
+	}
 	writeJSON(w, 200, res)
 }

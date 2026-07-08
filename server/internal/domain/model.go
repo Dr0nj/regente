@@ -103,6 +103,20 @@ type JobDefinition struct {
 	Timeout  int        `yaml:"timeout,omitempty" json:"timeout,omitempty"` // seconds
 	DryRun   bool       `yaml:"dryRun,omitempty" json:"dryRun,omitempty"`
 	Upstream []Upstream `yaml:"upstream,omitempty" json:"upstream,omitempty"`
+
+	// D-1 — espaçamento entre tentativas de retry, em MINUTOS. 0 = backoff curto
+	// (segundos, comportamento clássico). >0 = a próxima tentativa é AGENDADA via
+	// scheduled_at (durável: sobrevive a restart do server e à virada da daily —
+	// um retry em WAITING que já tentou carrega como o NOTOK). Combinado com
+	// Confirm/keepActive dá workflows human-in-the-loop de dias/semanas
+	// ("aprovação manual + retry após 3 dias").
+	RetryDelayMin int `yaml:"retryDelayMin,omitempty" json:"retryDelayMin,omitempty"`
+
+	// D-14 — Self-Service Portal: expõe este job no portal (/portal) para
+	// usuários de negócio dispararem (force) SEM acesso ao Design/Monitoring.
+	// O gate de execução é próprio (qualquer usuário logado, se selfService),
+	// deliberadamente distinto do requireWriter.
+	SelfService bool `yaml:"selfService,omitempty" json:"selfService,omitempty"`
 	// JSON wire usa "actionConfig" (frontend); YAML em disco mantem "params" (legado).
 	Params  map[string]interface{} `yaml:"params,omitempty" json:"actionConfig,omitempty"`
 	AgentID string                 `yaml:"agentId,omitempty" json:"agentId,omitempty"`

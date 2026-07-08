@@ -608,15 +608,18 @@ func keepActiveDays(def domain.JobDefinition, notokDefault bool) int {
 }
 
 // carryDecision — REGRA pura do ciclo de vida da daily (Control-M-like). Decide se
-// uma instance no estado `status` (com `budget` atual e a def `def`) sobrevive à
-// virada e qual orçamento ela leva pro novo dia. Isolada p/ ser testável sem DB.
+// uma instance no estado `status` (com `budget` atual, `attempts` executadas e a
+// def `def`) sobrevive à virada e qual orçamento ela leva. Testável sem DB.
 //
 //	RUNNING → carrega sempre (rastrear até terminar); orçamento intacto (-1 fica -1).
 //	HELD    → carrega sempre enquanto em hold; orçamento intacto.
 //	NOTOK   → carrega se ainda há orçamento; lazy-init = keepActive ou 1 (DEFAULT).
-//	WAITING → (nunca rodou) só carrega se keepActive>0; lazy-init = keepActive.
+//	WAITING attempts>1 → RETRY AGENDADO em andamento (D-1 retryDelayMin): já rodou
+//	        e falhou; é um NOTOK em tratamento — carrega com a MESMA regra do NOTOK,
+//	        senão um "retry após 3 dias" morreria na primeira virada da daily.
+//	WAITING (nunca rodou) → só carrega se keepActive>0; lazy-init = keepActive.
 //	OK/CANCELLED/outros → não carrega (encerrado).
-func carryDecision(status string, budget int, def domain.JobDefinition) carryPlan {
+func carryDecision(status string, budget, attempts int, def domain.JobDefinition) carryPlan {
 	switch status {
 	case string(domain.StatusRunning):
 		return carryPlan{carry: true, newBudget: budget, reason: "running"}
@@ -632,14 +635,22 @@ func carryDecision(status string, budget int, def domain.JobDefinition) carryPla
 		}
 		return carryPlan{carry: true, newBudget: b - 1, reason: "notok"}
 	case string(domain.StatusWaiting):
+		notokLike := attempts > 1 // retry em andamento = falha em tratamento
 		b := budget
 		if b < 0 {
-			b = keepActiveDays(def, false)
+			b = keepActiveDays(def, notokLike)
 		}
 		if b <= 0 {
+			if notokLike {
+				return carryPlan{carry: false, newBudget: 0, reason: "retry-exhausted"}
+			}
 			return carryPlan{carry: false, newBudget: 0, reason: "waiting-no-keepactive"}
 		}
-		return carryPlan{carry: true, newBudget: b - 1, reason: "waiting-keepactive"}
+		reason := "waiting-keepactive"
+		if notokLike {
+			reason = "retry-pending"
+		}
+		return carryPlan{carry: true, newBudget: b - 1, reason: reason}
 	}
 	return carryPlan{carry: false, newBudget: budget, reason: "terminal"}
 }
@@ -673,7 +684,7 @@ func (s *Scheduler) carryOver(date string) int {
 
 	rows, err := s.db.Query(
 		`SELECT id, definition_id, status, COALESCE(carry_budget,-1), COALESCE(carried_from,''),
-		        COALESCE(definition_snapshot,'')
+		        COALESCE(definition_snapshot,''), COALESCE(attempts,1)
 		 FROM instances
 		 WHERE order_date=? AND status NOT IN (?,?)`,
 		prev, string(domain.StatusOK), string(domain.StatusCancelled),
@@ -693,12 +704,12 @@ func (s *Scheduler) carryOver(date string) int {
 	var plan []carriedInstance
 	for rows.Next() {
 		var id, defID, status, from, snap string
-		var budget int
-		if rows.Scan(&id, &defID, &status, &budget, &from, &snap) != nil {
+		var budget, attempts int
+		if rows.Scan(&id, &defID, &status, &budget, &from, &snap, &attempts) != nil {
 			continue
 		}
 		def, _ := defForInstance(instRow{DefID: defID, Snapshot: snap}, live)
-		d := carryDecision(status, budget, def)
+		d := carryDecision(status, budget, attempts, def)
 		if !d.carry {
 			continue
 		}
@@ -1371,6 +1382,7 @@ func (s *Scheduler) buildAlertContext(id string, status domain.InstanceStatus) A
 	ctx := AlertContext{
 		WorkflowID:        defID,
 		WorkflowName:      defID,
+		InstanceID:        id, // D-15: alvo dos quick-action links do alerta
 		Status:            string(status),
 		MaxJobRetries:     attempts - 1,
 		RecentSuccessRate: 1,
@@ -1452,6 +1464,24 @@ func (s *Scheduler) maybeRetry(id, output string) bool {
 		return false
 	}
 	next := attempts + 1
+	// D-1 — retryDelayMin>0: a próxima tentativa é AGENDADA (scheduled_at futuro)
+	// em vez de re-dispatchada por goroutine. O tick despacha quando chegar a hora;
+	// como o agendamento vive no DB, sobrevive a restart do server e à virada da
+	// daily (o carry-over trata WAITING-que-já-tentou como NOTOK em tratamento).
+	// É o que torna "retry após 3 dias" confiável — uma goroutine dormindo 3 dias
+	// morreria no primeiro deploy.
+	if def.RetryDelayMin > 0 {
+		nextAt := time.Now().Add(time.Duration(def.RetryDelayMin) * time.Minute)
+		_, _ = s.db.Exec(
+			`UPDATE instances SET attempts=?, status=?, scheduled_at=?, exit_code=NULL, finished_at=NULL WHERE id=?`,
+			next, string(domain.StatusWaiting), nextAt, id,
+		)
+		s.emitEvent(id, "retry", "scheduler",
+			fmt.Sprintf("falhou — retry %d/%d agendado para %s (retryDelayMin=%d)",
+				next, maxAttempts, nextAt.Format("2006-01-02 15:04"), def.RetryDelayMin))
+		s.hub.BroadcastWeb("instance.changed", map[string]interface{}{"id": id, "status": string(domain.StatusWaiting)})
+		return true
+	}
 	_, _ = s.db.Exec(
 		`UPDATE instances SET attempts=?, status=?, exit_code=NULL, finished_at=NULL WHERE id=?`,
 		next, string(domain.StatusWaiting), id,

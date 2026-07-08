@@ -55,24 +55,31 @@ func TestCarryDecision(t *testing.T) {
 		name      string
 		status    string
 		budget    int
+		attempts  int
 		def       domain.JobDefinition
 		wantCarry bool
 		wantBudg  int
 	}{
-		{"running sempre carrega", string(domain.StatusRunning), -1, plain, true, -1},
-		{"held sempre carrega", string(domain.StatusHeld), -1, plain, true, -1},
-		{"notok default inicia em 1 e carrega", string(domain.StatusNotOK), -1, plain, true, 0},
-		{"notok com budget esgotado nao carrega", string(domain.StatusNotOK), 0, plain, false, 0},
-		{"notok keepActive=3 inicia em 3", string(domain.StatusNotOK), -1, keep3, true, 2},
-		{"notok keepActive consome budget", string(domain.StatusNotOK), 2, keep3, true, 1},
-		{"waiting sem keepActive nao carrega", string(domain.StatusWaiting), -1, plain, false, 0},
-		{"waiting keepActive=3 carrega", string(domain.StatusWaiting), -1, keep3, true, 2},
-		{"ok nunca carrega", string(domain.StatusOK), -1, plain, false, -1},
-		{"cancelled nunca carrega", string(domain.StatusCancelled), -1, plain, false, -1},
+		{"running sempre carrega", string(domain.StatusRunning), -1, 1, plain, true, -1},
+		{"held sempre carrega", string(domain.StatusHeld), -1, 1, plain, true, -1},
+		{"notok default inicia em 1 e carrega", string(domain.StatusNotOK), -1, 1, plain, true, 0},
+		{"notok com budget esgotado nao carrega", string(domain.StatusNotOK), 0, 1, plain, false, 0},
+		{"notok keepActive=3 inicia em 3", string(domain.StatusNotOK), -1, 1, keep3, true, 2},
+		{"notok keepActive consome budget", string(domain.StatusNotOK), 2, 1, keep3, true, 1},
+		{"waiting sem keepActive nao carrega", string(domain.StatusWaiting), -1, 1, plain, false, 0},
+		{"waiting keepActive=3 carrega", string(domain.StatusWaiting), -1, 1, keep3, true, 2},
+		// D-1 — WAITING com attempts>1 é um RETRY AGENDADO em andamento: carrega
+		// com a regra do NOTOK (baseline 1 sem keepActive), senão um retryDelayMin
+		// de dias morreria na primeira virada da daily.
+		{"waiting retry-pendente carrega como notok", string(domain.StatusWaiting), -1, 2, plain, true, 0},
+		{"waiting retry-pendente com budget esgotado nao carrega", string(domain.StatusWaiting), 0, 2, plain, false, 0},
+		{"waiting retry-pendente keepActive=3 inicia em 3", string(domain.StatusWaiting), -1, 2, keep3, true, 2},
+		{"ok nunca carrega", string(domain.StatusOK), -1, 1, plain, false, -1},
+		{"cancelled nunca carrega", string(domain.StatusCancelled), -1, 1, plain, false, -1},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := carryDecision(c.status, c.budget, c.def)
+			got := carryDecision(c.status, c.budget, c.attempts, c.def)
 			if got.carry != c.wantCarry {
 				t.Fatalf("carry=%v, esperava %v (reason=%s)", got.carry, c.wantCarry, got.reason)
 			}

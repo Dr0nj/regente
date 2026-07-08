@@ -25,6 +25,7 @@ import (
 
 	"github.com/Dr0nj/regente-server/internal/auth"
 	"github.com/Dr0nj/regente-server/internal/domain"
+	"github.com/Dr0nj/regente-server/internal/policy"
 	"gopkg.in/yaml.v3"
 )
 
@@ -183,7 +184,7 @@ func parseCodeDocs(code string, scope map[string]bool) ([]domain.JobDefinition, 
 			errs = append(errs, fmt.Sprintf("%s: team %q fora do escopo do documento", def.ID, def.Team))
 			continue
 		}
-		if err := validateDefinition(def); err != nil {
+		if err := domain.ValidateDefinition(def); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", def.ID, err))
 			continue
 		}
@@ -284,14 +285,25 @@ func (s *server) applySessionCode(w http.ResponseWriter, r *http.Request) {
 		return ""
 	}
 
+	// D-10 — feedback antecipado de policy no editor: violações do estado
+	// DESEJADO (o YAML como escrito), calculadas contra o policies.yaml do
+	// clone. Só informativo aqui — o gate que bloqueia é o do publish.
+	var policyViolations any
+	if pol, perr := policy.Load(sess.Store.Root()); perr == nil && pol.Active() {
+		if vs := pol.Validate(desired); len(vs) > 0 {
+			policyViolations = vs
+		}
+	}
+
 	respond := func(applied bool, results []bulkItemResult) {
 		writeJSON(w, 200, map[string]any{
-			"session": sess.ID,
-			"parsed":  len(desired),
-			"plan":    plan,
-			"errors":  errs,
-			"applied": applied,
-			"results": results,
+			"session":          sess.ID,
+			"parsed":           len(desired),
+			"plan":             plan,
+			"errors":           errs,
+			"applied":          applied,
+			"results":          results,
+			"policyViolations": policyViolations,
 		})
 	}
 

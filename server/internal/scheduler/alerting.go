@@ -24,6 +24,7 @@ import (
 	"github.com/Dr0nj/regente-server/internal/db"
 	"github.com/Dr0nj/regente-server/internal/domain"
 	"github.com/Dr0nj/regente-server/internal/hub"
+	"github.com/Dr0nj/regente-server/internal/quickaction"
 )
 
 // AlertEngine avalia regras e persiste eventos disparados.
@@ -65,6 +66,7 @@ type AlertRule struct {
 type AlertContext struct {
 	WorkflowID          string
 	WorkflowName        string
+	InstanceID          string // D-15: alvo dos quick-action links ("" = alerta sem instance, ex.: FireSystem)
 	Status              string // domain.StatusOK | domain.StatusNotOK
 	DurationMs          int64
 	MaxJobRetries       int
@@ -266,14 +268,26 @@ func (e *AlertEngine) hasExternalSink() bool {
 // roteia para TODOS os sinks configurados — preserva o comportamento "global".
 // É best-effort e nunca afeta o fluxo de disparo.
 func (e *AlertEngine) route(r AlertRule, ctx AlertContext, msg, id string, tsMs int64) {
+	// D-15 — quick actions: links assinados de um toque (rerun/set-ok/…) anexados
+	// ao alerta. Exigem settings.public_url (a URL que o celular alcança); sem
+	// ela, alerta sai como sempre. Melhor-esforço: falha de assinatura ≠ sem alerta.
+	qa := e.quickActionLinks(ctx)
+	slackMsg := msg
+	if len(qa) > 0 {
+		var parts []string
+		for _, l := range qa {
+			parts = append(parts, fmt.Sprintf("<%s|%s>", l.URL, l.Label))
+		}
+		slackMsg = msg + "\nAções rápidas: " + strings.Join(parts, " · ")
+	}
 	if channelWanted(r.Channels, "slack") {
 		if slack := e.setting("alert_slack_webhook"); slack != "" {
-			postJSON(slack, map[string]any{"text": slackText(r.Severity, r.Name, msg, ctx.WorkflowName)})
+			postJSON(slack, map[string]any{"text": slackText(r.Severity, r.Name, slackMsg, ctx.WorkflowName)})
 		}
 	}
 	if channelWanted(r.Channels, "webhook") {
 		if hook := e.setting("alert_webhook_url"); hook != "" {
-			postJSON(hook, map[string]any{
+			payload := map[string]any{
 				"event":        "alert.fired",
 				"id":           id,
 				"ruleId":       r.ID,
@@ -283,7 +297,11 @@ func (e *AlertEngine) route(r AlertRule, ctx AlertContext, msg, id string, tsMs 
 				"workflowId":   ctx.WorkflowID,
 				"workflowName": ctx.WorkflowName,
 				"message":      msg,
-			})
+			}
+			if len(qa) > 0 {
+				payload["quickActions"] = qa
+			}
+			postJSON(hook, payload)
 		}
 	}
 	if channelWanted(r.Channels, "email") {
@@ -292,6 +310,60 @@ func (e *AlertEngine) route(r AlertRule, ctx AlertContext, msg, id string, tsMs 
 	if channelWanted(r.Channels, "pagerduty") {
 		e.sendPagerDuty(r, ctx, msg)
 	}
+}
+
+// QuickActionLink — um link de ação de um toque num alerta.
+type QuickActionLink struct {
+	Action string `json:"action"`
+	Label  string `json:"label"`
+	URL    string `json:"url"`
+}
+
+const quickActionTTL = 24 * time.Hour
+
+// quickActionLinks — monta os links assinados para a instance do alerta.
+// Ações oferecidas dependem do estado do alerta: falha → rerun + set-ok.
+func (e *AlertEngine) quickActionLinks(ctx AlertContext) []QuickActionLink {
+	if ctx.InstanceID == "" || ctx.Status != string(domain.StatusNotOK) {
+		return nil
+	}
+	base := strings.TrimRight(e.setting("public_url"), "/")
+	if base == "" {
+		return nil
+	}
+	secret := e.quickActionSecret()
+	if secret == "" {
+		return nil
+	}
+	exp := time.Now().Add(quickActionTTL)
+	var out []QuickActionLink
+	for _, a := range []struct{ action, label string }{
+		{"rerun", "▶ Rerun"}, {"set-ok", "✔ Set OK"},
+	} {
+		tok, err := quickaction.Sign(secret, ctx.InstanceID, a.action, exp)
+		if err != nil {
+			continue
+		}
+		out = append(out, QuickActionLink{Action: a.action, Label: a.label, URL: base + "/qa/" + tok})
+	}
+	return out
+}
+
+// quickActionSecret — lê settings.quickaction_secret; gera e persiste na 1ª vez.
+func (e *AlertEngine) quickActionSecret() string {
+	if s := e.setting("quickaction_secret"); s != "" {
+		return s
+	}
+	s, err := quickaction.NewSecret()
+	if err != nil {
+		return ""
+	}
+	if _, err := e.db.Exec(
+		`INSERT INTO settings(key, value) VALUES('quickaction_secret', ?)
+		 ON CONFLICT(key) DO UPDATE SET value=excluded.value`, s); err != nil {
+		return ""
+	}
+	return s
 }
 
 // parseChannelSet — CSV "toast,slack" → set normalizado (lowercase).

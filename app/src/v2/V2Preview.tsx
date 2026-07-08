@@ -71,9 +71,11 @@ import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, creat
 import { toast, ToastHost } from "./Toast";
 import EdgeConditionModal from "./EdgeConditionModal";
 import { getGitInfo, commitUrl } from "@/lib/git-info";
-import { FolderOpen, Play, Zap, GitCommitHorizontal, GitCompare, FlaskConical, LayoutGrid, ChevronLeft, ChevronRight, Code, Wand2 } from "lucide-react";
+import { FolderOpen, Play, Zap, GitCommitHorizontal, GitCompare, FlaskConical, LayoutGrid, ChevronLeft, ChevronRight, Code, Wand2, GanttChartSquare } from "lucide-react";
 import CodeModeView from "./CodeModeView";
 import MassUpdateDialog from "./MassUpdateDialog";
+import TimelineView from "./TimelineView";
+import { pauseFolder, resumeFolder } from "@/lib/differentials-api";
 
 import "@xyflow/react/dist/style.css";
 import "@/index.css";
@@ -106,6 +108,8 @@ function V2PreviewInner() {
   const [scaleView, setScaleView] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const [showDryRun, setShowDryRun] = useState(false);
+  // D-12 — Timeline (Gantt) da daily sobreposta ao canvas do Monitoring.
+  const [showTimeline, setShowTimeline] = useState(false);
   // Dados do canvas (defs + instances) e ciclo de vida deles (carga inicial,
   // subscribes, scheduler local, resync via WS) vivem no hook.
   const { defs, instances, ready, reloadDefs, syncInstances } = useOrchestratorData();
@@ -645,6 +649,18 @@ function V2PreviewInner() {
     setEditingDef({ def: draft, isNew: true });
   }, [mode, activeFolders]);
 
+  // D-13 — cria um job novo a partir da FORMA de um template (id/team frescos;
+  // o server já descartou id/team/upstream do molde, mas garantimos aqui também).
+  const createFromTemplate = useCallback((tpl: JobDefinition) => {
+    const suggestedId = `${(tpl.jobType || "job").toLowerCase()}-${Date.now().toString(36).slice(-5)}`;
+    const folderList = activeFolders ? Array.from(activeFolders) : [];
+    const draftTeam = folderList.length === 1 ? folderList[0] : "";
+    setEditingDef({
+      def: { ...tpl, id: suggestedId, label: tpl.label || suggestedId, team: draftTeam, upstream: undefined },
+      isNew: true,
+    });
+  }, [activeFolders]);
+
   /* ── onConnect (Fase 8: edges com condição) ──
      window.prompt substituído por EdgeConditionModal (2026-06-12). */
   const [pendingConn, setPendingConn] = useState<{ fromId: string; toId: string } | null>(null);
@@ -1137,6 +1153,24 @@ function V2PreviewInner() {
             </button>
 
             <button
+              onClick={() => setShowTimeline(true)}
+              title="Timeline — Gantt da daily: barras reais (started→finished) e previstas (p50 histórico), linha do agora"
+              style={{
+                padding: "5px 10px",
+                background: "transparent",
+                border: "1px solid var(--v2-border-medium)",
+                color: "var(--v2-text-primary)",
+                borderRadius: 3,
+                fontSize: 10, fontFamily: "var(--v2-font-mono)",
+                letterSpacing: "0.06em", textTransform: "uppercase",
+                cursor: "pointer", fontWeight: 600,
+                display: "flex", alignItems: "center", gap: 6,
+              }}
+            >
+              <GanttChartSquare size={11} /> Timeline
+            </button>
+
+            <button
               onClick={() => organizeView(300)}
               title="Organizar — re-enquadra o canvas no mesmo limite da entrada (os jobs já se alinham sozinhos: dependentes em fluxo, soltos em grade)"
               style={{
@@ -1502,6 +1536,23 @@ function V2PreviewInner() {
               jobs={monitoringJobs}
               selectedId={selectedInstanceId}
               onSelect={handleSidebarSelect}
+              // D-2 — pause/resume de workflow (server mode; local não tem o endpoint)
+              onPauseFolder={isServerMode() ? async (name) => {
+                try {
+                  const n = await pauseFolder(name);
+                  toast.info(`Workflow ${name} pausado`, { detail: `${n} job(s) segurados — estado preservado` });
+                } catch (e) {
+                  toast.error("Pause falhou", { detail: e instanceof Error ? e.message : String(e) });
+                }
+              } : undefined}
+              onResumeFolder={isServerMode() ? async (name) => {
+                try {
+                  const n = await resumeFolder(name);
+                  toast.info(`Workflow ${name} retomado`, { detail: `${n} job(s) liberados` });
+                } catch (e) {
+                  toast.error("Resume falhou", { detail: e instanceof Error ? e.message : String(e) });
+                }
+              } : undefined}
             />
           )
         ) : (
@@ -1512,6 +1563,7 @@ function V2PreviewInner() {
             <DesignSidebarV2
               definitions={filteredDefs}
               onJobClick={(id) => focusNode(`d-${id}`)}
+              onUseTemplate={createFromTemplate}
             />
           ) : null
         )}
@@ -1602,6 +1654,14 @@ function V2PreviewInner() {
         {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
         {showDiff && <DailyDiffModal onClose={() => setShowDiff(false)} />}
         {showDryRun && <DryRunModal onClose={() => setShowDryRun(false)} />}
+        {/* D-12 — Gantt da daily (working set atual; barras previstas via p50 histórico) */}
+        {showTimeline && mode === "monitoring" && (
+          <TimelineView
+            instances={filteredInstances}
+            onClose={() => setShowTimeline(false)}
+            onSelect={(id) => { setSelectedInstanceId(id); setShowTimeline(false); }}
+          />
+        )}
 
         <PRBannerHost />
 

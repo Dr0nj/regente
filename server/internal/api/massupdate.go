@@ -646,7 +646,7 @@ func (s *server) massUpdateSession(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if req.Apply {
-			if err := validateDefinition(mod); err != nil {
+			if err := domain.ValidateDefinition(mod); err != nil {
 				item.Error = err.Error()
 				items = append(items, item)
 				continue
