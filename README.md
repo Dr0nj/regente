@@ -164,16 +164,16 @@ daily ou via Force Order manual.
 ## 🏗 Arquitetura
 
 ```
-  ┌──────────────┐    REST + WebSocket    ┌──────────────────┐   git push/pull   ┌──────────┐
-  │  app/         │ ─────────────────────▶ │  server/          │ ◀───────────────▶ │  GitHub   │
-  │  (React)      │ ◀───────────────────── │  (Go, SQLite/PG)  │   (fonte da       │  (YAML)   │
-  └──────────────┘    instance.changed     └──────────────────┘    verdade)        └──────────┘
+  ┌──────────────┐    REST + WebSocket    ┌──────────────────┐   git push/pull     ┌──────────┐
+  │  app/        | ────────────────────▶ |  server/          │ ◀───────────────▶ │  GitHub   │
+  │  (React)     | ◀─────────────────────|  (Go, SQLite/PG)  │   (fonte da        │  (YAML)   │
+  └──────────────┘    instance.changed    └──────────────────┘    verdade)         └──────────┘
                                                     ▲
                                                     │ WebSocket (agente disca pra fora — NAT-friendly)
                                                     │ dispatch ▼   ▲ result
                                             ┌──────────────────┐
-                                            │  agent/           │  roda COMMAND/SCRIPT/HTTP
-                                            │  (seu PC / EC2)   │  no Windows ou Linux
+                                            │  agent/          |  roda COMMAND/SCRIPT/HTTP
+                                            │  (seu PC / EC2)  |  no Windows ou Linux
                                             └──────────────────┘
 ```
 
