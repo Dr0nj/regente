@@ -72,6 +72,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 - [ ] **UI-1** — Virtualizar a sidebar ACTIVE JOBS legada (`LEGACY_CAP=2000` engana; mostra
   "2000/2000" como se fosse o total; o ViewPoint já faz 100k–1M). → §Identidade visual/UI, §Escala P3
 - [ ] **UI-2** — Drawer de info do job mais amigável (ações claras, output/log legível, layout). → §Identidade visual/UI
+- [ ] **UI-3** — Override de `columns`/`maxRows` por folder (hoje só global em Settings), via `.regente-folder.yaml`. → §Identidade visual/UI
 
 ### Camada agent-native (MCP)
 - [ ] **MCP-1** — Writes ricos via MCP (hoje 6 read + 2 write gated; NL-query `query` ✅ já entregue). → §Entregue "Agent-native (MCP)"
@@ -94,6 +95,15 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 - [ ] **ADV-6** — CLI / SDK.
 - [ ] **ADV-7** — Site de docs.
 - [ ] **ADV-8** — Executores AWS extras (Batch/Glue/Step) — validação em conta paga fora de escopo por decisão.
+
+### Aprofundamento Control-M — bateria de teste residual (feature já entregue; falta validar exaustivamente)
+- [ ] **CTM-4** — Calendários complexos: cobrir todas as combinações (1º dia útil do mês · só segundas ·
+  1º dia útil que NÃO é segunda · N-ésimo dia útil · include/exclude · feriados · meses específicos) contra
+  `IsScheduledOn`; corrigir o gating onde divergir. → §Aprofundamento Control-M
+- [ ] **CTM-5** — Controle de recursos: testar quantitative (N slots) · lock exclusivo · máximo simultâneo
+  por host/pool · fila quando esgota · liberação correta. → §Aprofundamento Control-M
+- [ ] **CTM-6** — Forecast ≥1 semana à frente: validar a bateria completa (hoje só o Dry Run de 1 dia foi
+  validado ao vivo) contra o gating real (calendars + deps + conditions + recursos). → §Aprofundamento Control-M
 
 ### Validação em infra real — resíduos (→ §Validação em infra real)
 - [ ] **VAL-1** — Secrets via provider (env / `-secrets-file`): resolver `github_token`/`webhook_secret`.
@@ -141,7 +151,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ✅ 13 temas (Escuro · Verde Amarelo · Amarelo Ouro · Verde Mata · Azul Neon · Azul Escuro ·
    Rosa · Violeta · Vermelho · Laranja · Cinza · Bege Escuro · Marrom) com swatch de cores
 ✅ Configurações em sub-abas (Geral · Temas); borda neon nos diálogos
-◑ Minimap de navegação (protótipo opt-in, default off) — pontos por job, clique navega, redimensionável
+✅ Minimap de navegação — ver "Minimap REVISTO" abaixo (superou este protótipo)
 ✅ Aba Schedule do job redesenhada (2026-06-29) — `ScheduleEditor`: (1) SAÍRAM "dia útil" e "regra avançada"
    da frequência (dia útil depende de feriados/calendário de cada lugar; o Regente não adivinha) → ficam só
    daily/weekly/monthly; (2) os CALENDÁRIOS entraram na própria aba (fundiu a aba "Calendars" separada) e
@@ -172,7 +182,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
       OPEN), hover que eleva, MULTI-SELEÇÃO com action bar flutuante (Abrir/Fechar/Arquivar/Excluir em lote),
       stats macro REAIS no topo (total/jobs/abertas/arquivadas). 100% theme-driven (o "dourado" = accent do
       tema; NADA hardcoded → 13 temas funcionam). Validação visual no lab do usuário.
-◑ Layout de jobs — grade pros SOLTOS, fluxo pros DEPENDENTES (por folder).
+✅ Layout de jobs — grade pros SOLTOS, fluxo pros DEPENDENTES (por folder). (Override por folder → UI-3 no §🔜 Backlog.)
    ✅ FASE 1 (ENTREGUE 2026-06-25): `layoutFolderInner` particiona conectados (dagre TB, intacto) vs soltos
       (GRADE com wrap: 10 cols, 11º→linha2/colA; alargamento cols=max(10,ceil(N/30)) após 30 linhas). Contrato
       InnerLayout inalterado. Math validada (n=12→11º em linha2/colA; n=600→20cols/30linhas). Defaults
@@ -206,7 +216,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
    sobe muito/some na lista; (2) header com o TOTAL REAL do `/summary` ("2000 carregados de 1.000.000"), nunca
    número truncado disfarçado de total; (3) cap do CANVAS (ReactFlow não desenha 100k nós) vira configurável e
    bem maior, com aviso "abra o ViewPoint pra ver todos". O ViewPoint já mostra 100k–1M.
-◑ Aba de AGENTES (em Settings/Config) — visão e CONTROLE da frota.
+✅ Aba de AGENTES (em Settings/Config) — visão e CONTROLE da frota.
    ✅ LISTA CONSOLIDADA (ENTREGUE 2026-06-25): aba "Agentes" com a frota online + offline (last-seen) +
       CONTADOR ("N de M online"); cada agente reporta metadata no handshake (os/arch/host/versão/started);
       migration v6 enriquece a tabela `agents`; `GET /api/agents` = online (verdade do hub) + DB. CLIQUE →
@@ -700,21 +710,18 @@ usuário revisar e commitar.
 
 ## 🧩 Aprofundamento Control-M *(SPEC/histórico — status resumido no §✅ Entregue)*
 
-> ⚠️ **As marcações `⬜`/`✅` abaixo estão DESATUALIZADAS e NÃO valem como status.** A
-> trilha está **100% FECHADA** (núcleo 2026-07-03; CTM-1/CTM-2/CTM-3 em 2026-07-06 —
-> `%%SETLOCAL` · tokens nativos de data · Mass Update rico, ver changelog). **Nada desta
-> trilha permanece em aberto.** Esta seção fica só como referência de spec.
->
-> O núcleo de paridade existe, mas precisa de **bateria de testes** cobrindo os casos reais do
-> Control-M e refino onde faltar. Cada item = testar TODAS as possibilidades + fechar os gaps.
+> ⚠️ **As marcações abaixo foram corrigidas em 2026-07-08 (auditoria).** A trilha está **100%
+> FECHADA** pro que foi CONSTRUÍDO (núcleo 2026-07-03; CTM-1/CTM-2/CTM-3 em 2026-07-06 —
+> `%%SETLOCAL` · tokens nativos de data · Mass Update rico, ver changelog) — os itens abaixo que
+> eram duplicatas de features já ✅ no §Entregue foram atualizados pra ✅ com ponteiro. Os únicos
+> itens genuinamente em aberto (bateria de teste exaustiva, não feature nova) foram movidos pro
+> §🔜 Backlog como **CTM-4/CTM-5/CTM-6**.
 
 ```
-⬜ Calendários complexos — validar que o job entra na daily exatamente quando deve: 1º dia útil do mês ·
-   só segundas · 1º dia útil que NÃO é segunda · N-ésimo dia útil · regras avançadas · include/exclude ·
-   feriados · meses específicos. Cobrir todas as combinações; corrigir o gating onde divergir.
-   (Base pronta: o gating é fonte única `IsScheduledOn`; `schedule.shift` next/prev-businessday ✅ já entregue.)
-⬜ Controle de recursos — testar e aprimorar: quantitative (N slots), jobs que NÃO podem concorrer
-   (lock exclusivo), máximo de jobs simultâneos por host/pool, fila quando esgota, liberação correta.
+✅ Calendários complexos → CTM-4 (bateria de teste exaustiva) no §🔜 Backlog; base (`IsScheduledOn`,
+   `schedule.shift` next/prev-businessday) já entregue.
+✅ Controle de recursos → CTM-5 (bateria de teste exaustiva) no §🔜 Backlog; feature (quotas, F15,
+   RebuildResourcesFromRunning) já entregue.
 ✅ Actions / On-Do do job — ENTREGUE (motor 2026-06-29 + UI 2026-06-30). Regras On‹gatilho›Do‹ação› nas
    3 dimensões: (a) por Nº DE TENTATIVA (On attempt N — dispara na N-ésima falha, cobre a final) ·
    (b) por RESULTADO (On result OK/NOTOK, transição terminal) · (c) por TEMPO DE EXECUÇÃO (On runtime >N min,
@@ -729,8 +736,8 @@ usuário revisar e commitar.
    pesa `path` a cada `intervalSec` (def 5s) com estabilidade de tamanho opcional (`stableSec`) e timeout=NOTOK;
    palette + editor de params na UI; validação server (`FILE_WATCH.path required`). 4 testes de agente +
    validado ao vivo (RUNNING pollando → arquivo criado → OK → dispara o sucessor).
-⬜ Forecast — testar a previsão de ≥ 1 semana à frente (quais jobs rodam por dia, sem executar); validar
-   contra o gating real (calendars + deps + conditions + recursos). (Dry Run de 1 dia ✅; falta a bateria ≥1 semana.)
+✅ Forecast → CTM-6 (bateria de teste ≥1 semana à frente) no §🔜 Backlog; feature (D-4 p50/p90/
+   tendência/ETA) já entregue, Dry Run de 1 dia já validado.
 ✅ Ciclo de vida na daily (Keep Active / carry-over entre diárias) — ENTREGUE (2026-06-24):
    • RUNNING persiste (REGRA) — job EM EXECUÇÃO na virada da daily NÃO some: segue na daily até terminar,
      para o tracking da execução (jamais perder a instância no rollover). ✓
@@ -747,32 +754,18 @@ usuário revisar e commitar.
    11 testes (regra pura + RUNNING/HELD/NOTOK/keepActive/idempotência/no-dup/watchdog). VALIDADO AO VIVO no
    binário: ontem 40→ficaram 25 (OK+WAITING), 15 abertos (RUNNING/NOTOK/HELD) migraram com carriedFrom, 1 só
    carry-over apesar de N ticks.
-⬜ CONFIRM — config no job: precisa de ação MANUAL (Confirm) para sair do estado e prosseguir.
-   (estudar o comportamento exato do Control-M antes de fechar a semântica do backlog.)
-⬜ Job tipo DATABASE — plugin com conectores (JDBC e outros) p/ rodar SQL/procedure em bancos; corpo do
-   job = selecionar procedure OU escrever SQL numa telinha PL/SQL amigável (editor). Novo jobType + capability.
-⬜ ViewPoint (Monitoring) — viewpoints salvos/selecionáveis: mostrar SÓ certas folders (não todas) no
-   Monitoring; filtro nomeado e persistido por usuário.
-⬜ Dashboards prontos (ViewPoint de dashboard) — abrir um painel por folder(s) ou do AMBIENTE INTEIRO com
-   gráficos (pizza e outros) e estatísticas em TEMPO REAL: jobs em execução / hold / waiting / confirm,
-   total de execuções, total de jobs, end OK / failed / waiting, NOMES dos últimos jobs executados e dos
-   últimos que deram erro, métricas por folder. Layout selecionável e persistido (estilo Control-M dashboards).
-⬜ Mass Update / Find & Update (Design) — alteração em MASSA nas folders abertas por regex/critério de
-   campo: buscar e substituir/adicionar em N jobs. Casos: descrição vazia → preencher; adicionar action/
-   evento em TODOS / selecionados / que atendem critério; buscar string e substituir em qualquer campo;
-   add/remove tag/condition/upstream em lote. Find & Update completo (busca + substituição + adição) com
-   preview e undo, transacional por item. (bulk básico já existe via /api/bulk e /api/design/sessions/{sid}/bulk.)
-◑ Sistema de variáveis (estilo Control-M %%) — INTERPOLAÇÃO ENTREGUE (2026-07-02); falta o SET em runtime:
-   ✅ Sintaxe `%%NAME` (AutoEdit) equivale a `${var.NAME}`; tokens de runtime em MAIÚSCULAS: %%ODATE (lido da
-      PRÓPRIA instance, correto em rerun/carry), %%ORDERDATE, %%RUNDATE, %%TIME, %%JOBNAME, %%JOBLABEL, %%FOLDER,
-      %%INSTANCEID; resolve `def.variables` e globais (F18) por nome. Interpolação em QUALQUER campo string
-      (command/url/path/body); não-resolvido fica intacto. 3 testes + validado ao vivo (`ODATE=20260702`).
-   ⬜ GLOBAIS de runtime (SET) — um job ATRIBUI valor e jobs posteriores LEEM (passagem entre jobs; hoje as
-      globais são só interpoláveis via VariableStore, falta o SET em runtime por um job).
-   ⬜ LOCAIS por job — escopo só do próprio job.
-   ⬜ NATIVAS extras — último dia do mês · dia útil… (além dos tokens de runtime já entregues).
-   ⬜ CÁLCULO de datas com template — aritmética sobre datas (ex.: `%DiaAtual+3`) resolvendo p/ data numérica,
-      ciente de dia útil/feriado/calendar (sexta + 3 = próxima data útil). + inspetor de resolução por instância.
+✅ CONFIRM → já entregue (gate WAIT_CONFIRM, nem Force bypassa), ver §Entregue L351.
+✅ Job tipo DATABASE → já entregue (SQL Postgres/MySQL/SQLite pelo agente, drivers pure-Go), ver §Entregue L352.
+✅ ViewPoint (Monitoring) → já entregue (ViewPoints salvos/upsert-por-nome/shared), ver §Entregue L355.
+✅ Dashboards prontos → já entregue (barra de presets clicáveis reusando /summary?status=), ver §Entregue L355
+   e changelog 2026-07-03 commit 719bd1b.
+✅ Mass Update / Find & Update (Design) → já entregue CTM-3 (critério ids/folder/jobType/regex/campo-vazio →
+   operação → preview diff → apply → undo pilha cap 10), ver §Entregue L360.
+✅ Sistema de variáveis (estilo Control-M %%) → COMPLETO. Interpolação (2026-07-02) + SET em runtime
+   (`%%SET NOME=VALOR` no output → VariableStore global) + escopo LOCAL por instance (CTM-1 `%%SETLOCAL`,
+   aplicado antes do retry) + tokens nativos extras (CTM-2: EOM/BOM/EOY/BOY/NEXTBD/PREVBD/FIRSTBD/LASTBD,
+   cientes de calendar, componíveis com offset `%%EOM-1B`) + cálculo de datas (`%%ODATE±N/±NB`, dias úteis
+   via `ctx.BusinessDay`). Ver §Entregue L353/356/358-359.
 ```
 
 ## ⬜ Features avançadas *(depois do núcleo sólido — SPEC; status no §🔜 Backlog como ADV-1..ADV-8)*
