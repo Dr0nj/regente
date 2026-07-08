@@ -622,7 +622,26 @@ function V2PreviewInner() {
   }, [focusNode]);
 
   /* ── Canvas node click ── */
-  const onNodeClick: NodeMouseHandler = useCallback((_, node) => {
+  const onNodeClick: NodeMouseHandler = useCallback((evt, node) => {
+    // Highlight de seleção — o onNodeClick é AUTORITATIVO (fonte da verdade =
+    // selectedIds; displayNodes força o `selected` do RF). Não dependemos da
+    // seleção nativa do RF no clique: ela briga com o prop controlado (dava o
+    // "preciso clicar 2×" e o acúmulo A+B ao clicar em jobs diferentes).
+    // Clique simples = seleção ÚNICA (troca); Shift/Ctrl/Cmd = alterna (multi),
+    // casando com o multiSelectionKeyCode e o rubber-band. Lanes não selecionam.
+    if (node.type !== "laneLabel") {
+      const bare = node.id.replace(/^[md]-/, "");
+      const additive = evt.shiftKey || evt.metaKey || evt.ctrlKey;
+      setSelectedIds((prev) => {
+        if (additive) {
+          const next = new Set(prev);
+          if (next.has(bare)) next.delete(bare); else next.add(bare);
+          return next;
+        }
+        if (prev.size === 1 && prev.has(bare)) return prev; // já é o único selecionado
+        return new Set([bare]);
+      });
+    }
     if (mode === "monitoring") {
       const id = node.id.replace(/^m-/, "");
       setSelectedInstanceId(id);
@@ -751,9 +770,21 @@ function V2PreviewInner() {
   /* ── F11.9 Bulk handlers ── */
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
+  // Clique no canvas vazio limpa a seleção (RF não faz por padrão com pan custom).
+  const onPaneClick = useCallback(() => clearSelection(), [clearSelection]);
+
+  // Rubber-band (Shift+arrasto) é o ÚNICO caminho que deixamos a seleção nativa
+  // do RF escrever em selectedIds — cliques em nó são donos do onNodeClick. Sem
+  // este gate, o eco do onSelectionChange (RF brigando com o prop controlado)
+  // reintroduzia o acúmulo A+B. Marcado por onSelectionStart/onSelectionEnd.
+  const rubberBanding = useRef(false);
+  const onSelectionStart = useCallback(() => { rubberBanding.current = true; }, []);
+  const onSelectionEnd = useCallback(() => { rubberBanding.current = false; }, []);
+
   // Stable ref required: ReactFlow v12 has onSelectionChange in its effect deps →
   // an inline arrow would create a new reference every render and loop infinitely.
   const handleSelectionChange = useCallback(({ nodes: sel }: { nodes: Node[] }) => {
+    if (!rubberBanding.current) return; // só o rubber-band escreve aqui
     setSelectedIds((prev) => {
       const ids = new Set<string>();
       for (const n of sel) {
@@ -1410,7 +1441,10 @@ function V2PreviewInner() {
           multiSelectionKeyCode={["Shift", "Meta", "Control"]}
           onNodeClick={onNodeClick}
           onNodeContextMenu={onNodeContextMenu}
+          onPaneClick={onPaneClick}
           onConnect={onConnect}
+          onSelectionStart={onSelectionStart}
+          onSelectionEnd={onSelectionEnd}
           onSelectionChange={handleSelectionChange}
           onInit={(inst) => { rfInstance.current = inst; }}
         >
