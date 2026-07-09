@@ -169,4 +169,11 @@ export interface JobNodeData {
    * canto superior esquerdo — sem cadeado é IDLE de verdade (cancelado/ocioso).
    */
   held?: boolean;
+  /**
+   * WAITING preso no gate Control-M "Wait for confirmation": a definition exige
+   * confirm e a instância ainda NÃO foi confirmada pelo operador. O card fica
+   * todo violeta com a tag CONFIRM; confirmar (botão direito → Confirmar, ou o
+   * botão no painel de detalhe) libera o job — sai do violeta e executa.
+   */
+  waitConfirm?: boolean;
 }

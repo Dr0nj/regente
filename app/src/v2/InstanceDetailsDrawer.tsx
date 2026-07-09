@@ -234,16 +234,24 @@ export default function InstanceDetailsDrawer({
         </button>
       </header>
 
-      {/* Tabs — pills de luxo (v2-tabrail / v2-tab) */}
-      <div className="v2-tabrail" style={{ borderBottom: "1px solid var(--v2-border-subtle)" }}>
+      {/* Tabs — mesmo VISUAL do Design (JobConfigDrawer): sublinhado fino (2px)
+          na aba ativa, sem pill/realce laranja. Só a aparência foi padronizada;
+          as abas e o que cada uma abre continuam idênticas. */}
+      <div style={{ display: "flex", borderBottom: "1px solid var(--v2-border-subtle)", overflowX: "auto" }}>
         {TAB_ORDER.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={tab === t ? "v2-tab v2-tab-active" : "v2-tab"}
+            style={{
+              padding: "7px 11px", fontSize: 10.5, cursor: "pointer", whiteSpace: "nowrap",
+              background: "transparent", border: "none",
+              borderBottom: `2px solid ${tab === t ? "var(--v2-accent-brand)" : "transparent"}`,
+              color: tab === t ? "var(--v2-text-primary)" : "var(--v2-text-muted)",
+              fontWeight: tab === t ? 600 : 500, fontFamily: "var(--v2-font-mono)",
+            }}
           >
             {TAB_LABEL[t]}
-            {t === "deps" && depsCount > 0 ? <span className="v2-tab-count">{depsCount}</span> : null}
+            {t === "deps" && depsCount > 0 ? ` (${depsCount})` : ""}
           </button>
         ))}
       </div>

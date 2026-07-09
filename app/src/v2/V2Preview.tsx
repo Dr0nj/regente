@@ -927,6 +927,13 @@ function V2PreviewInner() {
 
       const items: ContextMenuItem[] = [];
 
+      // Confirmar: gate Control-M "Wait for confirmation" ativo (a def exige
+      // confirm e a instância ainda não foi confirmada). Ação principal do card
+      // violeta — libera o job, que sai do violeta e executa.
+      if ((status === "WAITING" || status === "HOLD") && !inst.confirmed && def?.confirm) {
+        items.push({ label: "Confirmar", tone: "primary", onClick: () => { void confirmInstance(inst.id); } });
+      }
+
       // Run Now: para WAITING/HOLD (cria nova force order da mesma def)
       if ((status === "WAITING" || status === "HOLD") && def) {
         items.push({ label: "Run Now", tone: "primary", onClick: () => handleForce(def) });

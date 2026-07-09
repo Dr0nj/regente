@@ -536,6 +536,12 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
         // já carregou (agents != null) — sem info, não acusa nada.
         waitAgent: !!agents && inst.status === "WAITING" && !waitingOnDeps.has(inst.id) &&
           !hasAgentFor(defsById.get(inst.definitionId), inst.jobType, agents),
+        // WAIT CONFIRM (violeta): a def exige confirmação (Control-M "Wait for
+        // confirmation") e esta instância ainda não foi confirmada. Mesma leitura
+        // que o gate do server (def.Confirm && !confirmed) e que o waitAgent acima
+        // — deriva do estado vivo pra refletir o gate real de execução.
+        waitConfirm: inst.status === "WAITING" && !inst.confirmed &&
+          !!defsById.get(inst.definitionId)?.confirm,
       } as JobNodeData,
       draggable: false,
       zIndex: 10,

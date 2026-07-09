@@ -35,10 +35,19 @@ const STATUS_LABEL: Record<JobStatus, string> = {
 
 // WAIT AGENT — azul claro (sky): WAITING sem agente online pra executar.
 const WAIT_AGENT_COLOR = "#38bdf8";
+// WAIT CONFIRM — violeta: WAITING preso no gate Control-M "Wait for confirmation",
+// aguardando o operador confirmar. Card inteiro tinge de violeta + tag CONFIRM.
+const WAIT_CONFIRM_COLOR = "#a78bfa";
 
 function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
+  const waitConfirm = data.status === "WAITING" && !!data.waitConfirm;
   const waitAgent = data.status === "WAITING" && !!data.waitAgent;
-  const statusColor = waitAgent ? WAIT_AGENT_COLOR : STATUS_COLOR[data.status];
+  // Confirmação é um gate humano — tem prioridade visual sobre o WAIT AGENT.
+  const statusColor = waitConfirm
+    ? WAIT_CONFIRM_COLOR
+    : waitAgent
+    ? WAIT_AGENT_COLOR
+    : STATUS_COLOR[data.status];
   const isRunning = data.status === "RUNNING";
 
   return (
@@ -47,15 +56,24 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
       style={{
         position: "relative",
         width: 200,
-        background: "var(--v2-bg-surface)",
+        // WAIT CONFIRM tinge o card inteiro de violeta (composto sobre a surface
+        // pra manter a opacidade dos demais cards). Só quando aguardando confirmar.
+        background: waitConfirm
+          ? "linear-gradient(0deg, rgba(167,139,250,0.14), rgba(167,139,250,0.14)), var(--v2-bg-surface)"
+          : "var(--v2-bg-surface)",
         // Selecionado = borda + halo NEON na cor do tema (--v2-accent-brand/glow).
         // Vale para 1 ou N jobs: cada card selecionado acende sozinho, em vez de
         // uma caixa azul arrastada sobre a área inteira (essa foi neutralizada no
         // .react-flow__nodesselection-rect em index.css). Funciona em Design e
         // Monitoring — ambos usam o `selected` nativo do ReactFlow.
-        border: `1px solid ${selected ? "var(--v2-accent-brand)" : "var(--v2-border-medium)"}`,
+        // Seleção vence o violeta do confirm (neon > tinta de estado).
+        border: `1px solid ${
+          selected ? "var(--v2-accent-brand)" : waitConfirm ? WAIT_CONFIRM_COLOR : "var(--v2-border-medium)"
+        }`,
         boxShadow: selected
           ? "0 0 0 1px var(--v2-accent-brand), 0 0 16px 2px var(--v2-accent-glow), inset 0 1px 0 rgba(255,255,255,0.04)"
+          : waitConfirm
+          ? "0 0 0 1px rgba(167,139,250,0.45), 0 0 14px 1px rgba(167,139,250,0.25), inset 0 1px 0 rgba(255,255,255,0.04)"
           : undefined,
         borderRadius: "var(--v2-radius)",
         fontFamily: "var(--v2-font-sans)",
@@ -147,6 +165,25 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
                 👻GHOST
               </span>
             )}
+            {waitConfirm && (
+              <span
+                title="Aguardando confirmação do operador (Control-M Confirm). Clique com o botão direito → Confirmar (ou use o botão no painel de detalhe) para liberar."
+                style={{
+                  fontSize: "var(--v2-text-xs)",
+                  fontFamily: "var(--v2-font-mono)",
+                  fontWeight: 700,
+                  letterSpacing: "0.08em",
+                  color: "#ede9fe",
+                  padding: "1px 4px",
+                  border: "1px solid #a78bfa",
+                  background: "rgba(124,58,237,0.35)",
+                  borderRadius: "var(--v2-radius-sm)",
+                  flexShrink: 0,
+                }}
+              >
+                ✋CONFIRM
+              </span>
+            )}
           </div>
 
           {/* Linha 2: type + status */}
@@ -184,9 +221,11 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
                   animation: isRunning ? "v2-dot-pulse 1.2s ease-in-out infinite" : "none",
                 }}
               />
-              {/* Control-M parity: WAITING preso por dependência lê "WAIT EVENT";
-                  sem agente online lê "WAIT AGENT" (azul claro); "WAIT" = horário. */}
-              {waitAgent ? "WAIT AGENT"
+              {/* Control-M parity: aguardando confirmação lê "CONFIRM" (violeta);
+                  preso por dependência lê "WAIT EVENT"; sem agente online lê
+                  "WAIT AGENT" (azul claro); "WAIT" = horário. */}
+              {waitConfirm ? "CONFIRM"
+                : waitAgent ? "WAIT AGENT"
                 : data.status === "WAITING" && data.waitEvent ? "WAIT EVENT"
                 : STATUS_LABEL[data.status]}
             </span>
