@@ -1,10 +1,13 @@
 // regente-mcp — servidor MCP (Model Context Protocol) do Regente.
 //
 // Expõe os diferenciais determinísticos (Explain · Diff de Daily · Blast Radius ·
-// Dry Run) + summary/busca como TOOLS que um agente (Claude Desktop, etc.) chama.
-// É uma FACHADA agent-native sobre a API REST — não toca o core do servidor. O LLM
-// narra a verdade que o engine computa (não inventa); o cliente MCP pede aprovação
-// humana em cada chamada (writes só com -allow-writes, marcadas destructiveHint).
+// Dry Run · Forecast) + summary/busca como TOOLS de LEITURA e um conjunto de
+// TOOLS de ESCRITA operacional (hold/release/cancel/confirm/rerun/set-ok, force
+// order, pause/resume de folder, bulk e ingest de evento) que um agente (Claude
+// Desktop, etc.) chama. É uma FACHADA agent-native sobre a API REST — não toca o
+// core do servidor. O LLM narra a verdade que o engine computa (não inventa); o
+// cliente MCP pede aprovação humana em cada chamada (writes só com -allow-writes,
+// marcadas destructiveHint).
 //
 // Transporte: JSON-RPC 2.0 newline-delimited sobre stdio (padrão do Claude Desktop).
 // Pure-Go stdlib, zero dependência.
@@ -59,7 +62,7 @@ type mcpServer struct {
 func main() {
 	url := flag.String("url", envOr("REGENTE_URL", "http://localhost:8080"), "URL base do regente-server")
 	token := flag.String("token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token da API")
-	allowWrites := flag.Bool("allow-writes", false, "Expõe tools de escrita (rerun_job, set_ok); o cliente MCP ainda pede aprovação por chamada")
+	allowWrites := flag.Bool("allow-writes", false, "Expõe as tools de escrita (hold/release/cancel/confirm/rerun/set-ok, force_order, pause/resume_folder, bulk_action, ingest_event); o cliente MCP ainda pede aprovação por chamada")
 	flag.Parse()
 
 	m := &mcpServer{
@@ -157,9 +160,33 @@ func (m *mcpServer) dispatch(name string, args map[string]interface{}) (string, 
 		return id, nil
 	}
 
+	// gate — nega tools de escrita quando o servidor subiu sem -allow-writes.
+	gate := func() error {
+		if !m.allowWrites {
+			return fmt.Errorf("escrita desabilitada (suba o regente-mcp com -allow-writes)")
+		}
+		return nil
+	}
+	// writeID — boilerplate das ações unitárias por instância (gate + instanceId + POST).
+	writeID := func(action string) (string, error) {
+		if err := gate(); err != nil {
+			return "", err
+		}
+		id, err := requireID()
+		if err != nil {
+			return "", err
+		}
+		return m.post("/api/instances/" + url.PathEscape(id) + "/" + action)
+	}
+
 	switch name {
 	case "daily_summary":
 		return m.get("/api/instances/summary" + qs(map[string]string{"date": str("date")}))
+	case "forecast":
+		if n := intArg(args, "days"); n > 1 {
+			return m.get("/api/forecast/range" + qs(map[string]string{"from": str("date"), "days": strconv.Itoa(n)}))
+		}
+		return m.get("/api/forecast" + qs(map[string]string{"date": str("date")}))
 	case "list_instances":
 		q := map[string]string{"date": str("date"), "folder": str("folder"), "status": str("status"), "q": str("q")}
 		if n := intArg(args, "limit"); n > 0 {
@@ -210,24 +237,80 @@ func (m *mcpServer) dispatch(name string, args map[string]interface{}) (string, 
 		return m.get("/api/daily/diff" + qs(map[string]string{"from": str("from"), "to": str("to"), "folder": str("folder")}))
 	case "dry_run":
 		return m.get("/api/daily/dryrun" + qs(map[string]string{"date": str("date")}))
+	// ── Escritas unitárias por instância (Control-M operator actions) ──
+	case "hold_job":
+		return writeID("hold")
+	case "release_job":
+		return writeID("release")
+	case "cancel_job":
+		return writeID("cancel")
+	case "confirm_job":
+		return writeID("confirm")
 	case "rerun_job":
-		if !m.allowWrites {
-			return "", fmt.Errorf("escrita desabilitada (suba o servidor com -allow-writes)")
-		}
-		id, err := requireID()
-		if err != nil {
-			return "", err
-		}
-		return m.post("/api/instances/" + url.PathEscape(id) + "/rerun")
+		return writeID("rerun")
 	case "set_ok":
-		if !m.allowWrites {
-			return "", fmt.Errorf("escrita desabilitada (suba o servidor com -allow-writes)")
-		}
-		id, err := requireID()
-		if err != nil {
+		return writeID("set-ok")
+	// ── Force order (roda uma DEFINITION agora, ignorando deps) ──
+	case "force_order":
+		if err := gate(); err != nil {
 			return "", err
 		}
-		return m.post("/api/instances/" + url.PathEscape(id) + "/set-ok")
+		defID := str("definitionId")
+		if defID == "" {
+			return "", fmt.Errorf("definitionId é obrigatório")
+		}
+		return m.post("/api/definitions/" + url.PathEscape(defID) + "/force")
+	// ── Pausa/resume de WORKFLOW (folder inteira, estado preservado) ──
+	case "pause_folder", "resume_folder":
+		if err := gate(); err != nil {
+			return "", err
+		}
+		folder := str("folder")
+		if folder == "" {
+			return "", fmt.Errorf("folder é obrigatório")
+		}
+		verb := "pause"
+		if name == "resume_folder" {
+			verb = "resume"
+		}
+		return m.post("/api/folders/" + url.PathEscape(folder) + "/" + verb + qs(map[string]string{"date": str("date")}))
+	// ── Ação em LOTE sobre N instâncias (transacional por item no server) ──
+	case "bulk_action":
+		if err := gate(); err != nil {
+			return "", err
+		}
+		action := str("action")
+		ids := strSlice(args, "ids")
+		if action == "" || len(ids) == 0 {
+			return "", fmt.Errorf("action e ids[] são obrigatórios")
+		}
+		return m.postJSON("/api/bulk/instances", map[string]interface{}{"action": action, "ids": ids})
+	// ── Ingestão de evento externo (seta conditions e/ou force-ordena, idempotente) ──
+	case "ingest_event":
+		if err := gate(); err != nil {
+			return "", err
+		}
+		conditions := strSlice(args, "conditions")
+		if c := str("condition"); c != "" {
+			conditions = append(conditions, c)
+		}
+		forceJob := str("forceJob")
+		if len(conditions) == 0 && forceJob == "" {
+			return "", fmt.Errorf("passe conditions[] e/ou forceJob")
+		}
+		body := map[string]interface{}{}
+		if len(conditions) > 0 {
+			body["conditions"] = conditions
+		}
+		if forceJob != "" {
+			body["forceJob"] = forceJob
+		}
+		for _, k := range []string{"id", "source", "kind", "date"} {
+			if v := str(k); v != "" {
+				body[k] = v
+			}
+		}
+		return m.postJSON("/api/events/ingest", body)
 	default:
 		return "", fmt.Errorf("tool desconhecida: %q", name)
 	}
@@ -253,6 +336,15 @@ func (m *mcpServer) tools() []map[string]interface{} {
 			"name":        "daily_summary",
 			"description": "Resumo da daily de uma data (default hoje): total e contagem por status e por folder. Use pra ter o panorama do dia.",
 			"inputSchema": schema(map[string]interface{}{"date": strProp("YYYY-MM-DD (default hoje)")}),
+			"annotations": readOnly,
+		},
+		{
+			"name":        "forecast",
+			"description": "Previsão de agendamento (dry-run SEM materializar) pelo MESMO gating da daily: quem seria ordenado numa data, em que onda topológica (deps) e o pico de recursos. Com days>1 prevê a JANELA à frente (≥1 semana), um relatório por dia.",
+			"inputSchema": schema(map[string]interface{}{
+				"date": strProp("YYYY-MM-DD (default hoje; início da janela quando days>1)"),
+				"days": map[string]interface{}{"type": "integer", "description": "quantos dias prever a partir de date (default 1; >1 usa /forecast/range)"},
+			}),
 			"annotations": readOnly,
 		},
 		{
@@ -326,17 +418,60 @@ func (m *mcpServer) tools() []map[string]interface{} {
 		},
 	}
 	if m.allowWrites {
+		instTool := func(action, desc string) map[string]interface{} {
+			return map[string]interface{}{
+				"name":        action,
+				"description": desc,
+				"inputSchema": schema(map[string]interface{}{"instanceId": strProp("id da instance (ache com list_instances)")}, "instanceId"),
+				"annotations": destructive,
+			}
+		}
 		out = append(out,
+			instTool("hold_job", "Segura um job WAITING (Control-M Hold) — vira HELD e não roda até um release. AÇÃO DESTRUTIVA — confirme com o operador antes."),
+			instTool("release_job", "Libera um job em HOLD de volta pra WAITING (Control-M Release). AÇÃO DESTRUTIVA — confirme com o operador antes."),
+			instTool("cancel_job", "Cancela um job do dia (vira CANCELLED, terminal). AÇÃO DESTRUTIVA — confirme com o operador antes."),
+			instTool("confirm_job", "Confirma um job que espera no gate WAIT_CONFIRM (Control-M Confirm; def com confirm:true). AÇÃO DESTRUTIVA — confirme com o operador antes."),
+			instTool("rerun_job", "Re-executa um job (volta pra WAITING). AÇÃO DESTRUTIVA — confirme com o operador antes."),
+			instTool("set_ok", "Marca um job NOTOK/CANCELLED como OK (Set OK), destravando sucessores. AÇÃO DESTRUTIVA — confirme com o operador antes."),
 			map[string]interface{}{
-				"name":        "rerun_job",
-				"description": "Re-executa um job (volta pra WAITING). AÇÃO DESTRUTIVA — confirme com o operador antes.",
-				"inputSchema": schema(map[string]interface{}{"instanceId": strProp("id da instance")}, "instanceId"),
+				"name":        "force_order",
+				"description": "Force Order: ordena e roda uma DEFINITION AGORA, fora do schedule e ignorando deps (Control-M Order/Force). Devolve o instanceId criado. AÇÃO DESTRUTIVA — confirme com o operador antes.",
+				"inputSchema": schema(map[string]interface{}{"definitionId": strProp("id da DEFINITION (não da instance) — ex.: etl-vendas")}, "definitionId"),
 				"annotations": destructive,
 			},
 			map[string]interface{}{
-				"name":        "set_ok",
-				"description": "Marca um job NOTOK/CANCELLED como OK (Set OK), destravando sucessores. AÇÃO DESTRUTIVA — confirme com o operador antes.",
-				"inputSchema": schema(map[string]interface{}{"instanceId": strProp("id da instance")}, "instanceId"),
+				"name":        "pause_folder",
+				"description": "Pausa um workflow inteiro: todos os WAITING da folder no dia viram HELD, estado preservado (attempts/cycle/scheduled_at intactos). AÇÃO DESTRUTIVA — confirme com o operador antes.",
+				"inputSchema": schema(map[string]interface{}{"folder": strProp("folder/team exato"), "date": strProp("YYYY-MM-DD (default hoje)")}, "folder"),
+				"annotations": destructive,
+			},
+			map[string]interface{}{
+				"name":        "resume_folder",
+				"description": "Retoma um workflow pausado: todos os HELD da folder no dia voltam pra WAITING (Control-M Release folder). AÇÃO DESTRUTIVA — confirme com o operador antes.",
+				"inputSchema": schema(map[string]interface{}{"folder": strProp("folder/team exato"), "date": strProp("YYYY-MM-DD (default hoje)")}, "folder"),
+				"annotations": destructive,
+			},
+			map[string]interface{}{
+				"name":        "bulk_action",
+				"description": "Aplica uma ação a VÁRIAS instâncias de uma vez (transacional POR ITEM no server — falha parcial reportada item a item, não aborta o lote). Máx 500 ids.",
+				"inputSchema": schema(map[string]interface{}{
+					"action": strProp("hold|release|cancel|rerun|set-ok|confirm"),
+					"ids":    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "ids das instances (máx 500)"},
+				}, "action", "ids"),
+				"annotations": destructive,
+			},
+			map[string]interface{}{
+				"name":        "ingest_event",
+				"description": "Ingere um evento EXTERNO que destrava jobs sem polling: seta conditions (escopo do dia) e/ou força um job. Idempotente pelo `id` do emissor (retry responde duplicate sem re-aplicar). Passe conditions[] e/ou forceJob.",
+				"inputSchema": schema(map[string]interface{}{
+					"conditions": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "conditions a setar (ex.: ARQ_VENDAS_OK)"},
+					"condition":  strProp("uma condition única (atalho de conditions[])"),
+					"forceJob":   strProp("id da definition a force-ordenar"),
+					"id":         strProp("chave de dedupe do emissor (opcional; sem ela cada chamada aplica)"),
+					"source":     strProp("origem do evento (ex.: sap, cdc) — só forense"),
+					"kind":       strProp("tipo do evento (ex.: file-arrived) — só forense"),
+					"date":       strProp("YYYY-MM-DD (default hoje, tz de negócio)"),
+				}),
 				"annotations": destructive,
 			},
 		)
@@ -409,6 +544,33 @@ func qs(params map[string]string) string {
 		return ""
 	}
 	return "?" + v.Encode()
+}
+
+// strSlice extrai uma lista de strings de um argumento — aceita array JSON
+// (["a","b"]), []string ou uma string separada por vírgula (fallback amigável
+// pra clientes que mandam "a,b"). Ignora vazios.
+func strSlice(args map[string]interface{}, k string) []string {
+	switch v := args[k].(type) {
+	case []interface{}:
+		out := make([]string, 0, len(v))
+		for _, e := range v {
+			if s, ok := e.(string); ok && strings.TrimSpace(s) != "" {
+				out = append(out, strings.TrimSpace(s))
+			}
+		}
+		return out
+	case []string:
+		return v
+	case string:
+		out := []string{}
+		for _, p := range strings.Split(v, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				out = append(out, p)
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 func intArg(args map[string]interface{}, k string) int {

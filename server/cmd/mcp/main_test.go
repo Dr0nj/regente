@@ -18,13 +18,28 @@ func mockRegente(t *testing.T) *httptest.Server {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
+		// echo — devolve o método + path chamado, pra os testes de escrita
+		// afirmarem que a tool bateu no endpoint certo com o verbo certo.
+		echo := func() { _, _ = w.Write([]byte(`{"hit":"` + r.Method + " " + r.URL.Path + `"}`)) }
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/api/instances/summary"):
 			_, _ = w.Write([]byte(`{"date":"2026-06-24","total":3,"byStatus":{"OK":3}}`))
+		case strings.HasPrefix(r.URL.Path, "/api/forecast/range"):
+			_, _ = w.Write([]byte(`{"hit":"range","days":"` + r.URL.Query().Get("days") + `"}`))
+		case strings.HasPrefix(r.URL.Path, "/api/forecast"):
+			_, _ = w.Write([]byte(`{"hit":"single"}`))
 		case strings.HasSuffix(r.URL.Path, "/explain"):
 			_, _ = w.Write([]byte(`{"runnable":false,"summary":"Nao roda: falta condition"}`))
 		case strings.HasSuffix(r.URL.Path, "/rerun"):
 			_, _ = w.Write([]byte(`{"id":"x","status":"WAITING"}`))
+		// escritas unitárias, force, pause/resume, bulk, ingest → echo do método+path.
+		case r.Method == http.MethodPost && (strings.HasSuffix(r.URL.Path, "/hold") ||
+			strings.HasSuffix(r.URL.Path, "/release") || strings.HasSuffix(r.URL.Path, "/cancel") ||
+			strings.HasSuffix(r.URL.Path, "/confirm") || strings.HasSuffix(r.URL.Path, "/set-ok") ||
+			strings.HasSuffix(r.URL.Path, "/force") || strings.HasSuffix(r.URL.Path, "/pause") ||
+			strings.HasSuffix(r.URL.Path, "/resume") || r.URL.Path == "/api/bulk/instances" ||
+			r.URL.Path == "/api/events/ingest"):
+			echo()
 		default:
 			http.Error(w, "not found", 404)
 		}
@@ -89,18 +104,108 @@ func TestMCP_ToolsList_ReadOnlyByDefault(t *testing.T) {
 	}
 
 	ro := names(newM(ts, false))
-	for _, want := range []string{"daily_summary", "list_instances", "explain_job", "blast_radius", "diff_daily", "dry_run", "job_neighborhood", "root_cause", "event_log", "query"} {
+	for _, want := range []string{"daily_summary", "forecast", "list_instances", "explain_job", "blast_radius", "diff_daily", "dry_run", "job_neighborhood", "root_cause", "event_log", "query"} {
 		if !ro[want] {
 			t.Errorf("tool de leitura %q faltando", want)
 		}
 	}
-	if ro["rerun_job"] || ro["set_ok"] {
-		t.Error("writes NÃO deveriam aparecer sem -allow-writes")
+	writes := []string{"hold_job", "release_job", "cancel_job", "confirm_job", "rerun_job", "set_ok", "force_order", "pause_folder", "resume_folder", "bulk_action", "ingest_event"}
+	for _, wname := range writes {
+		if ro[wname] {
+			t.Errorf("write %q NÃO deveria aparecer sem -allow-writes", wname)
+		}
 	}
 
 	rw := names(newM(ts, true))
-	if !rw["rerun_job"] || !rw["set_ok"] {
-		t.Error("writes deveriam aparecer com -allow-writes")
+	for _, wname := range writes {
+		if !rw[wname] {
+			t.Errorf("write %q deveria aparecer com -allow-writes", wname)
+		}
+	}
+}
+
+// Cobre as escritas RICAS (MCP-1): gate por -allow-writes, endpoint/verbo certo,
+// e validação de argumentos obrigatórios.
+func TestMCP_RichWrites(t *testing.T) {
+	ts := mockRegente(t)
+	defer ts.Close()
+	rw := newM(ts, true)
+
+	// Todas as escritas bloqueiam sem -allow-writes.
+	ro := newM(ts, false)
+	for _, name := range []string{"hold_job", "cancel_job", "confirm_job", "force_order", "pause_folder", "bulk_action", "ingest_event"} {
+		if _, isErr := contentOf(toolsCall(ro, name, map[string]interface{}{})); !isErr {
+			t.Errorf("%s deveria bloquear sem -allow-writes", name)
+		}
+	}
+
+	// Ações unitárias batem em POST /api/instances/{id}/<action>.
+	unit := map[string]string{"hold_job": "/hold", "release_job": "/release", "cancel_job": "/cancel", "confirm_job": "/confirm", "set_ok": "/set-ok"}
+	for name, suffix := range unit {
+		text, isErr := contentOf(toolsCall(rw, name, map[string]interface{}{"instanceId": "job-1"}))
+		if isErr || !strings.Contains(text, "POST /api/instances/job-1"+suffix) {
+			t.Errorf("%s: isErr=%v text=%q", name, isErr, text)
+		}
+	}
+	// ...e exigem instanceId.
+	if _, isErr := contentOf(toolsCall(rw, "hold_job", map[string]interface{}{})); !isErr {
+		t.Error("hold_job sem instanceId deveria falhar")
+	}
+
+	// force_order → POST /api/definitions/{id}/force, exige definitionId.
+	text, isErr := contentOf(toolsCall(rw, "force_order", map[string]interface{}{"definitionId": "etl-vendas"}))
+	if isErr || !strings.Contains(text, "POST /api/definitions/etl-vendas/force") {
+		t.Errorf("force_order: isErr=%v text=%q", isErr, text)
+	}
+	if _, isErr := contentOf(toolsCall(rw, "force_order", map[string]interface{}{})); !isErr {
+		t.Error("force_order sem definitionId deveria falhar")
+	}
+
+	// pause/resume folder → POST /api/folders/{name}/(pause|resume), exige folder.
+	text, isErr = contentOf(toolsCall(rw, "pause_folder", map[string]interface{}{"folder": "PIX"}))
+	if isErr || !strings.Contains(text, "POST /api/folders/PIX/pause") {
+		t.Errorf("pause_folder: isErr=%v text=%q", isErr, text)
+	}
+	text, _ = contentOf(toolsCall(rw, "resume_folder", map[string]interface{}{"folder": "PIX"}))
+	if !strings.Contains(text, "POST /api/folders/PIX/resume") {
+		t.Errorf("resume_folder text=%q", text)
+	}
+	if _, isErr := contentOf(toolsCall(rw, "pause_folder", map[string]interface{}{})); !isErr {
+		t.Error("pause_folder sem folder deveria falhar")
+	}
+
+	// bulk_action → POST /api/bulk/instances, exige action + ids[].
+	text, isErr = contentOf(toolsCall(rw, "bulk_action", map[string]interface{}{"action": "hold", "ids": []interface{}{"a", "b"}}))
+	if isErr || !strings.Contains(text, "POST /api/bulk/instances") {
+		t.Errorf("bulk_action: isErr=%v text=%q", isErr, text)
+	}
+	if _, isErr := contentOf(toolsCall(rw, "bulk_action", map[string]interface{}{"action": "hold"})); !isErr {
+		t.Error("bulk_action sem ids deveria falhar")
+	}
+
+	// ingest_event → POST /api/events/ingest; exige conditions[] e/ou forceJob.
+	text, isErr = contentOf(toolsCall(rw, "ingest_event", map[string]interface{}{"conditions": []interface{}{"ARQ_OK"}}))
+	if isErr || !strings.Contains(text, "POST /api/events/ingest") {
+		t.Errorf("ingest_event: isErr=%v text=%q", isErr, text)
+	}
+	if _, isErr := contentOf(toolsCall(rw, "ingest_event", map[string]interface{}{"source": "sap"})); !isErr {
+		t.Error("ingest_event sem conditions/forceJob deveria falhar")
+	}
+}
+
+// forecast read tool: days>1 usa /forecast/range; senão /forecast.
+func TestMCP_ForecastTool(t *testing.T) {
+	ts := mockRegente(t)
+	defer ts.Close()
+	m := newM(ts, false)
+
+	text, isErr := contentOf(toolsCall(m, "forecast", map[string]interface{}{"date": "2026-07-06"}))
+	if isErr || !strings.Contains(text, `"hit":"single"`) {
+		t.Fatalf("forecast 1 dia: isErr=%v text=%q", isErr, text)
+	}
+	text, isErr = contentOf(toolsCall(m, "forecast", map[string]interface{}{"date": "2026-07-06", "days": 7}))
+	if isErr || !strings.Contains(text, `"hit":"range"`) || !strings.Contains(text, `"days":"7"`) {
+		t.Fatalf("forecast 7 dias: isErr=%v text=%q", isErr, text)
 	}
 }
 

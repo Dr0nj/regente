@@ -96,9 +96,12 @@ daily ou via Force Order manual.
   que não roda, condition órfã…), com cascata transitiva. Reusa a mesma decisão de agendamento do RunDaily.
   `GET /api/daily/dryrun?date=` + modal "Dry Run" (com seletor de data).
 - 🟢 **Agent-native (MCP)** — servidor [MCP](https://modelcontextprotocol.io) (`server/cmd/mcp`)
-  que expõe os diferenciais como _tools_: você **opera o Regente conversando** com o Claude
-  (*"o que falhou em pagamentos hoje e por quê?"*). Read-only por padrão; writes (`rerun`/`set_ok`)
-  atrás de `-allow-writes` + aprovação do cliente. Pure-Go stdlib, fachada sobre a REST. Ver
+  que expõe **22 tools**: você **opera o Regente conversando** com o Claude (*"o que falhou em
+  pagamentos hoje e por quê?"*, *"prevê a próxima semana"*). **11 de leitura** (summary · forecast ·
+  explain · blast radius · vizinhança · causa raiz · diff · dry run · event log · NL-query) sempre
+  disponíveis; **11 de escrita** (hold/release/cancel/confirm/rerun/set-ok · **force order** ·
+  **pause/resume de folder** · **bulk** · **ingest de evento**) atrás de `-allow-writes` + aprovação
+  do cliente (dupla trava, cada uma `destructiveHint`). Pure-Go stdlib, fachada sobre a REST. Ver
   [`docs/mcp.md`](docs/mcp.md).
 - 🟢 **Tela de Agentes** (Settings → Agentes) — frota **consolidada** (online + offline com last-seen) +
   contador "N de M online"; clique num agente abre um **modal de detalhe** (SO/arch, host, versão, **uptime**,
@@ -279,12 +282,19 @@ Todas as rotas `/api/*` exigem `Authorization: Bearer <token>`.
 | POST   | `/api/instances/{id}/release`         | Release                        |
 | POST   | `/api/instances/{id}/cancel`          | Cancel                         |
 | POST   | `/api/instances/{id}/rerun`           | Rerun                          |
+| POST   | `/api/instances/{id}/set-ok`          | Set OK (destrava sucessores)   |
+| POST   | `/api/instances/{id}/confirm`         | Confirm (gate WAIT_CONFIRM)    |
+| POST   | `/api/bulk/instances`                 | ação em lote (hold/release/cancel/rerun/set-ok/confirm), por item |
 | GET    | `/api/instances/{id}/explain`         | por que (não) rodou: gating estruturado |
 | GET    | `/api/instances/{id}/blast-radius`    | impacto de cancelar/segurar (downstream/SLA) |
 | GET    | `/api/daily/diff?from&to&folder`      | diff entre duas diárias (+/−/alterados) |
 | GET    | `/api/daily/dryrun?date`              | simula daily futura (roda/espera/nunca) |
+| GET    | `/api/forecast?date`                  | forecast de 1 dia (elegíveis · ondas · pico de recursos) |
+| GET    | `/api/forecast/range?from&days`       | forecast de N dias à frente (≥1 semana) |
 | POST   | `/api/daily/run`                      | força a daily do dia           |
 | POST   | `/api/definitions/{id}/force`         | Order Force (Control-M)        |
+| POST   | `/api/folders/{name}/pause` · `/resume` | pausa/retoma workflow (WAITING↔HELD, estado preservado) |
+| POST   | `/api/events/ingest`                  | evento externo idempotente (seta conditions / força job) |
 | POST   | `/api/scheduler/tick`                 | dispara um ciclo (cron externo, `-scheduler=external`) |
 | GET    | `/api/alerts`                         | eventos de alerta (com `resolution`) |
 | POST   | `/api/alerts/{id}/ack` · `/api/alerts/ack-all` | reconhece alerta(s)   |
