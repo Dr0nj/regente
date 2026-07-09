@@ -18,17 +18,19 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   type FolderInfo,
+  type FolderLayout,
   listFolders,
   renameFolder,
   deleteFolder,
   archiveFolder,
+  setFolderLayout,
 } from "@/lib/folder-api";
 import { isServerMode } from "@/lib/server-client";
 import type { PublishResult } from "@/lib/design-session-api";
 import { PublishButton } from "./PublishButton";
 import {
   Folder, Eye, EyeOff, Pencil, Check,
-  Plus, X, Trash2, Archive, FolderOpen,
+  Plus, X, Trash2, Archive, FolderOpen, LayoutGrid,
 } from "lucide-react";
 
 interface Props {
@@ -83,6 +85,9 @@ export default function FolderManagerDialog({
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ from: string; to: string } | null>(null);
+  // UI-3 — editor do override de grade por folder (.regente-folder.yaml).
+  // Inputs em STRING: vazio = herda o global de Settings; ambos vazios = limpa.
+  const [layoutEdit, setLayoutEdit] = useState<{ name: string; columns: string; maxRows: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ names: string[]; typed: string } | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
@@ -231,6 +236,23 @@ export default function FolderManagerDialog({
       setErr(`Delete: ${(e as Error).message}`);
     } finally { setBusy(null); }
   }, [confirmDelete, delJobsTotal, folders, visibleFolders, onChangeVisible, clearSelection, refresh]);
+
+  /* ── layout por folder (UI-3) ── */
+  const handleSaveLayout = useCallback(async () => {
+    if (!layoutEdit) return;
+    const cols = parseInt(layoutEdit.columns, 10);
+    const rows = parseInt(layoutEdit.maxRows, 10);
+    const lay: FolderLayout = {};
+    if (Number.isFinite(cols) && cols > 0) lay.columns = Math.min(40, Math.max(1, cols));
+    if (Number.isFinite(rows) && rows > 0) lay.maxRows = Math.min(200, Math.max(1, rows));
+    try {
+      await setFolderLayout(layoutEdit.name, lay.columns || lay.maxRows ? lay : null);
+      setLayoutEdit(null);
+      await refresh();
+    } catch (e: unknown) {
+      setErr(`Layout: ${(e as Error).message}`);
+    }
+  }, [layoutEdit, refresh]);
 
   /* ── visibilidade (filtro do monitor) ── */
   const toggleVisible = useCallback((name: string) => {
@@ -448,6 +470,18 @@ export default function FolderManagerDialog({
                       {!f.archived && (
                         <button title="Renomear" onClick={() => setRenaming({ from: f.name, to: f.name })} className="fmd-iconbtn" style={iconBtn()}><Pencil size={12} /></button>
                       )}
+                      {!f.archived && (
+                        <button
+                          title="Grade da folder (override de colunas/linhas do canvas — salvo no workspace)"
+                          onClick={() => setLayoutEdit({
+                            name: f.name,
+                            columns: f.layout?.columns ? String(f.layout.columns) : "",
+                            maxRows: f.layout?.maxRows ? String(f.layout.maxRows) : "",
+                          })}
+                          className="fmd-iconbtn"
+                          style={iconBtn()}
+                        ><LayoutGrid size={12} /></button>
+                      )}
                     </div>
                   </div>
 
@@ -473,7 +507,41 @@ export default function FolderManagerDialog({
                     }}>{f.name}</h3>
                   )}
 
-                  {/* status + badges */}
+                  {/* UI-3 — editor inline do override de grade (vazio = herda o global) */}
+                  {layoutEdit?.name === f.name ? (
+                    <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {([["columns", "colunas"], ["maxRows", "máx. linhas"]] as const).map(([field, ph]) => (
+                          <input
+                            key={field}
+                            type="number"
+                            min={1}
+                            max={field === "columns" ? 40 : 200}
+                            value={layoutEdit[field]}
+                            placeholder={ph}
+                            autoFocus={field === "columns"}
+                            onChange={(e) => setLayoutEdit({ ...layoutEdit, [field]: e.target.value })}
+                            onKeyDown={(e) => { if (e.key === "Enter") void handleSaveLayout(); if (e.key === "Escape") setLayoutEdit(null); }}
+                            style={{
+                              width: "50%", boxSizing: "border-box", padding: "4px 7px",
+                              background: "var(--v2-bg-canvas)", border: `1px solid ${acc}`,
+                              color: "var(--v2-text-primary)", borderRadius: 3, fontSize: 12,
+                              fontFamily: "var(--v2-font-mono)",
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 9, color: "var(--v2-text-muted)", lineHeight: 1.4 }}>
+                        Grade dos jobs soltos DESTA folder. Vazio = herda o global (Settings). Vai pro
+                        <code style={{ color: acc }}> .regente-folder.yaml</code> do workspace.
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button onClick={() => void handleSaveLayout()} style={{ ...luxBtn(true, acc), flex: 1, justifyContent: "center", padding: "4px 8px" }}>Salvar</button>
+                        <button onClick={() => setLayoutEdit(null)} style={{ ...luxBtn(false), flex: 1, justifyContent: "center", padding: "4px 8px" }}>Cancelar</button>
+                      </div>
+                    </div>
+                  ) : (
+                  /* status + badges */
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
                     <span style={{ width: 6, height: 6, borderRadius: "50%", background: active ? "#3fb950" : "var(--v2-text-disabled)" }} />
                     <span style={{ fontSize: 9, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>
@@ -485,7 +553,16 @@ export default function FolderManagerDialog({
                     {f.archived && (
                       <span style={{ fontSize: 8, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--v2-text-muted)", border: "1px solid var(--v2-border-medium)", padding: "1px 4px", borderRadius: 2 }}>archived</span>
                     )}
+                    {f.layout && (f.layout.columns || f.layout.maxRows) && (
+                      <span
+                        title="Grade com override próprio (.regente-folder.yaml) — colunas × máx. linhas; · = herda o global"
+                        style={{ fontSize: 8, letterSpacing: "0.08em", color: acc, border: `1px solid color-mix(in srgb, ${acc} 40%, transparent)`, padding: "1px 4px", borderRadius: 2, fontFamily: "var(--v2-font-mono)" }}
+                      >
+                        ⊞ {f.layout.columns ?? "·"}×{f.layout.maxRows ?? "·"}
+                      </span>
+                    )}
                   </div>
+                  )}
 
                   {/* rodapé */}
                   <div style={{

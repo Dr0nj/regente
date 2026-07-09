@@ -275,8 +275,9 @@ Todas as rotas `/api/*` exigem `Authorization: Bearer <token>`.
 | GET    | `/api/definitions`                    | lista YAMLs de `definitions/`  |
 | POST   | `/api/definitions`                    | cria/atualiza YAML             |
 | DELETE | `/api/definitions/{team}/{id}`        | remove YAML                    |
-| GET    | `/api/folders`                        | lista subdirs de `definitions/`|
+| GET    | `/api/folders`                        | lista subdirs de `definitions/` (+ `layout` da folder) |
 | POST   | `/api/folders`                        | cria subdir                    |
+| PUT    | `/api/folders/{name}/layout`          | grade da folder no canvas (`.regente-folder.yaml`; `{}` = herda o global) |
 | GET    | `/api/instances?date=YYYY-MM-DD`      | instances do dia               |
 | POST   | `/api/instances/{id}/hold`            | Hold                           |
 | POST   | `/api/instances/{id}/release`         | Release                        |

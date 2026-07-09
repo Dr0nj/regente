@@ -66,6 +66,18 @@ export const fetchInstanceEvents = isServerMode()
   ? serverInstance.fetchInstanceEvents
   : async (_id: string): Promise<serverInstance.InstanceEvent[]> => [];
 
+// UI-1 — sidebar windowed: puxa uma instance fora do espelho local pro cache
+// (dia > cap). No modo local o cache É completo: resolve do que já está lá.
+export const fetchInstanceById = isServerMode()
+  ? serverInstance.fetchInstanceById
+  : async (id: string) => localInstance.getTodayInstances().find((i) => i.id === id) ?? null;
+
+// UI-1 — re-busca o espelho do server (ex.: cap do canvas mudou em Settings).
+// Local mode: o snapshot é o próprio storage — nada a re-buscar.
+export const refreshInstancesFromServer = isServerMode()
+  ? serverInstance.refreshFromServer
+  : async (): Promise<void> => {};
+
 export type Explanation = serverInstance.Explanation;
 export type ExplainBlocker = serverInstance.ExplainBlocker;
 

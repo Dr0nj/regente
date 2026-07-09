@@ -194,6 +194,38 @@ func (s *server) deleteFolder(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// setFolderLayout — PUT /api/folders/{name}/layout  body: {"columns":6,"maxRows":20}
+// UI-3: override POR FOLDER da grade de jobs soltos do canvas, persistido no
+// stub .regente-folder.yaml (viaja com o workspace via Git). Campo 0/ausente
+// herda o global da UI; body com ambos zerados (ou {}) REMOVE o override.
+func (s *server) setFolderLayout(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	if !s.requireFolderWrite(w, r, name) {
+		return
+	}
+	var req storage.FolderLayout
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	// Ranges da UI (SettingsDialog usa 1–40 / 1–200); negativo é bug do caller.
+	if req.Columns < 0 || req.Columns > 40 || req.MaxRows < 0 || req.MaxRows > 200 {
+		http.Error(w, "layout out of range (columns 0-40, maxRows 0-200; 0 = inherit)", http.StatusBadRequest)
+		return
+	}
+	var lay *storage.FolderLayout
+	if req.Columns > 0 || req.MaxRows > 0 {
+		lay = &req
+	}
+	if err := s.cfg.Store.SetFolderLayout(name, lay); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	s.directPush("layout folder "+name, actorFromCtx(r))
+	s.cfg.Hub.BroadcastWeb("folder.changed", map[string]string{"name": name, "action": "layout"})
+	writeJSON(w, 200, map[string]any{"name": name, "layout": lay})
+}
+
 // archiveFolder — POST /api/folders/{name}/archive
 func (s *server) archiveFolder(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")

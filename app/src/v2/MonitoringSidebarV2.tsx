@@ -1,16 +1,27 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { JobNodeData } from "@/lib/job-config";
 import { useResizablePanel, ResizeHandle } from "./resizable";
+import { api, onServerEvent, isServerMode } from "@/lib/server-client";
+import { todayOrderDate } from "@/lib/orchestrator-model";
+import { legacyCap } from "@/lib/server-instance-store";
 
 /* ──────────────────────────────────────────────────────────────
    MonitoringSidebarV2 — flutuante, clean, densidade alta
    ──────────────────────────────────────────────────────────────
-   Princípios:
-   - Painel destacado (margem 12px das bordas, rounded, shadow sutil)
-   - Lista virtualizável de TODOS os jobs do dia
-   - Filtro por status + search por nome/team
-   - Row: 28px altura → cabe ~25 jobs em viewport 720px
-   - Zero gradiente, zero glass, zero animação decorativa
+   UI-1 (2026-07-09): lista VIRTUALIZADA de verdade + dual-mode.
+   - DOM = só as linhas visíveis (headers de folder + jobs), qualquer volume.
+   - Modo LOCAL (dia ≤ cap do canvas): dados do espelho local (props.jobs),
+     filtro/busca client-side — comportamento de sempre, DOM enxuto.
+   - Modo WINDOWED (dia > cap): o dia INTEIRO sem baixar o dia inteiro —
+     estrutura/contagens do /api/instances/summary (totais REAIS) e linhas
+     por página do /api/instances/page (offset = random-access no salto de
+     scrollbar). Placeholders enquanto a janela carrega; filtro/busca são
+     reescopados NO SERVER. Aguenta 1M como o ViewPoint (mesmo padrão).
+   - O contador do header NUNCA mostra número truncado como total: é
+     "N de <total real do summary>".
+   - Alturas virtuais acima de MAX_DISPLAY_H são comprimidas (scrollbar
+     mapeada por fator) — 1M×30px = 30M px estoura o limite de altura do
+     browser (~17M Firefox) e a precisão float32 de transform (~16.7M).
    ────────────────────────────────────────────────────────────── */
 
 export interface MonitoringJob {
@@ -33,11 +44,37 @@ const STATUS_DOT: Record<JobNodeData["status"], string> = {
   INACTIVE: "var(--v2-text-muted)",
 };
 
+const ROW_H = 30;
+const HEADER_H = 26;
+const PAGE = 200;            // linhas por página windowed (300 no ScaleMonitor; aqui a row é mais rica)
+const OVERSCAN_PX = 240;     // margem de pré-render acima/abaixo do viewport
+const MAX_DISPLAY_H = 12_000_000; // teto físico da altura do scroller (ver header)
+
+const SERVER_STATUS_TO_UI: Record<string, JobNodeData["status"]> = {
+  OK: "SUCCESS",
+  NOTOK: "FAILED",
+  RUNNING: "RUNNING",
+  WAITING: "WAITING",
+  HOLD: "INACTIVE",
+  HELD: "INACTIVE",
+  CANCELLED: "INACTIVE",
+};
+const FILTER_TO_SERVER: Record<Exclude<StatusFilter, "ALL">, string> = {
+  RUNNING: "RUNNING",
+  FAILED: "NOTOK",
+  SUCCESS: "OK",
+  WAITING: "WAITING",
+};
+
 function formatDuration(ms?: number): string {
   if (!ms) return "—";
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.floor(ms / 60000)}m${Math.floor((ms % 60000) / 1000)}s`;
+}
+
+function fmtInt(n: number): string {
+  return n.toLocaleString("pt-BR");
 }
 
 // D-2 — botões ⏸/▶ do header da folder (discretos; idempotentes no server).
@@ -54,12 +91,179 @@ const folderActionBtn: CSSProperties = {
   cursor: "pointer",
 };
 
+/* ── Windowed data (summary + páginas por folder, mesmo padrão do ScaleMonitor) ── */
+
+interface DaySummary {
+  date: string;
+  total: number;
+  byStatus: Record<string, number>;
+  byFolder: Record<string, number>;
+}
+interface PageInstance {
+  id: string;
+  definitionId: string;
+  team?: string;
+  status: string;
+  startedAt?: string;
+  finishedAt?: string;
+}
+
+function pageToJob(p: PageInstance, folder: string, labelFor?: (defId: string) => string | undefined): MonitoringJob {
+  const started = p.startedAt ? Date.parse(p.startedAt) : NaN;
+  const finished = p.finishedAt ? Date.parse(p.finishedAt) : NaN;
+  const durationMs = Number.isFinite(started)
+    ? (Number.isFinite(finished) ? finished - started : Date.now() - started)
+    : undefined;
+  return {
+    id: p.id,
+    label: labelFor?.(p.definitionId) ?? p.definitionId,
+    team: p.team || folder,
+    jobType: "" as JobNodeData["jobType"],
+    status: SERVER_STATUS_TO_UI[p.status?.toUpperCase()] ?? "WAITING",
+    durationMs,
+    startedAt: Number.isFinite(started)
+      ? new Date(started).toLocaleTimeString("en-GB", { hour12: false }).slice(0, 5)
+      : undefined,
+  };
+}
+
+// useDayWindow — espelho windowed do dia: summary (estrutura + totais reais) e
+// cache de páginas por folder, carregadas sob demanda pelo scroll. `active`
+// desliga tudo (modo local não paga nenhum fetch extra).
+function useDayWindow(active: boolean, filter: StatusFilter, search: string, labelFor?: (defId: string) => string | undefined) {
+  const [summary, setSummary] = useState<DaySummary | null>(null);
+  const [viewSummary, setViewSummary] = useState<DaySummary | null>(null);
+  const [version, setVersion] = useState(0);
+  const pages = useRef(new Map<string, Map<number, MonitoringJob[]>>());
+  const rowIndex = useRef(new Map<string, { folder: string; page: number; off: number }>());
+  const inflight = useRef(new Set<string>());
+  const bump = useCallback(() => setVersion((v) => v + 1), []);
+
+  const serverStatus = filter !== "ALL" ? FILTER_TO_SERVER[filter] : "";
+  const scoped = !!serverStatus || !!search;
+
+  const clearPages = useCallback(() => {
+    pages.current.clear();
+    rowIndex.current.clear();
+    inflight.current.clear();
+  }, []);
+
+  const loadSummary = useCallback(async () => {
+    if (!active) return;
+    const date = todayOrderDate();
+    try {
+      const s = await api<DaySummary>(`/api/instances/summary?date=${encodeURIComponent(date)}`);
+      setSummary(s);
+      if (scoped) {
+        const qs = new URLSearchParams({ date });
+        if (serverStatus) qs.set("status", serverStatus);
+        if (search) qs.set("q", search);
+        setViewSummary(await api<DaySummary>(`/api/instances/summary?${qs.toString()}`));
+      } else {
+        setViewSummary(null);
+      }
+    } catch (err) {
+      console.warn("[sidebar] summary failed", err);
+    }
+  }, [active, scoped, serverStatus, search]);
+
+  // Filtro/busca mudou → o working set é outro: zera páginas e reescopa.
+  useEffect(() => {
+    clearPages();
+    bump();
+    void loadSummary();
+  }, [loadSummary, clearPages, bump]);
+
+  // Live: mutações atualizam a linha em cache NA HORA (status visível) e o
+  // summary com throttle (rajada de 1k eventos ≠ 1k GETs de summary).
+  const throttleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    const off = onServerEvent((ev) => {
+      if (ev.event === "daily.started" || ev.event === "_connected") {
+        clearPages();
+        void loadSummary();
+        bump();
+        return;
+      }
+      if (ev.event !== "instance.changed") return;
+      const p = ev.payload as { id?: string; status?: string } | undefined;
+      if (p?.id && p.status) {
+        const hit = rowIndex.current.get(p.id);
+        if (hit) {
+          const row = pages.current.get(hit.folder)?.get(hit.page)?.[hit.off];
+          if (row) {
+            row.status = SERVER_STATUS_TO_UI[p.status.toUpperCase()] ?? row.status;
+            bump();
+          }
+        }
+      }
+      if (!throttleTimer.current) {
+        throttleTimer.current = setTimeout(() => {
+          throttleTimer.current = null;
+          void loadSummary();
+        }, 2500);
+      }
+    });
+    return () => {
+      off();
+      if (throttleTimer.current) {
+        clearTimeout(throttleTimer.current);
+        throttleTimer.current = null;
+      }
+    };
+  }, [active, loadSummary, clearPages, bump]);
+
+  const ensureRange = useCallback((folder: string, fromIdx: number, toIdx: number) => {
+    if (!active) return;
+    const first = Math.max(0, Math.floor(fromIdx / PAGE));
+    const last = Math.max(first, Math.floor(toIdx / PAGE));
+    for (let pg = first; pg <= last; pg++) {
+      const key = `${folder} ${pg}`;
+      if (pages.current.get(folder)?.has(pg) || inflight.current.has(key)) continue;
+      inflight.current.add(key);
+      const qs = new URLSearchParams({
+        date: todayOrderDate(),
+        folder,
+        limit: String(PAGE),
+        offset: String(pg * PAGE),
+      });
+      if (serverStatus) qs.set("status", serverStatus);
+      if (search) qs.set("q", search);
+      api<{ items: PageInstance[] }>(`/api/instances/page?${qs.toString()}`)
+        .then((resp) => {
+          const rows = (resp.items ?? []).map((it) => pageToJob(it, folder, labelFor));
+          if (!pages.current.has(folder)) pages.current.set(folder, new Map());
+          pages.current.get(folder)!.set(pg, rows);
+          rows.forEach((r, off) => rowIndex.current.set(r.id, { folder, page: pg, off }));
+          bump();
+        })
+        .catch((err) => console.warn("[sidebar] page failed", folder, pg, err))
+        .finally(() => inflight.current.delete(key));
+    }
+  }, [active, serverStatus, search, labelFor, bump]);
+
+  const getRow = useCallback(
+    (folder: string, idx: number): MonitoringJob | undefined =>
+      pages.current.get(folder)?.get(Math.floor(idx / PAGE))?.[idx % PAGE],
+    // version na dep: cache mudou → identidade nova → memos re-derivam.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [version],
+  );
+
+  return { summary, viewSummary, scoped, getRow, ensureRange, version };
+}
+
+/* ── Componente ── */
+
 export default function MonitoringSidebarV2({
   jobs,
   selectedId,
   onSelect,
   onPauseFolder,
   onResumeFolder,
+  onOpenViewPoint,
+  visibleFolders,
 }: {
   jobs: MonitoringJob[];
   selectedId?: string | null;
@@ -67,6 +271,12 @@ export default function MonitoringSidebarV2({
   /** D-2 — pause/resume de workflow: segura/libera os WAITING da folder em massa. */
   onPauseFolder?: (name: string) => void;
   onResumeFolder?: (name: string) => void;
+  /** UI-1 — atalho pro ViewPoint quando o grafo está truncado no cap. */
+  onOpenViewPoint?: () => void;
+  /** Filtro de visibilidade do monitor (eye do FolderManager). null = todas.
+      No modo local o V2Preview já filtra `jobs`; no windowed filtramos os
+      grupos do summary aqui, pra manter a MESMA semântica. */
+  visibleFolders?: Set<string> | null;
 }) {
   const [filter, setFilter] = useState<StatusFilter>("ALL");
   const [query, setQuery] = useState("");
@@ -77,7 +287,52 @@ export default function MonitoringSidebarV2({
     else setInternalSelected(id);
   };
 
+  // Busca windowed vai pro server (q) — debounce pra não metralhar a API.
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Modo windowed: server mode E o dia REAL passa do cap do grafo. Decisão pelo
+  // summary (fonte da verdade), não pelo tamanho do espelho local (que é capado).
+  const cap = legacyCap();
+  const server = isServerMode();
+  const [probeTotal, setProbeTotal] = useState(0);
+  const windowed = server && probeTotal > cap;
+  const win = useDayWindow(windowed, filter, debouncedQuery);
+
+  // Sonda o total do dia (é o MESMO summary do hook quando windowed liga; aqui
+  // só decide o modo — e mantém o total real do header mesmo no modo local).
+  useEffect(() => {
+    if (!server) return;
+    let dead = false;
+    const probe = () =>
+      api<DaySummary>(`/api/instances/summary?date=${encodeURIComponent(todayOrderDate())}`)
+        .then((s) => { if (!dead) setProbeTotal(s.total); })
+        .catch(() => {});
+    void probe();
+    const off = onServerEvent((ev) => {
+      if (ev.event === "daily.started" || ev.event === "_connected") void probe();
+      // Sem summary em cada instance.changed: o hook windowed já cobre; aqui só
+      // o cruzamento do cap importa, e forçar jobs cruza via daily/força (raro).
+      if (ev.event === "instance.changed" && !windowed) void probe();
+    });
+    return () => { dead = true; off(); };
+  }, [server, windowed]);
+
+  /* ── Dados locais (modo ≤ cap): filtro/busca client-side, como sempre ── */
   const counts = useMemo(() => {
+    if (windowed && win.summary) {
+      const bs = win.summary.byStatus;
+      return {
+        ALL: win.summary.total,
+        RUNNING: bs.RUNNING ?? 0,
+        FAILED: bs.NOTOK ?? 0,
+        SUCCESS: bs.OK ?? 0,
+        WAITING: bs.WAITING ?? 0,
+      };
+    }
     const c = { ALL: jobs.length, RUNNING: 0, FAILED: 0, SUCCESS: 0, WAITING: 0 };
     for (const j of jobs) {
       if (j.status === "RUNNING") c.RUNNING++;
@@ -86,9 +341,10 @@ export default function MonitoringSidebarV2({
       else if (j.status === "WAITING") c.WAITING++;
     }
     return c;
-  }, [jobs]);
+  }, [jobs, windowed, win.summary]);
 
   const filtered = useMemo(() => {
+    if (windowed) return [];
     return jobs.filter((j) => {
       if (filter !== "ALL" && j.status !== filter) return false;
       if (query && !j.label.toLowerCase().includes(query.toLowerCase()) && !j.team.toLowerCase().includes(query.toLowerCase())) {
@@ -96,18 +352,29 @@ export default function MonitoringSidebarV2({
       }
       return true;
     });
-  }, [jobs, filter, query]);
+  }, [jobs, filter, query, windowed]);
 
-  // Agrupa por folder (Control-M style: folders expansíveis no sidebar)
-  const grouped = useMemo(() => {
+  /* ── Grupos (folders) unificados: local = arrays; windowed = counts + getRow ── */
+  interface Group { name: string; count: number; local?: MonitoringJob[] }
+  const groups: Group[] = useMemo(() => {
+    if (windowed) {
+      const src = (win.scoped ? win.viewSummary : win.summary)?.byFolder ?? {};
+      return Object.entries(src)
+        .filter(([, n]) => n > 0)
+        .map(([name, n]) => ({ name: (name || "—").trim() || "—", count: n }))
+        .filter((g) => !visibleFolders || visibleFolders.has(g.name))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    }
     const m = new Map<string, MonitoringJob[]>();
     for (const j of filtered) {
       const f = (j.team || "—").trim() || "—";
       if (!m.has(f)) m.set(f, []);
       m.get(f)!.push(j);
     }
-    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [filtered]);
+    return [...m.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([name, arr]) => ({ name, count: arr.length, local: arr }));
+  }, [windowed, win.scoped, win.viewSummary, win.summary, filtered, visibleFolders]);
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const toggleFolder = (name: string) => {
@@ -118,9 +385,216 @@ export default function MonitoringSidebarV2({
     });
   };
 
+  /* ── Virtualização ── */
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewH, setViewH] = useState(600);
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    setViewH(el.clientHeight);
+    const ro = new ResizeObserver(() => setViewH(el.clientHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Offsets dos grupos no espaço VIRTUAL (px teóricos do dia inteiro).
+  const { groupTops, virtualH } = useMemo(() => {
+    let y = 0;
+    const tops = groups.map((g) => {
+      const t = y;
+      y += HEADER_H + (collapsed.has(g.name) ? 0 : g.count * ROW_H);
+      return t;
+    });
+    return { groupTops: tops, virtualH: y };
+  }, [groups, collapsed]);
+
+  // Compressão de escala quando o dia inteiro não cabe na altura máxima de
+  // elemento do browser: a scrollbar representa o TOTAL, o mapeamento é linear.
+  const displayH = Math.min(virtualH, MAX_DISPLAY_H);
+  const scale = virtualH > displayH ? (virtualH - viewH) / Math.max(1, displayH - viewH) : 1;
+  const vTop = scrollTop * scale;
+
+  // Janela visível → páginas necessárias (windowed). Efeito, não render:
+  // dispara fetches (side effect) e depende de scroll/tamanho/cache.
+  useEffect(() => {
+    if (!windowed) return;
+    const winTop = vTop - OVERSCAN_PX;
+    const winBot = vTop + viewH + OVERSCAN_PX;
+    groups.forEach((g, gi) => {
+      if (collapsed.has(g.name)) return;
+      const jobsTop = groupTops[gi] + HEADER_H;
+      const jobsBot = jobsTop + g.count * ROW_H;
+      if (jobsBot < winTop || jobsTop > winBot) return;
+      const first = Math.max(0, Math.floor((winTop - jobsTop) / ROW_H));
+      const last = Math.min(g.count - 1, Math.ceil((winBot - jobsTop) / ROW_H));
+      if (last >= first) win.ensureRange(g.name, first, last);
+    });
+  }, [windowed, vTop, viewH, groups, groupTops, collapsed, win.ensureRange, win.version]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Rows visíveis ── */
+  const visibleRows: ReactNode[] = [];
+  {
+    const winTop = vTop - OVERSCAN_PX;
+    const winBot = vTop + viewH + OVERSCAN_PX;
+    groups.forEach((g, gi) => {
+      const gTop = groupTops[gi];
+      const isCollapsed = collapsed.has(g.name);
+      const gH = HEADER_H + (isCollapsed ? 0 : g.count * ROW_H);
+      if (gTop + gH < winTop || gTop > winBot) return;
+
+      if (gTop >= winTop - HEADER_H) {
+        visibleRows.push(
+          <div
+            key={`h-${g.name}`}
+            onClick={() => toggleFolder(g.name)}
+            style={{
+              position: "absolute", top: gTop - vTop, left: 0, right: 0, height: HEADER_H,
+              padding: "0 10px",
+              display: "flex", alignItems: "center", gap: 6,
+              background: "var(--v2-bg-elevated)",
+              borderTop: "1px solid var(--v2-border-subtle)",
+              borderBottom: "1px solid var(--v2-border-subtle)",
+              cursor: "pointer", userSelect: "none",
+              boxSizing: "border-box",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--v2-bg-hover)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "var(--v2-bg-elevated)")}
+          >
+            <span
+              style={{
+                width: 10, fontSize: 9, color: "var(--v2-text-muted)",
+                fontFamily: "var(--v2-font-mono)",
+                transition: "transform 80ms linear",
+                transform: isCollapsed ? "rotate(-90deg)" : "none",
+                display: "inline-block",
+              }}
+            >▾</span>
+            <span
+              style={{
+                flex: 1, fontSize: 10, fontFamily: "var(--v2-font-mono)",
+                letterSpacing: "0.08em", color: "var(--v2-text-primary)",
+                textTransform: "uppercase", fontWeight: 600,
+                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              }}
+            >
+              {g.name}
+            </span>
+            {onPauseFolder && onResumeFolder && (
+              <span style={{ display: "inline-flex", gap: 2 }} onClick={(e) => e.stopPropagation()}>
+                <button
+                  title={`Pausar workflow: segura os WAITING de ${g.name} (estado preservado)`}
+                  onClick={() => onPauseFolder(g.name)}
+                  style={folderActionBtn}
+                >⏸</button>
+                <button
+                  title={`Retomar workflow: libera os HELD de ${g.name}`}
+                  onClick={() => onResumeFolder(g.name)}
+                  style={folderActionBtn}
+                >▶</button>
+              </span>
+            )}
+            <span
+              style={{
+                fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)",
+                padding: "1px 5px", border: "1px solid var(--v2-border-subtle)", borderRadius: 2,
+              }}
+            >
+              {fmtInt(g.count)}
+            </span>
+          </div>,
+        );
+      }
+
+      if (isCollapsed) return;
+      const jobsTop = gTop + HEADER_H;
+      const first = Math.max(0, Math.floor((winTop - jobsTop) / ROW_H));
+      const last = Math.min(g.count - 1, Math.ceil((winBot - jobsTop) / ROW_H));
+      for (let i = first; i <= last; i++) {
+        const top = jobsTop + i * ROW_H - vTop;
+        const j = g.local ? g.local[i] : win.getRow(g.name, i);
+        if (!j) {
+          visibleRows.push(
+            <div
+              key={`p-${g.name}-${i}`}
+              style={{
+                position: "absolute", top, left: 0, right: 0, height: ROW_H,
+                padding: "0 12px 0 22px",
+                display: "flex", alignItems: "center", gap: 8,
+                borderBottom: "1px solid var(--v2-border-subtle)",
+                boxSizing: "border-box",
+                fontSize: 11, color: "var(--v2-text-muted)",
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--v2-border-medium)", flexShrink: 0 }} />
+              <span style={{ opacity: 0.5, fontFamily: "var(--v2-font-mono)", letterSpacing: "0.2em" }}>···</span>
+            </div>,
+          );
+          continue;
+        }
+        visibleRows.push(
+          <div
+            key={j.id}
+            onClick={() => handleSelect(j.id)}
+            style={{
+              position: "absolute", top, left: 0, right: 0, height: ROW_H,
+              padding: "0 12px 0 22px",
+              display: "flex", alignItems: "center", gap: 8,
+              borderBottom: "1px solid var(--v2-border-subtle)",
+              background: selected === j.id ? "var(--v2-accent-deep)" : "transparent",
+              borderLeft: selected === j.id ? "2px solid var(--v2-accent-brand)" : "2px solid transparent",
+              boxShadow: selected === j.id ? "inset 0 0 12px var(--v2-accent-glow)" : "none",
+              cursor: "pointer", fontSize: 11,
+              transition: "background 80ms linear, box-shadow 120ms linear",
+              boxSizing: "border-box",
+            }}
+            onMouseEnter={(e) => {
+              if (selected !== j.id) e.currentTarget.style.background = "var(--v2-bg-hover)";
+            }}
+            onMouseLeave={(e) => {
+              if (selected !== j.id) e.currentTarget.style.background = "transparent";
+            }}
+          >
+            <span
+              style={{
+                width: 6, height: 6, borderRadius: "50%",
+                background: STATUS_DOT[j.status], flexShrink: 0,
+                animation: j.status === "RUNNING" ? "v2-dot-pulse 1.2s ease-in-out infinite" : "none",
+              }}
+            />
+            <span
+              style={{
+                flex: 1, color: "var(--v2-text-primary)",
+                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                fontWeight: selected === j.id ? 600 : 400,
+              }}
+            >
+              {j.label}
+            </span>
+            <span
+              style={{
+                fontFamily: "var(--v2-font-mono)", fontSize: 10, color: "var(--v2-text-muted)",
+                width: 48, textAlign: "right", flexShrink: 0,
+              }}
+            >
+              {formatDuration(j.durationMs)}
+            </span>
+          </div>,
+        );
+      }
+    });
+  }
+
   const { width, onMouseDown, reset } = useResizablePanel({
     storageKey: "regente.panel.monitoring.w", defaultWidth: 320, min: 240, max: 640, edge: "right",
   });
+
+  // Contador honesto do header: nunca um número truncado disfarçado de total.
+  const viewTotal = windowed
+    ? (win.scoped ? win.viewSummary?.total ?? 0 : win.summary?.total ?? 0)
+    : filtered.length;
+  const dayTotal = windowed ? win.summary?.total ?? 0 : jobs.length;
+  const emptyList = windowed ? groups.length === 0 : filtered.length === 0;
 
   return (
     <aside
@@ -157,6 +631,7 @@ export default function MonitoringSidebarV2({
           ACTIVE JOBS
         </span>
         <span
+          title={windowed ? "visão atual / total real do dia (summary)" : "filtrados / carregados"}
           style={{
             marginLeft: "auto",
             fontSize: 10,
@@ -165,11 +640,42 @@ export default function MonitoringSidebarV2({
             padding: "1px 5px",
             border: "1px solid var(--v2-border-subtle)",
             borderRadius: 2,
+            whiteSpace: "nowrap",
           }}
         >
-          {filtered.length}/{jobs.length}
+          {windowed ? `${fmtInt(viewTotal)} de ${fmtInt(dayTotal)}` : `${viewTotal}/${dayTotal}`}
         </span>
       </div>
+
+      {/* UI-1 — dia maior que o grafo desenha: a LISTA mostra tudo; avisa do cap. */}
+      {windowed && (
+        <div
+          style={{
+            padding: "5px 12px",
+            borderBottom: "1px solid var(--v2-border-subtle)",
+            display: "flex", alignItems: "center", gap: 6,
+            fontSize: 9, fontFamily: "var(--v2-font-mono)",
+            color: "var(--v2-text-muted)", letterSpacing: "0.03em",
+          }}
+        >
+          <span style={{ flex: 1 }}>
+            lista: dia inteiro · grafo: primeiros {fmtInt(cap)}
+          </span>
+          {onOpenViewPoint && (
+            <button
+              onClick={onOpenViewPoint}
+              title="Abrir o ViewPoint (dashboard server-driven do dia inteiro)"
+              style={{
+                background: "transparent",
+                border: "1px solid var(--v2-border-subtle)",
+                color: "var(--v2-accent-brand)",
+                borderRadius: 2, fontSize: 9, padding: "1px 6px",
+                cursor: "pointer", fontFamily: "inherit", letterSpacing: "inherit",
+              }}
+            >ViewPoint</button>
+          )}
+        </div>
+      )}
 
       {/* Search */}
       <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--v2-border-subtle)" }}>
@@ -177,7 +683,7 @@ export default function MonitoringSidebarV2({
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Filtrar por nome ou team…"
+          placeholder={windowed ? "Filtrar por id/nome (no server)…" : "Filtrar por nome ou team…"}
           style={{
             width: "100%",
             background: "var(--v2-bg-canvas)",
@@ -188,6 +694,7 @@ export default function MonitoringSidebarV2({
             fontFamily: "var(--v2-font-sans)",
             borderRadius: 3,
             outline: "none",
+            boxSizing: "border-box",
           }}
           onFocus={(e) => (e.currentTarget.style.borderColor = "var(--v2-accent-dark)")}
           onBlur={(e) => (e.currentTarget.style.borderColor = "var(--v2-border-subtle)")}
@@ -230,162 +737,38 @@ export default function MonitoringSidebarV2({
               fontSize: "inherit",
               letterSpacing: "inherit",
               fontWeight: filter === p.key ? 600 : 500,
+              minWidth: 0,
+              overflow: "hidden",
             }}
           >
             {p.label}
             <span style={{ marginLeft: 4, opacity: 0.6 }}>
-              {counts[p.key as keyof typeof counts]}
+              {fmtInt(counts[p.key as keyof typeof counts])}
             </span>
           </button>
         ))}
       </div>
 
-      {/* List — agrupada por folder (CTM style) */}
-      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
-        {filtered.length === 0 ? (
+      {/* Lista virtualizada — headers de folder + jobs, só o visível no DOM */}
+      <div
+        ref={scrollerRef}
+        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+        style={{ flex: 1, overflowY: "auto", overflowX: "hidden", position: "relative" }}
+      >
+        {emptyList ? (
           <div style={{ padding: 20, fontSize: 11, color: "var(--v2-text-muted)", textAlign: "center" }}>
             nenhum job com esse filtro
           </div>
         ) : (
-          grouped.map(([folder, jobsOfFolder]) => {
-            const isCollapsed = collapsed.has(folder);
-            return (
-              <div key={folder}>
-                {/* Folder header */}
-                <div
-                  onClick={() => toggleFolder(folder)}
-                  style={{
-                    height: 26,
-                    padding: "0 10px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    background: "var(--v2-bg-elevated)",
-                    borderTop: "1px solid var(--v2-border-subtle)",
-                    borderBottom: "1px solid var(--v2-border-subtle)",
-                    cursor: "pointer",
-                    userSelect: "none",
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--v2-bg-hover)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--v2-bg-elevated)")}
-                >
-                  <span
-                    style={{
-                      width: 10,
-                      fontSize: 9,
-                      color: "var(--v2-text-muted)",
-                      fontFamily: "var(--v2-font-mono)",
-                      transition: "transform 80ms linear",
-                      transform: isCollapsed ? "rotate(-90deg)" : "none",
-                      display: "inline-block",
-                    }}
-                  >▾</span>
-                  <span
-                    style={{
-                      flex: 1,
-                      fontSize: 10,
-                      fontFamily: "var(--v2-font-mono)",
-                      letterSpacing: "0.08em",
-                      color: "var(--v2-text-primary)",
-                      textTransform: "uppercase",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {folder}
-                  </span>
-                  {onPauseFolder && onResumeFolder && (
-                    <span style={{ display: "inline-flex", gap: 2 }} onClick={(e) => e.stopPropagation()}>
-                      <button
-                        title={`Pausar workflow: segura os WAITING de ${folder} (estado preservado)`}
-                        onClick={() => onPauseFolder(folder)}
-                        style={folderActionBtn}
-                      >⏸</button>
-                      <button
-                        title={`Retomar workflow: libera os HELD de ${folder}`}
-                        onClick={() => onResumeFolder(folder)}
-                        style={folderActionBtn}
-                      >▶</button>
-                    </span>
-                  )}
-                  <span
-                    style={{
-                      fontSize: 9,
-                      fontFamily: "var(--v2-font-mono)",
-                      color: "var(--v2-text-muted)",
-                      padding: "1px 5px",
-                      border: "1px solid var(--v2-border-subtle)",
-                      borderRadius: 2,
-                    }}
-                  >
-                    {jobsOfFolder.length}
-                  </span>
-                </div>
-
-                {/* Jobs do folder */}
-                {!isCollapsed && jobsOfFolder.map((j) => (
-                  <div
-                    key={j.id}
-                    onClick={() => handleSelect(j.id)}
-                    style={{
-                      height: 30,
-                      padding: "0 12px 0 22px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      borderBottom: "1px solid var(--v2-border-subtle)",
-                      background: selected === j.id ? "var(--v2-accent-deep)" : "transparent",
-                      borderLeft: selected === j.id ? "2px solid var(--v2-accent-brand)" : "2px solid transparent",
-                      boxShadow: selected === j.id ? "inset 0 0 12px var(--v2-accent-glow)" : "none",
-                      cursor: "pointer",
-                      fontSize: 11,
-                      transition: "background 80ms linear, box-shadow 120ms linear",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (selected !== j.id) e.currentTarget.style.background = "var(--v2-bg-hover)";
-                    }}
-                    onMouseLeave={(e) => {
-                      if (selected !== j.id) e.currentTarget.style.background = "transparent";
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: "50%",
-                        background: STATUS_DOT[j.status],
-                        flexShrink: 0,
-                        animation: j.status === "RUNNING" ? "v2-dot-pulse 1.2s ease-in-out infinite" : "none",
-                      }}
-                    />
-                    <span
-                      style={{
-                        flex: 1,
-                        color: "var(--v2-text-primary)",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        fontWeight: selected === j.id ? 600 : 400,
-                      }}
-                    >
-                      {j.label}
-                    </span>
-                    <span
-                      style={{
-                        fontFamily: "var(--v2-font-mono)",
-                        fontSize: 10,
-                        color: "var(--v2-text-muted)",
-                        width: 48,
-                        textAlign: "right",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {formatDuration(j.durationMs)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            );
-          })
+          <>
+            {/* layer sticky: rows posicionadas relativas ao viewport (imune ao
+                limite de altura/precisão — os tops são sempre pequenos) */}
+            <div style={{ position: "sticky", top: 0, height: 0, overflow: "visible", zIndex: 1 }}>
+              <div style={{ position: "relative", width: "100%" }}>{visibleRows}</div>
+            </div>
+            {/* spacer: dá a scrollbar do dia INTEIRO (comprimida se > teto) */}
+            <div style={{ height: displayH }} />
+          </>
         )}
       </div>
 
@@ -395,13 +778,15 @@ export default function MonitoringSidebarV2({
           borderTop: "1px solid var(--v2-border-subtle)",
           padding: "6px 12px",
           display: "flex",
-          justifyContent: "flex-end",
+          justifyContent: "space-between",
+          alignItems: "center",
           fontSize: 10,
           fontFamily: "var(--v2-font-mono)",
           color: "var(--v2-text-muted)",
           letterSpacing: "0.04em",
         }}
       >
+        <span>{windowed ? "windowed · server-driven" : ""}</span>
         <span style={{ color: "var(--v2-accent-brand)" }}>● live</span>
       </div>
     </aside>

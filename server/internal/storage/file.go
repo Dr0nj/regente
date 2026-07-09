@@ -119,11 +119,40 @@ func (s *FileStore) Delete(team, id string) error {
 	return nil
 }
 
+// FolderLayout — override POR FOLDER da grade de jobs soltos do canvas (UI-3).
+// Campo zero/ausente herda o default global da UI. Vive no stub
+// .regente-folder.yaml, então o layout viaja com o workspace (Git-nativo:
+// versionado, PR-ável, igual às definitions).
+type FolderLayout struct {
+	Columns int `yaml:"columns,omitempty" json:"columns,omitempty"`
+	MaxRows int `yaml:"maxRows,omitempty" json:"maxRows,omitempty"`
+}
+
+// folderMeta — shape do stub .regente-folder.yaml (marker + metadados da folder).
+type folderMeta struct {
+	Name   string        `yaml:"name"`
+	Layout *FolderLayout `yaml:"layout,omitempty"`
+}
+
 // FolderInfo — folder com contagem de jobs (F11.6).
 type FolderInfo struct {
-	Name     string `json:"name"`
-	JobCount int    `json:"jobCount"`
-	Archived bool   `json:"archived,omitempty"`
+	Name     string        `json:"name"`
+	JobCount int           `json:"jobCount"`
+	Archived bool          `json:"archived,omitempty"`
+	Layout   *FolderLayout `json:"layout,omitempty"` // UI-3: override de grade (nil = herda global)
+}
+
+// readFolderMeta lê e parseia o stub .regente-folder.yaml de um dir de folder.
+// Stub ausente/ilegível/antigo (sem layout) → meta vazia, nunca erro: o stub é
+// metadado opcional, não fonte de verdade de jobs.
+func readFolderMeta(dir string) folderMeta {
+	var meta folderMeta
+	raw, err := os.ReadFile(filepath.Join(dir, ".regente-folder.yaml"))
+	if err != nil {
+		return meta
+	}
+	_ = yaml.Unmarshal(raw, &meta)
+	return meta
 }
 
 // ListFolders retorna folders com contagem de jobs. Folders arquivados
@@ -166,7 +195,8 @@ func (s *FileStore) ListFolders() ([]FolderInfo, error) {
 				}
 			}
 		}
-		out = append(out, FolderInfo{Name: displayName, JobCount: count, Archived: archived})
+		meta := readFolderMeta(filepath.Join(s.definitionsDir(), name))
+		out = append(out, FolderInfo{Name: displayName, JobCount: count, Archived: archived, Layout: meta.Layout})
 	}
 	return out, nil
 }
@@ -189,6 +219,38 @@ func (s *FileStore) CreateFolder(name string) error {
 		if s.gitCommit {
 			s.commit(stub, fmt.Sprintf("regente: create folder %s", name))
 		}
+	}
+	return nil
+}
+
+// SetFolderLayout grava (ou remove, com layout=nil) o override de grade da
+// folder no stub .regente-folder.yaml, preservando o name. Mesmo caminho de
+// commit dos saves de definition — o layout é workspace, não estado de runtime.
+func (s *FileStore) SetFolderLayout(name string, layout *FolderLayout) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := validFolderName(name); err != nil {
+		return err
+	}
+	dir := filepath.Join(s.definitionsDir(), name)
+	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+		return fmt.Errorf("folder %q not found", name)
+	}
+	meta := readFolderMeta(dir)
+	if meta.Name == "" {
+		meta.Name = name
+	}
+	meta.Layout = layout
+	raw, err := yaml.Marshal(&meta)
+	if err != nil {
+		return err
+	}
+	stub := filepath.Join(dir, ".regente-folder.yaml")
+	if err := os.WriteFile(stub, append([]byte("# regente folder marker\n"), raw...), 0o644); err != nil {
+		return err
+	}
+	if s.gitCommit {
+		s.commit(stub, fmt.Sprintf("regente: layout folder %s", name))
 	}
 	return nil
 }

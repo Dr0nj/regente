@@ -69,6 +69,17 @@ const LAYOUT_MAX_ROWS = 30; // ao passar disso, alarga colunas em vez de crescer
 export type LayoutConfig = { columns: number; maxRows: number };
 export const DEFAULT_LAYOUT: LayoutConfig = { columns: LAYOUT_COLUMNS, maxRows: LAYOUT_MAX_ROWS };
 
+// UI-3 — overrides POR FOLDER (team → parcial). Vêm do .regente-folder.yaml via
+// GET /api/folders; campo ausente herda o global. Resolução única aqui para o
+// Monitoring e o Design usarem a MESMA regra.
+export type LayoutOverrides = ReadonlyMap<string, Partial<LayoutConfig>>;
+
+function resolveLayout(team: string, cfg: LayoutConfig, overrides?: LayoutOverrides | null): LayoutConfig {
+  const ov = overrides?.get(team);
+  if (!ov) return cfg;
+  return { columns: ov.columns ?? cfg.columns, maxRows: ov.maxRows ?? cfg.maxRows };
+}
+
 // readLayoutConfig — lê a config de layout do localStorage (default 10/30), com
 // clamp sensato. Mesma estratégia do toggle do minimap (pref de visão por browser).
 export function readLayoutConfig(): LayoutConfig {
@@ -357,11 +368,12 @@ function composeColumns<T extends { id: string; team?: string }>(
   allEdges: Array<{ source: string; target: string }>,
   nodeIdOf: (t: T) => string,
   cfg: LayoutConfig = DEFAULT_LAYOUT,
+  overrides?: LayoutOverrides | null,
 ): { nodes: Node[]; lanes: LaneInfo[] } {
   const grouped = groupByTeam(items);
   const layouts: InnerLayout[] = [];
   for (const [team, members] of grouped) {
-    layouts.push(layoutFolderInner(team, members, nodeIdOf, allEdges, cfg));
+    layouts.push(layoutFolderInner(team, members, nodeIdOf, allEdges, resolveLayout(team, cfg, overrides)));
   }
 
   const nodes: Node[] = [];
@@ -433,7 +445,7 @@ function hasAgentFor(def: JobDefinition | undefined, jobType: string, agents: Ag
   return agents.caps.has(jt);
 }
 
-export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT, agents?: AgentAvailability | null): Canvas {
+export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT, agents?: AgentAvailability | null, overrides?: LayoutOverrides | null): Canvas {
   // Edges a partir do upstream da definition, resolvidas para instances do mesmo dia.
   const defsById = new Map(defs.map((d) => [d.id, d] as const));
 
@@ -549,12 +561,13 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
     rawEdges,
     (inst) => `m-${inst.id}`,
     cfg,
+    overrides,
   );
 
   return { nodes, edges, lanes };
 }
 
-export function buildDesignCanvas(defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT): Canvas {
+export function buildDesignCanvas(defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT, overrides?: LayoutOverrides | null): Canvas {
   const edges: Edge[] = [];
   const rawEdges: Array<{ source: string; target: string }> = [];
   for (const def of defs) {
@@ -594,6 +607,7 @@ export function buildDesignCanvas(defs: JobDefinition[], cfg: LayoutConfig = DEF
     rawEdges,
     (def) => `d-${def.id}`,
     cfg,
+    overrides,
   );
 
   return { nodes, edges, lanes };

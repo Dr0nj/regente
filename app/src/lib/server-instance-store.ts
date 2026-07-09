@@ -151,9 +151,16 @@ function upsertFromEvent(payload: unknown): void {
 }
 
 // Cap de segurança do canvas legado (ReactFlow não virtualiza): nunca puxa mais
-// que LEGACY_CAP instances do dia. Acima disso, use o ViewPoint server-driven
-// (ScaleMonitor), que pagina/filtra no servidor e aguenta 100k–1M. P3/escala.
-const LEGACY_CAP = 2000;
+// que legacyCap() instances do dia. UI-1: o cap limita SÓ o desenho do grafo —
+// a sidebar ACTIVE JOBS virtualizada mostra o dia inteiro via summary/page
+// (windowed) e o ViewPoint (ScaleMonitor) cobre o drill-down a 100k–1M.
+// Configurável em Settings (regente:legacyCap); teto 5000 = parseLimit do server.
+const LEGACY_CAP_DEFAULT = 2000;
+export function legacyCap(): number {
+  if (typeof window === "undefined") return LEGACY_CAP_DEFAULT;
+  const v = parseInt(window.localStorage.getItem("regente:legacyCap") ?? "", 10);
+  return Number.isFinite(v) ? Math.min(5000, Math.max(500, v)) : LEGACY_CAP_DEFAULT;
+}
 
 // doFetch — UMA rodada de GET + reconcile por MERGE (nunca cache.clear()).
 // gen guard: se um fetch mais novo começou enquanto este aguardava a resposta,
@@ -175,7 +182,7 @@ async function doFetch(date: string): Promise<void> {
   const gen = ++fetchGen;
   const startedAt = Date.now();
   const arr = await api<ServerInstance[]>(
-    `/api/instances?date=${encodeURIComponent(date)}&limit=${LEGACY_CAP}`,
+    `/api/instances?date=${encodeURIComponent(date)}&limit=${legacyCap()}`,
   );
   if (gen !== fetchGen) return; // obsoleto: fetch mais novo já em voo/aplicado
 
@@ -521,4 +528,26 @@ export async function forceInstance(def: JobDefinition): Promise<JobInstance> {
 
 export async function refreshFromServer(): Promise<void> {
   await refresh();
+}
+
+// UI-1 — puxa UMA instance pro cache pelo id (sidebar windowed: o dia tem mais
+// jobs que o cap, a row clicada pode não estar no espelho local — sem isto o
+// drawer não abriria). Usa o LIKE do listInstances (q casa id OU definition_id,
+// daí o limit>1 + match exato aqui).
+export async function fetchInstanceById(id: string): Promise<JobInstance | null> {
+  const hit = cache.get(id);
+  if (hit) return hit;
+  try {
+    const date = lastFetchDate ?? todayOrderDate();
+    const arr = await api<ServerInstance[]>(
+      `/api/instances?date=${encodeURIComponent(date)}&q=${encodeURIComponent(id)}&limit=50`,
+    );
+    const exact = (arr ?? []).find((s) => s.id === id);
+    if (!exact) return null;
+    applyInstance(exact);
+    return cache.get(id) ?? null;
+  } catch (err) {
+    console.warn("[server-instances] fetchInstanceById failed", err);
+    return null;
+  }
 }

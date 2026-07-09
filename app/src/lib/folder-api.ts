@@ -10,10 +10,19 @@
 import { api, getDesignSessionId } from "@/lib/server-client";
 import { isServerMode } from "@/lib/server-client";
 
+// UI-3 — override POR FOLDER da grade de jobs soltos do canvas. Campo ausente
+// herda o global (Settings). Persistido no stub .regente-folder.yaml do
+// workspace (Git-nativo), não em localStorage: o layout é do TIME, não do browser.
+export interface FolderLayout {
+  columns?: number;
+  maxRows?: number;
+}
+
 export interface FolderInfo {
   name: string;
   jobCount: number;
   archived?: boolean;
+  layout?: FolderLayout;
 }
 
 function listPath(): string {
@@ -59,5 +68,14 @@ export async function archiveFolder(name: string): Promise<void> {
   if (!isServerMode()) return;
   await api(`/api/folders/${encodeURIComponent(name)}/archive`, {
     method: "POST",
+  });
+}
+
+// UI-3 — grava (ou limpa, com null/{}) o override de grade da folder.
+export async function setFolderLayout(name: string, layout: FolderLayout | null): Promise<void> {
+  if (!isServerMode()) return;
+  await api(`/api/folders/${encodeURIComponent(name)}/layout`, {
+    method: "PUT",
+    body: JSON.stringify(layout ?? {}),
   });
 }

@@ -38,7 +38,10 @@ import {
   bypassInstance,
   confirmInstance,
   forceInstance,
+  fetchInstanceById,
+  refreshInstancesFromServer,
 } from "@/lib/runtime-bridge";
+import { listFolders } from "@/lib/folder-api";
 import {
   getDefinitions,
   saveDefinition,
@@ -91,6 +94,7 @@ import {
   type AgentAvailability,
   type Canvas,
   type LayoutConfig,
+  type LayoutOverrides,
   type Mode,
 } from "./canvas-layout";
 import { listAgents } from "@/lib/agents-api";
@@ -150,9 +154,42 @@ function V2PreviewInner() {
   // editável em Settings; re-layouta o canvas quando muda (evento regente:layout-changed).
   const [layoutCfg, setLayoutCfg] = useState<LayoutConfig>(() => readLayoutConfig());
   useEffect(() => {
-    const sync = () => setLayoutCfg(readLayoutConfig());
+    const sync = () => {
+      setLayoutCfg(readLayoutConfig());
+      // O cap do canvas (regente:legacyCap) também mora em Settings: re-BUSCA o
+      // espelho do server (o fetch lê o cap na hora) — o notify() do store já
+      // re-renderiza via onInstanceChange do useOrchestratorData.
+      void refreshInstancesFromServer();
+    };
     window.addEventListener("regente:layout-changed", sync);
     return () => window.removeEventListener("regente:layout-changed", sync);
+  }, []);
+  // UI-3 — overrides de grade POR FOLDER (do .regente-folder.yaml, via
+  // GET /api/folders). Recarrega quando alguém salva layout/renomeia/cria folder.
+  const [folderLayouts, setFolderLayouts] = useState<LayoutOverrides | null>(null);
+  useEffect(() => {
+    if (!isServerMode()) return;
+    let dead = false;
+    const load = () =>
+      listFolders()
+        .then((fs) => {
+          if (dead) return;
+          const m = new Map<string, Partial<LayoutConfig>>();
+          for (const f of fs) {
+            if (!f.layout) continue;
+            const ov: Partial<LayoutConfig> = {};
+            if (f.layout.columns && f.layout.columns > 0) ov.columns = f.layout.columns;
+            if (f.layout.maxRows && f.layout.maxRows > 0) ov.maxRows = f.layout.maxRows;
+            if (ov.columns || ov.maxRows) m.set(f.name, ov);
+          }
+          setFolderLayouts(m.size > 0 ? m : null);
+        })
+        .catch(() => {});
+    void load();
+    const off = onServerEvent((ev) => {
+      if (ev.event === "folder.changed" || ev.event === "_connected") void load();
+    });
+    return () => { dead = true; off(); };
   }, []);
   const [unreadAlerts, setUnreadAlerts] = useState<number>(0);
 
@@ -464,8 +501,8 @@ function V2PreviewInner() {
   }, [instances, defs, effectiveFolders]);
 
   const canvas = useMemo<Canvas>(
-    () => (mode === "monitoring" ? buildMonitoringCanvas(filteredInstances, filteredDefs, layoutCfg, agentAvail) : buildDesignCanvas(designDefsWithDraft, layoutCfg)),
-    [mode, filteredInstances, filteredDefs, designDefsWithDraft, layoutCfg, agentAvail],
+    () => (mode === "monitoring" ? buildMonitoringCanvas(filteredInstances, filteredDefs, layoutCfg, agentAvail, folderLayouts) : buildDesignCanvas(designDefsWithDraft, layoutCfg, folderLayouts)),
+    [mode, filteredInstances, filteredDefs, designDefsWithDraft, layoutCfg, agentAvail, folderLayouts],
   );
 
   // Seleção threaded no prop CONTROLADO de nós. O ReactFlow guarda seleção no
@@ -619,7 +656,13 @@ function V2PreviewInner() {
   const handleSidebarSelect = useCallback((instId: string) => {
     setSelectedInstanceId(instId);
     focusNode(`m-${instId}`);
-  }, [focusNode]);
+    // UI-1 — sidebar windowed: a row clicada pode estar FORA do espelho local
+    // (dia > cap do grafo). Puxa a instance pro cache pra o drawer abrir; o
+    // syncInstances do onInstanceChange re-renderiza quando ela chegar.
+    if (isServerMode() && !instances.some((i) => i.id === instId)) {
+      void fetchInstanceById(instId);
+    }
+  }, [focusNode, instances]);
 
   /* ── Canvas node click ── */
   const onNodeClick: NodeMouseHandler = useCallback((evt, node) => {
@@ -1593,6 +1636,11 @@ function V2PreviewInner() {
               jobs={monitoringJobs}
               selectedId={selectedInstanceId}
               onSelect={handleSidebarSelect}
+              // UI-1 — dia > cap: a lista vira windowed server-driven (dia inteiro);
+              // o botão do aviso leva pro ViewPoint. O eye do FolderManager vale
+              // nos dois modos.
+              onOpenViewPoint={() => setScaleView(true)}
+              visibleFolders={visibleFolders}
               // D-2 — pause/resume de workflow (server mode; local não tem o endpoint)
               onPauseFolder={isServerMode() ? async (name) => {
                 try {

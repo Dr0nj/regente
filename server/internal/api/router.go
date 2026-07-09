@@ -129,6 +129,7 @@ func NewRouter(cfg Config) http.Handler {
 		r.With(s.requireWriterMW).Patch("/folders/{name}", s.renameFolder)
 		r.With(s.requireWriterMW).Delete("/folders/{name}", s.deleteFolder)
 		r.With(s.requireWriterMW).Post("/folders/{name}/archive", s.archiveFolder)
+		r.With(s.requireWriterMW).Put("/folders/{name}/layout", s.setFolderLayout) // UI-3: override de grade por folder
 
 		// Instances (runtime)
 		r.Get("/instances", s.listInstances)

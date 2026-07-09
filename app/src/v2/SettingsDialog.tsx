@@ -45,6 +45,15 @@ export function SettingsDialog({ onClose }: Props) {
     } catch { /* ignore */ }
     window.dispatchEvent(new Event("regente:layout-changed"));
   };
+  // UI-1 — cap do grafo do Monitoring (quantos jobs o ReactFlow desenha; a lista
+  // ACTIVE JOBS e o ViewPoint mostram o dia inteiro independente disto).
+  const [legacyCapVal, setLegacyCapVal] = useState<number>(() => lsInt("regente:legacyCap", 2000));
+  const writeLegacyCap = (v: number) => {
+    try {
+      window.localStorage.setItem("regente:legacyCap", String(v));
+    } catch { /* ignore */ }
+    window.dispatchEvent(new Event("regente:layout-changed"));
+  };
 
   // GitHub token
   const [git, setGit] = useState<GitStatus | null>(null);
@@ -259,7 +268,24 @@ export function SettingsDialog({ onClose }: Props) {
                 <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 6, display: "block", lineHeight: 1.5 }}>
                   Jobs SEM dependência viram uma grade de N colunas; ao passar de "máx. linhas" a grade alarga
                   (cria colunas) em vez de crescer pra baixo. Aplica por folder, na hora. Dependentes seguem o
-                  fluxo top-down (não muda).
+                  fluxo top-down (não muda). Cada folder pode ter override próprio (tela Folders → ícone de grade),
+                  salvo no workspace.
+                </span>
+              </div>
+
+              {/* UI-1 — cap do grafo do Monitoring (o quanto o ReactFlow desenha). */}
+              <div style={{ marginTop: 12, borderTop: "1px solid var(--v2-border-subtle)", paddingTop: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Cap do grafo (Monitoring)</div>
+                <label style={{ fontSize: 11, color: "var(--v2-text-secondary)" }}>
+                  Máx. de jobs desenhados no canvas
+                  <input type="number" min={500} max={5000} step={100} value={legacyCapVal}
+                    onChange={(e) => { const v = Math.max(500, Math.min(5000, Number(e.target.value) || 2000)); setLegacyCapVal(v); writeLegacyCap(v); }}
+                    style={{ display: "block", marginTop: 4, width: 90, padding: "5px 8px", fontSize: 13, background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)", borderRadius: 4, color: "var(--v2-text-primary)", outline: "none", boxSizing: "border-box" }} />
+                </label>
+                <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 6, display: "block", lineHeight: 1.5 }}>
+                  O grafo (ReactFlow) não virtualiza — este cap evita travar em dias gigantes. A lista
+                  ACTIVE JOBS mostra o dia INTEIRO independente do cap (virtualizada, server-driven acima
+                  dele) e o ViewPoint cobre o drill-down a 100k–1M. Subir o cap custa render do grafo.
                 </span>
               </div>
             </fieldset>

@@ -230,6 +230,15 @@ func (s *server) pageInstances(w http.ResponseWriter, r *http.Request) {
 	}
 	sqlStr := `SELECT ` + instanceCols + ` FROM instances WHERE ` + where + ` ORDER BY scheduled_at, id LIMIT ?`
 	args = append(args, limit+1) // +1 para saber se há próxima página
+	// offset opcional (UI-1): random-access pra sidebar virtualizada — um salto
+	// de scrollbar pede a página N sem andar cursor a cursor. Ignorado quando há
+	// cursor (keyset continua sendo o caminho barato do scroll sequencial).
+	if off := r.URL.Query().Get("offset"); off != "" && r.URL.Query().Get("cursor") == "" {
+		if n, err := strconv.Atoi(off); err == nil && n > 0 {
+			sqlStr += ` OFFSET ?`
+			args = append(args, n)
+		}
+	}
 	rows, err := s.cfg.DB.Query(sqlStr, args...)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
