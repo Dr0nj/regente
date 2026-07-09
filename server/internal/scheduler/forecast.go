@@ -37,7 +37,13 @@ type ForecastReport struct {
 func Forecast(defs []domain.JobDefinition, calendars map[string]*domain.Calendar, orderDate string) ForecastReport {
 	od, _ := time.Parse("2006-01-02", orderDate)
 
-	// 1. Filtrar elegíveis (calendar)
+	// 1. Filtrar elegíveis — MESMA regra do RunDaily (fonte única): enabled +
+	// IsScheduledOn (frequência + monthsOfYear + calendars include/exclude +
+	// shift). Antes o Forecast só olhava o calendar LEGADO (d.Calendar) via
+	// IsEligibleDate e ignorava frequency/months/multi-calendar/shift — um job
+	// "só segundas" aparecia elegível todo dia, divergindo do que a daily de fato
+	// materializava. Agora o dry-run casa o gating real (CTM-6).
+	store := mapCalLookup(calendars)
 	type entry struct {
 		def      domain.JobDefinition
 		eligible bool
@@ -46,15 +52,12 @@ func Forecast(defs []domain.JobDefinition, calendars map[string]*domain.Calendar
 	entries := map[string]*entry{}
 	for _, d := range defs {
 		e := &entry{def: d, eligible: d.Schedule.Enabled}
-		if !d.Schedule.Enabled {
+		switch {
+		case !d.Schedule.Enabled:
 			e.reason = "schedule.enabled=false"
-		}
-		if d.Calendar != "" {
-			cal := calendars[d.Calendar]
-			if !IsEligibleDate(cal, od) {
-				e.eligible = false
-				e.reason = "calendar " + d.Calendar + " excludes this date"
-			}
+		case !IsScheduledOn(d, od, store):
+			e.eligible = false
+			e.reason = scheduleReason(d, od)
 		}
 		entries[d.ID] = e
 	}
@@ -148,6 +151,64 @@ func Forecast(defs []domain.JobDefinition, calendars map[string]*domain.Calendar
 		}
 	}
 	return ForecastReport{OrderDate: orderDate, Jobs: jobs, Resources: peak}
+}
+
+// mapCalLookup adapta um mapa nome→calendar ao calLookup que IsScheduledOn usa
+// (o mesmo contrato do CalendarStore). Mapa nil → Get devolve (nil,nil), então o
+// gating cai só na frequência, idêntico ao RunDaily sem calStore.
+type mapCalLookup map[string]*domain.Calendar
+
+func (m mapCalLookup) Get(name string) (*domain.Calendar, error) { return m[name], nil }
+
+// scheduleReason descreve, em linguagem de operador, por que a def NÃO foi
+// agendada em `date` (quando IsScheduledOn deu false). É best-effort — aponta o
+// primeiro filtro que barra — para o painel de Forecast explicar a ausência.
+func scheduleReason(d domain.JobDefinition, date time.Time) string {
+	s := d.Schedule
+	if len(s.MonthsOfYear) > 0 && !containsInt(s.MonthsOfYear, int(date.Month())) {
+		return "mês fora de monthsOfYear"
+	}
+	switch s.Frequency {
+	case "weekly":
+		if len(s.DaysOfWeek) == 0 {
+			return "weekly sem daysOfWeek (schedule incompleto)"
+		}
+		return "weekday fora de daysOfWeek"
+	case "monthly":
+		if len(s.DaysOfMonth) == 0 {
+			return "monthly sem daysOfMonth (schedule incompleto)"
+		}
+		return "dia-do-mês fora de daysOfMonth"
+	case "businessday":
+		return "não é o N-ésimo dia útil configurado"
+	case "advanced":
+		return "não casa a regra avançada '" + s.AdvancedRule + "'"
+	}
+	// Frequência casou: sobrou o calendar (include/exclude) ou o shift barrando.
+	return "calendar/shift exclui esta data"
+}
+
+// ForecastRange roda o Forecast por `days` dias a partir de `from` (inclusive) —
+// a visão "≥1 semana à frente" do Control-M. Cada dia passa pela MESMA regra de
+// gating do RunDaily (via Forecast → IsScheduledOn): calendars, frequência,
+// meses, deps (ondas topológicas) e pico de recursos. days é limitado a [1,366].
+func ForecastRange(defs []domain.JobDefinition, calendars map[string]*domain.Calendar, from string, days int) []ForecastReport {
+	if days < 1 {
+		days = 1
+	}
+	if days > 366 {
+		days = 366
+	}
+	start, err := time.Parse("2006-01-02", from)
+	if err != nil {
+		return nil
+	}
+	out := make([]ForecastReport, 0, days)
+	for i := 0; i < days; i++ {
+		od := start.AddDate(0, 0, i).Format("2006-01-02")
+		out = append(out, Forecast(defs, calendars, od))
+	}
+	return out
 }
 
 // helper minimal sscanf "HH:MM"

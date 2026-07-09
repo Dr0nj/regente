@@ -223,6 +223,31 @@ func (s *server) getForecast(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, report)
 }
 
+// getForecastRange — Forecast de N dias à frente (Control-M "≥1 semana"). Mesmo
+// gating do RunDaily por dia (via IsScheduledOn). `from` default = hoje; `days`
+// default = 7, clamp [1,366]. Devolve um ForecastReport por dia.
+func (s *server) getForecastRange(w http.ResponseWriter, r *http.Request) {
+	from := r.URL.Query().Get("from")
+	if from == "" {
+		from = time.Now().Format("2006-01-02")
+	}
+	days := 7
+	if v := r.URL.Query().Get("days"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			days = n
+		}
+	}
+	defs := s.cfg.Scheduler.Defs()
+	cals := map[string]*domain.Calendar{}
+	if cs := s.cfg.Scheduler.Calendars(); cs != nil {
+		list, _ := cs.List()
+		for i := range list {
+			cals[list[i].Name] = &list[i]
+		}
+	}
+	writeJSON(w, 200, scheduler.ForecastRange(defs, cals, from, days))
+}
+
 // === F22 — Analytics ===
 
 func (s *server) analyticsSummary(w http.ResponseWriter, r *http.Request) {

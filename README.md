@@ -132,8 +132,10 @@ daily ou via Force Order manual.
   (um job imprime `%%SET NOME=VALOR` e outro lê) e **cálculo de datas** `%%ODATE±N`/`±NB`
   (offset em dias corridos ou úteis, ciente do calendário do job). Janela que fecha vira
   gate `WINDOW_CLOSED`. Toda a lógica de gating passa pela **mesma fonte única** do Explain.
-- 🟢 **Engines de paridade** — calendars, resources/quotas, conditions, variáveis
-  globais (interpolação), SLA e forecast/analytics.
+- 🟢 **Engines de paridade** — calendars (dias úteis N-ésimos, 1º dia útil,
+  include/exclude, feriados, meses), resources/quotas (lock exclusivo, pool com
+  fila), conditions, variáveis globais (interpolação), SLA e forecast/analytics
+  (dry-run **≥1 semana à frente** pelo mesmo gating da daily).
 - 🟢 **Token do GitHub pela UI** — configurável em runtime (Settings), persistido
   server-side, sem precisar subir o server com `GITHUB_TOKEN`.
 - 🟢 **Enterprise readiness** — backend **Postgres** (além de SQLite), **leader

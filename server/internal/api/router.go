@@ -255,6 +255,7 @@ func NewRouter(cfg Config) http.Handler {
 
 		// F21 Forecast
 		r.Get("/forecast", s.getForecast)
+		r.Get("/forecast/range", s.getForecastRange) // ≥1 semana à frente (CTM-6)
 		// F22 Analytics
 		r.Get("/analytics/summary", s.analyticsSummary)
 		r.Get("/analytics/top-failing", s.analyticsTopFailing)
