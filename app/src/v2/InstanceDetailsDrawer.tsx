@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { JobInstance } from "@/lib/orchestrator-model";
+import type { JobInstance, JobDefinition, JobSchedule } from "@/lib/orchestrator-model";
 import {
   fetchInstanceEvents,
   type InstanceEvent,
@@ -14,17 +14,22 @@ import {
   fetchRCA,
   type RCA,
 } from "@/lib/runtime-bridge";
-import { injectFailure } from "@/lib/differentials-api";
+import { injectFailure, fetchPerfForecast, type PerfForecast } from "@/lib/differentials-api";
 import { isServerMode } from "@/lib/server-client";
 import ForecastPanel from "./ForecastPanel";
 import { toast } from "./Toast";
 import { useResizablePanel, ResizeHandle } from "./resizable";
 
 /* ──────────────────────────────────────────────────────────────
-   InstanceDetailsDrawer — painel lateral direito com ações
+   InstanceDetailsDrawer — painel lateral direito (Monitoring).
    ──────────────────────────────────────────────────────────────
-   Estilo PicPay: preto, denso, mono para dados técnicos,
-   botões compactos semânticos.
+   Reestruturado em abas nomeadas (2026-07-09):
+     General · Output · Logs · Statistics · Schedule ·
+     Dependencies · Neighborhood · Why not?
+   A instance é IMUTÁVEL (snapshot da ordem). Schedule/Dependencies
+   traduzem a DEFINITION de desenho (rótulo "design", read-only) —
+   o que o usuário pediu para consultar. Runtime (output/logs/stats/
+   why-not/neighborhood) vem da instance e dos endpoints do server.
    ────────────────────────────────────────────────────────────── */
 
 export interface InstanceActionHandlers {
@@ -71,6 +76,13 @@ function fmtDuration(ms?: number): string {
   return `${m}m${s.toString().padStart(2, "0")}s`;
 }
 
+function fmtVal(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  try { return JSON.stringify(v); } catch { return String(v); }
+}
+
 interface ActionButton {
   label: string;
   onClick: () => void;
@@ -78,26 +90,50 @@ interface ActionButton {
   show: boolean;
 }
 
+/* ── Abas ── */
+type Tab = "general" | "output" | "logs" | "stats" | "schedule" | "deps" | "neighborhood" | "whynot";
+const TAB_LABEL: Record<Tab, string> = {
+  general: "General",
+  output: "Output",
+  logs: "Logs",
+  stats: "Statistics",
+  schedule: "Schedule",
+  deps: "Dependencies",
+  neighborhood: "Neighborhood",
+  whynot: "Why not?",
+};
+const TAB_ORDER: Tab[] = ["general", "output", "logs", "stats", "schedule", "deps", "neighborhood", "whynot"];
+
 export default function InstanceDetailsDrawer({
   instance,
+  definition,
+  allDefs = [],
   handlers,
 }: {
   instance: JobInstance;
+  /** Definition de desenho correspondente (para Schedule/Dependencies/Description). */
+  definition?: JobDefinition;
+  /** Todas as defs do escopo — para calcular downstream (triggers) sem fetch. */
+  allDefs?: JobDefinition[];
   handlers: InstanceActionHandlers;
 }) {
   const status = instance.status;
   const color = STATUS_COLOR[status];
-  const [tab, setTab] = useState<"details" | "log">("details");
+  const [tab, setTab] = useState<Tab>("general");
+
+  // Downstream estático: jobs cujo upstream aponta para este (mesma lógica do Design).
+  const triggers = allDefs.filter((d) => (d.upstream ?? []).some((u) => u.from === instance.definitionId));
+  const depsCount = (definition?.upstream?.length ?? 0) + triggers.length;
 
   // D-11 chaos — falha sintética pelo fluxo REAL (retry/actions/alerts reagem
   // como numa falha orgânica). Server-mode only; confirmação explícita.
   const chaosInject = async () => {
-    if (!window.confirm(`Injetar FALHA em "${instance.label}"?\n\nO job vira NOTOK pelo fluxo real — retry, On-Do e alertas disparam como numa falha de produção.`)) return;
+    if (!window.confirm(`Inject FAILURE into "${instance.label}"?\n\nThe job becomes NOTOK through the real path — retry, On-Do and alerts fire as in a production failure.`)) return;
     try {
       await injectFailure(instance.id);
-      toast.info("Falha injetada (chaos)", { detail: instance.id });
+      toast.info("Failure injected (chaos)", { detail: instance.id });
     } catch (e) {
-      toast.error("Chaos falhou", { detail: e instanceof Error ? e.message : String(e) });
+      toast.error("Chaos failed", { detail: e instanceof Error ? e.message : String(e) });
     }
   };
 
@@ -113,7 +149,7 @@ export default function InstanceDetailsDrawer({
   ]).filter((a) => a.show);
 
   const { width, onMouseDown, reset } = useResizablePanel({
-    storageKey: "regente.panel.instance.w", defaultWidth: 340, min: 280, max: 680, edge: "left",
+    storageKey: "regente.panel.instance.w", defaultWidth: 360, min: 300, max: 720, edge: "left",
   });
 
   return (
@@ -198,120 +234,39 @@ export default function InstanceDetailsDrawer({
         </button>
       </header>
 
-      {/* Tabs */}
-      <div
-        style={{
-          display: "flex",
-          borderBottom: "1px solid var(--v2-border-subtle)",
-          fontFamily: "var(--v2-font-mono)",
-          fontSize: 10,
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
-        }}
-      >
-        {(["details", "log"] as const).map((t) => {
-          const active = tab === t;
-          return (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              style={{
-                flex: 1,
-                padding: "7px 8px",
-                background: active ? "var(--v2-bg-elevated)" : "transparent",
-                color: active ? "var(--v2-accent-brand)" : "var(--v2-text-muted)",
-                border: "none",
-                borderBottom: active ? "2px solid var(--v2-accent-brand)" : "2px solid transparent",
-                cursor: "pointer",
-                fontWeight: 600,
-              }}
-            >
-              {t}
-            </button>
-          );
-        })}
+      {/* Tabs — pills de luxo (v2-tabrail / v2-tab) */}
+      <div className="v2-tabrail" style={{ borderBottom: "1px solid var(--v2-border-subtle)" }}>
+        {TAB_ORDER.map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={tab === t ? "v2-tab v2-tab-active" : "v2-tab"}
+          >
+            {TAB_LABEL[t]}
+            {t === "deps" && depsCount > 0 ? <span className="v2-tab-count">{depsCount}</span> : null}
+          </button>
+        ))}
       </div>
 
       {/* Body */}
-      {tab === "details" ? (
-      <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px", fontSize: 11 }}>
-        {(status === "WAITING" || status === "CANCELLED") && (
-          <ExplainPanel instanceId={instance.id} status={status} onConfirm={handlers.onConfirm} />
-        )}
-        {(status === "NOTOK" || status === "CANCELLED" || status === "WAITING") && (
-          <RCAPanel instanceId={instance.id} />
-        )}
-        {(status === "WAITING" || status === "HOLD" || status === "RUNNING") && (
-          <BlastPanel instanceId={instance.id} />
-        )}
-        <NeighborhoodPanel instanceId={instance.id} />
-
-        {/* D-4 — forecast de duração por histórico (some sem 2+ execuções OK) */}
-        <ForecastPanel defId={instance.definitionId} isRunning={status === "RUNNING"} />
-
-        <Section title="Timeline">
-          <Field label="Ordered"    value={fmtTime(instance.createdAt)} />
-          <Field label="Scheduled"  value={fmtTime(instance.scheduledAt)} />
-          <Field label="Started"    value={fmtTime(instance.startedAt)} />
-          <Field label="Completed"  value={fmtTime(instance.completedAt)} />
-          <Field label="Duration"   value={fmtDuration(instance.durationMs)} />
-          <Field label="Attempts"   value={`${instance.attempts} / ${instance.retries + 1}`} />
-        </Section>
-
-        <Section title="Config">
-          <Field label="Definition" value={instance.definitionId} mono />
-          <Field label="Order date" value={instance.orderDate} mono />
-          <Field label="Manual"     value={instance.manual ? "yes" : "no"} />
-          <Field label="Dry run"    value={instance.dryRun ? "yes" : "no"} />
-          <Field label="Timeout"    value={`${instance.timeout}s`} />
-        </Section>
-
-        {instance.error && (
-          <Section title="Error">
-            <pre
-              style={{
-                margin: 0,
-                padding: "6px 8px",
-                background: "var(--v2-bg-deep)",
-                border: "1px solid var(--v2-border-subtle)",
-                borderRadius: 2,
-                fontFamily: "var(--v2-font-mono)",
-                fontSize: 10,
-                color: "var(--v2-status-failed)",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-              }}
-            >
-              {instance.error}
-            </pre>
-          </Section>
-        )}
-
-        {instance.output && Object.keys(instance.output).length > 0 && (
-          <Section title="Output">
-            <pre
-              style={{
-                margin: 0,
-                padding: "6px 8px",
-                background: "var(--v2-bg-deep)",
-                border: "1px solid var(--v2-border-subtle)",
-                borderRadius: 2,
-                fontFamily: "var(--v2-font-mono)",
-                fontSize: 10,
-                color: "var(--v2-text-secondary)",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                maxHeight: 140,
-                overflowY: "auto",
-              }}
-            >
-              {JSON.stringify(instance.output, null, 2)}
-            </pre>
-          </Section>
-        )}
-      </div>
-      ) : (
+      {tab === "logs" ? (
         <LogPanel instanceId={instance.id} status={status} />
+      ) : (
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px", fontSize: 11 }}>
+          {tab === "general" && <GeneralTab instance={instance} definition={definition} />}
+          {tab === "output" && <OutputTab instance={instance} />}
+          {tab === "stats" && <StatsTab instance={instance} />}
+          {tab === "schedule" && <ScheduleTab definition={definition} />}
+          {tab === "deps" && <DepsTab definition={definition} triggers={triggers} allDefs={allDefs} />}
+          {tab === "neighborhood" && (
+            <>
+              <NeighborhoodPanel instanceId={instance.id} autoLoad />
+              <BlastPanel instanceId={instance.id} />
+              <ForecastPanel defId={instance.definitionId} isRunning={status === "RUNNING"} />
+            </>
+          )}
+          {tab === "whynot" && <WhyNotTab instanceId={instance.id} status={status} onConfirm={handlers.onConfirm} />}
+        </div>
       )}
 
       {/* Actions */}
@@ -368,9 +323,384 @@ export default function InstanceDetailsDrawer({
   );
 }
 
+/* ════════════════════════════════════════════════════════════════
+   GENERAL — detalhes do job, timeline e parâmetros/variáveis.
+   ════════════════════════════════════════════════════════════════ */
+
+function GeneralTab({ instance, definition }: { instance: JobInstance; definition?: JobDefinition }) {
+  const description = definition?.schedule?.description?.trim();
+
+  // Parâmetros = variáveis snapshotadas na instance (array) ∪ variáveis locais
+  // vivas da definition (mapa F18). O snapshot vence (foto da ordem).
+  const params: Array<[string, string]> = [];
+  const seen = new Set<string>();
+  for (const v of instance.variables ?? []) { params.push([v.key, v.value]); seen.add(v.key); }
+  for (const [k, val] of Object.entries(definition?.localVars ?? {})) {
+    if (!seen.has(k)) params.push([k, val]);
+  }
+
+  // Config de execução = actionConfig visível (esconde chaves internas _*).
+  const execEntries = Object.entries(instance.actionConfig ?? {})
+    .filter(([k]) => !k.startsWith("_"));
+
+  return (
+    <>
+      <Section title="Job details">
+        <Field label="Job Name" value={instance.label} />
+        <Field
+          label="Application"
+          value={definition?.application ?? "—"}
+          hint={definition?.application ? undefined : "not configured yet"}
+        />
+        <Field label="Job Type" value={instance.jobType} />
+        <Field label="Folder" value={instance.team ?? definition?.team ?? "—"} />
+        {definition?.environment && <Field label="Environment" value={definition.environment} />}
+      </Section>
+
+      <Section title="Description">
+        {description ? (
+          <div style={{ fontSize: 11, lineHeight: 1.5, color: "var(--v2-text-secondary)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+            {description}
+          </div>
+        ) : (
+          <Muted>No description. Add one in Design to explain what this job does.</Muted>
+        )}
+      </Section>
+
+      <Section title="Timeline">
+        <Field label="Ordered"    value={fmtTime(instance.createdAt)} />
+        <Field label="Scheduled"  value={fmtTime(instance.scheduledAt)} />
+        <Field label="Started"    value={fmtTime(instance.startedAt)} />
+        <Field label="Completed"  value={fmtTime(instance.completedAt)} />
+        <Field label="Duration"   value={fmtDuration(instance.durationMs)} />
+        <Field label="Attempts"   value={`${instance.attempts} / ${instance.retries + 1}`} />
+        {instance.carriedFrom && <Field label="Carried from" value={instance.carriedFrom} mono />}
+      </Section>
+
+      <Section title="Parameters">
+        {params.length === 0 ? (
+          <Muted>No parameters set. Variables you define (Design → Variables) are injected here at execution.</Muted>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {params.map(([k, v]) => <KV key={k} k={k} v={v} />)}
+          </div>
+        )}
+      </Section>
+
+      <Section title="Execution config">
+        <Field label="Order date" value={instance.orderDate} mono />
+        <Field label="Manual"     value={instance.manual ? "yes" : "no"} />
+        <Field label="Dry run"    value={instance.dryRun ? "yes" : "no"} />
+        <Field label="Timeout"    value={`${instance.timeout}s`} />
+        {execEntries.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
+            {execEntries.map(([k, v]) => <KV key={k} k={k} v={fmtVal(v)} />)}
+          </div>
+        )}
+      </Section>
+    </>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════
+   OUTPUT — erro + saída da execução.
+   ════════════════════════════════════════════════════════════════ */
+
+function OutputTab({ instance }: { instance: JobInstance }) {
+  const hasOutput = instance.output && Object.keys(instance.output).length > 0;
+  if (!instance.error && !hasOutput) {
+    return <Muted>No output produced by this run yet.</Muted>;
+  }
+  return (
+    <>
+      {instance.error && (
+        <Section title="Error">
+          <Pre tone="var(--v2-status-failed)">{instance.error}</Pre>
+        </Section>
+      )}
+      {hasOutput && (
+        <Section title="Output">
+          <Pre tone="var(--v2-text-secondary)" maxHeight={480}>
+            {JSON.stringify(instance.output, null, 2)}
+          </Pre>
+        </Section>
+      )}
+    </>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════
+   STATISTICS — métricas desta execução + agregados de duração.
+   ════════════════════════════════════════════════════════════════ */
+
+function StatsTab({ instance }: { instance: JobInstance }) {
+  const [pf, setPf] = useState<PerfForecast | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setLoaded(false);
+    fetchPerfForecast(instance.definitionId).then((out) => {
+      if (!alive) return;
+      setPf(out);
+      setLoaded(true);
+    });
+    return () => { alive = false; };
+  }, [instance.definitionId]);
+
+  const hasHistory = pf && pf.samples.length >= 2;
+
+  return (
+    <>
+      <Section title="This run">
+        <Field label="Status"    value={STATUS_LABEL[instance.status]} />
+        <Field label="Duration"  value={fmtDuration(instance.durationMs)} />
+        <Field label="Attempts"  value={`${instance.attempts} / ${instance.retries + 1}`} />
+        <Field label="Timeout"   value={`${instance.timeout}s`} />
+        {instance.cycleRuns != null && instance.cycleRuns > 0 && (
+          <Field label="Cycle runs" value={String(instance.cycleRuns)} />
+        )}
+        <Field label="Order date" value={instance.orderDate} mono />
+      </Section>
+
+      <Section title="Duration history">
+        {!loaded && <Muted>loading…</Muted>}
+        {loaded && !hasHistory && <Muted>Not enough history yet — needs at least 2 successful runs.</Muted>}
+        {loaded && hasHistory && pf && (
+          <>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+              <StatTile label="p50" value={fmtDuration(pf.p50Ms)} />
+              <StatTile label="p90" value={fmtDuration(pf.p90Ms)} />
+              <StatTile label="next ~" value={fmtDuration(pf.nextMs)} tone={pf.slower ? "var(--v2-status-failed)" : undefined} />
+              <StatTile label="samples" value={String(pf.samples.length)} />
+            </div>
+            {pf.slower && (
+              <div style={{ marginTop: 8, fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-status-failed)", border: "1px solid var(--v2-status-failed)", borderRadius: 3, padding: "3px 7px", display: "inline-block" }}>
+                ▲ trending slower
+              </div>
+            )}
+          </>
+        )}
+      </Section>
+    </>
+  );
+}
+
+function StatTile({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      <span style={{ fontSize: 9, color: "var(--v2-text-muted)", letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</span>
+      <span style={{ fontSize: 14, fontFamily: "var(--v2-font-mono)", color: tone ?? "var(--v2-text-primary)" }}>{value}</span>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════
+   SCHEDULE — tradução read-only do schedule de DESENHO.
+   ════════════════════════════════════════════════════════════════ */
+
+const DOW_LABEL: Record<string, string> = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
+const MONTH_LABEL = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const ADV_LABEL: Record<string, string> = {
+  "first-businessday": "First business day",
+  "last-businessday": "Last business day",
+  "first-businessday-not-monday": "First business day (not Monday)",
+  "penultimate-businessday": "Penultimate business day",
+};
+function ordinal(n: number): string {
+  if (n === -1) return "last";
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+function describeFrequency(s: JobSchedule): string {
+  const f = s.frequency ?? "daily";
+  switch (f) {
+    case "daily": return "Every day";
+    case "weekly": return s.daysOfWeek?.length ? `Weekly · ${s.daysOfWeek.map((d) => DOW_LABEL[d] ?? d).join(", ")}` : "Weekly";
+    case "monthly": return s.daysOfMonth?.length ? `Monthly · day ${s.daysOfMonth.map((d) => (d === -1 ? "last" : d)).join(", ")}` : "Monthly";
+    case "businessday": return s.nthBusinessDays?.length ? `Business day · ${s.nthBusinessDays.map(ordinal).join(", ")}` : "Business day";
+    case "advanced": return s.advancedRule ? (ADV_LABEL[s.advancedRule] ?? s.advancedRule) : "Advanced";
+    default: return String(f);
+  }
+}
+const SHIFT_LABEL: Record<string, string> = {
+  "next-businessday": "Roll to next business day",
+  "prev-businessday": "Roll to previous business day",
+};
+
+function ScheduleTab({ definition }: { definition?: JobDefinition }) {
+  if (!definition) {
+    return <Muted>Definition not available — this instance's design schedule can't be shown (the job may have been deleted or renamed).</Muted>;
+  }
+  const s = definition.schedule;
+  const window = `${s.windowFrom || "—"} → ${s.windowTo || "—"}`;
+  const calendars = [
+    ...(definition.calendar ? [{ name: definition.calendar, mode: "include" as const }] : []),
+    ...(definition.calendars ?? []),
+  ];
+
+  return (
+    <>
+      <div style={{ marginBottom: 10, fontSize: 10, color: "var(--v2-text-muted)", lineHeight: 1.45 }}>
+        Read-only translation of the <b style={{ color: "var(--v2-text-secondary)" }}>design</b> schedule — edit it in Design.
+      </div>
+      <Section title="When">
+        <Field label="Status" value={s.enabled ? "Enabled" : "Disabled"} tone={s.enabled ? "var(--v2-status-ok)" : "var(--v2-text-muted)"} />
+        <Field label="Frequency" value={describeFrequency(s)} />
+        {s.monthsOfYear?.length ? (
+          <Field label="Months" value={s.monthsOfYear.map((m) => MONTH_LABEL[m] ?? m).join(", ")} />
+        ) : null}
+        {s.shift && s.shift !== "none" && SHIFT_LABEL[s.shift] && (
+          <Field label="Roll" value={SHIFT_LABEL[s.shift]} />
+        )}
+        {s.timezone && <Field label="Timezone" value={s.timezone} mono />}
+      </Section>
+
+      <Section title="Runtime window">
+        <Field label="Run at" value={s.runAt || "—"} mono />
+        <Field label="Window (from → to)" value={window} mono />
+        <Field label="Cyclic" value={s.cyclic ? `every ${s.intervalMin ?? "?"} min${s.cyclicMaxRuns ? `, max ${s.cyclicMaxRuns} runs` : ""}` : "no"} tone={s.cyclic ? "var(--v2-accent-brand)" : undefined} />
+        <Field label="Keep active" value={s.keepActive ? `${s.keepActive} extra daily carry-over(s)` : "default"} />
+      </Section>
+
+      {calendars.length > 0 && (
+        <Section title="Calendars">
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {calendars.map((c, i) => (
+              <div key={`${c.name}-${i}`} style={depRow}>
+                <span style={{ flex: 1, fontSize: 11, fontFamily: "var(--v2-font-mono)" }}>{c.name}</span>
+                <span style={{ fontSize: 9, color: c.mode === "exclude" ? "var(--v2-status-failed)" : "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)", textTransform: "uppercase" }}>{c.mode}</span>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+    </>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════
+   DEPENDENCIES — relacionamentos, recursos e conditions (design).
+   ════════════════════════════════════════════════════════════════ */
+
+function DepsTab({ definition, triggers, allDefs }: { definition?: JobDefinition; triggers: JobDefinition[]; allDefs: JobDefinition[] }) {
+  const labelOf = (id: string) => allDefs.find((d) => d.id === id)?.label ?? id;
+  const upstream = definition?.upstream ?? [];
+  const resources = Object.entries(definition?.resources ?? {});
+  const condIn = definition?.conditionsIn ?? [];
+  const condOutAdd = definition?.conditionsOutAdd ?? [];
+  const condOutRemove = definition?.conditionsOutRemove ?? [];
+  const sla = definition?.sla;
+  const sub = definition?.subWorkflow;
+  const nothing =
+    upstream.length === 0 && triggers.length === 0 && resources.length === 0 &&
+    condIn.length === 0 && condOutAdd.length === 0 && condOutRemove.length === 0 && !sla && !sub;
+
+  return (
+    <>
+      <Section title="Depends on">
+        {upstream.length === 0 ? (
+          <Muted>Nothing upstream — this job doesn't wait on other jobs.</Muted>
+        ) : (
+          upstream.map((u) => (
+            <div key={u.from} style={depRow}>
+              <span style={{ flex: 1, fontSize: 11, fontFamily: "var(--v2-font-mono)" }}>{labelOf(u.from)}</span>
+              <span style={{ fontSize: 9, color: "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)" }}>{u.condition}</span>
+            </div>
+          ))
+        )}
+      </Section>
+
+      <Section title="Triggers">
+        {triggers.length === 0 ? (
+          <Muted>No job depends on this one.</Muted>
+        ) : (
+          triggers.map((d) => {
+            const cond = (d.upstream ?? []).find((u) => u.from === definition?.id)?.condition;
+            return (
+              <div key={d.id} style={depRow}>
+                <span style={{ flex: 1, fontSize: 11, fontFamily: "var(--v2-font-mono)" }}>{d.label}</span>
+                <span style={{ fontSize: 9, color: "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)" }}>{cond}</span>
+              </div>
+            );
+          })
+        )}
+      </Section>
+
+      {resources.length > 0 && (
+        <Section title="Resource requirements">
+          {resources.map(([name, qty]) => (
+            <div key={name} style={depRow}>
+              <span style={{ flex: 1, fontSize: 11, fontFamily: "var(--v2-font-mono)" }}>{name}</span>
+              <span style={{ fontSize: 10, color: "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)" }}>×{qty}</span>
+            </div>
+          ))}
+        </Section>
+      )}
+
+      {(condIn.length > 0 || condOutAdd.length > 0 || condOutRemove.length > 0) && (
+        <Section title="Conditions">
+          {condIn.length > 0 && <CondList label="requires (IN)" items={condIn} tone="var(--v2-status-waiting)" />}
+          {condOutAdd.length > 0 && <CondList label="adds on OK (OUT +)" items={condOutAdd} tone="var(--v2-status-ok)" />}
+          {condOutRemove.length > 0 && <CondList label="removes on OK (OUT −)" items={condOutRemove} tone="var(--v2-status-failed)" />}
+        </Section>
+      )}
+
+      {sub && (
+        <Section title="Sub-workflow">
+          <Field label="Waits for folder" value={sub.folder} mono />
+        </Section>
+      )}
+
+      {sla && (
+        <Section title="SLA">
+          {sla.expectedDurationMin != null && <Field label="Expected duration" value={`${sla.expectedDurationMin} min`} />}
+          {sla.deadlineHM && <Field label="Deadline" value={sla.deadlineHM} mono />}
+          {sla.severity && <Field label="Severity" value={sla.severity} />}
+        </Section>
+      )}
+
+      {nothing && <Muted>No dependencies, resources or conditions configured for this job.</Muted>}
+    </>
+  );
+}
+
+function CondList({ label, items, tone }: { label: string; items: string[]; tone: string }) {
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ fontSize: 8.5, color: "var(--v2-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>{label}</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        {items.map((c) => (
+          <span key={c} style={{ fontSize: 9.5, fontFamily: "var(--v2-font-mono)", color: tone, border: `1px solid ${tone}`, borderRadius: 2, padding: "1px 6px" }}>{c}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════
+   WHY NOT? — Explain (bloqueios/confirm) + causa raiz.
+   ════════════════════════════════════════════════════════════════ */
+
+function WhyNotTab({ instanceId, status, onConfirm }: { instanceId: string; status: JobInstance["status"]; onConfirm: (id: string) => void }) {
+  return (
+    <>
+      <ExplainPanel instanceId={instanceId} status={status} onConfirm={onConfirm} />
+      <RCAPanel instanceId={instanceId} />
+      {!isServerMode() && (
+        <Muted>Live explanations (blockers, root cause) are available when connected to a Regente server.</Muted>
+      )}
+    </>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Primitivos de layout
+   ════════════════════════════════════════════════════════════════ */
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 14 }}>
+    <div style={{ marginBottom: 16 }}>
       <div
         style={{
           fontSize: 9,
@@ -388,35 +718,77 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Field({ label, value, mono, tone, hint }: { label: string; value: string; mono?: boolean; tone?: string; hint?: string }) {
   return (
     <div
       style={{
         display: "flex",
         justifyContent: "space-between",
+        alignItems: "baseline",
+        gap: 8,
         padding: "3px 0",
         borderBottom: "1px dashed var(--v2-border-subtle)",
         fontSize: 11,
       }}
     >
-      <span style={{ color: "var(--v2-text-muted)" }}>{label}</span>
+      <span style={{ color: "var(--v2-text-muted)", flexShrink: 0 }}>{label}</span>
       <span
         style={{
-          color: "var(--v2-text-primary)",
+          color: tone ?? "var(--v2-text-primary)",
           fontFamily: mono ? "var(--v2-font-mono)" : undefined,
           fontSize: mono ? 10 : 11,
-          maxWidth: "60%",
+          maxWidth: "62%",
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
+          textAlign: "right",
         }}
-        title={value}
+        title={hint ? `${value} — ${hint}` : value}
       >
         {value}
+        {hint && <span style={{ color: "var(--v2-text-muted)", fontStyle: "italic", marginLeft: 6, fontSize: 9 }}>{hint}</span>}
       </span>
     </div>
   );
 }
+
+function KV({ k, v }: { k: string; v: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "4px 8px", background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-subtle)", borderRadius: 3 }}>
+      <span style={{ fontSize: 9.5, fontFamily: "var(--v2-font-mono)", color: "var(--v2-accent-brand)", wordBreak: "break-all" }}>{k}</span>
+      <span style={{ fontSize: 10.5, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-secondary)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{v || "—"}</span>
+    </div>
+  );
+}
+
+function Muted({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 10.5, color: "var(--v2-text-muted)", lineHeight: 1.5 }}>{children}</div>;
+}
+
+function Pre({ children, tone, maxHeight }: { children: React.ReactNode; tone: string; maxHeight?: number }) {
+  return (
+    <pre
+      style={{
+        margin: 0,
+        padding: "6px 8px",
+        background: "var(--v2-bg-canvas)",
+        border: "1px solid var(--v2-border-subtle)",
+        borderRadius: 2,
+        fontFamily: "var(--v2-font-mono)",
+        fontSize: 10,
+        color: tone,
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
+        maxHeight,
+        overflowY: maxHeight ? "auto" : undefined,
+      }}
+    >
+      {children}
+    </pre>
+  );
+}
+
+const depRow: React.CSSProperties = { display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-subtle)", borderRadius: 3 };
 
 const KIND_COLOR: Record<string, string> = {
   ordered:        "var(--v2-text-muted)",
@@ -440,7 +812,7 @@ function fmtTS(ts: string): string {
     "." + String(d.getMilliseconds()).padStart(3, "0");
 }
 
-/* ── Explain ("por que esse job não rodou?") ── */
+/* ── Explain ("why didn't this job run?") ── */
 
 const BLOCKER_COLOR: Record<ExplainBlocker["kind"], string> = {
   WAIT_WINDOW:   "var(--v2-status-waiting)",
@@ -453,14 +825,14 @@ const BLOCKER_COLOR: Record<ExplainBlocker["kind"], string> = {
   WAIT_RESOURCE: "var(--v2-accent-brand)",
 };
 const BLOCKER_LABEL: Record<ExplainBlocker["kind"], string> = {
-  WAIT_WINDOW:   "JANELA",
-  WINDOW_CLOSED: "JANELA FECHADA",
-  WAIT_CONFIRM:  "CONFIRMAÇÃO",
-  WAIT_DEP:      "DEPENDÊNCIA",
-  BLOCKED_DEP:   "BLOQUEADO",
+  WAIT_WINDOW:   "WINDOW",
+  WINDOW_CLOSED: "WINDOW CLOSED",
+  WAIT_CONFIRM:  "CONFIRM",
+  WAIT_DEP:      "DEPENDENCY",
+  BLOCKED_DEP:   "BLOCKED",
   WAIT_CONDITION:"CONDITION",
-  WAIT_AGENT:    "AGENTE",
-  WAIT_RESOURCE: "RECURSO",
+  WAIT_AGENT:    "AGENT",
+  WAIT_RESOURCE: "RESOURCE",
 };
 
 function ExplainPanel({ instanceId, status, onConfirm }: { instanceId: string; status: JobInstance["status"]; onConfirm: (id: string) => void }) {
@@ -493,13 +865,13 @@ function ExplainPanel({ instanceId, status, onConfirm }: { instanceId: string; s
   const needsConfirm = exp?.blockers.some((b) => b.kind === "WAIT_CONFIRM") ?? false;
 
   return (
-    <div style={{ marginBottom: 14 }}>
+    <div style={{ marginBottom: 16 }}>
       <div style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>
-        Por que {runnable ? "vai rodar" : "não rodou"}?
+        {runnable ? "Will it run?" : "Why not?"}
       </div>
-      <div style={{ padding: "7px 9px", background: "var(--v2-bg-deep)", border: `1px solid ${accent}`, borderRadius: 3 }}>
+      <div style={{ padding: "7px 9px", background: "var(--v2-bg-canvas)", border: `1px solid ${accent}`, borderRadius: 3 }}>
         <div style={{ fontSize: 11, color: "var(--v2-text-primary)", lineHeight: 1.45 }}>
-          {loading ? "avaliando…" : exp?.summary}
+          {loading ? "evaluating…" : exp?.summary}
         </div>
         {exp && exp.blockers.length > 0 && (
           <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -528,7 +900,7 @@ function ExplainPanel({ instanceId, status, onConfirm }: { instanceId: string; s
               background: "#a78bfa", color: "#1a1030", border: "none", borderRadius: 4,
             }}
           >
-            ✓ Confirmar execução
+            ✓ Confirm execution
           </button>
         )}
       </div>
@@ -536,7 +908,7 @@ function ExplainPanel({ instanceId, status, onConfirm }: { instanceId: string; s
   );
 }
 
-/* ── Blast Radius ("se eu cancelar/segurar este job agora?") ── */
+/* ── Blast Radius ("what if I cancel/hold this job now?") ── */
 
 function BlastPanel({ instanceId }: { instanceId: string }) {
   const [br, setBr] = useState<BlastRadius | null>(null);
@@ -554,7 +926,7 @@ function BlastPanel({ instanceId }: { instanceId: string }) {
 
   if (!opened) {
     return (
-      <div style={{ marginBottom: 14 }}>
+      <div style={{ marginBottom: 16 }}>
         <button
           onClick={load}
           style={{
@@ -564,7 +936,7 @@ function BlastPanel({ instanceId }: { instanceId: string }) {
             color: "var(--v2-status-failed)", borderRadius: 3, fontWeight: 600,
           }}
         >
-          ⚠ Impacto se cancelar / segurar
+          ⚠ Impact if cancelled / held
         </button>
       </div>
     );
@@ -572,20 +944,20 @@ function BlastPanel({ instanceId }: { instanceId: string }) {
 
   const c = br?.counts;
   return (
-    <div style={{ marginBottom: 14 }}>
+    <div style={{ marginBottom: 16 }}>
       <div style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>
-        Blast Radius
+        Blast radius
       </div>
-      <div style={{ padding: "8px 10px", background: "var(--v2-bg-deep)", border: "1px solid var(--v2-status-failed)", borderRadius: 3 }}>
-        {loading && <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>calculando impacto…</span>}
-        {!loading && !br && <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>indisponível</span>}
+      <div style={{ padding: "8px 10px", background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-status-failed)", borderRadius: 3 }}>
+        {loading && <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>computing impact…</span>}
+        {!loading && !br && <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>unavailable</span>}
         {!loading && br && (
           <>
             <div style={{ fontSize: 11, color: "var(--v2-text-primary)", lineHeight: 1.5 }}>
-              Cancelar/segurar este job impede <b style={{ color: "var(--v2-status-failed)" }}>{c!.downstream}</b> job(s) downstream
-              {c!.slaAtRisk > 0 && <> · <b style={{ color: "var(--v2-status-waiting)" }}>{c!.slaAtRisk}</b> SLA(s) em risco</>}
+              Cancelling/holding this job blocks <b style={{ color: "var(--v2-status-failed)" }}>{c!.downstream}</b> downstream job(s)
+              {c!.slaAtRisk > 0 && <> · <b style={{ color: "var(--v2-status-waiting)" }}>{c!.slaAtRisk}</b> SLA(s) at risk</>}
               {c!.teamsAffected > 0 && <> · {c!.teamsAffected} folder(s)</>}
-              {c!.maxDepth > 0 && <> · cascata até {c!.maxDepth} nível(is)</>}.
+              {c!.maxDepth > 0 && <> · cascade up to {c!.maxDepth} level(s)</>}.
             </div>
             {br.downstream.length > 0 && (
               <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 3, maxHeight: 180, overflowY: "auto" }}>
@@ -597,12 +969,12 @@ function BlastPanel({ instanceId }: { instanceId: string }) {
                     {n.team && <span style={{ color: "var(--v2-accent-brand)", marginLeft: "auto" }}>{n.team}</span>}
                   </div>
                 ))}
-                {br.truncated && <span style={{ color: "var(--v2-text-muted)", fontSize: 9 }}>… lista truncada (contadores exatos).</span>}
+                {br.truncated && <span style={{ color: "var(--v2-text-muted)", fontSize: 9 }}>… list truncated (counts are exact).</span>}
               </div>
             )}
             {br.downstream.length === 0 && (
               <div style={{ marginTop: 6, fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-status-ok)" }}>
-                Nenhum downstream impactado — seguro cancelar.
+                No downstream impacted — safe to cancel.
               </div>
             )}
           </>
@@ -612,7 +984,7 @@ function BlastPanel({ instanceId }: { instanceId: string }) {
   );
 }
 
-/* ── RCA ("qual a causa raiz da falha?") — auto-carrega p/ NOTOK/bloqueado ── */
+/* ── RCA ("what's the root cause?") — auto-loads for NOTOK/blocked ── */
 
 function RCAPanel({ instanceId }: { instanceId: string }) {
   const [rca, setRca] = useState<RCA | null>(null);
@@ -632,12 +1004,12 @@ function RCAPanel({ instanceId }: { instanceId: string }) {
   if (!loading && (!rca || rca.roots.length === 0)) return null;
 
   return (
-    <div style={{ marginBottom: 14 }}>
+    <div style={{ marginBottom: 16 }}>
       <div style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>
-        Causa raiz
+        Root cause
       </div>
-      <div style={{ padding: "8px 10px", background: "var(--v2-bg-deep)", border: "1px solid var(--v2-status-failed)", borderRadius: 3 }}>
-        {loading && <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>rastreando…</span>}
+      <div style={{ padding: "8px 10px", background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-status-failed)", borderRadius: 3 }}>
+        {loading && <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>tracing…</span>}
         {!loading && rca && (
           <>
             <div style={{ fontSize: 11, color: "var(--v2-text-primary)", lineHeight: 1.5 }}>{rca.summary}</div>
@@ -646,14 +1018,14 @@ function RCAPanel({ instanceId }: { instanceId: string }) {
                 <div key={r.defId} style={{ display: "flex", gap: 7, alignItems: "baseline", fontSize: 10, fontFamily: "var(--v2-font-mono)" }}>
                   <span style={{ color: "var(--v2-status-failed)", fontSize: 8, border: "1px solid var(--v2-status-failed)", borderRadius: 2, padding: "0 3px" }}>{r.status}</span>
                   <span style={{ color: "var(--v2-text-primary)" }}>{r.label || r.defId}</span>
-                  <span style={{ color: "var(--v2-text-muted)" }}>· {r.depth === 0 ? "este job" : `${r.depth} salto(s) acima`}</span>
+                  <span style={{ color: "var(--v2-text-muted)" }}>· {r.depth === 0 ? "this job" : `${r.depth} hop(s) up`}</span>
                   {r.team && <span style={{ color: "var(--v2-accent-brand)", marginLeft: "auto" }}>{r.team}</span>}
                 </div>
               ))}
             </div>
             {rca.chain && rca.chain.length > 1 && (
               <div style={{ marginTop: 8, fontSize: 9.5, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>
-                cadeia: {rca.chain.join(" → ")}
+                chain: {rca.chain.join(" → ")}
               </div>
             )}
           </>
@@ -663,9 +1035,9 @@ function RCAPanel({ instanceId }: { instanceId: string }) {
   );
 }
 
-/* ── Job Neighborhood ("quem me trava, quem eu travo?") — opt-in ── */
+/* ── Job Neighborhood ("who blocks me, whom do I block?") ── */
 
-function NeighborhoodPanel({ instanceId }: { instanceId: string }) {
+function NeighborhoodPanel({ instanceId, autoLoad }: { instanceId: string; autoLoad?: boolean }) {
   const [nb, setNb] = useState<Neighborhood | null>(null);
   const [loading, setLoading] = useState(false);
   const [opened, setOpened] = useState(false);
@@ -681,9 +1053,15 @@ function NeighborhoodPanel({ instanceId }: { instanceId: string }) {
       .finally(() => setLoading(false));
   };
 
+  // Aba dedicada: carrega sozinho ao montar (radius 1).
+  useEffect(() => {
+    if (autoLoad) load(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [instanceId, autoLoad]);
+
   if (!opened) {
     return (
-      <div style={{ marginBottom: 14 }}>
+      <div style={{ marginBottom: 16 }}>
         <button
           onClick={() => load(1)}
           style={{
@@ -693,7 +1071,7 @@ function NeighborhoodPanel({ instanceId }: { instanceId: string }) {
             color: "var(--v2-text-secondary)", borderRadius: 3, fontWeight: 600,
           }}
         >
-          ⇅ Vizinhança do job
+          ⇅ Job neighborhood
         </button>
       </div>
     );
@@ -710,10 +1088,10 @@ function NeighborhoodPanel({ instanceId }: { instanceId: string }) {
   );
 
   return (
-    <div style={{ marginBottom: 14 }}>
+    <div style={{ marginBottom: 16 }}>
       <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
         <span style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-          Vizinhança
+          Neighborhood
         </span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 3 }}>
           {[1, 2, 3].map((r) => (
@@ -726,18 +1104,18 @@ function NeighborhoodPanel({ instanceId }: { instanceId: string }) {
           ))}
         </div>
       </div>
-      <div style={{ padding: "8px 10px", background: "var(--v2-bg-deep)", border: "1px solid var(--v2-border-medium)", borderRadius: 3 }}>
-        {loading && <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>carregando…</span>}
-        {!loading && !nb && <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>indisponível</span>}
+      <div style={{ padding: "8px 10px", background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-medium)", borderRadius: 3 }}>
+        {loading && <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>loading…</span>}
+        {!loading && !nb && <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>unavailable</span>}
         {!loading && nb && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 260, overflowY: "auto" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto" }}>
             <div>
-              <div style={{ fontSize: 8.5, color: "var(--v2-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Depende de ({nb.upstream.length})</div>
-              {nb.upstream.length === 0 ? <span style={{ fontSize: 10, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>— nenhum</span> : nb.upstream.map(row)}
+              <div style={{ fontSize: 8.5, color: "var(--v2-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Depends on ({nb.upstream.length})</div>
+              {nb.upstream.length === 0 ? <span style={{ fontSize: 10, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>— none</span> : nb.upstream.map(row)}
             </div>
             <div>
-              <div style={{ fontSize: 8.5, color: "var(--v2-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Dispara ({nb.downstream.length})</div>
-              {nb.downstream.length === 0 ? <span style={{ fontSize: 10, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>— nenhum</span> : nb.downstream.map(row)}
+              <div style={{ fontSize: 8.5, color: "var(--v2-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Triggers ({nb.downstream.length})</div>
+              {nb.downstream.length === 0 ? <span style={{ fontSize: 10, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>— none</span> : nb.downstream.map(row)}
             </div>
           </div>
         )}

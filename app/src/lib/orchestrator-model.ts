@@ -148,6 +148,33 @@ export interface JobDefinition {
    * Undefined/empty = sem regras.
    */
   actions?: ActionRule[];
+
+  /* ── Campos ricos do backend (domain.JobDefinition) exibidos em Monitoring.
+     Carregados pelo adapter (toWeb); round-trip preservado no toServer.
+     Aditivos e opcionais — Design ainda não edita todos. ── */
+
+  /** Control-M "Application" — agrupamento acima de Folder/SubApplication.
+   *  Ainda não configurável na UI; reservado (placeholder no painel General). */
+  application?: string;
+  /** F20 — ambiente de execução (dev/staging/prod). Routing por env. */
+  environment?: string;
+  /** F15 — recursos consumidos (nome → quantidade). O scheduler bloqueia o
+   *  start enquanto faltar capacidade. */
+  resources?: Record<string, number>;
+  /** F16 — conditions IN exigidas para o job sair de WAITING (Control-M). */
+  conditionsIn?: string[];
+  /** F16 — conditions OUT adicionadas quando o job termina OK. */
+  conditionsOutAdd?: string[];
+  /** F16 — conditions OUT removidas quando o job termina OK. */
+  conditionsOutRemove?: string[];
+  /** F18 — variáveis locais do job (escopo definition, mapa nome→valor),
+   *  interpoláveis nos params. Distinto de `variables` (array snapshotado na
+   *  instance): esta é a config viva do desenho. */
+  localVars?: Record<string, string>;
+  /** F19 — SLA: duração esperada / deadline; alerta em breach. */
+  sla?: { expectedDurationMin?: number; deadlineHM?: string; severity?: string; webhookUrl?: string };
+  /** F17 — sub-workflow: folder que precisa terminar OK antes deste job. */
+  subWorkflow?: { folder: string; variables?: Record<string, string> };
 }
 
 /**

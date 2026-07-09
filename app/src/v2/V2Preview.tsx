@@ -1621,6 +1621,8 @@ function V2PreviewInner() {
         {mode === "monitoring" && selectedInstance && (
           <InstanceDetailsDrawer
             instance={selectedInstance}
+            definition={defs.find((d) => d.id === selectedInstance.definitionId)}
+            allDefs={defs}
             handlers={{
               onHold: holdInstance,
               onRelease: releaseInstance,

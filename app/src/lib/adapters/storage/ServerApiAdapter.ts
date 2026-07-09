@@ -36,6 +36,7 @@ function defsDeletePath(team: string, id: string): string {
 
 interface ServerSchedule {
   enabled?: boolean;
+  description?: string;
   runAt?: string;
   windowFrom?: string;
   windowTo?: string;
@@ -75,12 +76,24 @@ interface ServerDefinition {
   agentId?: string;
   // On/Do — round-trip 1:1 com domain.ActionRule (json tags batem).
   actions?: ActionRule[];
+  // Campos ricos de Control-M — round-trip 1:1 com domain.JobDefinition
+  // (json tags batem). O adapter dropava silenciosamente antes; ao editar+salvar
+  // um job importado eles sumiam. Agora sobrevivem.
+  environment?: string;
+  resources?: Record<string, number>;
+  conditionsIn?: string[];
+  conditionsOutAdd?: string[];
+  conditionsOutRemove?: string[];
+  variables?: Record<string, string>;
+  sla?: { expectedDurationMin?: number; deadlineHM?: string; severity?: string; webhookUrl?: string };
+  subWorkflow?: { folder: string; variables?: Record<string, string> };
 }
 
 // Schedule estruturado mapeado 1:1 (sem esconder em actionConfig — 2026-06-12).
 function scheduleToWeb(s: ServerSchedule): JobDefinition["schedule"] {
   return {
     enabled: s.enabled ?? true,
+    description: s.description,
     cronExpression: s.cronExpression ?? "",
     runAt: s.runAt,
     windowFrom: s.windowFrom,
@@ -102,6 +115,7 @@ function scheduleToWeb(s: ServerSchedule): JobDefinition["schedule"] {
 function scheduleToServer(s: JobDefinition["schedule"]): ServerSchedule {
   return {
     enabled: s.enabled ?? true,
+    description: s.description || undefined,
     runAt: s.runAt || undefined,
     windowFrom: s.windowFrom || undefined,
     windowTo: s.windowTo || undefined,
@@ -139,6 +153,14 @@ function toWeb(d: ServerDefinition): JobDefinition {
     confirm: d.confirm,
     upstream: d.upstream,
     actions: d.actions?.length ? d.actions : undefined,
+    environment: d.environment,
+    resources: d.resources,
+    conditionsIn: d.conditionsIn,
+    conditionsOutAdd: d.conditionsOutAdd,
+    conditionsOutRemove: d.conditionsOutRemove,
+    localVars: d.variables,
+    sla: d.sla,
+    subWorkflow: d.subWorkflow,
   };
 }
 
@@ -162,6 +184,16 @@ function toServer(d: JobDefinition): ServerDefinition {
     actionConfig,
     agentId: typeof _agentId === "string" ? _agentId : undefined,
     actions: d.actions?.length ? d.actions : undefined,
+    // Round-trip dos campos ricos — sem isto o save do Design apaga
+    // recursos/conditions/vars/sla de um job que veio do YAML ou de um import.
+    environment: d.environment || undefined,
+    resources: d.resources && Object.keys(d.resources).length ? d.resources : undefined,
+    conditionsIn: d.conditionsIn?.length ? d.conditionsIn : undefined,
+    conditionsOutAdd: d.conditionsOutAdd?.length ? d.conditionsOutAdd : undefined,
+    conditionsOutRemove: d.conditionsOutRemove?.length ? d.conditionsOutRemove : undefined,
+    variables: d.localVars && Object.keys(d.localVars).length ? d.localVars : undefined,
+    sla: d.sla,
+    subWorkflow: d.subWorkflow,
   };
 }
 
