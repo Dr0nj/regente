@@ -93,6 +93,25 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 - [ ] **ADV-7** — Site de docs.
 - [ ] **ADV-8** — Executores AWS extras (Batch/Glue/Step) — validação em conta paga fora de escopo por decisão.
 
+### Contrato de API / OpenAPI (Swagger)
+- [ ] **API-1** — Spec OpenAPI **curada** (não auto-doc dos ~137 handlers) + Swagger UI embutido
+  single-origin (mesmo padrão do `-spa-dir`, self-contained, zero CDN). Cobre só a **superfície de
+  integração** (~15–20 rotas que um sistema externo realmente chama), NÃO as internas da SPA:
+  `POST /ingest` + external events · quick-actions HMAC `/qa/{token}` · instances query + lifecycle
+  (`hold`/`release`/`rerun`/`cancel`/`confirm`/`set-ok`) · `/daily/report` · `/forecast` · `/health` ·
+  `/metrics`. Vira **contrato enterprise** e, de quebra, **artefato da Fase Z**.
+  - **⏳ CONDIÇÃO DE TIMING (não fazer antes):** os consumidores de HOJE não pagam de volta —
+    a SPA já é tipada no front e a MCP é agent-native (LLM lê schema MCP, não OpenAPI). Fazer agora =
+    imposto de manutenção + risco de spec divergir do código (pior que não ter). **Implementar quando
+    o PRIMEIRO destes acontecer:** (a) aparecer um **integrador/consumidor externo real** que precise
+    scriptar contra a API (CI/CD, ticketing, ingest de sistema terceiro); OU (b) na **Fase Z**, como
+    peça de divulgação/case study. O que vier primeiro dispara; até lá fica parado de propósito.
+  - **Gotcha:** OpenAPI 3.0 não modela o verbo custom `QUERY` (tooling engasga). Documentar as formas
+    POST gêmeas que já existem (`POST /instances/query`, `POST /query`) e ignorar o `QUERY` na spec.
+  - **NÃO fazer via `swaggo` full-annotation** dos handlers — apodrece e a maioria das rotas é interna
+    da SPA. Preferir `openapi.yaml` escrito à mão pra superfície pequena. Relaciona ADV-6 (SDK gerável
+    da spec) e ADV-7 (site de docs). → §Enterprise readiness, §Agent-native (MCP), §Fase Z
+
 ### Validação em infra real — resíduos (→ §Validação em infra real)
 - [ ] **VAL-1** — Secrets via provider (env / `-secrets-file`): resolver `github_token`/`webhook_secret`.
 - [ ] **VAL-2** — SSH: agente instalado como serviço (systemd / Task Windows) em host com sshd.
