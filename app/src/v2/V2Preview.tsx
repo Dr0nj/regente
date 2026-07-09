@@ -1618,23 +1618,35 @@ function V2PreviewInner() {
           ) : null
         )}
 
-        {mode === "monitoring" && selectedInstance && (
-          <InstanceDetailsDrawer
-            instance={selectedInstance}
-            definition={defs.find((d) => d.id === selectedInstance.definitionId)}
-            allDefs={defs}
-            handlers={{
-              onHold: holdInstance,
-              onRelease: releaseInstance,
-              onCancel: cancelInstance,
-              onSkip: skipInstance,
-              onBypass: bypassInstance,
-              onRerun: handleRerunInstance,
-              onConfirm: confirmInstance,
-              onClose: () => setSelectedInstanceId(null),
-            }}
-          />
-        )}
+        {mode === "monitoring" && selectedInstance && (() => {
+          const selDef = defs.find((d) => d.id === selectedInstance.definitionId);
+          // Enriquece igual aos cards do canvas (monitoringJobs): se a instance
+          // vier com jobType/label/team vazios ou defasados, cai pra def — assim
+          // o drawer mostra o MESMO que o card, sem "job type dessincronizado".
+          const enriched = selDef ? {
+            ...selectedInstance,
+            team: selectedInstance.team || selDef.team,
+            label: selectedInstance.label && selectedInstance.label !== selectedInstance.definitionId ? selectedInstance.label : selDef.label,
+            jobType: selectedInstance.jobType || selDef.jobType,
+          } : selectedInstance;
+          return (
+            <InstanceDetailsDrawer
+              instance={enriched}
+              definition={selDef}
+              allDefs={defs}
+              handlers={{
+                onHold: holdInstance,
+                onRelease: releaseInstance,
+                onCancel: cancelInstance,
+                onSkip: skipInstance,
+                onBypass: bypassInstance,
+                onRerun: handleRerunInstance,
+                onConfirm: confirmInstance,
+                onClose: () => setSelectedInstanceId(null),
+              }}
+            />
+          );
+        })()}
 
         {mode === "design" && editingDef && (
           <JobConfigDrawer

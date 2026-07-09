@@ -339,9 +339,10 @@ function GeneralTab({ instance, definition }: { instance: JobInstance; definitio
     if (!seen.has(k)) params.push([k, val]);
   }
 
-  // Config de execução = actionConfig visível (esconde chaves internas _*).
-  const execEntries = Object.entries(instance.actionConfig ?? {})
-    .filter(([k]) => !k.startsWith("_"));
+  // jobType robusto: a instance é a fonte (snapshot), mas cai pra def se vier
+  // vazia — mantém o drawer sincronizado com o card do canvas (que enriquece
+  // da def). O V2Preview também já enriquece a instance passada aqui.
+  const jobType = instance.jobType || definition?.jobType || "—";
 
   return (
     <>
@@ -352,7 +353,7 @@ function GeneralTab({ instance, definition }: { instance: JobInstance; definitio
           value={definition?.application ?? "—"}
           hint={definition?.application ? undefined : "not configured yet"}
         />
-        <Field label="Job Type" value={instance.jobType} />
+        <Field label="Job Type" value={jobType} />
         <Field label="Folder" value={instance.team ?? definition?.team ?? "—"} />
         {definition?.environment && <Field label="Environment" value={definition.environment} />}
       </Section>
@@ -365,6 +366,10 @@ function GeneralTab({ instance, definition }: { instance: JobInstance; definitio
         ) : (
           <Muted>No description. Add one in Design to explain what this job does.</Muted>
         )}
+      </Section>
+
+      <Section title="Action">
+        <ActionView jobType={jobType} config={instance.actionConfig ?? {}} />
       </Section>
 
       <Section title="Timeline">
@@ -392,14 +397,120 @@ function GeneralTab({ instance, definition }: { instance: JobInstance; definitio
         <Field label="Manual"     value={instance.manual ? "yes" : "no"} />
         <Field label="Dry run"    value={instance.dryRun ? "yes" : "no"} />
         <Field label="Timeout"    value={`${instance.timeout}s`} />
-        {execEntries.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
-            {execEntries.map(([k, v]) => <KV key={k} k={k} v={fmtVal(v)} />)}
-          </div>
-        )}
       </Section>
     </>
   );
+}
+
+/* ── Action — o que o job FAZ, sincronizado por jobType (read-only) ──
+   Espelha o JobActionConfigEditor do Design: cada tipo tem os campos
+   relevantes do actionConfig. Renderiza só os presentes; chaves extras
+   (fora do schema conhecido) caem em "Other" pra nada ficar escondido. */
+
+interface ActionField { label: string; key: string; code?: boolean; json?: boolean }
+
+const ACTION_VERB: Record<string, string> = {
+  COMMAND: "Runs a shell command on the agent",
+  SCRIPT: "Runs a script on the agent",
+  SSH: "Runs a command over SSH",
+  FILE_WATCH: "Waits for a file to appear",
+  DATABASE: "Runs SQL against a database",
+  HTTP: "Calls an HTTP endpoint",
+  LAMBDA: "Invokes an AWS Lambda",
+  BATCH: "Submits an AWS Batch job",
+  GLUE: "Runs an AWS Glue job",
+  STEP_FUNCTION: "Starts a Step Function execution",
+  WAIT: "Waits for a duration",
+  CHOICE: "Branches on a condition",
+  PARALLEL: "Runs branches in parallel",
+};
+
+const ACTION_FIELDS: Record<string, ActionField[]> = {
+  COMMAND: [{ label: "Command", key: "command", code: true }, { label: "Working dir", key: "cwd" }],
+  SCRIPT: [{ label: "Script path", key: "scriptPath" }, { label: "Args", key: "args" }, { label: "Working dir", key: "cwd" }],
+  SSH: [{ label: "Host", key: "host" }, { label: "User", key: "user" }, { label: "Port", key: "port" }, { label: "Command", key: "command", code: true }, { label: "Key path", key: "keyPath" }],
+  FILE_WATCH: [{ label: "Path", key: "path" }, { label: "Poll interval (s)", key: "intervalSec" }, { label: "Stable (s)", key: "stableSec" }],
+  DATABASE: [{ label: "Driver", key: "driver" }, { label: "DSN", key: "dsn" }, { label: "SQL", key: "sql", code: true }, { label: "Max rows", key: "maxRows" }],
+  HTTP: [{ label: "Method", key: "method" }, { label: "URL", key: "url" }, { label: "Headers", key: "headers", json: true }, { label: "Body", key: "body", code: true }, { label: "Expected status", key: "expectStatus" }],
+  LAMBDA: [{ label: "Function", key: "functionName" }, { label: "Region", key: "region" }, { label: "Payload", key: "payload", json: true }, { label: "Invocation", key: "invocationType" }],
+  BATCH: [{ label: "Job queue", key: "jobQueue" }, { label: "Job definition", key: "jobDefinition" }, { label: "Command", key: "command", code: true }, { label: "Env", key: "env", json: true }],
+  GLUE: [{ label: "Job name", key: "jobName" }, { label: "Arguments", key: "arguments", json: true }, { label: "Worker type", key: "workerType" }, { label: "# workers", key: "numberOfWorkers" }],
+  STEP_FUNCTION: [{ label: "State machine ARN", key: "stateMachineArn" }, { label: "Input", key: "input", json: true }],
+  WAIT: [{ label: "Seconds", key: "seconds" }, { label: "Until", key: "until" }],
+  CHOICE: [{ label: "Expression", key: "expression", code: true }, { label: "Branches", key: "branches", json: true }],
+  PARALLEL: [{ label: "Branches", key: "branches", json: true }, { label: "Max concurrency", key: "maxConcurrency" }],
+};
+
+function hasVal(v: unknown): boolean {
+  if (v == null) return false;
+  if (typeof v === "string") return v.trim().length > 0;
+  if (typeof v === "number") return true;
+  if (typeof v === "boolean") return true;
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === "object") return Object.keys(v as object).length > 0;
+  return true;
+}
+
+function ActionView({ jobType, config }: { jobType: string; config: Record<string, unknown> }) {
+  const fields = ACTION_FIELDS[jobType] ?? [];
+  const verb = ACTION_VERB[jobType];
+  const agent = typeof config._agentId === "string" && config._agentId ? (config._agentId as string) : null;
+
+  const known = new Set(fields.map((f) => f.key));
+  const present = fields.filter((f) => hasVal(config[f.key]));
+  // Chaves fora do schema conhecido (nada escondido) — ignora as internas _*.
+  const other = Object.entries(config).filter(([k, v]) => !k.startsWith("_") && !known.has(k) && hasVal(v));
+
+  const empty = present.length === 0 && other.length === 0;
+
+  return (
+    <>
+      {/* linha "o que faz" + tipo */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: present.length || other.length ? 8 : 0 }}>
+        <span style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", fontWeight: 700, letterSpacing: "0.05em", color: "var(--v2-accent-brand)", border: "1px solid var(--v2-accent-dark)", background: "var(--v2-accent-deep)", borderRadius: 3, padding: "1px 6px" }}>
+          {jobType}
+        </span>
+        {verb && <span style={{ fontSize: 10.5, color: "var(--v2-text-secondary)" }}>{verb}</span>}
+      </div>
+
+      {empty ? (
+        <Muted>No action configured for this {jobType} job. Set it in Design → Action.</Muted>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {present.map((f) => {
+            const v = config[f.key];
+            if (f.code) return <CodeField key={f.key} label={f.label} value={String(v)} />;
+            if (f.json) return <CodeField key={f.key} label={f.label} value={jsonPretty(v)} />;
+            return <Field key={f.key} label={f.label} value={fmtVal(v)} mono />;
+          })}
+          {other.map(([k, v]) => (
+            typeof v === "object"
+              ? <CodeField key={k} label={k} value={jsonPretty(v)} />
+              : <Field key={k} label={k} value={fmtVal(v)} mono />
+          ))}
+        </div>
+      )}
+
+      {agent && (
+        <div style={{ marginTop: present.length || other.length ? 8 : 6 }}>
+          <Field label="Agent" value={agent} mono />
+        </div>
+      )}
+    </>
+  );
+}
+
+function CodeField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 8.5, color: "var(--v2-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>{label}</div>
+      <Pre tone="var(--v2-text-secondary)" maxHeight={200}>{value}</Pre>
+    </div>
+  );
+}
+
+function jsonPretty(v: unknown): string {
+  try { return JSON.stringify(v, null, 2); } catch { return String(v); }
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -553,7 +664,6 @@ function ScheduleTab({ definition }: { definition?: JobDefinition }) {
         {s.shift && s.shift !== "none" && SHIFT_LABEL[s.shift] && (
           <Field label="Roll" value={SHIFT_LABEL[s.shift]} />
         )}
-        {s.timezone && <Field label="Timezone" value={s.timezone} mono />}
       </Section>
 
       <Section title="Runtime window">
