@@ -46,7 +46,7 @@
 - **Refinamento UI** — polimento residual (virtualizar a sidebar legada · override de columns por folder). Drawer do job já redesenhado (8 abas, 2026-07-09).
 - **Agent-native (MCP)** — servidor pronto: **11 read + 11 write** gated (MCP-1 fechado 2026-07-08).
 - **Jobs as code** — CODE-1 (editor rico, lint live, diff visual, sync com canvas, tabs por job).
-- **Features avançadas** — camadas opcionais pós-núcleo (schema por tipo, MFT, CLI/SDK, site de docs…).
+- **Features avançadas** — camadas opcionais pós-núcleo restantes (archives/retention, CLI/SDK, site de docs…).
 - **Validação em infra real** — resíduos (secrets via provider · SSH agente como serviço).
 - **Fase Z — divulgação** — case study + post LinkedIn (último gate, quando o backlog estiver onde você quer).
 
@@ -69,7 +69,6 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > baixo **não valem** como status (ver ⛔ REGRA DE STATUS no topo).
 
 ### Features avançadas — pós-núcleo (→ §Features avançadas)
-- [ ] **ADV-4** — MFT (FILE_TRANSFER nativo).
 - [ ] **ADV-5** — Archives / Retention (relaciona E2).
 - [ ] **ADV-6** — CLI / SDK.
 - [ ] **ADV-7** — Site de docs.
@@ -578,7 +577,7 @@ contra Postgres 16 real (Docker); restante pendente:
 
 ---
 
-## 🚀 Features avançadas — ADV-1/2/3 *(entregues 2026-07-10)*
+## 🚀 Features avançadas — ADV-1/2/3/4 *(entregues 2026-07-10)*
 
 ```
 ✅ ADV-1 — Schema DEDICADO por jobType (fonte única declarativa)
@@ -620,6 +619,31 @@ contra Postgres 16 real (Docker); restante pendente:
      D-4) e última execução. Aba Stats do drawer ganhou "Run statistics" acima do histórico D-4.
    • Testes: whatif_test.go (delay propaga, fail bloqueia+destrava recovery, skip, SLA novo,
      no-op) + jobstats_test.go + hub_env_test.go + bus env routing + typeschema_test.go.
+✅ ADV-4 — MFT: jobType FILE_TRANSFER nativo (alias MFT), executado pelo agente
+   • agent/filetransfer.go: transfere entre LOCAL, SFTP e S3, combináveis à vontade em src/dst
+     (local→sftp, s3→local, sftp→sftp entre hosts…). SFTP = pkg/sftp + x/crypto (pure-Go, padrão
+     do projeto); S3 = SigV4 da stdlib REUSANDO os primitivos do aws.go do Lambda — variante
+     sigv4HeadersHash assina TAMBÉM x-amz-content-sha256 (o S3 exige, o Lambda dispensa) e o PUT
+     é streaming com UNSIGNED-PAYLOAD (não carrega o arquivo em memória pra hashear).
+   • Semântica Control-M MFT: glob (*.csv) na ORIGEM local/sftp (múltiplos arquivos exigem
+     destino diretório/prefixo com / final) · escrita ATÔMICA .part+rename (um FILE_WATCH com
+     stableSec do outro lado nunca vê arquivo parcial; PUT S3 já é atômico) · checksum=true relê
+     o DESTINO e compara SHA-256 fim-a-fim · deleteSource=true = move (só após transferir+verificar)
+     · overwrite=false falha se o destino existe · mkdirs cria diretórios que faltam · timeout do
+     job corta a transferência no meio (deadlineReader — sem goroutine órfã copiando gigabytes).
+   • Credenciais: sftp por userinfo da URL, param password ou keyPath (+ hostKeyFingerprint
+     "SHA256:..." pinna o host; vazio aceita qualquer); S3 por params ou envs AWS_* do agente,
+     s3Endpoint override p/ MinIO/testes (path-style).
+   • Espelhos: typeschema.go (14 campos, DRAFT×STRICT), caps default do agente
+     (+FILE_TRANSFER,MFT), palette+JobConfigDrawer+editor visual (BoolSelect novo)+guia do CODE+
+     ACTION_VERB/FIELDS do drawer do Monitoring+engine local de demo.
+   • Testes: filetransfer_test.go — local single+checksum+atomicidade, glob→dir+deleteSource,
+     overwrite=false, multi-exige-diretório, origem inexistente, params faltando, backend sftp
+     REAL in-process (sftp.NewServer sobre net.Pipe; skip no Windows, roda na CI ubuntu), fake S3
+     httptest validando SigV4+x-amz-content-sha256 (upload+download+delete objeto), glob rejeitado
+     em s3, sem credencial. VALIDADO E2E AO VIVO: server GitOps bare + agente real + preview —
+     palette→editor→publish (YAML no Git com os params)→force→agente transferiu 2 arquivos via
+     glob com sha256✓ e a instance fechou OK no board.
 ```
 
 ## 📜 Changelog de entregas
@@ -629,6 +653,7 @@ contra Postgres 16 real (Docker); restante pendente:
 
 | Quando | O que | Detalhe |
 |----|--------|---------|
+| ✅ | ~~**ADV-4: MFT — jobType FILE_TRANSFER nativo (local ↔ SFTP ↔ S3 pelo agente)**~~ | **Feito (2026-07-10):** o Managed File Transfer do Control-M virou jobType nativo. **Executor** (`agent/filetransfer.go`): `src`/`dst` aceitam caminho local, `sftp://user:pass@host:22/caminho` e `s3://bucket/chave`, combináveis à vontade (local→sftp, s3→local, sftp→sftp entre hosts diferentes); glob (`*.csv`) na origem local/sftp com destino diretório/prefixo; **escrita atômica `.part`+rename** (um FILE_WATCH com stableSec do outro lado nunca vê parcial); `checksum` relê o destino e compara SHA-256 fim-a-fim; `deleteSource` = move (só após transferir+verificar); `overwrite=false` protege destino existente; `mkdirs`; timeout do job corta a transferência no meio (deadlineReader). SFTP = `pkg/sftp`+`x/crypto` (pure-Go, zero CGO, no padrão do projeto), com senha na URL/param, `keyPath` e pin opcional `hostKeyFingerprint`; S3 = **SigV4 da stdlib reusando os primitivos do Lambda** (`aws.go`) — variante `sigv4HeadersHash` assina também `x-amz-content-sha256` (o S3 exige) e PUT streaming `UNSIGNED-PAYLOAD` (sem carregar o arquivo em memória), creds por params/envs `AWS_*`, `s3Endpoint` p/ MinIO/testes. **Espelhos completos:** schema no registry ADV-1 (`typeschema.go`, 14 campos, alias `MFT`, DRAFT×STRICT) → `GET /api/jobtypes`; caps default do agente; front = palette do Design, select do JobConfigDrawer, editor visual com `BoolSelect` novo, guia do CODE (`code-schema.ts`), Action do drawer do Monitoring (`ACTION_VERB`/`ACTION_FIELDS`), engine local de demo. **Testes:** 10 casos novos em `filetransfer_test.go` — local (checksum/atomicidade/glob→dir+deleteSource/overwrite=false/multi-exige-dir/origem inexistente), **sftp REAL in-process** (`sftp.NewServer` sobre `net.Pipe`; skip no Windows, roda na CI ubuntu) e **fake S3 httptest** que valida assinatura SigV4+`x-amz-content-sha256` (upload/download/delete, glob rejeitado, sem credencial) + casos no `typeschema_test.go`; suítes server+agent verdes, `tsc`+`vite build` ok. **Validado E2E AO VIVO** (server GitOps bare repo + agente real + preview): palette→drawer→publish (YAML no Git com os params certos)→force→agente transferiu 2 arquivos via glob com `sha256✓`, instance OK no board e output `[mft]` no drawer. GOTCHA de ambiente documentado: o WS do agente é `ws://host/ws/agent` (não `/api/agent/ws` — handshake 400 sem log no server). |
 | ✅ | ~~**ADV-1 + ADV-2 + ADV-3: schema por jobType · roteamento por ambiente · What-If/Statistics**~~ | **Feito (2026-07-10):** as três primeiras Features Avançadas fecharam juntas. **ADV-1** — `domain/typeschema.go` = registry declarativo com o contrato de params dos 16 jobTypes (obrigatórios, kinds, enums, aliases de tipo E de campo, regras cross-field); validação em duas forças (DRAFT no save da session — typo/kind na hora, sem cobrar obrigatórios; STRICT no publish/write direto — 422 estruturado por job) + `GET /api/jobtypes`. Construir o registry expôs desalinhamentos REAIS validador×executor, todos corrigidos: LAMBDA `functionName`×`function` (cada lado lia um — aceitos os dois), payload objeto da UI descartado pelo agente, `expectStatus` escalar/CSV ignorado, `port` numérica do SSH dropada, `insecureTLS` só string. **ADV-2** — `def.environment` (F20, inerte desde sempre) agora ROTEIA: `hub.EnvMatch` (sem label = coringa; ambos com label = bate case-insensitive), flag `-env` no agente (WS + HTTP long-poll), PickAgent/HasAgent/Dispatch filtram, pin em env conflitante = WAIT_AGENT com motivo no Explain, presença R5 propaga env (vale cross-nó), chip ◉ na tela de Agentes. **ADV-3** — What-If: `POST /api/whatif` projeta a diária baseline×cenário (função pura estilo Forecast; mesma `IsScheduledOn`, p50 real do D-4, semântica de deps do engine — falha simulada BLOQUEIA on-success e DESTRAVA recovery on-failure) + `WhatIfPanel` no Monitoring; Statistics: `GET /api/analytics/jobstats` (runs/successRate/min/avg/p50/p90/max sobre OK + última execução) na aba Stats do drawer. Testes novos em typeschema/whatif/jobstats/hub_env/bus; suíte inteira verde (server+agent+CLIs), tsc+vite build ok. |
 | ✅ | ~~**Refinamento UI: filtro do guia CODE só por TAG + cursor de pan nativo do SO**~~ | **Feito (2026-07-10, pedidos do usuário):** (1) o filtro do Guia do schema (modo CODE) casava tag+texto+formas — passou a casar **só o NOME da tag** (descendentes contam), placeholder "Filtrar por tag…". (2) Cursor do canvas: a 1ª tentativa (CSS `grab`/`grabbing`) ficou ruim de propósito documentar — grab/grabbing são **bitmaps internos do browser** (mão branca) que IGNORAM o tema de cursor do Windows, e o `cursor` no body perdia pro `pointer` dos cards. Solução final: **nada de mão no hover** (seta nativa) e, SÓ durante o arrasto, `body.canvas-panning` + regra `body.canvas-panning *{cursor:move!important}` — o **Mover NATIVO do SO** (respeita o tema de cursor do usuário, igual à transição seta→dedinho), vencendo o pointer dos cards ao atravessar folder. Um toggle de classe por pan — custo zero. Validado no preview (hover=auto, drag=move+classe, solta=limpa). |
 | ✅ | ~~**CODE-1 (FECHA a trilha Jobs as code): modo código na linha LUXO (Matrix aposentado) + GUIA COMPLETA do schema + lint ao vivo**~~ | **Feito (2026-07-09):** o usuário mandou "matar o CODE-1": tirar o tema Matrix e levar o modo código pra linha luxo do Regente — e, no mesmo pedido, uma **"aba" FIXA à esquerda com TODAS as tags do YAML**. Entregue: **(1) Reskin luxo** — morreu o digital rain (canvas ~15fps), o verde fósforo #00ff41 e o "CARREGANDO O CONSTRUCTO"; o `CodeModeView` agora é linha luxo: título **serif itálico "Jobs as Code"** no accent do TEMA, fio gradiente sob o header (gesto do FolderManager), botões `.code-btn`/`.code-btn-solid` (padrão luxBtn), fundo/superfícies/tokens do tema, highlight YAML **tematizado** (chave = `--v2-accent-brand`, bool = `--v2-status-waiting`, número = `--v2-status-running`, comentário = muted; trocar o tema troca o código), caret accent; botão CODE da topbar virou `.code-toggle` no MESMO padrão do toggle ViewPoint (ativo = accent-deep + anel accent) — classes `.matrix-*` removidas do tokens.css. Zero cor de chrome hardcoded. **(2) Guia do schema (pedido do usuário)** — painel FIXO à esquerda, redimensionável (mesmo `useResizablePanel` da sidebar), com **TODAS as tags do dialeto** em árvore collapsible ▸/▾, **tudo recolhido por padrão**, cada tag com tipo/obrigatoriedade + formas aceitáveis explicadas uma a uma + exemplo YAML **clique-pra-copiar** + filtro por texto (filtro ativo força os achados abertos). Dados em `code-schema.ts`, espelho declarado do `domain/model.go` + `validate.go` + engines: id·label·team·**jobType com os 13 tipos implementados** (COMMAND/SCRIPT/SSH/HTTP/DATABASE/FILE_WATCH/LAMBDA/BATCH/GLUE/STEP_FUNCTION/WAIT/CHOICE/PARALLEL, params e obrigatórios de cada um + extras do agente WASM/K8S_JOB/GCP_RUN e aliases)·**schedule com as 17 sub-tags** (enabled/description/frequency/daysOfWeek/daysOfMonth/nthBusinessDays/monthsOfYear/advancedRule(4 regras)/shift/runAt/windowFrom·To/cyclic+intervalMin/cyclicMaxRuns/keepActive/cronExpression)·params(+`_agentId`)·upstream(4 conditions + default)·retries·retryDelayMin·timeout·dryRun·confirm·selfService·environment·agentId·calendar(legado)·calendars·resources·conditionsIn/OutAdd/OutRemove·**variables** (tokens nativos %%ODATE/ORDERDATE/RUNDATE/TIME/JOBNAME/JOBLABEL/FOLDER/INSTANCEID + %%EOM/BOM/EOY/BOY/NEXTBD/PREVBD/FIRSTBD/LASTBD, offsets ±N/±NB, %%SET/%%SETLOCAL, precedência)·sla·subWorkflow·**actions On/Do** (3 gatilhos × 4 ações, campo a campo) + entrada "— o documento" (multi-doc `---`, parse ESTRITO, delete-por-ausência, team inferível). **(3) Lint AO VIVO** — pausa de 900ms → `POST /code apply=false` (o MESMO validador do Aplicar) → rodapé fixo mostra plano/erros sem toast (`lintSeq` descarta resposta obsoleta); typo `jobტype` acusado na hora com a linha ("field not found in type domain.JobDefinition"). **(4) Ergonomia** — Tab indenta 2sp, Shift+Tab desindenta a linha, Enter mantém a indentação (+2 quando a linha abre bloco com `:`). **✗ Descartado por decisão de escopo** (item MORTO; se voltar, é ID novo): Monaco/CodeMirror (dep pesada × padrão zero-dep do projeto), diff lado-a-lado, split view canvas↔code, tabs por job, snippets, import/export, git blame, code no Monitoring read-only. **Validado AO VIVO E2E** (server GitOps em bare repo local + preview): guia nasce 100% recolhida e expande jobType→13 tipos+extras; lint pegou edição (`~atualizar 1`) e typo estrito sozinho; Aplicar persistiu (editor re-serializado do server com o valor novo, botão desarma); `.code-toggle` ativo computou accent do tema (rgb(17,199,111) + accent-deep), ZERO resquício matrix no DOM (sem canvas), zero erro de console; `tsc` + `vite build` verdes. |

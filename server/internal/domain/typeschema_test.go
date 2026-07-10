@@ -31,6 +31,9 @@ func TestTypeSchemaRequiredPerType(t *testing.T) {
 		{"DATABASE", map[string]interface{}{"driver": "postgres", "dsn": "d"}, false},
 		{"FILE_WATCH", map[string]interface{}{"path": "/data/in/a.txt"}, true},
 		{"FILE_WATCH", map[string]interface{}{}, false},
+		{"FILE_TRANSFER", map[string]interface{}{"src": "/data/out/*.csv", "dst": "sftp://svc@host/entrada/"}, true},
+		{"FILE_TRANSFER", map[string]interface{}{"src": "/data/out/a.csv"}, false}, // falta dst
+		{"FILE_TRANSFER", map[string]interface{}{"src": "s3://bkt/chave", "dst": "/local/x", "checksum": true, "deleteSource": "true"}, true},
 		{"LAMBDA", map[string]interface{}{"function": "fn"}, true},
 		{"LAMBDA", map[string]interface{}{}, false},
 		{"BATCH", map[string]interface{}{"jobQueue": "q", "jobDefinition": "jd"}, true},
@@ -67,6 +70,9 @@ func TestTypeSchemaAliases(t *testing.T) {
 	}
 	if err := vac("FILEWATCH", map[string]interface{}{"path": "/a"}); err != nil {
 		t.Fatalf("FILEWATCH: %v", err)
+	}
+	if err := vac("MFT", map[string]interface{}{"src": "/a", "dst": "/b"}); err != nil {
+		t.Fatalf("MFT (alias de FILE_TRANSFER): %v", err)
 	}
 	if err := vac("AWS_LAMBDA", map[string]interface{}{"function": "fn"}); err != nil {
 		t.Fatalf("AWS_LAMBDA: %v", err)
@@ -199,7 +205,7 @@ func TestJobTypeCatalog(t *testing.T) {
 		}
 		seen[s.Type] = true
 	}
-	for _, want := range []string{"COMMAND", "HTTP", "DATABASE", "LAMBDA", "WASM", "K8S", "GCP_RUN"} {
+	for _, want := range []string{"COMMAND", "HTTP", "DATABASE", "FILE_TRANSFER", "LAMBDA", "WASM", "K8S", "GCP_RUN"} {
 		if !seen[want] {
 			t.Fatalf("catálogo sem %s", want)
 		}

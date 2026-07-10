@@ -129,6 +129,7 @@ const JOB_DURATION_MS: Record<JobType, [number, number]> = {
   WAIT: [1000, 2000],
   HTTP: [300, 1000], // fallback for simulated HTTP (no config)
   FILE_WATCH: [1000, 3000], // simulação local; no server o agente polla de verdade
+  FILE_TRANSFER: [800, 2500], // simulação local; no server o agente transfere de verdade
   DATABASE: [400, 2000], // simulação local; no server o agente roda o SQL de verdade
 };
 

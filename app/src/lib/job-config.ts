@@ -13,6 +13,7 @@ import {
   Network,
   FileSearch,
   Database,
+  ArrowRightLeft,
 } from "lucide-react";
 
 /* ──────────────────────────────────────────────────────────────
@@ -30,6 +31,7 @@ export type JobType =
   | "SSH"
   | "HTTP"
   | "FILE_WATCH"
+  | "FILE_TRANSFER"
   | "DATABASE"
   | "LAMBDA"
   | "BATCH"
@@ -85,6 +87,7 @@ export const JOB_TYPES: Record<JobType, JobTypeConfig> = {
   WAIT:          make("Wait",          "Delay / timer",           Clock),
   HTTP:          make("HTTP",          "Chamada REST",            Globe),
   FILE_WATCH:    make("File Watch",    "Espera arquivo chegar no agente", FileSearch),
+  FILE_TRANSFER: make("File Transfer", "MFT: local ↔ SFTP ↔ S3 pelo agente", ArrowRightLeft),
   DATABASE:      make("Database",      "SQL em Postgres/MySQL/SQLite pelo agente", Database),
 };
 

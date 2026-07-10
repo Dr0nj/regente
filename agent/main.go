@@ -47,7 +47,7 @@ func main() {
 		server    = flag.String("server", "ws://localhost:8080/ws/agent", "regente-server WebSocket URL")
 		token     = flag.String("token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token")
 		agentID   = flag.String("id", hostnameOr("agent-local"), "Agent ID (unique)")
-		caps      = flag.String("caps", "COMMAND,SCRIPT,HTTP,REST,WASM,DATABASE,FILE_WATCH", "Comma-separated capabilities advertised")
+		caps      = flag.String("caps", "COMMAND,SCRIPT,HTTP,REST,WASM,DATABASE,FILE_WATCH,FILE_TRANSFER,MFT", "Comma-separated capabilities advertised")
 		agentEnv  = flag.String("env", envOr("REGENTE_AGENT_ENV", ""), "Ambiente/site deste agente (ADV-2; ex.: prod, dc-sp). Vazio = generalista; job com environment só roteia pra agente do mesmo env")
 		transport = flag.String("transport", envOr("REGENTE_AGENT_TRANSPORT", "ws"), "Transporte: ws (WebSocket) | http (long-poll, serverless-friendly)")
 	)
@@ -299,6 +299,8 @@ func executeJob(jobType string, params map[string]interface{}, timeoutSec int, e
 		return runREST(params, timeoutSec)
 	case "FILE_WATCH", "FILEWATCH":
 		return runFileWatch(params, timeoutSec, emit)
+	case "FILE_TRANSFER", "MFT":
+		return runFileTransfer(params, timeoutSec, emit)
 	case "DATABASE", "DB":
 		return runDatabase(params, timeoutSec, emit)
 	case "WASM":

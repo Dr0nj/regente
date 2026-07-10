@@ -121,6 +121,27 @@ var jobTypeSchemas = []JobTypeSchema{
 		},
 	},
 	{
+		Type: "FILE_TRANSFER", Aliases: []string{"MFT"}, Summary: "MFT nativo: transfere arquivos entre local, SFTP e S3 pelo agente.",
+		Fields: []FieldSpec{
+			{Name: "src", Kind: KindString, Required: true,
+				Desc: "origem: caminho local, sftp://user:pass@host:22/caminho ou s3://bucket/chave (glob *.csv em local/sftp)"},
+			{Name: "dst", Kind: KindString, Required: true,
+				Desc: "destino nas mesmas formas; termine com / para diretório/prefixo (obrigatório com glob)"},
+			{Name: "checksum", Kind: KindBool, Desc: "true = relê o destino e compara SHA-256 (verificação fim-a-fim)"},
+			{Name: "deleteSource", Kind: KindBool, Desc: "true = remove a origem após transferir+verificar (move)"},
+			{Name: "overwrite", Kind: KindBool, Desc: "false = falha se o destino já existe (default true)"},
+			{Name: "mkdirs", Kind: KindBool, Desc: "cria diretórios de destino que faltam (default true)"},
+			{Name: "keyPath", Kind: KindString, Desc: "chave privada p/ endpoints sftp (arquivo no host do agente)"},
+			{Name: "password", Kind: KindString, Desc: "senha sftp (a userinfo da URL vence)"},
+			{Name: "hostKeyFingerprint", Kind: KindString, Desc: `pin "SHA256:..." do host sftp; vazio = aceita qualquer`},
+			{Name: "region", Kind: KindString, Desc: "região S3 (default env AWS_REGION do agente)"},
+			{Name: "accessKeyId", Kind: KindString, Desc: "default env AWS_ACCESS_KEY_ID"},
+			{Name: "secretAccessKey", Kind: KindString, Desc: "default env AWS_SECRET_ACCESS_KEY"},
+			{Name: "sessionToken", Kind: KindString, Desc: "default env AWS_SESSION_TOKEN"},
+			{Name: "s3Endpoint", Kind: KindString, Desc: "override da URL base do S3 (testes/MinIO, path-style)"},
+		},
+	},
+	{
 		Type: "LAMBDA", Aliases: []string{"AWS_LAMBDA"}, Summary: "Invoca uma função AWS Lambda (SigV4 pelo agente, sem SDK).",
 		Fields: []FieldSpec{
 			{Name: "function", Aliases: []string{"functionName"}, Kind: KindString, Required: true, Desc: "nome ou ARN da função"},

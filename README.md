@@ -340,6 +340,11 @@ em tempo real** (aparece no detalhe da instance).
 | `COMMAND` | Comando no shell do SO (`powershell -Command` no Windows, `sh -c` no Linux) | `command`, `cwd?` |
 | `SCRIPT` | Executa um script; interpretador pela extensão (`.ps1`/`.bat`/`.sh`) | `scriptPath`, `args?`, `cwd?` |
 | `HTTP` | Chamada REST com validação de status | `method`, `url`, `headers?`, `body?`, `expectStatus?` |
+| `DATABASE` | SQL em Postgres/MySQL/SQLite (drivers pure-Go, sem client no host) | `driver`, `dsn`, `sql`, `maxRows?` |
+| `FILE_WATCH` | Espera um arquivo chegar (e estabilizar) no host do agente | `path`, `intervalSec?`, `stableSec?` |
+| `FILE_TRANSFER` | **MFT nativo**: transfere arquivos entre local, SFTP e S3 — glob na origem, escrita atômica, checksum SHA-256, move (alias `MFT`) | `src`, `dst`, `checksum?`, `deleteSource?`, `overwrite?`, … |
+| `LAMBDA` | Invoca uma função AWS Lambda (SigV4 na stdlib, sem SDK) | `function`, `region?`, `payload?` |
+| `GCP_RUN` | Dispara um Cloud Run Job (Run Admin API v2) | `project`, `region`, `job` |
 | `WASM` | Roda um módulo WebAssembly WASI sandboxed via [wazero](https://wazero.dev) (pure-Go, sem CGO) | `wasmPath` \| `wasmUrl`, `args?`, `stdin?` |
 | `K8S_JOB` | Cria um **Kubernetes Job** via API REST e aguarda concluir (adapter de nuvem por capability `K8S`) | `image`, `command?`, `namespace?`, `apiServer?`, `token?` |
 

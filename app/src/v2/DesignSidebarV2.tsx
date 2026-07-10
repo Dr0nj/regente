@@ -16,6 +16,7 @@ import {
   FileCode,
   Network,
   FileSearch,
+  ArrowRightLeft,
   type LucideIcon,
 } from "lucide-react";
 import type { JobDefinition } from "@/lib/orchestrator-model";
@@ -51,6 +52,7 @@ const JOB_TYPES: Array<{
   { id: "SSH",           label: "SSH",           hint: "Comando remoto via SSH (sem agente)",  Icon: Network },
   { id: "HTTP",          label: "HTTP",          hint: "Chamada REST com validação de status", Icon: Globe },
   { id: "FILE_WATCH",    label: "File Watch",    hint: "Espera arquivo chegar no agente",      Icon: FileSearch },
+  { id: "FILE_TRANSFER", label: "File Transfer", hint: "MFT: local ↔ SFTP ↔ S3 pelo agente",   Icon: ArrowRightLeft },
   { id: "DATABASE",      label: "Database",      hint: "SQL em Postgres/MySQL/SQLite pelo agente", Icon: Database },
   { id: "WAIT",          label: "Wait",          hint: "Delay / espera programada",            Icon: Clock },
   { id: "CHOICE",        label: "Choice",        hint: "Desvio condicional",                   Icon: GitFork },

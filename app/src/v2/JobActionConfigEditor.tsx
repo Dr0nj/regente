@@ -83,6 +83,30 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
         </Section>
       );
 
+    case "FILE_TRANSFER":
+      return (
+        <Section label="File Transfer (MFT pelo agente)">
+          <Row label="Origem (local, sftp://user:pass@host/caminho ou s3://bucket/chave; glob em local/sftp)">
+            <Input mono value={str("src")} placeholder="/data/out/fech_*.csv   ou   s3://bucket/entrada/carga.csv" onChange={v => set("src", v)} />
+          </Row>
+          <Row label="Destino (termine com / para diretório/prefixo)">
+            <Input mono value={str("dst")} placeholder="sftp://svc@10.0.0.5:22/entrada/" onChange={v => set("dst", v)} />
+          </Row>
+          <Row label="Verificação SHA-256 (relê o destino)">
+            <BoolSelect value={get("checksum", false)} onChange={v => set("checksum", v)} />
+          </Row>
+          <Row label="Remover origem após transferir (move)">
+            <BoolSelect value={get("deleteSource", false)} onChange={v => set("deleteSource", v)} />
+          </Row>
+          <Row label="Sobrescrever destino existente">
+            <BoolSelect value={get("overwrite", true)} onChange={v => set("overwrite", v)} />
+          </Row>
+          <Row label="Chave privada sftp (keyPath, opcional)">
+            <Input mono value={str("keyPath")} placeholder="/home/agent/.ssh/id_rsa" onChange={v => set("keyPath", v)} />
+          </Row>
+        </Section>
+      );
+
     case "DATABASE":
       return (
         <Section label="Database (SQL pelo agente)">
@@ -262,6 +286,15 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <div style={{ fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--v2-text-muted)", marginBottom: 3 }}>{label}</div>
       {children}
     </div>
+  );
+}
+
+function BoolSelect({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <select value={value ? "true" : "false"} onChange={e => onChange(e.target.value === "true")} style={selectStyle}>
+      <option value="false">não</option>
+      <option value="true">sim</option>
+    </select>
   );
 }
 

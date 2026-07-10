@@ -101,6 +101,19 @@ params:
   stableSec: 10`,
   },
   {
+    tag: "FILE_TRANSFER",
+    kind: "jobType · alias MFT",
+    summary: "MFT nativo: transfere arquivos entre local, SFTP e S3 pelo agente.",
+    detail: "params OBRIGATÓRIOS: `src` · `dst` — caminho local, `sftp://user:pass@host:22/caminho` ou `s3://bucket/chave`; glob (`*.csv`) na origem local/sftp; destino com `/` final = diretório/prefixo (obrigatório com glob). Opcionais: `checksum` (relê o destino e compara SHA-256) · `deleteSource` (move) · `overwrite` (false = falha se o destino existe) · `mkdirs` (default true) · sftp: `keyPath`/`password`/`hostKeyFingerprint` (pin SHA256) · S3: `region`/`accessKeyId`/`secretAccessKey`/`sessionToken` (default envs AWS_* do agente) e `s3Endpoint` (MinIO/testes). Escrita atômica (.part+rename): um FILE_WATCH do outro lado nunca vê arquivo parcial.",
+    example: `jobType: FILE_TRANSFER
+timeout: 1800
+params:
+  src: /data/out/fech_%%ODATE_*.csv
+  dst: sftp://svc@mainframe:22/entrada/
+  checksum: true
+  deleteSource: true`,
+  },
+  {
     tag: "LAMBDA",
     kind: "jobType · alias AWS_LAMBDA",
     summary: "Invoca uma função AWS Lambda (SigV4 pelo agente, sem SDK).",
