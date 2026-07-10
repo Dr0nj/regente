@@ -16,6 +16,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/Dr0nj/regente-server/internal/auth"
@@ -193,7 +194,9 @@ func (s *server) saveSessionDefinition(w http.ResponseWriter, r *http.Request) {
 	if !s.requireFolderWrite(w, r, def.Team) {
 		return
 	}
-	if err := domain.ValidateDefinition(def); err != nil {
+	// Draft: kinds/enums/campos desconhecidos valem já; obrigatórios só no publish
+	// (card recém-criado da palette ainda não tem command/url/…).
+	if err := domain.ValidateDefinitionDraft(def); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -309,6 +312,27 @@ func (s *server) publishDesignSession(w http.ResponseWriter, r *http.Request) {
 		Message string `json:"message"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
+	// ADV-1 — gate ESTRITO do schema por jobType: o draft aceita params
+	// incompletos (card da palette), mas nada publica sem os obrigatórios do
+	// tipo (COMMAND.command, HTTP.url, …). 422 estruturado com a lista por job.
+	if defs, err := sess.Store.List(); err == nil {
+		var schemaErrs []string
+		for _, d := range defs {
+			if err := domain.ValidateDefinition(d); err != nil {
+				schemaErrs = append(schemaErrs, fmt.Sprintf("%s/%s: %v", d.Team, d.ID, err))
+			}
+		}
+		if len(schemaErrs) > 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error":   "schema",
+				"message": fmt.Sprintf("%d job(s) com params inválidos/incompletos pro tipo", len(schemaErrs)),
+				"jobs":    schemaErrs,
+			})
+			return
+		}
+	}
 	// D-10 Policy as Code — gate do publish: valida o working set contra o
 	// policies.yaml DO CLONE da session (política + jobs promovem juntos).
 	// enforcement=error → 422 estruturado; warn → publica e anexa warnings.

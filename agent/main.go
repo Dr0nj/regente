@@ -24,6 +24,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -47,6 +48,7 @@ func main() {
 		token     = flag.String("token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token")
 		agentID   = flag.String("id", hostnameOr("agent-local"), "Agent ID (unique)")
 		caps      = flag.String("caps", "COMMAND,SCRIPT,HTTP,REST,WASM,DATABASE,FILE_WATCH", "Comma-separated capabilities advertised")
+		agentEnv  = flag.String("env", envOr("REGENTE_AGENT_ENV", ""), "Ambiente/site deste agente (ADV-2; ex.: prod, dc-sp). Vazio = generalista; job com environment só roteia pra agente do mesmo env")
 		transport = flag.String("transport", envOr("REGENTE_AGENT_TRANSPORT", "ws"), "Transporte: ws (WebSocket) | http (long-poll, serverless-friendly)")
 	)
 	flag.Parse()
@@ -57,8 +59,8 @@ func main() {
 	// Fase 2 — transporte HTTP long-poll: control plane stateless (scale-to-zero).
 	if strings.EqualFold(*transport, "http") {
 		base := httpBase(*server)
-		log.Printf("regente-agent id=%s caps=%s transport=http -> %s", *agentID, *caps, base)
-		runAgentHTTP(base, *token, *agentID, *caps, stop)
+		log.Printf("regente-agent id=%s caps=%s env=%q transport=http -> %s", *agentID, *caps, *agentEnv, base)
+		runAgentHTTP(base, *token, *agentID, *caps, *agentEnv, stop)
 		return
 	}
 
@@ -70,6 +72,9 @@ func main() {
 	q.Set("token", *token)
 	q.Set("id", *agentID)
 	q.Set("caps", *caps)
+	if *agentEnv != "" {
+		q.Set("env", *agentEnv) // ADV-2 — roteamento por ambiente
+	}
 	// Metadata pra tela de Agentes (OS/host/versão/uptime).
 	q.Set("os", runtime.GOOS)
 	q.Set("arch", runtime.GOARCH)
@@ -196,8 +201,11 @@ func httpBase(server string) string {
 
 // runAgentHTTP — loop de long-poll (transporte HTTP, Fase 2). Resiliente:
 // erros de rede viram retry com backoff curto; não derruba o processo.
-func runAgentHTTP(base, token, id, caps string, stop <-chan os.Signal) {
+func runAgentHTTP(base, token, id, caps, env string, stop <-chan os.Signal) {
 	pollURL := base + "/api/agent/poll?id=" + url.QueryEscape(id) + "&caps=" + url.QueryEscape(caps)
+	if env != "" {
+		pollURL += "&env=" + url.QueryEscape(env) // ADV-2
+	}
 	// Client com timeout > janela de long-poll do server (25s) para não cortar.
 	client := &http.Client{Timeout: 35 * time.Second}
 
@@ -466,8 +474,21 @@ func runREST(params map[string]interface{}, timeoutSec int) (int, string) {
 	if res.StatusCode >= 400 {
 		code = res.StatusCode
 	}
-	// expectStatus override
-	if exp, ok := params["expectStatus"].([]interface{}); ok && len(exp) > 0 {
+	// expectStatus override — aceita lista, escalar OU string CSV "200,204"
+	// (schema ADV-1: intlist). `expectStatus: 200` no YAML chegava como número
+	// solto e era IGNORADO; a UI emite CSV e também era ignorada.
+	exp, _ := params["expectStatus"].([]interface{})
+	if n, ok := toInt(params["expectStatus"]); ok {
+		exp = []interface{}{n}
+	}
+	if s, ok := params["expectStatus"].(string); ok {
+		for _, part := range strings.Split(s, ",") {
+			if n, err := strconv.Atoi(strings.TrimSpace(part)); err == nil {
+				exp = append(exp, n)
+			}
+		}
+	}
+	if len(exp) > 0 {
 		match := false
 		for _, e := range exp {
 			if n, ok := toInt(e); ok && n == res.StatusCode {

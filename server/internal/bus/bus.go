@@ -38,6 +38,7 @@ type Transport interface {
 type remoteAgent struct {
 	node     string
 	caps     []string
+	env      string // ADV-2 — ambiente do agente (roteamento por env cross-nó)
 	lastSeen time.Time
 }
 
@@ -74,6 +75,7 @@ type webEnvelope struct {
 type agentInfo struct {
 	ID   string   `json:"id"`
 	Caps []string `json:"caps"`
+	Env  string   `json:"env,omitempty"` // ADV-2
 }
 type presenceMsg struct {
 	Node   string      `json:"node"`
@@ -118,26 +120,28 @@ func (d *Distributed) BroadcastWeb(event string, payload interface{}) {
 	}
 }
 
-func (d *Distributed) PickAgent(capability string) *hub.Client { return d.local.PickAgent(capability) }
-func (d *Distributed) GetAgent(id string) *hub.Client          { return d.local.GetAgent(id) }
+func (d *Distributed) PickAgent(capability, env string) *hub.Client {
+	return d.local.PickAgent(capability, env)
+}
+func (d *Distributed) GetAgent(id string) *hub.Client { return d.local.GetAgent(id) }
 
 // HasAgent — disponibilidade local OU remota (presença R5 com TTL). O guard do
 // scheduler usa isto; checar só o hub local starvaria dispatch roteado via NATS.
-func (d *Distributed) HasAgent(agentID, capability string) bool {
-	if d.local.HasAgent(agentID, capability) {
+func (d *Distributed) HasAgent(agentID, capability, env string) bool {
+	if d.local.HasAgent(agentID, capability, env) {
 		return true
 	}
-	node, _ := d.findRemote(agentID, capability)
+	node, _ := d.findRemote(agentID, capability, env)
 	return node != ""
 }
 
-func (d *Distributed) Dispatch(agentID, capability string, raw []byte) (hub.DispatchOutcome, string) {
+func (d *Distributed) Dispatch(agentID, capability, env string, raw []byte) (hub.DispatchOutcome, string) {
 	// 1. Agent local? mantém a semântica exata do hub (Sent/QueueFull).
-	if out, id := d.local.Dispatch(agentID, capability, raw); out != hub.DispatchNoAgent {
+	if out, id := d.local.Dispatch(agentID, capability, env, raw); out != hub.DispatchNoAgent {
 		return out, id
 	}
 	// 2. Agent remoto (via presença): roteia o payload ao nó dono.
-	node, id := d.findRemote(agentID, capability)
+	node, id := d.findRemote(agentID, capability, env)
 	if node == "" {
 		return hub.DispatchNoAgent, ""
 	}
@@ -155,6 +159,7 @@ type RemoteAgent struct {
 	ID       string
 	Node     string
 	Caps     []string
+	Env      string // ADV-2 — ambiente do agente
 	LastSeen time.Time
 }
 
@@ -173,22 +178,26 @@ func (d *Distributed) RemoteAgents() []RemoteAgent {
 			ID:       id,
 			Node:     ra.node,
 			Caps:     append([]string(nil), ra.caps...),
+			Env:      ra.env,
 			LastSeen: ra.lastSeen,
 		})
 	}
 	return out
 }
 
-func (d *Distributed) findRemote(agentID, capability string) (node, id string) {
+func (d *Distributed) findRemote(agentID, capability, env string) (node, id string) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	if agentID != "" {
-		if ra, ok := d.remote[agentID]; ok {
+		if ra, ok := d.remote[agentID]; ok && hub.EnvMatch(env, ra.env) {
 			return ra.node, agentID
 		}
 		return "", ""
 	}
 	for aid, ra := range d.remote {
+		if !hub.EnvMatch(env, ra.env) {
+			continue
+		}
 		for _, c := range ra.caps {
 			if c == capability {
 				return ra.node, aid
@@ -217,7 +226,7 @@ func (d *Distributed) onPresence(data []byte) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for _, a := range m.Agents {
-		d.remote[a.ID] = remoteAgent{node: m.Node, caps: a.Caps, lastSeen: now}
+		d.remote[a.ID] = remoteAgent{node: m.Node, caps: a.Caps, env: a.Env, lastSeen: now}
 	}
 	// Expira presença remota não renovada (agent desconectou do nó dono).
 	for id, ra := range d.remote {
@@ -244,12 +253,13 @@ func (d *Distributed) onRoutedDispatch(data []byte) {
 }
 
 func (d *Distributed) publishPresence() {
-	online := d.local.OnlineAgents() // []map{id, capabilities}
+	online := d.local.OnlineAgents() // []map{id, capabilities, environment, …}
 	agents := make([]agentInfo, 0, len(online))
 	for _, a := range online {
 		id, _ := a["id"].(string)
 		caps, _ := a["capabilities"].([]string)
-		agents = append(agents, agentInfo{ID: id, Caps: caps})
+		env, _ := a["environment"].(string)
+		agents = append(agents, agentInfo{ID: id, Caps: caps, Env: env})
 	}
 	data, _ := json.Marshal(presenceMsg{Node: d.node, Agents: agents})
 	if err := d.tr.Publish(subjPresence, data); err != nil {

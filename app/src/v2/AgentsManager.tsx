@@ -121,6 +121,12 @@ export default function AgentsManager() {
                   {a.id}
                 </span>
                 {a.os && <span style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", border: "1px solid var(--v2-border-subtle)", borderRadius: 3, padding: "1px 5px" }}>{a.os}{a.arch ? `/${a.arch}` : ""}</span>}
+                {a.environment && (
+                  <span title={`Ambiente/site do agente (flag -env) — jobs com environment "${a.environment}" roteiam pra cá`}
+                    style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-status-running)", border: "1px solid var(--v2-status-running)", borderRadius: 3, padding: "1px 5px", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    ◉ {a.environment}
+                  </span>
+                )}
                 {a.online && a.node && !a.local && (
                   <span title={`Conectado em outro nó do cluster (${a.node})`}
                     style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-accent-brand)", border: "1px solid var(--v2-accent-brand)", borderRadius: 3, padding: "1px 5px", whiteSpace: "nowrap" }}>
@@ -217,6 +223,7 @@ function AgentDetailModal({ agent, onClose }: { agent: AgentInfo; onClose: () =>
         </div>
         <div style={{ padding: "10px 16px" }}>
           {a.online && a.node && <Row label="Nó" value={a.local ? `${a.node} (este nó)` : a.node} />}
+          {a.environment && <Row label="Ambiente" value={a.environment} />}
           <Row label="Sistema" value={a.os ? `${a.os}${a.arch ? ` / ${a.arch}` : ""}` : "—"} />
           <Row label="Host" value={a.host || "—"} />
           <Row label="Versão" value={a.version || "—"} />

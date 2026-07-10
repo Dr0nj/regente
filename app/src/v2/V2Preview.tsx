@@ -74,10 +74,11 @@ import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, creat
 import { toast, ToastHost } from "./Toast";
 import EdgeConditionModal from "./EdgeConditionModal";
 import { getGitInfo, commitUrl } from "@/lib/git-info";
-import { FolderOpen, Play, Zap, GitCommitHorizontal, GitCompare, FlaskConical, LayoutGrid, ChevronLeft, ChevronRight, Code, Wand2, GanttChartSquare } from "lucide-react";
+import { FolderOpen, Play, Zap, GitCommitHorizontal, GitCompare, FlaskConical, LayoutGrid, ChevronLeft, ChevronRight, Code, Wand2, GanttChartSquare, HelpCircle } from "lucide-react";
 import CodeModeView from "./CodeModeView";
 import MassUpdateDialog from "./MassUpdateDialog";
 import TimelineView from "./TimelineView";
+import WhatIfPanel from "./WhatIfPanel";
 import { pauseFolder, resumeFolder } from "@/lib/differentials-api";
 
 import "@xyflow/react/dist/style.css";
@@ -114,6 +115,8 @@ function V2PreviewInner() {
   const [showDryRun, setShowDryRun] = useState(false);
   // D-12 — Timeline (Gantt) da daily sobreposta ao canvas do Monitoring.
   const [showTimeline, setShowTimeline] = useState(false);
+  // ADV-3 — What-If (simulação de cenário) sobreposto ao canvas do Monitoring.
+  const [showWhatIf, setShowWhatIf] = useState(false);
   // Dados do canvas (defs + instances) e ciclo de vida deles (carga inicial,
   // subscribes, scheduler local, resync via WS) vivem no hook.
   const { defs, instances, ready, reloadDefs, syncInstances } = useOrchestratorData();
@@ -1268,6 +1271,24 @@ function V2PreviewInner() {
             </button>
 
             <button
+              onClick={() => setShowWhatIf(true)}
+              title="What-If — simula um cenário (job atrasa/demora/falha/não roda) e mostra o impacto rio abaixo com durações reais; nada é materializado"
+              style={{
+                padding: "5px 10px",
+                background: "transparent",
+                border: "1px solid var(--v2-border-medium)",
+                color: "var(--v2-text-primary)",
+                borderRadius: 3,
+                fontSize: 10, fontFamily: "var(--v2-font-mono)",
+                letterSpacing: "0.06em", textTransform: "uppercase",
+                cursor: "pointer", fontWeight: 600,
+                display: "flex", alignItems: "center", gap: 6,
+              }}
+            >
+              <HelpCircle size={11} /> What-If
+            </button>
+
+            <button
               onClick={() => organizeView(300)}
               title="Organizar — re-enquadra o canvas no mesmo limite da entrada (os jobs já se alinham sozinhos: dependentes em fluxo, soltos em grade)"
               style={{
@@ -1780,6 +1801,10 @@ function V2PreviewInner() {
             onClose={() => setShowTimeline(false)}
             onSelect={(id) => { setSelectedInstanceId(id); setShowTimeline(false); }}
           />
+        )}
+        {/* ADV-3 — What-If: simulação de cenário sobre a diária (read-only) */}
+        {showWhatIf && mode === "monitoring" && (
+          <WhatIfPanel defs={defs} onClose={() => setShowWhatIf(false)} />
         )}
 
         <PRBannerHost />

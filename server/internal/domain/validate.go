@@ -4,111 +4,79 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	)
+)
 
 /* ──────────────────────────────────────────────────────────────
-   F12 — Validação de actionConfig por jobType
+   F12 → ADV-1 — Validação de actionConfig por jobType
    ──────────────────────────────────────────────────────────────
-   Espelha JobActionConfigEditor.tsx do frontend. Mantém shape
-   mínimo obrigatório por type. Para CHOICE/PARALLEL aceita
-   branches como []interface{} (frontend serializa JSON).
+   A regra por tipo vive no REGISTRY declarativo (typeschema.go):
+   obrigatórios, kinds, enums, aliases e campos desconhecidos.
+   Aqui fica só o despacho: tipo conhecido → schema dedicado;
+   tipo desconhecido → params livres (mundo aberto preservado).
    ────────────────────────────────────────────────────────────── */
 
-func ValidateActionConfig(def JobDefinition) error {
+func ValidateActionConfig(def JobDefinition) error { return validateAC(def, true) }
+
+// ValidateActionConfigDraft — versão de RASCUNHO: mesmas checagens de kind,
+// enum e campo desconhecido (pega typo na hora), mas SEM cobrar obrigatórios
+// nem regras cross-field — um card recém-arrastado da palette ainda não tem
+// command/url/etc. Os obrigatórios são cobrados no publish (strict).
+func ValidateActionConfigDraft(def JobDefinition) error { return validateAC(def, false) }
+
+func validateAC(def JobDefinition, strict bool) error {
+	jt := strings.TrimSpace(def.JobType)
+	if jt == "" {
+		return errors.New("jobType required")
+	}
+	s, known := SchemaFor(jt)
+	if !known {
+		// jobType desconhecido: aceita actionConfig livre, sem validação rígida
+		// (só roda se um agente anunciar a capability; senão WAIT_AGENT).
+		return nil
+	}
 	cfg := def.Params
-	jt := strings.ToUpper(def.JobType)
-	switch jt {
-	case "HTTP":
-		if cfg == nil {
-			return errors.New("HTTP requires actionConfig")
+	if cfg == nil {
+		if !strict {
+			return nil
 		}
-		if !isNonEmptyString(cfg["url"]) {
-			return errors.New("HTTP.url required")
-		}
-		if v, ok := cfg["method"]; ok {
-			if s, ok := v.(string); !ok || !isHTTPMethod(s) {
-				return errors.New("HTTP.method must be GET|POST|PUT|PATCH|DELETE")
+		// nil = "sem params". Só é erro se o tipo tem campo obrigatório.
+		for _, f := range s.Fields {
+			if f.Required {
+				return fmt.Errorf("%s.%s required", s.Type, f.Name)
 			}
 		}
-	case "LAMBDA":
-		if cfg == nil || !isNonEmptyString(cfg["functionName"]) {
-			return errors.New("LAMBDA.functionName required")
-		}
-	case "BATCH":
-		if cfg == nil || !isNonEmptyString(cfg["jobQueue"]) || !isNonEmptyString(cfg["jobDefinition"]) {
-			return errors.New("BATCH requires jobQueue + jobDefinition")
-		}
-	case "GLUE":
-		if cfg == nil || !isNonEmptyString(cfg["jobName"]) {
-			return errors.New("GLUE.jobName required")
-		}
-	case "STEP_FUNCTION":
-		if cfg == nil || !isNonEmptyString(cfg["stateMachineArn"]) {
-			return errors.New("STEP_FUNCTION.stateMachineArn required")
-		}
-	case "FILE_WATCH", "FILEWATCH":
-		if cfg == nil || !isNonEmptyString(cfg["path"]) {
-			return errors.New("FILE_WATCH.path required (caminho do arquivo no host do agente)")
-		}
-	case "DATABASE", "DB":
-		if cfg == nil || !isNonEmptyString(cfg["driver"]) || !isNonEmptyString(cfg["dsn"]) || !isNonEmptyString(cfg["sql"]) {
-			return errors.New("DATABASE requires driver + dsn + sql")
-		}
-		if d, _ := cfg["driver"].(string); !isDBDriver(d) {
-			return errors.New("DATABASE.driver must be postgres|mysql|sqlite")
-		}
-	case "WAIT":
-		if cfg == nil {
-			return nil // wait sem config = noop, ok
-		}
-		_, hasSec := cfg["seconds"]
-		_, hasUntil := cfg["until"]
-		if !hasSec && !hasUntil {
-			return errors.New("WAIT requires seconds or until")
-		}
-	case "CHOICE":
-		if cfg == nil || !isNonEmptyString(cfg["expression"]) {
-			return errors.New("CHOICE.expression required")
-		}
-	case "PARALLEL":
-		if cfg == nil {
-			return errors.New("PARALLEL requires branches")
-		}
-		br, ok := cfg["branches"].([]interface{})
-		if !ok || len(br) == 0 {
-			return errors.New("PARALLEL.branches must be non-empty array")
-		}
-	case "":
-		return errors.New("jobType required")
-	default:
-		// jobType desconhecido: aceita actionConfig livre, sem validação rígida.
 		return nil
+	}
+	return validateAgainstSchema(s, cfg, strict)
+}
+
+// ValidateDefinition — validação ESTRITA: shape básico + schema dedicado por
+// tipo COM obrigatórios (ADV-1). É o gate do publish e dos writes diretos no
+// workspace publicado (definitions/massupdate-apply/CLI test).
+func ValidateDefinition(def JobDefinition) error {
+	if err := validateDefShape(def); err != nil {
+		return err
+	}
+	if err := ValidateActionConfig(def); err != nil {
+		return fmt.Errorf("actionConfig: %w", err)
 	}
 	return nil
 }
 
-func isNonEmptyString(v interface{}) bool {
-	s, ok := v.(string)
-	return ok && strings.TrimSpace(s) != ""
-}
-
-func isHTTPMethod(s string) bool {
-	switch strings.ToUpper(s) {
-	case "GET", "POST", "PUT", "PATCH", "DELETE":
-		return true
+// ValidateDefinitionDraft — validação de RASCUNHO (save de Design session,
+// jobs-as-code apply, bulk/massupdate de session): shape básico + kinds/enums/
+// campos desconhecidos, sem cobrar params obrigatórios. Ver ValidateActionConfigDraft.
+func ValidateDefinitionDraft(def JobDefinition) error {
+	if err := validateDefShape(def); err != nil {
+		return err
 	}
-	return false
-}
-
-func isDBDriver(s string) bool {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "postgres", "postgresql", "pg", "pgx", "mysql", "mariadb", "sqlite", "sqlite3":
-		return true
+	if err := ValidateActionConfigDraft(def); err != nil {
+		return fmt.Errorf("actionConfig: %w", err)
 	}
-	return false
+	return nil
 }
 
-func ValidateDefinition(def JobDefinition) error {
+func validateDefShape(def JobDefinition) error {
 	if strings.TrimSpace(def.ID) == "" {
 		return errors.New("id required")
 	}
@@ -117,9 +85,6 @@ func ValidateDefinition(def JobDefinition) error {
 	}
 	if strings.TrimSpace(def.Team) == "" {
 		return errors.New("team (folder) required")
-	}
-	if err := ValidateActionConfig(def); err != nil {
-		return fmt.Errorf("actionConfig: %w", err)
 	}
 	return nil
 }

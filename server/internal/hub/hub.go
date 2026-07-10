@@ -7,6 +7,7 @@ package hub
 import (
 	"encoding/json"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,6 +29,12 @@ type Client struct {
 	Send         chan []byte
 	Capabilities []string // agents: ["COMMAND","REST",...]
 
+	// Environment — ADV-2: label de ambiente/site do agente (flag -env do
+	// agente; ex. "prod", "dc-sp"). Vazio = generalista (serve qualquer job).
+	// Job com def.Environment setado SÓ roteia pra agente do mesmo env (ou
+	// generalista) — ver envMatch.
+	Environment string
+
 	// Metadata de agente (reportada no handshake) — alimenta a tela de Agentes.
 	OS          string
 	Arch        string
@@ -36,6 +43,15 @@ type Client struct {
 	Started     string    // início do processo do agente (RFC3339), p/ uptime
 	ConnectedAt time.Time // quando conectou neste servidor (sessão)
 	LastSeen    time.Time // último sinal (heartbeat/result/output)
+}
+
+// EnvMatch — regra ÚNICA do roteamento por ambiente (ADV-2, F20 finalmente
+// roteando): lado sem label = coringa; os dois com label = precisa bater
+// (case-insensitive). Assim, setups sem -env continuam idênticos ao passado
+// e o isolamento estrito é opt-in: rotule TODOS os agentes.
+func EnvMatch(defEnv, agentEnv string) bool {
+	defEnv, agentEnv = strings.TrimSpace(defEnv), strings.TrimSpace(agentEnv)
+	return defEnv == "" || agentEnv == "" || strings.EqualFold(defEnv, agentEnv)
 }
 
 type Hub struct {
@@ -106,12 +122,16 @@ func (h *Hub) BroadcastWeb(event string, payload interface{}) {
 	}
 }
 
-// PickAgent retorna o primeiro agent disponível que anuncia a capability.
-// V1: round-robin simples não implementado — pega o primeiro encontrado.
-func (h *Hub) PickAgent(capability string) *Client {
+// PickAgent retorna o primeiro agent disponível que anuncia a capability E
+// casa o ambiente (ADV-2). V1: round-robin simples não implementado — pega o
+// primeiro encontrado.
+func (h *Hub) PickAgent(capability, env string) *Client {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for _, a := range h.agents {
+		if !EnvMatch(env, a.Environment) {
+			continue
+		}
 		for _, cap := range a.Capabilities {
 			if cap == capability {
 				return a
@@ -129,14 +149,17 @@ func (h *Hub) GetAgent(id string) *Client {
 }
 
 // HasAgent — existe agente capaz de receber este dispatch AGORA? (id pinado,
-// ou qualquer um com a capability). Usado pelo scheduler ANTES do claim: job
-// sem agente fica parado em WAITING (WAIT AGENT), sem o churn RUNNING↔WAITING
-// de reivindicar e reverter a cada tick.
-func (h *Hub) HasAgent(agentID, capability string) bool {
+// ou qualquer um com a capability, casando o ambiente — ADV-2). Usado pelo
+// scheduler ANTES do claim: job sem agente fica parado em WAITING (WAIT AGENT),
+// sem o churn RUNNING↔WAITING de reivindicar e reverter a cada tick.
+// Agente PINADO em ambiente conflitante NÃO conta: job prod pinado num agente
+// dev é misconfiguração — fica em WAIT_AGENT com o motivo no Explain.
+func (h *Hub) HasAgent(agentID, capability, env string) bool {
 	if agentID != "" {
-		return h.GetAgent(agentID) != nil
+		a := h.GetAgent(agentID)
+		return a != nil && EnvMatch(env, a.Environment)
 	}
-	return h.PickAgent(capability) != nil
+	return h.PickAgent(capability, env) != nil
 }
 
 // DispatchOutcome — resultado de uma tentativa de entrega de dispatch a um agent.
@@ -149,16 +172,18 @@ const (
 )
 
 // Dispatch entrega o payload a um agent LOCAL, centralizando a lógica que antes
-// vivia inline no scheduler (GetAgent por id, senão PickAgent por capability, e
-// envio não-bloqueante no canal Send). É o seam que o bus distribuído (R5) estende
-// para rotear ao nó dono quando o agent não está neste processo.
-func (h *Hub) Dispatch(agentID, capability string, raw []byte) (DispatchOutcome, string) {
+// vivia inline no scheduler (GetAgent por id, senão PickAgent por capability +
+// ambiente, e envio não-bloqueante no canal Send). É o seam que o bus distribuído
+// (R5) estende para rotear ao nó dono quando o agent não está neste processo.
+func (h *Hub) Dispatch(agentID, capability, env string, raw []byte) (DispatchOutcome, string) {
 	var a *Client
 	if agentID != "" {
-		a = h.GetAgent(agentID)
+		if p := h.GetAgent(agentID); p != nil && EnvMatch(env, p.Environment) {
+			a = p
+		}
 	}
 	if a == nil {
-		a = h.PickAgent(capability)
+		a = h.PickAgent(capability, env)
 	}
 	if a == nil {
 		return DispatchNoAgent, ""
@@ -180,6 +205,7 @@ func (h *Hub) OnlineAgents() []map[string]interface{} {
 		out = append(out, map[string]interface{}{
 			"id":           id,
 			"capabilities": a.Capabilities,
+			"environment":  a.Environment,
 			"os":           a.OS,
 			"arch":         a.Arch,
 			"host":         a.Host,

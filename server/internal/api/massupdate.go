@@ -646,7 +646,8 @@ func (s *server) massUpdateSession(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if req.Apply {
-			if err := domain.ValidateDefinition(mod); err != nil {
+			// escreve na SESSION (draft) — obrigatórios ficam pro publish
+			if err := domain.ValidateDefinitionDraft(mod); err != nil {
 				item.Error = err.Error()
 				items = append(items, item)
 				continue

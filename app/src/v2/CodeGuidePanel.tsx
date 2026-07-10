@@ -13,13 +13,10 @@ import { toast } from "./Toast";
 
 const mono: CSSProperties = { fontFamily: "var(--v2-font-mono)" };
 
-/** Entry (ou descendente) casa com o filtro? */
+/** Entry (ou descendente) casa com o filtro? Só o NOME da tag conta — não o texto/valores. */
 function matches(e: GuideEntry, q: string): boolean {
   if (!q) return true;
-  const hay = `${e.tag} ${e.kind} ${e.summary} ${e.detail ?? ""} ${(e.forms ?? [])
-    .map((f) => `${f.form} ${f.desc}`)
-    .join(" ")}`.toLowerCase();
-  if (hay.includes(q)) return true;
+  if (e.tag.toLowerCase().includes(q)) return true;
   return (e.children ?? []).some((c) => matches(c, q));
 }
 
@@ -205,7 +202,7 @@ export default function CodeGuidePanel() {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Filtrar tag / valor / texto…"
+          placeholder="Filtrar por tag…"
           style={{
             width: "100%",
             boxSizing: "border-box",

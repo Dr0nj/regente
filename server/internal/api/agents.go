@@ -75,7 +75,7 @@ func (s *server) pingAgent(w http.ResponseWriter, r *http.Request) {
 
 	raw, _ := json.Marshal(map[string]string{"event": "ping", "pingId": pingID})
 	sent := time.Now()
-	if outcome, _ := s.cfg.Hub.Dispatch(id, "", raw); outcome != hub.DispatchSent {
+	if outcome, _ := s.cfg.Hub.Dispatch(id, "", "", raw); outcome != hub.DispatchSent {
 		writeJSON(w, 200, pingResult{ID: id, Online: true, Error: "não foi possível enviar (buffer cheio?)"})
 		return
 	}
@@ -95,6 +95,7 @@ type agentRow struct {
 	Host         string     `json:"host,omitempty"`
 	Version      string     `json:"version,omitempty"`
 	Capabilities []string   `json:"capabilities"`
+	Environment  string     `json:"environment,omitempty"` // ADV-2 — label runtime (flag -env); só quando online
 	Online       bool       `json:"online"`
 	Node         string     `json:"node,omitempty"`  // R5 — em qual nó do cluster está conectado
 	Local        bool       `json:"local,omitempty"` // conectado NESTE nó (pingável via ws local)
@@ -174,11 +175,16 @@ func (s *server) applyPresence(a *agentRow, remote map[string]bus.RemoteAgent) {
 		a.Online = true
 		a.Local = true
 		a.Node = s.cfg.NodeID
+		// ADV-2 — env é label RUNTIME (flag -env do processo): lê da conexão viva.
+		if c := s.cfg.Hub.GetAgent(a.ID); c != nil {
+			a.Environment = c.Environment
+		}
 		return
 	}
 	if ra, ok := remote[a.ID]; ok {
 		a.Online = true
 		a.Node = ra.Node
+		a.Environment = ra.Env
 		// A presença remota é mais fresca que o last_seen do DB deste nó.
 		last := ra.LastSeen
 		a.LastSeen = &last

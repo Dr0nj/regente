@@ -82,7 +82,7 @@ func TestDistributed_DispatchRoutesToOwnerNode(t *testing.T) {
 	hubB.Register(ag)
 	b.publishPresence() // propaga a presença de B para A
 
-	out, id := a.Dispatch("", "COMMAND", []byte(`{"event":"dispatch","jobType":"COMMAND"}`))
+	out, id := a.Dispatch("", "COMMAND", "", []byte(`{"event":"dispatch","jobType":"COMMAND"}`))
 	if out != hub.DispatchSent || id != "agB" {
 		t.Fatalf("esperava DispatchSent p/ agB, veio out=%v id=%q", out, id)
 	}
@@ -103,7 +103,42 @@ func TestDistributed_DispatchNoAgent(t *testing.T) {
 	if err := a.Start(); err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	if out, _ := a.Dispatch("", "COMMAND", []byte(`{}`)); out != hub.DispatchNoAgent {
+	if out, _ := a.Dispatch("", "COMMAND", "", []byte(`{}`)); out != hub.DispatchNoAgent {
 		t.Fatalf("esperava DispatchNoAgent, veio %v", out)
+	}
+}
+
+// ADV-2 — roteamento por ambiente cruza nós: a presença carrega o env do agente
+// e o Dispatch com env exigente NÃO cai num agente de outro ambiente.
+func TestDistributed_DispatchEnvRouting(t *testing.T) {
+	tr := newFakeTransport()
+	hubA, hubB := hub.New(), hub.New()
+	a := NewDistributed("nodeA", hubA, tr)
+	b := NewDistributed("nodeB", hubB, tr)
+	if err := a.Start(); err != nil {
+		t.Fatalf("start A: %v", err)
+	}
+	if err := b.Start(); err != nil {
+		t.Fatalf("start B: %v", err)
+	}
+
+	ag := &hub.Client{ID: "agProd", Kind: hub.ClientAgent, Send: make(chan []byte, 4),
+		Capabilities: []string{"COMMAND"}, Environment: "prod"}
+	hubB.Register(ag)
+	b.publishPresence()
+
+	// Job de OUTRO ambiente não roteia pro agente prod…
+	if out, _ := a.Dispatch("", "COMMAND", "dev", []byte(`{}`)); out != hub.DispatchNoAgent {
+		t.Fatalf("job dev não podia cair no agente prod, veio %v", out)
+	}
+	if a.HasAgent("", "COMMAND", "dev") {
+		t.Fatal("HasAgent(dev) não podia contar o agente prod remoto")
+	}
+	// …mas o mesmo ambiente (e o job sem env) roteiam.
+	if out, id := a.Dispatch("", "COMMAND", "PROD", []byte(`{}`)); out != hub.DispatchSent || id != "agProd" {
+		t.Fatalf("job prod deveria rotear (case-insensitive), veio out=%v id=%q", out, id)
+	}
+	if out, _ := a.Dispatch("", "COMMAND", "", []byte(`{}`)); out != hub.DispatchSent {
+		t.Fatal("job sem env deveria aceitar qualquer agente")
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -32,6 +33,11 @@ import (
 func runLambdaJob(params map[string]interface{}, timeoutSec int, emit func(string)) (int, string) {
 	fn, _ := params["function"].(string)
 	if fn == "" {
+		// alias aceito pelo schema (ADV-1): o validador do server tratava
+		// functionName como o canônico por anos — aceitar os dois aqui.
+		fn, _ = params["functionName"].(string)
+	}
+	if fn == "" {
 		return -1, "missing 'function' param"
 	}
 	region := strFromParamsOrEnv(params, "region", "AWS_REGION")
@@ -44,7 +50,16 @@ func runLambdaJob(params map[string]interface{}, timeoutSec int, emit func(strin
 		return -1, "missing AWS credentials (accessKeyId/secretAccessKey ou env)"
 	}
 	sessTok := strFromParamsOrEnv(params, "sessionToken", "AWS_SESSION_TOKEN")
+	// payload — string JSON OU objeto (o editor visual da UI emite objeto; o
+	// valor da UI era silenciosamente descartado aqui). Schema ADV-1: json.
 	payload, _ := params["payload"].(string)
+	if payload == "" {
+		if obj, ok := params["payload"].(map[string]interface{}); ok && len(obj) > 0 {
+			if b, err := json.Marshal(obj); err == nil {
+				payload = string(b)
+			}
+		}
+	}
 	if payload == "" {
 		payload = "{}"
 	}

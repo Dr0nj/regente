@@ -95,6 +95,19 @@ daily ou via Force Order manual.
   quem **espera** (depois de quem) e quem **nunca dispara** (e por quê: fora do calendário, dependência
   que não roda, condition órfã…), com cascata transitiva. Reusa a mesma decisão de agendamento do RunDaily.
   `GET /api/daily/dryrun?date=` + modal "Dry Run" (com seletor de data).
+- 🟢 **What-If** — *"e se o job X atrasar 40min / demorar o dobro / falhar / não rodar?"*: projeta a
+  diária **baseline × cenário** com durações reais (p50 do histórico) e a semântica de deps do engine
+  (falha simulada bloqueia on-success e **destrava** o recovery on-failure) → quem atrasa, quem
+  bloqueia, que SLA passa a estourar. Read-only, nada é materializado. `POST /api/whatif` + painel
+  "What-If" no Monitoring. **Statistics** por job (taxa de sucesso, min/avg/p50/p90/max) na aba Stats
+  do drawer (`GET /api/analytics/jobstats`).
+- 🟢 **Schema dedicado por jobType** — cada tipo tem contrato declarado de params (obrigatórios,
+  tipos de valor, enums, aliases): typo de campo e valor errado acusados **na hora** (lint/save);
+  obrigatórios cobrados no **publish** (422 listando job a job). Catálogo em `GET /api/jobtypes`.
+- 🟢 **Multi-ambiente / multi-site** — `environment` no job **roteia a execução**: agente com
+  `-env prod` só recebe jobs daquele ambiente (agente sem label = generalista; vale cross-nó no
+  cluster). Sem agente casando, o job espera em WAIT AGENT com o motivo no Explain. Combina com o
+  `regente promote` (Dev→Staging→Prod, Git-native).
 - 🟢 **Agent-native (MCP)** — servidor [MCP](https://modelcontextprotocol.io) (`server/cmd/mcp`)
   que expõe **22 tools**: você **opera o Regente conversando** com o Claude (*"o que falhou em
   pagamentos hoje e por quê?"*, *"prevê a próxima semana"*). **11 de leitura** (summary · forecast ·
@@ -374,6 +387,9 @@ Get-ScheduledTask RegenteAgent     # status
   vai direto pra ele.
 - Senão → o server escolhe um agente online cuja **capability** bate com o jobType
   (`PickAgent`). Por isso `-caps` deve incluir os jobTypes que o agente aceita.
+- **Ambiente** (`environment` no job × flag `-env` do agente): lado sem label = coringa;
+  os dois com label = precisam bater (case-insensitive). Job `prod` **nunca** cai num agente
+  `dev` — nem pinado (fica em WAIT AGENT com o motivo no Explain).
 
 ### Protocolo WebSocket
 

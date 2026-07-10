@@ -78,11 +78,11 @@ func TestTick_UpdatesLastTick(t *testing.T) {
 // panicBus — Bus cujo Dispatch explode, para exercitar o recover do dispatch.
 type panicBus struct{}
 
-func (panicBus) BroadcastWeb(string, interface{}) {}
-func (panicBus) PickAgent(string) *hub.Client     { return nil }
-func (panicBus) GetAgent(string) *hub.Client      { return nil }
-func (panicBus) HasAgent(string, string) bool     { return true }
-func (panicBus) Dispatch(string, string, []byte) (hub.DispatchOutcome, string) {
+func (panicBus) BroadcastWeb(string, interface{})     {}
+func (panicBus) PickAgent(string, string) *hub.Client { return nil }
+func (panicBus) GetAgent(string) *hub.Client          { return nil }
+func (panicBus) HasAgent(string, string, string) bool { return true }
+func (panicBus) Dispatch(string, string, string, []byte) (hub.DispatchOutcome, string) {
 	panic("boom no Dispatch")
 }
 

@@ -48,6 +48,89 @@ export async function fetchDayDurations(date?: string): Promise<Record<string, n
   }
 }
 
+/* ── ADV-3 — Statistics por definition ── */
+
+export interface JobStats {
+  defId: string;
+  runs: number;
+  ok: number;
+  notok: number;
+  successRate: number;
+  minMs: number;
+  avgMs: number;
+  p50Ms: number;
+  p90Ms: number;
+  maxMs: number;
+  lastStatus?: string;
+  lastFinishedAt?: string;
+  lastDurationMs?: number;
+  window: number;
+}
+
+export async function fetchJobStats(defId: string): Promise<JobStats | null> {
+  if (!isServerMode()) return null;
+  try {
+    return await api<JobStats>(`/api/analytics/jobstats?defId=${encodeURIComponent(defId)}`);
+  } catch {
+    return null;
+  }
+}
+
+/* ── ADV-3 — What-If (simulação de cenário, read-only) ── */
+
+export interface WhatIfChange {
+  defId: string;
+  delayMin?: number;
+  durationMs?: number;
+  fail?: boolean;
+  skip?: boolean;
+}
+
+export interface WhatIfRow {
+  defId: string;
+  label: string;
+  team: string;
+  wave: number;
+  baseRuns: boolean;
+  baseStart?: string;
+  baseEnd?: string;
+  scenRuns: boolean;
+  scenStart?: string;
+  scenEnd?: string;
+  scenStatus?: string;
+  deltaMs: number;
+  state: "unchanged" | "delayed" | "earlier" | "blocked" | "skipped" | "fails" | "starts-running" | "not-run";
+  slaBreachBase: boolean;
+  slaBreachScen: boolean;
+  impacted: boolean;
+  changeInjected: boolean;
+}
+
+export interface WhatIfReport {
+  orderDate: string;
+  rows: WhatIfRow[];
+  summary: {
+    total: number;
+    impacted: number;
+    blocked: number;
+    newSlaBreaches: number;
+    makespanBaseMs: number;
+    makespanScenMs: number;
+  };
+}
+
+export async function runWhatIf(changes: WhatIfChange[], date?: string): Promise<WhatIfReport | null> {
+  if (!isServerMode()) return null;
+  try {
+    return await api<WhatIfReport>("/api/whatif", {
+      method: "POST",
+      body: JSON.stringify({ date, changes }),
+    });
+  } catch {
+    return null;
+  }
+}
+
 /* ── D-2 pause/resume de workflow (folder) ── */
 
 export async function pauseFolder(name: string): Promise<number> {

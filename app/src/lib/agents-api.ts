@@ -5,6 +5,7 @@ import { api, isServerMode } from "./server-client";
 export interface AgentInfo {
   id: string;
   capabilities: string[];
+  environment?: string; // ADV-2 — label de ambiente/site (flag -env); só quando online
   online: boolean;
   node?: string;   // R5 — nó do cluster em que o agente está conectado
   local?: boolean; // conectado NESTE nó (pingável); false = online em outro nó

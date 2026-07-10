@@ -73,6 +73,7 @@ func (s *server) wsAgent(w http.ResponseWriter, r *http.Request) {
 		Conn:         conn,
 		Send:         make(chan []byte, 64),
 		Capabilities: caps,
+		Environment:  q.Get("env"), // ADV-2 — label de ambiente/site (flag -env do agente)
 		OS:           q.Get("os"),
 		Arch:         q.Get("arch"),
 		Host:         q.Get("host"),
@@ -81,11 +82,11 @@ func (s *server) wsAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	s.cfg.Hub.Register(c)
 	s.recordAgentConnect(c)
-	log.Printf("[ws/agent] %s connected caps=%v os=%s/%s host=%s", agentID, caps, c.OS, c.Arch, c.Host)
+	log.Printf("[ws/agent] %s connected caps=%v env=%q os=%s/%s host=%s", agentID, caps, c.Environment, c.OS, c.Arch, c.Host)
 	// Agente voltou: (1) avisa a UI (cards WAIT AGENT re-derivam na hora) e
 	// (2) cutuca um Tick — jobs parados esperando agente disparam IMEDIATAMENTE,
 	// em vez de aguardar o próximo ciclo. Tick é idempotente e leader-gated.
-	s.cfg.Hub.BroadcastWeb("agent.changed", map[string]any{"id": agentID, "state": "connected", "caps": caps})
+	s.cfg.Hub.BroadcastWeb("agent.changed", map[string]any{"id": agentID, "state": "connected", "caps": caps, "environment": c.Environment})
 	if s.cfg.Scheduler != nil {
 		go s.cfg.Scheduler.Tick()
 	}

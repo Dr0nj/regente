@@ -70,7 +70,7 @@ params:
     tag: "HTTP",
     kind: "jobType · alias REST",
     summary: "Chamada REST.",
-    detail: "params: `url` (OBRIGATÓRIO) · `method` GET|POST|PUT|PATCH|DELETE · `headers` (mapa) · `body` · `expectStatus` (status esperado; fora dele = NOTOK).",
+    detail: "params: `url` (OBRIGATÓRIO) · `method` GET|POST|PUT|PATCH|DELETE · `headers` (mapa) · `body` · `expectStatus` — aceita `200`, `[200, 204]` ou `\"200,204\"`; status fora deles = NOTOK.",
     example: `jobType: HTTP
 params:
   method: POST
@@ -103,11 +103,11 @@ params:
   {
     tag: "LAMBDA",
     kind: "jobType · alias AWS_LAMBDA",
-    summary: "Invoca uma função AWS Lambda (SigV4 pelo agente).",
-    detail: "params: `functionName` (OBRIGATÓRIO) · `region` · `payload` (JSON) · `invocationType`.",
+    summary: "Invoca uma função AWS Lambda (SigV4 pelo agente, sem SDK).",
+    detail: "params: `function` (OBRIGATÓRIO — `functionName` aceito como alias) · `region` (default env AWS_REGION do agente) · `payload` (JSON string ou objeto) · `accessKeyId`/`secretAccessKey`/`sessionToken` (default envs AWS_*) · `endpoint` (testes) · `invocationType` (reservado; a invocação atual é síncrona).",
     example: `jobType: LAMBDA
 params:
-  functionName: fin-reconcile
+  function: fin-reconcile
   region: sa-east-1`,
   },
   {
@@ -168,10 +168,41 @@ params:
   maxConcurrency: 2`,
   },
   {
-    tag: "WASM · K8S_JOB · GCP_RUN",
-    kind: "jobTypes extras do agente",
-    summary: "Também implementados no agente, sem card dedicado na palette do Design.",
-    detail: "WASM (módulo WebAssembly) · K8S_JOB/K8S (Job Kubernetes) · GCP_RUN/CLOUD_RUN_JOB (Cloud Run). Um jobType DESCONHECIDO pelo server é aceito com params livres (sem validação rígida) — mas só roda se algum agente anunciar a capability correspondente; senão fica em WAIT AGENT.",
+    tag: "WASM",
+    kind: "jobType",
+    summary: "Módulo WebAssembly WASI no agente (wazero — sandbox por construção).",
+    detail: "params: `wasmPath` OU `wasmUrl` (um dos dois é OBRIGATÓRIO) · `args` (string) · `stdin` (string). O módulo deve ser um command WASI (exporta _start).",
+    example: `jobType: WASM
+params:
+  wasmUrl: https://repo.interna/mod.wasm
+  args: "--full"`,
+  },
+  {
+    tag: "K8S",
+    kind: "jobType · alias K8S_JOB",
+    summary: "Job Kubernetes pelo agente (API server direto, sem kubectl).",
+    detail: "params: `image` (OBRIGATÓRIO) · `command` · `namespace` (default default) · `name` · `apiServer`/`token` (vazios = in-cluster) · `insecureTLS` (bool).",
+    example: `jobType: K8S
+params:
+  image: alpine:3
+  command: "echo oi"`,
+  },
+  {
+    tag: "GCP_RUN",
+    kind: "jobType · alias CLOUD_RUN_JOB",
+    summary: "Dispara um Cloud Run Job (Run Admin API v2) pelo agente.",
+    detail: "params OBRIGATÓRIOS: `project` · `region` · `job`. Opcionais: `token` (default env GOOGLE_OAUTH_TOKEN ou metadata server) · `endpoint` (testes).",
+    example: `jobType: GCP_RUN
+params:
+  project: fin-prod
+  region: us-central1
+  job: reconcile`,
+  },
+  {
+    tag: "— schema por tipo (ADV-1)",
+    kind: "validação",
+    summary: "Cada jobType conhecido tem schema DEDICADO no server (GET /api/jobtypes).",
+    detail: "O lint/validação checa os params CONTRA o schema do tipo: campo desconhecido (typo tipo `comand:`) e tipo de valor errado = erro NA HORA; params OBRIGATÓRIOS (command/url/…) são cobrados no PUBLISH (rascunho incompleto pode ser salvo). Um jobType DESCONHECIDO pelo server é aceito com params livres — mas só roda se algum agente anunciar a capability correspondente; senão fica em WAIT AGENT.",
   },
 ];
 
@@ -495,8 +526,10 @@ retryDelayMin: 60   # re-tenta a cada 1h`,
   {
     tag: "environment",
     kind: "string",
-    summary: "Ambiente do job (routing/exibição).",
-    forms: [{ form: '"dev" | "staging" | "prod"', desc: "convenção; texto livre aceito" }],
+    summary: "Ambiente/site do job — ROTEIA a execução (ADV-2).",
+    detail: "Job com environment só despacha pra agente do MESMO env (flag `-env` do agente) ou pra agente SEM label (generalista). Sem agente casando, fica em WAIT AGENT com o motivo no Explain. Vale cross-nó (presença R5). Case-insensitive.",
+    forms: [{ form: '"dev" | "staging" | "prod" | "dc-sp"…', desc: "texto livre; case-insensitive" }],
+    example: `environment: prod`,
   },
   {
     tag: "agentId",

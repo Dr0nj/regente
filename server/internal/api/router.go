@@ -116,6 +116,9 @@ func NewRouter(cfg Config) http.Handler {
 		r.Put("/users/{id}/acls", s.replaceUserACLs)
 		r.Patch("/users/{id}/acls/{folder}", s.setUserACL)
 
+		// ADV-1 — catálogo de jobTypes com schema dedicado por tipo (read-only)
+		r.Get("/jobtypes", s.jobTypeCatalog)
+
 		// Definitions (source of truth em YAML)
 		r.Get("/definitions", s.listDefinitions)
 		r.With(s.requireWriterMW).Post("/definitions", s.saveDefinition)
@@ -264,6 +267,9 @@ func NewRouter(cfg Config) http.Handler {
 		// D-4 — performance forecasting por histórico (gráfico do drawer + Timeline)
 		r.Get("/analytics/forecast", s.perfForecast)
 		r.Get("/analytics/durations", s.dayDurations)
+		// ADV-3 — Statistics por definition + What-If (simulação de cenário, read-only)
+		r.Get("/analytics/jobstats", s.jobStats)
+		r.Post("/whatif", s.whatIf)
 
 		// D-13 — job templates (writer p/ mutar; leitura livre)
 		r.Get("/templates", s.listTemplates)

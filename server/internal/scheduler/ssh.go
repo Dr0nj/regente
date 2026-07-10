@@ -23,8 +23,21 @@ import (
 func (s *Scheduler) runSSH(id string, def domain.JobDefinition) {
 	params := InterpolateParams(def.Params, s.buildVarContext(def, id))
 	str := func(k string) string {
-		if v, ok := params[k].(string); ok {
+		switch v := params[k].(type) {
+		case string:
 			return v
+		// `port: 22` no YAML chega como número e era silenciosamente DROPADO
+		// (schema ADV-1 declara port como scalar — string ou número).
+		case int:
+			return fmt.Sprintf("%d", v)
+		case int64:
+			return fmt.Sprintf("%d", v)
+		case uint64:
+			return fmt.Sprintf("%d", v)
+		case float64:
+			if v == float64(int64(v)) {
+				return fmt.Sprintf("%d", int64(v))
+			}
 		}
 		return ""
 	}

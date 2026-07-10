@@ -184,7 +184,8 @@ func parseCodeDocs(code string, scope map[string]bool) ([]domain.JobDefinition, 
 			errs = append(errs, fmt.Sprintf("%s: team %q fora do escopo do documento", def.ID, def.Team))
 			continue
 		}
-		if err := domain.ValidateDefinition(def); err != nil {
+		// Draft (o apply escreve na SESSION): obrigatórios ficam pro publish.
+		if err := domain.ValidateDefinitionDraft(def); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", def.ID, err))
 			continue
 		}

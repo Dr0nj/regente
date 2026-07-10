@@ -105,15 +105,16 @@ type Scheduler struct {
 // canal de envio concreto para o agente.
 type Bus interface {
 	BroadcastWeb(event string, payload interface{})
-	PickAgent(capability string) *hub.Client
+	PickAgent(capability, env string) *hub.Client
 	GetAgent(id string) *hub.Client
 	// Dispatch entrega o payload a um agent — local (hub) ou, no bus distribuído
-	// (R5/NATS), roteado ao nó dono do agent. Retorna o resultado e o id escolhido.
-	Dispatch(agentID, capability string, raw []byte) (hub.DispatchOutcome, string)
+	// (R5/NATS), roteado ao nó dono do agent. `env` = def.Environment (ADV-2:
+	// roteamento por ambiente — hub.EnvMatch). Retorna o resultado e o id escolhido.
+	Dispatch(agentID, capability, env string, raw []byte) (hub.DispatchOutcome, string)
 	// HasAgent — há agente (local ou remoto) capaz de receber este dispatch agora?
 	// O tick usa ANTES do claim: sem agente, a instance fica WAITING (WAIT AGENT)
 	// sem churn de estado — nada de RUNNING↔WAITING piscando a cada tick.
-	HasAgent(agentID, capability string) bool
+	HasAgent(agentID, capability, env string) bool
 }
 
 // Leader — G1 HA. Só o nó líder roda a daily automática e o tick de dispatch;
@@ -1095,11 +1096,12 @@ func (s *Scheduler) tickOnce() {
 
 // agentAvailable — há agente AGORA pra este job? SSH é agentless (roda no
 // próprio server) e DemoMode dispensa (mock-finish). Checado ANTES do claim.
+// ADV-2: def.Environment roteia — só conta agente do mesmo env (ou coringa).
 func (s *Scheduler) agentAvailable(def domain.JobDefinition) bool {
 	if s.DemoMode || strings.EqualFold(def.JobType, "SSH") {
 		return true
 	}
-	return s.hub.HasAgent(def.AgentID, def.JobType)
+	return s.hub.HasAgent(def.AgentID, def.JobType, def.Environment)
 }
 
 // maybeEmitNoAgent — registra o evento "no agent online" com throttle de 5 min
@@ -1210,7 +1212,7 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 		// Dispatch via Bus: local (hub) ou roteado ao nó dono do agent (bus NATS).
 		// Só o líder chega aqui (tick leader-gated) → a escolha do agent é feita por
 		// um decisor único, sem dupla-execução entre nós.
-		switch out, agentID := s.hub.Dispatch(def.AgentID, def.JobType, raw); out {
+		switch out, agentID := s.hub.Dispatch(def.AgentID, def.JobType, def.Environment, raw); out {
 		case hub.DispatchNoAgent:
 			if s.DemoMode {
 				// Demo/playground: mock finaliza em 1s para não bloquear a demo.

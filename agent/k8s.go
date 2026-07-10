@@ -62,7 +62,15 @@ func runK8sJob(params map[string]interface{}, timeoutSec int, emit func(string))
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
-	if v, _ := params["insecureTLS"].(string); strings.EqualFold(v, "true") {
+	// insecureTLS — aceita bool YAML/JSON e "true" string (schema ADV-1: bool).
+	insecure := false
+	switch v := params["insecureTLS"].(type) {
+	case bool:
+		insecure = v
+	case string:
+		insecure = strings.EqualFold(v, "true")
+	}
+	if insecure {
 		client.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	}
 	do := func(method, url string, body []byte) (int, []byte, error) {

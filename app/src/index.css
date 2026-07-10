@@ -142,3 +142,11 @@ html, body, #root {
 /* Retângulo de rubber-band (Shift+arrasto pra selecionar) — fino, na cor neon do
    tema, no lugar do azul padrão do ReactFlow. */
 .react-flow__selection { background: var(--v2-accent-glow) !important; border: 1px solid var(--v2-accent-brand) !important; }
+/* Pan custom (useCanvasCamera): SÓ durante o arrasto o body ganha a classe
+   .canvas-panning e o cursor vira o MOVE nativo do SO. Não usamos grab/grabbing:
+   são bitmaps internos do browser (mão branca) que IGNORAM o tema de cursor do
+   Windows — move/default/pointer respeitam. O `*` + !important é necessário pro
+   move vencer o pointer dos cards enquanto o pan atravessa a folder; a regra só
+   casa com a classe presente (um toggle por pan — custo zero). */
+body.canvas-panning,
+body.canvas-panning * { cursor: move !important; }

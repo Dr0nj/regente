@@ -223,6 +223,7 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
       pan = null;
       panActiveRef.current = false;
       document.body.style.userSelect = "";
+      document.body.classList.remove("canvas-panning");
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", endPan);
     };
@@ -238,6 +239,11 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
       pan = { cx: e.clientX, cy: e.clientY, vx: vp.x, vy: vp.y, zoom: vp.zoom };
       panActiveRef.current = true;
       document.body.style.userSelect = "none";
+      // Cursor de arrasto via CLASSE (não style no body): a regra CSS com `*`
+      // vence o pointer dos cards, então o cursor muda mesmo panando por cima
+      // de job/folder. Usa `move` (nativo do SO — respeita o tema do usuário);
+      // grab/grabbing são bitmaps do browser e ignoram o tema. Um toggle por pan.
+      document.body.classList.add("canvas-panning");
       window.addEventListener("mousemove", onMouseMove);
       window.addEventListener("mouseup", endPan);
     };

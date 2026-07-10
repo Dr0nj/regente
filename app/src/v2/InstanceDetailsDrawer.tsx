@@ -14,7 +14,7 @@ import {
   fetchRCA,
   type RCA,
 } from "@/lib/runtime-bridge";
-import { injectFailure, fetchPerfForecast, type PerfForecast } from "@/lib/differentials-api";
+import { injectFailure, fetchPerfForecast, fetchJobStats, type PerfForecast, type JobStats } from "@/lib/differentials-api";
 import { isServerMode } from "@/lib/server-client";
 import ForecastPanel from "./ForecastPanel";
 import { toast } from "./Toast";
@@ -554,14 +554,19 @@ function OutputTab({ instance }: { instance: JobInstance }) {
 
 function StatsTab({ instance }: { instance: JobInstance }) {
   const [pf, setPf] = useState<PerfForecast | null>(null);
+  const [stats, setStats] = useState<JobStats | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let alive = true;
     setLoaded(false);
-    fetchPerfForecast(instance.definitionId).then((out) => {
+    Promise.all([
+      fetchPerfForecast(instance.definitionId),
+      fetchJobStats(instance.definitionId), // ADV-3 — retrato histórico
+    ]).then(([forecast, st]) => {
       if (!alive) return;
-      setPf(out);
+      setPf(forecast);
+      setStats(st);
       setLoaded(true);
     });
     return () => { alive = false; };
@@ -581,6 +586,27 @@ function StatsTab({ instance }: { instance: JobInstance }) {
         )}
         <Field label="Order date" value={instance.orderDate} mono />
       </Section>
+
+      {/* ADV-3 — Statistics (Control-M): totais por resultado + distribuição de duração */}
+      {loaded && stats && stats.runs > 0 && (
+        <Section title={`Run statistics (last ${stats.runs})`}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+            <StatTile label="success" value={`${Math.round(stats.successRate * 100)}%`}
+              tone={stats.successRate < 0.9 ? "var(--v2-status-failed)" : "var(--v2-status-success)"} />
+            <StatTile label="ok / notok" value={`${stats.ok} / ${stats.notok}`} />
+            <StatTile label="min" value={fmtDuration(stats.minMs)} />
+            <StatTile label="avg" value={fmtDuration(stats.avgMs)} />
+            <StatTile label="max" value={fmtDuration(stats.maxMs)} />
+          </div>
+          {stats.lastStatus && (
+            <div style={{ marginTop: 8, fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>
+              last run: <span style={{ color: stats.lastStatus === "OK" ? "var(--v2-status-success)" : "var(--v2-status-failed)" }}>{stats.lastStatus}</span>
+              {stats.lastDurationMs != null && stats.lastDurationMs > 0 && <> · {fmtDuration(stats.lastDurationMs)}</>}
+              {stats.lastFinishedAt && <> · {new Date(stats.lastFinishedAt).toLocaleString()}</>}
+            </div>
+          )}
+        </Section>
+      )}
 
       <Section title="Duration history">
         {!loaded && <Muted>loading…</Muted>}

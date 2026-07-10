@@ -175,8 +175,16 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, instByDef 
 	//    Tick e o job dispara NA HORA. SSH é agentless; DemoMode dispensa (mock).
 	if !s.agentAvailable(def) {
 		detail := "nenhum agente online com a capability " + def.JobType
+		if def.Environment != "" {
+			// ADV-2 — roteamento por ambiente: o motivo precisa dizer o env, senão
+			// o operador vê agentes online e não entende o WAIT_AGENT.
+			detail += " no ambiente '" + def.Environment + "'"
+		}
 		if def.AgentID != "" {
 			detail = "agente '" + def.AgentID + "' offline"
+			if def.Environment != "" && s.hub.GetAgent(def.AgentID) != nil {
+				detail = "agente '" + def.AgentID + "' está noutro ambiente (job exige '" + def.Environment + "')"
+			}
 		}
 		if add(Blocker{Kind: GateAgent, Detail: detail}) {
 			return out

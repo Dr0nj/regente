@@ -50,9 +50,9 @@ func newAgentBroker(h *hub.Hub) *agentBroker {
 }
 
 // touch devolve o hub.Client do agente, registrando-o na primeira vez. As
-// capabilities são fixadas na criação (evita corrida com PickAgent, que lê o
-// slice sob o lock do hub).
-func (b *agentBroker) touch(id string, caps []string) *hub.Client {
+// capabilities/env são fixadas na criação (evita corrida com PickAgent, que lê
+// sob o lock do hub).
+func (b *agentBroker) touch(id string, caps []string, env string) *hub.Client {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	pa, ok := b.agents[id]
@@ -62,6 +62,7 @@ func (b *agentBroker) touch(id string, caps []string) *hub.Client {
 			Kind:         hub.ClientAgent,
 			Send:         make(chan []byte, 64),
 			Capabilities: caps,
+			Environment:  env, // ADV-2 — mesmo label do transporte WS
 		}
 		b.hub.Register(c)
 		pa = &pollAgent{client: c}
@@ -110,7 +111,7 @@ func (s *server) agentPoll(w http.ResponseWriter, r *http.Request) {
 	if c := r.URL.Query().Get("caps"); c != "" {
 		caps = strings.Split(c, ",")
 	}
-	client := s.agentBroker.touch(id, caps)
+	client := s.agentBroker.touch(id, caps, r.URL.Query().Get("env"))
 	select {
 	case raw, ok := <-client.Send:
 		if !ok {
