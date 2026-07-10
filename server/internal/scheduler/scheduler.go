@@ -561,6 +561,8 @@ func (s *Scheduler) autoDailyIfDue() {
 	// caller já é leader-gated). Síncrono de propósito: roda em lotes curtos e
 	// uma goroutine solta escreveria no DB depois do teardown (o flake do TempDir).
 	s.auditGC()
+	// ADV-5 — archives/retention de instances: mesmo racional e mesma janela.
+	s.archiveGC()
 }
 
 func short(sha string) string {

@@ -452,6 +452,14 @@ Pra convidar amigos a testar a UI (criar e executar jobs) num link https, o serv
 o SPA single-origin (`-spa-dir`) e um agente roda isolado em Docker. Passo-a-passo,
 script (`host-demo.ps1`) e notas de segurança em [`deploy/demo/README.md`](deploy/demo/README.md).
 
+### Site de docs (docs-as-code)
+
+Os markdown deste repo (READMEs + `docs/*.md`) viram um site estático self-contained
+(zero CDN, CSS inline) com `go run ./cmd/docsite -repo .. -out ../docs/site` (do diretório
+`server/`); o server serve o resultado em `/docs` com a flag `-docs-dir` (single-origin,
+mesmo padrão do `-spa-dir`). Não existe conteúdo próprio do site — editar o markdown e
+regenerar é o fluxo inteiro.
+
 ### Estrutura (frontend)
 
 ```

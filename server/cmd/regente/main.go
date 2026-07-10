@@ -21,6 +21,7 @@ Uso:
   regente test <job.yaml | workspace-dir> [flags]   valida + simula (CI-friendly)
   regente dev  [daily] [flags]                      sobe um Regente local descartável
   regente promote -from <branch> -to <branch>       promove jobs entre ambientes (Git)
+  regente ops  <subcomando> [flags]                 opera um server vivo (query/ações/daily/archives)
 
 Detalhes por comando: regente <comando> -h
 `
@@ -38,6 +39,8 @@ func main() {
 		err = cmdDev(os.Args[2:])
 	case "promote":
 		err = cmdPromote(os.Args[2:])
+	case "ops":
+		err = cmdOps(os.Args[2:])
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 		return

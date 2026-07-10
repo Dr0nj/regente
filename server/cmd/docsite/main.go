@@ -1,0 +1,317 @@
+// docsite — ADV-7: gerador do site de docs do Regente.
+//
+// Converte os markdown que JÁ SÃO a documentação do projeto (README do
+// monorepo + READMEs dos componentes + docs/*.md) num site estático
+// SELF-CONTAINED: CSS inline, zero JS, zero CDN — o mesmo princípio do
+// hosting single-origin do SPA (-spa-dir). O server serve o resultado em
+// /docs com a flag -docs-dir; o site também funciona aberto direto do disco
+// (file://) ou publicado em qualquer static host.
+//
+//	go run ./cmd/docsite -repo .. -out ../docs/site
+//
+// Decisões:
+//   - Docs-as-code: NÃO existe conteúdo próprio do site — markdown do repo é
+//     a fonte única; o site é 100% derivado (roda de novo = atualizado).
+//   - Links entre os .md são reescritos pros .html correspondentes; âncoras
+//     preservadas. Imagens locais referenciadas são copiadas pro site.
+//   - goldmark com GFM (tabelas) + WithUnsafe (os READMEs usam HTML cru).
+package main
+
+import (
+	"bytes"
+	"flag"
+	"fmt"
+	"html"
+	"log"
+	"os"
+	"path"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
+	gmhtml "github.com/yuin/goldmark/renderer/html"
+)
+
+func main() {
+	repo := flag.String("repo", ".", "raiz do monorepo (onde está o README.md)")
+	out := flag.String("out", "docs/site", "diretório de saída do site")
+	flag.Parse()
+	n, err := Build(*repo, *out)
+	if err != nil {
+		log.Fatalf("docsite: %v", err)
+	}
+	log.Printf("docsite: %d página(s) geradas em %s", n, *out)
+}
+
+// page — um markdown do repo que vira página.
+type page struct {
+	src   string // caminho relativo à raiz do repo (barra /)
+	slug  string // nome do .html de saída (sem extensão)
+	title string // 1º heading; fallback = slug
+	order int    // posição na nav (menor primeiro)
+	html  []byte
+}
+
+// knownOrder fixa o topo da navegação; o resto entra alfabético depois.
+var knownOrder = map[string]int{
+	"README.md":                  0,
+	"server/README.md":           1,
+	"agent/README.md":            2,
+	"app/README.md":              3,
+	"docs/roadmap.md":            4,
+	"docs/arquitetura-futuro.md": 5,
+	"docs/operacao.md":           6,
+	"docs/dr-backup.md":          7,
+	"docs/slos.md":               8,
+	"docs/mcp.md":                9,
+}
+
+// Build gera o site a partir do repo. Retorna o nº de páginas.
+func Build(repoDir, outDir string) (int, error) {
+	pages, err := collect(repoDir)
+	if err != nil {
+		return 0, err
+	}
+	if len(pages) == 0 {
+		return 0, fmt.Errorf("nenhum markdown encontrado em %s", repoDir)
+	}
+
+	md := goldmark.New(
+		goldmark.WithExtensions(extension.GFM),
+		goldmark.WithParserOptions(parser.WithAutoHeadingID()),
+		goldmark.WithRendererOptions(gmhtml.WithUnsafe()), // READMEs usam HTML cru (img/div)
+	)
+
+	// slug por src — a tabela de reescrita de links.
+	slugBySrc := map[string]string{}
+	for _, p := range pages {
+		slugBySrc[p.src] = p.slug
+	}
+
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		return 0, err
+	}
+	for i := range pages {
+		raw, err := os.ReadFile(filepath.Join(repoDir, filepath.FromSlash(pages[i].src)))
+		if err != nil {
+			return 0, err
+		}
+		pages[i].title = firstHeading(raw, pages[i].slug)
+		var buf bytes.Buffer
+		if err := md.Convert(raw, &buf); err != nil {
+			return 0, fmt.Errorf("%s: %w", pages[i].src, err)
+		}
+		body := rewriteLinks(buf.Bytes(), pages[i].src, slugBySrc)
+		body = copyAssets(body, pages[i].src, repoDir, outDir)
+		pages[i].html = body
+	}
+	sort.Slice(pages, func(a, b int) bool {
+		if pages[a].order != pages[b].order {
+			return pages[a].order < pages[b].order
+		}
+		return pages[a].slug < pages[b].slug
+	})
+
+	for _, p := range pages {
+		out := filepath.Join(outDir, p.slug+".html")
+		if err := os.WriteFile(out, renderPage(p, pages), 0o644); err != nil {
+			return 0, err
+		}
+	}
+	return len(pages), nil
+}
+
+// collect acha os markdown que viram página: README.md, */README.md
+// (componentes de 1º nível) e docs/*.md.
+func collect(repoDir string) ([]page, error) {
+	var srcs []string
+	if _, err := os.Stat(filepath.Join(repoDir, "README.md")); err == nil {
+		srcs = append(srcs, "README.md")
+	}
+	entries, _ := os.ReadDir(repoDir)
+	for _, e := range entries {
+		if e.IsDir() && e.Name() != "docs" && !strings.HasPrefix(e.Name(), ".") {
+			if _, err := os.Stat(filepath.Join(repoDir, e.Name(), "README.md")); err == nil {
+				srcs = append(srcs, e.Name()+"/README.md")
+			}
+		}
+	}
+	docs, _ := os.ReadDir(filepath.Join(repoDir, "docs"))
+	for _, e := range docs {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
+			srcs = append(srcs, "docs/"+e.Name())
+		}
+	}
+
+	var pages []page
+	for _, src := range srcs {
+		slug := "index"
+		if src != "README.md" {
+			base := strings.TrimSuffix(path.Base(src), ".md")
+			if base == "README" {
+				base = path.Base(path.Dir(src)) // server/README.md → server
+			}
+			slug = base
+		}
+		order, ok := knownOrder[src]
+		if !ok {
+			order = 100
+		}
+		pages = append(pages, page{src: src, slug: slug, order: order})
+	}
+	return pages, nil
+}
+
+// firstHeading extrai o primeiro "# ..." do markdown (ou <h1>...</h1> de HTML
+// cru, caso do README do monorepo).
+func firstHeading(raw []byte, fallback string) string {
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "# ") {
+			return cleanTitle(strings.TrimPrefix(line, "# "))
+		}
+		if m := regexp.MustCompile(`<h1>(.+?)</h1>`).FindStringSubmatch(line); m != nil {
+			return cleanTitle(m[1])
+		}
+	}
+	return fallback
+}
+
+// cleanTitle remove markup leve (emoji fica — identidade do projeto).
+func cleanTitle(s string) string {
+	s = regexp.MustCompile("[`*_]").ReplaceAllString(s, "")
+	return strings.TrimSpace(s)
+}
+
+var hrefRe = regexp.MustCompile(`(href|src)="([^"]+)"`)
+
+// rewriteLinks converte href de .md relativos pro .html correspondente,
+// resolvendo o caminho a partir do DIRETÓRIO da página de origem
+// (docs/x.md com href ../README.md → index.html). Âncoras preservadas.
+func rewriteLinks(body []byte, src string, slugBySrc map[string]string) []byte {
+	dir := path.Dir(src)
+	return hrefRe.ReplaceAllFunc(body, func(m []byte) []byte {
+		g := hrefRe.FindSubmatch(m)
+		attr, target := string(g[1]), string(g[2])
+		if attr != "href" || strings.Contains(target, "://") || strings.HasPrefix(target, "#") {
+			return m
+		}
+		base, anchor, _ := strings.Cut(target, "#")
+		resolved := path.Clean(path.Join(dir, base))
+		// href="server" (diretório) e href="server/README.md" apontam pro mesmo lugar.
+		slug, ok := slugBySrc[resolved]
+		if !ok {
+			slug, ok = slugBySrc[resolved+"/README.md"]
+		}
+		if !ok {
+			return m
+		}
+		out := slug + ".html"
+		if anchor != "" {
+			out += "#" + anchor
+		}
+		return []byte(`href="` + out + `"`)
+	})
+}
+
+// copyAssets copia imagens locais referenciadas (src="...") pro site,
+// preservando o caminho relativo À RAIZ (a página reescreve o src pra ele).
+func copyAssets(body []byte, src, repoDir, outDir string) []byte {
+	dir := path.Dir(src)
+	return hrefRe.ReplaceAllFunc(body, func(m []byte) []byte {
+		g := hrefRe.FindSubmatch(m)
+		attr, target := string(g[1]), string(g[2])
+		if attr != "src" || strings.Contains(target, "://") || strings.HasPrefix(target, "data:") {
+			return m
+		}
+		resolved := path.Clean(path.Join(dir, target))
+		from := filepath.Join(repoDir, filepath.FromSlash(resolved))
+		if _, err := os.Stat(from); err != nil {
+			return m
+		}
+		to := filepath.Join(outDir, filepath.FromSlash(resolved))
+		if err := os.MkdirAll(filepath.Dir(to), 0o755); err == nil {
+			if b, err := os.ReadFile(from); err == nil {
+				_ = os.WriteFile(to, b, 0o644)
+			}
+		}
+		return []byte(`src="` + resolved + `"`)
+	})
+}
+
+// renderPage monta o HTML final: sidebar de navegação + conteúdo, CSS inline.
+func renderPage(p page, all []page) []byte {
+	var nav strings.Builder
+	for _, q := range all {
+		cls := ""
+		if q.slug == p.slug {
+			cls = ` class="active"`
+		}
+		fmt.Fprintf(&nav, `<a href="%s.html"%s>%s</a>`+"\n", q.slug, cls, html.EscapeString(q.title))
+	}
+	var b bytes.Buffer
+	fmt.Fprintf(&b, `<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>%s · Regente Docs</title>
+<style>%s</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+%s</nav>
+<main>
+<article>
+%s</article>
+<footer>Gerado por <code>regente docsite</code> — docs-as-code: edite o markdown no repo, não este HTML.</footer>
+</main>
+</body>
+</html>
+`, html.EscapeString(p.title), siteCSS, nav.String(), p.html)
+	return b.Bytes()
+}
+
+// siteCSS — tema escuro alinhado à identidade do produto (accent verde),
+// inline de propósito: cada página é auto-suficiente, zero requests externos.
+const siteCSS = `
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+`

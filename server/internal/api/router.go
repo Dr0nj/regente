@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/Dr0nj/regente-server/internal/audit"
 	"github.com/Dr0nj/regente-server/internal/auth"
@@ -46,6 +47,9 @@ type Config struct {
 	// na mesma porta, sem CORS). Rotas não-API caem no NotFound → asset direto ou
 	// index.html (fallback do roteamento do SPA). Vazio = só API (comportamento legado).
 	SPADir string
+	// ADV-7 — site de docs (cmd/docsite): se != "", serve o site estático em /docs
+	// na mesma porta (single-origin, self-contained). Vazio = sem docs.
+	DocsDir string
 }
 
 // RemotePresence — agents conectados em OUTROS nós (bus R5). Implementado por
@@ -161,6 +165,8 @@ func NewRouter(cfg Config) http.Handler {
 
 		r.Get("/events", s.listEventLog)               // diferencial: event log CQRS-lite (feed do dia)
 		r.Get("/audit/export", s.auditExport)          // E2: export JSONL unificado (admin-only, cursor after_id)
+		r.Get("/archive", s.listArchives)              // ADV-5: dailies arquivadas pela retenção (admin-only)
+		r.Get("/archive/{file}", s.downloadArchive)    // ADV-5: download do NDJSON de um dia (admin-only)
 		r.Post("/query", s.runQuery)                   // diferencial: NL-query (texto → consulta estruturada)
 		// D-3 — event-driven confiável: ingestão idempotente de eventos externos
 		r.With(s.requireWriterMW).Post("/events/ingest", s.ingestEvent)
@@ -303,6 +309,15 @@ func NewRouter(cfg Config) http.Handler {
 	r.Get("/qa/{token}", s.quickActionPage)
 	r.Post("/qa/{token}", s.quickActionExec)
 
+	// ADV-7 — site de docs em /docs (registrado ANTES do NotFound do SPA, senão o
+	// fallback engoliria o caminho). Público como o restante do hosting estático.
+	if cfg.DocsDir != "" {
+		r.Get("/docs", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/docs/", http.StatusFound)
+		})
+		r.Get("/docs/*", serveDocs(cfg.DocsDir))
+	}
+
 	// Hosting single-origin: rotas não registradas acima (/, /design, /assets/*, etc.)
 	// caem aqui e servem o SPA. As rotas de API/WS/metrics já foram casadas antes, então
 	// nunca chegam no NotFound. Vazio = mantém o 404 padrão (só API).
@@ -311,6 +326,24 @@ func NewRouter(cfg Config) http.Handler {
 	}
 
 	return r
+}
+
+// serveDocs serve o site de docs gerado (cmd/docsite): arquivo direto quando
+// existe, index.html na raiz, 404 no resto — SEM fallback de SPA (docs não têm
+// roteamento client-side). path.Clean mantém o alvo dentro de dir.
+func serveDocs(dir string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		rel := strings.TrimPrefix(r.URL.Path, "/docs/")
+		if rel == "" {
+			rel = "index.html"
+		}
+		full := filepath.Join(dir, filepath.FromSlash(path.Clean("/"+rel)))
+		if st, err := os.Stat(full); err != nil || st.IsDir() {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFile(w, r, full)
+	}
 }
 
 // serveSPA devolve um handler que serve o build do frontend: se o caminho aponta pra

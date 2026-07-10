@@ -309,6 +309,12 @@ func executeJob(jobType string, params map[string]interface{}, timeoutSec int, e
 		return runK8sJob(params, timeoutSec, emit)
 	case "LAMBDA", "AWS_LAMBDA":
 		return runLambdaJob(params, timeoutSec, emit)
+	case "BATCH", "AWS_BATCH":
+		return runBatchJob(params, timeoutSec, emit)
+	case "GLUE", "AWS_GLUE":
+		return runGlueJob(params, timeoutSec, emit)
+	case "STEP_FUNCTION", "STEP_FUNCTIONS":
+		return runStepFunctionJob(params, timeoutSec, emit)
 	case "GCP_RUN", "CLOUD_RUN_JOB":
 		return runCloudRunJob(params, timeoutSec, emit)
 	default:

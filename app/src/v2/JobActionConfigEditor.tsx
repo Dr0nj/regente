@@ -186,6 +186,9 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
           <Row label="Environment (JSON)">
             <TextArea mono rows={3} value={jsonStr(get("env", {}))} onChange={v => set("env", parseJson(v) ?? {})} />
           </Row>
+          <Row label="Region (default env do agente)">
+            <Input mono value={str("region")} placeholder="sa-east-1" onChange={v => set("region", v)} />
+          </Row>
         </Section>
       );
 
@@ -206,6 +209,9 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
           <Row label="# workers">
             <Input mono value={String(num("numberOfWorkers") || 2)} onChange={v => set("numberOfWorkers", Number(v) || 0)} />
           </Row>
+          <Row label="Region (default env do agente)">
+            <Input mono value={str("region")} placeholder="sa-east-1" onChange={v => set("region", v)} />
+          </Row>
         </Section>
       );
 
@@ -217,6 +223,9 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
           </Row>
           <Row label="Input (JSON)">
             <TextArea mono rows={5} value={jsonStr(get("input", {}))} onChange={v => set("input", parseJson(v) ?? {})} />
+          </Row>
+          <Row label="Region (default env do agente)">
+            <Input mono value={str("region")} placeholder="sa-east-1" onChange={v => set("region", v)} />
           </Row>
         </Section>
       );

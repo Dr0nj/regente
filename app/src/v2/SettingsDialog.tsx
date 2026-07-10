@@ -69,6 +69,9 @@ export function SettingsDialog({ onClose }: Props) {
   // E1 — timezone de NEGÓCIO da daily (settings.daily_timezone, nome IANA).
   // Vazio = relógio local do server. Nome inválido: o server loga e cai no local.
   const [dailyTz, setDailyTz] = useState("");
+  // ADV-5 — retenção/archives de instances (0/vazio = infinito) + diretório dos NDJSON.
+  const [retentionDays, setRetentionDays] = useState("");
+  const [archiveDir, setArchiveDir] = useState("");
 
   useEffect(() => {
     getSettings().then((s) => {
@@ -76,6 +79,8 @@ export function SettingsDialog({ onClose }: Props) {
       setEnvLabel(s.env_label ?? "");
       setDailyAt(s.daily_at ?? "");
       setDailyTz(s.daily_timezone ?? "");
+      setRetentionDays(s.instance_retention_days ?? "");
+      setArchiveDir(s.archive_dir ?? "");
       setLoaded(true);
     });
     fetchGitStatus().then(setGit).catch(() => {});
@@ -84,7 +89,10 @@ export function SettingsDialog({ onClose }: Props) {
   async function handleSave() {
     setSaving(true);
     try {
-      const updated = await putSettings({ ...settings, env_label: envLabel, daily_at: dailyAt, daily_timezone: dailyTz.trim() });
+      const updated = await putSettings({
+        ...settings, env_label: envLabel, daily_at: dailyAt, daily_timezone: dailyTz.trim(),
+        instance_retention_days: retentionDays.trim(), archive_dir: archiveDir.trim(),
+      });
       setSettings(updated);
       onClose(); // salva e fecha o diálogo (o tema já aplica na hora ao selecionar)
     } finally {
@@ -360,6 +368,49 @@ export function SettingsDialog({ onClose }: Props) {
                   nome inválido cai no local e loga). O <code>order_date</code> é o dia nessa timezone:
                   server em UTC com negócio em SP cruza a meia-noite às 03:00Z. Aplica sem restart;
                   se a daily de hoje já rodou, vale a partir de amanhã.
+                </span>
+              </div>
+
+              {/* ADV-5 — Archives / Retention */}
+              <div style={{ marginTop: 12, borderTop: "1px solid var(--v2-border-subtle)", paddingTop: 10 }}>
+                <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+                  <div>
+                    <label style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
+                      Retenção de instances (dias)
+                    </label>
+                    <input
+                      type="number" min={0} value={retentionDays}
+                      onChange={(e) => setRetentionDays(e.target.value)}
+                      placeholder="infinito"
+                      style={{
+                        width: 110, padding: "6px 10px", fontSize: 13,
+                        background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)",
+                        borderRadius: 4, color: "var(--v2-text-primary)", outline: "none", boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 180 }}>
+                    <label style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
+                      Diretório de archives
+                    </label>
+                    <input
+                      value={archiveDir}
+                      onChange={(e) => setArchiveDir(e.target.value)}
+                      placeholder="./archive"
+                      spellCheck={false}
+                      style={{
+                        width: "100%", padding: "6px 10px", fontSize: 13, fontFamily: "var(--v2-font-mono)",
+                        background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)",
+                        borderRadius: 4, color: "var(--v2-text-primary)", outline: "none", boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+                </div>
+                <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 4, display: "block", lineHeight: 1.5 }}>
+                  Dailies mais velhas que a retenção são ARQUIVADAS (NDJSON por dia, com status/output/snapshot)
+                  no diretório acima e removidas do banco, logo após a daily — vazio/0 = guarda para sempre.
+                  Download em <code>GET /api/archive</code> (admin). A retenção de eventos de auditoria é à parte
+                  (<code>audit_retention_days</code>).
                 </span>
               </div>
             </fieldset>

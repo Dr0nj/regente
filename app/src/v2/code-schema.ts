@@ -125,19 +125,21 @@ params:
   },
   {
     tag: "BATCH",
-    kind: "jobType",
-    summary: "Job em container/lote (AWS Batch).",
-    detail: "params OBRIGATÓRIOS: `jobQueue` · `jobDefinition`. Opcionais: `command` · `env` (mapa).",
+    kind: "jobType · alias AWS_BATCH",
+    summary: "Job em container/lote (AWS Batch) — SubmitJob + poll pelo agente (SigV4, sem SDK).",
+    detail: "params OBRIGATÓRIOS: `jobQueue` · `jobDefinition`. Opcionais: `jobName` · `command` (split por espaços) · `env` (mapa) · `parameters` (mapa) · `region` (default env AWS_REGION do agente) · `accessKeyId`/`secretAccessKey`/`sessionToken` (default envs AWS_*) · `endpoint` (testes). O agente acompanha até SUCCEEDED/FAILED; no timeout do job manda TerminateJob.",
     example: `jobType: BATCH
+timeout: 3600
 params:
   jobQueue: fin-fargate
-  jobDefinition: validador-bacen`,
+  jobDefinition: validador-bacen
+  env: { DATA_REF: "%%ODATE" }`,
   },
   {
     tag: "GLUE",
-    kind: "jobType",
-    summary: "Job de ETL (AWS Glue).",
-    detail: "params: `jobName` (OBRIGATÓRIO) · `arguments` (mapa) · `workerType` · `numberOfWorkers`.",
+    kind: "jobType · alias AWS_GLUE",
+    summary: "Job de ETL (AWS Glue) — StartJobRun + poll pelo agente (SigV4, sem SDK).",
+    detail: "params: `jobName` (OBRIGATÓRIO) · `arguments` (mapa) · `workerType` · `numberOfWorkers` · `region` (default env AWS_REGION do agente) · `accessKeyId`/`secretAccessKey`/`sessionToken` (default envs AWS_*) · `endpoint` (testes). O agente acompanha até SUCCEEDED/FAILED/TIMEOUT/STOPPED; no timeout do job manda BatchStopJobRun.",
     example: `jobType: GLUE
 params:
   jobName: cadoc-3040
@@ -145,9 +147,9 @@ params:
   },
   {
     tag: "STEP_FUNCTION",
-    kind: "jobType",
-    summary: "Dispara uma state machine (AWS Step Functions).",
-    detail: "params: `stateMachineArn` (OBRIGATÓRIO) · `input` (JSON).",
+    kind: "jobType · alias STEP_FUNCTIONS",
+    summary: "Dispara uma state machine (AWS Step Functions) — StartExecution + poll pelo agente (SigV4, sem SDK).",
+    detail: "params: `stateMachineArn` (OBRIGATÓRIO) · `input` (JSON string ou objeto) · `name` (default: AWS gera) · `region` (default env AWS_REGION do agente) · `accessKeyId`/`secretAccessKey`/`sessionToken` (default envs AWS_*) · `endpoint` (testes). O agente acompanha até SUCCEEDED/FAILED/TIMED_OUT/ABORTED; no timeout do job manda StopExecution.",
     example: `jobType: STEP_FUNCTION
 params:
   stateMachineArn: arn:aws:states:sa-east-1:123:stateMachine/etl`,

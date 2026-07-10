@@ -39,14 +39,13 @@
 - **Escala Control-M (100k–1M/dia)** — write-path (1M/17s), read-path paginado, UI ViewPoint validada @1M.
 - **Aprofundamento Control-M** — lifecycle da daily, On-Do, cyclic, CONFIRM, DATABASE, `%%` vars, CTM-1/2/3.
 - **Diferenciais além do Control-M** — Explain/Diff/Blast/Dry Run/Neighborhood/RCA/Event log/NL-query + D-1…D-15.
-- **Jobs as code (modo CODE) v1** — editor YAML do working set no Design (o aperfeiçoamento CODE-1 é backlog).
+- **Jobs as code (modo CODE)** — editor YAML do working set no Design + CODE-1 (guia do schema, lint ao vivo).
+- **Agent-native (MCP)** — servidor stdio com **11 read + 11 write** gated (MCP-1 fechado 2026-07-08).
+- **Features avançadas (ADV-1..8)** — schema por jobType, multi-ambiente, What-If/Stats, MFT, archives/retention, CLI/SDK, site de docs, executores AWS Batch/Glue/Step.
 
 **Trilhas com itens em ABERTO** (detalhe em [§🔜 Backlog](#-backlog-o-que-falta)):
 
-- **Refinamento UI** — polimento residual (virtualizar a sidebar legada · override de columns por folder). Drawer do job já redesenhado (8 abas, 2026-07-09).
-- **Agent-native (MCP)** — servidor pronto: **11 read + 11 write** gated (MCP-1 fechado 2026-07-08).
-- **Jobs as code** — CODE-1 (editor rico, lint live, diff visual, sync com canvas, tabs por job).
-- **Features avançadas** — camadas opcionais pós-núcleo restantes (archives/retention, CLI/SDK, site de docs…).
+- **Contrato de API (OpenAPI)** — API-1, com condição de timing (integrador externo real OU Fase Z).
 - **Validação em infra real** — resíduos (secrets via provider · SSH agente como serviço).
 - **Fase Z — divulgação** — case study + post LinkedIn (último gate, quando o backlog estiver onde você quer).
 
@@ -67,12 +66,6 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > gente vai **fazendo crescer** — quando um item fecha, ele sai daqui e vira um tópico
 > detalhado em §✅ Entregue (+ linha no changelog). As caixinhas espalhadas nas seções de
 > baixo **não valem** como status (ver ⛔ REGRA DE STATUS no topo).
-
-### Features avançadas — pós-núcleo (→ §Features avançadas)
-- [ ] **ADV-5** — Archives / Retention (relaciona E2).
-- [ ] **ADV-6** — CLI / SDK.
-- [ ] **ADV-7** — Site de docs.
-- [ ] **ADV-8** — Executores AWS extras (Batch/Glue/Step) — validação em conta paga fora de escopo por decisão.
 
 ### Contrato de API / OpenAPI (Swagger)
 - [ ] **API-1** — Spec OpenAPI **curada** (não auto-doc dos ~137 handlers) + Swagger UI embutido
@@ -250,6 +243,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
       nó). Agent remoto sem linha no DB deste nó ainda entra na frota. Config `Presence`/`NodeID` (nil =
       single-node, comportamento idêntico ao anterior). UI: chip "⇄ node" no agent remoto + linha "Nó" no
       detalhe; "ping" só nos locais. 1 teste (`TestAgents_CrossNodePresence`, presença mockada sem NATS).
+```
 
 ## 🔔 Alerting
 
@@ -577,7 +571,7 @@ contra Postgres 16 real (Docker); restante pendente:
 
 ---
 
-## 🚀 Features avançadas — ADV-1/2/3/4 *(entregues 2026-07-10)*
+## 🚀 Features avançadas — ADV-1..ADV-8 *(trilha FECHADA 2026-07-10)*
 
 ```
 ✅ ADV-1 — Schema DEDICADO por jobType (fonte única declarativa)
@@ -644,6 +638,85 @@ contra Postgres 16 real (Docker); restante pendente:
      em s3, sem credencial. VALIDADO E2E AO VIVO: server GitOps bare + agente real + preview —
      palette→editor→publish (YAML no Git com os params)→force→agente transferiu 2 arquivos via
      glob com sha256✓ e a instance fechou OK no board.
+
+✅ ADV-5 — Archives / Retention (relaciona E2)
+   • scheduler/archivegc.go: GC pós-daily no líder (irmão do auditGC E2 — mesma janela, mesmo
+     racional síncrono em lotes) dirigido por settings.instance_retention_days (0/vazio =
+     infinito, default; inválido desliga e loga).
+   • Dailies além da retenção são ARQUIVADAS antes de deletar: NDJSON por order_date
+     (instances-YYYY-MM-DD.ndjson) em settings.archive_dir (default ./archive), uma linha por
+     instance com TODAS as colunas (SELECT * dinâmico — migration nova NUNCA dropa campo do
+     archive); escrita atômica .part+rename (padrão MFT); archive existente nunca é
+     sobrescrito (re-archive vai pro sufixo -N). Depois deleta em lotes (archiveGCBatch) as
+     instances + instance_events do dia (senão viram órfãos eternos com audit_retention
+     infinito) + conditions/daily_runs do dia. Dia com RUNNING é pulado (cinto+suspensório —
+     o carry-over já move as vivas pra frente); catch-up cap de 30 dias por rodada.
+   • Corte pela data de NEGÓCIO (E1 NowLocal); order_date TEXT compara lexicográfico nos
+     2 dialetos (SQLite e Postgres).
+   • API: GET /api/archive (dia/bytes/mtime) + GET /api/archive/{file} (download streaming
+     NDJSON) — admin-only como /audit/export (archive carrega output de TODAS as folders);
+     nome validado por regex (zero path traversal).
+   • UI: campos "Retenção de instances (dias)" + "Diretório de archives" no SettingsDialog
+     (PUT /api/settings já audita a mudança via E2).
+   • Testes: archivegc_test.go (default infinito · arquiva+deleta com batch=1 · RUNNING pula
+     · nunca sobrescreve · setting inválido desliga) + archive_test.go (lista/baixa · 400
+     traversal/404 · admin-only 403).
+
+✅ ADV-6 — CLI / SDK
+   • SDK Go pkg/client: fachada HAND-WRITTEN da superfície CURADA de integração (a mesma
+     lista do API-1, não os ~137 handlers da SPA): QueryInstances (D-5 composto), Action
+     hold/release/cancel/rerun/set-ok/confirm (lista validada no client), ForceOrder,
+     Ingest (D-3 idempotente), DailyStatus/DailyReport (E5), JobTypes (ADV-1),
+     Archives/DownloadArchive (ADV-5), Health, e Get() como escape hatch read-only.
+     Bearer token; erros carregam HTTP status + corpo; zero dependências.
+   • CLI: `regente ops <instances|action|force|ingest|daily|archives|jobtypes>` no MESMO
+     binário DevEx (test/dev/promote → agora também OPERA o server vivo), construído 100%
+     sobre o SDK — o CLI não fala HTTP direto, o SDK é a fonte única do transporte.
+     Conexão -server/-token ou envs REGENTE_SERVER/REGENTE_TOKEN; -json pra CI/scripts;
+     tabelas tabwriter pra humano; reorderArgs (gotcha do flag package) reusado.
+   • Testes: client_test.go — transporte (bearer/JSON/erro com mensagem), query, ações
+     curadas, ingest, daily status, archives list+download, contra server fake httptest.
+
+✅ ADV-7 — Site de docs (docs-as-code)
+   • cmd/docsite: gerador estático — README do monorepo + READMEs de componentes de 1º nível
+     + docs/*.md viram um site SELF-CONTAINED (CSS dark inline com o accent do produto,
+     ZERO CDN, ZERO JS) com nav lateral ordenada (knownOrder + alfabético), links .md→.html
+     reescritos resolvendo o caminho RELATIVO da página de origem (../README.md de uma
+     subpágina → index.html), âncoras preservadas, imagens locais copiadas pro site.
+     goldmark GFM + WithUnsafe (os READMEs usam HTML cru). Decisão: NÃO existe conteúdo
+     próprio do site — o markdown do repo é a fonte única; regenerar é o fluxo inteiro.
+   • Server: flag -docs-dir (env REGENTE_DOCS_DIR) serve o site em /docs single-origin,
+     registrado ANTES do NotFound do SPA (senão o fallback engoliria), sem fallback SPA
+     (docs não têm roteamento client-side), traversal contido. Mesmo padrão do -spa-dir.
+   • Bônus de construir o site: EXPÔS um fence ``` não fechado na seção UI deste roadmap —
+     o arquivo renderizava quebrado até no GitHub (metade do changelog virava <pre>); corrigido.
+   • Testes: main_test.go do gerador (coleta, links, âncoras, assets, nav ativa,
+     self-contained) + docs_test.go da rota (/docs/ index, 404 sem fallback, traversal,
+     sem flag = 404). Validado AO VIVO no preview: nav, tabela do changelog, zero href .md.
+
+✅ ADV-8 — Executores AWS extras: BATCH · GLUE · STEP_FUNCTION
+   • agent/awsjobs.go: os três no MESMO seam do LAMBDA — SigV4 da stdlib (aws.go), sem
+     aws-sdk-go; contrato submit→poll→terminal com cadência awsPollEvery e, no TIMEOUT do
+     job, stop BEST-EFFORT pra não deixar trabalho órfão rodando na nuvem (TerminateJob /
+     BatchStopJobRun / StopExecution) — mesmo espírito do deadlineReader do MFT.
+   • BATCH = SubmitJob REST-JSON /v1/submitjob + poll DescribeJobs (containerOverrides:
+     command split por espaços + environment ordenado; parameters; jobName default
+     regente-<unix>; FAILED com exitCode 0 — container morto por fora — NUNCA vira OK).
+     GLUE = StartJobRun/GetJobRun aws-json 1.1 via X-Amz-Target (arguments coagidos pra
+     string, workerType/numberOfWorkers; FAILED/ERROR/TIMEOUT/STOPPED = NOTOK com
+     ErrorMessage). STEP_FUNCTION = StartExecution/DescribeExecution aws-json 1.0 (input
+     string OU objeto — mesma dualidade do payload do LAMBDA; SUCCEEDED traz o output
+     truncado; FAILED/TIMED_OUT/ABORTED com error+cause).
+   • Espelhos completos: registry ADV-1 ganhou aliases AWS_BATCH/AWS_GLUE/STEP_FUNCTIONS +
+     campos region/accessKeyId/secretAccessKey/sessionToken/endpoint (default envs AWS_* do
+     agente, igual LAMBDA) + jobName/parameters (BATCH) e name (SFN); guia do CODE
+     (code-schema.ts) atualizado; Row "Region" nos 3 editores visuais; dispatch do agente
+     com aliases. Caps OPT-IN (-caps BATCH,GLUE,STEP_FUNCTION) como todo executor cloud.
+   • Validação em conta AWS paga fora de escopo POR DECISÃO (mantida): cobertura por fakes
+     httptest que validam a ASSINATURA (escopo /batch|glue|states/aws4_request), o
+     protocolo (path REST · X-Amz-Target · content-type 1.0/1.1) e a máquina de estados do
+     poll — 12 testes novos em awsjobs_test.go (sucesso multi-poll com transições emitidas,
+     falha com motivo, timeout→stop enviado, params faltando, dispatch por alias).
 ```
 
 ## 📜 Changelog de entregas
@@ -653,6 +726,7 @@ contra Postgres 16 real (Docker); restante pendente:
 
 | Quando | O que | Detalhe |
 |----|--------|---------|
+| ✅ | ~~**ADV-5..ADV-8 (FECHA a trilha Features avançadas): Archives/Retention · CLI/SDK · site de docs · executores AWS Batch/Glue/Step Functions**~~ | **Feito (2026-07-10):** as quatro últimas Features Avançadas fecharam juntas — a trilha inteira (ADV-1..8) está entregue. **ADV-5** — GC pós-daily no líder (irmão do auditGC E2) dirigido por `instance_retention_days`: dailies vencidas viram NDJSON por dia (todas as colunas, escrita atômica .part+rename, nunca sobrescreve) em `archive_dir` e saem do banco em lotes junto com events/conditions/daily_runs do dia; dia com RUNNING pula; `GET /api/archive[/file]` admin-only; campos no SettingsDialog. **ADV-6** — SDK Go `pkg/client` (fachada hand-written da superfície curada do API-1: query D-5, lifecycle, force, ingest D-3, daily E5, jobtypes ADV-1, archives ADV-5) + `regente ops` no binário DevEx, 100% sobre o SDK. **ADV-7** — `cmd/docsite` gera site estático self-contained (zero CDN/JS, goldmark GFM+unsafe, links .md→.html resolvidos por página, assets copiados) dos markdown do repo; server serve em `/docs` via `-docs-dir` (antes do NotFound do SPA); construir o site expôs fence ``` não fechado NESTE roadmap (renderizava quebrado até no GitHub) — corrigido. **ADV-8** — executores BATCH/GLUE/STEP_FUNCTION no agente, mesmo seam SigV4-stdlib do LAMBDA, submit→poll→terminal com stop best-effort no timeout (TerminateJob/BatchStopJobRun/StopExecution); registry+guia CODE+editores espelhados (aliases AWS_*); validação em conta paga fora de escopo por decisão — cobertura por fakes httptest de assinatura/protocolo/poll. Suítes server+agent+CLIs verdes, tsc+vite build ok, docs site validado ao vivo no preview. |
 | ✅ | ~~**ADV-4: MFT — jobType FILE_TRANSFER nativo (local ↔ SFTP ↔ S3 pelo agente)**~~ | **Feito (2026-07-10):** o Managed File Transfer do Control-M virou jobType nativo. **Executor** (`agent/filetransfer.go`): `src`/`dst` aceitam caminho local, `sftp://user:pass@host:22/caminho` e `s3://bucket/chave`, combináveis à vontade (local→sftp, s3→local, sftp→sftp entre hosts diferentes); glob (`*.csv`) na origem local/sftp com destino diretório/prefixo; **escrita atômica `.part`+rename** (um FILE_WATCH com stableSec do outro lado nunca vê parcial); `checksum` relê o destino e compara SHA-256 fim-a-fim; `deleteSource` = move (só após transferir+verificar); `overwrite=false` protege destino existente; `mkdirs`; timeout do job corta a transferência no meio (deadlineReader). SFTP = `pkg/sftp`+`x/crypto` (pure-Go, zero CGO, no padrão do projeto), com senha na URL/param, `keyPath` e pin opcional `hostKeyFingerprint`; S3 = **SigV4 da stdlib reusando os primitivos do Lambda** (`aws.go`) — variante `sigv4HeadersHash` assina também `x-amz-content-sha256` (o S3 exige) e PUT streaming `UNSIGNED-PAYLOAD` (sem carregar o arquivo em memória), creds por params/envs `AWS_*`, `s3Endpoint` p/ MinIO/testes. **Espelhos completos:** schema no registry ADV-1 (`typeschema.go`, 14 campos, alias `MFT`, DRAFT×STRICT) → `GET /api/jobtypes`; caps default do agente; front = palette do Design, select do JobConfigDrawer, editor visual com `BoolSelect` novo, guia do CODE (`code-schema.ts`), Action do drawer do Monitoring (`ACTION_VERB`/`ACTION_FIELDS`), engine local de demo. **Testes:** 10 casos novos em `filetransfer_test.go` — local (checksum/atomicidade/glob→dir+deleteSource/overwrite=false/multi-exige-dir/origem inexistente), **sftp REAL in-process** (`sftp.NewServer` sobre `net.Pipe`; skip no Windows, roda na CI ubuntu) e **fake S3 httptest** que valida assinatura SigV4+`x-amz-content-sha256` (upload/download/delete, glob rejeitado, sem credencial) + casos no `typeschema_test.go`; suítes server+agent verdes, `tsc`+`vite build` ok. **Validado E2E AO VIVO** (server GitOps bare repo + agente real + preview): palette→drawer→publish (YAML no Git com os params certos)→force→agente transferiu 2 arquivos via glob com `sha256✓`, instance OK no board e output `[mft]` no drawer. GOTCHA de ambiente documentado: o WS do agente é `ws://host/ws/agent` (não `/api/agent/ws` — handshake 400 sem log no server). |
 | ✅ | ~~**ADV-1 + ADV-2 + ADV-3: schema por jobType · roteamento por ambiente · What-If/Statistics**~~ | **Feito (2026-07-10):** as três primeiras Features Avançadas fecharam juntas. **ADV-1** — `domain/typeschema.go` = registry declarativo com o contrato de params dos 16 jobTypes (obrigatórios, kinds, enums, aliases de tipo E de campo, regras cross-field); validação em duas forças (DRAFT no save da session — typo/kind na hora, sem cobrar obrigatórios; STRICT no publish/write direto — 422 estruturado por job) + `GET /api/jobtypes`. Construir o registry expôs desalinhamentos REAIS validador×executor, todos corrigidos: LAMBDA `functionName`×`function` (cada lado lia um — aceitos os dois), payload objeto da UI descartado pelo agente, `expectStatus` escalar/CSV ignorado, `port` numérica do SSH dropada, `insecureTLS` só string. **ADV-2** — `def.environment` (F20, inerte desde sempre) agora ROTEIA: `hub.EnvMatch` (sem label = coringa; ambos com label = bate case-insensitive), flag `-env` no agente (WS + HTTP long-poll), PickAgent/HasAgent/Dispatch filtram, pin em env conflitante = WAIT_AGENT com motivo no Explain, presença R5 propaga env (vale cross-nó), chip ◉ na tela de Agentes. **ADV-3** — What-If: `POST /api/whatif` projeta a diária baseline×cenário (função pura estilo Forecast; mesma `IsScheduledOn`, p50 real do D-4, semântica de deps do engine — falha simulada BLOQUEIA on-success e DESTRAVA recovery on-failure) + `WhatIfPanel` no Monitoring; Statistics: `GET /api/analytics/jobstats` (runs/successRate/min/avg/p50/p90/max sobre OK + última execução) na aba Stats do drawer. Testes novos em typeschema/whatif/jobstats/hub_env/bus; suíte inteira verde (server+agent+CLIs), tsc+vite build ok. |
 | ✅ | ~~**Refinamento UI: filtro do guia CODE só por TAG + cursor de pan nativo do SO**~~ | **Feito (2026-07-10, pedidos do usuário):** (1) o filtro do Guia do schema (modo CODE) casava tag+texto+formas — passou a casar **só o NOME da tag** (descendentes contam), placeholder "Filtrar por tag…". (2) Cursor do canvas: a 1ª tentativa (CSS `grab`/`grabbing`) ficou ruim de propósito documentar — grab/grabbing são **bitmaps internos do browser** (mão branca) que IGNORAM o tema de cursor do Windows, e o `cursor` no body perdia pro `pointer` dos cards. Solução final: **nada de mão no hover** (seta nativa) e, SÓ durante o arrasto, `body.canvas-panning` + regra `body.canvas-panning *{cursor:move!important}` — o **Mover NATIVO do SO** (respeita o tema de cursor do usuário, igual à transição seta→dedinho), vencendo o pointer dos cards ao atravessar folder. Um toggle de classe por pan — custo zero. Validado no preview (hover=auto, drag=move+classe, solta=limpa). |
@@ -886,12 +960,12 @@ usuário revisar e commitar.
    via `ctx.BusinessDay`). Ver §Entregue L353/356/358-359.
 ```
 
-## ⬜ Features avançadas *(depois do núcleo sólido — SPEC; status no §🔜 Backlog como ADV-1..ADV-8)*
+## ✅ Features avançadas *(SPEC/histórico — trilha INTEIRA entregue; detalhe no §Entregue "🚀 Features avançadas — ADV-1..ADV-8")*
 
-- Job types com schema dedicado · Multi-ambiente/multi-site · What-If/Forecast/Statistics
-- MFT (FILE_TRANSFER nativo) · Archives/Retention · Import de Control-M · CLI/SDK · site de docs
-- **Executores AWS extras** (Batch/Glue/Step) — adapters por capability (Lambda já feito); validação em conta
-  paga fora de escopo por decisão
+- ✅ Job types com schema dedicado · Multi-ambiente/multi-site · What-If/Forecast/Statistics
+- ✅ MFT (FILE_TRANSFER nativo) · Archives/Retention · Import de Control-M · CLI/SDK · site de docs
+- ✅ **Executores AWS extras** (Batch/Glue/Step) — adapters por capability no seam do Lambda; validação em conta
+  paga fora de escopo por decisão (cobertura por fakes httptest de assinatura/protocolo/poll)
 
 ## 🌟 Diferenciais — visão de produto *(o racional)*
 
