@@ -1,23 +1,29 @@
 /**
- * CodeModeView — modo CÓDIGO do Design (jobs as code, 2026-07-06).
+ * CodeModeView — modo CÓDIGO do Design (jobs as code).
  *
  * Substitui o canvas central por um editor YAML do working set (folders
  * abertas da design session): o dev cria/edita jobs como código, no MESMO
- * dialeto dos arquivos do workspace Git. Fluxo: editar → Validar (dry-run,
- * plano creates/updates/deletes) → Aplicar (transacional por item; delete
- * exige confirmação). Estética Matrix: digital rain no fundo, verde fósforo.
+ * dialeto dos arquivos do workspace Git. Fluxo: editar → lint AO VIVO
+ * (debounce, dry-run no server) → Aplicar (transacional por item; delete
+ * exige confirmação).
  *
- * O editor é um <textarea> transparente sobre um <pre> com highlight YAML
- * (regex leve) — zero dependência nova. Aperfeiçoamentos no roadmap.
+ * CODE-1 (2026-07-09): estética Matrix aposentada a pedido do usuário —
+ * agora é a linha LUXO do Regente (serif no título, accent do tema, zero
+ * cor hardcoded de chrome) + painel-guia FIXO à esquerda com TODAS as tags
+ * do dialeto (CodeGuidePanel / code-schema.ts) + validação enquanto digita.
+ *
+ * O editor segue um <textarea> transparente sobre um <pre> com highlight
+ * YAML (regex leve) — zero dependência nova, de propósito.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getSessionCode, applySessionCode, type CodeApplyResult } from "@/lib/design-session-api";
 import { toast } from "./Toast";
+import CodeGuidePanel from "./CodeGuidePanel";
+import { useResizablePanel, ResizeHandle } from "./resizable";
 
-const MATRIX_GREEN = "#00ff41";
-const MATRIX_DIM = "#0a3d1a";
-
-/* ── Highlight YAML minimalista (chave/valor/comentário/---/diretivas) ── */
+/* ── Highlight YAML minimalista (chave/valor/comentário/---/%%tokens) ──
+   Cores do TEMA onde há token; as poucas fixas (número/%%var) seguem a
+   paleta de status já usada no app — trocar o tema troca o acento. */
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -27,71 +33,22 @@ function highlightYaml(src: string): string {
     .split("\n")
     .map((line) => {
       const esc = escapeHtml(line);
-      if (/^\s*#/.test(line)) return `<span style="color:#2e7d4f;font-style:italic">${esc}</span>`;
-      if (/^---\s*$/.test(line)) return `<span style="color:#00ff41;font-weight:700">${esc}</span>`;
-      // chave: valor — colore a chave e strings/números do valor
+      if (/^\s*#/.test(line)) return `<span style="color:var(--v2-text-muted);font-style:italic">${esc}</span>`;
+      if (/^---\s*$/.test(line)) return `<span style="color:var(--v2-accent-brand);font-weight:700">${esc}</span>`;
+      // chave: valor — colore a chave e strings/números/bools do valor
       const m = line.match(/^(\s*(?:- )?)([A-Za-z_][\w.-]*)(\s*:)(.*)$/);
       if (m) {
         const [, ind, key, colon, rest] = m;
         const restEsc = escapeHtml(rest)
-          .replace(/(&quot;.*?&quot;|'.*?')/g, `<span style="color:#7dffa8">$1</span>`)
-          .replace(/\b(true|false|null)\b/g, `<span style="color:#ffd24d">$1</span>`)
-          .replace(/(?<![\w&#;])(-?\d+(?:\.\d+)?)(?![\w;])/g, `<span style="color:#4dd2ff">$1</span>`)
-          .replace(/(%%[A-Za-z][\w]*)/g, `<span style="color:#ff7de9">$1</span>`);
-        return `${escapeHtml(ind)}<span style="color:#00e63a;font-weight:600">${escapeHtml(key)}</span><span style="color:#1f9e4e">${escapeHtml(colon)}</span>${restEsc}`;
+          .replace(/(&quot;.*?&quot;|'.*?')/g, `<span style="color:var(--v2-text-primary)">$1</span>`)
+          .replace(/\b(true|false|null)\b/g, `<span style="color:var(--v2-status-waiting)">$1</span>`)
+          .replace(/(?<![\w&#;])(-?\d+(?:\.\d+)?)(?![\w;])/g, `<span style="color:var(--v2-status-running)">$1</span>`)
+          .replace(/(%%[A-Za-z][\w]*)/g, `<span style="color:#c4b5fd">$1</span>`);
+        return `${escapeHtml(ind)}<span style="color:var(--v2-accent-brand);font-weight:600">${escapeHtml(key)}</span><span style="color:var(--v2-text-muted)">${escapeHtml(colon)}</span>${restEsc}`;
       }
-      return `<span style="color:#9df5b8">${esc}</span>`;
+      return `<span style="color:var(--v2-text-secondary)">${esc}</span>`;
     })
     .join("\n");
-}
-
-/* ── Digital rain (canvas, bem sutil atrás do editor) ── */
-function MatrixRain() {
-  const ref = useRef<HTMLCanvasElement | null>(null);
-  useEffect(() => {
-    const canvas = ref.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    let raf = 0;
-    const glyphs = "アイウエオカキクケコサシスセソ0123456789ABCDEF<>=/%{}[]";
-    const fontSize = 14;
-    let cols = 0;
-    let drops: number[] = [];
-    const resize = () => {
-      canvas.width = canvas.offsetWidth;
-      canvas.height = canvas.offsetHeight;
-      cols = Math.ceil(canvas.width / fontSize);
-      drops = Array.from({ length: cols }, () => Math.floor(Math.random() * canvas.height / fontSize));
-    };
-    resize();
-    const ro = new ResizeObserver(resize);
-    ro.observe(canvas);
-    let last = 0;
-    const tick = (t: number) => {
-      raf = requestAnimationFrame(tick);
-      if (t - last < 66) return; // ~15fps: efeito, não jogo
-      last = t;
-      ctx.fillStyle = "rgba(0, 8, 2, 0.12)";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.font = `${fontSize}px monospace`;
-      for (let i = 0; i < cols; i++) {
-        const ch = glyphs[Math.floor(Math.random() * glyphs.length)];
-        ctx.fillStyle = Math.random() < 0.08 ? MATRIX_GREEN : MATRIX_DIM;
-        ctx.fillText(ch, i * fontSize, drops[i] * fontSize);
-        if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
-        drops[i]++;
-      }
-    };
-    raf = requestAnimationFrame(tick);
-    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
-  }, []);
-  return (
-    <canvas
-      ref={ref}
-      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0.35, pointerEvents: "none" }}
-    />
-  );
 }
 
 /* ── Componente principal ── */
@@ -110,6 +67,7 @@ export default function CodeModeView({
   const [loading, setLoading] = useState(true);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [linting, setLinting] = useState(false);
   const [result, setResult] = useState<CodeApplyResult | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const preRef = useRef<HTMLPreElement | null>(null);
@@ -163,6 +121,23 @@ export default function CodeModeView({
     if (ta && gut) gut.scrollTop = ta.scrollTop;
   }, []);
 
+  // Lint AO VIVO (CODE-1): pausa de digitação → dry-run no server (o MESMO
+  // validador do Aplicar — parse estrito + plano). Sem toast: o veredito vive
+  // no rodapé. `lintSeq` descarta resposta obsoleta (digitou de novo no meio).
+  const lintSeq = useRef(0);
+  useEffect(() => {
+    if (!dirty || loading || busy) return;
+    const seq = ++lintSeq.current;
+    const t = setTimeout(() => {
+      setLinting(true);
+      applySessionCode(sessionId, code, { folders: scopeFolders, apply: false })
+        .then((res) => { if (seq === lintSeq.current) setResult(res); })
+        .catch(() => { /* transiente (rede) — o Validar manual reporta */ })
+        .finally(() => { if (seq === lintSeq.current) setLinting(false); });
+    }, 900);
+    return () => clearTimeout(t);
+  }, [code, dirty, loading, busy, sessionId, scopeFolders]);
+
   const runValidate = useCallback(async () => {
     setBusy(true);
     try {
@@ -207,16 +182,39 @@ export default function CodeModeView({
     }
   }, [sessionId, code, folders, onApplied, load]);
 
-  // Tab indenta em vez de sair do editor.
+  // Ergonomia de YAML no textarea: Tab indenta (Shift+Tab desindenta a linha)
+  // e Enter mantém a indentação corrente (+2 se a linha abriu bloco com ":").
   const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const ta = e.currentTarget;
+    const { selectionStart: s, selectionEnd: en, value } = ta;
     if (e.key === "Tab") {
       e.preventDefault();
-      const ta = e.currentTarget;
-      const { selectionStart: s, selectionEnd: en, value } = ta;
+      if (e.shiftKey) {
+        const ls = value.lastIndexOf("\n", s - 1) + 1;
+        const rm = value.slice(ls).startsWith("  ") ? 2 : value.slice(ls).startsWith(" ") ? 1 : 0;
+        if (rm === 0) return;
+        const next = value.slice(0, ls) + value.slice(ls + rm);
+        setCode(next);
+        setDirty(true);
+        requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = Math.max(ls, s - rm); });
+        return;
+      }
       const next = value.slice(0, s) + "  " + value.slice(en);
       setCode(next);
       setDirty(true);
       requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = s + 2; });
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const ls = value.lastIndexOf("\n", s - 1) + 1;
+      const line = value.slice(ls, s);
+      const indent = (line.match(/^\s*/)?.[0] ?? "") + (/(^|\S):\s*$/.test(line) ? "  " : "");
+      const insert = "\n" + indent;
+      const next = value.slice(0, s) + insert + value.slice(en);
+      setCode(next);
+      setDirty(true);
+      requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = s + insert.length; });
     }
   }, []);
 
@@ -226,6 +224,11 @@ export default function CodeModeView({
     [lineCount],
   );
   const highlighted = useMemo(() => highlightYaml(code), [code]);
+
+  // Painel-guia à esquerda: largura redimensionável (mesmo hook da sidebar).
+  const guide = useResizablePanel({
+    storageKey: "regente.panel.codeguide.w", defaultWidth: 300, min: 220, max: 520, edge: "right",
+  });
 
   const planBadge = (label: string, ids: string[], color: string) =>
     ids.length > 0 && (
@@ -241,43 +244,55 @@ export default function CodeModeView({
     tabSize: 2,
   };
 
+  const errors = [
+    ...(result?.errors ?? []),
+    ...((result?.results ?? []).filter((r) => !r.ok).map((r) => `${r.id}: ${r.error}`)),
+  ];
+
   return (
     <div
       data-testid="code-mode"
+      className="v2-grain"
       style={{
         position: "absolute", inset: 0, zIndex: 5,
         display: "flex", flexDirection: "column",
-        background: "#000802",
+        background: "var(--v2-bg-canvas)",
       }}
     >
-      <MatrixRain />
-      {/* Barra do modo código */}
+      {/* Barra do modo código (linha luxo) */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 12,
-        padding: "8px 14px", borderBottom: `1px solid ${MATRIX_DIM}`,
-        background: "rgba(0, 10, 3, 0.85)", zIndex: 2, backdropFilter: "blur(2px)",
+        display: "flex", alignItems: "center", gap: 14,
+        padding: "10px 16px",
+        background: "var(--v2-bg-surface)",
+        borderBottom: "1px solid var(--v2-border-medium)",
+        position: "relative", zIndex: 2,
       }}>
         <span style={{
-          fontFamily: "var(--v2-font-mono)", fontSize: 12, fontWeight: 700,
-          color: MATRIX_GREEN, letterSpacing: "0.12em", textShadow: `0 0 8px ${MATRIX_GREEN}66`,
+          fontFamily: "var(--v2-font-serif)", fontStyle: "italic", fontWeight: 600,
+          fontSize: 20, lineHeight: 1, color: "var(--v2-accent-brand)",
         }}>
-          ⌈ JOBS AS CODE ⌋
+          Jobs as Code
         </span>
-        <span style={{ fontFamily: "var(--v2-font-mono)", fontSize: 10, color: "#3fae63" }}>
-          {folders.join(" · ") || "sem folders"} — YAML multi-doc (mesmo dialeto do workspace Git)
+        <span style={{
+          fontFamily: "var(--v2-font-mono)", fontSize: 9, letterSpacing: "0.16em",
+          textTransform: "uppercase", color: "var(--v2-text-muted)",
+        }}>
+          {folders.join(" · ") || "sem folders"} — YAML multi-doc · dialeto do workspace Git
         </span>
         <div style={{ flex: 1 }} />
         {dirty && (
-          <span style={{ fontFamily: "var(--v2-font-mono)", fontSize: 10, color: "#ffd24d" }}>● não aplicado</span>
+          <span style={{ fontFamily: "var(--v2-font-mono)", fontSize: 10, color: "var(--v2-status-waiting)" }}>
+            ● não aplicado
+          </span>
         )}
-        <button className="matrix-btn" disabled={busy || loading} onClick={() => void runValidate()}>
+        <button className="code-btn" disabled={busy || loading} onClick={() => void runValidate()}>
           Validar
         </button>
-        <button className="matrix-btn matrix-btn-solid" disabled={busy || loading || !dirty} onClick={() => void runApply()}>
+        <button className="code-btn code-btn-solid" disabled={busy || loading || !dirty} onClick={() => void runApply()}>
           Aplicar
         </button>
         <button
-          className="matrix-btn"
+          className="code-btn"
           disabled={busy || loading}
           onClick={() => {
             if (dirty && !window.confirm("Descartar as edições de código não aplicadas?")) return;
@@ -286,21 +301,32 @@ export default function CodeModeView({
         >
           Recarregar
         </button>
-        <button className="matrix-btn" onClick={() => {
+        <button className="code-btn" onClick={() => {
           if (dirty && !window.confirm("Sair do modo código? Edições não aplicadas serão perdidas.")) return;
           onExit();
         }}>
           ⏏ Sair
         </button>
+        {/* fio de luxo sob o header (mesmo gesto do FolderManager) */}
+        <div style={{
+          position: "absolute", left: 16, right: 16, bottom: -1, height: 1,
+          background: "linear-gradient(90deg, transparent, var(--v2-accent-brand), transparent)",
+          opacity: 0.35, pointerEvents: "none",
+        }} />
       </div>
 
-      {/* Editor */}
+      {/* Corpo: guia do schema (fixa, redimensionável) + editor */}
       <div style={{ flex: 1, display: "flex", minHeight: 0, zIndex: 1 }}>
+        <div style={{ position: "relative", width: guide.width, flexShrink: 0, minHeight: 0 }}>
+          <CodeGuidePanel />
+          <ResizeHandle edge="right" onMouseDown={guide.onMouseDown} onReset={guide.reset} />
+        </div>
+
         {/* Gutter de linhas */}
         <pre aria-hidden ref={gutterRef} style={{
           ...mono, margin: 0, padding: "12px 8px 12px 14px", textAlign: "right",
-          color: "#1f6e3c", userSelect: "none", overflow: "hidden",
-          borderRight: `1px solid ${MATRIX_DIM}`, background: "rgba(0, 10, 3, 0.6)",
+          color: "var(--v2-text-disabled)", userSelect: "none", overflow: "hidden",
+          borderRight: "1px solid var(--v2-border-subtle)", background: "var(--v2-bg-surface)",
           minWidth: 44,
         }}>{gutter}</pre>
         <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
@@ -322,53 +348,62 @@ export default function CodeModeView({
             value={code}
             spellCheck={false}
             disabled={loading}
-            onChange={(e) => { setCode(e.target.value); setDirty(true); setResult(null); }}
+            onChange={(e) => { setCode(e.target.value); setDirty(true); }}
             onScroll={syncScroll}
             onKeyDown={onKeyDown}
             style={{
               ...mono, position: "absolute", inset: 0, width: "100%", height: "100%",
               padding: "12px 16px", border: "none", outline: "none", resize: "none",
               background: "transparent", color: "transparent",
-              caretColor: MATRIX_GREEN, whiteSpace: "pre", overflow: "auto",
+              caretColor: "var(--v2-accent-brand)", whiteSpace: "pre", overflow: "auto",
             }}
           />
           {loading && (
             <div style={{
               position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
-              fontFamily: "var(--v2-font-mono)", color: MATRIX_GREEN, fontSize: 13, letterSpacing: "0.2em",
+              fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", fontSize: 12, letterSpacing: "0.18em",
+              textTransform: "uppercase",
             }}>
-              CARREGANDO O CONSTRUCTO…
+              carregando o código…
             </div>
           )}
         </div>
       </div>
 
-      {/* Rodapé: plano/erros da última validação/aplicação */}
-      {result && (
-        <div style={{
-          maxHeight: 180, overflowY: "auto", zIndex: 2,
-          borderTop: `1px solid ${MATRIX_DIM}`, background: "rgba(0, 10, 3, 0.92)",
-          padding: "8px 14px", fontFamily: "var(--v2-font-mono)", fontSize: 11,
-        }}>
-          <div style={{ marginBottom: 4, color: "#9df5b8" }}>
-            {result.parsed} job(s) no documento ·{" "}
-            {planBadge("＋criar", result.plan?.creates ?? [], "#7dffa8")}
-            {planBadge("~atualizar", result.plan?.updates ?? [], "#4dd2ff")}
-            {planBadge("−deletar", result.plan?.deletes ?? [], "#ff6b6b")}
-            <span style={{ color: "#3fae63" }}>{result.plan?.unchanged ?? 0} sem mudança</span>
-            {result.applied && <span style={{ color: MATRIX_GREEN, marginLeft: 12, fontWeight: 700 }}>✓ APLICADO</span>}
-            {!result.applied && (result.errors?.length ?? 0) === 0 && (
-              <span style={{ color: "#ffd24d", marginLeft: 12 }}>válido — nada aplicado (dry-run)</span>
-            )}
-          </div>
-          {(result.errors ?? []).map((err, i) => (
-            <div key={i} style={{ color: "#ff6b6b" }}>✗ {err}</div>
-          ))}
-          {(result.results ?? []).filter((r) => !r.ok).map((r) => (
-            <div key={r.id} style={{ color: "#ff6b6b" }}>✗ {r.id}: {r.error}</div>
-          ))}
+      {/* Rodapé fixo: veredito do lint AO VIVO / plano da última validação-aplicação */}
+      <div style={{
+        maxHeight: 180, overflowY: "auto", zIndex: 2,
+        borderTop: "1px solid var(--v2-border-medium)", background: "var(--v2-bg-surface)",
+        padding: "7px 16px", fontFamily: "var(--v2-font-mono)", fontSize: 11,
+      }}>
+        <div style={{ color: "var(--v2-text-secondary)" }}>
+          {linting && <span style={{ color: "var(--v2-text-muted)", marginRight: 12 }}>validando…</span>}
+          {result ? (
+            <>
+              {result.parsed} job(s) no documento ·{" "}
+              {planBadge("＋criar", result.plan?.creates ?? [], "var(--v2-status-ok)")}
+              {planBadge("~atualizar", result.plan?.updates ?? [], "var(--v2-status-running)")}
+              {planBadge("−deletar", result.plan?.deletes ?? [], "var(--v2-status-failed)")}
+              <span style={{ color: "var(--v2-text-muted)" }}>{result.plan?.unchanged ?? 0} sem mudança</span>
+              {result.applied && (
+                <span style={{ color: "var(--v2-accent-brand)", marginLeft: 12, fontWeight: 700 }}>✓ aplicado</span>
+              )}
+              {!result.applied && errors.length === 0 && (
+                <span style={{ color: "var(--v2-status-ok)", marginLeft: 12 }}>✓ válido — nada aplicado ainda</span>
+              )}
+            </>
+          ) : (
+            !linting && (
+              <span style={{ color: "var(--v2-text-muted)" }}>
+                edite à vontade — o código é validado sozinho a cada pausa (parse estrito + plano)
+              </span>
+            )
+          )}
         </div>
-      )}
+        {errors.map((err, i) => (
+          <div key={i} style={{ color: "var(--v2-status-failed)", marginTop: 2 }}>✗ {err}</div>
+        ))}
+      </div>
     </div>
   );
 }

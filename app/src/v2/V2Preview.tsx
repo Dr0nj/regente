@@ -132,7 +132,7 @@ function V2PreviewInner() {
     } catch { return null; }
   });
   const [showFolderManager, setShowFolderManager] = useState(false);
-  // Job-as-code (2026-07-06): o palco do Design vira editor YAML (estética Matrix).
+  // Job-as-code (2026-07-06; reskin luxo 2026-07-09): o palco do Design vira editor YAML.
   const [codeMode, setCodeMode] = useState(false);
   // CTM-3 — Find & Update rico (critério/regex → preview → apply → undo).
   const [showMassUpdate, setShowMassUpdate] = useState(false);
@@ -1129,10 +1129,10 @@ function V2PreviewInner() {
         </button>
         )}
 
-        {/* Job-as-code — botão Matrix: o palco vira editor YAML do working set. */}
+        {/* Job-as-code — o palco vira editor YAML do working set (linha luxo). */}
         {mode === "design" && isServerMode() && (
           <button
-            className={`matrix-toggle${codeMode ? " matrix-on" : ""}`}
+            className={`code-toggle${codeMode ? " code-on" : ""}`}
             disabled={!designSessionId || !hasActiveFolders}
             title={
               !designSessionId || !hasActiveFolders
@@ -1570,7 +1570,7 @@ function V2PreviewInner() {
           />
         )}
 
-        {/* Job-as-code — editor YAML cobre o palco do Design (estética Matrix). */}
+        {/* Job-as-code — editor YAML cobre o palco do Design (linha luxo + guia do schema). */}
         {mode === "design" && codeMode && designSessionId && (
           <CodeModeView
             sessionId={designSessionId}
