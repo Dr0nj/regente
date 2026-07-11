@@ -1,6 +1,6 @@
 # Arquitetura futura — Regente serverless, portátil e sem lock-in
 
-> Status: vivo · Última revisão: 2026-06-18
+> Status: vivo · Última revisão: 2026-07-10
 > Escopo: control plane (`server/`) + transporte de agentes + executores.
 > Decisão-mãe: **"serverless portátil" (container scale-to-zero + estado/gatilho
 > externalizados), não FaaS.**
@@ -135,8 +135,12 @@ puro, sem shell-out): a imagem voltou a `gcr.io/distroless/static-debian12:nonro
 untracked (diverge do git); reproduzimos o git limitando o reset à união dos
 paths tracked, preservando a SQLite DB no workspace.
 
-**Futuro próximo:** mover `autoDailyIfDue` para um gatilho separado de cadência
-diária (em vez de checar a cada tick), e expor um `/api/scheduler/daily` dedicado.
+**Gatilho de daily dedicado (ARCH-5, ✅ aplicado 2026-07-10):** `autoDailyIfDue`
+foi exposto como `Scheduler.RunDailyIfDue()` (leader-gated, idempotente) atrás de
+`POST /api/scheduler/daily` — no serverless você aponta um cron de minutos em
+`/scheduler/tick` (dispatch) e um cron **diário** em `/scheduler/daily`
+(materialização), separando as cadências. O Tick segue chamando `autoDailyIfDue`
+(backward-compat com o daemon interno).
 
 ### Concorrência e HA — clássico vs. serverless (importante)
 
@@ -173,9 +177,16 @@ opt-in para economia, não para corretude.)
 trilho **clássico**; o serverless ganha HA "de graça" (réplicas stateless + PG
 gerenciado durável + idempotência + claim atômico).
 
+**Lock-por-tick (ARCH-3, ✅ aplicado 2026-07-10):** o mecanismo projetado acima —
+serializar ticks **sobrepostos** com um advisory lock de escopo curto — foi
+implementado em `scheduler/ticklock.go`. Duas camadas: em-processo (`atomic.Bool`,
+sempre ativa) + `pg_try_advisory_lock` cross-processo no Postgres (chave distinta
+da liderança, opt-in via `EnableTickLock()`, ligado no `-scheduler=external`).
+Segue sendo higiene, não corretude — o claim atômico é a rede de segurança.
+
 ---
 
-## 5. Fase 2 — transporte de agentes plugável (BusPort)  ✅ seam + long-poll aplicados
+## 5. Fase 2 — transporte de agentes plugável (BusPort)  ✅ seam + long-poll + SSE + NATS aplicados
 
 **Objetivo:** o WebSocket hub é a última peça que exige persistência. Abstrair o
 transporte e oferecer uma via stateless para deploys serverless.
@@ -206,17 +217,20 @@ transporte e oferecer uma via stateless para deploys serverless.
   - **Validado e2e:** agent em `-transport=http` recebe dispatch (daily + force),
     executa e devolve resultado/stream.
 
-**Projetado (próximas iterações):**
+**Também aplicado (depois da 1ª redação deste ADR):**
 
-- **Adapter NATS** (`internal/bus/nats`) — barramento CNCF para escala multi-nó:
-  agentes assinam `regente.dispatch.<cap>`; resultados em `regente.result`.
-- **Hub WebSocket distribuído** — fan-out de eventos web via NATS/Redis pub-sub
-  para múltiplos nós (hoje o hub é por-processo).
-- **SSE** como alternativa ao long-poll para push de menor latência.
+- **Transporte SSE** (ARCH-4, ✅ 2026-07-10) — `api/agent_sse.go` +
+  `-transport=sse` no agente: stream `text/event-stream` com push IMEDIATO do
+  dispatch (sem a janela de ~25s do long-poll), mesmo modelo outbound e mesmo
+  `agentBroker`/`hub.Client`; resultados voltam pelos mesmos POSTs.
+- **Adapter NATS + hub distribuído** (R5, ✅ 2026-06-22) — `-bus=nats`:
+  fan-out de eventos web, presença de agentes e dispatch roteado ao nó dono do
+  agente entre múltiplos nós. VALIDADO em 2 nós reais. (Sub-estimado na 1ª
+  redação como "projetado"; entregue e testado.)
 
 ---
 
-## 6. Fase 3 — executores como plugins + tecnologias novas  ◑ executor WASM aplicado
+## 6. Fase 3 — executores como plugins + tecnologias novas  ✅ WASM + nuvem + OTel aplicados
 
 **Objetivo:** aderência a tecnologias novas e diferenciação, mantendo o núcleo
 agnóstico de fornecedor.
@@ -237,16 +251,26 @@ casa `jobType`→agente via `PickAgent(capability)`. **Adicionar um executor nov
 - **Testado:** unit (`agent/wasm_test.go` com fixture WASI embarcado) + e2e
   (dispatch → runWASM → result via agent).
 
-**Projetado (R&D, marca claramente futuro):**
+**Também aplicado (depois da 1ª redação):**
 
-- **Executores de nuvem como adapters iguais** — `AWS` (Lambda/Batch/Glue/Step),
-  `GCP` (Cloud Run Jobs), `k8s Jobs`. Cada um é **uma capability**, nunca a
-  fundação — AWS deixa de ser base e vira plugin.
-- **Durable execution (Temporal / Restate)** — trilha opcional: substituir
-  retry/tick/state-machine por um motor durável testado. Opt-in, não default.
-- **Postgres-como-fila** (`SKIP LOCKED`, ex. River) — fila + estado numa só
-  dependência, sem Redis/SQS.
-- **OpenTelemetry** — tracing distribuído (já no roadmap de operação).
+- **Executores de nuvem como adapters iguais** (✅) — `AWS` Lambda (SigV4 stdlib)
+  + Batch/Glue/Step (ADV-8), `GCP` Cloud Run Jobs, `k8s Jobs` (validado em
+  cluster kind real). Cada um é **uma capability**, nunca a fundação — AWS é
+  plugin, não base.
+- **OpenTelemetry** (✅) — tracing OTLP/HTTP opt-in (`-otel-endpoint`), otelhttp
+  + spans no scheduler.
+
+**🚫 Decidido NÃO fazer (menção, sem pendência):**
+
+- **Durable execution (Temporal / Restate)** — substituir retry/tick/state-machine
+  por um motor durável **contradiz a decisão-mãe** deste ADR (single-binary,
+  zero-infra, anti-lock-in): exigiria rodar um cluster a mais para babá. E a
+  corretude que ela entrega (retomar um fluxo pós-crash sem re-executar passos) o
+  Regente **já dá** por idempotência + claim atômico. Fica como referência de
+  arquitetura, não como trabalho.
+- **Postgres-como-fila** (`SKIP LOCKED`, ex. River) — reescreveria o dispatch (hot
+  path validado a 1M) por uma alternativa ao claim atômico — que **é primo** do
+  `SKIP LOCKED` e já cobre o caso. Sem ganho que pague a troca.
 
 ---
 
@@ -260,15 +284,19 @@ casa `jobType`→agente via `PickAgent(capability)`. **Adicionar um executor nov
 | Dockerfile + Knative + CronJob + deploy/README | 1 | ✅ aplicado · e2e em container validado (2026-06-18) |
 | Imagem distroless sem `git` no PATH | 1 | ✅ storage migrada p/ go-git (Go puro); imagem voltou a `distroless/static:nonroot` |
 | HA clássico — leader election advisory-lock (`G1`) | 1 | ✅ aplicado · 2-nós validado em PG real (failover ~1s, 2026-06-18) |
-| HA serverless — idempotência + claim atômico | 1 | ✅ aplicado (corretude); lock-por-tick ◻ projetado |
+| HA serverless — idempotência + claim atômico | 1 | ✅ aplicado (corretude) |
+| Lock-por-tick (ticks sobrepostos, ARCH-3) | 1 | ✅ aplicado (2026-07-10; higiene, não correção) |
+| Gatilho de daily dedicado (`/api/scheduler/daily`, ARCH-5) | 1 | ✅ aplicado (2026-07-10) |
 | Interface `Bus` (seam de transporte) | 2 | ✅ aplicado |
 | Transporte HTTP long-poll (`-transport=http`) | 2 | ✅ aplicado (e2e) |
-| Adapter NATS | 2 | ◻ projetado |
-| Hub WebSocket distribuído | 2 | ◻ projetado |
+| Transporte SSE (`-transport=sse`, ARCH-4) | 2 | ✅ aplicado (2026-07-10; e2e ao vivo) |
+| Adapter NATS | 2 | ✅ aplicado (R5; 2-nós real) |
+| Hub WebSocket distribuído | 2 | ✅ aplicado (R5) |
 | Executor WASM (wazero) | 3 | ✅ aplicado (unit + e2e) |
-| Adapters de nuvem (AWS/GCP/k8s) por capability | 3 | ◻ projetado (seam pronto) |
-| Durable execution (Temporal/Restate) | 3 | ◻ R&D opt-in |
-| Postgres-como-fila | 3 | ◻ projetado |
+| Adapters de nuvem (AWS/GCP/k8s) por capability | 3 | ✅ aplicado (k8s real; AWS/GCP mock + ADV-8) |
+| OpenTelemetry (tracing OTLP) | 3 | ✅ aplicado (opt-in) |
+| Durable execution (Temporal/Restate) | 3 | 🚫 decidido não fazer (contradiz a decisão-mãe) |
+| Postgres-como-fila (River/SKIP LOCKED) | 3 | 🚫 decidido não fazer (claim atômico já cobre) |
 
 **Princípio de rollout:** cada fase é backward-compatible. Os defaults
 preservam o daemon clássico; o serverless é opt-in por flag/deploy.

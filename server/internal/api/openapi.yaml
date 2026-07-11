@@ -611,10 +611,12 @@ paths:
       tags: [Scheduler]
       summary: Tick sob demanda (modo serverless)
       description: |
-        Dispara um ciclo de scheduling. Pensado para `-scheduler=external`,
-        onde um cron externo (Cloud Scheduler, k8s CronJob, GitHub Actions)
-        bate aqui em vez do ticker interno. Idempotente e leader-guarded —
-        seguro chamar com frequência.
+        Dispara um ciclo de scheduling (materializa a daily se devida +
+        dispatch). Pensado para `-scheduler=external`, onde um cron externo
+        (Cloud Scheduler, k8s CronJob, GitHub Actions) bate aqui em vez do
+        ticker interno. Idempotente e leader-guarded — seguro chamar com
+        frequência. No serverless, um lock-por-tick serializa ticks
+        sobrepostos entre containers (ARCH-3).
       operationId: schedulerTick
       x-permission: operator/admin
       responses:
@@ -626,6 +628,31 @@ paths:
                 type: object
                 properties:
                   ok: { type: boolean }
+                  at: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/scheduler/daily:
+    post:
+      tags: [Scheduler]
+      summary: Gatilho de daily dedicado (modo serverless)
+      description: |
+        Materializa a diária de hoje SE já passou do horário configurado e
+        ainda não rodou (idempotente, leader-guarded), **sem** rodar o ciclo de
+        dispatch. Pensado para separar as cadências no serverless: um cron de
+        minutos em `/scheduler/tick` (dispatch) e um cron **diário** aqui
+        (materialização) — em vez de cada tick checar a daily.
+      operationId: schedulerDaily
+      x-permission: operator/admin
+      responses:
+        "200":
+          description: Checagem executada (materializou se devida).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  orderDate: { type: string, format: date, description: '"Hoje" na timezone de negócio.' }
                   at: { type: string, format: date-time }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }

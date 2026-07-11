@@ -502,6 +502,18 @@ func (s *server) schedulerTick(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]interface{}{"ok": true, "at": time.Now().UTC().Format(time.RFC3339)})
 }
 
+// schedulerDaily — ARCH-5: gatilho de daily DEDICADO. Materializa a diária de
+// hoje se devida (idempotente, leader-guarded), SEM rodar o ciclo de dispatch.
+// Pensado para um cron DIÁRIO separado do tick de alta frequência — no modo
+// serverless você aponta um cron de minutos em /scheduler/tick (dispatch) e um
+// cron diário aqui (materialização), em vez de cada tick checar a daily.
+func (s *server) schedulerDaily(w http.ResponseWriter, r *http.Request) {
+	s.cfg.Scheduler.RunDailyIfDue()
+	writeJSON(w, 200, map[string]interface{}{
+		"ok": true, "orderDate": s.cfg.Scheduler.TodayDate(), "at": time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
 func (s *server) forceOrder(w http.ResponseWriter, r *http.Request) {
 	defID := chi.URLParam(r, "id")
 	// F11.10b — precisa de write na folder da definition.

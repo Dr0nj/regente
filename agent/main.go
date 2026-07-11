@@ -11,6 +11,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -49,7 +50,7 @@ func main() {
 		agentID   = flag.String("id", hostnameOr("agent-local"), "Agent ID (unique)")
 		caps      = flag.String("caps", "COMMAND,SCRIPT,HTTP,REST,WASM,DATABASE,FILE_WATCH,FILE_TRANSFER,MFT", "Comma-separated capabilities advertised")
 		agentEnv  = flag.String("env", envOr("REGENTE_AGENT_ENV", ""), "Ambiente/site deste agente (ADV-2; ex.: prod, dc-sp). Vazio = generalista; job com environment só roteia pra agente do mesmo env")
-		transport = flag.String("transport", envOr("REGENTE_AGENT_TRANSPORT", "ws"), "Transporte: ws (WebSocket) | http (long-poll, serverless-friendly)")
+		transport = flag.String("transport", envOr("REGENTE_AGENT_TRANSPORT", "ws"), "Transporte: ws (WebSocket) | http (long-poll) | sse (Server-Sent Events, push imediato) — os dois últimos serverless-friendly")
 	)
 	flag.Parse()
 
@@ -61,6 +62,14 @@ func main() {
 		base := httpBase(*server)
 		log.Printf("regente-agent id=%s caps=%s env=%q transport=http -> %s", *agentID, *caps, *agentEnv, base)
 		runAgentHTTP(base, *token, *agentID, *caps, *agentEnv, stop)
+		return
+	}
+	// ARCH-4 — transporte SSE: mesmo modelo outbound/stateless do long-poll, mas
+	// com push imediato do dispatch (sem a janela de ~25s do poll).
+	if strings.EqualFold(*transport, "sse") {
+		base := httpBase(*server)
+		log.Printf("regente-agent id=%s caps=%s env=%q transport=sse -> %s", *agentID, *caps, *agentEnv, base)
+		runAgentSSE(base, *token, *agentID, *caps, *agentEnv, stop)
 		return
 	}
 
@@ -208,21 +217,7 @@ func runAgentHTTP(base, token, id, caps, env string, stop <-chan os.Signal) {
 	}
 	// Client com timeout > janela de long-poll do server (25s) para não cortar.
 	client := &http.Client{Timeout: 35 * time.Second}
-
-	post := func(path string, v interface{}) {
-		raw, _ := json.Marshal(v)
-		req, err := http.NewRequest("POST", base+path, bytes.NewReader(raw))
-		if err != nil {
-			return
-		}
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("Content-Type", "application/json")
-		if res, err := http.DefaultClient.Do(req); err == nil {
-			res.Body.Close()
-		} else {
-			log.Printf("post %s: %v", path, err)
-		}
-	}
+	post := httpPost(base, token)
 
 	for {
 		select {
@@ -256,26 +251,131 @@ func runAgentHTTP(base, token, id, caps, env string, stop <-chan os.Signal) {
 		}
 		raw, _ := io.ReadAll(res.Body)
 		res.Body.Close()
+		handleDispatch(raw, post)
+	}
+}
 
-		var job struct {
-			Event      string                 `json:"event"`
-			InstanceID string                 `json:"instanceId"`
-			JobType    string                 `json:"jobType"`
-			Params     map[string]interface{} `json:"params"`
-			Timeout    int                    `json:"timeout"`
+// handleDispatch decodifica um frame de dispatch (JSON de 1 linha, o mesmo em
+// todos os transportes HTTP) e executa o job numa goroutine, devolvendo
+// output/result pelos POSTs. Não-dispatch/JSON inválido = ignora. Compartilhado
+// entre o long-poll e o SSE.
+func handleDispatch(raw []byte, post func(path string, v interface{})) {
+	var job struct {
+		Event      string                 `json:"event"`
+		InstanceID string                 `json:"instanceId"`
+		JobType    string                 `json:"jobType"`
+		Params     map[string]interface{} `json:"params"`
+		Timeout    int                    `json:"timeout"`
+	}
+	if err := json.Unmarshal(raw, &job); err != nil || job.Event != "dispatch" {
+		return
+	}
+	log.Printf("dispatch instance=%s jobType=%s", job.InstanceID, job.JobType)
+	go func() {
+		emit := func(chunk string) {
+			post("/api/agent/output", map[string]interface{}{"instanceId": job.InstanceID, "chunk": chunk})
 		}
-		if err := json.Unmarshal(raw, &job); err != nil || job.Event != "dispatch" {
+		code, out := executeJob(job.JobType, job.Params, job.Timeout, emit)
+		post("/api/agent/result", map[string]interface{}{"instanceId": job.InstanceID, "exitCode": code, "output": out})
+		log.Printf("instance=%s done exitCode=%d", job.InstanceID, code)
+	}()
+}
+
+// httpPost devolve o closure de POST autenticado usado pelos transportes HTTP
+// (long-poll e SSE) para devolver output/result.
+func httpPost(base, token string) func(path string, v interface{}) {
+	return func(path string, v interface{}) {
+		raw, _ := json.Marshal(v)
+		req, err := http.NewRequest("POST", base+path, bytes.NewReader(raw))
+		if err != nil {
+			return
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		if res, err := http.DefaultClient.Do(req); err == nil {
+			res.Body.Close()
+		} else {
+			log.Printf("post %s: %v", path, err)
+		}
+	}
+}
+
+// runAgentSSE — transporte SSE (ARCH-4): mantém UM stream text/event-stream
+// aberto e recebe dispatch por PUSH IMEDIATO (sem a janela de ~25s do
+// long-poll). Resultados voltam pelos MESMOS POSTs. O stream cai? reconecta com
+// backoff curto — não derruba o processo.
+func runAgentSSE(base, token, id, caps, env string, stop <-chan os.Signal) {
+	eventsURL := base + "/api/agent/events?id=" + url.QueryEscape(id) + "&caps=" + url.QueryEscape(caps)
+	if env != "" {
+		eventsURL += "&env=" + url.QueryEscape(env) // ADV-2
+	}
+	post := httpPost(base, token)
+	// Sem Timeout no client: o stream é de longa duração (o keep-alive do server
+	// detecta conexão morta).
+	client := &http.Client{}
+
+	for {
+		select {
+		case <-stop:
+			log.Println("shutting down")
+			return
+		default:
+		}
+
+		req, _ := http.NewRequest("GET", eventsURL, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "text/event-stream")
+		res, err := client.Do(req)
+		if err != nil {
+			log.Printf("sse connect: %v (retry in 3s)", err)
+			if sleepOrStop(stop, 3*time.Second) {
+				return
+			}
 			continue
 		}
-		log.Printf("dispatch instance=%s jobType=%s", job.InstanceID, job.JobType)
-		go func() {
-			emit := func(chunk string) {
-				post("/api/agent/output", map[string]interface{}{"instanceId": job.InstanceID, "chunk": chunk})
+		if res.StatusCode != http.StatusOK {
+			res.Body.Close()
+			log.Printf("sse: HTTP %d (retry in 3s)", res.StatusCode)
+			if sleepOrStop(stop, 3*time.Second) {
+				return
 			}
-			code, out := executeJob(job.JobType, job.Params, job.Timeout, emit)
-			post("/api/agent/result", map[string]interface{}{"instanceId": job.InstanceID, "exitCode": code, "output": out})
-			log.Printf("instance=%s done exitCode=%d", job.InstanceID, code)
-		}()
+			continue
+		}
+
+		// Lê linhas do stream, juntando os campos `data:` de um evento até a linha
+		// em branco que o encerra. Comentários (`:` no início, ex.: keep-alive) e
+		// outros campos são ignorados.
+		sc := bufio.NewScanner(res.Body)
+		sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024) // dispatch pode ter params grandes
+		var data strings.Builder
+		for sc.Scan() {
+			select {
+			case <-stop:
+				res.Body.Close()
+				return
+			default:
+			}
+			line := sc.Text()
+			if line == "" { // fim do evento
+				if data.Len() > 0 {
+					handleDispatch([]byte(data.String()), post)
+					data.Reset()
+				}
+				continue
+			}
+			if strings.HasPrefix(line, ":") { // comentário/keep-alive
+				continue
+			}
+			if v, ok := strings.CutPrefix(line, "data:"); ok {
+				data.WriteString(strings.TrimSpace(v))
+			}
+		}
+		res.Body.Close()
+		// Stream encerrou (server caiu, timeout de proxy, etc.) → reconecta.
+		log.Printf("sse: stream fechado (reconnect in 3s)")
+		if sleepOrStop(stop, 3*time.Second) {
+			return
+		}
 	}
 }
 

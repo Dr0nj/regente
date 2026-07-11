@@ -184,6 +184,9 @@ func NewRouter(cfg Config) http.Handler {
 		r.With(s.requireWriterMW).Post("/definitions/{id}/force", s.forceOrder)
 		// Fase 1 (serverless) — tick sob demanda para cron externo (scheduler=external)
 		r.With(s.requireWriterMW).Post("/scheduler/tick", s.schedulerTick)
+		// ARCH-5 — gatilho de daily DEDICADO: um cron diário separado do tick de
+		// dispatch materializa a diária (idempotente, leader-guarded).
+		r.With(s.requireWriterMW).Post("/scheduler/daily", s.schedulerDaily)
 
 		// F11.8 — Find & Update / Mass Update (bulk, transacional por item)
 		r.With(s.requireWriterMW).Post("/bulk/instances", s.bulkInstances)
@@ -298,6 +301,9 @@ func NewRouter(cfg Config) http.Handler {
 	// Fase 2 — transporte HTTP long-poll p/ agentes (auth própria por agent token).
 	// Fora do grupo /api (que exige sessão/legacy), como o /ws/agent.
 	r.Get("/api/agent/poll", s.agentPoll)
+	// ARCH-4 — transporte SSE: stream de dispatch por push imediato (mesmo broker;
+	// resultados voltam pelos POSTs abaixo, iguais ao long-poll).
+	r.Get("/api/agent/events", s.agentSSE)
 	r.Post("/api/agent/result", s.agentResult)
 	r.Post("/api/agent/output", s.agentOutput)
 

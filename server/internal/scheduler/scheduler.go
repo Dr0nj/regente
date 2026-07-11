@@ -95,6 +95,10 @@ type Scheduler struct {
 
 	// E5 — throttle do check "daily fechou? manda o relatório" (1×/min no tick).
 	lastReportCheck time.Time
+
+	// ARCH-3 — guarda de ticks sobrepostos (camada em-processo sempre; advisory
+	// cross-processo opt-in via EnableTickLock). Ver ticklock.go.
+	tickGuard *tickGuard
 }
 
 // Bus — Fase 2 (futuro serverless): transporte do control-plane. Abstrai a
@@ -125,7 +129,7 @@ type Bus interface {
 type Leader interface{ IsLeader() bool }
 
 func New(store *storage.FileStore, db *db.DB, bus Bus, tick time.Duration) *Scheduler {
-	return &Scheduler{
+	s := &Scheduler{
 		store:     store,
 		db:        db,
 		hub:       bus,
@@ -136,6 +140,22 @@ func New(store *storage.FileStore, db *db.DB, bus Bus, tick time.Duration) *Sche
 		quit:      make(chan struct{}),
 		nowFn:     time.Now,
 	}
+	// ARCH-3 — guard sempre presente (camada em-processo). A camada cross-processo
+	// no Postgres é opt-in via EnableTickLock (modo serverless).
+	s.tickGuard = &tickGuard{db: db}
+	return s
+}
+
+// EnableTickLock — ARCH-3: liga a camada CROSS-PROCESSO do lock-por-tick
+// (advisory lock no Postgres). Chamado do main no modo -scheduler=external, onde
+// não há líder de longa duração segurando o dispatch e dois containers podem
+// receber `POST /scheduler/tick` ao mesmo tempo. No-op fora do Postgres. Ver
+// ticklock.go / docs/arquitetura-futuro.md §4.
+func (s *Scheduler) EnableTickLock() {
+	if s.tickGuard == nil {
+		s.tickGuard = &tickGuard{db: s.db}
+	}
+	s.tickGuard.dbLock = true
 }
 
 // sleepOrStop dorme d, ou retorna false na hora se Stop() foi chamado — deixa os
@@ -317,6 +337,15 @@ func (s *Scheduler) Tick() {
 			log.Printf("[scheduler] PANIC no Tick recuperado: %v", r)
 		}
 	}()
+	// ARCH-3 — lock-por-tick: pula ciclos SOBREPOSTOS (em-processo sempre;
+	// cross-nó no Postgres serverless quando ligado). Não é correção (o claim
+	// atômico já garante), é higiene. O watchdog acima já marcou lastTickAt: um
+	// tick pulado ainda prova que o loop está vivo.
+	ok, release := s.tickGuard.tryEnter()
+	if !ok {
+		return
+	}
+	defer release()
 	if !s.isLeader() {
 		return
 	}
@@ -325,6 +354,24 @@ func (s *Scheduler) Tick() {
 	// relatório 1× (claim em report_sent_at); throttle interno de 1 min.
 	s.maybeSendDailyReport()
 	s.tickOnce()
+}
+
+// RunDailyIfDue — ARCH-5: materializa a daily de hoje SE já passou do horário e
+// ainda não rodou (idempotente). É o MESMO gatilho que o Tick chama a cada
+// ciclo, exposto para um cron DIÁRIO dedicado (POST /api/scheduler/daily) no
+// modo serverless — separando a cadência da daily (1×/dia) do tick de dispatch
+// (segundos). Leader-gated e panic-recuperado como o Tick. Ver
+// docs/arquitetura-futuro.md §4.
+func (s *Scheduler) RunDailyIfDue() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[scheduler] PANIC no RunDailyIfDue recuperado: %v", r)
+		}
+	}()
+	if !s.isLeader() {
+		return
+	}
+	s.autoDailyIfDue()
 }
 
 // LastTick — R2: instante do último ciclo de scheduling (watchdog/health).

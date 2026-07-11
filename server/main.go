@@ -392,7 +392,12 @@ func main() {
 		// Sem ticker interno: defs carregadas no boot; cron externo bate em
 		// POST /api/scheduler/tick para dirigir daily+dispatch (scale-to-zero).
 		sched.ReloadDefs()
-		log.Printf("[scheduler] mode=external — sem ticker interno; dirija via POST /api/scheduler/tick")
+		// ARCH-3 — no serverless não há líder de longa duração segurando o
+		// dispatch; dois containers podem receber tick ao mesmo tempo. Liga o
+		// advisory lock POR-TICK (Postgres) pra serializar ticks sobrepostos. É
+		// higiene (o claim atômico já garante corretude); no-op fora do Postgres.
+		sched.EnableTickLock()
+		log.Printf("[scheduler] mode=external — sem ticker interno; dirija via POST /api/scheduler/tick (+/scheduler/daily)")
 	default:
 		// E4 — fila assíncrona de eventos: só no modo daemon (internal). No modo
 		// external/serverless fica desligada de propósito — o processo pode ser

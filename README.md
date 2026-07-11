@@ -315,6 +315,7 @@ Todas as rotas `/api/*` exigem `Authorization: Bearer <token>`.
 | POST   | `/api/folders/{name}/pause` · `/resume` | pausa/retoma workflow (WAITING↔HELD, estado preservado) |
 | POST   | `/api/events/ingest`                  | evento externo idempotente (seta conditions / força job) |
 | POST   | `/api/scheduler/tick`                 | dispara um ciclo (cron externo, `-scheduler=external`) |
+| POST   | `/api/scheduler/daily`                | gatilho de daily dedicado (cron diário, separado do tick) |
 | GET    | `/api/alerts`                         | eventos de alerta (com `resolution`) |
 | POST   | `/api/alerts/{id}/ack` · `/api/alerts/ack-all` | reconhece alerta(s)   |
 | GET    | `/api/alerts/rules` · POST `/api/alerts/rules/{id}/toggle` | regras de alerta |
@@ -356,9 +357,10 @@ em tempo real** (aparece no detalhe da instance).
 > `SSH` (comando remoto agentless) **não** usa o agente — roda no próprio server.
 > `K8S_JOB` exige um agente que anuncie `-caps K8S` (com acesso à API do cluster).
 
-**Transporte** (`-transport`): `ws` (WebSocket, default) ou `http` (long-poll
-serverless-friendly — control plane stateless/scale-to-zero). Ver
-[`docs/arquitetura-futuro.md`](docs/arquitetura-futuro.md).
+**Transporte** (`-transport`): `ws` (WebSocket, default), `http` (long-poll) ou
+`sse` (Server-Sent Events, push imediato). Os dois últimos são
+serverless-friendly — modelo outbound, control plane stateless/scale-to-zero.
+Ver [`docs/arquitetura-futuro.md`](docs/arquitetura-futuro.md).
 
 ### Build & rodar (foreground)
 
@@ -424,7 +426,7 @@ Get-ScheduledTask RegenteAgent     # status
 |---|---|
 | Frontend (este repo) | React + TypeScript + Vite, [@xyflow/react](https://reactflow.dev) (canvas), ícones lucide |
 | Backend | Go (`regente-server`) — GitOps + SQLite/Postgres, WebSocket hub |
-| Executor | Go (`regente-agent`) — conexão outbound (WS ou HTTP long-poll), roda COMMAND/SCRIPT/HTTP/SSH/WASM |
+| Executor | Go (`regente-agent`) — conexão outbound (WS · HTTP long-poll · SSE), roda COMMAND/SCRIPT/HTTP/SSH/WASM |
 | Fonte da verdade | Repositório GitHub (YAML em `definitions/<folder>/<id>.yaml`) |
 
 ### Rodando o frontend
