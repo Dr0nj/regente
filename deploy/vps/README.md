@@ -75,15 +75,40 @@ No Regente elas já existem; ative pelo `/etc/regente/server.env` (ou flags):
 > se você não quiser nginx na frente. O reverse proxy é o padrão enterprise (headers de
 > borda, HSTS, hospedar vários serviços, desacoplar a gestão de cert), por isso é o default aqui.
 
-## Etapa 2 — convidar amigos com segurança
+## Etapa 2 — convidar amigos com segurança (agente sandbox — V5)
 
 O Regente **executa comandos**. Quem executa é o **agente** — e os jobs rodam **onde o agente
-está**. Então: **não rode um agente no VPS de produção** pra uma demo aberta, senão os jobs
-`COMMAND` dos amigos rodam no seu host. O padrão seguro é um **agente sandbox** (container
-isolado: `--cap-drop ALL`, `no-new-privileges`, limites de CPU/RAM/PID), como em
-[`../demo/`](../demo). A versão **Linux** desse sandbox no VPS é o item **V5** do roadmap
-(`docs/roadmap.md` §Backlog). Enquanto V5 não fecha, convide poucos e de confiança, dê contas
-`operator`/`viewer` (nunca o admin), e decida `git-write-mode` (`direct` vs `pr-required`).
+está**. Então **não rode um agente comum no VPS de produção** pra uma demo aberta, senão os
+jobs `COMMAND` dos amigos rodam no seu host. Use o **agente sandbox**: um container Docker
+isolado (`--cap-drop ALL`, `no-new-privileges`, limites de CPU/RAM/PID, sem mounts do host),
+supervisionado por systemd:
+
+```bash
+# Requer Docker no VPS (o Dockerfile builda o Go dentro do Docker — sem Go no host).
+sudo apt install -y docker.io    # ou o Docker Engine oficial
+# gere um token de agente em Settings → Agentes (ou use o REGENTE_TOKEN), e:
+sudo AGENT_TOKEN=rgta_xxx ./sandbox-agent.sh
+#   → sobe o container 'regente-sandbox' + o serviço regente-agent-sandbox (Restart=always)
+#   → journalctl -u regente-agent-sandbox -f   |   docker logs -f regente-sandbox
+```
+
+Depois, em **Settings → Usuários**, crie uma conta por amigo (`operator` cria/roda jobs,
+`viewer` só observa — **nunca** compartilhe o admin) e decida o `git-write-mode`
+(`direct` = commit direto no workspace, `pr-required` = cada mudança vira PR pra você aprovar).
+Jobs dos amigos ficam presos no container; `sudo systemctl stop regente-agent-sandbox` derruba.
+
+> Rede do sandbox fica **ligada** (jobs HTTP funcionam). Pra cortar a saída de rede, adicione
+> `--network none` ao `ExecStart` de `/etc/systemd/system/regente-agent-sandbox.service` e
+> `systemctl daemon-reload && systemctl restart regente-agent-sandbox`.
+
+## Config guiada (V3)
+
+Em vez de editar o `server.env` à mão, rode o assistente (pergunta token forte, GitHub
+PAT/repo e domínio, e escreve o env):
+
+```bash
+sudo regente-configure     # instalado pelo install-linux.sh; precisa de terminal (não via pipe)
+```
 
 ## Atualizar / derrubar / subir
 

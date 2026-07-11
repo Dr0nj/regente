@@ -77,6 +77,11 @@ esac
 UNIT=/etc/systemd/system/regente-server.service
 sed -e "s#__USER__#${RUN_USER}#g" "$HERE/regente-server.service" > "$UNIT"
 
+# V3 — config guiada disponível como `sudo regente-configure` (se o script veio junto).
+if [ -f "$HERE/configure.sh" ]; then
+  install -m 0755 "$HERE/configure.sh" /usr/local/bin/regente-configure
+fi
+
 systemctl daemon-reload
 systemctl enable --now regente-server
 
@@ -87,7 +92,12 @@ echo "OK — regente-server instalado e iniciado (Restart=always) como usuário 
 if [ "$SPA_INSTALLED" = "1" ]; then
   echo "UI:      http://<este-host>${ADDR}   (login inicial: admin / admin — troca obrigatória na 1ª vez)"
 fi
-echo "Config:  sudo \$EDITOR $ENV_FILE   (REGENTE_TOKEN forte, GitOps, HTTPS…)"
+if [ -x /usr/local/bin/regente-configure ]; then
+  echo "Config:  sudo regente-configure   (guiado: token forte, GitHub PAT/repo, domínio)"
+  echo "         ou edite à mão: sudo \$EDITOR $ENV_FILE"
+else
+  echo "Config:  sudo \$EDITOR $ENV_FILE   (REGENTE_TOKEN forte, GitOps, HTTPS…)"
+fi
 echo "         sudo systemctl restart regente-server"
 echo "Logs:    journalctl -u regente-server -f"
 echo "HTTPS/domínio (link público estilo empresa): ver deploy/vps/."

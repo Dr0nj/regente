@@ -46,7 +46,7 @@
 
 **Trilhas com itens em ABERTO** (detalhe em [§🔜 Backlog](#-backlog-o-que-falta)):
 
-- **Fase V — self-hosting em VPS de caixa única (24/7)** — empacotar o deploy "1 caixa" (UI+API+agente numa origem só, persistente, com HTTPS estável) num instalador Linux e num link público. As peças existem (SQLite durável, SPA single-origin via `-spa-dir`, users/RBAC, TLS por flag, agente-como-serviço); falta a **cola de empacotamento**. É pré-requisito prático da Fase Z (o case study roda nessa caixa).
+- **Fase V — self-hosting em VPS de caixa única (24/7)** — **V1–V5 entregues** (install single-origin 3-formas · bundle+one-liner · config guiada · hospedagem enterprise nginx+TLS · agente sandbox). **Resta só V6** (docker-compose, opcional — o alvo escolhido foi systemd). O deploy "1 caixa" 24/7 já está pronto de ponta a ponta.
 - **Fase Z — divulgação** — case study + post LinkedIn (último gate, quando o backlog estiver onde você quer).
 
 > ✅ **Validação em infra real — trilha FECHADA (2026-07-11):** os dois resíduos (secrets via provider · SSH
@@ -78,14 +78,13 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > amigos testarem com contas próprias. O código já faz **tudo isso** — falta só a **cola
 > de empacotamento**. Cada item aponta a peça que já existe e o que falta plugar.
 
-> ✅ **V1 + V2 + V4 ENTREGUES (2026-07-11)** — install serve a UI single-origin (3 formas:
-> só server · server+UI · server+agente, via `WITH_UI`), bundle nas Releases + one-liner
-> `curl … | sudo bash`, e **hospedagem enterprise** (nginx+TLS+domínio, systemd) em
-> `deploy/vps/`. Detalhe no §Entregue "📦 Self-hosting em VPS" + changelog. Restam V3, V5, V6.
+> ✅ **V1·V2·V3·V4·V5 ENTREGUES (2026-07-11)** — install serve a UI single-origin (3 formas
+> via `WITH_UI`), bundle nas Releases + one-liner, config guiada (`regente-configure`),
+> hospedagem enterprise (nginx+TLS+domínio) e **agente sandbox** (container Docker isolado,
+> systemd) pra Etapa 2 — tudo em `deploy/vps/` + `server/deploy/`. Detalhe no §Entregue
+> "📦 Self-hosting em VPS" + changelog. **Resta só V6** (opcional).
 
-- [ ] **V3** — **Bootstrap interativo de config (opcional).** Hoje se edita `/etc/regente/server.env` à mão. Falta: o install perguntar `REGENTE_TOKEN` (gera forte por default), GitHub PAT+repo e domínio, e escrever o env sozinho (o PAT também pode entrar depois pela UI → settings DB, já suportado). → "instala e pede o que for preciso do github".
-- [ ] **V5** — **Demo pública em Linux (paridade do `host-demo.ps1`).** Hoje o roteiro público (`deploy/demo/`) é **Windows/PowerShell**, roda no PC e sobe agente sandbox em Docker. Falta: equivalente **bash no VPS** — server single-origin + agente em **container isolado** (`--cap-drop ALL`, `no-new-privileges`, limites CPU/RAM/PID) pra que jobs `COMMAND` dos amigos **não rodem no host do VPS**. (Users/RBAC operator·viewer já existem — [§Auth/RBAC].) → Etapa 2 segura.
-- [ ] **V6** *(opcional, alternativa ao systemd)* — **`docker-compose.yml` de caixa única:** server single-origin + Postgres + agente sandbox + volumes persistentes, pra "sobe/derruba/atualiza" num comando. Redundante com V1+V5 se o alvo for systemd puro; escolher um dos dois caminhos.
+- [ ] **V6** *(opcional, alternativa ao systemd — decisão do usuário foi systemd)* — **`docker-compose.yml` de caixa única:** server single-origin + Postgres + agente sandbox + volumes persistentes, pra "sobe/derruba/atualiza" num comando. **Só se** o alvo virar container-cêntrico/multi-serviço (Postgres+NATS junto, portabilidade entre hosts); redundante com o caminho systemd já entregue.
 
 > **Persistência a reboot/update — já é realidade (R4):** SQLite em `/var/lib/regente` (ou
 > Postgres), users/sessions/settings/PAT na DB, migrations no boot (`db.Migrate`),
@@ -792,6 +791,10 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
        ao release) = bootstrap `curl … | sudo bash`: detecta arch, baixa+extrai o bundle,
        delega pro install-linux.sh. Zero Go/Node no VPS. Três formas documentadas no README
        (só server via WITH_UI=0 · server+UI · server+agente).
+✅ V3 · Config guiada (server/deploy/configure.sh → `sudo regente-configure`)
+       assistente interativo que pergunta REGENTE_TOKEN (gera forte por default), GitHub
+       PAT (via secrets provider, fora da DB) + repo do workspace, e domínio; faz upsert
+       idempotente no server.env e oferece restart. Instalado pelo install-linux.sh.
 ✅ V4 · HTTPS estável / hospedagem enterprise (deploy/vps/)
        nginx reverse proxy terminando TLS na borda + domínio real + Let's Encrypt (certbot
        --nginx, renovação automática), tudo systemd — o server fica no loopback 127.0.0.1:8080.
@@ -799,10 +802,13 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
        + headers de borda (HSTS/nosniff/referrer/frame) + X-Forwarded-* p/ IP real na auditoria.
        enable-tls.sh = 1 comando (DOMAIN/EMAIL). README mapeia o endurecimento que o Regente
        JÁ tem (OIDC SSO · SIEM · mTLS agente · RBAC/ACL · secrets provider · HA Postgres).
+✅ V5 · Agente sandbox no VPS (deploy/vps/sandbox-agent.sh + regente-agent-sandbox.service)
+       porta Linux do host-demo.ps1: jobs COMMAND/SCRIPT dos amigos rodam DENTRO de um
+       container Docker isolado (cap-drop ALL, no-new-privileges, limites CPU/RAM/PID, sem
+       mounts do host), supervisionado por systemd (Restart=always). Reusa o Dockerfile.agent
+       (Go builda dentro do Docker). Etapa 2 = agente sandbox + contas operator/viewer.
 ─────────────────────────────────────────────────────────────────────────────
-⬜ V3 · Bootstrap interativo de config     → §Backlog
-⬜ V5 · Demo pública em Linux (agente sandbox Docker) → §Backlog (gate real p/ convidar amigos)
-⬜ V6 · docker-compose de caixa única (opcional) → §Backlog
+⬜ V6 · docker-compose de caixa única (opcional; alvo é systemd) → §Backlog
 ```
 
 ## 📜 Changelog de entregas
@@ -812,6 +818,7 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 
 | Quando | O que | Detalhe |
 |----|--------|---------|
+| ✅ | ~~**Fase V · V3 + V5 — config guiada (`regente-configure`) + agente sandbox no VPS (systemd+Docker)**~~ | **Feito (2026-07-11):** fechou o gate p/ convidar amigos e a config guiada. **V5 (`deploy/vps/sandbox-agent.sh` + `regente-agent-sandbox.service`):** porta Linux do `host-demo.ps1` — os jobs `COMMAND`/`SCRIPT` dos amigos rodam **DENTRO** de um container Docker isolado (`--cap-drop ALL`, `--security-opt no-new-privileges`, `--pids-limit`/`--memory`/`--cpus`, sem mounts do host, uid 10001), **supervisionado por systemd** (`Restart=always`, templata o caminho do docker via `__DOCKER__`); reusa o `deploy/demo/Dockerfile.agent` (Go builda DENTRO do Docker → só Docker no host, sem toolchain). Env do serviço em `/etc/regente/sandbox-agent.env` (0640). Rede ligada (jobs HTTP funcionam) com nota p/ `--network none`. **V3 (`server/deploy/configure.sh` → `sudo regente-configure`):** assistente interativo — `REGENTE_TOKEN` (gera forte, recusa `dev-token`/`change-me`), **GitHub PAT via secrets provider** (`REGENTE_SECRET_GITHUB_TOKEN`, fora da DB) + repo (`REGENTE_GIT_REPO`/`_SOURCE`), domínio (informativo p/ o passo do TLS); `set_env` faz upsert idempotente (substitui/descomenta/anexa — testado) e oferece restart; exige TTY (não via pipe); instalado pelo `install-linux.sh` como `/usr/local/bin/regente-configure` e empacotado no bundle de release. `deploy/vps/README.md` (Etapa 2) reescrito p/ o sandbox. Scripts LF+exec, `bash -n` verde. **Resta só V6** (opcional, alvo é systemd). |
 | ✅ | ~~**Fase V · V4 + doc 3-formas — hospedagem enterprise (nginx+TLS+domínio, systemd) + `WITH_UI`**~~ | **Feito (2026-07-11):** fechou o HTTPS estável estilo empresa e as três formas de subir. **V4 (`deploy/vps/`):** `nginx-regente.conf` = reverse proxy que termina **TLS na borda** e faz proxy pro `regente-server` no **loopback** (127.0.0.1:8080, nunca exposto) — trata **WebSocket** (`/ws/web`+`/ws/agent` com Upgrade/Connection via `map`), **SSE/long-poll** de agente (`/api/agent/`, `proxy_buffering off` + timeout 3600s), headers de borda (HSTS/nosniff/referrer/frame) e `X-Forwarded-*` p/ o IP real cair na auditoria; `enable-tls.sh` = 1 comando (`DOMAIN`/`EMAIL` → `certbot --nginx --redirect`, renovação pelo `certbot.timer`). `deploy/vps/README.md` = guia enterprise com diagrama + passo-a-passo (DNS→server→nginx→TLS→ufw) e a tabela do endurecimento que o Regente **já tem** (OIDC SSO · SIEM · mTLS server↔agente · RBAC/ACL · secrets provider · HA Postgres · agentes outbound · token forte). **Doc 3-formas:** `install-linux.sh` ganhou `WITH_UI` (0=só API, comenta `REGENTE_SPA_DIR` idempotente; default=server+UI) e a criação do `server.env` foi movida p/ antes do bloco de UI; README raiz reescrito em **Forma 1 (só server)** · **Forma 2 (server+UI, recomendado VPS)** · **Forma 3 (server+agente)**, cada uma em release e código-fonte. Scripts LF+exec, `bash -n` verde (peguei uma apóstrofe em `${EMAIL:?…Let's…}` que quebrava o parser). **Restam V3, V5** (V5 = agente sandbox no VPS, gate real p/ convidar amigos)**, V6**. |
 | ✅ | ~~**Fase V · V1+V2 — install single-origin (UI junto) + bundle nas Releases + one-liner `curl \| sudo bash`**~~ | **Feito (2026-07-11):** empacotamento do deploy "1 caixa" num VPS Linux — o core já fazia tudo, faltava a cola. **V1 (UI no mesmo install):** `server/deploy/install-linux.sh` agora detecta a SPA buildada (`$SPA_DIR` ou `../app/dist`, layout que vale pro checkout de código E pro bundle de release), copia pra `/var/lib/regente/app`, e injeta/descomenta `REGENTE_SPA_DIR` no `/etc/regente/server.env` (idempotente — testado nos 3 casos: linha comentada→descomenta · ausente→anexa · reexecução→1 linha ativa) → o server serve **UI+API+WS numa origem só** (o front já resolve `@origin`→`window.location.origin`, funciona atrás de qualquer domínio/túnel sem rebuildar). `server.env.example` ganhou a chave `REGENTE_SPA_DIR` documentada. RUN_USER passou a cair em `SUDO_USER` (roda bem via `curl | sudo bash`). Sem SPA presente, degrada pra API-only com aviso. **V2 (Releases + one-liner):** `release.yml` reescrito — job `spa` builda a UI **uma vez** (`VITE_REGENTE_SERVER_URL=@origin`, node 20) e vira artifact; o job `build` (matrix +linux/arm64) monta por arch Linux um **bundle "caixa única"** `regente-server_linux_<arch>.tar.gz` (binário + `app/dist` + `deploy/` no layout que espelha o repo) e anexa junto dos binários crus; um `install.sh` novo na raiz (also atachado ao release) é o **bootstrap** `curl -fsSL …/releases/latest/download/install.sh \| sudo bash` que detecta arch (amd64/arm64), baixa+extrai o bundle e delega pro `install-linux.sh` — **sem Go/Node no VPS**. Scripts validados com `bash -n`; YAML sem tabs. **Restam V3–V6** (bootstrap interativo · HTTPS estável · demo Linux sandbox · compose). |
 | ✅ | ~~**Fix "Run Now": força a instance EXISTENTE (bypass de gates) em vez de criar um job novo**~~ | **Feito (2026-07-11, report do usuário):** o "Run Now" no Monitoring **criava uma nova ordem forçada** (`POST /api/definitions/{id}/force` → nova instance `…-FORCE-HHMMSS`) em vez de destravar o job que o operador clicou. Semântica corrigida pra bater com o Control-M "Force": o **MESMO** job passa a bypassar as condições impeditivas de execução (janela/deps/conditions/recursos) e roda; **agente indisponível e Confirm NÃO são bypassados** (o tick segura até resolver) — nenhuma instance nova é criada, o snapshot imutável da ordem é preservado. **Backend:** novo `POST /api/instances/{id}/force` (writer + folder-write) que dá `UPDATE status=WAITING, forced=1, scheduled_at=now` na instance WAITING/HELD e cutuca o tick (`go Scheduler.Tick()`, leader-gated) — o ramo `forced` do `tickOnce`, que já existia e já honrava agente+Confirm, faz o resto (reuso puro, zero lógica nova de dispatch). O `POST /definitions/{id}/force` (Order Force = ordem nova) segue existindo e é o que o **Design** usa. **Front:** `forceRunInstance(id)` no `server-instance-store` + bridge no `runtime-bridge`; no `V2Preview` o item "Run Now" do menu de contexto do **Monitoring** passa a chamar `forceRunInstance(inst.id)` (Design segue em `forceInstance(def)`); no modo local o tick passou a tratar `manual` como bypass de deps (paridade com o server) + `forceRunInstance` reagenda a instância pra agora. **Testes:** `TestForceRun_ExistingInstanceBypassesDep_NoNewInstance` (WAITING preso em WAIT_DEP → force → despacha bypassando a dep, A segue RUNNING = bypass e não satisfação, **contagem de instances inalterada**) + `TestForceRun_DoesNotBypassConfirm` (confirm:true forçado segue WAITING até confirmar); suíte Go completa verde, `tsc` limpo. |

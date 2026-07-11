@@ -233,8 +233,9 @@ cd server && CGO_ENABLED=0 go build -o regente-server .
 (cd ../app && VITE_REGENTE_SERVER_URL=@origin npm ci && npm run build)
 sudo ./deploy/install-linux.sh
 ```
-Depois (as duas formas): `sudo $EDITOR /etc/regente/server.env` (troque `REGENTE_TOKEN`, aponte o
-GitOps) → `sudo systemctl restart regente-server` → `http://<host>:8080` (login `admin`/`admin`).
+Depois (as duas formas): `sudo regente-configure` (assistente: token forte, GitHub PAT/repo,
+domínio) — ou edite `/etc/regente/server.env` à mão — → `sudo systemctl restart regente-server`
+→ `http://<host>:8080` (login `admin`/`admin`).
 
 ### Forma 3 — server + agente (mesma caixa, lab single-box)
 O server **e** um agente local — a própria caixa também executa jobs. (Em produção os agentes

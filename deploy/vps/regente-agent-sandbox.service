@@ -1,0 +1,26 @@
+[Unit]
+Description=Regente sandbox agent (executor isolado em container Docker)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+# Nunca desiste de reiniciar (mesmo em crash-loop).
+StartLimitIntervalSec=0
+
+[Service]
+EnvironmentFile=/etc/regente/sandbox-agent.env
+# Remove um container órfão de um start anterior (best-effort, por isso o "-").
+ExecStartPre=-__DOCKER__ rm -f regente-sandbox
+# Os jobs COMMAND/SCRIPT dos amigos rodam DENTRO deste container: sem mounts do host,
+# usuário não-root (uid 10001 da imagem), cap-drop ALL, no-new-privileges e limites de
+# PID/CPU/RAM. Derrubar/reciclar = parar o serviço (o --rm limpa o container).
+ExecStart=__DOCKER__ run --rm --name regente-sandbox \
+  --cap-drop ALL --security-opt no-new-privileges \
+  --pids-limit 256 --memory 512m --cpus 1 \
+  ${IMAGE} \
+  -server ${AGENT_SERVER} -token ${AGENT_TOKEN} -id ${AGENT_ID} -caps ${AGENT_CAPS}
+ExecStop=__DOCKER__ stop -t 10 regente-sandbox
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

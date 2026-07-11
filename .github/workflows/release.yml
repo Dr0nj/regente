@@ -84,7 +84,7 @@ jobs:
           cp "dist/regente-server_linux_${{ matrix.goarch }}" "stage/$B/regente-server"
           chmod +x "stage/$B/regente-server"
           cp -r app/dist "stage/$B/app/dist"
-          cp server/deploy/install-linux.sh server/deploy/regente-server.service server/deploy/server.env.example "stage/$B/deploy/"
+          cp server/deploy/install-linux.sh server/deploy/configure.sh server/deploy/regente-server.service server/deploy/server.env.example "stage/$B/deploy/"
           tar -C stage -czf "dist/$B.tar.gz" "$B"
 
       # Scripts soltos no release (uma vez, no job amd64): install do agente + o
