@@ -9,10 +9,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Regente — API de integração</title>
 <style>
+  /* Paleta alinhada à identidade do Regente: dark verde-tingido + accent
+     #11c76f, o MESMO do site de docs (cmd/docsite). Página standalone
+     (go:embed), então é fixa — não os 13 temas do SPA (que vivem no
+     tokens.css do front e no localStorage). Badges por método mantêm cores
+     semânticas pra escaneabilidade (convenção de API docs). */
   :root{
-    --bg:#0b0f1a; --panel:#0f1626; --panel2:#111c30; --border:#1f2a3f;
-    --text:#e2e8f0; --muted:#7c8aa0; --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
-    --get:#38bdf8; --post:#4ade80; --put:#fbbf24; --delete:#f87171; --accent:#7dd3fc;
+    --bg:#0b0f0d; --panel:#111613; --panel2:#171f1a; --border:#1f2a24;
+    --text:#d7e2dc; --muted:#8aa096; --code:#0d120f; --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
+    --get:#38bdf8; --post:#11c76f; --put:#f5b642; --delete:#f87171; --accent:#11c76f;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--text);font:14px/1.55 system-ui,sans-serif}
@@ -20,7 +25,7 @@
   a:hover{text-decoration:underline}
   code,pre{font-family:var(--mono)}
   header{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
-    padding:12px 20px;background:rgba(11,15,26,.92);backdrop-filter:blur(6px);border-bottom:1px solid var(--border)}
+    padding:12px 20px;background:rgba(11,15,13,.92);backdrop-filter:blur(6px);border-bottom:1px solid var(--border)}
   header .brand{font-weight:700;letter-spacing:.12em}
   header .brand small{color:var(--muted);font-weight:400;letter-spacing:0;margin-left:8px}
   header .links{font-size:13px;color:var(--muted)}
@@ -43,7 +48,7 @@
   .op>summary{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;list-style:none;flex-wrap:wrap}
   .op>summary::-webkit-details-marker{display:none}
   .op>summary:hover{background:var(--panel2)}
-  .badge{font:700 11px var(--mono);padding:3px 9px;border-radius:6px;color:#0b0f1a;min-width:52px;text-align:center}
+  .badge{font:700 11px var(--mono);padding:3px 9px;border-radius:6px;color:#07100b;min-width:52px;text-align:center}
   .badge.get{background:var(--get)} .badge.post{background:var(--post)}
   .badge.put{background:var(--put)} .badge.delete{background:var(--delete)}
   .path{font:600 13.5px var(--mono);word-break:break-all}
@@ -51,7 +56,7 @@
   .perm{margin-left:auto;font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:20px;padding:2px 10px;white-space:nowrap}
   .opbody{padding:4px 18px 18px;border-top:1px solid var(--border)}
   .opbody h4{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:16px 0 8px}
-  .desc{color:#c5d0de}
+  .desc{color:#c2d0c8}
   .desc p{margin:8px 0} .desc h4{margin-top:14px} .desc code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:12.5px}
   .desc b{color:var(--text)}
   table{width:100%;border-collapse:collapse;font-size:13px}
@@ -59,7 +64,7 @@
   th{color:var(--muted);font-weight:600;font-size:12px}
   td code{font-size:12.5px}
   .req{color:var(--delete);font-size:11px;margin-left:4px}
-  pre{background:#0a0e18;border:1px solid var(--border);border-radius:10px;padding:12px 14px;overflow:auto;font-size:12.5px;line-height:1.5}
+  pre{background:var(--code);border:1px solid var(--border);border-radius:10px;padding:12px 14px;overflow:auto;font-size:12.5px;line-height:1.5}
   .schema{font-size:12.5px}
   .schema ul{list-style:none;padding-left:18px;border-left:1px dotted var(--border);margin:2px 0}
   .schema>ul{padding-left:0;border-left:none}
@@ -68,13 +73,13 @@
   .resp{margin:6px 0;padding:8px 12px;background:var(--panel2);border-radius:8px}
   .resp .code{font:700 12px var(--mono);margin-right:10px}
   .resp .c2xx{color:var(--post)} .resp .c4xx{color:var(--put)} .resp .c5xx{color:var(--delete)}
-  .try{margin-top:14px;border:1px dashed var(--border);border-radius:10px;padding:12px 14px;background:rgba(17,28,48,.4)}
+  .try{margin-top:14px;border:1px dashed var(--border);border-radius:10px;padding:12px 14px;background:rgba(17,199,111,.05)}
   .try label{display:block;font-size:12px;color:var(--muted);margin:8px 0 3px}
   .try input,.try textarea{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);
     border-radius:8px;padding:7px 10px;font:12.5px var(--mono)}
   .try textarea{min-height:110px;resize:vertical}
-  .try button{margin-top:10px;background:#2563eb;color:#fff;border:0;border-radius:8px;padding:8px 18px;font-size:13px;cursor:pointer}
-  .try button:hover{background:#1d4ed8}
+  .try button{margin-top:10px;background:var(--accent);color:#07100b;font-weight:600;border:0;border-radius:8px;padding:8px 18px;font-size:13px;cursor:pointer}
+  .try button:hover{background:#0fb163}
   .try .out{margin-top:10px;display:none}
   .try .status{font:700 12px var(--mono);margin-bottom:6px}
   footer{color:var(--muted);font-size:12px;text-align:center;padding:30px 0}
