@@ -360,6 +360,15 @@ export async function confirmInstance(id: string): Promise<void> {
   await refresh();
 }
 
+// forceRunInstance — "Run Now" sobre a instance EXISTENTE: bypassa os gates de
+// impedimento (janela/deps/conditions/recursos) e roda ESTE mesmo job. NÃO
+// bypassa agente indisponível nem Confirm. Diferente de forceInstance(def), que
+// cria uma nova ordem — aqui nenhuma instance nova é criada.
+export async function forceRunInstance(id: string): Promise<void> {
+  await api<void>(`/api/instances/${encodeURIComponent(id)}/force`, { method: "POST" });
+  await refresh();
+}
+
 export interface InstanceEvent {
   id: number;
   instanceId: string;

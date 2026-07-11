@@ -544,6 +544,38 @@ func (s *server) forceOrder(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"instanceId": id})
 }
 
+// forceRunInstance — "Run Now" sobre a instance EXISTENTE (Control-M "Force"
+// aplicado a uma ordem já materializada, não um novo Order Force). Marca a
+// instância WAITING/HELD como forced=1 e reagenda para agora; o tick (ramo
+// forced) então bypassa janela/deps/conditions/recursos. NÃO bypassa agente
+// indisponível nem o gate Confirm — mesma semântica do force-order. O job que
+// sofre a ação é o MESMO (preserva o snapshot imutável da ordem); nenhuma nova
+// instance é criada.
+func (s *server) forceRunInstance(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !s.requireInstanceWrite(w, r, id) {
+		return
+	}
+	res, err := s.cfg.DB.Exec(
+		`UPDATE instances SET status=?, forced=1, scheduled_at=? WHERE id=? AND status IN (?,?)`,
+		string(domain.StatusWaiting), time.Now(), id,
+		string(domain.StatusWaiting), string(domain.StatusHeld),
+	)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		http.Error(w, "instance not found or not in WAITING/HELD", http.StatusBadRequest)
+		return
+	}
+	s.cfg.Scheduler.EmitEvent(id, "force-ordered", "operator", "run now — bypass de janela/deps/conditions/recursos")
+	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]interface{}{"id": id, "status": string(domain.StatusWaiting), "forced": true})
+	// Cutuca o tick (leader-gated) pra despachar já, sem esperar o ciclo de 2s.
+	go s.cfg.Scheduler.Tick()
+	writeJSON(w, 200, map[string]interface{}{"id": id, "status": string(domain.StatusWaiting), "forced": true})
+}
+
 type instanceEvent struct {
 	ID         int64     `json:"id"`
 	InstanceID string    `json:"instanceId"`

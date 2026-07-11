@@ -152,6 +152,7 @@ func NewRouter(cfg Config) http.Handler {
 		r.With(s.requireWriterMW).Post("/instances/{id}/rerun", s.rerunInstance)
 		r.With(s.requireWriterMW).Post("/instances/{id}/set-ok", s.setOKInstance)
 		r.With(s.requireWriterMW).Post("/instances/{id}/confirm", s.confirmInstance) // Control-M Confirm (confirm:true)
+		r.With(s.requireWriterMW).Post("/instances/{id}/force", s.forceRunInstance)  // Run Now: força ESTA instance (bypass gates, honra agent+Confirm)
 		r.Get("/instances/{id}/events", s.listInstanceEvents)
 		r.Get("/instances/{id}/explain", s.explainInstance)   // diferencial: "por que não rodou?"
 		r.Get("/instances/{id}/blast-radius", s.blastRadius)  // diferencial: impacto de cancelar/segurar

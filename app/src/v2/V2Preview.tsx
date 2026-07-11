@@ -38,6 +38,7 @@ import {
   bypassInstance,
   confirmInstance,
   forceInstance,
+  forceRunInstance,
   fetchInstanceById,
   refreshInstancesFromServer,
 } from "@/lib/runtime-bridge";
@@ -930,6 +931,19 @@ function V2PreviewInner() {
     });
   }, [setPendingFocusId]);
 
+  /* ── Run Now sobre a instance EXISTENTE (Monitoring) ── */
+  // Bypassa os gates de impedimento (janela/deps/conditions/recursos) e roda o
+  // MESMO job — não cria uma nova ordem. Agente indisponível e Confirm NÃO são
+  // bypassados (o tick segura até resolver).
+  const handleRunNowInstance = useCallback((instanceId: string) => {
+    setSelectedInstanceId(instanceId);
+    setPendingFocusId(instanceId);
+    Promise.resolve(forceRunInstance(instanceId)).catch((err) => {
+      console.error("[run-now] failed", err);
+      toast.error("Run Now falhou", { detail: err?.message ?? String(err) });
+    });
+  }, [setPendingFocusId]);
+
   /* ── Context menu (right-click no canvas) ── */
   const onNodeContextMenu = useCallback(
     (e: React.MouseEvent, node: Node) => {
@@ -980,9 +994,10 @@ function V2PreviewInner() {
         items.push({ label: "Confirmar", tone: "primary", onClick: () => { void confirmInstance(inst.id); } });
       }
 
-      // Run Now: para WAITING/HOLD (cria nova force order da mesma def)
-      if ((status === "WAITING" || status === "HOLD") && def) {
-        items.push({ label: "Run Now", tone: "primary", onClick: () => handleForce(def) });
+      // Run Now: força ESTA instance (WAITING/HOLD) a bypassar os gates de
+      // impedimento e executar — o MESMO job, sem criar nova ordem.
+      if (status === "WAITING" || status === "HOLD") {
+        items.push({ label: "Run Now", tone: "primary", onClick: () => handleRunNowInstance(inst.id) });
       }
 
       // Hold / Release / Cancel
@@ -1016,7 +1031,7 @@ function V2PreviewInner() {
 
       setCtxMenu({ x: e.clientX, y: e.clientY, items });
     },
-    [mode, defs, instances, handleForce, handleDeleteDef, handleRerunInstance],
+    [mode, defs, instances, handleForce, handleRunNowInstance, handleDeleteDef, handleRerunInstance],
   );
 
   const hasDefs = defs.length > 0;

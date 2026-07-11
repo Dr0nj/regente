@@ -280,3 +280,19 @@ export function forceInstance(def: JobDefinition): JobInstance {
   return orderJob(def, new Date(), true);
 }
 
+/**
+ * forceRunInstance — "Run Now" sobre a instance EXISTENTE (não cria nova). Marca
+ * como manual/forced e reagenda para agora; o tick trata `manual` como bypass de
+ * deps (janela também some ao zerar scheduledAt). NÃO bypassa Confirm. Só vale
+ * para WAITING/HOLD.
+ */
+export function forceRunInstance(instanceId: string): void {
+  const all = localLoad<JobInstance>(INSTANCES_KEY);
+  const inst = all.find((i) => i.id === instanceId);
+  if (!inst || (inst.status !== "WAITING" && inst.status !== "HOLD")) return;
+  inst.status = "WAITING";
+  inst.manual = true;
+  inst.scheduledAt = Date.now();
+  saveAll(all);
+}
+

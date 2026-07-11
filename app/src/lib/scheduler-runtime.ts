@@ -203,15 +203,20 @@ export async function tickOnce(defs: JobDefinition[]): Promise<void> {
     if (inst.status !== "WAITING") continue;
     if (_running.has(inst.id)) continue;
 
-    const dep = evaluateDependencies(inst, defsById, today);
+    // Run Now / Force: uma instance `manual` bypassa as deps (e não é cancelada
+    // por dep permanentemente bloqueada) — paridade com o ramo forced do server.
+    // A janela ainda vale, mas forceRunInstance já zera scheduledAt pra agora.
+    if (!inst.manual) {
+      const dep = evaluateDependencies(inst, defsById, today);
 
-    if (dep.permanentlyBlocked && !dep.anyPending) {
-      updateInstanceStatus(inst.id, "CANCELLED", {
-        output: { blockedByUpstream: true },
-      });
-      continue;
+      if (dep.permanentlyBlocked && !dep.anyPending) {
+        updateInstanceStatus(inst.id, "CANCELLED", {
+          output: { blockedByUpstream: true },
+        });
+        continue;
+      }
+      if (!dep.allReady) continue;
     }
-    if (!dep.allReady) continue;
     if (inst.scheduledAt > now) continue;
 
     // Ready to run

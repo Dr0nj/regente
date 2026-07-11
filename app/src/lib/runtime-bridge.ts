@@ -60,6 +60,11 @@ export const forceInstance = isServerMode()
   ? serverInstance.forceInstance
   : localInstance.forceInstance;
 
+// forceRunInstance — "Run Now" sobre a instance EXISTENTE (não cria nova ordem).
+export const forceRunInstance = isServerMode()
+  ? serverInstance.forceRunInstance
+  : async (id: string): Promise<void> => { localInstance.forceRunInstance(id); };
+
 export type InstanceEvent = serverInstance.InstanceEvent;
 
 export const fetchInstanceEvents = isServerMode()
