@@ -17,7 +17,7 @@
 > no §Entregue e some uma linha no §Changelog. Ao **abrir** um item novo: só adicione no §Backlog.
 > Sem barras de progresso nem porcentagens — de propósito (confundem mais do que ajudam).
 >
-> Documento vivo · revisão **2026-07-08**.
+> Documento vivo · revisão **2026-07-10**.
 > Estratégia de arquitetura em [`arquitetura-futuro.md`](arquitetura-futuro.md);
 > apresentação de produto no [`../README.md`](../README.md).
 
@@ -42,10 +42,10 @@
 - **Jobs as code (modo CODE)** — editor YAML do working set no Design + CODE-1 (guia do schema, lint ao vivo).
 - **Agent-native (MCP)** — servidor stdio com **11 read + 11 write** gated (MCP-1 fechado 2026-07-08).
 - **Features avançadas (ADV-1..8)** — schema por jobType, multi-ambiente, What-If/Stats, MFT, archives/retention, CLI/SDK, site de docs, executores AWS Batch/Glue/Step.
+- **Contrato de API (OpenAPI)** — API-1: spec curada escrita à mão + viewer self-contained em `/api-docs`, embutidos no binário.
 
 **Trilhas com itens em ABERTO** (detalhe em [§🔜 Backlog](#-backlog-o-que-falta)):
 
-- **Contrato de API (OpenAPI)** — API-1, com condição de timing (integrador externo real OU Fase Z).
 - **Validação em infra real** — resíduos (secrets via provider · SSH agente como serviço).
 - **Fase Z — divulgação** — case study + post LinkedIn (último gate, quando o backlog estiver onde você quer).
 
@@ -66,25 +66,6 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > gente vai **fazendo crescer** — quando um item fecha, ele sai daqui e vira um tópico
 > detalhado em §✅ Entregue (+ linha no changelog). As caixinhas espalhadas nas seções de
 > baixo **não valem** como status (ver ⛔ REGRA DE STATUS no topo).
-
-### Contrato de API / OpenAPI (Swagger)
-- [ ] **API-1** — Spec OpenAPI **curada** (não auto-doc dos ~137 handlers) + Swagger UI embutido
-  single-origin (mesmo padrão do `-spa-dir`, self-contained, zero CDN). Cobre só a **superfície de
-  integração** (~15–20 rotas que um sistema externo realmente chama), NÃO as internas da SPA:
-  `POST /ingest` + external events · quick-actions HMAC `/qa/{token}` · instances query + lifecycle
-  (`hold`/`release`/`rerun`/`cancel`/`confirm`/`set-ok`) · `/daily/report` · `/forecast` · `/health` ·
-  `/metrics`. Vira **contrato enterprise** e, de quebra, **artefato da Fase Z**.
-  - **⏳ CONDIÇÃO DE TIMING (não fazer antes):** os consumidores de HOJE não pagam de volta —
-    a SPA já é tipada no front e a MCP é agent-native (LLM lê schema MCP, não OpenAPI). Fazer agora =
-    imposto de manutenção + risco de spec divergir do código (pior que não ter). **Implementar quando
-    o PRIMEIRO destes acontecer:** (a) aparecer um **integrador/consumidor externo real** que precise
-    scriptar contra a API (CI/CD, ticketing, ingest de sistema terceiro); OU (b) na **Fase Z**, como
-    peça de divulgação/case study. O que vier primeiro dispara; até lá fica parado de propósito.
-  - **Gotcha:** OpenAPI 3.0 não modela o verbo custom `QUERY` (tooling engasga). Documentar as formas
-    POST gêmeas que já existem (`POST /instances/query`, `POST /query`) e ignorar o `QUERY` na spec.
-  - **NÃO fazer via `swaggo` full-annotation** dos handlers — apodrece e a maioria das rotas é interna
-    da SPA. Preferir `openapi.yaml` escrito à mão pra superfície pequena. Relaciona ADV-6 (SDK gerável
-    da spec) e ADV-7 (site de docs). → §Enterprise readiness, §Agent-native (MCP), §Fase Z
 
 ### Validação em infra real — resíduos (→ §Validação em infra real)
 - [ ] **VAL-1** — Secrets via provider (env / `-secrets-file`): resolver `github_token`/`webhook_secret`.
@@ -395,6 +376,33 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
    FECHADO (2026-07-08): hold · release · cancel · confirm · rerun · set_ok · force_order ·
    pause_folder · resume_folder · bulk_action · ingest_event. Cada uma é fachada de 1 endpoint REST
    já existente (writeID p/ as unitárias; strSlice p/ ids[]/conditions[]; gate central). Doc: docs/mcp.md.
+```
+
+## 📡 Contrato de API / OpenAPI *(trilha fechada — API-1 em 2026-07-10)*
+
+> O contrato **curado** da superfície de integração — as rotas que um sistema EXTERNO realmente
+> chama — servido pelo próprio binário. A condição de timing do API-1 (integrador real OU Fase Z)
+> disparou pela via (b): backlog reduzido a VAL-1/2 + Z, e a spec é peça da Fase Z.
+
+```
+✅ Spec openapi.yaml ESCRITA À MÃO (server/internal/api/openapi.yaml, go:embed) — 22 operações em
+   20 rotas, SÓ a superfície de integração (a mesma do SDK pkg/client/ADV-6): sistema (/health ·
+   /livez · /readyz · /metrics) · query composta D-5 + NL-query · lifecycle completo (hold/release/
+   cancel/rerun/set-ok/confirm) + force · ingest D-3 + external events · daily status/report E5 ·
+   forecast F21 + range CTM-6 · jobtypes ADV-1 · archives ADV-5 (admin) · quick-actions HMAC D-15 ·
+   scheduler/tick (serverless). NÃO documenta os ~137 handlers internos da SPA — de propósito.
+✅ Viewer /api-docs embutido no binário (apidocs.html, zero flag, zero CDN, single-origin) — o
+   "Swagger UI" da casa, JS vanilla no espírito do docsite ADV-7: nav por tag, schemas em árvore,
+   RBAC por operação (x-permission), curl gerado, e TRY-IT real (Bearer no localStorage, fetch
+   same-origin). /api-docs/openapi.yaml (fonte) e /api-docs/openapi.json (Postman/codegen).
+✅ Conversão YAML→JSON node-a-node (yamlNodeJSON) preservando a ORDEM curada dos paths/campos —
+   encoding/json de map ordenaria alfabeticamente e embaralharia a apresentação do contrato.
+✅ Teste que trava spec×router (apidocs_test.go): toda operação da spec TEM que existir no chi
+   (método+path via chi.Walk) — renomeou rota, o teste quebra; + JSON válido/ordenado + rotas
+   públicas servindo (viewer/yaml/json/redirect) + guard de zero referência a CDN no viewer.
+✅ Decisões honradas da spec original: verbo QUERY fora da spec (OpenAPI 3.0 não modela; as formas
+   POST gêmeas documentadas), NADA de swaggo full-annotation, corpos de erro text/plain documentados
+   como são, contrato do ingest com applied:[]|false (duplicate) validado ao vivo contra o server.
 ```
 
 ## 🌟 Diferenciais além do Control-M *(trilha fechada — leva 1: 2026-07-03 · leva 2 D-1..D-15: 2026-07-08)*
@@ -726,6 +734,7 @@ contra Postgres 16 real (Docker); restante pendente:
 
 | Quando | O que | Detalhe |
 |----|--------|---------|
+| ✅ | ~~**API-1 (FECHA a trilha Contrato de API): spec OpenAPI curada à mão + viewer /api-docs embutido no binário**~~ | **Feito (2026-07-10):** a condição de timing disparou — o backlog encolheu a VAL-1/2 + Z, e o API-1 sempre foi peça declarada da Fase Z; de quebra o custo caiu: a curadoria de rotas JÁ estava cristalizada no SDK `pkg/client` (ADV-6) e o padrão de servir self-contained no docsite (ADV-7). Entregue: **(1)** `openapi.yaml` escrito à mão (NÃO swaggo, decisão da spec) com **22 operações em 20 rotas** — só a superfície de integração (sistema/health·livez·readyz·metrics, query composta D-5 + NL-query, lifecycle hold/release/cancel/rerun/set-ok/confirm + force, ingest D-3 + external events, daily status/report E5, forecast F21+range, jobtypes ADV-1, archives ADV-5, quick-actions HMAC D-15, scheduler/tick) com RBAC por operação (`x-permission`), erros text/plain como são, e o verbo `QUERY` deixado FORA (OpenAPI 3.0 não modela; POST gêmeos documentados — gotcha previsto na spec). **(2)** Viewer `/api-docs` **embutido no binário via go:embed** (zero flag, sempre no ar, público como /docs) — "Swagger UI" da casa em JS vanilla zero-CDN: nav por tag, schemas em árvore com $ref resolvido, curl gerado por operação e **try-it real** (Bearer no localStorage, fetch single-origin); `/api-docs/openapi.{yaml,json}` servem o contrato cru. **(3)** Conversão YAML→JSON andando os `yaml.Node` pra **preservar a ordem curada** (json de map ordenaria alfabético). **(4)** `apidocs_test.go` trava **spec×router**: toda operação da spec tem que existir no chi (chi.Walk) — rota renomeada quebra o teste; + guard de zero CDN no viewer. Validado AO VIVO na porta 18477: viewer renderiza as 25 entradas da nav, try-it da query composta devolveu `HTTP 200 {items:[],nextCursor:""}`, e o contrato de idempotência do ingest provado na prática (1ª chamada `applied:[condition COND_API1@2026-07-10]`, retry `duplicate:true, applied:false`). Suíte inteira verde. GOTCHA YAML de flow-style documentado: `description:` com vírgula dentro de `{ }` quebra o parse — aspas simples. |
 | ✅ | ~~**ADV-5..ADV-8 (FECHA a trilha Features avançadas): Archives/Retention · CLI/SDK · site de docs · executores AWS Batch/Glue/Step Functions**~~ | **Feito (2026-07-10):** as quatro últimas Features Avançadas fecharam juntas — a trilha inteira (ADV-1..8) está entregue. **ADV-5** — GC pós-daily no líder (irmão do auditGC E2) dirigido por `instance_retention_days`: dailies vencidas viram NDJSON por dia (todas as colunas, escrita atômica .part+rename, nunca sobrescreve) em `archive_dir` e saem do banco em lotes junto com events/conditions/daily_runs do dia; dia com RUNNING pula; `GET /api/archive[/file]` admin-only; campos no SettingsDialog. **ADV-6** — SDK Go `pkg/client` (fachada hand-written da superfície curada do API-1: query D-5, lifecycle, force, ingest D-3, daily E5, jobtypes ADV-1, archives ADV-5) + `regente ops` no binário DevEx, 100% sobre o SDK. **ADV-7** — `cmd/docsite` gera site estático self-contained (zero CDN/JS, goldmark GFM+unsafe, links .md→.html resolvidos por página, assets copiados) dos markdown do repo; server serve em `/docs` via `-docs-dir` (antes do NotFound do SPA); construir o site expôs fence ``` não fechado NESTE roadmap (renderizava quebrado até no GitHub) — corrigido. **ADV-8** — executores BATCH/GLUE/STEP_FUNCTION no agente, mesmo seam SigV4-stdlib do LAMBDA, submit→poll→terminal com stop best-effort no timeout (TerminateJob/BatchStopJobRun/StopExecution); registry+guia CODE+editores espelhados (aliases AWS_*); validação em conta paga fora de escopo por decisão — cobertura por fakes httptest de assinatura/protocolo/poll. Suítes server+agent+CLIs verdes, tsc+vite build ok, docs site validado ao vivo no preview. |
 | ✅ | ~~**ADV-4: MFT — jobType FILE_TRANSFER nativo (local ↔ SFTP ↔ S3 pelo agente)**~~ | **Feito (2026-07-10):** o Managed File Transfer do Control-M virou jobType nativo. **Executor** (`agent/filetransfer.go`): `src`/`dst` aceitam caminho local, `sftp://user:pass@host:22/caminho` e `s3://bucket/chave`, combináveis à vontade (local→sftp, s3→local, sftp→sftp entre hosts diferentes); glob (`*.csv`) na origem local/sftp com destino diretório/prefixo; **escrita atômica `.part`+rename** (um FILE_WATCH com stableSec do outro lado nunca vê parcial); `checksum` relê o destino e compara SHA-256 fim-a-fim; `deleteSource` = move (só após transferir+verificar); `overwrite=false` protege destino existente; `mkdirs`; timeout do job corta a transferência no meio (deadlineReader). SFTP = `pkg/sftp`+`x/crypto` (pure-Go, zero CGO, no padrão do projeto), com senha na URL/param, `keyPath` e pin opcional `hostKeyFingerprint`; S3 = **SigV4 da stdlib reusando os primitivos do Lambda** (`aws.go`) — variante `sigv4HeadersHash` assina também `x-amz-content-sha256` (o S3 exige) e PUT streaming `UNSIGNED-PAYLOAD` (sem carregar o arquivo em memória), creds por params/envs `AWS_*`, `s3Endpoint` p/ MinIO/testes. **Espelhos completos:** schema no registry ADV-1 (`typeschema.go`, 14 campos, alias `MFT`, DRAFT×STRICT) → `GET /api/jobtypes`; caps default do agente; front = palette do Design, select do JobConfigDrawer, editor visual com `BoolSelect` novo, guia do CODE (`code-schema.ts`), Action do drawer do Monitoring (`ACTION_VERB`/`ACTION_FIELDS`), engine local de demo. **Testes:** 10 casos novos em `filetransfer_test.go` — local (checksum/atomicidade/glob→dir+deleteSource/overwrite=false/multi-exige-dir/origem inexistente), **sftp REAL in-process** (`sftp.NewServer` sobre `net.Pipe`; skip no Windows, roda na CI ubuntu) e **fake S3 httptest** que valida assinatura SigV4+`x-amz-content-sha256` (upload/download/delete, glob rejeitado, sem credencial) + casos no `typeschema_test.go`; suítes server+agent verdes, `tsc`+`vite build` ok. **Validado E2E AO VIVO** (server GitOps bare repo + agente real + preview): palette→drawer→publish (YAML no Git com os params certos)→force→agente transferiu 2 arquivos via glob com `sha256✓`, instance OK no board e output `[mft]` no drawer. GOTCHA de ambiente documentado: o WS do agente é `ws://host/ws/agent` (não `/api/agent/ws` — handshake 400 sem log no server). |
 | ✅ | ~~**ADV-1 + ADV-2 + ADV-3: schema por jobType · roteamento por ambiente · What-If/Statistics**~~ | **Feito (2026-07-10):** as três primeiras Features Avançadas fecharam juntas. **ADV-1** — `domain/typeschema.go` = registry declarativo com o contrato de params dos 16 jobTypes (obrigatórios, kinds, enums, aliases de tipo E de campo, regras cross-field); validação em duas forças (DRAFT no save da session — typo/kind na hora, sem cobrar obrigatórios; STRICT no publish/write direto — 422 estruturado por job) + `GET /api/jobtypes`. Construir o registry expôs desalinhamentos REAIS validador×executor, todos corrigidos: LAMBDA `functionName`×`function` (cada lado lia um — aceitos os dois), payload objeto da UI descartado pelo agente, `expectStatus` escalar/CSV ignorado, `port` numérica do SSH dropada, `insecureTLS` só string. **ADV-2** — `def.environment` (F20, inerte desde sempre) agora ROTEIA: `hub.EnvMatch` (sem label = coringa; ambos com label = bate case-insensitive), flag `-env` no agente (WS + HTTP long-poll), PickAgent/HasAgent/Dispatch filtram, pin em env conflitante = WAIT_AGENT com motivo no Explain, presença R5 propaga env (vale cross-nó), chip ◉ na tela de Agentes. **ADV-3** — What-If: `POST /api/whatif` projeta a diária baseline×cenário (função pura estilo Forecast; mesma `IsScheduledOn`, p50 real do D-4, semântica de deps do engine — falha simulada BLOQUEIA on-success e DESTRAVA recovery on-failure) + `WhatIfPanel` no Monitoring; Statistics: `GET /api/analytics/jobstats` (runs/successRate/min/avg/p50/p90/max sobre OK + última execução) na aba Stats do drawer. Testes novos em typeschema/whatif/jobstats/hub_env/bus; suíte inteira verde (server+agent+CLIs), tsc+vite build ok. |

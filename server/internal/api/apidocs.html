@@ -1,0 +1,327 @@
+<!doctype html>
+<!-- API-1 — viewer do contrato OpenAPI, self-contained (zero CDN, zero build):
+     renderiza /api-docs/openapi.json com JS vanilla, no espírito do resto do
+     hosting (docsite ADV-7, qaHTML). Try-it embutido: single-origin, então o
+     fetch bate direto na API com o Bearer que o usuário colar. -->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Regente — API de integração</title>
+<style>
+  :root{
+    --bg:#0b0f1a; --panel:#0f1626; --panel2:#111c30; --border:#1f2a3f;
+    --text:#e2e8f0; --muted:#7c8aa0; --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
+    --get:#38bdf8; --post:#4ade80; --put:#fbbf24; --delete:#f87171; --accent:#7dd3fc;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font:14px/1.55 system-ui,sans-serif}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,pre{font-family:var(--mono)}
+  header{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+    padding:12px 20px;background:rgba(11,15,26,.92);backdrop-filter:blur(6px);border-bottom:1px solid var(--border)}
+  header .brand{font-weight:700;letter-spacing:.12em}
+  header .brand small{color:var(--muted);font-weight:400;letter-spacing:0;margin-left:8px}
+  header .links{font-size:13px;color:var(--muted)}
+  header input{margin-left:auto;background:var(--panel2);border:1px solid var(--border);color:var(--text);
+    border-radius:8px;padding:7px 10px;font:13px var(--mono);width:min(340px,90vw)}
+  header input::placeholder{color:var(--muted)}
+  .layout{display:grid;grid-template-columns:264px 1fr;max-width:1240px;margin:0 auto}
+  nav{position:sticky;top:57px;align-self:start;max-height:calc(100vh - 57px);overflow:auto;padding:20px 8px 40px 20px}
+  nav h3{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:16px 0 6px}
+  nav a{display:flex;gap:8px;align-items:baseline;padding:3px 8px;border-radius:6px;color:var(--text);font-size:13px}
+  nav a:hover{background:var(--panel2);text-decoration:none}
+  nav .m{font:700 10px var(--mono);width:38px;flex:none;text-align:right}
+  main{padding:24px 20px 80px;min-width:0}
+  .intro{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:20px 24px;margin-bottom:28px}
+  .intro h1{font-size:20px;margin-bottom:4px}
+  .intro .ver{color:var(--muted);font-size:13px;margin-bottom:12px}
+  section.tag>h2{font-size:17px;margin:34px 0 4px;padding-top:8px}
+  section.tag>p.tagdesc{color:var(--muted);margin-bottom:14px}
+  .op{background:var(--panel);border:1px solid var(--border);border-radius:14px;margin:14px 0;overflow:hidden}
+  .op>summary{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;list-style:none;flex-wrap:wrap}
+  .op>summary::-webkit-details-marker{display:none}
+  .op>summary:hover{background:var(--panel2)}
+  .badge{font:700 11px var(--mono);padding:3px 9px;border-radius:6px;color:#0b0f1a;min-width:52px;text-align:center}
+  .badge.get{background:var(--get)} .badge.post{background:var(--post)}
+  .badge.put{background:var(--put)} .badge.delete{background:var(--delete)}
+  .path{font:600 13.5px var(--mono);word-break:break-all}
+  .sum{color:var(--muted);font-size:13px}
+  .perm{margin-left:auto;font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:20px;padding:2px 10px;white-space:nowrap}
+  .opbody{padding:4px 18px 18px;border-top:1px solid var(--border)}
+  .opbody h4{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:16px 0 8px}
+  .desc{color:#c5d0de}
+  .desc p{margin:8px 0} .desc h4{margin-top:14px} .desc code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:12.5px}
+  .desc b{color:var(--text)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:12px}
+  td code{font-size:12.5px}
+  .req{color:var(--delete);font-size:11px;margin-left:4px}
+  pre{background:#0a0e18;border:1px solid var(--border);border-radius:10px;padding:12px 14px;overflow:auto;font-size:12.5px;line-height:1.5}
+  .schema{font-size:12.5px}
+  .schema ul{list-style:none;padding-left:18px;border-left:1px dotted var(--border);margin:2px 0}
+  .schema>ul{padding-left:0;border-left:none}
+  .schema li{margin:3px 0}
+  .schema .t{color:var(--accent)} .schema .d{color:var(--muted)} .schema .n{color:var(--text);font-family:var(--mono)}
+  .resp{margin:6px 0;padding:8px 12px;background:var(--panel2);border-radius:8px}
+  .resp .code{font:700 12px var(--mono);margin-right:10px}
+  .resp .c2xx{color:var(--post)} .resp .c4xx{color:var(--put)} .resp .c5xx{color:var(--delete)}
+  .try{margin-top:14px;border:1px dashed var(--border);border-radius:10px;padding:12px 14px;background:rgba(17,28,48,.4)}
+  .try label{display:block;font-size:12px;color:var(--muted);margin:8px 0 3px}
+  .try input,.try textarea{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);
+    border-radius:8px;padding:7px 10px;font:12.5px var(--mono)}
+  .try textarea{min-height:110px;resize:vertical}
+  .try button{margin-top:10px;background:#2563eb;color:#fff;border:0;border-radius:8px;padding:8px 18px;font-size:13px;cursor:pointer}
+  .try button:hover{background:#1d4ed8}
+  .try .out{margin-top:10px;display:none}
+  .try .status{font:700 12px var(--mono);margin-bottom:6px}
+  footer{color:var(--muted);font-size:12px;text-align:center;padding:30px 0}
+  @media (max-width:900px){.layout{grid-template-columns:1fr}nav{position:static;max-height:none;display:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">REGENTE<small>API de integração</small></div>
+  <div class="links"><a href="openapi.yaml">openapi.yaml</a> · <a href="openapi.json">openapi.json</a></div>
+  <input id="tok" type="password" placeholder="Bearer token (só pro Testar; fica no localStorage)" autocomplete="off">
+</header>
+<div class="layout">
+  <nav id="nav"></nav>
+  <main id="main"><p style="color:var(--muted)">Carregando o contrato…</p></main>
+</div>
+<footer>Contrato curado da superfície de integração (API-1) — embutido no binário, self-contained, zero CDN.</footer>
+<script>
+"use strict";
+let spec = null;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const TOK_KEY = "regente:apidocs:token";
+const tokEl = document.getElementById("tok");
+tokEl.value = localStorage.getItem(TOK_KEY) || "";
+tokEl.addEventListener("input", () => localStorage.setItem(TOK_KEY, tokEl.value));
+
+fetch("openapi.json").then(r => r.json()).then(s => { spec = s; render(); })
+  .catch(e => { document.getElementById("main").innerHTML = "<p>Falha ao carregar openapi.json: " + esc(e) + "</p>"; });
+
+function refName(ref){ return ref.split("/").pop(); }
+function deref(node){
+  if (node && node.$ref) {
+    let cur = spec;
+    for (const p of node.$ref.replace(/^#\//, "").split("/")) cur = cur[p];
+    return cur;
+  }
+  return node;
+}
+
+// mini-markdown das descriptions da spec: ###, **b**, `code`, parágrafos.
+function md(text){
+  if (!text) return "";
+  const inline = s => esc(s)
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+  return text.trim().split(/\n{2,}/).map(block => {
+    block = block.trim();
+    let head = "";
+    if (block.startsWith("### ")) {
+      const nl = block.indexOf("\n");
+      const title = nl === -1 ? block.slice(4) : block.slice(4, nl);
+      head = "<h4>" + inline(title) + "</h4>";
+      block = nl === -1 ? "" : block.slice(nl + 1);
+    }
+    // \n solto é wrap da fonte YAML, não quebra intencional — vira espaço.
+    return head + (block ? "<p>" + inline(block).replace(/\n/g, " ") + "</p>" : "");
+  }).join("");
+}
+
+function typeStr(sch){
+  if (!sch) return "—";
+  if (sch.$ref) return refName(sch.$ref);
+  if (sch.type === "array") return typeStr(sch.items) + "[]";
+  let t = sch.type || (sch.oneOf ? "oneOf" : sch.allOf ? "allOf" : "object");
+  if (sch.format) t += " (" + sch.format + ")";
+  if (sch.enum) t += " ∈ {" + sch.enum.join(" · ") + "}";
+  return t;
+}
+
+function schemaTree(sch, seen){
+  seen = seen || new Set();
+  if (!sch) return "";
+  if (sch.$ref) {
+    const name = refName(sch.$ref);
+    if (seen.has(name)) return '<li><span class="t">' + esc(name) + "</span> <span class=d>(recursivo)</span></li>";
+    seen = new Set(seen); seen.add(name);
+    return schemaTree(deref(sch), seen);
+  }
+  if (sch.oneOf) return sch.oneOf.map((o,i) =>
+    '<li><span class=d>forma ' + (i+1) + ": " + esc(typeStr(o)) + "</span><ul>" + schemaTree(o, seen) + "</ul></li>").join("");
+  if (sch.allOf) return sch.allOf.map(o => schemaTree(o, seen)).join("");
+  if (sch.type === "array") return '<li><span class=d>itens: ' + esc(typeStr(sch.items)) + "</span><ul>" + schemaTree(sch.items, seen) + "</ul></li>";
+  if (sch.properties) {
+    const req = new Set(sch.required || []);
+    return Object.entries(sch.properties).map(([k, v]) => {
+      const dv = v.$ref ? deref(v) : v;
+      const kids = (dv.properties || dv.oneOf || dv.allOf || (dv.type === "array" && dv.items && (dv.items.$ref || dv.items.properties)))
+        ? "<ul>" + schemaTree(v, seen) + "</ul>" : "";
+      return '<li><span class=n>' + esc(k) + "</span>" + (req.has(k) ? '<span class=req>*</span>' : "") +
+        ' <span class=t>' + esc(typeStr(v)) + "</span>" +
+        (dv.description ? ' — <span class=d>' + esc(dv.description) + "</span>" : "") + kids + "</li>";
+    }).join("");
+  }
+  return sch.description ? '<li><span class=d>' + esc(sch.description) + "</span></li>" : "";
+}
+
+function jsonBody(op){
+  const rb = op.requestBody && op.requestBody.content && op.requestBody.content["application/json"];
+  return rb || null;
+}
+
+function curl(method, path, op){
+  const origin = window.location.origin;
+  const pub = Array.isArray(op.security) && op.security.length === 0;
+  let c = "curl -X " + method.toUpperCase() + " '" + origin + path + "'";
+  if (!pub) c += " \\\n  -H 'Authorization: Bearer $REGENTE_TOKEN'";
+  const rb = jsonBody(op);
+  if (rb) {
+    c += " \\\n  -H 'Content-Type: application/json'";
+    if (rb.example !== undefined) c += " \\\n  -d '" + JSON.stringify(rb.example) + "'";
+    else c += " \\\n  -d '{}'";
+  }
+  return c;
+}
+
+function permChip(op){
+  const p = op["x-permission"];
+  return p ? '<span class="perm">' + esc(p) + "</span>" : "";
+}
+
+let opSeq = 0;
+function opCard(path, method, op){
+  const id = "op" + (++opSeq);
+  const params = (op.parameters || []).map(deref);
+  const rb = jsonBody(op);
+  let h = '<details class="op" id="' + id + '"><summary>' +
+    '<span class="badge ' + method + '">' + method.toUpperCase() + "</span>" +
+    '<span class="path">' + esc(path) + "</span>" +
+    '<span class="sum">' + esc(op.summary || "") + "</span>" + permChip(op) + "</summary>";
+  h += '<div class="opbody">';
+  if (op.description) h += '<div class="desc">' + md(op.description) + "</div>";
+
+  if (params.length) {
+    h += "<h4>Parâmetros</h4><table><tr><th>nome</th><th>em</th><th>tipo</th><th>descrição</th></tr>";
+    for (const p of params)
+      h += "<tr><td><code>" + esc(p.name) + "</code>" + (p.required ? '<span class="req">*</span>' : "") +
+        "</td><td>" + esc(p.in) + "</td><td><code>" + esc(typeStr(p.schema)) + "</code></td><td>" + esc(p.description || "") + "</td></tr>";
+    h += "</table>";
+  }
+
+  if (rb) {
+    h += "<h4>Corpo (application/json)</h4>";
+    h += '<div class="schema"><ul>' + schemaTree(rb.schema) + "</ul></div>";
+    if (rb.example !== undefined) h += "<pre>" + esc(JSON.stringify(rb.example, null, 2)) + "</pre>";
+  }
+
+  h += "<h4>Respostas</h4>";
+  for (const [code, r0] of Object.entries(op.responses || {})) {
+    const r = deref(r0);
+    const cls = code[0] === "2" ? "c2xx" : code[0] === "5" ? "c5xx" : "c4xx";
+    h += '<div class="resp"><span class="code ' + cls + '">' + esc(code) + "</span>" + esc(r.description || "");
+    const ct = r.content && Object.keys(r.content)[0];
+    if (ct) {
+      const body = r.content[ct];
+      h += ' <span class="d" style="color:var(--muted)">· ' + esc(ct) + "</span>";
+      if (body.schema && (body.schema.$ref || body.schema.properties || body.schema.oneOf || body.schema.allOf || body.schema.items))
+        h += '<div class="schema"><ul>' + schemaTree(body.schema) + "</ul></div>";
+      if (body.example !== undefined)
+        h += "<pre>" + esc(typeof body.example === "string" ? body.example : JSON.stringify(body.example, null, 2)) + "</pre>";
+    }
+    h += "</div>";
+  }
+
+  h += "<h4>curl</h4><pre>" + esc(curl(method, path, op)) + "</pre>";
+
+  // Try-it — single-origin: o fetch bate direto na API desta porta.
+  h += '<div class="try"><b style="font-size:13px">Testar</b>';
+  for (const p of params)
+    h += '<label>' + esc(p.name) + " (" + esc(p.in) + ')</label><input data-pname="' + esc(p.name) + '" data-pin="' + esc(p.in) + '">';
+  if (rb) h += "<label>corpo JSON</label><textarea data-body>" +
+    esc(rb.example !== undefined ? JSON.stringify(rb.example, null, 2) : "{}") + "</textarea>";
+  h += '<button data-method="' + method + '" data-path="' + esc(path) + '" data-public="' +
+    (Array.isArray(op.security) && op.security.length === 0 ? "1" : "") + '">Enviar</button>' +
+    '<div class="out"><div class="status"></div><pre></pre></div></div>';
+
+  h += "</div></details>";
+  return h;
+}
+
+function render(){
+  document.title = spec.info.title;
+  const byTag = new Map();
+  for (const t of spec.tags || []) byTag.set(t.name, { desc: t.description, ops: [] });
+  for (const [path, methods] of Object.entries(spec.paths || {}))
+    for (const [method, op] of Object.entries(methods)) {
+      const tag = (op.tags && op.tags[0]) || "Outros";
+      if (!byTag.has(tag)) byTag.set(tag, { desc: "", ops: [] });
+      byTag.get(tag).ops.push({ path, method, op });
+    }
+
+  let navH = "", mainH =
+    '<div class="intro"><h1>' + esc(spec.info.title) + '</h1>' +
+    '<div class="ver">v' + esc(spec.info.version) + ' · OpenAPI ' + esc(spec.openapi) + "</div>" +
+    '<div class="desc">' + md(spec.info.description) + "</div></div>";
+
+  for (const [tag, group] of byTag) {
+    if (!group.ops.length) continue;
+    const anchor = "tag-" + tag.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    navH += "<h3>" + esc(tag) + "</h3>";
+    mainH += '<section class="tag" id="' + anchor + '"><h2>' + esc(tag) + "</h2>" +
+      (group.desc ? '<p class="tagdesc">' + esc(group.desc) + "</p>" : "");
+    for (const { path, method, op } of group.ops) {
+      const before = opSeq + 1;
+      mainH += opCard(path, method, op);
+      navH += '<a href="#op' + before + '"><span class="m" style="color:var(--' + method + ')">' +
+        method.toUpperCase() + '</span><span>' + esc(path.replace(/^\/api/, "")) + "</span></a>";
+    }
+    mainH += "</section>";
+  }
+  document.getElementById("nav").innerHTML = navH;
+  document.getElementById("main").innerHTML = mainH;
+
+  document.querySelectorAll(".try button").forEach(btn => btn.addEventListener("click", tryIt));
+  // âncora da nav abre o card
+  document.querySelectorAll("nav a").forEach(a => a.addEventListener("click", () => {
+    const d = document.getElementById(a.getAttribute("href").slice(1));
+    if (d) d.open = true;
+  }));
+}
+
+async function tryIt(ev){
+  const btn = ev.currentTarget, box = btn.closest(".try");
+  const out = box.querySelector(".out"), st = box.querySelector(".status"), pre = box.querySelector("pre");
+  let path = btn.dataset.path;
+  const qs = new URLSearchParams();
+  for (const inp of box.querySelectorAll("input[data-pname]")) {
+    const v = inp.value.trim();
+    if (inp.dataset.pin === "path") {
+      if (!v) { st.textContent = "falta o parâmetro de path: " + inp.dataset.pname; out.style.display = "block"; pre.textContent = ""; return; }
+      path = path.replace("{" + inp.dataset.pname + "}", encodeURIComponent(v));
+    } else if (v) qs.set(inp.dataset.pname, v);
+  }
+  const url = path + (qs.toString() ? "?" + qs.toString() : "");
+  const headers = {};
+  if (!btn.dataset.public && tokEl.value.trim()) headers["Authorization"] = "Bearer " + tokEl.value.trim();
+  const opts = { method: btn.dataset.method.toUpperCase(), headers };
+  const bodyEl = box.querySelector("textarea[data-body]");
+  if (bodyEl) { headers["Content-Type"] = "application/json"; opts.body = bodyEl.value; }
+  st.textContent = "…"; pre.textContent = ""; out.style.display = "block";
+  try {
+    const resp = await fetch(url, opts);
+    const text = await resp.text();
+    st.textContent = "HTTP " + resp.status + " · " + (resp.headers.get("content-type") || "");
+    try { pre.textContent = JSON.stringify(JSON.parse(text), null, 2); }
+    catch { pre.textContent = text; }
+  } catch (e) { st.textContent = "erro"; pre.textContent = String(e); }
+}
+</script>
+</body>
+</html>

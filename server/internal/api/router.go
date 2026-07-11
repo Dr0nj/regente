@@ -309,6 +309,17 @@ func NewRouter(cfg Config) http.Handler {
 	r.Get("/qa/{token}", s.quickActionPage)
 	r.Post("/qa/{token}", s.quickActionExec)
 
+	// API-1 — contrato OpenAPI da superfície de integração + viewer, embutidos
+	// no binário (go:embed): sempre no ar, sem flag. Público como /docs — é
+	// documentação. A spec curada vive em openapi.yaml (escrita à mão; NÃO é
+	// auto-doc dos handlers) e o teste apidocs_test.go trava spec×router.
+	r.Get("/api-docs", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/api-docs/", http.StatusFound)
+	})
+	r.Get("/api-docs/", s.apiDocsPage)
+	r.Get("/api-docs/openapi.yaml", s.apiDocsSpec)
+	r.Get("/api-docs/openapi.json", s.apiDocsSpec)
+
 	// ADV-7 — site de docs em /docs (registrado ANTES do NotFound do SPA, senão o
 	// fallback engoliria o caminho). Público como o restante do hosting estático.
 	if cfg.DocsDir != "" {

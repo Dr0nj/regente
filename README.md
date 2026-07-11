@@ -281,6 +281,11 @@ go build -o regente-server .
 
 Todas as rotas `/api/*` exigem `Authorization: Bearer <token>`.
 
+> **Contrato OpenAPI:** o server serve em **`/api-docs`** o contrato curado da superfície de
+> integração (spec escrita à mão + viewer self-contained com try-it, embutidos no binário — zero
+> CDN, zero flag). `/api-docs/openapi.yaml` e `/api-docs/openapi.json` servem a spec crua
+> (importável no Postman/Insomnia/codegen). A tabela abaixo é só um resumo de orientação.
+
 | Método | Path                                  | Descrição                      |
 |--------|---------------------------------------|--------------------------------|
 | GET    | `/health`                             | healthcheck                    |
