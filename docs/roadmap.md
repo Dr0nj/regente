@@ -46,6 +46,7 @@
 
 **Trilhas com itens em ABERTO** (detalhe em [§🔜 Backlog](#-backlog-o-que-falta)):
 
+- **Fase V — self-hosting em VPS de caixa única (24/7)** — empacotar o deploy "1 caixa" (UI+API+agente numa origem só, persistente, com HTTPS estável) num instalador Linux e num link público. As peças existem (SQLite durável, SPA single-origin via `-spa-dir`, users/RBAC, TLS por flag, agente-como-serviço); falta a **cola de empacotamento**. É pré-requisito prático da Fase Z (o case study roda nessa caixa).
 - **Fase Z — divulgação** — case study + post LinkedIn (último gate, quando o backlog estiver onde você quer).
 
 > ✅ **Validação em infra real — trilha FECHADA (2026-07-11):** os dois resíduos (secrets via provider · SSH
@@ -68,6 +69,26 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > gente vai **fazendo crescer** — quando um item fecha, ele sai daqui e vira um tópico
 > detalhado em §✅ Entregue (+ linha no changelog). As caixinhas espalhadas nas seções de
 > baixo **não valem** como status (ver ⛔ REGRA DE STATUS no topo).
+
+### 🚀 Fase V — Self-hosting em VPS de caixa única (24/7)
+
+> **Cenário-alvo (pedido 2026-07-11):** subir um VPS Linux (ex.: Hostinger), rodar
+> `install`, apontar pro GitHub, e ter **UI + API + agente numa origem só**, com estado
+> (jobs, users, config) **persistindo a reboot/update**. Etapa 2 = **link público** pros
+> amigos testarem com contas próprias. O código já faz **tudo isso** — falta só a **cola
+> de empacotamento**. Cada item aponta a peça que já existe e o que falta plugar.
+
+- [ ] **V1** — **UI no mesmo install (single-origin).** `server/deploy/install-linux.sh` hoje builda só o server (API-only); a capacidade de servir o SPA existe (`-spa-dir`/`REGENTE_SPA_DIR`, app resolve `@origin`→`window.location.origin`). Falta: o install buildar/baixar o `app/dist` e escrever `REGENTE_SPA_DIR` no `server.env` (+ linha no `server.env.example`). → "no mesmo servidor instalado também a UI" vira 1 comando.
+- [ ] **V2** — **Binário de server pré-compilado nas Releases + one-liner de instalação.** Hoje só o `regente-agent` tem binário publicado; o server exige `go build` no VPS. Falta: publicar `regente-server_linux_amd64` (+ o `app/dist` empacotado) nas Releases e um `curl … | bash` que baixa binário+SPA e chama o install — sem exigir Go/Node no VPS. → "rodo os comandos para baixar o regente, instala".
+- [ ] **V3** — **Bootstrap interativo de config (opcional).** Hoje se edita `/etc/regente/server.env` à mão. Falta: o install perguntar `REGENTE_TOKEN` (gera forte por default), GitHub PAT+repo e domínio, e escrever o env sozinho (o PAT também pode entrar depois pela UI → settings DB, já suportado). → "instala e pede o que for preciso do github".
+- [ ] **V4** — **HTTPS estável pra exposição pública.** Hoje há TLS por flag (`-tls-cert/-tls-key`, certs manuais) e o túnel **efêmero** da demo (`*.trycloudflare.com`, URL muda a cada run). Falta: recipe de HTTPS estável — reverse proxy com ACME automático (Caddy/nginx) **ou** Cloudflare Tunnel **nomeado** (hostname fixo) **ou** certbot alimentando as flags TLS. → link estável e confiável pros amigos (Etapa 2).
+- [ ] **V5** — **Demo pública em Linux (paridade do `host-demo.ps1`).** Hoje o roteiro público (`deploy/demo/`) é **Windows/PowerShell**, roda no PC e sobe agente sandbox em Docker. Falta: equivalente **bash no VPS** — server single-origin + agente em **container isolado** (`--cap-drop ALL`, `no-new-privileges`, limites CPU/RAM/PID) pra que jobs `COMMAND` dos amigos **não rodem no host do VPS**. (Users/RBAC operator·viewer já existem — [§Auth/RBAC].) → Etapa 2 segura.
+- [ ] **V6** *(opcional, alternativa ao systemd)* — **`docker-compose.yml` de caixa única:** server single-origin + Postgres + agente sandbox + volumes persistentes, pra "sobe/derruba/atualiza" num comando. Redundante com V1+V5 se o alvo for systemd puro; escolher um dos dois caminhos.
+
+> **Persistência a reboot/update — já é realidade (R4):** SQLite em `/var/lib/regente` (ou
+> Postgres), users/sessions/settings/PAT na DB, migrations no boot (`db.Migrate`),
+> `Restart=always` + `rolling-upgrade.sh`. VPS derruba/sobe/atualiza sem perder estado.
+> **Nada disso está no backlog** — os V* acima são só empacotamento/UX de instalação.
 
 ### 🏁 Fase Z — ÚLTIMO gate
 - [ ] **Z** — Case study técnico + post LinkedIn. **Só quando o backlog acima estiver onde você quer.** Não é o próximo passo.
