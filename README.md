@@ -206,41 +206,63 @@ daily ou via Force Order manual.
 
 ## 📦 Instalação
 
-### Opção A — binários prontos (GitHub Releases)
-Cada release publica binários do **server** e do **agent** para Linux, Windows e macOS.
+> **Deploy padrão = systemd** — supervisão `Restart=always`, estado persistente em
+> `/var/lib/regente` (sobrevive a reboot/upgrade). Artefatos em [`server/deploy/`](server/deploy)
+> e [`agent/deploy/`](agent/deploy). Escolha **uma das três formas** conforme o que roda no host.
+> Cada uma vem em dois sabores: **release** (`install.sh` baixa o bundle pronto — sem Go/Node) ou
+> **código-fonte** (Go 1.25+, e Node para a UI). Windows: `install-windows.ps1` em cada `deploy/`.
 
-**Server num VPS Linux (24/7, UI + API numa origem só) — one-liner:**
+### Forma 1 — só o server (API headless)
+Control plane **sem UI embutida** (acesso via API/CLI, ou UI servida em outro host).
 ```bash
-# baixa o bundle "caixa única" (binário + UI buildada + systemd) e instala como
-# serviço supervisionado (Restart=always). Não precisa de Go nem Node no VPS.
+# release (sem toolchain):
+curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install.sh -o regente-install.sh
+sudo WITH_UI=0 bash regente-install.sh
+# ou do código-fonte:
+cd server && CGO_ENABLED=0 go build -o regente-server . && sudo WITH_UI=0 ./deploy/install-linux.sh
+```
+
+### Forma 2 — server + UI (single-origin) — recomendado p/ VPS
+UI + API + WebSocket na **mesma porta/origem** (sem CORS; o front resolve `@origin` em runtime).
+```bash
+# release (binário + UI + systemd, tudo pronto):
 curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install.sh -o regente-install.sh
 sudo bash regente-install.sh
-# depois:  sudo $EDITOR /etc/regente/server.env   (troque REGENTE_TOKEN; aponte o GitOps)
-#          sudo systemctl restart regente-server   →   http://<host>:8080  (login: admin/admin)
+# ou do código-fonte (builda a UI e liga sozinho):
+cd server && CGO_ENABLED=0 go build -o regente-server .
+(cd ../app && VITE_REGENTE_SERVER_URL=@origin npm ci && npm run build)
+sudo ./deploy/install-linux.sh
+```
+Depois (as duas formas): `sudo $EDITOR /etc/regente/server.env` (troque `REGENTE_TOKEN`, aponte o
+GitOps) → `sudo systemctl restart regente-server` → `http://<host>:8080` (login `admin`/`admin`).
+
+### Forma 3 — server + agente (mesma caixa, lab single-box)
+O server **e** um agente local — a própria caixa também executa jobs. (Em produção os agentes
+ficam nas **outras** máquinas; co-locar é conveniência de lab.)
+```bash
+# 1) suba o server (Forma 1 ou 2). 2) instale um agente local:
+cd agent && CGO_ENABLED=0 go build -o regente-agent .
+sudo SERVER=ws://localhost:8080/ws/agent TOKEN=<token> ID=$(hostname) \
+     CAPS=COMMAND,SCRIPT,HTTP ./deploy/install-linux.sh
+# TOKEN: gere em Settings → Agentes (ou use o REGENTE_TOKEN em dev).
 ```
 
+> **Domínio + HTTPS (link público, estilo empresa):** ponha o server atrás de um reverse
+> proxy (nginx) com TLS e um domínio real — receita systemd completa em
+> [`deploy/vps/`](deploy/vps) (§ *Hospedagem enterprise*).
+
+### Agentes nas outras máquinas
 ```bash
-# Linux/macOS — agent (rode em cada máquina que executa jobs)
+# Linux/macOS — baixe o binário do agente e conecte no server (via domínio TLS: wss://)
 curl -L https://github.com/Dr0nj/regente/releases/latest/download/regente-agent_linux_amd64 -o regente-agent
 chmod +x regente-agent
-./regente-agent -server ws://SEU_SERVER:8080/ws/agent -token <token> -caps COMMAND,SCRIPT,HTTP
+./regente-agent -server wss://SEU-DOMINIO/ws/agent -token <token> -id $(hostname) -caps COMMAND,SCRIPT,HTTP
 ```
 ```powershell
-# Windows — agent como serviço (Tarefa Agendada)
+# Windows — agente como serviço (Tarefa Agendada)
 irm https://github.com/Dr0nj/regente/releases/latest/download/install-windows.ps1 | iex
 ```
-
-### Opção B — compilar do código (precisa de Go 1.25+)
-```bash
-git clone https://github.com/Dr0nj/regente.git && cd regente
-
-# server
-cd server && go build -o regente-server . && ./regente-server -api-token dev-token
-
-# agent (na máquina onde os comandos devem rodar)
-cd ../agent && go build -o regente-agent . && \
-  ./regente-agent -server ws://localhost:8080/ws/agent -token dev-token -caps COMMAND,SCRIPT,HTTP
-```
+> Para rodar o agente **como serviço** (systemd/Tarefa Agendada), ver [§ Agent → Instalar como serviço](#instalar-como-serviço).
 
 > `go install github.com/Dr0nj/regente/agent@latest` (instalação direta via Go) fica
 > disponível quando os module paths forem alinhados ao monorepo — ver issues/roadmap.
