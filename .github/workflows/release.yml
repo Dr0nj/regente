@@ -9,16 +9,40 @@ permissions:
   contents: write # necessário para criar o GitHub Release e anexar binários
 
 jobs:
+  # V1/V2 — a UI é buildada UMA vez (single-origin: @origin -> window.location.origin
+  # em runtime) e reusada nos bundles Linux de todas as arquiteturas.
+  spa:
+    name: build SPA (single-origin)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build SPA (@origin)
+        working-directory: app
+        env:
+          VITE_REGENTE_SERVER_URL: "@origin"
+        run: |
+          npm ci
+          npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-dist
+          path: app/dist
+
   build:
     name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: spa
     runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
-          - { goos: linux, goarch: amd64, ext: "" }
-          - { goos: windows, goarch: amd64, ext: ".exe" }
-          - { goos: darwin, goarch: amd64, ext: "" }
-          - { goos: darwin, goarch: arm64, ext: "" }
+          - { goos: linux, goarch: amd64, ext: "", bundle: true }
+          - { goos: linux, goarch: arm64, ext: "", bundle: true }
+          - { goos: windows, goarch: amd64, ext: ".exe", bundle: false }
+          - { goos: darwin, goarch: amd64, ext: "", bundle: false }
+          - { goos: darwin, goarch: arm64, ext: "", bundle: false }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -32,7 +56,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
-        run: go build -trimpath -o ../dist/regente-server_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }} .
+        run: go build -trimpath -ldflags="-s -w" -o ../dist/regente-server_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }} .
 
       - name: Build agent
         working-directory: agent
@@ -40,12 +64,36 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
-        run: go build -trimpath -o ../dist/regente-agent_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }} .
+        run: go build -trimpath -ldflags="-s -w" -o ../dist/regente-agent_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }} .
 
-      # Scripts de instalação do agente entram no release uma vez (job linux).
+      # V1+V2 — bundle Linux "caixa única": binário + UI + arquivos de deploy, num
+      # layout que ESPELHA o repo, pra o install-linux.sh achar tudo por caminho
+      # relativo (../regente-server, ../app/dist, ./deploy/*).
+      - name: Download SPA
+        if: matrix.bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: app-dist
+          path: app/dist
+
+      - name: Assemble server bundle
+        if: matrix.bundle
+        run: |
+          B="regente-server_linux_${{ matrix.goarch }}"
+          mkdir -p "stage/$B/deploy" "stage/$B/app"
+          cp "dist/regente-server_linux_${{ matrix.goarch }}" "stage/$B/regente-server"
+          chmod +x "stage/$B/regente-server"
+          cp -r app/dist "stage/$B/app/dist"
+          cp server/deploy/install-linux.sh server/deploy/regente-server.service server/deploy/server.env.example "stage/$B/deploy/"
+          tar -C stage -czf "dist/$B.tar.gz" "$B"
+
+      # Scripts soltos no release (uma vez, no job amd64): install do agente + o
+      # one-liner do server (install.sh) reachable em .../releases/latest/download/.
       - name: Stage install scripts
-        if: matrix.goos == 'linux'
-        run: cp agent/deploy/install-windows.ps1 agent/deploy/install-linux.sh dist/
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: |
+          cp agent/deploy/install-windows.ps1 agent/deploy/install-linux.sh dist/
+          cp install.sh dist/install.sh
 
       - name: Attach to release
         uses: softprops/action-gh-release@v2

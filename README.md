@@ -209,8 +209,18 @@ daily ou via Force Order manual.
 ### Opção A — binários prontos (GitHub Releases)
 Cada release publica binários do **server** e do **agent** para Linux, Windows e macOS.
 
+**Server num VPS Linux (24/7, UI + API numa origem só) — one-liner:**
 ```bash
-# Linux/macOS — agent
+# baixa o bundle "caixa única" (binário + UI buildada + systemd) e instala como
+# serviço supervisionado (Restart=always). Não precisa de Go nem Node no VPS.
+curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install.sh -o regente-install.sh
+sudo bash regente-install.sh
+# depois:  sudo $EDITOR /etc/regente/server.env   (troque REGENTE_TOKEN; aponte o GitOps)
+#          sudo systemctl restart regente-server   →   http://<host>:8080  (login: admin/admin)
+```
+
+```bash
+# Linux/macOS — agent (rode em cada máquina que executa jobs)
 curl -L https://github.com/Dr0nj/regente/releases/latest/download/regente-agent_linux_amd64 -o regente-agent
 chmod +x regente-agent
 ./regente-agent -server ws://SEU_SERVER:8080/ws/agent -token <token> -caps COMMAND,SCRIPT,HTTP
