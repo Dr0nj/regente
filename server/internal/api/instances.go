@@ -460,20 +460,27 @@ func (s *server) runDaily(w http.ResponseWriter, r *http.Request) {
 // do rodapé do Monitoring — o front NÃO persiste mais isso em localStorage em
 // server mode.
 func (s *server) dailyStatus(w http.ResponseWriter, r *http.Request) {
-	var lastDate, lastAt string
+	var lastDate string
+	var lastAt sql.NullTime
 	_ = s.cfg.DB.QueryRow(
 		`SELECT order_date, started_at FROM daily_runs ORDER BY order_date DESC LIMIT 1`,
 	).Scan(&lastDate, &lastAt)
 	tzName, _ := s.cfg.Scheduler.DailyTimezone()
 	now := s.cfg.Scheduler.NowLocal()
-	writeJSON(w, 200, map[string]interface{}{
+	resp := map[string]interface{}{
 		"orderDate":   now.Format("2006-01-02"),
 		"dailyAt":     s.cfg.Scheduler.DailyAt(),
 		"timezone":    tzName,
 		"lastRunDate": lastDate,
-		"lastRunAt":   lastAt,
 		"serverNow":   now.Format(time.RFC3339),
-	})
+	}
+	// lateStart no rodapé do Monitoring (só quando há daily): reusa a fonte única
+	// de pontualidade (mesma flag do /api/daily/report), sem os counts.
+	if lastAt.Valid {
+		resp["lastRunAt"] = lastAt.Time.Format(time.RFC3339)
+		resp["lateStart"] = s.cfg.Scheduler.IsDailyLate(lastDate, lastAt.Time)
+	}
+	writeJSON(w, 200, resp)
 }
 
 // dailyReport — E5: relatório/SLO da daily (o que rodou, o que falhou, atraso).

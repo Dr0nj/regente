@@ -66,6 +66,24 @@ const lateStartGrace = 5 * time.Minute
 // dailyReportFailureCap — teto de failures listadas (o count é sempre exato).
 const dailyReportFailureCap = 100
 
+// IsDailyLate — a daily de `date` materializou TARDE? started_at depois do horário
+// configurado (DailyAt) + tolerância, na timezone de negócio. FONTE ÚNICA da
+// pontualidade da daily: usado pelo BuildDailyReport (card/report) e pelo
+// /api/daily/status (indicador do rodapé).
+func (s *Scheduler) IsDailyLate(date string, startedAt time.Time) bool {
+	hh, mm, ok := parseHHMM(s.DailyAt())
+	if !ok {
+		return false
+	}
+	_, loc := s.DailyTimezone()
+	d, err := time.ParseInLocation("2006-01-02", date, loc)
+	if err != nil {
+		return false
+	}
+	target := time.Date(d.Year(), d.Month(), d.Day(), hh, mm, 0, 0, loc)
+	return startedAt.After(target.Add(lateStartGrace))
+}
+
 // BuildDailyReport agrega o estado da diária `date` (YYYY-MM-DD).
 func (s *Scheduler) BuildDailyReport(date string) (*DailyReport, error) {
 	if _, err := time.Parse("2006-01-02", date); err != nil {
@@ -76,7 +94,7 @@ func (s *Scheduler) BuildDailyReport(date string) (*DailyReport, error) {
 		DailyAt:  s.DailyAt(),
 		Failures: []DailyReportFailure{},
 	}
-	tzName, loc := s.DailyTimezone()
+	tzName, _ := s.DailyTimezone()
 	rep.Timezone = tzName
 
 	// daily_runs: quando materializou + push já enviado.
@@ -90,13 +108,7 @@ func (s *Scheduler) BuildDailyReport(date string) (*DailyReport, error) {
 	if started.Valid {
 		t := started.Time
 		rep.StartedAt = &t
-		// LateStart: started_at (UTC do banco) vs horário configurado NO DIA,
-		// na timezone de negócio (E1) + tolerância.
-		if hh, mm, ok := parseHHMM(rep.DailyAt); ok {
-			d, _ := time.ParseInLocation("2006-01-02", date, loc)
-			target := time.Date(d.Year(), d.Month(), d.Day(), hh, mm, 0, 0, loc)
-			rep.LateStart = t.After(target.Add(lateStartGrace))
-		}
+		rep.LateStart = s.IsDailyLate(date, t)
 	}
 	rep.ReportSent = sent.Valid
 

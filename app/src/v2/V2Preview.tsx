@@ -60,7 +60,6 @@ import { onServerEvent, isServerMode, onAuthEvent, setAuthToken, SERVER_URL } fr
 import { fetchMe, loadCachedUser, type AuthUser } from "@/lib/auth-api";
 import { LoginForm } from "./LoginForm";
 import { UserMenu } from "./UserMenu";
-import { DailyReportCard } from "./DailyReportCard";
 import { UsersDialog } from "./UsersDialog";
 import { ControlMPanel } from "./ControlMPanel";
 import { AlertsPanel } from "./AlertsPanel";
@@ -124,6 +123,7 @@ function V2PreviewInner() {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
   const [editingDef, setEditingDef] = useState<{ def: JobDefinition; isNew: boolean } | null>(null);
   const [lastDaily, setLastDaily] = useState<string | null>(getLastDailyRun());
+  const [dailyLate, setDailyLate] = useState<boolean>(false); // pontualidade da daily (rodapé)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
   // F11.8 — visibleFolders: null = all visible. Persisted in localStorage.
   const [visibleFolders, setVisibleFolders] = useState<Set<string> | null>(() => {
@@ -348,6 +348,7 @@ function V2PreviewInner() {
   const refreshDailyStatus = useCallback(() => {
     void fetchDailyStatus().then((st) => {
       if (st?.lastRunAt) setLastDaily(normalizeDbTime(st.lastRunAt));
+      setDailyLate(!!st?.lateStart);
     });
   }, []);
   useEffect(() => { refreshDailyStatus(); }, [refreshDailyStatus]);
@@ -1603,10 +1604,6 @@ function V2PreviewInner() {
           </>
         )}
 
-        {/* E5 — card compacto do relatório da daily (números do /api/daily/report;
-            a UI não recalcula). Só no board clássico — o ScaleMonitor tem dashboard. */}
-        {mode === "monitoring" && !scaleView && isServerMode() && <DailyReportCard />}
-
         {/* Empty state overlay — só depois do bootstrap assentar (ready): no F5 as
             instances chegam async e o "Ambiente vazio" piscava antes do board. */}
         {mode === "monitoring" && !hasInstances && ready && (
@@ -1921,6 +1918,13 @@ function V2PreviewInner() {
             <span style={{ opacity: 0.7 }}>daily </span>
             <span style={{ color: "var(--v2-text-secondary)", fontWeight: 500 }}>
               {new Date(lastDaily).toLocaleTimeString("en-GB", { hour12: false })}
+            </span>
+            <span style={{ opacity: 0.7 }}> · </span>
+            <span
+              title={dailyLate ? "materializou depois do horário configurado (+5min)" : "materializou no horário"}
+              style={{ color: dailyLate ? "var(--v2-status-failed)" : "var(--v2-status-ok)", fontWeight: 600 }}
+            >
+              {dailyLate ? "⏰ atrasada" : "em dia"}
             </span>
           </span>
         )}

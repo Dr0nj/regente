@@ -22,8 +22,9 @@ export interface DailyStatus {
   dailyAt: string;       // "HH:MM" configurado (settings.daily_at, default 00:00)
   timezone?: string;     // E1 — settings.daily_timezone (nome IANA); "" = relógio local do server
   lastRunDate?: string;
-  lastRunAt?: string;    // timestamp do daily_runs (UTC do SQLite, sem sufixo Z)
+  lastRunAt?: string;    // timestamp do daily_runs (RFC3339 UTC)
   serverNow?: string;    // RFC3339 já na timezone da daily (com offset)
+  lateStart?: boolean;   // daily materializou > horário configurado + 5min (pontualidade)
 }
 
 // SQLite grava CURRENT_TIMESTAMP como "YYYY-MM-DD HH:MM:SS" em UTC SEM
