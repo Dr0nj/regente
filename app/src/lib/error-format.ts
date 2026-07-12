@@ -18,9 +18,18 @@ export function extractMessage(e: unknown): string {
   const body = a.body;
   if (typeof body === "string" && body.trim()) return body.trim();
   if (body && typeof body === "object") {
-    const o = body as { error?: string; message?: string };
-    if (o.error) return o.error;
-    if (o.message) return o.message;
+    const o = body as { error?: string; message?: string; jobs?: string[]; violations?: unknown[] };
+    // Prefere a mensagem HUMANA sobre o código de máquina ("schema", "policy"):
+    // o server manda ambos, e só o code sozinho ("schema") não diz nada ao usuário.
+    let msg = (o.message && o.message.trim()) || o.error || "";
+    // Anexa a lista detalhada que o publish 422 traz (qual job, qual campo falta).
+    const items = Array.isArray(o.jobs) && o.jobs.length
+      ? o.jobs
+      : Array.isArray(o.violations) && o.violations.length
+        ? o.violations.map((v) => (typeof v === "string" ? v : JSON.stringify(v)))
+        : [];
+    if (items.length) msg += (msg ? "\n\n" : "") + items.map((j) => "• " + j).join("\n");
+    if (msg) return msg;
   }
   return a.message ?? String(e);
 }
@@ -37,6 +46,28 @@ export function classifyError(e: unknown): ClassifiedError {
   const status = a.status;
   const detail = extractMessage(e);
   const lower = detail.toLowerCase();
+
+  // Erros ESTRUTURADOS do publish: o server manda {error, message, jobs|violations}.
+  // O `detail` (via extractMessage) já carrega a mensagem + a lista de jobs a corrigir.
+  const body = a.body && typeof a.body === "object" ? (a.body as { error?: string }) : null;
+  if (body?.error === "schema") {
+    return {
+      title: "Job(s) com configuração incompleta",
+      detail,
+      status,
+      hint:
+        "Um ou mais jobs estão sem os campos obrigatórios do tipo (ex.: COMMAND precisa de 'command', HTTP de 'url', DATABASE de driver/dsn/sql).\n" +
+        "Abra cada job listado abaixo, preencha a seção 'Job action config' e publique de novo.",
+    };
+  }
+  if (body?.error === "policy") {
+    return {
+      title: "Publicação bloqueada por política",
+      detail,
+      status,
+      hint: "O working set viola regras do policies.yaml (enforcement=error). Ajuste os jobs listados ou a política antes de publicar.",
+    };
+  }
 
   if (lower.includes("github token") || lower.includes("github_token")) {
     return {

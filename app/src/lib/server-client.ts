@@ -186,8 +186,9 @@ export async function api<T = unknown>(
     const detail = typeof body === "string" && body.trim()
       ? body.trim()
       : (body && typeof body === "object"
-          ? ((body as { error?: string; message?: string }).error
-              ?? (body as { error?: string; message?: string }).message
+          // Mensagem humana antes do código de máquina ("schema"/"policy").
+          ? ((body as { error?: string; message?: string }).message
+              ?? (body as { error?: string; message?: string }).error
               ?? "")
           : "");
     const msg = detail
