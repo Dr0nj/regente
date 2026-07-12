@@ -93,6 +93,7 @@ jobs:
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
         run: |
           cp agent/deploy/install-windows.ps1 agent/deploy/install-linux.sh dist/
+          cp agent/deploy/install-agent.sh agent/deploy/install-agent-windows.ps1 dist/
           cp install.sh dist/install.sh
 
       - name: Attach to release

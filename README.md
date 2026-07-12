@@ -252,18 +252,27 @@ sudo SERVER=ws://localhost:8080/ws/agent TOKEN=<token> ID=$(hostname) \
 > proxy (nginx) com TLS e um domínio real — receita systemd completa em
 > [`deploy/vps/`](deploy/vps) (§ *Hospedagem enterprise*).
 
-### Agentes nas outras máquinas
+### Agentes nas outras máquinas (Linux · macOS · Windows) — serviço 24/7
+
+Instaladores **amistosos**: baixam o binário da release e registram o agente como serviço
+(**systemd** · **launchd** · **Tarefa Agendada**) — inicia no boot, reinicia se cair, roda
+sem ninguém logado. **Sem Docker, Go ou runtime.** Perguntam servidor + token se você não passar.
+
 ```bash
-# Linux/macOS — baixe o binário do agente e conecte no server (via domínio TLS: wss://)
-curl -L https://github.com/Dr0nj/regente/releases/latest/download/regente-agent_linux_amd64 -o regente-agent
-chmod +x regente-agent
-./regente-agent -server wss://SEU-DOMINIO/ws/agent -token <token> -id $(hostname) -caps COMMAND,SCRIPT,HTTP
+# Linux ou macOS — baixe e rode (ele pergunta o servidor e o token)
+curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install-agent.sh -o install-agent.sh
+sudo bash install-agent.sh
+# frota / silencioso:  sudo SERVER=wss://SEU-DOMINIO/ws/agent TOKEN=rgta_xxx bash install-agent.sh
 ```
 ```powershell
-# Windows — agente como serviço (Tarefa Agendada)
-irm https://github.com/Dr0nj/regente/releases/latest/download/install-windows.ps1 | iex
+# Windows (PowerShell como Administrador) — pergunta o servidor e o token
+irm https://github.com/Dr0nj/regente/releases/latest/download/install-agent-windows.ps1 | iex
+# frota / silencioso: baixe o .ps1 e rode com  -Server wss://... -Token rgta_xxx
 ```
-> Para rodar o agente **como serviço** (systemd/Tarefa Agendada), ver [§ Agent → Instalar como serviço](#instalar-como-serviço).
+
+Gere o **token do agente** em Settings → Agentes. O agente conecta **outbound** (nenhuma porta
+aberta na máquina dele — atravessa NAT/firewall); só precisa alcançar o servidor. A frota
+aparece em Settings → Agentes.
 
 > `go install github.com/Dr0nj/regente/agent@latest` (instalação direta via Go) fica
 > disponível quando os module paths forem alinhados ao monorepo — ver issues/roadmap.
