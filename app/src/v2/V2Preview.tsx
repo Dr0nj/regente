@@ -1074,6 +1074,7 @@ function V2PreviewInner() {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <img
+            className="app-logo"
             src="/logo-r.png"
             alt="Regente"
             height={30}

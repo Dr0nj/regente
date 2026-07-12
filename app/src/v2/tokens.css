@@ -65,6 +65,229 @@
    "escuro" = :root base (sem atributo). Os demais sobrescrevem por data-theme.
    ══════════════════════════════════════════════════════════════ */
 
+/* ── TEMAS CLAROS ─────────────────────────────────────────────────
+   Fundo off-white (não branco puro) com texto escuro. Além dos tokens
+   --v2-*, sobrescrevem os --color-* (Tailwind, definidos em index.css)
+   porque o body e o canvas do React Flow leem --color-bg-deep/-canvas,
+   que nenhum tema escuro precisa tocar (todos são escuros). Sem isso, o
+   fundo do grafo e do body continuariam pretos sob um tema claro.
+   `color-scheme: light` deixa os controles nativos coerentes.
+   ────────────────────────────────────────────────────────────────── */
+
+:root[data-theme="claro"] {
+  color-scheme: light;
+
+  --v2-bg-canvas:     #eef1f3;
+  --v2-bg-surface:    #f7f9fa;
+  --v2-bg-elevated:   #ffffff;
+  --v2-bg-hover:      #e6eaed;
+  --v2-bg-active:     #dbe1e5;
+
+  --v2-border-subtle: #e4e8eb;
+  --v2-border-medium: #d2d8dd;
+  --v2-border-strong: #b4bcc3;
+  --v2-border-focus:  #047857;
+
+  --v2-text-primary:   #14181c;
+  --v2-text-secondary: #4b535b;
+  --v2-text-muted:     #7f8992;
+  --v2-text-disabled:  #b0b8bf;
+
+  --v2-accent-brand:   #047857;   /* emerald escuro — CTA / selected (texto branco legível) */
+  --v2-accent-dark:    #065f46;   /* mais escuro — bordas ativas */
+  --v2-accent-deep:    #d6f0e3;   /* tint pálido — fundo de item ativo */
+  --v2-accent-faint:   #eaf7f0;   /* tint mais pálido ainda */
+  --v2-accent-glow:    rgba(4, 120, 87, 0.24);
+
+  --v2-status-ok:      #15803d;
+  --v2-status-running: #2563eb;
+  --v2-status-failed:  #dc2626;
+  --v2-status-hold:    #b45309;
+  --v2-status-waiting: #7f8992;
+
+  /* Tokens Tailwind (index.css) — body, canvas do React Flow, scrollbar. */
+  --color-bg-deep:      #eef1f3;
+  --color-bg-canvas:    #eef1f3;
+  --color-bg-surface:   #f7f9fa;
+  --color-bg-elevated:  #ffffff;
+  --color-bg-hover:     #e6eaed;
+  --color-border-subtle:#e4e8eb;
+  --color-border-medium:#d2d8dd;
+  --color-border-strong:#b4bcc3;
+  --color-text-primary:  #14181c;
+  --color-text-secondary:#4b535b;
+  --color-text-muted:    #7f8992;
+  --color-text-disabled: #b0b8bf;
+  --color-accent-brand:  #047857;
+  --color-accent-dark:   #d6f0e3;   /* fundo de ::selection — tint claro p/ texto escuro */
+  --color-accent-deep:   #eaf7f0;
+  --color-status-success: #15803d;
+  --color-status-running: #2563eb;
+  --color-status-failed:  #dc2626;
+  --color-status-waiting: #b45309;
+  --color-status-inactive:#7f8992;
+}
+
+:root[data-theme="branco-azul"] {
+  color-scheme: light;
+
+  --v2-bg-canvas:     #eef2f7;
+  --v2-bg-surface:    #f6f9fc;
+  --v2-bg-elevated:   #ffffff;
+  --v2-bg-hover:      #e5ecf4;
+  --v2-bg-active:     #d9e3ef;
+
+  --v2-border-subtle: #e2e8f0;
+  --v2-border-medium: #cdd7e3;
+  --v2-border-strong: #aebccc;
+  --v2-border-focus:  #2563eb;
+
+  --v2-text-primary:   #111827;
+  --v2-text-secondary: #47505f;
+  --v2-text-muted:     #79838f;
+  --v2-text-disabled:  #adb6c2;
+
+  --v2-accent-brand:   #2563eb;   /* azul — CTA / selected */
+  --v2-accent-dark:    #1d4ed8;
+  --v2-accent-deep:    #dbe8fd;
+  --v2-accent-faint:   #eef4fe;
+  --v2-accent-glow:    rgba(37, 99, 235, 0.24);
+
+  --v2-status-ok:      #15803d;
+  --v2-status-running: #2563eb;
+  --v2-status-failed:  #dc2626;
+  --v2-status-hold:    #b45309;
+  --v2-status-waiting: #828d9c;
+
+  --color-bg-deep:      #eef2f7;
+  --color-bg-canvas:    #eef2f7;
+  --color-bg-surface:   #f6f9fc;
+  --color-bg-elevated:  #ffffff;
+  --color-bg-hover:     #e5ecf4;
+  --color-border-subtle:#e2e8f0;
+  --color-border-medium:#cdd7e3;
+  --color-border-strong:#aebccc;
+  --color-text-primary:  #111827;
+  --color-text-secondary:#47505f;
+  --color-text-muted:    #79838f;
+  --color-text-disabled: #adb6c2;
+  --color-accent-brand:  #2563eb;
+  --color-accent-dark:   #dbe8fd;
+  --color-accent-deep:   #eef4fe;
+  --color-status-success: #15803d;
+  --color-status-running: #2563eb;
+  --color-status-failed:  #dc2626;
+  --color-status-waiting: #b45309;
+  --color-status-inactive:#828d9c;
+}
+
+:root[data-theme="sepia"] {
+  color-scheme: light;
+
+  --v2-bg-canvas:     #f1eadd;
+  --v2-bg-surface:    #f7f1e6;
+  --v2-bg-elevated:   #fdfaf3;
+  --v2-bg-hover:      #ebe1cf;
+  --v2-bg-active:     #e0d3bb;
+
+  --v2-border-subtle: #e6dcc8;
+  --v2-border-medium: #d6c6a9;
+  --v2-border-strong: #bea77f;
+  --v2-border-focus:  #9a5410;
+
+  --v2-text-primary:   #2a2013;
+  --v2-text-secondary: #5c4f39;
+  --v2-text-muted:     #948467;
+  --v2-text-disabled:  #beb08f;
+
+  --v2-accent-brand:   #9a5410;   /* âmbar queimado — CTA / selected */
+  --v2-accent-dark:    #7c410c;
+  --v2-accent-deep:    #efe1c5;
+  --v2-accent-faint:   #f6edd8;
+  --v2-accent-glow:    rgba(154, 84, 16, 0.22);
+
+  --v2-status-ok:      #4d7c0f;   /* verde-oliva — combina com a paleta quente */
+  --v2-status-running: #1d6fa5;
+  --v2-status-failed:  #b91c1c;
+  --v2-status-hold:    #ca8a04;
+  --v2-status-waiting: #978a6f;
+
+  --color-bg-deep:      #f1eadd;
+  --color-bg-canvas:    #f1eadd;
+  --color-bg-surface:   #f7f1e6;
+  --color-bg-elevated:  #fdfaf3;
+  --color-bg-hover:     #ebe1cf;
+  --color-border-subtle:#e6dcc8;
+  --color-border-medium:#d6c6a9;
+  --color-border-strong:#bea77f;
+  --color-text-primary:  #2a2013;
+  --color-text-secondary:#5c4f39;
+  --color-text-muted:    #948467;
+  --color-text-disabled: #beb08f;
+  --color-accent-brand:  #9a5410;
+  --color-accent-dark:   #efe1c5;
+  --color-accent-deep:   #f6edd8;
+  --color-status-success: #4d7c0f;
+  --color-status-running: #1d6fa5;
+  --color-status-failed:  #b91c1c;
+  --color-status-waiting: #ca8a04;
+  --color-status-inactive:#978a6f;
+}
+
+:root[data-theme="cinza-claro"] {
+  color-scheme: light;
+
+  --v2-bg-canvas:     #eceef0;
+  --v2-bg-surface:    #f5f6f7;
+  --v2-bg-elevated:   #ffffff;
+  --v2-bg-hover:      #e3e6e9;
+  --v2-bg-active:     #d7dbdf;
+
+  --v2-border-subtle: #e1e4e7;
+  --v2-border-medium: #ccd1d6;
+  --v2-border-strong: #adb4bb;
+  --v2-border-focus:  #475569;
+
+  --v2-text-primary:   #1b1f24;
+  --v2-text-secondary: #4c545c;
+  --v2-text-muted:     #818a92;
+  --v2-text-disabled:  #b0b7bd;
+
+  --v2-accent-brand:   #475569;   /* slate — CTA / selected */
+  --v2-accent-dark:    #334155;
+  --v2-accent-deep:    #e1e6ea;
+  --v2-accent-faint:   #eef1f3;
+  --v2-accent-glow:    rgba(71, 85, 105, 0.20);
+
+  /* Interface neutra, mas o STATUS do job é informação — cores semânticas. */
+  --v2-status-ok:      #15803d;
+  --v2-status-running: #2563eb;
+  --v2-status-failed:  #dc2626;
+  --v2-status-hold:    #b45309;
+  --v2-status-waiting: #818a92;
+
+  --color-bg-deep:      #eceef0;
+  --color-bg-canvas:    #eceef0;
+  --color-bg-surface:   #f5f6f7;
+  --color-bg-elevated:  #ffffff;
+  --color-bg-hover:     #e3e6e9;
+  --color-border-subtle:#e1e4e7;
+  --color-border-medium:#ccd1d6;
+  --color-border-strong:#adb4bb;
+  --color-text-primary:  #1b1f24;
+  --color-text-secondary:#4c545c;
+  --color-text-muted:    #818a92;
+  --color-text-disabled: #b0b7bd;
+  --color-accent-brand:  #475569;
+  --color-accent-dark:   #e1e6ea;
+  --color-accent-deep:   #eef1f3;
+  --color-status-success: #15803d;
+  --color-status-running: #2563eb;
+  --color-status-failed:  #dc2626;
+  --color-status-waiting: #b45309;
+  --color-status-inactive:#818a92;
+}
+
 :root[data-theme="verde-amarelo"] {
   --v2-bg-canvas:     #04140a;
   --v2-bg-surface:    #06180c;
@@ -617,5 +840,19 @@
 }
 .code-btn-solid:hover:not(:disabled) {
   box-shadow: 0 0 0 1px var(--v2-accent-brand), 0 0 16px var(--v2-accent-glow);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Logo em temas CLAROS — o asset /logo-r.png é branco/transparente e
+   some sobre superfície clara. `.app-logo` marca só as ocorrências
+   sobre chrome tematizado (topbar e /portal); o login continua ESCURO
+   por design e usa o logo branco sem a classe, então não é afetado.
+   brightness(0) transforma o branco em silhueta escura, preservando o alfa.
+   ══════════════════════════════════════════════════════════════ */
+:root[data-theme="claro"] .app-logo,
+:root[data-theme="branco-azul"] .app-logo,
+:root[data-theme="sepia"] .app-logo,
+:root[data-theme="cinza-claro"] .app-logo {
+  filter: brightness(0);
 }
 

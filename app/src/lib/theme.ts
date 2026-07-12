@@ -7,7 +7,9 @@
  */
 
 export type ThemeId =
-  | "escuro" | "verde-amarelo" | "amarelo-ouro" | "verde-mata" | "rosa"
+  | "escuro"
+  | "claro" | "branco-azul" | "sepia" | "cinza-claro"
+  | "verde-amarelo" | "amarelo-ouro" | "verde-mata" | "rosa"
   | "azul-neon" | "azul-escuro" | "violeta" | "vermelho" | "laranja"
   | "cinza" | "bege-escuro" | "marrom";
 
@@ -26,6 +28,30 @@ export const THEMES: ThemeDef[] = [
     name: "Escuro",
     desc: "Padrão — preto e verde",
     flag: { field: "#0a0a0a", rhombus: "#11C76F", disc: "#064E2B" },
+  },
+  {
+    id: "claro",
+    name: "Claro",
+    desc: "Claro — fundo off-white e verde",
+    flag: { field: "#eef1f3", rhombus: "#047857", disc: "#b4bcc3" },
+  },
+  {
+    id: "branco-azul",
+    name: "Branco Azul",
+    desc: "Claro — branco e azul",
+    flag: { field: "#eef2f7", rhombus: "#2563eb", disc: "#aebccc" },
+  },
+  {
+    id: "sepia",
+    name: "Sépia",
+    desc: "Claro — papel quente e âmbar",
+    flag: { field: "#f1eadd", rhombus: "#9a5410", disc: "#bea77f" },
+  },
+  {
+    id: "cinza-claro",
+    name: "Cinza Claro",
+    desc: "Claro — cinza neutro, status coloridos",
+    flag: { field: "#eceef0", rhombus: "#475569", disc: "#adb4bb" },
   },
   {
     id: "verde-amarelo",

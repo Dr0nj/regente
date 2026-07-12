@@ -77,7 +77,7 @@ export default function PortalView() {
       <ToastHost />
       <div style={{ maxWidth: 720, margin: "0 auto" }}>
         <header style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 20 }}>
-          <img src="/logo-r.png" alt="" style={{ height: 28, width: "auto" }} />
+          <img className="app-logo" src="/logo-r.png" alt="" style={{ height: 28, width: "auto" }} />
           <h1 style={{ fontSize: 18, fontWeight: 600, letterSpacing: "-0.01em" }}>Portal self-service</h1>
           <span style={{ fontSize: 11, color: "var(--v2-text-muted, #64748b)" }}>
             {me ? `@${me.username}` : "modo local"}
