@@ -33,12 +33,18 @@ type instanceRow struct {
 	// derivada da definition viva, senão ligar dryRun no Design reescreveria cards
 	// de jobs já ordenados. Monitoring é imutável; só a próxima ordem reflete a def.
 	DryRun bool `json:"dryRun,omitempty"`
+	// HoldScope — origem do HOLD (schemaV14). "" = hold individual (liberável 1-a-1);
+	// "folder" = segurado por uma pausa de folder (D-2), só o resume da folder libera.
+	// O front usa isto para o cadeado (folder vs individual) e para bloquear o
+	// Release individual de um job segurado pela folder.
+	HoldScope string `json:"holdScope,omitempty"`
 }
 
 const instanceCols = `id, definition_id, COALESCE(team,''), order_date, status, scheduled_at,
 	started_at, finished_at,
 	COALESCE(agent_id,''), COALESCE(exit_code,0), COALESCE(output,''), COALESCE(forced,0),
-	COALESCE(carried_from,''), COALESCE(confirmed,0), COALESCE(cycle_runs,0), COALESCE(dry_run,0)`
+	COALESCE(carried_from,''), COALESCE(confirmed,0), COALESCE(cycle_runs,0), COALESCE(dry_run,0),
+	COALESCE(hold_scope,'')`
 
 // scanInstances materializa as linhas. CRÍTICO: propaga rows.Err() e qualquer
 // erro de Scan em vez de engolir e devolver lista PARCIAL. Um erro de leitura no
@@ -56,7 +62,7 @@ func scanInstances(rows *sql.Rows) ([]instanceRow, error) {
 			&ir.ID, &ir.DefinitionID, &ir.Team, &ir.OrderDate, &ir.Status, &ir.ScheduledAt,
 			&startedAt, &finishedAt,
 			&ir.AgentID, &ir.ExitCode, &ir.Output, &forcedInt,
-			&ir.CarriedFrom, &confirmedInt, &ir.CycleRuns, &dryRunInt,
+			&ir.CarriedFrom, &confirmedInt, &ir.CycleRuns, &dryRunInt, &ir.HoldScope,
 		); err != nil {
 			return nil, err
 		}
@@ -290,7 +296,24 @@ func (s *server) summaryInstances(w http.ResponseWriter, r *http.Request) {
 		}
 		rows.Close()
 	}
-	writeJSON(w, 200, map[string]any{"date": q.date, "total": total, "byStatus": byStatus, "byFolder": byFolder})
+	// pausedFolders — folders com pelo menos um job segurado por PAUSA DE FOLDER
+	// (status HELD + hold_scope='folder', schemaV14). Alimenta o cadeado da folder
+	// e o estado do botão pausar/retomar na sidebar do modo windowed (no modo local
+	// o front deriva isso do holdScope das próprias instances). [] se nenhuma.
+	pausedFolders := []string{}
+	if rows, err := s.cfg.DB.Query(
+		`SELECT DISTINCT team FROM instances WHERE `+where+` AND status=? AND hold_scope='folder'`,
+		append(args, string(domain.StatusHeld))...,
+	); err == nil {
+		for rows.Next() {
+			var t string
+			if rows.Scan(&t) == nil {
+				pausedFolders = append(pausedFolders, t)
+			}
+		}
+		rows.Close()
+	}
+	writeJSON(w, 200, map[string]any{"date": q.date, "total": total, "byStatus": byStatus, "byFolder": byFolder, "pausedFolders": pausedFolders})
 }
 
 func (s *server) holdInstance(w http.ResponseWriter, r *http.Request) {
@@ -298,14 +321,16 @@ func (s *server) holdInstance(w http.ResponseWriter, r *http.Request) {
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
-	_, err := s.cfg.DB.Exec(`UPDATE instances SET status=? WHERE id=? AND status=?`,
+	// Hold individual: hold_scope='' (liberável 1-a-1). Distinto da pausa de folder,
+	// que marca 'folder' e só sai no resume da folder (schemaV14).
+	_, err := s.cfg.DB.Exec(`UPDATE instances SET status=?, hold_scope='' WHERE id=? AND status=?`,
 		string(domain.StatusHeld), id, string(domain.StatusWaiting))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.cfg.Scheduler.EmitEvent(id, "held", "operator", "")
-	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusHeld)})
+	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]any{"id": id, "status": string(domain.StatusHeld), "holdScope": ""})
 	writeJSON(w, 200, map[string]string{"id": id, "status": string(domain.StatusHeld)})
 }
 
@@ -314,14 +339,29 @@ func (s *server) releaseInstance(w http.ResponseWriter, r *http.Request) {
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
-	_, err := s.cfg.DB.Exec(`UPDATE instances SET status=? WHERE id=? AND status=?`,
+	// Um job segurado por uma PAUSA DE FOLDER (hold_scope='folder') NÃO pode ser
+	// liberado individualmente — só o resume da folder inteira destrava (paridade
+	// Control-M "Hold folder" ⇒ "Release folder"). O Release individual só age em
+	// holds individuais (hold_scope=''). O front já esconde o botão nesse caso;
+	// este 409 é a rede de segurança do servidor (idempotente/atômico).
+	res, err := s.cfg.DB.Exec(`UPDATE instances SET status=? WHERE id=? AND status=? AND hold_scope=''`,
 		string(domain.StatusWaiting), id, string(domain.StatusHeld))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		// Nada liberado: ou já não estava em hold individual, ou está segurado pela
+		// folder. Distingue os dois pra dar um erro claro (o não-hold é idempotente).
+		var status, scope string
+		_ = s.cfg.DB.QueryRow(`SELECT status, COALESCE(hold_scope,'') FROM instances WHERE id=?`, id).Scan(&status, &scope)
+		if status == string(domain.StatusHeld) && scope == "folder" {
+			http.Error(w, "job segurado por uma pausa de folder — libere pela folder (Release folder), não individualmente", http.StatusConflict)
+			return
+		}
+	}
 	s.cfg.Scheduler.EmitEvent(id, "released", "operator", "")
-	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusWaiting)})
+	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]any{"id": id, "status": string(domain.StatusWaiting), "holdScope": ""})
 	writeJSON(w, 200, map[string]string{"id": id, "status": string(domain.StatusWaiting)})
 }
 

@@ -191,6 +191,72 @@ func TestFolderPauseResume_PreservesState(t *testing.T) {
 	}
 }
 
+// REGRA (schemaV14): um job segurado pela PAUSA DE FOLDER (hold_scope='folder')
+// não pode ser liberado individualmente (409); só o resume da folder o destrava.
+// Um hold individual (hold_scope='') é liberável 1-a-1 e SOBREVIVE ao resume da
+// folder — os dois escopos não se misturam.
+func TestFolderHold_BlocksIndividualRelease(t *testing.T) {
+	srv, d, _ := newDiffTestServer(t)
+	today := time.Now().Format("2006-01-02")
+	seedDiffInstance(t, d, "f-1", "PIX", today, "WAITING") // vira folder-held
+	seedDiffInstance(t, d, "f-2", "PIX", today, "WAITING") // hold individual antes da pausa
+
+	// hold individual em f-2 (fica HELD scope='')
+	if resp, _ := doJSON(t, srv, "POST", "/api/instances/f-2/hold", ""); resp.StatusCode != 200 {
+		t.Fatalf("hold individual deveria funcionar, veio %d", resp.StatusCode)
+	}
+	// pausa a folder: só f-1 (o WAITING) é afetado — f-2 já está HELD
+	if _, out := doJSON(t, srv, "POST", "/api/folders/PIX/pause", ""); int(out["affected"].(float64)) != 1 {
+		t.Fatalf("pause deveria segurar só f-1 (o WAITING), veio %+v", out)
+	}
+	var scope1, scope2 string
+	_ = d.QueryRow(`SELECT COALESCE(hold_scope,'') FROM instances WHERE id='f-1'`).Scan(&scope1)
+	_ = d.QueryRow(`SELECT COALESCE(hold_scope,'') FROM instances WHERE id='f-2'`).Scan(&scope2)
+	if scope1 != "folder" || scope2 != "" {
+		t.Fatalf("f-1 devia ser folder-held e f-2 individual, veio %q %q", scope1, scope2)
+	}
+
+	// Release individual no folder-held f-1 → 409 e continua HELD
+	resp, _ := doJSON(t, srv, "POST", "/api/instances/f-1/release", "")
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("release individual de folder-held deveria dar 409, veio %d", resp.StatusCode)
+	}
+	var st string
+	_ = d.QueryRow(`SELECT status FROM instances WHERE id='f-1'`).Scan(&st)
+	if st != "HELD" {
+		t.Fatalf("f-1 devia continuar HELD após o 409, veio %s", st)
+	}
+
+	// summary reporta PIX como paused enquanto houver folder-held
+	_, sum := doJSON(t, srv, "GET", "/api/instances/summary?date="+today, "")
+	paused, _ := sum["pausedFolders"].([]any)
+	if len(paused) != 1 || paused[0] != "PIX" {
+		t.Fatalf("summary devia listar PIX em pausedFolders, veio %+v", sum["pausedFolders"])
+	}
+
+	// resume da folder: destrava SÓ f-1 (folder); f-2 (individual) continua HELD
+	if _, out := doJSON(t, srv, "POST", "/api/folders/PIX/resume", ""); int(out["affected"].(float64)) != 1 {
+		t.Fatalf("resume deveria destravar só f-1, veio %+v", out)
+	}
+	_ = d.QueryRow(`SELECT status FROM instances WHERE id='f-1'`).Scan(&st)
+	if st != "WAITING" {
+		t.Fatalf("f-1 devia voltar WAITING após resume, veio %s", st)
+	}
+	_ = d.QueryRow(`SELECT status FROM instances WHERE id='f-2'`).Scan(&st)
+	if st != "HELD" {
+		t.Fatalf("f-2 (hold individual) devia sobreviver ao resume da folder, veio %s", st)
+	}
+	// agora o Release individual de f-2 funciona (scope '')
+	if resp, _ := doJSON(t, srv, "POST", "/api/instances/f-2/release", ""); resp.StatusCode != 200 {
+		t.Fatalf("release individual de hold individual deveria funcionar, veio %d", resp.StatusCode)
+	}
+	// e a folder some do pausedFolders
+	_, sum = doJSON(t, srv, "GET", "/api/instances/summary?date="+today, "")
+	if paused, _ := sum["pausedFolders"].([]any); len(paused) != 0 {
+		t.Fatalf("sem folder-held, pausedFolders devia ser vazio, veio %+v", sum["pausedFolders"])
+	}
+}
+
 // ─── D-11 chaos inject ──────────────────────────────────────────────────────
 
 // REGRA: inject-failure derruba WAITING/RUNNING pelo fluxo REAL (evento chaos +

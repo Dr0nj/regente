@@ -259,6 +259,11 @@ export interface JobInstance {
   confirmed?: boolean;
   /** Cyclic runtime: voltas OK completadas neste dia (job cyclic). */
   cycleRuns?: number;
+  /** Origem do HOLD (server schemaV14). "" / ausente = hold individual (liberável
+   *  1-a-1); "folder" = segurado por uma pausa de folder (só o resume da folder
+   *  libera). Vale só quando status==="HOLD"; guia o cadeado e bloqueia o Release
+   *  individual de um job segurado pela folder. */
+  holdScope?: string;
 }
 
 /* ── Order Date Helper ── */

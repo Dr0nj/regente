@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Lock } from "lucide-react";
 import type { JobNodeData } from "@/lib/job-config";
 import { useResizablePanel, ResizeHandle } from "./resizable";
 import { api, onServerEvent, isServerMode } from "@/lib/server-client";
@@ -32,6 +33,10 @@ export interface MonitoringJob {
   status: JobNodeData["status"];
   durationMs?: number;
   startedAt?: string;
+  /** Origem do HOLD (schemaV14): undefined = não está em hold; "folder" =
+   *  segurado por uma pausa de folder (cadeado da folder, sem release individual);
+   *  "self" = hold individual do operador (cadeado próprio, liberável 1-a-1). */
+  holdScope?: "folder" | "self";
 }
 
 type StatusFilter = "ALL" | "RUNNING" | "FAILED" | "SUCCESS" | "WAITING";
@@ -77,6 +82,12 @@ function fmtInt(n: number): string {
   return n.toLocaleString("pt-BR");
 }
 
+// Cadeado do hold (schemaV14): AMBAR = segurado pela folder inteira (pausa D-2,
+// sem release individual); VIOLETA = hold individual do operador (liberável 1-a-1).
+// Mesma convenção no card do canvas (JobNodeV2) pra leitura consistente.
+const HOLD_FOLDER_COLOR = "#f59e0b";
+const HOLD_SELF_COLOR = "#c4b5fd";
+
 // D-2 — botões ⏸/▶ do header da folder (discretos; idempotentes no server).
 const folderActionBtn: CSSProperties = {
   background: "transparent",
@@ -98,6 +109,9 @@ interface DaySummary {
   total: number;
   byStatus: Record<string, number>;
   byFolder: Record<string, number>;
+  /** Folders com ≥1 job segurado por pausa de folder (D-2/schemaV14) — cadeado
+   *  da folder + estado do botão pausar/retomar no modo windowed. */
+  pausedFolders?: string[];
 }
 interface PageInstance {
   id: string;
@@ -106,6 +120,7 @@ interface PageInstance {
   status: string;
   startedAt?: string;
   finishedAt?: string;
+  holdScope?: string;
 }
 
 function pageToJob(p: PageInstance, folder: string, labelFor?: (defId: string) => string | undefined): MonitoringJob {
@@ -114,16 +129,19 @@ function pageToJob(p: PageInstance, folder: string, labelFor?: (defId: string) =
   const durationMs = Number.isFinite(started)
     ? (Number.isFinite(finished) ? finished - started : Date.now() - started)
     : undefined;
+  const upper = p.status?.toUpperCase();
+  const held = upper === "HELD" || upper === "HOLD";
   return {
     id: p.id,
     label: labelFor?.(p.definitionId) ?? p.definitionId,
     team: p.team || folder,
     jobType: "" as JobNodeData["jobType"],
-    status: SERVER_STATUS_TO_UI[p.status?.toUpperCase()] ?? "WAITING",
+    status: SERVER_STATUS_TO_UI[upper] ?? "WAITING",
     durationMs,
     startedAt: Number.isFinite(started)
       ? new Date(started).toLocaleTimeString("en-GB", { hour12: false }).slice(0, 5)
       : undefined,
+    holdScope: held ? (p.holdScope === "folder" ? "folder" : "self") : undefined,
   };
 }
 
@@ -376,6 +394,21 @@ export default function MonitoringSidebarV2({
       .map(([name, arr]) => ({ name, count: arr.length, local: arr }));
   }, [windowed, win.scoped, win.viewSummary, win.summary, filtered, visibleFolders]);
 
+  // Folders em PAUSA DE FOLDER (D-2/schemaV14): têm ≥1 job segurado pela folder.
+  // Windowed → vem do summary (pausedFolders); local → deriva do holdScope das
+  // linhas do grupo. Guia o cadeado da folder e o estado do botão pausar/retomar.
+  const pausedFolders = useMemo(() => {
+    const s = new Set<string>();
+    if (windowed) {
+      for (const f of win.summary?.pausedFolders ?? []) s.add((f || "—").trim() || "—");
+    } else {
+      for (const g of groups) {
+        if (g.local?.some((j) => j.holdScope === "folder")) s.add(g.name);
+      }
+    }
+    return s;
+  }, [windowed, win.summary, groups]);
+
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const toggleFolder = (name: string) => {
     setCollapsed((prev) => {
@@ -440,6 +473,7 @@ export default function MonitoringSidebarV2({
     groups.forEach((g, gi) => {
       const gTop = groupTops[gi];
       const isCollapsed = collapsed.has(g.name);
+      const paused = pausedFolders.has(g.name); // folder em PAUSA DE FOLDER (cadeado)
       const gH = HEADER_H + (isCollapsed ? 0 : g.count * ROW_H);
       if (gTop + gH < winTop || gTop > winBot) return;
 
@@ -455,6 +489,9 @@ export default function MonitoringSidebarV2({
               background: "var(--v2-bg-elevated)",
               borderTop: "1px solid var(--v2-border-subtle)",
               borderBottom: "1px solid var(--v2-border-subtle)",
+              // Folder pausada: faixa âmbar à esquerda pra sinalizar o hold da folder
+              // inteira (mesma tinta do cadeado dos jobs segurados por ela).
+              borderLeft: paused ? `2px solid ${HOLD_FOLDER_COLOR}` : "2px solid transparent",
               cursor: "pointer", userSelect: "none",
               boxSizing: "border-box",
             }}
@@ -470,10 +507,19 @@ export default function MonitoringSidebarV2({
                 display: "inline-block",
               }}
             >▾</span>
+            {paused && (
+              <span
+                title={`Folder em HOLD — pausada (${g.name}). Os jobs segurados por ela só liberam pelo ▶ Retomar da folder inteira, não individualmente.`}
+                style={{ display: "inline-flex", flexShrink: 0 }}
+              >
+                <Lock size={11} strokeWidth={2.5} color={HOLD_FOLDER_COLOR} />
+              </span>
+            )}
             <span
               style={{
                 flex: 1, fontSize: 10, fontFamily: "var(--v2-font-mono)",
-                letterSpacing: "0.08em", color: "var(--v2-text-primary)",
+                letterSpacing: "0.08em",
+                color: paused ? HOLD_FOLDER_COLOR : "var(--v2-text-primary)",
                 textTransform: "uppercase", fontWeight: 600,
                 whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
               }}
@@ -483,14 +529,22 @@ export default function MonitoringSidebarV2({
             {onPauseFolder && onResumeFolder && (
               <span style={{ display: "inline-flex", gap: 2 }} onClick={(e) => e.stopPropagation()}>
                 <button
-                  title={`Pausar workflow: segura os WAITING de ${g.name} (estado preservado)`}
+                  title={paused
+                    ? `Folder ${g.name} já está pausada — segura também qualquer WAITING novo`
+                    : `Pausar folder: segura os WAITING de ${g.name} em hold (estado preservado)`}
                   onClick={() => onPauseFolder(g.name)}
-                  style={folderActionBtn}
+                  style={paused
+                    ? { ...folderActionBtn, color: HOLD_FOLDER_COLOR, borderColor: HOLD_FOLDER_COLOR, background: "rgba(245,158,11,0.12)" }
+                    : folderActionBtn}
                 >⏸</button>
                 <button
-                  title={`Retomar workflow: libera os HELD de ${g.name}`}
+                  title={paused
+                    ? `Retomar folder: libera TODOS os jobs segurados pela pausa de ${g.name}`
+                    : `Retomar folder: libera os jobs segurados pela pausa de ${g.name}`}
                   onClick={() => onResumeFolder(g.name)}
-                  style={folderActionBtn}
+                  style={paused
+                    ? { ...folderActionBtn, color: "var(--v2-status-ok)", borderColor: "var(--v2-status-ok)" }
+                    : folderActionBtn}
                 >▶</button>
               </span>
             )}
@@ -562,6 +616,20 @@ export default function MonitoringSidebarV2({
                 animation: j.status === "RUNNING" ? "v2-dot-pulse 1.2s ease-in-out infinite" : "none",
               }}
             />
+            {j.holdScope && (
+              <span
+                title={j.holdScope === "folder"
+                  ? `Em HOLD pela pausa da folder ${j.team} — só libera pelo ▶ Retomar da folder inteira`
+                  : "Em HOLD individual — botão direito no card → Release"}
+                style={{ display: "inline-flex", flexShrink: 0, marginLeft: -2 }}
+              >
+                <Lock
+                  size={11}
+                  strokeWidth={2.5}
+                  color={j.holdScope === "folder" ? HOLD_FOLDER_COLOR : HOLD_SELF_COLOR}
+                />
+              </span>
+            )}
             <span
               style={{
                 flex: 1, color: "var(--v2-text-primary)",

@@ -81,13 +81,16 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
         transition: "box-shadow 120ms ease, border-color 120ms ease",
       }}
     >
-      {/* HOLD manual — cadeado sobreposto no canto superior esquerdo, fundo
-          transparente. HOLD colapsa para INACTIVE na cor de status (igual a
-          CANCELLED); o cadeado é o que diferencia "segurado por operador" de
-          "ocioso/cancelado". */}
+      {/* HOLD — cadeado sobreposto no canto superior esquerdo, fundo transparente.
+          HOLD colapsa para INACTIVE na cor de status (igual a CANCELLED); o cadeado
+          é o que diferencia "segurado" de "ocioso/cancelado". Tinta ÂMBAR quando o
+          hold veio de uma PAUSA DE FOLDER (não liberável 1-a-1, só pelo resume da
+          folder); VIOLETA quando é um hold individual do operador. */}
       {data.held && (
         <div
-          title="Em HOLD — segurado manualmente por um operador; não roda até um Release"
+          title={data.folderHeld
+            ? "Em HOLD pela pausa da folder — só libera pelo Retomar da folder inteira, não individualmente"
+            : "Em HOLD — segurado manualmente por um operador; não roda até um Release"}
           style={{
             position: "absolute",
             top: 3,
@@ -97,7 +100,7 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
             pointerEvents: "none",
           }}
         >
-          <Lock size={11} strokeWidth={2.5} color="#c4b5fd" />
+          <Lock size={11} strokeWidth={2.5} color={data.folderHeld ? "#f59e0b" : "#c4b5fd"} />
         </div>
       )}
       {/* Status bar — 2px colorida à esquerda, não gradiente */}

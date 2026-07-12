@@ -31,6 +31,7 @@ interface ServerInstance {
   confirmed?: boolean;
   cycleRuns?: number;
   dryRun?: boolean;
+  holdScope?: string;
 }
 
 function parseTime(s?: string): number | undefined {
@@ -79,6 +80,9 @@ function toWeb(s: ServerInstance): JobInstance {
     // viva. Assim, ligar dryRun no Design + publicar NÃO reescreve cards de jobs
     // já ordenados — o Monitoring só muda na próxima ordem (daily/force/manual).
     dryRun: s.dryRun,
+    // Origem do HOLD (schemaV14): "folder" = segurado por uma pausa de folder
+    // (não liberável 1-a-1); "" / ausente = hold individual. Snapshot da instância.
+    holdScope: s.holdScope,
     output: {
       text: s.output ?? "",
       exitCode: s.exitCode ?? 0,
@@ -137,6 +141,9 @@ function upsertFromEvent(payload: unknown): void {
       const next: JobInstance = {
         ...existing,
         status: STATUS_MAP[String(p.status).toUpperCase()] ?? existing.status,
+        // hold/release parciais carregam holdScope (schemaV14) — aplica na hora
+        // pro cadeado (folder vs individual) refletir antes do refresh de cauda.
+        ...(p.holdScope !== undefined ? { holdScope: p.holdScope } : {}),
       };
       cache.set(p.id, next);
       notify();
@@ -275,6 +282,12 @@ function ensureWs(): void {
     switch (ev.event) {
       case "instance.changed":
         upsertFromEvent(ev.payload);
+        break;
+      // Ações em massa (D-2 pausa/resume de folder): o payload é um resumo
+      // {action, folder, total}, não instances — refresh full pra o mirror pegar
+      // os novos status/hold_scope (senão o cadeado da folder só aparecia no F5).
+      case "instance.bulk":
+        refresh().catch((err) => console.warn("[server-instances] bulk refresh failed", err));
         break;
       case "instance.deleted": {
         const p = ev.payload as { id?: string } | undefined;

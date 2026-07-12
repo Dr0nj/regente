@@ -88,6 +88,8 @@ interface ActionButton {
   onClick: () => void;
   tone: "neutral" | "danger" | "primary";
   show: boolean;
+  disabled?: boolean;
+  title?: string;
 }
 
 /* ── Abas ── */
@@ -139,7 +141,15 @@ export default function InstanceDetailsDrawer({
 
   const actions: ActionButton[] = ([
     { label: "Hold",    onClick: () => handlers.onHold(instance.id),    tone: "neutral" as const, show: status === "WAITING" },
-    { label: "Release", onClick: () => handlers.onRelease(instance.id), tone: "primary" as const, show: status === "HOLD" },
+    // Job segurado por uma PAUSA DE FOLDER (schemaV14) não pode ser liberado
+    // individualmente — só o Retomar da folder destrava. Botão desabilitado
+    // apontando o caminho certo (o server também barra com 409).
+    { label: instance.holdScope === "folder" ? "Release (folder)" : "Release",
+      onClick: () => handlers.onRelease(instance.id), tone: "primary" as const, show: status === "HOLD",
+      disabled: instance.holdScope === "folder",
+      title: instance.holdScope === "folder"
+        ? "Segurado pela pausa da folder — libere pela folder (▶ Retomar na sidebar), não individualmente"
+        : undefined },
     { label: "Cancel",  onClick: () => handlers.onCancel(instance.id),  tone: "danger"  as const, show: status === "WAITING" || status === "HOLD" },
     { label: "Skip",    onClick: () => handlers.onSkip(instance.id),    tone: "neutral" as const, show: status === "WAITING" || status === "HOLD" },
     { label: "Set OK", onClick: () => handlers.onBypass(instance.id), tone: "primary" as const, show: status === "NOTOK" || status === "CANCELLED" },
@@ -291,29 +301,38 @@ export default function InstanceDetailsDrawer({
           {actions.map((a) => (
             <button
               key={a.label}
-              onClick={a.onClick}
+              onClick={a.disabled ? undefined : a.onClick}
+              disabled={a.disabled}
+              title={a.title}
               style={{
                 padding: "5px 10px",
                 fontSize: 10,
                 fontFamily: "var(--v2-font-mono)",
                 letterSpacing: "0.06em",
                 textTransform: "uppercase",
-                cursor: "pointer",
+                cursor: a.disabled ? "not-allowed" : "pointer",
+                opacity: a.disabled ? 0.5 : 1,
                 border: `1px solid ${
-                  a.tone === "primary"
+                  a.disabled
+                    ? "var(--v2-border-medium)"
+                    : a.tone === "primary"
                     ? "var(--v2-accent-brand)"
                     : a.tone === "danger"
                     ? "var(--v2-status-failed)"
                     : "var(--v2-border-medium)"
                 }`,
                 background:
-                  a.tone === "primary"
+                  a.disabled
+                    ? "var(--v2-bg-elevated)"
+                    : a.tone === "primary"
                     ? "var(--v2-accent-deep)"
                     : a.tone === "danger"
                     ? "rgba(239,68,68,0.08)"
                     : "var(--v2-bg-elevated)",
                 color:
-                  a.tone === "primary"
+                  a.disabled
+                    ? "var(--v2-text-muted)"
+                    : a.tone === "primary"
                     ? "var(--v2-accent-brand)"
                     : a.tone === "danger"
                     ? "var(--v2-status-failed)"

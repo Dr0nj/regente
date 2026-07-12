@@ -116,6 +116,11 @@ export function instanceToMonitoring(inst: JobInstance): MonitoringJob {
     status: INSTANCE_TO_UI_STATUS[inst.status],
     durationMs: inst.durationMs ?? (inst.startedAt ? Date.now() - inst.startedAt : undefined),
     startedAt: inst.startedAt ? fmtHm(inst.startedAt) : undefined,
+    // Cadeado da sidebar: HOLD por pausa de folder ("folder") vs hold individual
+    // ("self"). Só quando em HOLD — INACTIVE também cobre CANCELLED (sem cadeado).
+    holdScope: inst.status === "HOLD"
+      ? (inst.holdScope === "folder" ? "folder" : "self")
+      : undefined,
   };
 }
 
@@ -539,9 +544,12 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
         // materializados em tempo real (o "ghost fantasma"). O snapshot vem do
         // server (coluna dry_run, schemaV9) e do createInstance no path local.
         dryRun: !!inst.dryRun,
-        // HOLD manual (operador): colapsa para INACTIVE na cor, então o card
-        // sinaliza com um cadeado sobreposto — snapshot da própria instância.
+        // HOLD (operador ou pausa de folder): colapsa para INACTIVE na cor, então
+        // o card sinaliza com um cadeado sobreposto — snapshot da própria instância.
         held: inst.status === "HOLD",
+        // Cadeado âmbar (vs violeta do hold individual) quando o HOLD veio de uma
+        // pausa de folder — não liberável 1-a-1, só pelo resume da folder.
+        folderHeld: inst.status === "HOLD" && inst.holdScope === "folder",
         waitEvent: waitingOnDeps.has(inst.id),
         // WAIT AGENT (azul claro): WAITING sem bloqueio de dependência e sem
         // agente online capaz de executar. Só deriva quando a lista de agentes

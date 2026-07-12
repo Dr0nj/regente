@@ -43,8 +43,18 @@ func (s *server) folderPauseResume(w http.ResponseWriter, r *http.Request, pause
 		date = s.cfg.Scheduler.TodayDate()
 	}
 	from, to, kind, msg := string(domain.StatusWaiting), string(domain.StatusHeld), "paused", "workflow pause (folder "+folder+")"
+	// hold_scope separa a PAUSA DE FOLDER (D-2) de um hold individual: só a folder
+	// segura marca 'folder', e o resume só destrava o que a folder segurou —
+	// holds individuais (scope '') sobrevivem ao resume da folder. Simétrico ao
+	// Control-M "Hold folder" ⇒ "Release folder" (schemaV14).
+	//   - PAUSA:  ...status=WAITING              → status=HELD,     hold_scope='folder'
+	//   - RESUME: ...status=HELD AND scope=folder → status=WAITING, hold_scope=''
+	fromScopeClause := "" // filtro extra por hold_scope no WHERE (só no resume)
+	setScope := "'folder'"
 	if !pause {
 		from, to, kind, msg = string(domain.StatusHeld), string(domain.StatusWaiting), "resumed", "workflow resume (folder "+folder+")"
+		fromScopeClause = " AND hold_scope=?"
+		setScope = "''"
 	}
 	actor := actorFromCtx(r)
 
@@ -55,18 +65,26 @@ func (s *server) folderPauseResume(w http.ResponseWriter, r *http.Request, pause
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	evtArgs := []any{kind, actor, msg, folder, date, from}
+	if !pause {
+		evtArgs = append(evtArgs, "folder") // resume: só os segurados pela folder
+	}
 	if _, err := tx.Exec(
 		`INSERT INTO instance_events(instance_id, kind, actor, message)
-		 SELECT id, ?, ?, ? FROM instances WHERE team=? AND order_date=? AND status=?`,
-		kind, actor, msg, folder, date, from,
+		 SELECT id, ?, ?, ? FROM instances WHERE team=? AND order_date=? AND status=?`+fromScopeClause,
+		evtArgs...,
 	); err != nil {
 		_ = tx.Rollback()
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	updArgs := []any{to, folder, date, from}
+	if !pause {
+		updArgs = append(updArgs, "folder")
+	}
 	res, err := tx.Exec(
-		`UPDATE instances SET status=? WHERE team=? AND order_date=? AND status=?`,
-		to, folder, date, from,
+		`UPDATE instances SET status=?, hold_scope=`+setScope+` WHERE team=? AND order_date=? AND status=?`+fromScopeClause,
+		updArgs...,
 	)
 	if err != nil {
 		_ = tx.Rollback()

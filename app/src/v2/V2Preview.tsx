@@ -936,13 +936,16 @@ function V2PreviewInner() {
   // MESMO job — não cria uma nova ordem. Agente indisponível e Confirm NÃO são
   // bypassados (o tick segura até resolver).
   const handleRunNowInstance = useCallback((instanceId: string) => {
+    // Só seleciona (highlight) — NÃO mexe na câmera. Run Now age sobre um job que
+    // já está no board; reenquadrar dava um "pulo" a cada Run Now, ao contrário
+    // de Hold/Release/Cancel/Confirm que não movem a câmera. A câmera é do usuário
+    // (só drag/wheel/sidebar-click/Organizar movem) — Run Now agora segue a regra.
     setSelectedInstanceId(instanceId);
-    setPendingFocusId(instanceId);
     Promise.resolve(forceRunInstance(instanceId)).catch((err) => {
       console.error("[run-now] failed", err);
       toast.error("Run Now falhou", { detail: err?.message ?? String(err) });
     });
-  }, [setPendingFocusId]);
+  }, []);
 
   /* ── Context menu (right-click no canvas) ── */
   const onNodeContextMenu = useCallback(
@@ -1005,7 +1008,27 @@ function V2PreviewInner() {
         items.push({ label: "Hold",   onClick: () => { void holdInstance(inst.id); } });
       }
       if (status === "HOLD") {
-        items.push({ label: "Release", tone: "primary", onClick: () => { void releaseInstance(inst.id); } });
+        // Job segurado por uma PAUSA DE FOLDER (schemaV14): não pode ser liberado
+        // individualmente — só o ▶ Retomar da folder destrava (paridade Control-M).
+        // Mostra o item desabilitado apontando o caminho certo em vez de sumir com
+        // ele (o server também barra com 409, mas o front nem deixa tentar).
+        if (inst.holdScope === "folder") {
+          items.push({
+            label: "Release (segurado pela folder)",
+            disabled: true,
+            onClick: () => {},
+          });
+        } else {
+          items.push({
+            label: "Release",
+            tone: "primary",
+            onClick: () => {
+              Promise.resolve(releaseInstance(inst.id)).catch((err) => {
+                toast.error("Release falhou", { detail: err instanceof Error ? err.message : String(err) });
+              });
+            },
+          });
+        }
       }
       if (status === "WAITING" || status === "HOLD") {
         items.push({ label: "Cancel", tone: "danger", onClick: () => { void cancelInstance(inst.id); } });

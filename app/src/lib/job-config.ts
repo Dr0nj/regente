@@ -173,6 +173,13 @@ export interface JobNodeData {
    */
   held?: boolean;
   /**
+   * HOLD veio de uma PAUSA DE FOLDER (D-2/schemaV14), não de um hold individual.
+   * Muda a tinta do cadeado (âmbar = folder, violeta = individual) e o texto do
+   * tooltip; não pode ser liberado individualmente — só o resume da folder. Só
+   * relevante quando `held` é true.
+   */
+  folderHeld?: boolean;
+  /**
    * WAITING preso no gate Control-M "Wait for confirmation": a definition exige
    * confirm e a instância ainda NÃO foi confirmada pelo operador. O card fica
    * todo violeta com a tag CONFIRM; confirmar (botão direito → Confirmar, ou o

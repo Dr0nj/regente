@@ -482,6 +482,7 @@ var sqliteMigrations = []migration{
 	{version: 11, sql: schemaV11(sqliteID, "DATETIME")},
 	{version: 12, sql: schemaV12("DATETIME")},
 	{version: 13, sql: schemaV13(sqliteID, "DATETIME")},
+	{version: 14, sql: schemaV14()},
 }
 
 var pgMigrations = []migration{
@@ -498,6 +499,7 @@ var pgMigrations = []migration{
 	{version: 11, sql: schemaV11(pgID, "TIMESTAMPTZ")},
 	{version: 12, sql: schemaV12("TIMESTAMPTZ")},
 	{version: 13, sql: schemaV13(pgID, "TIMESTAMPTZ")},
+	{version: 14, sql: schemaV14()},
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
@@ -675,4 +677,21 @@ CREATE TABLE IF NOT EXISTS job_templates (
 	created_by  TEXT NOT NULL DEFAULT '',
 	created_at  ` + ts + ` DEFAULT CURRENT_TIMESTAMP
 )`
+}
+
+// schemaV14 — hold_scope: ORIGEM do HOLD, para separar "pausa de folder" (D-2) de
+// um hold individual de operador. Ambos usam o MESMO status HELD; só o escopo
+// diferencia quem pode liberar:
+//   - ''       = hold individual (ou instância não-HELD): pode ser liberado 1-a-1
+//                pelo Release do operador.
+//   - 'folder' = segurado por uma PAUSA DE FOLDER (POST /folders/{name}/pause):
+//                não pode ser liberado individualmente — só o resume da folder
+//                inteira destrava (Control-M "Hold folder" ⇒ "Release folder").
+//
+// Sinaliza na UI: o cadeado do card/linha muda de tinta (folder vs individual) e
+// a própria folder ganha um cadeado quando tem qualquer job em hold de folder.
+// ALTER idêntico em SQLite e Postgres; instances antigas ficam com '' (hold
+// legado conta como individual — comportamento anterior preservado).
+func schemaV14() string {
+	return `ALTER TABLE instances ADD COLUMN hold_scope TEXT NOT NULL DEFAULT ''`
 }
