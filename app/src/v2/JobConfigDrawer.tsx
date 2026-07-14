@@ -10,6 +10,7 @@ import { ErrorDialog } from "./ErrorDialog";
 import { getGitInfo, definitionFileUrl } from "@/lib/git-info";
 import { listCalendars, type Calendar } from "@/lib/bloco2-api";
 import { listAgents, type AgentInfo } from "@/lib/agents-api";
+import { jobTypeFieldIndex, pruneConfigForType } from "@/lib/jobtypes-api";
 import { saveTemplate } from "@/lib/differentials-api";
 import { isServerMode } from "@/lib/server-client";
 import { toast } from "./Toast";
@@ -87,6 +88,8 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   const [validationErr, setValidationErr] = useState<string | null>(null);
   const [githubUrl, setGithubUrl] = useState<string | null>(null);
   const [calendarDefs, setCalendarDefs] = useState<Calendar[]>([]);
+  // Schema por tipo (ADV-1) — usado pra podar params órfãos quando o tipo muda.
+  const [typeFieldIdx, setTypeFieldIdx] = useState<Map<string, Set<string>> | null>(null);
 
   useEffect(() => {
     setTab("general");
@@ -127,19 +130,26 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     let cancel = false;
     void listCalendars().then((cs) => { if (!cancel) setCalendarDefs(cs); }).catch(() => {});
     void listAgents().then((a) => { if (!cancel) setAgents(a); }).catch(() => {});
+    void jobTypeFieldIndex().then((m) => { if (!cancel) setTypeFieldIdx(m); }).catch(() => {});
     return () => { cancel = true; };
   }, []);
 
   // buildDef — a definition como está no formulário (usada pelo Save e pelo
   // Salvar-como-template, D-13).
   function buildDef(): JobDefinition {
+    // Poda params que o jobType escolhido NÃO aceita: trocar o tipo deixava as
+    // chaves do tipo antigo no actionConfig (scriptPath num COMMAND) e o server
+    // rejeitava até o DRAFT ("campo desconhecido") — o job ficava preso no tipo
+    // antigo. Chaves compartilhadas (cwd, command, …) e meta `_*` sobrevivem;
+    // tipo desconhecido pelo catálogo segue com params livres.
+    const prunedConfig = pruneConfigForType(typeFieldIdx, jobType, actionConfig);
     return {
       ...definition,
       id: id.trim(), label: label.trim(), jobType, team: team.trim(),
       schedule: { ...schedule, enabled: schedule.enabled ?? true },
       retries, timeout, dryRun, confirm: confirmReq || undefined,
       // _agentId é o canal que o ServerApiAdapter usa p/ mapear actionConfig→agentId.
-      actionConfig: { ...actionConfig, _agentId: agentId.trim() || undefined },
+      actionConfig: { ...prunedConfig, _agentId: agentId.trim() || undefined },
       calendars: calendars.length ? calendars : undefined,
       actions: actions.length ? actions : undefined,
       upstream: upstream.length ? upstream : undefined,
