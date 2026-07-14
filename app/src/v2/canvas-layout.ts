@@ -284,6 +284,11 @@ function makeEdge(
     source,
     target,
     label,
+    // Entre a lane (zIndex 0) e os cards (zIndex 10): o fundo da folder é
+    // SÓLIDO (LaneLabelNode compõe sobre --v2-bg-canvas pros dots não vazarem)
+    // e a camada default de edges fica ABAIXO dos nós — sem elevar, o retângulo
+    // opaco da folder engole todas as linhas de dependência.
+    zIndex: 5,
     data: { condition, state },
     style: {
       stroke: s.stroke,
