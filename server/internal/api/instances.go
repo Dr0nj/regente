@@ -416,6 +416,10 @@ func (s *server) cancelInstance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// Consumo só se materializa no OK: o cancelado devolve os eventos que
+	// clamou (um clone pendente ou rerun pode usá-los). Cancel do PAI segue
+	// sem tocar claim de ninguém — isto aqui é o claim DELE como consumidor.
+	s.cfg.Scheduler.ResetDepClaims(id)
 	s.cfg.Scheduler.EmitEvent(id, "cancelled", "operator", "manual cancel")
 	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusCancelled)})
 	writeJSON(w, 200, map[string]string{"id": id, "status": string(domain.StatusCancelled)})

@@ -205,6 +205,42 @@ func TestDepEvents_RerunConsumerResetsAndReclaims(t *testing.T) {
 	}
 }
 
+// Falha NÃO consome (regra do usuário): o término NOTOK terminal DEVOLVE o
+// evento pro pool — um clone pendente pode usá-lo sem rerun do pai. E o
+// backfill de consumo histórico não pode entregar o evento de volta ao falho.
+func TestDepEvents_NotOKReleasesEventBackToPool(t *testing.T) {
+	s := newTestScheduler(t)
+	today := time.Now().Format("2006-01-02")
+	defA, defB := depDefs()
+
+	seedInst(t, s, "A-1", today, string(domain.StatusOK), defA)
+	// B-1 partiu consumindo o evento de A (como o pré-passe do tick faria).
+	seedInst(t, s, "B-1", today, string(domain.StatusRunning), defB)
+	if !s.tryClaimEdge("B-1", "B", "A", today, domain.CondOnSuccess) {
+		t.Fatal("B-1 deveria clamar o evento de A")
+	}
+
+	// B-1 falha TERMINAL (Retries=0) → o evento volta pro pool.
+	s.FinishInstance("B-1", domain.StatusNotOK, 1, "boom")
+	if n := depClaimCount(t, s, "B-1"); n != 0 {
+		t.Fatalf("NOTOK terminal deveria devolver o evento (claims=0), tem %d", n)
+	}
+
+	// Clone forçado pendente consome o evento devolvido e roda — SEM rerun de A.
+	seedInst(t, s, "B-2", today, string(domain.StatusWaiting), defB)
+	_, _ = s.db.Exec(`UPDATE instances SET forced=1, force_mode=? WHERE id=?`, ForceModeOrder, "B-2")
+	if st := waitStatus(t, s, "B-2", string(domain.StatusRunning), string(domain.StatusOK)); st != string(domain.StatusRunning) && st != string(domain.StatusOK) {
+		t.Fatalf("clone deveria clamar o evento devolvido pela falha e rodar, está %s", st)
+	}
+	if n := depClaimCount(t, s, "B-2"); n != 1 {
+		t.Fatalf("clone deveria deter o claim do evento devolvido, tem %d", n)
+	}
+	// Backfill histórico não devolve nada ao B-1 falho (NOTOK não consome).
+	if n := depClaimCount(t, s, "B-1"); n != 0 {
+		t.Fatalf("B-1 (NOTOK) não pode reconsumir via backfill: claims deveriam ser 0, tem %d", n)
+	}
+}
+
 // Set OK do pai emite evento consumível (destrava on-success a partir de pai falho)
 // — e o NOTOK terminal do pai emite evento pra arestas on-failure.
 func TestDepEvents_SetOKAndOnFailure(t *testing.T) {

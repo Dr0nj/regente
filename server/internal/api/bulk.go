@@ -167,6 +167,8 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 		if n, _ := res.RowsAffected(); n == 0 {
 			return "", fmt.Errorf("instance not found")
 		}
+		// schemaV15 — cancelado devolve os eventos clamados (ver cancelInstance).
+		s.cfg.Scheduler.ResetDepClaims(id)
 		s.cfg.Scheduler.EmitEvent(id, "cancelled", actor, "bulk cancel")
 		s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusCancelled)})
 		return string(domain.StatusCancelled), nil

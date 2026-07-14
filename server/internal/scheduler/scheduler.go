@@ -1350,6 +1350,14 @@ func (s *Scheduler) FinishInstance(id string, status domain.InstanceStatus, exit
 	if status == domain.StatusOK || status == domain.StatusNotOK {
 		s.emitDepEvent(id, status)
 	}
+	// Consumo só se MATERIALIZA no OK (regra do usuário): a falha terminal
+	// DEVOLVE os eventos que esta instance clamou — a condição não foi "gasta"
+	// por uma execução que não deu certo. Um clone pendente (ou o rerun deste
+	// próprio job) pode re-clamar o evento devolvido. Durante os retries (P15,
+	// return antecipado acima) o claim segue seguro — ninguém rouba no meio.
+	if status == domain.StatusNotOK {
+		s.ResetDepClaims(id)
+	}
 	// F15 — release resources holdings
 	if s.resources != nil {
 		s.resources.Release(id)

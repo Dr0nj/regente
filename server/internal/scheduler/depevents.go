@@ -8,6 +8,10 @@
 //     sobre um evento livre: dep_claims. Uma vez clamado, o latch NUNCA é
 //     desfeito por rerun/cancel do PAI — a "linha verde" do Monitoring é a
 //     história daquela instance, não o estado vivo do upstream.
+//   - O consumo só se MATERIALIZA quando o consumidor termina OK. Se o
+//     consumidor FALHA (NOTOK terminal) ou é CANCELADO, os eventos que ele
+//     clamou VOLTAM pro pool (a condição não foi gasta por uma execução que
+//     não aconteceu de verdade) — um clone pendente ou o rerun re-clama.
 //   - UNIQUE(event_id, consumer_def_id): um evento satisfaz NO MÁXIMO uma
 //     instance de cada definition consumidora — a cópia forçada de um job cuja
 //     dependência "já rodou" NÃO herda o evento consumido pela instance
@@ -66,8 +70,10 @@ func (s *Scheduler) emitDepEvent(instanceID string, status domain.InstanceStatus
 	}
 }
 
-// ResetDepClaims — rerun do CONSUMIDOR: as linhas dele resetam e os eventos
-// clamados voltam pro pool. Chamado pelos handlers de rerun (unitário e bulk).
+// ResetDepClaims — devolve pro pool os eventos clamados por uma instance
+// (as linhas dela resetam). Três chamadores, mesma semântica de "não gastou":
+// rerun do consumidor (handlers unitário e bulk), término NOTOK terminal
+// (FinishInstance — falha não consome) e cancel do consumidor (handlers).
 func (s *Scheduler) ResetDepClaims(instanceID string) {
 	if _, err := s.db.Exec(`DELETE FROM dep_claims WHERE consumer_instance_id=?`, instanceID); err != nil {
 		log.Printf("[scheduler] reset dep-claims %s: %v", instanceID, err)
@@ -156,16 +162,20 @@ func (s *Scheduler) tryClaimEdge(consumerID, consumerDefID, upstreamDefID, order
 		log.Printf("[scheduler] dep backfill %s@%s: %v", upstreamDefID, orderDate, err)
 	}
 
-	// 2) consumo histórico: quem já RODOU (não está WAITING/HELD) consumiu um
-	// evento na época — recebe o claim antes de qualquer instance nova.
+	// 2) consumo histórico: quem RODOU e não falhou (RUNNING/OK) consumiu um
+	// evento na época — recebe o claim antes de qualquer instance nova. NOTOK e
+	// CANCELLED ficam de fora DE PROPÓSITO: falha não consome (o término NOTOK
+	// devolve o evento — ver FinishInstance), então o backfill não pode entregar
+	// o evento de volta ao job falho; Set OK reconverte em OK e aí sim consome
+	// (lazy, na próxima disputa).
 	if rows, err := s.db.Query(
 		`SELECT id FROM instances
 		 WHERE definition_id=? AND order_date=? AND id<>?
-		   AND status NOT IN (?,?)
+		   AND status IN (?,?)
 		   AND NOT EXISTS (SELECT 1 FROM dep_claims c WHERE c.consumer_instance_id = instances.id AND c.upstream_def_id=?)
 		 ORDER BY COALESCE(started_at, scheduled_at), id`,
 		consumerDefID, orderDate, consumerID,
-		string(domain.StatusWaiting), string(domain.StatusHeld), upstreamDefID,
+		string(domain.StatusRunning), string(domain.StatusOK), upstreamDefID,
 	); err == nil {
 		var started []string
 		for rows.Next() {
