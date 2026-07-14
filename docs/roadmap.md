@@ -46,6 +46,7 @@
 
 **Trilhas com itens em ABERTO** (detalhe em [§🔜 Backlog](#-backlog-o-que-falta)):
 
+- **Bugs de comportamento** — 9 itens reportados 2026-07-13 (Run Now/rerun/CONFIRM/Set OK/eventos + UI de agente e das setas) → §Backlog (BUG-1…BUG-9).
 - **Fase V — self-hosting em VPS de caixa única (24/7)** — **V1–V5 entregues** (install single-origin 3-formas · bundle+one-liner · config guiada · hospedagem enterprise nginx+TLS · agente sandbox). **Resta só V6** (docker-compose, opcional — o alvo escolhido foi systemd). O deploy "1 caixa" 24/7 já está pronto de ponta a ponta.
 - **Fase Z — divulgação** — **artefatos ENTREGUES 2026-07-13** (`docs/case-study.md` + `docs/linkedin-post.md`); resta só a **publicação manual no LinkedIn** (ação sua — revisar, escolher prints, postar).
 
@@ -69,6 +70,48 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > gente vai **fazendo crescer** — quando um item fecha, ele sai daqui e vira um tópico
 > detalhado em §✅ Entregue (+ linha no changelog). As caixinhas espalhadas nas seções de
 > baixo **não valem** como status (ver ⛔ REGRA DE STATUS no topo).
+
+### 🐛 Bugs de comportamento (a corrigir)
+
+> Reportados em **2026-07-13**. São correções de comportamento/UX no Monitoring (ações do
+> menu do job, semântica de rerun/Set OK/eventos e o visual das setas), não features novas.
+> Vários tocam a semântica de eventos consumíveis (schemaV15) e as ações contextuais do card.
+
+- [ ] **BUG-1 — Run Now não bypassa o WAIT EVENT de condição.** "Run Now" (força a instance
+  existente, `force_mode=''`) deve bypassar **tudo** (janela, deps, conditions, recursos) e
+  rodar o job na hora. Hoje um job preso em **WAIT EVENT** (aguardando evento de condição/dep)
+  não sai desse estado com o Run Now — o bypass da condição não está sendo aplicado nesse ramo.
+  → §"Run Now" vs "Order Force" (semântica de bypass total do Run Now).
+- [ ] **BUG-2 — Rerun em job já confirmado re-exige CONFIRM.** Um job que já passou pelo gate
+  **CONFIRM** (foi confirmado) e executou, ao receber **rerun**, NÃO deve voltar pro status
+  CONFIRM. Deve pular o gate (já está confirmado) e ir pra **WAIT EVENT** (se não houver evento
+  pendente) ou rodar conforme as dependências correntes. O flag `confirmed` da instância precisa
+  sobreviver ao rerun.
+- [ ] **BUG-3 — Job em WAIT EVENT: remover "Cancel", permitir "Set OK".** Um job em **WAIT EVENT**
+  não deve exibir o botão **Cancel**; deve permitir **Set OK** na hora (força a conclusão OK sem
+  esperar o evento chegar).
+- [ ] **BUG-4 — "Set OK" não materializa a condição pros dependentes (e rerun do produtor não
+  re-emite).** "Set OK" deve **materializar** o evento/condição de saída no pool, pros dependentes
+  consumirem (modelo de eventos consumíveis, schemaV15): com **2 dependentes**, um consome e roda,
+  o outro **aguarda disponibilidade**. Além disso, o **rerun do PRODUTOR** deve **re-emitir** a
+  condição mesmo que um dependente já esteja verde — e o rerun desse dependente, depois, deve
+  **consumir o evento novo e entrar rodando**. Cenário do reporte: `job1 → (job2, job3)`; job1 roda
+  e passa a condição p/ job2; **rerun no job1** re-emite a condição; **rerun no job2** depois entra
+  rodando (mesmo o outro estando verde).
+- [ ] **BUG-5 — Job em CONFIRM: só "Hold" ou "Confirm" (remover "Cancel" e "Run Now").** No menu/
+  drawer de um job em **CONFIRM**, as únicas ações devem ser **Hold** e **Confirm**. Remover
+  **Cancel** e **Run Now** desse estado.
+- [ ] **BUG-6 — Botão "Confirmar" → "Confirm".** Renomear o rótulo do botão de confirmação de
+  "Confirmar" para **Confirm** (padrão inglês, igual aos rótulos das abas do drawer).
+- [ ] **BUG-7 — Job Details (aba General) deve mostrar o AGENTE de execução.** A aba **General** do
+  drawer de detalhe do job precisa exibir **em qual agente** o job executa.
+- [ ] **BUG-8 — "Server-agent" não deve ter rótulo de restrição.** O agente embutido
+  **Server-agent** não é limitado a nenhum tipo de job (roda **qualquer** job disponível) — a UI
+  não deve escrever nada depois do nome sugerindo restrição de tipo/capability.
+- [ ] **BUG-9 — Setas de dependência nascendo "atrás" do job (regressão).** Depois da última
+  mudança nas arestas, as setas ficaram **muito mais curtas** — parecem nascer **atrás** do card e
+  não na pontinha (borda/handle de saída) dele como antes. Investigar o que mudou (handle de origem
+  / posição do source no `makeEdge`/`JOB_HANDLES`) e voltar ao visual anterior. → canvas-layout.
 
 ### 🚀 Fase V — Self-hosting em VPS de caixa única (24/7)
 
