@@ -190,15 +190,16 @@ function groupByTeam<T extends { team?: string }>(items: T[]): Map<string, T[]> 
 /**
  * Estado de satisfação de uma dependência (Control-M semantics).
  *
- * Regra do operador (definida pelo usuário):
- *   - Pai NOTOK/CANCELLED → vermelho SEMPRE, independente do tipo
- *     de condição. Só "Set OK" (converte NOTOK→OK manualmente) libera.
- *   - Pai OK → verde (condição satisfeita visualmente).
- *   - Pai WAITING/RUNNING/HOLD → âmbar (pendente).
- *
- * Mesmo que o filho tenha sido FORCED/Run Now e esteja rodando, a
- * edge para um pai vermelho permanece vermelha — ela representa o
- * estado da DEPENDÊNCIA, não do filho.
+ * Desde o schemaV15 a linha é POR INSTÂNCIA (consumidora), não do pai:
+ *   - CLAIM latchado (inst.depsSatisfied contém o upstream) → VERDE pra sempre
+ *     nesta instance — rerun/cancel do pai NÃO apaga a linha; só o rerun da
+ *     própria instance reseta (o server deleta os claims dela).
+ *   - Consumidor que JÁ RODOU (RUNNING/OK/NOTOK) → verde (satisfez ao partir;
+ *     cobre modo local/instances legadas sem claim).
+ *   - Sem claim e sem ter rodado: a cor segue o estado vivo do pai (âmbar
+ *     pendente / vermelho NOTOK-CANCELLED), MAS pai OK sem evento livre =
+ *     pendente (o término foi consumido por outra instance — WAIT EVENT da
+ *     cópia forçada, que espera um término NOVO).
  */
 type DepState = "satisfied" | "blocked" | "pending";
 
@@ -206,6 +207,31 @@ function evaluateDepState(parentStatus: JobInstance["status"]): DepState {
   if (parentStatus === "OK") return "satisfied";
   if (parentStatus === "NOTOK" || parentStatus === "CANCELLED") return "blocked";
   return "pending"; // WAITING/RUNNING/HOLD
+}
+
+function instStarted(i: JobInstance): boolean {
+  return i.status === "RUNNING" || i.status === "OK" || i.status === "NOTOK";
+}
+
+/** Estado da aresta upstream→inst, claim-aware (ver comentário do DepState). */
+function evaluateEdgeState(
+  inst: JobInstance,
+  upstreamId: string,
+  condition: EdgeCondition,
+  parent: JobInstance | undefined,
+): DepState {
+  if (inst.depsSatisfied?.includes(upstreamId)) return "satisfied";
+  // 'always' não consome evento: satisfeita pela existência do pai no dia.
+  if (condition === "always") return parent ? "satisfied" : "pending";
+  if (instStarted(inst)) return "satisfied";
+  if (!parent) return "pending";
+  const live = evaluateDepState(parent.status);
+  if (Array.isArray(inst.depsSatisfied) && live === "satisfied") {
+    // Server com semântica de claims: pai OK mas ESTA instance não latchou —
+    // o evento já foi consumido (cópia forçada esperando um término novo).
+    return "pending";
+  }
+  return live;
 }
 
 function edgeStyleForState(state: DepState, _condition: EdgeCondition) {
@@ -249,9 +275,8 @@ function makeEdge(
   source: string,
   target: string,
   condition: EdgeCondition,
-  parentStatus: JobInstance["status"],
+  state: DepState,
 ): Edge {
-  const state = evaluateDepState(parentStatus);
   const s = edgeStyleForState(state, condition);
   const label = state === "satisfied" ? "✓" : state === "blocked" ? "✗" : "";
   return {
@@ -483,32 +508,32 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
     const def = defsById.get(inst.definitionId);
     if (!def?.upstream?.length) continue;
     for (const u of def.upstream) {
+      const condition = u.condition ?? EDGE_CONDITION_DEFAULT;
       const parent = instByDefId.get(u.from);
-      if (!parent) {
-        // Pai ainda não materializado neste dia = dependência não satisfeita.
-        if (inst.status === "WAITING") waitingOnDeps.add(inst.id);
-        continue;
-      }
-      if (inst.status === "WAITING" && evaluateDepState(parent.status) !== "satisfied") {
+      // Estado da aresta POR INSTÂNCIA (claim latchado > já-rodou > estado vivo
+      // do pai) — a mesma fonte pinta a linha e decide o "WAIT EVENT" do card.
+      const state = evaluateEdgeState(inst, u.from, condition, parent);
+      if (inst.status === "WAITING" && state !== "satisfied") {
         waitingOnDeps.add(inst.id);
       }
-      const condition = u.condition ?? EDGE_CONDITION_DEFAULT;
+      if (!parent) continue; // pai não materializado: sem linha pra desenhar
       const src = `m-${parent.id}`;
       const tgt = `m-${inst.id}`;
       rawEdges.push({ source: src, target: tgt });
 
-      // Detecta violação de invariante apenas para console warning
-      // (não afeta visual: a cor da edge segue o estado do pai).
-      // EXCEÇÃO: instances forçadas (manual) bypassam deps por design
-      // (Control-M "Order Force") — não é violação, é intencional.
-      const violated = !inst.manual && isConditionInvariantViolated(parent.status, inst.status, condition);
+      // Detecta violação de invariante apenas para console warning.
+      // EXCEÇÕES: forçadas via Run Now (manual, bypass deliberado) e instances
+      // com o claim latchado (rodaram sobre um evento REAL do pai; o pai pode
+      // ter sido re-rodado/cancelado depois — não é violação, é o latch).
+      const violated = !inst.manual && !inst.depsSatisfied?.includes(u.from) &&
+        isConditionInvariantViolated(parent.status, inst.status, condition);
       if (violated && typeof console !== "undefined") {
         // eslint-disable-next-line no-console
         console.warn(
           `[regente] dependency invariant suspicious: ${parent.label}(${parent.status}) -${condition}-> ${inst.label}(${inst.status})`,
         );
       }
-      edges.push(makeEdge(src, tgt, condition, parent.status));
+      edges.push(makeEdge(src, tgt, condition, state));
     }
   }
 
@@ -584,7 +609,7 @@ export function buildDesignCanvas(defs: JobDefinition[], cfg: LayoutConfig = DEF
       const src = `d-${u.from}`;
       const tgt = `d-${def.id}`;
       rawEdges.push({ source: src, target: tgt });
-      edges.push(makeEdge(src, tgt, u.condition ?? EDGE_CONDITION_DEFAULT, "WAITING"));
+      edges.push(makeEdge(src, tgt, u.condition ?? EDGE_CONDITION_DEFAULT, "pending"));
     }
   }
 

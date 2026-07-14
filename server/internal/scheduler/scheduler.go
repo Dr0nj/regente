@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -84,8 +85,8 @@ type Scheduler struct {
 	// de negócio é sempre nowFn().In(loc do settings.daily_timezone). tzName/tzLoc
 	// cacheiam o time.LoadLocation por NOME — mudar o setting recarrega no próximo
 	// uso, sem restart; nome inválido loga UMA vez e cai no relógio local.
-	nowFn func() time.Time
-	tzMu  sync.Mutex
+	nowFn  func() time.Time
+	tzMu   sync.Mutex
 	tzName string
 	tzLoc  *time.Location
 
@@ -968,8 +969,12 @@ type instRow struct {
 	StartedAt                    sql.NullTime
 	CarriedAt                    sql.NullTime // virada da daily: re-arma o watchdog de stuck-running.
 	Forced                       bool
-	Confirmed                    bool   // Control-M Confirm: operador liberou um job confirm:true.
-	Snapshot                     string // Fase A: def congelada na ordem (JSON); "" em instances legadas.
+	// ForceMode — como a instance foi forçada (schemaV15): "" = "Run Now"
+	// clássico (bypass total de gates); ForceModeOrder = "Order Force" do Design
+	// (ordem nova fora do agendamento que RESPEITA os gates de runtime).
+	ForceMode string
+	Confirmed bool   // Control-M Confirm: operador liberou um job confirm:true.
+	Snapshot  string // Fase A: def congelada na ordem (JSON); "" em instances legadas.
 }
 
 // defForInstance devolve a definition CONGELADA no momento da ordem (snapshot),
@@ -1022,7 +1027,7 @@ func (s *Scheduler) tickOnce() {
 	// evalDeps precisa enxergar pais OK/NOTOK para decidir corretamente.
 	rows, err := s.db.Query(
 		`SELECT id, definition_id, order_date, status, scheduled_at,
-		        started_at, carried_at, COALESCE(forced,0), COALESCE(confirmed,0), COALESCE(definition_snapshot,'')
+		        started_at, carried_at, COALESCE(forced,0), COALESCE(force_mode,''), COALESCE(confirmed,0), COALESCE(definition_snapshot,'')
 		 FROM instances WHERE order_date=?`,
 		today,
 	)
@@ -1033,7 +1038,7 @@ func (s *Scheduler) tickOnce() {
 	for rows.Next() {
 		var r instRow
 		var forcedInt, confirmedInt int
-		_ = rows.Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &confirmedInt, &r.Snapshot)
+		_ = rows.Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.Snapshot)
 		r.Forced = forcedInt == 1
 		r.Confirmed = confirmedInt == 1
 		insts = append(insts, r)
@@ -1056,6 +1061,44 @@ func (s *Scheduler) tickOnce() {
 		if !ok || statusRank(r.Status) > statusRank(prev.Status) {
 			instByDef[r.DefID] = r
 		}
+	}
+
+	// Pré-passe de CLAIMS de dependência (schemaV15): toda instance WAITING/HELD
+	// com upstream tenta latchar seus eventos ANTES do gating por janela — a
+	// instance do dia reserva o término do pai assim que ele acontece, mesmo
+	// pré-horário, e uma cópia forçada depois não rouba o evento dela. Ordem de
+	// prioridade determinística: daily antes de forçadas, depois horário e id.
+	dayClaims := s.loadDayClaims(today)
+	pending := make([]instRow, 0)
+	for _, r := range insts {
+		if r.Status != string(domain.StatusWaiting) && r.Status != string(domain.StatusHeld) {
+			continue
+		}
+		if r.Forced && r.ForceMode != ForceModeOrder {
+			continue // Run Now bypassa deps — não consome evento
+		}
+		pending = append(pending, r)
+	}
+	sort.Slice(pending, func(i, j int) bool {
+		if pending[i].Forced != pending[j].Forced {
+			return !pending[i].Forced // daily primeiro
+		}
+		if !pending[i].ScheduledAt.Equal(pending[j].ScheduledAt) {
+			return pending[i].ScheduledAt.Before(pending[j].ScheduledAt)
+		}
+		return pending[i].ID < pending[j].ID
+	})
+	for _, r := range pending {
+		def, ok := defForInstance(r, defs)
+		if !ok || len(def.Upstream) == 0 {
+			continue
+		}
+		claimed := dayClaims[r.ID]
+		if claimed == nil {
+			claimed = map[string]bool{}
+			dayClaims[r.ID] = claimed
+		}
+		s.claimDepEdges(r, def, claimed)
 	}
 
 	for _, r := range insts {
@@ -1085,11 +1128,16 @@ func (s *Scheduler) tickOnce() {
 		if !ok {
 			continue
 		}
-		// Forced bypassa deps (Control-M parity) — mas NÃO o agente: sem agente
-		// disponível, nem o forced é reivindicado (senão pisca RUNNING↔WAITING).
-		// Também NÃO bypassa o Confirm: no Control-M a confirmação é um wait de
-		// runtime (o job forçado continua "Wait User" até o operador confirmar).
-		if r.Forced {
+		// "Run Now" (forced sem force_mode) bypassa deps/janela/conditions/recursos
+		// — mas NÃO o agente: sem agente disponível, nem o forced é reivindicado
+		// (senão pisca RUNNING↔WAITING). Também NÃO bypassa o Confirm: no Control-M
+		// a confirmação é um wait de runtime (o job forçado continua "Wait User"
+		// até o operador confirmar). O "Order Force" do Design (force_mode='order')
+		// NÃO cai aqui: é uma ordem nova fora do AGENDAMENTO, mas os gates de
+		// runtime (deps por evento, conditions, agente, recursos) valem — a cópia
+		// forçada de um job com dependência entra em WAIT EVENT até o pai emitir
+		// um término NOVO (o evento consumido pela instance original não a satisfaz).
+		if r.Forced && r.ForceMode != ForceModeOrder {
 			if def.Confirm && !r.Confirmed {
 				continue
 			}
@@ -1112,7 +1160,7 @@ func (s *Scheduler) tickOnce() {
 		// no pai não revivia ninguém (CANCELLED é terminal) — quebrava o fluxo
 		// padrão de operação. Quem nunca ficar elegível morre na virada da daily
 		// (WAITING-nunca-rodou não carrega), como no Control-M.
-		if blockers := s.gateInstance(r, def, instByDef, now, true); len(blockers) > 0 {
+		if blockers := s.gateInstance(r, def, instByDef, dayClaims[r.ID], now, true); len(blockers) > 0 {
 			// Sem agente: registra 1 evento com throttle (5min) pra visibilidade
 			// no histórico — o estado NÃO muda (segue WAITING, sem broadcast).
 			if blockers[0].Kind == GateAgent {
@@ -1168,24 +1216,6 @@ func (s *Scheduler) maybeEmitNoAgent(id, jobType string) {
 	s.emitEvent(id, "submitted", "scheduler",
 		"no agent online for capability "+jobType+" — waiting (re-tenta a cada tick)")
 	log.Printf("[scheduler] %s: sem agente online p/ %s — instance segue WAITING", id, jobType)
-}
-
-// evalDeps avalia todas as upstreams; retorna (ready, permanentlyBlocked).
-// Thin loop sobre edgeState (a regra por-aresta, fonte única compartilhada com o
-// Explain). Para na 1ª aresta não-satisfeita — mesma semântica de short-circuit
-// de antes (uma espera adiante mascara um bloqueio permanente posterior).
-func (s *Scheduler) evalDeps(def domain.JobDefinition, insts map[string]instRow) (bool, bool) {
-	for _, u := range def.Upstream {
-		up, exists := insts[u.From]
-		sat, permanent := edgeState(u.Condition, up.Status, exists)
-		if permanent {
-			return false, true
-		}
-		if !sat {
-			return false, false
-		}
-	}
-	return true, false
 }
 
 func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
@@ -1315,6 +1345,11 @@ func (s *Scheduler) FinishInstance(id string, status domain.InstanceStatus, exit
 		`UPDATE instances SET status=?, exit_code=?, output=?, finished_at=CURRENT_TIMESTAMP WHERE id=?`,
 		string(status), exitCode, output, id,
 	)
+	// schemaV15 — término TERMINAL publica o evento de dependência (consumível
+	// UMA vez por definition consumidora). Rerun deste job emitirá um evento NOVO.
+	if status == domain.StatusOK || status == domain.StatusNotOK {
+		s.emitDepEvent(id, status)
+	}
 	// F15 — release resources holdings
 	if s.resources != nil {
 		s.resources.Release(id)
@@ -1581,6 +1616,9 @@ func (s *Scheduler) SetOK(id string) error {
 	if err != nil {
 		return err
 	}
+	// schemaV15 — Set OK é um término OK aos olhos dos sucessores: publica o
+	// evento consumível (é o gatilho que destrava on-success a partir de pai falho).
+	s.emitDepEvent(id, domain.StatusOK)
 	s.emitEvent(id, "set-ok", "operator", fmt.Sprintf("flipped from %s to OK", status))
 	s.hub.BroadcastWeb("instance.changed", map[string]interface{}{
 		"id": id, "status": string(domain.StatusOK), "setOk": true,
@@ -1588,8 +1626,13 @@ func (s *Scheduler) SetOK(id string) error {
 	return nil
 }
 
-// ForceOrder cria uma instance já em RUNNING ignorando cron e deps.
-// Equivale ao "Order Force" do Control-M.
+// ForceOrder cria uma instance NOVA fora do agendamento (Control-M "Order
+// Force"). Desde o schemaV15 a ordem forçada NÃO bypassa mais os gates de
+// RUNTIME: dependências valem por EVENTO consumível (a cópia de um job cuja
+// dependência "já rodou" entra em WAIT EVENT até o pai emitir um término novo
+// — o evento consumido pela instance original não a satisfaz), e conditions/
+// agente/recursos/Confirm continuam valendo. O que ela bypassa é o AGENDAMENTO
+// (calendário/janela/horário — a ordem nasce elegível agora).
 func (s *Scheduler) ForceOrder(defID string) (string, error) {
 	s.mu.Lock()
 	var def *domain.JobDefinition
@@ -1605,13 +1648,14 @@ func (s *Scheduler) ForceOrder(defID string) (string, error) {
 		return "", fmt.Errorf("definition %s not found", defID)
 	}
 	commitSHA := s.currentCommitSHA()
-	today := time.Now().Format("2006-01-02")
-	id := defID + "-FORCE-" + time.Now().Format("150405")
+	now := time.Now()
+	today := now.Format("2006-01-02")
+	id := defID + "-FORCE-" + now.Format("150405")
 	snap, _ := json.Marshal(*def) // Fase A: congela a def no momento da ordem manual.
 	_, err := s.db.Exec(
 		// dry_run congelado da def NO MOMENTO do force (imutável depois) — ver schemaV9.
-		`INSERT INTO instances(id, definition_id, team, order_date, status, scheduled_at, forced, definition_commit_sha, definition_snapshot, dry_run) VALUES(?,?,?,?,?,?,1,?,?,?)`,
-		id, defID, def.Team, today, string(domain.StatusWaiting), time.Now(), commitSHA, string(snap), boolToInt(def.DryRun),
+		`INSERT INTO instances(id, definition_id, team, order_date, status, scheduled_at, forced, force_mode, definition_commit_sha, definition_snapshot, dry_run) VALUES(?,?,?,?,?,?,1,?,?,?,?)`,
+		id, defID, def.Team, today, string(domain.StatusWaiting), now, ForceModeOrder, commitSHA, string(snap), boolToInt(def.DryRun),
 	)
 	if err != nil {
 		return "", err
@@ -1622,12 +1666,25 @@ func (s *Scheduler) ForceOrder(defID string) (string, error) {
 	}
 	s.emitEvent(id, "force-ordered", "operator", msg)
 	s.hub.BroadcastWeb("instance.changed", map[string]interface{}{"id": id, "status": "WAITING", "forced": true})
-	// Confirm não é bypassado nem no Force (Control-M: wait de runtime) — a
-	// instance fica WAITING no gate WAIT_CONFIRM; o Confirm do operador cutuca
-	// o tick e ela dispara na hora.
-	if def.Confirm {
-		s.emitEvent(id, "submitted", "operator", "force aguardando Confirm do operador")
+	// Tenta despachar JÁ, pelo MESMO gating do tick (deps por evento, conditions,
+	// agente, recursos, Confirm — nada de caminho paralelo): sem bloqueio, roda
+	// na hora, como o Force sempre fez; bloqueado, fica WAITING com o motivo
+	// visível no Explain e o tick assume dali (ex.: WAIT EVENT até o pai rodar
+	// de novo; WAIT_CONFIRM até o operador confirmar).
+	r := instRow{
+		ID: id, DefID: defID, OrderDate: today, Status: string(domain.StatusWaiting),
+		ScheduledAt: now, Forced: true, ForceMode: ForceModeOrder, Snapshot: string(snap),
+	}
+	claimed := map[string]bool{}
+	s.claimDepEdges(r, *def, claimed)
+	if blockers := s.gateInstance(r, *def, s.loadUpstreamInsts(today, *def), claimed, now, true); len(blockers) > 0 {
+		s.emitEvent(id, "submitted", "operator", "force aguardando gate: "+blockers[0].Detail)
 		return id, nil
+	}
+	if len(def.Resources) > 0 && s.resources != nil {
+		if !s.resources.TryAcquire(id, def.Resources) {
+			return id, nil // recurso indisponível — o tick re-tenta
+		}
 	}
 	go s.startInstance(id, *def)
 	return id, nil

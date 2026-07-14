@@ -183,6 +183,8 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 		if n, _ := res.RowsAffected(); n == 0 {
 			return "", fmt.Errorf("instance not found")
 		}
+		// schemaV15 — rerun reseta as linhas do consumidor (ver rerunInstance).
+		s.cfg.Scheduler.ResetDepClaims(id)
 		s.cfg.Scheduler.EmitEvent(id, "rerun", actor, "bulk rerun")
 		s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusWaiting)})
 		return string(domain.StatusWaiting), nil

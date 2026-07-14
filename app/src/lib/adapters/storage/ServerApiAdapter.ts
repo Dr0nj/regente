@@ -197,6 +197,18 @@ function toServer(d: JobDefinition): ServerDefinition {
   };
 }
 
+/**
+ * listPublishedDefinitions — as definitions do WORKSPACE PRINCIPAL (publicadas),
+ * SEMPRE de /api/definitions, ignorando a design session ativa. É o que o
+ * scheduler realmente ordena. Uso: Monitoring e o menu Force — um job que só
+ * existe no DRAFT da session (nunca publicado) não pode aparecer para Force
+ * (bug reportado 2026-07-13: o cache session-routed vazava drafts pro Force).
+ */
+export async function listPublishedDefinitions(): Promise<JobDefinition[]> {
+  const arr = await api<ServerDefinition[]>("/api/definitions");
+  return (arr ?? []).map(toWeb);
+}
+
 export class ServerApiAdapter implements StoragePort {
   private cache: Map<string, ServerDefinition> = new Map();
 

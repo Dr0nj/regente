@@ -264,6 +264,12 @@ export interface JobInstance {
    *  libera). Vale só quando status==="HOLD"; guia o cadeado e bloqueia o Release
    *  individual de um job segurado pela folder. */
   holdScope?: string;
+  /** Latches de dependência (server schemaV15): upstream defs cujo EVENTO esta
+   *  instance já CLAMOU. A linha do canvas fica verde POR INSTÂNCIA — satisfeita
+   *  uma vez, rerun/cancel do pai não a apaga; só o rerun DESTA instance reseta.
+   *  A PRESENÇA do campo (mesmo []) indica server com a semântica de claims;
+   *  ausente = modo local/legado (edge segue o status vivo do pai). */
+  depsSatisfied?: string[];
 }
 
 /* ── Order Date Helper ── */

@@ -175,14 +175,20 @@ const (
 // vivia inline no scheduler (GetAgent por id, senão PickAgent por capability +
 // ambiente, e envio não-bloqueante no canal Send). É o seam que o bus distribuído
 // (R5) estende para rotear ao nó dono quando o agent não está neste processo.
+//
+// PIN é ESTRITO: job pinado (agentID) com o agente offline/incompatível NÃO cai
+// em outro agente — retorna DispatchNoAgent e o job fica WAIT AGENT até o agente
+// dele voltar. (Antes havia fallback pro PickAgent, contradizendo o HasAgent que
+// o tick usa e a promessa do pin: "criado no agente-A roda NO agente-A".)
 func (h *Hub) Dispatch(agentID, capability, env string, raw []byte) (DispatchOutcome, string) {
 	var a *Client
 	if agentID != "" {
-		if p := h.GetAgent(agentID); p != nil && EnvMatch(env, p.Environment) {
-			a = p
+		p := h.GetAgent(agentID)
+		if p == nil || !EnvMatch(env, p.Environment) {
+			return DispatchNoAgent, ""
 		}
-	}
-	if a == nil {
+		a = p
+	} else {
 		a = h.PickAgent(capability, env)
 	}
 	if a == nil {

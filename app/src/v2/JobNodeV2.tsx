@@ -103,17 +103,21 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
           <Lock size={11} strokeWidth={2.5} color={data.folderHeld ? "#f59e0b" : "#c4b5fd"} />
         </div>
       )}
-      {/* Status bar — 2px colorida à esquerda, não gradiente */}
+      {/* Status bar — faixa colorida à esquerda, não gradiente */}
       <div style={{ display: "flex" }}>
         <div
           style={{
-            width: 3,
+            width: 6,
             background: statusColor,
             flexShrink: 0,
           }}
         />
         <div style={{ flex: 1, padding: "8px 10px", minWidth: 0 }}>
-          {/* Linha 1: label (sem badge de folder — a folder já é contexto da lane) */}
+          {/* Linha 1: label SOZINHO na linha — as tags (FORCED/GHOST) moram numa
+              linha própria ABAIXO do nome (pedido do usuário: a quantidade de
+              tags espremia o job name até sumir). A tag ✋CONFIRM foi
+              DESCONTINUADA: o gate de confirmação já tinge o card inteiro de
+              violeta e o status lê "CONFIRM" (bolinha roxa) — a tag era redundante. */}
           {/* paddingLeft reserva o espaço do cadeado sobreposto quando em HOLD,
               pra ele não cobrir as primeiras letras do label. */}
           <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: data.held ? 13 : 0 }}>
@@ -130,64 +134,53 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
             >
               {data.label}
             </span>
-            {data.forced && (
-              <span
-                title="Force Order — bypass de deps/cron (Control-M semantics)"
-                style={{
-                  fontSize: "var(--v2-text-xs)",
-                  fontFamily: "var(--v2-font-mono)",
-                  fontWeight: 700,
-                  letterSpacing: "0.08em",
-                  color: "#fbbf24",
-                  padding: "1px 4px",
-                  border: "1px solid #78350f",
-                  background: "rgba(251,191,36,0.08)",
-                  borderRadius: "var(--v2-radius-sm)",
-                  flexShrink: 0,
-                }}
-              >
-                ⚡FORCED
-              </span>
-            )}
-            {data.dryRun && (
-              <span
-                title="Dry run — o job entra na daily e 'roda', mas NÃO executa nada (log only)"
-                style={{
-                  fontSize: "var(--v2-text-xs)",
-                  fontFamily: "var(--v2-font-mono)",
-                  fontWeight: 700,
-                  letterSpacing: "0.08em",
-                  color: "#c4b5fd",
-                  padding: "1px 4px",
-                  border: "1px solid #4c1d95",
-                  background: "rgba(196,181,253,0.08)",
-                  borderRadius: "var(--v2-radius-sm)",
-                  flexShrink: 0,
-                }}
-              >
-                👻GHOST
-              </span>
-            )}
-            {waitConfirm && (
-              <span
-                title="Aguardando confirmação do operador (Control-M Confirm). Clique com o botão direito → Confirmar (ou use o botão no painel de detalhe) para liberar."
-                style={{
-                  fontSize: "var(--v2-text-xs)",
-                  fontFamily: "var(--v2-font-mono)",
-                  fontWeight: 700,
-                  letterSpacing: "0.08em",
-                  color: "#ede9fe",
-                  padding: "1px 4px",
-                  border: "1px solid #a78bfa",
-                  background: "rgba(124,58,237,0.35)",
-                  borderRadius: "var(--v2-radius-sm)",
-                  flexShrink: 0,
-                }}
-              >
-                ✋CONFIRM
-              </span>
-            )}
           </div>
+
+          {/* Linha de TAGS — só renderiza quando há tag (senão o card mantém a
+              altura compacta de sempre; a célula de layout de 72px absorve a
+              linha extra sem colidir com o vizinho). */}
+          {(data.forced || data.dryRun) && (
+            <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
+              {data.forced && (
+                <span
+                  title="Force — ordem manual fora do agendamento. Order Force (Design) respeita os gates de runtime (deps/conditions/agente); Run Now (Monitoring) bypassa deps."
+                  style={{
+                    fontSize: "var(--v2-text-xs)",
+                    fontFamily: "var(--v2-font-mono)",
+                    fontWeight: 700,
+                    letterSpacing: "0.08em",
+                    color: "#fbbf24",
+                    padding: "0px 4px",
+                    border: "1px solid #78350f",
+                    background: "rgba(251,191,36,0.08)",
+                    borderRadius: "var(--v2-radius-sm)",
+                    flexShrink: 0,
+                  }}
+                >
+                  ⚡FORCED
+                </span>
+              )}
+              {data.dryRun && (
+                <span
+                  title="Dry run — o job entra na daily e 'roda', mas NÃO executa nada (log only)"
+                  style={{
+                    fontSize: "var(--v2-text-xs)",
+                    fontFamily: "var(--v2-font-mono)",
+                    fontWeight: 700,
+                    letterSpacing: "0.08em",
+                    color: "#c4b5fd",
+                    padding: "0px 4px",
+                    border: "1px solid #4c1d95",
+                    background: "rgba(196,181,253,0.08)",
+                    borderRadius: "var(--v2-radius-sm)",
+                    flexShrink: 0,
+                  }}
+                >
+                  👻GHOST
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Linha 2: type + status */}
           <div

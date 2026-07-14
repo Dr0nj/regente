@@ -38,6 +38,12 @@ type instanceRow struct {
 	// O front usa isto para o cadeado (folder vs individual) e para bloquear o
 	// Release individual de um job segurado pela folder.
 	HoldScope string `json:"holdScope,omitempty"`
+	// DepsSatisfied — upstream defs cujo EVENTO esta instance já CLAMOU
+	// (dep_claims, schemaV15). É o latch das "linhas verdes" do Monitoring:
+	// satisfeita uma vez, a linha fica verde pra sempre nesta instance — rerun/
+	// cancel do pai não a apaga. SEM omitempty de propósito: a PRESENÇA do campo
+	// (mesmo []) diz ao front que o server fala a semântica nova de claims.
+	DepsSatisfied []string `json:"depsSatisfied"`
 }
 
 const instanceCols = `id, definition_id, COALESCE(team,''), order_date, status, scheduled_at,
@@ -77,9 +83,40 @@ func scanInstances(rows *sql.Rows) ([]instanceRow, error) {
 		ir.Forced = forcedInt == 1
 		ir.Confirmed = confirmedInt == 1
 		ir.DryRun = dryRunInt == 1
+		ir.DepsSatisfied = []string{} // nunca nil: o JSON precisa carregar o campo
 		out = append(out, ir)
 	}
 	return out, rows.Err()
+}
+
+// attachDepClaims — anexa os latches de dependência (dep_claims, schemaV15) às
+// linhas, numa ÚNICA query pelo order_date (não por linha). Best-effort: em
+// erro, as linhas seguem com depsSatisfied=[] (o front cai no fallback visual).
+func (s *server) attachDepClaims(date string, list []instanceRow) {
+	if len(list) == 0 {
+		return
+	}
+	rows, err := s.cfg.DB.Query(
+		`SELECT c.consumer_instance_id, c.upstream_def_id
+		 FROM dep_claims c JOIN instances i ON i.id = c.consumer_instance_id
+		 WHERE i.order_date=?`, date,
+	)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	claims := map[string][]string{}
+	for rows.Next() {
+		var cid, up string
+		if rows.Scan(&cid, &up) == nil {
+			claims[cid] = append(claims[cid], up)
+		}
+	}
+	for i := range list {
+		if c, ok := claims[list[i].ID]; ok {
+			list[i].DepsSatisfied = c
+		}
+	}
 }
 
 // instanceQuery — P2/escala: filtros server-side de /api/instances*. Tudo opcional
@@ -213,6 +250,9 @@ func (s *server) listInstances(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// schemaV15 — latches de dependência pro Monitoring pintar as linhas por
+	// INSTÂNCIA (verde = claim), não pelo status vivo do pai.
+	s.attachDepClaims(q.date, list)
 	writeJSON(w, 200, list)
 }
 
@@ -422,6 +462,10 @@ func (s *server) rerunInstance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// schemaV15 — rerun do CONSUMIDOR reseta as linhas DELE (claims): os eventos
+	// clamados voltam pro pool e o próprio job pode re-clamar no próximo tick.
+	// Rerun/cancel do PAI não mexe em claim nenhum — linha satisfeita fica verde.
+	s.cfg.Scheduler.ResetDepClaims(id)
 	s.cfg.Scheduler.EmitEvent(id, "rerun", "operator", "reset to WAITING")
 	// Ciclo de vida do alerta: o operador agiu no job → marca alertas como tratados.
 	s.markAlertsHandled(id, "rerun")

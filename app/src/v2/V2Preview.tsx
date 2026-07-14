@@ -119,7 +119,13 @@ function V2PreviewInner() {
   const [showWhatIf, setShowWhatIf] = useState(false);
   // Dados do canvas (defs + instances) e ciclo de vida deles (carga inicial,
   // subscribes, scheduler local, resync via WS) vivem no hook.
-  const { defs, instances, ready, reloadDefs, syncInstances } = useOrchestratorData();
+  const { defs, publishedDefs, instances, ready, reloadDefs, syncInstances } = useOrchestratorData();
+  // Defs PUBLICADAS (workspace principal) — o que o scheduler realmente ordena.
+  // Em server mode com design session ativa, `defs` é o DRAFT da session; o
+  // Monitoring e o Force enxergam por AQUI (um job que só existe no draft,
+  // nunca publicado, NÃO pode ser forçado nem enriquecer o board). No modo
+  // local não há draft: publishedDefs=null e caímos em `defs`.
+  const runnableDefs = publishedDefs ?? defs;
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
   const [editingDef, setEditingDef] = useState<{ def: JobDefinition; isNew: boolean } | null>(null);
   const [lastDaily, setLastDaily] = useState<string | null>(getLastDailyRun());
@@ -487,6 +493,12 @@ function V2PreviewInner() {
     if (effectiveFolders === null) return defs;
     return defs.filter((d) => effectiveFolders.has(d.team ?? ""));
   }, [defs, effectiveFolders]);
+  // Versão PUBLICADA do filtro — alimenta o canvas do Monitoring (as arestas/
+  // waitConfirm/waitAgent devem refletir a def que o SCHEDULER usa, não o draft).
+  const filteredRunnableDefs = useMemo(() => {
+    if (effectiveFolders === null) return runnableDefs;
+    return runnableDefs.filter((d) => effectiveFolders.has(d.team ?? ""));
+  }, [runnableDefs, effectiveFolders]);
   // Draft def: mostra o nó no canvas enquanto a definition nova está sendo
   // configurada no drawer (antes de salvar). Some quando salva (vira real)
   // ou quando o drawer é fechado.
@@ -498,16 +510,16 @@ function V2PreviewInner() {
   }, [mode, filteredDefs, editingDef]);
   const filteredInstances = useMemo(() => {
     if (effectiveFolders === null) return instances;
-    const defsById = new Map(defs.map((d) => [d.id, d] as const));
+    const defsById = new Map(runnableDefs.map((d) => [d.id, d] as const));
     return instances.filter((i) => {
       const team = i.team || defsById.get(i.definitionId)?.team || "";
       return effectiveFolders.has(team);
     });
-  }, [instances, defs, effectiveFolders]);
+  }, [instances, runnableDefs, effectiveFolders]);
 
   const canvas = useMemo<Canvas>(
-    () => (mode === "monitoring" ? buildMonitoringCanvas(filteredInstances, filteredDefs, layoutCfg, agentAvail, folderLayouts) : buildDesignCanvas(designDefsWithDraft, layoutCfg, folderLayouts)),
-    [mode, filteredInstances, filteredDefs, designDefsWithDraft, layoutCfg, agentAvail, folderLayouts],
+    () => (mode === "monitoring" ? buildMonitoringCanvas(filteredInstances, filteredRunnableDefs, layoutCfg, agentAvail, folderLayouts) : buildDesignCanvas(designDefsWithDraft, layoutCfg, folderLayouts)),
+    [mode, filteredInstances, filteredRunnableDefs, designDefsWithDraft, layoutCfg, agentAvail, folderLayouts],
   );
 
   // Seleção threaded no prop CONTROLADO de nós. O ReactFlow guarda seleção no
@@ -629,7 +641,7 @@ function V2PreviewInner() {
     useCanvasCamera(canvas, mode, viewContextKey);
 
   const monitoringJobs = useMemo(() => {
-    const defsById = new Map(defs.map((d) => [d.id, d] as const));
+    const defsById = new Map(runnableDefs.map((d) => [d.id, d] as const));
     return filteredInstances.map((inst) => {
       const def = defsById.get(inst.definitionId);
       const enriched: JobInstance = def
@@ -642,20 +654,8 @@ function V2PreviewInner() {
         : inst;
       return instanceToMonitoring(enriched);
     });
-  }, [filteredInstances, defs]);
+  }, [filteredInstances, runnableDefs]);
   const selectedInstance = selectedInstanceId ? instances.find((i) => i.id === selectedInstanceId) : null;
-
-  const statusCounts = useMemo(() => {
-    const c = { ok: 0, running: 0, failed: 0, waiting: 0, hold: 0 };
-    for (const i of filteredInstances) {
-      if (i.status === "OK") c.ok++;
-      else if (i.status === "RUNNING") c.running++;
-      else if (i.status === "NOTOK") c.failed++;
-      else if (i.status === "WAITING") c.waiting++;
-      else if (i.status === "HOLD") c.hold++;
-    }
-    return c;
-  }, [filteredInstances]);
 
   /* ── Sidebar click → centralize node (focusNode vem do useCanvasCamera) ── */
   const handleSidebarSelect = useCallback((instId: string) => {
@@ -919,6 +919,14 @@ function V2PreviewInner() {
   const [forceMenuOpen, setForceMenuOpen] = useState(false);
   const handleForce = useCallback((def: JobDefinition) => {
     setForceMenuOpen(false);
+    // Force só ordena o que está PUBLICADO (o server 404aria de qualquer jeito;
+    // aqui a mensagem fica clara): job que só existe no draft → publique antes.
+    if (publishedDefs && !publishedDefs.some((d) => d.id === def.id)) {
+      toast.error("Job ainda não publicado", {
+        detail: "Esse job existe só no draft da sessão de Design — publique antes de ordenar (Force).",
+      });
+      return;
+    }
     Promise.resolve(forceInstance(def)).then((fresh) => {
       if (fresh) {
         setSelectedInstanceId(fresh.id);
@@ -930,7 +938,7 @@ function V2PreviewInner() {
       console.error("[force] failed", err);
       toast.error("Force Order falhou", { detail: err?.message ?? String(err) });
     });
-  }, [setPendingFocusId]);
+  }, [setPendingFocusId, publishedDefs]);
 
   /* ── Run Now sobre a instance EXISTENTE (Monitoring) ── */
   // Bypassa os gates de impedimento (janela/deps/conditions/recursos) e roda o
@@ -982,11 +990,12 @@ function V2PreviewInner() {
         return;
       }
 
-      // Monitoring mode: menu por instance
+      // Monitoring mode: menu por instance — a def de referência é a PUBLICADA
+      // (o gate real do scheduler), nunca o draft da session.
       const id = node.id.replace(/^m-/, "");
       const inst = instances.find((i) => i.id === id);
       if (!inst) return;
-      const def = defs.find((d) => d.id === inst.definitionId);
+      const def = runnableDefs.find((d) => d.id === inst.definitionId);
       const status = inst.status;
 
       const items: ContextMenuItem[] = [];
@@ -1055,10 +1064,11 @@ function V2PreviewInner() {
 
       setCtxMenu({ x: e.clientX, y: e.clientY, items });
     },
-    [mode, defs, instances, handleForce, handleRunNowInstance, handleDeleteDef, handleRerunInstance],
+    [mode, defs, runnableDefs, instances, handleForce, handleRunNowInstance, handleDeleteDef, handleRerunInstance],
   );
 
-  const hasDefs = defs.length > 0;
+  // hasDefs gate os botões do Monitoring (Run Daily/Force) — conta o PUBLICADO.
+  const hasDefs = runnableDefs.length > 0;
   const hasInstances = instances.length > 0;
 
   // F11.10 — gate render: only show login overlay in server mode after we know
@@ -1394,7 +1404,10 @@ function V2PreviewInner() {
                   }}>
                     Order Job — Run Now
                   </div>
-                  {defs.map((d) => (
+                  {/* SÓ defs publicadas: job que existe apenas no draft da design
+                      session não aparece aqui (nunca foi pushado — o scheduler
+                      nem o conhece; bug reportado 2026-07-13). */}
+                  {runnableDefs.map((d) => (
                     <button
                       key={d.id}
                       onClick={() => handleForce(d)}
@@ -1507,13 +1520,9 @@ function V2PreviewInner() {
           />
         )}
 
-        <div style={{ display: "flex", gap: 14, fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-secondary)", letterSpacing: "0.04em" }}>
-          <span><span style={{ color: "var(--v2-status-ok)" }}>●</span> {statusCounts.ok}</span>
-          <span><span style={{ color: "var(--v2-status-running)" }}>●</span> {statusCounts.running}</span>
-          <span><span style={{ color: "var(--v2-status-failed)" }}>●</span> {statusCounts.failed}</span>
-          <span><span style={{ color: "var(--v2-status-waiting)" }}>●</span> {statusCounts.waiting}</span>
-          {statusCounts.hold > 0 && <span><span style={{ color: "var(--v2-text-secondary)" }}>●</span> {statusCounts.hold}</span>}
-        </div>
+        {/* (as 4 bolinhas de contagem por status saíram daqui: a sidebar ACTIVE
+            JOBS já dá o mesmo tracking com pills e números — redundância removida
+            a pedido do usuário, 2026-07-13) */}
       </header>
 
       {/* Stage */}
@@ -1731,7 +1740,9 @@ function V2PreviewInner() {
         )}
 
         {mode === "monitoring" && selectedInstance && (() => {
-          const selDef = defs.find((d) => d.id === selectedInstance.definitionId);
+          // Def de referência = a PUBLICADA (a mesma que o scheduler usa) — nunca
+          // o draft da design session ativa.
+          const selDef = runnableDefs.find((d) => d.id === selectedInstance.definitionId);
           // Enriquece igual aos cards do canvas (monitoringJobs): se a instance
           // vier com jobType/label/team vazios ou defasados, cai pra def — assim
           // o drawer mostra o MESMO que o card, sem "job type dessincronizado".
@@ -1745,7 +1756,7 @@ function V2PreviewInner() {
             <InstanceDetailsDrawer
               instance={enriched}
               definition={selDef}
-              allDefs={defs}
+              allDefs={runnableDefs}
               handlers={{
                 onHold: holdInstance,
                 onRelease: releaseInstance,

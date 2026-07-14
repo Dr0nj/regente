@@ -32,6 +32,7 @@ interface ServerInstance {
   cycleRuns?: number;
   dryRun?: boolean;
   holdScope?: string;
+  depsSatisfied?: string[];
 }
 
 function parseTime(s?: string): number | undefined {
@@ -83,6 +84,9 @@ function toWeb(s: ServerInstance): JobInstance {
     // Origem do HOLD (schemaV14): "folder" = segurado por uma pausa de folder
     // (não liberável 1-a-1); "" / ausente = hold individual. Snapshot da instância.
     holdScope: s.holdScope,
+    // Latches de dependência (schemaV15): a linha verde do canvas é POR INSTÂNCIA
+    // (claim de evento), não o status vivo do pai. Presente (mesmo []) = server novo.
+    depsSatisfied: s.depsSatisfied,
     output: {
       text: s.output ?? "",
       exitCode: s.exitCode ?? 0,

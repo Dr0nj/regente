@@ -25,11 +25,27 @@ import {
 } from "@/lib/definition-store";
 import { container } from "@/lib/container";
 import { onServerEvent, isServerMode } from "@/lib/server-client";
+import { listPublishedDefinitions } from "@/lib/adapters/storage/ServerApiAdapter";
 import { toast } from "../Toast";
 
 export function useOrchestratorData() {
   const [instances, setInstances] = useState<JobInstance[]>([]);
   const [defs, setDefs] = useState<JobDefinition[]>([]);
+  // publishedDefs — as defs do WORKSPACE PRINCIPAL (publicadas), sempre de
+  // /api/definitions, IGNORANDO a design session ativa. Em server mode com uma
+  // session aberta, `defs` é o DRAFT (session-routed) — mas o que o scheduler
+  // ordena é o publicado, então Monitoring/Force enxergam por AQUI. null =
+  // modo local (sem conceito de draft → use `defs`).
+  const [publishedDefs, setPublishedDefs] = useState<JobDefinition[] | null>(
+    isServerMode() ? [] : null,
+  );
+
+  const refreshPublished = useCallback(() => {
+    if (!isServerMode()) return;
+    void listPublishedDefinitions().then(setPublishedDefs).catch(() => {
+      /* 401 pré-login etc. — o _connected pós-login recarrega */
+    });
+  }, []);
   // ready — bootstrap inicial (defs + 1ª carga de instances) já assentou. Enquanto
   // false, a UI NÃO mostra o empty state "Ambiente vazio": no server mode as
   // instances chegam async e o overlay piscava antes do board materializar no F5.
@@ -54,6 +70,7 @@ export function useOrchestratorData() {
       }
     }
 
+    refreshPublished(); // defs PUBLICADAS (workspace principal) p/ Monitoring/Force
     void loadDefinitions().then((list) => {
       setDefs(list);
       // Purga instances órfãs (sem definition correspondente) — só local mode.
@@ -97,10 +114,12 @@ export function useOrchestratorData() {
         // enquanto o canal esteve fora. Instances ressincronizam no próprio store.
         if (ev.event === "_connected") {
           void reloadDefinitions().then((list) => { setDefs([...list]); setDefsLoaded(true); });
+          refreshPublished();
           return;
         }
         if (ev.event === "definition.changed" || ev.event === "definition.deleted") {
           void reloadDefinitions().then((list) => setDefs([...list]));
+          refreshPublished(); // publish/save no workspace principal muda o publicado
           // Loop GitHub→UI fechado: mudança veio do webhook (push/PR merged no
           // GitHub) → avisa o usuário que as caixinhas mudaram sozinhas.
           const payload = (ev.payload ?? {}) as { reason?: string; sha?: string };
@@ -114,6 +133,7 @@ export function useOrchestratorData() {
         // garantimos que defs sigam coerentes (rename/delete podem ter movido jobs).
         if (ev.event === "folder.changed") {
           void reloadDefinitions().then((list) => setDefs([...list]));
+          refreshPublished();
         }
       });
     }
@@ -124,7 +144,7 @@ export function useOrchestratorData() {
       if (unsubWs) unsubWs();
       stopScheduler();
     };
-  }, []);
+  }, [refreshPublished]); // refreshPublished é estável (useCallback []) — efeito roda 1×
 
   // Mantém scheduler com defs atuais
   useEffect(() => { updateSchedulerDefs(defs); }, [defs]);
@@ -133,12 +153,13 @@ export function useOrchestratorData() {
   const reloadDefs = useCallback(async () => {
     const list = await reloadDefinitions();
     setDefs([...list]);
-  }, []);
+    refreshPublished();
+  }, [refreshPublished]);
 
   /** Re-lê o snapshot de instances do store (Run Daily local, ações em lote). */
   const syncInstances = useCallback(() => {
     setInstances(getTodayInstances());
   }, []);
 
-  return { defs, instances, ready: defsLoaded && instancesLoaded, reloadDefs, syncInstances };
+  return { defs, publishedDefs, instances, ready: defsLoaded && instancesLoaded, reloadDefs, syncInstances };
 }

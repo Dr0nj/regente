@@ -32,12 +32,14 @@ import (
 	"github.com/Dr0nj/regente-server/internal/auth"
 	"github.com/Dr0nj/regente-server/internal/bus"
 	"github.com/Dr0nj/regente-server/internal/db"
+	"github.com/Dr0nj/regente-server/internal/domain"
 	"github.com/Dr0nj/regente-server/internal/hub"
 	"github.com/Dr0nj/regente-server/internal/leader"
 	"github.com/Dr0nj/regente-server/internal/oidc"
 	"github.com/Dr0nj/regente-server/internal/scheduler"
 	"github.com/Dr0nj/regente-server/internal/secrets"
 	"github.com/Dr0nj/regente-server/internal/sectls"
+	"github.com/Dr0nj/regente-server/internal/serveragent"
 	"github.com/Dr0nj/regente-server/internal/storage"
 	"github.com/Dr0nj/regente-server/internal/telemetry"
 
@@ -77,6 +79,7 @@ func main() {
 		gitEnable        = flag.Bool("git-commit", false, "Commit saves via git (workspace must be a git repo)")
 		apiToken         = flag.String("api-token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token for API + WS")
 		demoMode         = flag.Bool("demo-mode", envOr("REGENTE_DEMO_MODE", "") == "1", "Demo/playground: sem agente online, jobs são mock-finalizados OK. Default OFF (produção): sem agente = instance fica WAITING e re-tenta quando um agente conectar")
+		serverAgent      = flag.Bool("server-agent", envOr("REGENTE_SERVER_AGENT", "1") != "0", "Registra o SERVER-AGENT embutido (executa jobs HTTP/REST no próprio server, sem agente externo). Desligue com -server-agent=false / REGENTE_SERVER_AGENT=0")
 
 		// F13 GitOps — defaults apontam pro regente-workspace (padrão, não configuração)
 		gitSource    = flag.String("git-source", envOr("REGENTE_GIT_SOURCE", "https://github.com/Dr0nj/regente-workspace.git"), "Git remote URL for workspace source-of-truth")
@@ -286,6 +289,20 @@ func main() {
 	sched.DemoMode = *demoMode
 	if *demoMode {
 		log.Printf("[scheduler] DEMO MODE — sem agente online, jobs são mock-finalizados OK (não use em produção)")
+	}
+
+	// SERVER-AGENT — o agente padrão EMBUTIDO: todo server executa jobs HTTP/REST
+	// sozinho (quem quer disparar uma API dispara direto do SERVER-AGENT), sem
+	// regente-agent externo. Registrado no hub como agente normal: aparece na
+	// tela de Agentes e é pinável no Design. Não sobe em demo-mode (lá tudo é
+	// mock — um agente real executaria HTTP de verdade no playground).
+	if *serverAgent && !*demoMode {
+		serveragent.Start(h, database, func(id string, st domain.InstanceStatus, exit int, out string) {
+			sched.FinishInstance(id, st, exit, out)
+		})
+		log.Printf("[agent] SERVER-AGENT embutido registrado (capabilities: HTTP/REST)")
+	} else if !*serverAgent {
+		log.Printf("[agent] SERVER-AGENT embutido DESLIGADO (-server-agent=false)")
 	}
 
 	// Opção B (2026-04-26) — daily lê definitions de Git fresh.

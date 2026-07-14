@@ -483,6 +483,7 @@ var sqliteMigrations = []migration{
 	{version: 12, sql: schemaV12("DATETIME")},
 	{version: 13, sql: schemaV13(sqliteID, "DATETIME")},
 	{version: 14, sql: schemaV14()},
+	{version: 15, sql: schemaV15(sqliteID, "DATETIME")},
 }
 
 var pgMigrations = []migration{
@@ -500,6 +501,7 @@ var pgMigrations = []migration{
 	{version: 12, sql: schemaV12("TIMESTAMPTZ")},
 	{version: 13, sql: schemaV13(pgID, "TIMESTAMPTZ")},
 	{version: 14, sql: schemaV14()},
+	{version: 15, sql: schemaV15(pgID, "TIMESTAMPTZ")},
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
@@ -694,4 +696,51 @@ CREATE TABLE IF NOT EXISTS job_templates (
 // legado conta como individual — comportamento anterior preservado).
 func schemaV14() string {
 	return `ALTER TABLE instances ADD COLUMN hold_scope TEXT NOT NULL DEFAULT ''`
+}
+
+// schemaV15 — eventos de dependência com CONSUMO por instância (2026-07-13).
+//
+// Motivação (report do usuário): a satisfação de uma dependência era derivada do
+// status VIVO do upstream — rerun/cancel do pai "apagava" linhas já satisfeitas
+// no Monitoring, e uma CÓPIA forçada do filho nascia com a condição já aceita
+// (o mesmo término do pai satisfazia duas instances). Novo modelo:
+//
+//   - dep_events: cada término TERMINAL (OK/NOTOK pós-retries, Set OK) de uma
+//     instance publica um EVENTO imutável. Rerun do pai = evento NOVO.
+//   - dep_claims: a satisfação de uma aresta é um CLAIM (latch) do consumidor
+//     sobre um evento. UNIQUE(event_id, consumer_def_id) = um evento não pode
+//     satisfazer duas instances da MESMA definition (a cópia forçada espera um
+//     término novo); UNIQUE(consumer_instance_id, upstream_def_id) = um claim
+//     por aresta por consumidor. Rerun do CONSUMIDOR apaga os claims dele
+//     (a linha reseta); rerun/cancel do PAI não toca claims já feitos (a linha
+//     satisfeita permanece verde).
+//
+// instances.force_mode distingue o Force: '' = "Run Now" clássico (bypass total
+// de gates, ordem EXISTENTE); 'order' = "Order Force" do Design (ordem NOVA fora
+// do agendamento, mas que RESPEITA os gates de runtime — deps/conditions/agente).
+func schemaV15(idDef, ts string) string {
+	return `
+CREATE TABLE IF NOT EXISTS dep_events (
+	id          ` + idDef + `,
+	def_id      TEXT NOT NULL,
+	instance_id TEXT NOT NULL,
+	order_date  TEXT NOT NULL,
+	status      TEXT NOT NULL,
+	created_at  ` + ts + ` DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_dep_events_def_date ON dep_events(def_id, order_date);
+CREATE INDEX IF NOT EXISTS idx_dep_events_instance ON dep_events(instance_id);
+
+CREATE TABLE IF NOT EXISTS dep_claims (
+	event_id             BIGINT NOT NULL,
+	consumer_instance_id TEXT NOT NULL,
+	consumer_def_id      TEXT NOT NULL,
+	upstream_def_id      TEXT NOT NULL,
+	claimed_at           ` + ts + ` DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(event_id, consumer_def_id),
+	UNIQUE(consumer_instance_id, upstream_def_id)
+);
+CREATE INDEX IF NOT EXISTS idx_dep_claims_consumer ON dep_claims(consumer_instance_id);
+
+ALTER TABLE instances ADD COLUMN force_mode TEXT NOT NULL DEFAULT ''`
 }

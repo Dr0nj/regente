@@ -68,6 +68,12 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   const [agentId, setAgentId] = useState<string>(
     typeof definition.actionConfig?._agentId === "string" ? (definition.actionConfig._agentId as string) : ""
   );
+  // agentTouched — o usuário mexeu no seletor de agente? Enquanto não mexer,
+  // um job NOVO nasce PINADO por padrão no primeiro agente online com a
+  // capability do jobType (SERVER-AGENT cobre HTTP/REST). É a regra "o job
+  // criado num agente fica marcado naquele agente": se ele cair amanhã, o job
+  // espera em WAIT AGENT — nunca migra sozinho pra outro agente.
+  const [agentTouched, setAgentTouched] = useState(false);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [saving, setSaving] = useState(false);
   const [showAudit, setShowAudit] = useState(false);
@@ -85,8 +91,23 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     setDryRun(definition.dryRun ?? false); setConfirmReq(definition.confirm ?? false); setActionConfig(definition.actionConfig ?? {});
     setCalendars(definition.calendars ?? []); setActions(definition.actions ?? []); setUpstream(definition.upstream ?? []);
     setAgentId(typeof definition.actionConfig?._agentId === "string" ? (definition.actionConfig._agentId as string) : "");
+    setAgentTouched(false);
     setErr(null); setValidationErr(null);
   }, [definition.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pin default na CRIAÇÃO: job novo nasce marcado no primeiro agente online
+  // capaz do jobType (re-decide se o jobType mudar antes do usuário tocar no
+  // seletor). Job existente e escolha manual nunca são sobrescritos.
+  useEffect(() => {
+    if (!isNew || agentTouched || agents.length === 0) return;
+    const cap = String(jobType || "").toUpperCase();
+    if (cap === "SSH") { setAgentId(""); return; } // agentless — roda no server
+    const current = agents.find((a) => a.id === agentId);
+    const currentServes = current?.capabilities?.some((c) => c.toUpperCase() === cap);
+    if (agentId && currentServes) return;
+    const match = agents.find((a) => a.online && a.capabilities?.some((c) => c.toUpperCase() === cap));
+    if (match) setAgentId(match.id);
+  }, [isNew, agentTouched, agents, jobType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (isNew || !definition.team || !definition.id) { setGithubUrl(null); return; }
@@ -212,7 +233,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
               </select>
             </Field>
             <Field label="Agente (onde roda)">
-              <select value={agentId} onChange={(e) => setAgentId(e.target.value)} style={selectStyle}>
+              <select value={agentId} onChange={(e) => { setAgentTouched(true); setAgentId(e.target.value); }} style={selectStyle}>
                 <option value="">Automático (por capability)</option>
                 {agents.map((a) => (
                   <option key={a.id} value={a.id}>{a.id} — {a.capabilities.join("/") || "sem caps"}</option>
@@ -223,8 +244,8 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
               </select>
               <div style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 4, lineHeight: 1.4 }}>
                 {agents.length === 0
-                  ? "Nenhum agente online. Rode o regente-agent na máquina alvo."
-                  : "Vazio = o server escolhe um agente com a capability do jobType."}
+                  ? "Nenhum agente online. Rode o regente-agent na máquina alvo (jobs HTTP rodam no SERVER-AGENT embutido)."
+                  : "Pinado = roda SÓ nesse agente (se ele cair, o job espera em WAIT AGENT — nunca migra). Vazio = o server escolhe qualquer agente com a capability."}
               </div>
             </Field>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)" }}>

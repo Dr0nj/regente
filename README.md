@@ -69,6 +69,12 @@ daily ou via Force Order manual.
   e `HTTP`, rodando na máquina onde o agente está (Windows ou Linux). Cada job
   pode mirar um agente específico ou ser roteado por capability. Tokens **por
   agente** + agente instalável como serviço (systemd / Tarefa Agendada).
+  **Pin estrito:** job pinado num agente roda SÓ nele — se o agente cair, o job
+  espera em WAIT AGENT até ele voltar (nunca migra sozinho).
+- 🟢 **SERVER-AGENT embutido** — todo server nasce com um agente padrão de
+  `HTTP`/`REST`: chamadas de API rodam direto do server, sem instalar agente
+  externo. Aparece na tela de Agentes e é pinável no Design como qualquer outro
+  (desligável via `-server-agent=false`).
 - 🟢 **SSH agentless** — `SSH` roda comando remoto direto do server (sem agente
   no alvo), com stream de saída.
 - 🟢 **Daily imutável** — instances congeladas no momento da ordem (mudança
@@ -559,6 +565,9 @@ Todo o planejamento vive em **[`docs/roadmap.md`](docs/roadmap.md)** — a **fon
 
 Este README é só a **apresentação do produto** (conceito, capacidades, arquitetura, guias). Se algo aqui
 divergir do roadmap, o roadmap vence.
+
+Para a **história do projeto** — o problema, as apostas de arquitetura, a semântica Control-M nas
+bordas, a escala validada a 1M jobs/dia e as lições — ver o **[case study](docs/case-study.md)**.
 
 ---
 

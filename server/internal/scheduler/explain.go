@@ -98,11 +98,20 @@ func edgeState(cond domain.EdgeCondition, upStatus string, exists bool) (satisfi
 // deps, conditions e recursos (read-only) e devolve os bloqueios ATIVOS. Vazio =
 // pode rodar. Ordem = a do tick (janela → deps → conditions → recursos).
 //
+// `claims` = latches de dependência desta instance (dep_claims, schemaV15):
+// aresta clamada é satisfeita PARA SEMPRE para esta instance — rerun/cancel do
+// upstream não a desfaz. Aresta sem claim espera um EVENTO livre (o tick tenta
+// clamar no pré-passe; aqui o gate só lê). nil = sem latch conhecido.
+//
+// Instance FORÇADA (r.Forced) pula os gates de JANELA (1 e 1b): a ordem manual
+// nasce elegível agora — mas deps/conditions/agente/recursos/Confirm valem
+// (force_mode='order'; o Run Now nem passa por aqui).
+//
 // shortCircuit=true para no 1º bloqueio (hot path do tick, que só precisa de
 // "bloqueado?" + saber se o 1º é dep permanente); false coleta TODOS (Explain).
 // A checagem de recurso é read-only (Shortfalls); a reserva atômica (TryAcquire)
 // fica no tick, depois deste gate passar.
-func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, instByDef map[string]instRow, now time.Time, shortCircuit bool) []Blocker {
+func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, instByDef map[string]instRow, claims map[string]bool, now time.Time, shortCircuit bool) []Blocker {
 	var out []Blocker
 	// add anexa o bloqueio e devolve true quando o avaliador deve PARAR (short-circuit).
 	add := func(b Blocker) bool {
@@ -110,20 +119,22 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, instByDef 
 		return shortCircuit
 	}
 
-	// 1) Janela — ainda não chegou o horário agendado.
-	if now.Before(r.ScheduledAt) {
-		if add(Blocker{Kind: GateWindow, Detail: "ainda não chegou o horário agendado (" + r.ScheduledAt.Format("15:04") + ")"}) {
-			return out
+	if !r.Forced {
+		// 1) Janela — ainda não chegou o horário agendado.
+		if now.Before(r.ScheduledAt) {
+			if add(Blocker{Kind: GateWindow, Detail: "ainda não chegou o horário agendado (" + r.ScheduledAt.Format("15:04") + ")"}) {
+				return out
+			}
 		}
-	}
-	// 1b) Janela fechou (Control-M time window): passou de WindowTo, não submete
-	// mais hoje. A instance morre na virada da daily (WAITING nunca-rodou).
-	if hh, mm, okW := parseHHMM(def.Schedule.WindowTo); okW {
-		if t, err := time.Parse("2006-01-02", r.OrderDate); err == nil {
-			windowEnd := time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.Local)
-			if now.After(windowEnd) {
-				if add(Blocker{Kind: GateWindowClosed, Detail: "janela de execução fechou às " + def.Schedule.WindowTo}) {
-					return out
+		// 1b) Janela fechou (Control-M time window): passou de WindowTo, não submete
+		// mais hoje. A instance morre na virada da daily (WAITING nunca-rodou).
+		if hh, mm, okW := parseHHMM(def.Schedule.WindowTo); okW {
+			if t, err := time.Parse("2006-01-02", r.OrderDate); err == nil {
+				windowEnd := time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.Local)
+				if now.After(windowEnd) {
+					if add(Blocker{Kind: GateWindowClosed, Detail: "janela de execução fechou às " + def.Schedule.WindowTo}) {
+						return out
+					}
 				}
 			}
 		}
@@ -136,22 +147,45 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, instByDef 
 		}
 	}
 
-	// 2) Dependências upstream.
+	// 2) Dependências upstream — por EVENTO consumível (schemaV15). Satisfeita ⇔
+	// claim latchado (ou 'always' com o upstream ordenado). Sem claim, o motivo
+	// distingue: pai nunca terminou (espera) × pai terminou mas o evento já foi
+	// consumido por OUTRA instance (espera um término NOVO) × pai terminou num
+	// estado incompatível (rerun/Set OK destravam).
 	for _, u := range def.Upstream {
-		up, exists := instByDef[u.From]
-		sat, permanent := edgeState(u.Condition, up.Status, exists)
-		if sat {
-			continue
+		if claims[u.From] {
+			continue // latch: satisfeita para sempre para ESTA instance
 		}
+		up, exists := instByDef[u.From]
 		upStatus := up.Status
 		if !exists {
 			upStatus = "ainda não ordenado"
 		}
+		if u.Condition == domain.CondAlways {
+			if exists {
+				continue // always: basta o upstream existir no dia
+			}
+			if add(Blocker{Kind: GateDep, Upstream: u.From, UpStatus: upStatus, Condition: string(u.Condition),
+				Detail: fmt.Sprintf("aguardando upstream '%s' (%s, ainda não ordenado)", u.From, condLabel(u.Condition))}) {
+				return out
+			}
+			continue
+		}
 		b := Blocker{Kind: GateDep, Upstream: u.From, UpStatus: upStatus, Condition: string(u.Condition)}
-		if permanent {
+		liveSat, permanent := edgeState(u.Condition, up.Status, exists)
+		switch {
+		case !exists:
+			b.Detail = fmt.Sprintf("aguardando upstream '%s' (%s, ainda não ordenado)", u.From, condLabel(u.Condition))
+		case liveSat:
+			// O estado vivo satisfaria, mas não há evento LIVRE: o término do pai
+			// já foi consumido por outra instance desta definition (tipicamente a
+			// ordem original — esta é uma cópia forçada). Rerun no pai emite um
+			// evento novo e destrava.
+			b.Detail = fmt.Sprintf("aguardando NOVO término de '%s' — o último evento já foi consumido por outra instance (rerun no upstream libera)", u.From)
+		case permanent:
 			b.Kind = GateDepBlocked
-			b.Detail = fmt.Sprintf("upstream '%s' tornou a dependência impossível (%s, está %s)", u.From, condLabel(u.Condition), upStatus)
-		} else {
+			b.Detail = fmt.Sprintf("upstream '%s' está %s — a aresta (%s) espera um término compatível (rerun/Set OK no upstream libera)", u.From, upStatus, condLabel(u.Condition))
+		default:
 			b.Detail = fmt.Sprintf("aguardando upstream '%s' (%s, está %s)", u.From, condLabel(u.Condition), upStatus)
 		}
 		if add(b) {
@@ -220,9 +254,9 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 	var forcedInt, confirmedInt int
 	err := s.db.QueryRow(
 		`SELECT id, definition_id, order_date, status, scheduled_at, started_at, carried_at,
-		        COALESCE(forced,0), COALESCE(confirmed,0), COALESCE(definition_snapshot,'')
+		        COALESCE(forced,0), COALESCE(force_mode,''), COALESCE(confirmed,0), COALESCE(definition_snapshot,'')
 		 FROM instances WHERE id=?`, instanceID,
-	).Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &confirmedInt, &r.Snapshot)
+	).Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.Snapshot)
 	if err != nil {
 		return Explanation{}, err
 	}
@@ -266,18 +300,27 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 		ex.Summary = "Sem definição carregada — não é materializável (def removida/desabilitada?)."
 		return ex, nil
 	}
-	if r.Forced {
+	// "Run Now" (forced sem force_mode) bypassa todos os gates menos Confirm e
+	// agente. O "Order Force" (force_mode='order') cai no gating normal abaixo —
+	// só a janela é bypassada (r.Forced, dentro do gateInstance).
+	if r.Forced && r.ForceMode != ForceModeOrder {
 		if def.Confirm && !r.Confirmed {
 			ex.Blockers = []Blocker{{Kind: GateConfirm, Detail: "aguardando confirmação do operador (job exige Confirm)"}}
-			ex.Summary = "Force Order aguardando Confirm — a confirmação não é bypassada (Control-M)."
+			ex.Summary = "Force aguardando Confirm — a confirmação não é bypassada (Control-M)."
 			return ex, nil
 		}
 		ex.Runnable = true
-		ex.Summary = "Force Order — roda no próximo tick (bypassa deps, conditions e recursos)."
+		ex.Summary = "Run Now — roda no próximo tick (bypassa janela, deps, conditions e recursos)."
 		return ex, nil
 	}
 
-	blockers := s.gateInstance(r, def, s.loadUpstreamInsts(r.OrderDate, def), time.Now(), false)
+	// Latches de dependência (schemaV15) — inclui claim-on-observe: se há um
+	// evento LIVRE do upstream, o Explain latcha agora, exatamente como o
+	// pré-passe do tick faria ~2s depois (mesma fonte, nunca diverge).
+	claimed := s.claimsFor(r.ID)
+	s.claimDepEdges(r, def, claimed)
+
+	blockers := s.gateInstance(r, def, s.loadUpstreamInsts(r.OrderDate, def), claimed, time.Now(), false)
 	ex.Blockers = blockers
 	if len(blockers) == 0 {
 		ex.Runnable = true

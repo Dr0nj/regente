@@ -12,6 +12,11 @@ export interface LaneLabelData {
  * Container de folder (Control-M smart-folder style).
  * Retângulo visual com header no topo, posicionado atrás dos jobs
  * (zIndex 0). Não-interativo: pan do canvas passa direto.
+ *
+ * Fundo SÓLIDO de propósito (tinta composta sobre --v2-bg-canvas): os dots do
+ * Background do ReactFlow ficam SÓ na área externa do canvas — dentro da
+ * folder a cor é chapada (pedido do usuário; antes o rgba ~transparente
+ * deixava os dots vazarem pra dentro do retângulo).
  */
 export default function LaneLabelNode({ data }: NodeProps) {
   const d = data as LaneLabelData;
@@ -20,7 +25,8 @@ export default function LaneLabelNode({ data }: NodeProps) {
       style={{
         width: d.width,
         height: d.height,
-        background: "rgba(17,199,111,0.025)",
+        background:
+          "linear-gradient(0deg, rgba(17,199,111,0.03), rgba(17,199,111,0.03)), var(--v2-bg-canvas)",
         border: "1px solid var(--v2-border-medium)",
         borderRadius: 6,
         position: "relative",
