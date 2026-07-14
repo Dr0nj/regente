@@ -92,9 +92,14 @@ func (s *server) bulkInstances(w http.ResponseWriter, r *http.Request) {
 	s.cfg.Hub.BroadcastWeb("instance.bulk", map[string]any{
 		"action": req.Action, "total": resp.Total, "ok": resp.Ok, "failed": resp.Failed, "actor": actor,
 	})
-	// Confirm em lote destrava jobs no gate WAIT_CONFIRM — cutuca o tick uma vez.
-	if req.Action == "confirm" && resp.Ok > 0 {
-		go s.cfg.Scheduler.Tick()
+	// Ações que podem deixar jobs elegíveis JÁ (confirm destrava WAIT_CONFIRM;
+	// rerun/release re-entram no gating; set-ok libera dependentes) cutucam o
+	// tick uma vez — os afetados entram na hora, sem esperar o próximo ciclo.
+	switch req.Action {
+	case "confirm", "rerun", "release", "set-ok":
+		if resp.Ok > 0 {
+			go s.cfg.Scheduler.Tick()
+		}
 	}
 	writeJSON(w, 200, resp)
 }
@@ -174,9 +179,10 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 		return string(domain.StatusCancelled), nil
 
 	case "rerun":
-		// confirmed=0: rerun re-exige Confirm em jobs confirm:true (Control-M).
+		// BUG-2: `confirmed` sobrevive ao rerun (ver rerunInstance) — job já
+		// confirmado não volta pro gate CONFIRM.
 		res, err := s.cfg.DB.Exec(
-			`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL, confirmed=0 WHERE id=?`,
+			`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL WHERE id=?`,
 			string(domain.StatusWaiting), id,
 		)
 		if err != nil {

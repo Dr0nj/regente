@@ -123,8 +123,9 @@ type JobDefinition struct {
 
 	// Confirm (Control-M "Wait for confirmation") — a instance NÃO roda até um
 	// operador confirmar (POST /instances/{id}/confirm). Vale também para Force
-	// Order (no Control-M a confirmação é um wait de runtime, não de schedule);
-	// rerun re-exige confirmação. Gate WAIT_CONFIRM no gateInstance (fonte única).
+	// Order (no Control-M a confirmação é um wait de runtime, não de schedule).
+	// BUG-2: o flag `confirmed` SOBREVIVE ao rerun — job já confirmado não volta
+	// pro gate. Gate WAIT_CONFIRM no gateInstance (fonte única).
 	Confirm bool `yaml:"confirm,omitempty" json:"confirm,omitempty"`
 
 	// === Bloco 2 — Control-M parity ===

@@ -36,13 +36,26 @@ export const NODE_H = 72;
 // real do DOM assume depois (getEdgePosition prefere internals.handleBounds).
 // Geometria = padrão do RF pro card 200×55 com nub de 6px (centro horizontal,
 // 3px além de cada ponta), pra o fallback coincidir com o measured — sem "pulo".
+// BUG-9 — a geometria estática é AUTORITATIVA na prática: com `node.handles`
+// presente, o parseHandles do @xyflow/system usa SEMPRE o fallback nos rebuilds
+// (a medição do DOM não reassume — rebuild a cada tick reseta pro estático).
+// Então o y do handle de saída tem que bater com a ALTURA REAL de cada card:
+// a linha de TAGS (⚡FORCED/👻GHOST, própria abaixo do nome) deixa o card mais
+// alto — com o y calibrado só pro card base, a seta nascia DENTRO do card
+// ("atrás" dele) e ficava visivelmente mais curta. Duas variantes de handle,
+// escolhidas por card no builder do Monitoring (Design não tem linha de tags).
 const HANDLE_PX = 6;
 const CARD_VISUAL_W = 200; // largura do JobNodeV2 (≠ NODE_W=220, a célula de layout)
-const CARD_VISUAL_H = 55; // altura renderizada do card (medida no lab)
-const JOB_HANDLES: NodeHandle[] = [
-  { type: "target", position: Position.Top, x: (CARD_VISUAL_W - HANDLE_PX) / 2, y: -HANDLE_PX / 2, width: HANDLE_PX, height: HANDLE_PX },
-  { type: "source", position: Position.Bottom, x: (CARD_VISUAL_W - HANDLE_PX) / 2, y: CARD_VISUAL_H - HANDLE_PX / 2, width: HANDLE_PX, height: HANDLE_PX },
-];
+const CARD_VISUAL_H = 55; // altura renderizada do card base (medida no lab)
+const CARD_VISUAL_H_TAGGED = 72; // card com a linha de tags ⚡FORCED/👻GHOST
+function jobHandles(cardH: number): NodeHandle[] {
+  return [
+    { type: "target", position: Position.Top, x: (CARD_VISUAL_W - HANDLE_PX) / 2, y: -HANDLE_PX / 2, width: HANDLE_PX, height: HANDLE_PX },
+    { type: "source", position: Position.Bottom, x: (CARD_VISUAL_W - HANDLE_PX) / 2, y: cardH - HANDLE_PX / 2, width: HANDLE_PX, height: HANDLE_PX },
+  ];
+}
+const JOB_HANDLES: NodeHandle[] = jobHandles(CARD_VISUAL_H);
+const JOB_HANDLES_TAGGED: NodeHandle[] = jobHandles(CARD_VISUAL_H_TAGGED);
 // Âncora vertical de entrada do canvas: o topo do conteúdo fica este tanto abaixo
 // do topo da área (px de tela). Um pouco mais baixo que a trava antiga (24) — mesma
 // sensação do "Organizar". Vale pro Monitoring e pro Design.
@@ -232,6 +245,23 @@ function evaluateEdgeState(
     return "pending";
   }
   return live;
+}
+
+/**
+ * WAIT EVENT de UMA instance — a MESMA régua que pinta o card do canvas
+ * (WAITING com alguma aresta upstream não satisfeita, claim-aware). Exportada
+ * pro drawer/menus decidirem as ações contextuais (BUG-3) sem duplicar a
+ * semântica de claims do schemaV15.
+ */
+export function isWaitingOnDeps(
+  inst: JobInstance,
+  def: JobDefinition | undefined,
+  instByDefId: Map<string, JobInstance>,
+): boolean {
+  if (inst.status !== "WAITING" || !def?.upstream?.length) return false;
+  return def.upstream.some(
+    (u) => evaluateEdgeState(inst, u.from, u.condition ?? EDGE_CONDITION_DEFAULT, instByDefId.get(u.from)) !== "satisfied",
+  );
 }
 
 function edgeStyleForState(state: DepState, _condition: EdgeCondition) {
@@ -555,7 +585,9 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
       initialHeight: NODE_H,
       // Handles estáticos (ver JOB_HANDLES): mantém a LINHA de dependência
       // posicionável mesmo antes/sem a medição — sob rajada a edge não some.
-      handles: JOB_HANDLES,
+      // BUG-9: card com linha de tags é mais alto — o handle de saída desce
+      // junto, senão a seta nasce atrás do card.
+      handles: (inst.manual || inst.dryRun) ? JOB_HANDLES_TAGGED : JOB_HANDLES,
       data: {
         label: inst.label,
         jobType: inst.jobType,

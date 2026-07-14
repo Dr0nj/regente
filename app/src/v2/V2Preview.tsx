@@ -92,6 +92,7 @@ import {
   instanceToMonitoring,
   buildMonitoringCanvas,
   buildDesignCanvas,
+  isWaitingOnDeps,
   type AgentAvailability,
   type Canvas,
   type LayoutConfig,
@@ -1000,11 +1001,26 @@ function V2PreviewInner() {
 
       const items: ContextMenuItem[] = [];
 
-      // Confirmar: gate Control-M "Wait for confirmation" ativo (a def exige
-      // confirm e a instância ainda não foi confirmada). Ação principal do card
-      // violeta — libera o job, que sai do violeta e executa.
-      if ((status === "WAITING" || status === "HOLD") && !inst.confirmed && def?.confirm) {
-        items.push({ label: "Confirmar", tone: "primary", onClick: () => { void confirmInstance(inst.id); } });
+      // Estados derivados do PRÓPRIO card (canvas-layout): mesma régua visual.
+      const nd = node.data as { waitEvent?: boolean };
+      const confirmGate = !inst.confirmed && !!def?.confirm;
+      const waitEvent = !!nd.waitEvent;
+
+      // BUG-5 — job parado no gate CONFIRM (card violeta): as ÚNICAS ações são
+      // Confirm e Hold. Sem Run Now (a confirmação não é bypassável) e sem
+      // Cancel — a decisão do operador é confirmar ou segurar.
+      if (status === "WAITING" && confirmGate) {
+        // BUG-6 — rótulo inglês, alinhado com o restante das ações.
+        items.push({ label: "Confirm", tone: "primary", onClick: () => { void confirmInstance(inst.id); } });
+        items.push({ label: "Hold", onClick: () => { void holdInstance(inst.id); } });
+        setCtxMenu({ x: e.clientX, y: e.clientY, items });
+        return;
+      }
+
+      // Job em HOLD que ainda exige confirmação: dá pra confirmar desde já
+      // (ele roda quando for liberado).
+      if (status === "HOLD" && confirmGate) {
+        items.push({ label: "Confirm", tone: "primary", onClick: () => { void confirmInstance(inst.id); } });
       }
 
       // Run Now: força ESTA instance (WAITING/HOLD) a bypassar os gates de
@@ -1040,12 +1056,14 @@ function V2PreviewInner() {
           });
         }
       }
-      if (status === "WAITING" || status === "HOLD") {
+      // BUG-3 — WAIT EVENT: sem Cancel (a espera se resolve, não se cancela);
+      // o Set OK abaixo conclui OK na hora, sem esperar o evento chegar.
+      if ((status === "WAITING" || status === "HOLD") && !waitEvent) {
         items.push({ label: "Cancel", tone: "danger", onClick: () => { void cancelInstance(inst.id); } });
       }
 
-      // Set OK: NOTOK ou CANCELLED
-      if (status === "NOTOK" || status === "CANCELLED") {
+      // Set OK: NOTOK/CANCELLED (flip clássico) ou WAITING em WAIT EVENT (BUG-3).
+      if (status === "NOTOK" || status === "CANCELLED" || (status === "WAITING" && waitEvent)) {
         items.push({ label: "Set OK", tone: "primary", onClick: () => { void bypassInstance(inst.id); } });
       }
 
@@ -1752,11 +1770,15 @@ function V2PreviewInner() {
             label: selectedInstance.label && selectedInstance.label !== selectedInstance.definitionId ? selectedInstance.label : selDef.label,
             jobType: selectedInstance.jobType || selDef.jobType,
           } : selectedInstance;
+          // WAIT EVENT (BUG-3) — mesma régua do card: decide as ações do drawer
+          // (Cancel some, Set OK aparece).
+          const instByDefId = new Map(instances.map((i) => [i.definitionId, i] as const));
           return (
             <InstanceDetailsDrawer
               instance={enriched}
               definition={selDef}
               allDefs={runnableDefs}
+              waitEvent={isWaitingOnDeps(enriched, selDef, instByDefId)}
               handlers={{
                 onHold: holdInstance,
                 onRelease: releaseInstance,

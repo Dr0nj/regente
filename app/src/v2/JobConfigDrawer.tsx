@@ -236,7 +236,11 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
               <select value={agentId} onChange={(e) => { setAgentTouched(true); setAgentId(e.target.value); }} style={selectStyle}>
                 <option value="">Automático (por capability)</option>
                 {agents.map((a) => (
-                  <option key={a.id} value={a.id}>{a.id} — {a.capabilities.join("/") || "sem caps"}</option>
+                  // BUG-8 — o SERVER-AGENT embutido não ganha sufixo de restrição
+                  // depois do nome; agentes externos seguem mostrando as caps.
+                  <option key={a.id} value={a.id}>
+                    {a.id === "SERVER-AGENT" ? a.id : `${a.id} — ${a.capabilities.join("/") || "sem caps"}`}
+                  </option>
                 ))}
                 {agentId && !agents.some((a) => a.id === agentId) && (
                   <option value={agentId}>{agentId} (offline)</option>

@@ -457,9 +457,11 @@ func (s *server) rerunInstance(w http.ResponseWriter, r *http.Request) {
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
-	// confirmed=0: rerun re-exige Confirm em jobs confirm:true (Control-M).
+	// BUG-2: `confirmed` SOBREVIVE ao rerun — um job que já passou pelo gate
+	// Confirm não volta pro CONFIRM ao ser re-rodado; ele re-entra direto no
+	// gating normal (deps/janela). Quem nunca confirmou segue exigindo Confirm.
 	_, err := s.cfg.DB.Exec(
-		`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL, confirmed=0 WHERE id=?`,
+		`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL WHERE id=?`,
 		string(domain.StatusWaiting), id,
 	)
 	if err != nil {
@@ -474,6 +476,9 @@ func (s *server) rerunInstance(w http.ResponseWriter, r *http.Request) {
 	// Ciclo de vida do alerta: o operador agiu no job → marca alertas como tratados.
 	s.markAlertsHandled(id, "rerun")
 	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusWaiting)})
+	// BUG-10/11: rerun com os gates já satisfeitos (ex.: horário que já passou)
+	// entra NA HORA — cutuca o tick em vez de esperar o próximo ciclo.
+	go s.cfg.Scheduler.Tick()
 	writeJSON(w, 200, map[string]string{"id": id, "status": string(domain.StatusWaiting)})
 }
 
@@ -490,6 +495,9 @@ func (s *server) setOKInstance(w http.ResponseWriter, r *http.Request) {
 	}
 	// Ciclo de vida do alerta: set OK trata os alertas pendentes do job.
 	s.markAlertsHandled(id, "set_ok")
+	// BUG-4/10: o Set OK materializa evento/conditions pros dependentes — cutuca
+	// o tick pra eles entrarem na hora, sem esperar o próximo ciclo.
+	go s.cfg.Scheduler.Tick()
 	writeJSON(w, 200, map[string]string{"id": id, "status": string(domain.StatusOK)})
 }
 
@@ -651,8 +659,13 @@ func (s *server) forceRunInstance(w http.ResponseWriter, r *http.Request) {
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
+	// BUG-1: force_mode='' explícito — um Run Now sobre uma cópia criada por
+	// "Order Force" (force_mode='order', que RESPEITA os gates de runtime e pode
+	// estar presa em WAIT EVENT) converte a instance pro modo bypass TOTAL. Sem
+	// isso o ramo forced do tick (`ForceMode != order`) nunca ativava e o job
+	// continuava aguardando evento mesmo depois do Run Now.
 	res, err := s.cfg.DB.Exec(
-		`UPDATE instances SET status=?, forced=1, scheduled_at=? WHERE id=? AND status IN (?,?)`,
+		`UPDATE instances SET status=?, forced=1, force_mode='', scheduled_at=? WHERE id=? AND status IN (?,?)`,
 		string(domain.StatusWaiting), time.Now(), id,
 		string(domain.StatusWaiting), string(domain.StatusHeld),
 	)

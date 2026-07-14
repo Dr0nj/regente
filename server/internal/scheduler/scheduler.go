@@ -720,8 +720,9 @@ type carriedInstance struct {
 // e WAITING/keepActive persistem enquanto têm orçamento (carry_budget). A instance
 // carregada AVANÇA seu order_date para `date` mantendo ID/status/started_at/snapshot/
 // eventos — assim o tick, a API paginada e o RBAC (todos filtram order_date) a enxergam
-// no novo dia sem nenhuma mudança, e o check de existência do RunDaily NÃO cria uma
-// instance fresca duplicada para a mesma definition.
+// no novo dia sem nenhuma mudança. BUG-12: a carregada NÃO bloqueia a ordem fresca
+// de `date` — o check de existência do RunDaily ignora carried_from≠'' e a daily
+// materializa a instance nova da mesma definition ao lado da carregada.
 //
 // Idempotente: instances já em `date` não estão na diária anterior, então re-rodar
 // (botão manual + auto) não move nada duas vezes nem reconsome orçamento.
@@ -837,14 +838,19 @@ func (s *Scheduler) RunDaily(date string) int {
 
 	// 0) Ciclo de vida da daily (Control-M New Day): traz da diária anterior as
 	// instances que sobrevivem à virada (RUNNING/HELD/NOTOK-não-tratado/keepActive)
-	// AVANÇANDO seu order_date para hoje. Roda ANTES da existência: assim uma ordem
-	// carregada conta como "já existe" para sua def e o passo 2 NÃO cria uma fresca
-	// duplicada. Idempotente (re-rodar não re-move).
+	// AVANÇANDO seu order_date para hoje. BUG-12: a carregada NÃO conta como "já
+	// existe" — a fresca do dia entra junto (o passo 1 filtra carried_from).
+	// Idempotente (re-rodar não re-move).
 	carried := s.carryOver(date)
 
 	// 1) Existência em UMA query (set-based), não um COUNT(*) por def.
+	// BUG-12: instances CARREGADAS (carry-over, carried_from≠'') NÃO contam como
+	// "já existe" — um job trazido de outro dia (NOTOK em tratamento, RUNNING
+	// atravessando a virada, keepActive) não impede a ordem FRESCA de hoje de
+	// entrar, como no New Day do Control-M. Só a fresca do dia (carried_from='')
+	// bloqueia duplicata — re-rodar a daily segue idempotente.
 	existing := make(map[string]struct{})
-	if rows, err := s.db.Query("SELECT definition_id FROM instances WHERE order_date=?", date); err == nil {
+	if rows, err := s.db.Query("SELECT definition_id FROM instances WHERE order_date=? AND COALESCE(carried_from,'')=''", date); err == nil {
 		for rows.Next() {
 			var id string
 			if rows.Scan(&id) == nil {
@@ -1363,21 +1369,8 @@ func (s *Scheduler) FinishInstance(id string, status domain.InstanceStatus, exit
 		s.resources.Release(id)
 	}
 	// F16 — emit ConditionsOut on OK
-	if status == domain.StatusOK && s.conditions != nil {
-		var defID, orderDate string
-		_ = s.db.QueryRow(`SELECT definition_id, order_date FROM instances WHERE id=?`, id).Scan(&defID, &orderDate)
-		s.mu.Lock()
-		var def domain.JobDefinition
-		for _, d := range s.defs {
-			if d.ID == defID {
-				def = d
-				break
-			}
-		}
-		s.mu.Unlock()
-		if def.ID != "" {
-			s.conditions.ApplyOutcomes(def, orderDate, "scheduler")
-		}
+	if status == domain.StatusOK {
+		s.applyConditionsOut(id, "scheduler")
 	}
 	s.emitEvent(id, "finished", "agent", fmt.Sprintf("status=%s exit=%d", status, exitCode))
 	s.hub.BroadcastWeb("instance.changed", map[string]interface{}{
@@ -1604,34 +1597,69 @@ func (s *Scheduler) maybeRetry(id, output string) bool {
 	return true
 }
 
-// SetOK — flip operacional NOTOK/CANCELLED -> OK (Control-M "Set OK").
-// Único gatilho que destrava sucessores on-success a partir de um pai falho.
-// Preserva output original com prefixo de auditoria.
+// SetOK — flip operacional -> OK (Control-M "Set OK"). Vale para NOTOK/
+// CANCELLED (destravar sucessores a partir de um pai falho) e, desde o BUG-3,
+// também para WAITING — um job preso em WAIT EVENT pode ser concluído OK na
+// hora, sem esperar o evento chegar. Preserva output original com prefixo de
+// auditoria.
 func (s *Scheduler) SetOK(id string) error {
 	var status, output string
 	err := s.db.QueryRow(`SELECT status, COALESCE(output,'') FROM instances WHERE id=?`, id).Scan(&status, &output)
 	if err != nil {
 		return fmt.Errorf("instance %s not found", id)
 	}
-	if status != string(domain.StatusNotOK) && status != string(domain.StatusCancelled) {
-		return fmt.Errorf("instance %s is %s; Set OK only valid for NOTOK/CANCELLED", id, status)
+	switch status {
+	case string(domain.StatusNotOK), string(domain.StatusCancelled), string(domain.StatusWaiting):
+	default:
+		return fmt.Errorf("instance %s is %s; Set OK only valid for WAITING/NOTOK/CANCELLED", id, status)
 	}
 	newOutput := "[set-ok by operator at " + time.Now().Format(time.RFC3339) + "]\n" + output
-	_, err = s.db.Exec(
-		`UPDATE instances SET status=?, exit_code=0, output=?, finished_at=COALESCE(finished_at, CURRENT_TIMESTAMP) WHERE id=?`,
-		string(domain.StatusOK), newOutput, id,
+	// Guarda pelo status LIDO: se o tick reivindicar a instance (WAITING→RUNNING)
+	// entre o SELECT e o UPDATE, não sobrescreve — o operador re-tenta vendo o
+	// estado novo.
+	res, err := s.db.Exec(
+		`UPDATE instances SET status=?, exit_code=0, output=?, finished_at=COALESCE(finished_at, CURRENT_TIMESTAMP) WHERE id=? AND status=?`,
+		string(domain.StatusOK), newOutput, id, status,
 	)
 	if err != nil {
 		return err
 	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("instance %s changed state during Set OK — retry", id)
+	}
 	// schemaV15 — Set OK é um término OK aos olhos dos sucessores: publica o
 	// evento consumível (é o gatilho que destrava on-success a partir de pai falho).
 	s.emitDepEvent(id, domain.StatusOK)
+	// BUG-4 — Set OK também MATERIALIZA as ConditionsOut (F16), como um término
+	// OK de verdade faria: dependentes por condition destravam igual.
+	s.applyConditionsOut(id, "set-ok")
 	s.emitEvent(id, "set-ok", "operator", fmt.Sprintf("flipped from %s to OK", status))
 	s.hub.BroadcastWeb("instance.changed", map[string]interface{}{
 		"id": id, "status": string(domain.StatusOK), "setOk": true,
 	})
 	return nil
+}
+
+// applyConditionsOut — F16: emite as ConditionsOut de uma instance que terminou
+// OK (término real ou Set OK). Lê a def VIVA (mesma regra do FinishInstance).
+func (s *Scheduler) applyConditionsOut(id, actor string) {
+	if s.conditions == nil {
+		return
+	}
+	var defID, orderDate string
+	_ = s.db.QueryRow(`SELECT definition_id, order_date FROM instances WHERE id=?`, id).Scan(&defID, &orderDate)
+	s.mu.Lock()
+	var def domain.JobDefinition
+	for _, d := range s.defs {
+		if d.ID == defID {
+			def = d
+			break
+		}
+	}
+	s.mu.Unlock()
+	if def.ID != "" {
+		s.conditions.ApplyOutcomes(def, orderDate, actor)
+	}
 }
 
 // ForceOrder cria uma instance NOVA fora do agendamento (Control-M "Order

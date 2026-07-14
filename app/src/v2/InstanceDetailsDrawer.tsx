@@ -111,6 +111,7 @@ export default function InstanceDetailsDrawer({
   definition,
   allDefs = [],
   handlers,
+  waitEvent = false,
 }: {
   instance: JobInstance;
   /** Definition de desenho correspondente (para Schedule/Dependencies/Description). */
@@ -118,10 +119,16 @@ export default function InstanceDetailsDrawer({
   /** Todas as defs do escopo — para calcular downstream (triggers) sem fetch. */
   allDefs?: JobDefinition[];
   handlers: InstanceActionHandlers;
+  /** WAIT EVENT (BUG-3): WAITING com dependência não satisfeita — mesma régua
+   *  do card (isWaitingOnDeps). Troca o Cancel por Set OK nas ações. */
+  waitEvent?: boolean;
 }) {
   const status = instance.status;
   const color = STATUS_COLOR[status];
   const [tab, setTab] = useState<Tab>("general");
+  // BUG-5 — gate CONFIRM ativo (card violeta): as únicas ações são Hold e
+  // Confirm; Cancel/Skip/Set OK/Chaos somem até o operador decidir.
+  const waitConfirm = status === "WAITING" && !instance.confirmed && !!definition?.confirm;
 
   // Downstream estático: jobs cujo upstream aponta para este (mesma lógica do Design).
   const triggers = allDefs.filter((d) => (d.upstream ?? []).some((u) => u.from === instance.definitionId));
@@ -140,6 +147,8 @@ export default function InstanceDetailsDrawer({
   };
 
   const actions: ActionButton[] = ([
+    // BUG-5/BUG-6 — Confirm (rótulo inglês): libera o gate Control-M Confirm.
+    { label: "Confirm", onClick: () => handlers.onConfirm(instance.id), tone: "primary" as const, show: waitConfirm },
     { label: "Hold",    onClick: () => handlers.onHold(instance.id),    tone: "neutral" as const, show: status === "WAITING" },
     // Job segurado por uma PAUSA DE FOLDER (schemaV14) não pode ser liberado
     // individualmente — só o Retomar da folder destrava. Botão desabilitado
@@ -150,12 +159,18 @@ export default function InstanceDetailsDrawer({
       title: instance.holdScope === "folder"
         ? "Segurado pela pausa da folder — libere pela folder (▶ Retomar na sidebar), não individualmente"
         : undefined },
-    { label: "Cancel",  onClick: () => handlers.onCancel(instance.id),  tone: "danger"  as const, show: status === "WAITING" || status === "HOLD" },
-    { label: "Skip",    onClick: () => handlers.onSkip(instance.id),    tone: "neutral" as const, show: status === "WAITING" || status === "HOLD" },
-    { label: "Set OK", onClick: () => handlers.onBypass(instance.id), tone: "primary" as const, show: status === "NOTOK" || status === "CANCELLED" },
+    // BUG-3 — WAIT EVENT não exibe Cancel (a espera se resolve — Set OK abaixo);
+    // BUG-5 — CONFIRM só exibe Hold/Confirm.
+    { label: "Cancel",  onClick: () => handlers.onCancel(instance.id),  tone: "danger"  as const,
+      show: (status === "WAITING" || status === "HOLD") && !waitEvent && !waitConfirm },
+    { label: "Skip",    onClick: () => handlers.onSkip(instance.id),    tone: "neutral" as const,
+      show: (status === "WAITING" || status === "HOLD") && !waitConfirm },
+    // BUG-3 — Set OK também em WAIT EVENT: conclui OK na hora, sem esperar o evento.
+    { label: "Set OK", onClick: () => handlers.onBypass(instance.id), tone: "primary" as const,
+      show: status === "NOTOK" || status === "CANCELLED" || (status === "WAITING" && waitEvent && !waitConfirm) },
     { label: "Rerun",   onClick: () => handlers.onRerun(instance.id),   tone: "primary" as const, show: status === "NOTOK" },
     { label: "💥 Chaos", onClick: chaosInject, tone: "danger" as const,
-      show: isServerMode() && (status === "WAITING" || status === "RUNNING" || status === "HOLD") },
+      show: isServerMode() && !waitConfirm && (status === "WAITING" || status === "RUNNING" || status === "HOLD") },
   ]).filter((a) => a.show);
 
   const { width, onMouseDown, reset } = useResizablePanel({
@@ -371,6 +386,17 @@ function GeneralTab({ instance, definition }: { instance: JobInstance; definitio
   // da def). O V2Preview também já enriquece a instance passada aqui.
   const jobType = instance.jobType || definition?.jobType || "—";
 
+  // BUG-7 — em qual AGENTE o job executa: o executor REAL da instance (server
+  // grava agent_id no dispatch) vence; sem execução ainda, mostra o pin da def
+  // ou "auto" (o server escolhe por capability na hora do dispatch).
+  const execAgent = (instance.output as { agentId?: string } | undefined)?.agentId;
+  const pinnedAgent = typeof definition?.actionConfig?._agentId === "string"
+    ? (definition.actionConfig._agentId as string) : "";
+  const agentValue = execAgent || pinnedAgent || "auto";
+  const agentHint = execAgent ? undefined
+    : pinnedAgent ? "pinned — runs only on this agent"
+    : "picked by capability at dispatch";
+
   return (
     <>
       <Section title="Job details">
@@ -382,6 +408,7 @@ function GeneralTab({ instance, definition }: { instance: JobInstance; definitio
         />
         <Field label="Job Type" value={jobType} />
         <Field label="Folder" value={instance.team ?? definition?.team ?? "—"} />
+        <Field label="Agent" value={agentValue} hint={agentHint} />
         {definition?.environment && <Field label="Environment" value={definition.environment} />}
       </Section>
 

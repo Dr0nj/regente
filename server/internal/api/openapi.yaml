@@ -285,9 +285,10 @@ paths:
       tags: [Ciclo de vida]
       summary: Rerun — reseta para WAITING
       description: |
-        Zera started/finished/exitCode/output e volta a WAITING. Em jobs
-        `confirm:true` o rerun RE-EXIGE Confirm (Control-M). Alertas pendentes
-        do job são marcados como tratados.
+        Zera started/finished/exitCode/output e volta a WAITING. O flag
+        `confirmed` SOBREVIVE ao rerun (BUG-2): job já confirmado não volta pro
+        gate CONFIRM. Alertas pendentes do job são marcados como tratados; o
+        tick é cutucado — com os gates satisfeitos, o job entra na hora.
       operationId: rerunInstance
       x-permission: operator/admin + escrita na folder da instance
       parameters: [{ $ref: "#/components/parameters/instanceId" }]
@@ -303,10 +304,12 @@ paths:
   /api/instances/{id}/set-ok:
     post:
       tags: [Ciclo de vida]
-      summary: Set OK — flip NOTOK/CANCELLED → OK
+      summary: Set OK — flip WAITING/NOTOK/CANCELLED → OK
       description: |
-        Control-M "Set OK": marca OK e destrava os sucessores on-success.
-        400 se a instance não está num estado elegível.
+        Control-M "Set OK": marca OK, publica o evento de dependência e
+        MATERIALIZA as ConditionsOut — destrava os sucessores on-success.
+        Vale também para WAITING (job preso em WAIT EVENT conclui OK na hora,
+        BUG-3). 400 se a instance não está num estado elegível (ex.: RUNNING).
       operationId: setOKInstance
       x-permission: operator/admin + escrita na folder da instance
       parameters: [{ $ref: "#/components/parameters/instanceId" }]

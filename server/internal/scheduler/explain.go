@@ -310,7 +310,7 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 			return ex, nil
 		}
 		ex.Runnable = true
-		ex.Summary = "Run Now — roda no próximo tick (bypassa janela, deps, conditions e recursos)."
+		ex.Summary = "Run Now — despacho imediato (bypassa janela, deps, conditions e recursos)."
 		return ex, nil
 	}
 
@@ -324,7 +324,7 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 	ex.Blockers = blockers
 	if len(blockers) == 0 {
 		ex.Runnable = true
-		ex.Summary = "Pronto pra rodar — todos os gates satisfeitos; entra no próximo tick."
+		ex.Summary = "Pronto pra rodar — todos os gates satisfeitos; despacho imediato."
 	} else {
 		ex.Summary = summarizeBlockers(blockers)
 	}

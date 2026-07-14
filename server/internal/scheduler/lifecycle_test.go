@@ -178,13 +178,16 @@ func TestCarryOver_OKAndCancelledDoNotCarry(t *testing.T) {
 	}
 }
 
-// TestCarryOver_DoesNotDuplicateFreshDaily — uma ordem carregada CONTA como a
-// instance do dia para a def: o RunDaily NÃO cria uma fresca WAITING duplicada.
-func TestCarryOver_DoesNotDuplicateFreshDaily(t *testing.T) {
+// TestCarryOver_CarriedDoesNotBlockFreshDaily — BUG-12: uma ordem CARREGADA
+// (carry-over) NÃO conta como a instance do dia — o RunDaily materializa a
+// fresca de hoje AO LADO da carregada (New Day do Control-M: o NOTOK de ontem
+// fica em tratamento e o job de hoje entra normal). Re-rodar a daily segue
+// idempotente: a fresca (carried_from='') é quem bloqueia duplicata.
+func TestCarryOver_CarriedDoesNotBlockFreshDaily(t *testing.T) {
 	s := newTestScheduler(t)
 	def := defKeep("dup", 0)
 	s.mu.Lock()
-	s.defs = []domain.JobDefinition{def} // habilitada → RunDaily tentaria criar fresca
+	s.defs = []domain.JobDefinition{def} // habilitada → RunDaily cria a fresca
 	s.mu.Unlock()
 	seedInst(t, s, "dup-23", "2026-06-23", string(domain.StatusNotOK), def)
 
@@ -196,11 +199,25 @@ func TestCarryOver_DoesNotDuplicateFreshDaily(t *testing.T) {
 	).Scan(&n); err != nil {
 		t.Fatalf("count: %v", err)
 	}
-	if n != 1 {
-		t.Fatalf("esperava exatamente 1 instance da def 'dup' em 24 (a carregada), veio %d", n)
+	if n != 2 {
+		t.Fatalf("esperava 2 instances da def 'dup' em 24 (carregada + fresca), veio %d", n)
 	}
 	if od, st, _, _ := carriedState(t, s, "dup-23"); od != "2026-06-24" || st != string(domain.StatusNotOK) {
-		t.Fatalf("a instance em 24 deveria ser a carregada (NOTOK), veio order=%s status=%s", od, st)
+		t.Fatalf("a carregada deveria seguir NOTOK em 24, veio order=%s status=%s", od, st)
+	}
+	var freshStatus string
+	if err := s.db.QueryRow(
+		`SELECT status FROM instances WHERE id=?`, "dup-2026-06-24",
+	).Scan(&freshStatus); err != nil || freshStatus != string(domain.StatusWaiting) {
+		t.Fatalf("a fresca dup-2026-06-24 deveria existir WAITING, veio status=%s err=%v", freshStatus, err)
+	}
+
+	// Idempotência: re-rodar a daily não cria uma terceira.
+	s.RunDaily("2026-06-24")
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM instances WHERE order_date=? AND definition_id=?`, "2026-06-24", "dup",
+	).Scan(&n); err != nil || n != 2 {
+		t.Fatalf("re-rodar a daily deveria manter 2 instances, veio %d (err=%v)", n, err)
 	}
 }
 
