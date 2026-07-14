@@ -179,10 +179,16 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 		return string(domain.StatusCancelled), nil
 
 	case "rerun":
+		// schemaV15 — claims ANTES do reset de status (ver rerunInstance):
+		// consumo OK é permanente (lápide → WAIT EVENT); não-consumido devolve.
+		s.cfg.Scheduler.RerunDepClaims(id)
 		// BUG-2: `confirmed` sobrevive ao rerun (ver rerunInstance) — job já
-		// confirmado não volta pro gate CONFIRM.
+		// confirmado não volta pro gate CONFIRM. Bypass do Run Now não é
+		// pegajoso (ver rerunInstance): forced zera quando mode='' .
 		res, err := s.cfg.DB.Exec(
-			`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL WHERE id=?`,
+			`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL,
+			        forced = CASE WHEN COALESCE(force_mode,'')='' THEN 0 ELSE forced END
+			 WHERE id=?`,
 			string(domain.StatusWaiting), id,
 		)
 		if err != nil {
@@ -191,8 +197,6 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 		if n, _ := res.RowsAffected(); n == 0 {
 			return "", fmt.Errorf("instance not found")
 		}
-		// schemaV15 — rerun reseta as linhas do consumidor (ver rerunInstance).
-		s.cfg.Scheduler.ResetDepClaims(id)
 		s.cfg.Scheduler.EmitEvent(id, "rerun", actor, "bulk rerun")
 		s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusWaiting)})
 		return string(domain.StatusWaiting), nil

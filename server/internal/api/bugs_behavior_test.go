@@ -93,6 +93,38 @@ func TestBulkRerun_PreservesConfirmed(t *testing.T) {
 	}
 }
 
+// 2026-07-14: o bypass do Run Now NÃO é pegajoso — rerun de instance com
+// forced=1 e force_mode='' zera o forced (volta ao gating normal; sem isso o
+// rerun re-disparava na hora, ignorando WAIT EVENT). A cópia de Order Force
+// (mode='order') MANTÉM o forced — ela nunca teve janela real de agendamento.
+func TestRerun_ClearsRunNowBypass(t *testing.T) {
+	srv, d := newOpsTestServer(t)
+	seedInstanceFull(t, d, "rn-1", "OK", 1, "", 0)      // Run Now que terminou
+	seedInstanceFull(t, d, "ofc-1", "OK", 1, "order", 0) // cópia Order Force
+
+	for _, id := range []string{"rn-1", "ofc-1"} {
+		resp := doReq(t, srv.Client(), http.MethodPost, srv.URL+"/api/instances/"+id+"/rerun", "test-token", "")
+		if resp.StatusCode != 200 {
+			t.Fatalf("rerun %s: esperava 200, veio %d", id, resp.StatusCode)
+		}
+		resp.Body.Close()
+	}
+
+	var forced int
+	if err := d.QueryRow(`SELECT forced FROM instances WHERE id=?`, "rn-1").Scan(&forced); err != nil {
+		t.Fatalf("read back rn-1: %v", err)
+	}
+	if forced != 0 {
+		t.Fatalf("rerun deveria zerar o forced do Run Now (mode=''), veio forced=%d", forced)
+	}
+	if err := d.QueryRow(`SELECT forced FROM instances WHERE id=?`, "ofc-1").Scan(&forced); err != nil {
+		t.Fatalf("read back ofc-1: %v", err)
+	}
+	if forced != 1 {
+		t.Fatalf("rerun da cópia Order Force deveria MANTER forced=1, veio %d", forced)
+	}
+}
+
 // BUG-3: Set OK numa instance WAITING (WAIT EVENT) conclui OK na hora.
 func TestSetOK_FromWaiting(t *testing.T) {
 	srv, d := newOpsTestServer(t)

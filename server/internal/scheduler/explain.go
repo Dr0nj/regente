@@ -178,10 +178,10 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, instByDef 
 			b.Detail = fmt.Sprintf("aguardando upstream '%s' (%s, ainda não ordenado)", u.From, condLabel(u.Condition))
 		case liveSat:
 			// O estado vivo satisfaria, mas não há evento LIVRE: o término do pai
-			// já foi consumido por outra instance desta definition (tipicamente a
-			// ordem original — esta é uma cópia forçada). Rerun no pai emite um
-			// evento novo e destrava.
-			b.Detail = fmt.Sprintf("aguardando NOVO término de '%s' — o último evento já foi consumido por outra instance (rerun no upstream libera)", u.From)
+			// já foi consumido — por outra instance desta definition (cópia
+			// forçada) ou pelo run ANTERIOR desta própria instance (rerun após
+			// OK: consumo é permanente). Rerun no pai emite um evento novo.
+			b.Detail = fmt.Sprintf("aguardando NOVO término de '%s' — o último evento já foi consumido por uma execução OK (rerun no upstream libera)", u.From)
 		case permanent:
 			b.Kind = GateDepBlocked
 			b.Detail = fmt.Sprintf("upstream '%s' está %s — a aresta (%s) espera um término compatível (rerun/Set OK no upstream libera)", u.From, upStatus, condLabel(u.Condition))
@@ -321,6 +321,12 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 	s.claimDepEdges(r, def, claimed)
 
 	blockers := s.gateInstance(r, def, s.loadUpstreamInsts(r.OrderDate, def), claimed, time.Now(), false)
+	if blockers == nil {
+		// gateInstance devolve nil quando não há bloqueio; o JSON precisa ser []
+		// (o front itera blockers direto — null quebrava a UI ao abrir o Explain
+		// de um WAITING pronto pra rodar, na janela entre a ação e o tick).
+		blockers = []Blocker{}
+	}
 	ex.Blockers = blockers
 	if len(blockers) == 0 {
 		ex.Runnable = true

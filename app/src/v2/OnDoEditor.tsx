@@ -101,6 +101,17 @@ export default function OnDoEditor({ value, onChange, allDefs, selfId }: Props) 
   const rules = value ?? [];
   const labelOf = (id: string) => allDefs.find((d) => d.id === id)?.label ?? id;
 
+  // Vocabulário de conditions do escopo (mesma colheita do JobConfigDrawer):
+  // sugere nomes já usados pra cravar o vínculo produtor→consumidor sem typo.
+  const knownConditions = [...new Set(
+    allDefs.flatMap((d) => [
+      ...(d.conditionsIn ?? []),
+      ...(d.conditionsOutAdd ?? []),
+      ...(d.conditionsOutRemove ?? []),
+      ...(d.actions ?? []).filter((a) => a.do === "set-condition" && a.condition).map((a) => a.condition as string),
+    ]),
+  )].sort();
+
   const update = (i: number, patch: Partial<ActionRule>) =>
     onChange(rules.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const remove = (i: number) => onChange(rules.filter((_, idx) => idx !== i));
@@ -199,9 +210,19 @@ export default function OnDoEditor({ value, onChange, allDefs, selfId }: Props) 
           )}
 
           {r.do === "set-condition" && (
-            <Row label="Condition">
-              <input value={r.condition ?? ""} placeholder="ex.: BILLING_DONE" onChange={(e) => update(i, { condition: e.target.value })} style={inputStyle} />
-            </Row>
+            <>
+              <Row label="Condition">
+                <input value={r.condition ?? ""} placeholder="ex.: BILLING_DONE" list="ondo-known-conditions"
+                  onChange={(e) => update(i, { condition: e.target.value })} style={inputStyle} />
+              </Row>
+              <datalist id="ondo-known-conditions">
+                {knownConditions.map((k) => <option key={k} value={k} />)}
+              </datalist>
+              <Hint>
+                Para outro job ESPERAR por ela: no job de destino, aba <b>Dependências → Conditions
+                → Entrada</b>, com o MESMO nome. O vínculo é pelo nome exato.
+              </Hint>
+            </>
           )}
 
           {r.do === "run-job" && (

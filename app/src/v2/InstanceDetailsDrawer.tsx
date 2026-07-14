@@ -1054,7 +1054,11 @@ function ExplainPanel({ instanceId, status, onConfirm }: { instanceId: string; s
   // Control-M Confirm: quando o gate WAIT_CONFIRM está ativo, é AQUI (onde o
   // motivo aparece) que o operador libera — sinal preciso vindo do próprio
   // Explain, sem depender de flag denormalizada na lista.
-  const needsConfirm = exp?.blockers.some((b) => b.kind === "WAIT_CONFIRM") ?? false;
+  // blockers ?? []: server antigo mandava null quando runnable (nil slice do
+  // Go) — derrubava a UI inteira ("Cannot read properties of null"). O server
+  // atual sempre manda []; o ?? é blindagem contra binário velho.
+  const blockers = exp?.blockers ?? [];
+  const needsConfirm = blockers.some((b) => b.kind === "WAIT_CONFIRM");
 
   return (
     <div style={{ marginBottom: 16 }}>
@@ -1065,9 +1069,9 @@ function ExplainPanel({ instanceId, status, onConfirm }: { instanceId: string; s
         <div style={{ fontSize: 11, color: "var(--v2-text-primary)", lineHeight: 1.45 }}>
           {loading ? "evaluating…" : exp?.summary}
         </div>
-        {exp && exp.blockers.length > 0 && (
+        {blockers.length > 0 && (
           <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-            {exp.blockers.map((b, i) => (
+            {blockers.map((b, i) => (
               <div key={i} style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
                 <span style={{
                   flexShrink: 0, marginTop: 1, fontSize: 8, fontFamily: "var(--v2-font-mono)", fontWeight: 700,

@@ -457,21 +457,30 @@ func (s *server) rerunInstance(w http.ResponseWriter, r *http.Request) {
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
+	// schemaV15 — claims do consumidor ANTES do reset de status (o status
+	// terminal decide): rerun após OK vira LÁPIDE (consumo é permanente — o
+	// novo run entra em WAIT EVENT até o pai emitir término novo); rerun de
+	// não-consumido devolve os eventos pro pool. Rerun/cancel do PAI não mexe
+	// em claim nenhum — linha satisfeita fica verde.
+	s.cfg.Scheduler.RerunDepClaims(id)
 	// BUG-2: `confirmed` SOBREVIVE ao rerun — um job que já passou pelo gate
 	// Confirm não volta pro CONFIRM ao ser re-rodado; ele re-entra direto no
 	// gating normal (deps/janela). Quem nunca confirmou segue exigindo Confirm.
+	//
+	// O bypass do Run Now NÃO é pegajoso: rerun de instance com forced=1 e
+	// force_mode='' volta ao gating normal (senão o rerun re-dispara na hora,
+	// ignorando WAIT EVENT — quer bypass de novo? Run Now de novo). A cópia de
+	// Order Force (mode='order') mantém o forced: ela nunca teve janela real.
 	_, err := s.cfg.DB.Exec(
-		`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL WHERE id=?`,
+		`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL,
+		        forced = CASE WHEN COALESCE(force_mode,'')='' THEN 0 ELSE forced END
+		 WHERE id=?`,
 		string(domain.StatusWaiting), id,
 	)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// schemaV15 — rerun do CONSUMIDOR reseta as linhas DELE (claims): os eventos
-	// clamados voltam pro pool e o próprio job pode re-clamar no próximo tick.
-	// Rerun/cancel do PAI não mexe em claim nenhum — linha satisfeita fica verde.
-	s.cfg.Scheduler.ResetDepClaims(id)
 	s.cfg.Scheduler.EmitEvent(id, "rerun", "operator", "reset to WAITING")
 	// Ciclo de vida do alerta: o operador agiu no job → marca alertas como tratados.
 	s.markAlertsHandled(id, "rerun")

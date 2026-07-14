@@ -16,9 +16,14 @@
 //     instance de cada definition consumidora — a cópia forçada de um job cuja
 //     dependência "já rodou" NÃO herda o evento consumido pela instance
 //     original; entra em WAIT EVENT até o pai emitir um término novo.
-//   - Rerun do CONSUMIDOR apaga os claims dele (ResetDepClaims): a linha
-//     reseta e os eventos voltam pro pool (o próprio job pode re-clamar no
-//     próximo tick — paridade com conditions persistentes do Control-M).
+//   - Rerun do CONSUMIDOR depende do run anterior ter CONSUMIDO ou não
+//     (RerunDepClaims): se terminou OK (real ou Set OK), o consumo é
+//     PERMANENTE — o claim vira LÁPIDE e o evento segue gasto para esta
+//     definition; o novo run entra em WAIT EVENT até o pai emitir um término
+//     NOVO. Se NÃO consumiu (rerun de RUNNING/HELD; NOTOK/CANCELLED já
+//     devolveram no término), os claims são deletados e os eventos voltam
+//     pro pool. É o "delete input conditions on OK" do Control-M: a condição
+//     que liberou o job SOME quando ele executa com sucesso.
 //
 // Compat/backfill: instances terminadas ANTES da feature não têm eventos.
 // tryClaimEdge materializa lazy o evento implícito (1 por instance terminal sem
@@ -71,12 +76,39 @@ func (s *Scheduler) emitDepEvent(instanceID string, status domain.InstanceStatus
 }
 
 // ResetDepClaims — devolve pro pool os eventos clamados por uma instance
-// (as linhas dela resetam). Três chamadores, mesma semântica de "não gastou":
-// rerun do consumidor (handlers unitário e bulk), término NOTOK terminal
+// (as linhas dela resetam). Semântica de "não gastou": término NOTOK terminal
 // (FinishInstance — falha não consome) e cancel do consumidor (handlers).
+// Rerun NÃO passa por aqui — usa RerunDepClaims (consumo OK é permanente).
 func (s *Scheduler) ResetDepClaims(instanceID string) {
 	if _, err := s.db.Exec(`DELETE FROM dep_claims WHERE consumer_instance_id=?`, instanceID); err != nil {
 		log.Printf("[scheduler] reset dep-claims %s: %v", instanceID, err)
+	}
+}
+
+// RerunDepClaims — rerun do CONSUMIDOR (chamar ANTES de resetar o status, com
+// o status TERMINAL ainda gravado). Regra do usuário (2026-07-14):
+//
+//   - Run anterior OK (real ou Set OK) → o consumo MATERIALIZOU e é
+//     PERMANENTE. O claim vira LÁPIDE: o consumer_instance_id ganha o sufixo
+//     "#spent@<event>" — some do claimsFor/DepsSatisfied (a linha do novo run
+//     reseta), mas o UNIQUE(event_id, consumer_def_id) continua bloqueando o
+//     evento para esta definition. O novo run entra em WAIT EVENT até o pai
+//     emitir um término NOVO. (Deletar aqui era o bug: o evento gasto voltava
+//     pro pool e o próprio rerun o re-clamava e rodava na hora.)
+//   - Qualquer outro status → não consumiu: claims deletados, eventos de
+//     volta ao pool (NOTOK/CANCELLED em geral já devolveram no término).
+func (s *Scheduler) RerunDepClaims(instanceID string) {
+	var status string
+	_ = s.db.QueryRow(`SELECT status FROM instances WHERE id=?`, instanceID).Scan(&status)
+	if status != string(domain.StatusOK) {
+		s.ResetDepClaims(instanceID)
+		return
+	}
+	if _, err := s.db.Exec(
+		`UPDATE dep_claims SET consumer_instance_id = consumer_instance_id || '#spent@' || event_id
+		 WHERE consumer_instance_id=?`, instanceID,
+	); err != nil {
+		log.Printf("[scheduler] tombstone dep-claims %s: %v", instanceID, err)
 	}
 }
 

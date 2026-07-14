@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -92,6 +93,15 @@ func TestExplain_Runnable(t *testing.T) {
 	ex := explainOf(t, s, "r-1")
 	if !ex.Runnable || len(ex.Blockers) != 0 {
 		t.Fatalf("esperava runnable sem bloqueios, veio runnable=%v blockers=%v", ex.Runnable, ex.Blockers)
+	}
+	// Regressão 2026-07-14: blockers vazio tem que serializar como [] (nunca
+	// null) — o front lê exp.blockers.some/.map direto; null derrubava a UI
+	// ("Cannot read properties of null") no Explain de um WAITING runnable.
+	if ex.Blockers == nil {
+		t.Fatal("Blockers não pode ser nil (JSON null quebra o front) — precisa ser []")
+	}
+	if b, err := json.Marshal(ex); err != nil || !strings.Contains(string(b), `"blockers":[]`) {
+		t.Fatalf("esperava \"blockers\":[] no JSON, veio %s (err=%v)", b, err)
 	}
 }
 

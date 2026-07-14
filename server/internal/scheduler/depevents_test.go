@@ -7,7 +7,8 @@ package scheduler
 //	pode ser satisfeita pelo término que a B original já consumiu (entra em
 //	WAIT EVENT). Rerun de A NÃO apaga a linha verde da B original (o latch é
 //	da instance); o novo término de A é que destrava a cópia. Cancel idem.
-//	Rerun da PRÓPRIA B reseta as linhas dela (e ela pode re-clamar).
+//	Rerun da PRÓPRIA B após OK: o consumo é PERMANENTE (2026-07-14) — B entra
+//	em WAIT EVENT até A emitir um término NOVO; só falha/cancel devolvem.
 
 import (
 	"testing"
@@ -85,13 +86,13 @@ func TestDepEvents_ForcedCopyWaitsFreshEvent(t *testing.T) {
 	}
 
 	// Rerun do antecessor A (o operador quer justamente passar exec pra cópia).
+	s.RerunDepClaims("A-1") // o handler faz isso ANTES do reset (A sem upstream: no-op)
 	if _, err := s.db.Exec(
 		`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL WHERE id=?`,
 		string(domain.StatusWaiting), "A-1",
 	); err != nil {
 		t.Fatalf("rerun A: %v", err)
 	}
-	s.ResetDepClaims("A-1") // o handler de rerun faz isso (A não tem upstream: no-op)
 
 	// A linha da B ORIGINAL permanece intacta (latch é da instance, não do pai).
 	if n := depClaimCount(t, s, "B-1"); n != 1 {
@@ -173,9 +174,10 @@ func TestDepEvents_EventNotDoubleConsumed(t *testing.T) {
 	}
 }
 
-// Rerun do PRÓPRIO consumidor reseta as linhas dele — os eventos clamados voltam
-// pro pool e o job re-clama no próximo tick (paridade com conditions persistentes).
-func TestDepEvents_RerunConsumerResetsAndReclaims(t *testing.T) {
+// Rerun do consumidor APÓS OK: o consumo materializado é PERMANENTE (o bug do
+// job 0002, 2026-07-14 — rerun devolvia o evento gasto e o job re-rodava na
+// hora). O rerun entra em WAIT EVENT; só um término NOVO do pai destrava.
+func TestDepEvents_RerunConsumerAfterOKWaitsFreshEvent(t *testing.T) {
 	s := newTestScheduler(t)
 	today := time.Now().Format("2006-01-02")
 	defA, defB := depDefs()
@@ -186,22 +188,100 @@ func TestDepEvents_RerunConsumerResetsAndReclaims(t *testing.T) {
 		t.Fatalf("B deveria rodar a OK, está %s", st)
 	}
 
-	// Rerun de B (o handler: reset + ResetDepClaims).
+	// Rerun de B (a ordem do handler: RerunDepClaims ANTES do reset de status).
+	s.RerunDepClaims("B-1")
 	_, _ = s.db.Exec(
 		`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL WHERE id=?`,
 		string(domain.StatusWaiting), "B-1",
 	)
-	s.ResetDepClaims("B-1")
 	if n := depClaimCount(t, s, "B-1"); n != 0 {
-		t.Fatalf("rerun de B deveria resetar os claims DELE, tem %d", n)
+		t.Fatalf("a linha do novo run deveria resetar (claims=0), tem %d", n)
 	}
 
-	// O evento de A ficou livre de novo → B re-clama e re-roda.
+	// O evento de A foi GASTO pelo run OK: B NÃO re-roda — fica em WAIT EVENT.
+	for i := 0; i < 3; i++ {
+		s.Tick()
+	}
+	if _, st, _, _ := carriedState(t, s, "B-1"); st != string(domain.StatusWaiting) {
+		t.Fatalf("rerun após OK deveria esperar evento NOVO (WAITING), está %s", st)
+	}
+	if ex, err := s.Explain("B-1"); err != nil || hasKind(ex.Blockers, GateDep) == nil {
+		t.Fatalf("Explain deveria apontar WAIT_DEP (evento gasto), veio %+v (err=%v)", ex.Blockers, err)
+	}
+
+	// Rerun do pai → término NOVO → B clama o evento fresco e roda.
+	s.RerunDepClaims("A-1")
+	_, _ = s.db.Exec(
+		`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL WHERE id=?`,
+		string(domain.StatusWaiting), "A-1",
+	)
+	if st := waitStatus(t, s, "A-1", string(domain.StatusOK)); st != string(domain.StatusOK) {
+		t.Fatalf("A deveria re-rodar a OK, está %s", st)
+	}
 	if st := waitStatus(t, s, "B-1", string(domain.StatusRunning), string(domain.StatusOK)); st != string(domain.StatusRunning) && st != string(domain.StatusOK) {
-		t.Fatalf("B deveria re-clamar o evento liberado e rodar, está %s", st)
+		t.Fatalf("término novo de A deveria destravar o rerun de B, está %s", st)
 	}
 	if n := depClaimCount(t, s, "B-1"); n != 1 {
-		t.Fatalf("B deveria ter re-clamado 1 evento, tem %d", n)
+		t.Fatalf("B deveria ter clamado o evento novo, tem %d", n)
+	}
+}
+
+// Rerun do consumidor após FALHA: NOTOK não consumiu (o término devolveu o
+// evento) — o rerun re-clama o evento devolvido e roda SEM rerun do pai.
+func TestDepEvents_RerunConsumerAfterNotOKReclaims(t *testing.T) {
+	s := newTestScheduler(t)
+	today := time.Now().Format("2006-01-02")
+	defA, defB := depDefs()
+
+	seedInst(t, s, "A-1", today, string(domain.StatusOK), defA)
+	seedInst(t, s, "B-1", today, string(domain.StatusRunning), defB)
+	if !s.tryClaimEdge("B-1", "B", "A", today, domain.CondOnSuccess) {
+		t.Fatal("B-1 deveria clamar o evento de A")
+	}
+	s.FinishInstance("B-1", domain.StatusNotOK, 1, "boom") // devolve o evento
+
+	// Rerun de B (ordem do handler) → re-clama o evento devolvido e roda.
+	s.RerunDepClaims("B-1")
+	_, _ = s.db.Exec(
+		`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL WHERE id=?`,
+		string(domain.StatusWaiting), "B-1",
+	)
+	if st := waitStatus(t, s, "B-1", string(domain.StatusRunning), string(domain.StatusOK)); st != string(domain.StatusRunning) && st != string(domain.StatusOK) {
+		t.Fatalf("rerun após NOTOK deveria re-clamar o evento devolvido e rodar, está %s", st)
+	}
+	if n := depClaimCount(t, s, "B-1"); n != 1 {
+		t.Fatalf("B deveria deter o claim do evento devolvido, tem %d", n)
+	}
+}
+
+// Set OK no consumidor CONSOME (o flip é um término OK): rerun depois do
+// Set OK entra em WAIT EVENT igual a um OK real — o evento clamado foi gasto.
+func TestDepEvents_RerunAfterSetOKWaitsFreshEvent(t *testing.T) {
+	s := newTestScheduler(t)
+	today := time.Now().Format("2006-01-02")
+	defA, defB := depDefs()
+
+	seedInst(t, s, "A-1", today, string(domain.StatusOK), defA)
+	// B clamou o evento mas ainda não rodou (ex.: janela) — operador dá Set OK.
+	seedInst(t, s, "B-1", today, string(domain.StatusWaiting), defB)
+	if !s.tryClaimEdge("B-1", "B", "A", today, domain.CondOnSuccess) {
+		t.Fatal("B-1 deveria clamar o evento de A")
+	}
+	if err := s.SetOK("B-1"); err != nil {
+		t.Fatalf("SetOK: %v", err)
+	}
+
+	// Rerun de B → o claim virou lápide: WAIT EVENT até A terminar de novo.
+	s.RerunDepClaims("B-1")
+	_, _ = s.db.Exec(
+		`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL WHERE id=?`,
+		string(domain.StatusWaiting), "B-1",
+	)
+	for i := 0; i < 3; i++ {
+		s.Tick()
+	}
+	if _, st, _, _ := carriedState(t, s, "B-1"); st != string(domain.StatusWaiting) {
+		t.Fatalf("rerun após Set OK deveria esperar evento NOVO (WAITING), está %s", st)
 	}
 }
 

@@ -711,9 +711,11 @@ func schemaV14() string {
 //     sobre um evento. UNIQUE(event_id, consumer_def_id) = um evento não pode
 //     satisfazer duas instances da MESMA definition (a cópia forçada espera um
 //     término novo); UNIQUE(consumer_instance_id, upstream_def_id) = um claim
-//     por aresta por consumidor. Rerun do CONSUMIDOR apaga os claims dele
-//     (a linha reseta); rerun/cancel do PAI não toca claims já feitos (a linha
-//     satisfeita permanece verde).
+//     por aresta por consumidor. Rerun do CONSUMIDOR após OK vira LÁPIDE
+//     (consumer_instance_id ganha sufixo '#spent@<event>': a linha do novo run
+//     reseta mas o evento segue GASTO — WAIT EVENT até término novo do pai);
+//     rerun de não-consumido devolve os eventos pro pool; rerun/cancel do PAI
+//     não toca claims já feitos (a linha satisfeita permanece verde).
 //
 // instances.force_mode distingue o Force: '' = "Run Now" clássico (bypass total
 // de gates, ordem EXISTENTE); 'order' = "Order Force" do Design (ordem NOVA fora

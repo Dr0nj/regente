@@ -206,7 +206,9 @@ function groupByTeam<T extends { team?: string }>(items: T[]): Map<string, T[]> 
  * Desde o schemaV15 a linha é POR INSTÂNCIA (consumidora), não do pai:
  *   - CLAIM latchado (inst.depsSatisfied contém o upstream) → VERDE pra sempre
  *     nesta instance — rerun/cancel do pai NÃO apaga a linha; só o rerun da
- *     própria instance reseta (o server deleta os claims dela).
+ *     própria instance reseta a linha. No server o consumo de um run OK é
+ *     PERMANENTE (2026-07-14): o rerun entra em WAIT EVENT (linha pendente)
+ *     até o pai emitir um término NOVO — o evento gasto não volta pro pool.
  *   - Consumidor que JÁ RODOU (RUNNING/OK/NOTOK) → verde (satisfez ao partir;
  *     cobre modo local/instances legadas sem claim).
  *   - Sem claim e sem ter rodado: a cor segue o estado vivo do pai (âmbar

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ExternalLink, X, Trash2, ArrowRight, ArrowLeft } from "lucide-react";
 import type { JobDefinition, CalendarRef, EdgeCondition, ActionRule } from "@/lib/orchestrator-model";
 import type { JobType } from "@/lib/job-config";
@@ -65,6 +65,12 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   const [calendars, setCalendars] = useState<CalendarRef[]>(definition.calendars ?? []);
   const [actions, setActions] = useState<ActionRule[]>(definition.actions ?? []);
   const [upstream, setUpstream] = useState(definition.upstream ?? []);
+  // F16 — conditions nomeadas (entrada = gate WAIT_CONDITION; saída = set/unset
+  // no término OK). Editáveis aqui pra fechar o circuito com o set-condition
+  // do On/Do: o nome que um job seta é o mesmo que outro declara na entrada.
+  const [conditionsIn, setConditionsIn] = useState<string[]>(definition.conditionsIn ?? []);
+  const [conditionsOutAdd, setConditionsOutAdd] = useState<string[]>(definition.conditionsOutAdd ?? []);
+  const [conditionsOutRemove, setConditionsOutRemove] = useState<string[]>(definition.conditionsOutRemove ?? []);
   const [agentId, setAgentId] = useState<string>(
     typeof definition.actionConfig?._agentId === "string" ? (definition.actionConfig._agentId as string) : ""
   );
@@ -90,6 +96,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     setRetries(definition.retries ?? 2); setTimeoutS(definition.timeout ?? 300);
     setDryRun(definition.dryRun ?? false); setConfirmReq(definition.confirm ?? false); setActionConfig(definition.actionConfig ?? {});
     setCalendars(definition.calendars ?? []); setActions(definition.actions ?? []); setUpstream(definition.upstream ?? []);
+    setConditionsIn(definition.conditionsIn ?? []); setConditionsOutAdd(definition.conditionsOutAdd ?? []); setConditionsOutRemove(definition.conditionsOutRemove ?? []);
     setAgentId(typeof definition.actionConfig?._agentId === "string" ? (definition.actionConfig._agentId as string) : "");
     setAgentTouched(false);
     setErr(null); setValidationErr(null);
@@ -136,6 +143,9 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
       calendars: calendars.length ? calendars : undefined,
       actions: actions.length ? actions : undefined,
       upstream: upstream.length ? upstream : undefined,
+      conditionsIn: conditionsIn.length ? conditionsIn : undefined,
+      conditionsOutAdd: conditionsOutAdd.length ? conditionsOutAdd : undefined,
+      conditionsOutRemove: conditionsOutRemove.length ? conditionsOutRemove : undefined,
     };
   }
 
@@ -171,6 +181,21 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
 
   // Jobs que DEPENDEM deste (this.id ∈ outro.upstream.from) → "dispara".
   const triggers = allDefs.filter((d) => (d.upstream ?? []).some((u) => u.from === definition.id));
+
+  // Vocabulário de conditions do escopo: todo nome já usado em qualquer def
+  // (entrada, saída ou ação set-condition) vira sugestão no editor — o vínculo
+  // entre produtor e consumidor é cravado pelo NOME, então digitar errado quebra.
+  const knownConditions = useMemo(() => {
+    const s = new Set<string>();
+    for (const d of allDefs) {
+      d.conditionsIn?.forEach((c) => s.add(c));
+      d.conditionsOutAdd?.forEach((c) => s.add(c));
+      d.conditionsOutRemove?.forEach((c) => s.add(c));
+      d.actions?.forEach((a) => { if (a.do === "set-condition" && a.condition) s.add(a.condition); });
+    }
+    return [...s].sort();
+  }, [allDefs]);
+  const condCount = conditionsIn.length + conditionsOutAdd.length + conditionsOutRemove.length;
 
   const { width, onMouseDown, reset } = useResizablePanel({
     storageKey: "regente.panel.jobConfig.w", defaultWidth: 360, min: 280, max: 720, edge: "left",
@@ -211,7 +236,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
             color: tab === t.id ? "var(--v2-text-primary)" : "var(--v2-text-muted)",
             fontWeight: tab === t.id ? 600 : 500, fontFamily: "var(--v2-font-mono)",
           }}>{t.label}
-            {t.id === "deps" && (upstream.length + triggers.length > 0) ? ` (${upstream.length + triggers.length})` : ""}
+            {t.id === "deps" && (upstream.length + triggers.length + condCount > 0) ? ` (${upstream.length + triggers.length + condCount})` : ""}
             {t.id === "ondo" && actions.length > 0 ? ` (${actions.length})` : ""}
           </button>
         ))}
@@ -296,6 +321,13 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
             onChangeUpstream={setUpstream}
             triggers={triggers}
             allDefs={allDefs}
+            conditionsIn={conditionsIn}
+            conditionsOutAdd={conditionsOutAdd}
+            conditionsOutRemove={conditionsOutRemove}
+            onChangeConditionsIn={setConditionsIn}
+            onChangeConditionsOutAdd={setConditionsOutAdd}
+            onChangeConditionsOutRemove={setConditionsOutRemove}
+            knownConditions={knownConditions}
           />
         )}
 
@@ -328,15 +360,32 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
 }
 
 /* ── Aba Dependencies (2 lados) ── */
-function DepsTab({ self, upstream, onChangeUpstream, triggers, allDefs }: {
+function DepsTab({ self, upstream, onChangeUpstream, triggers, allDefs, conditionsIn, conditionsOutAdd, conditionsOutRemove, onChangeConditionsIn, onChangeConditionsOutAdd, onChangeConditionsOutRemove, knownConditions }: {
   self: string;
   upstream: Array<{ from: string; condition: EdgeCondition }>;
   onChangeUpstream: (u: Array<{ from: string; condition: EdgeCondition }>) => void;
   triggers: JobDefinition[];
   allDefs: JobDefinition[];
+  conditionsIn: string[];
+  conditionsOutAdd: string[];
+  conditionsOutRemove: string[];
+  onChangeConditionsIn: (v: string[]) => void;
+  onChangeConditionsOutAdd: (v: string[]) => void;
+  onChangeConditionsOutRemove: (v: string[]) => void;
+  knownConditions: string[];
 }) {
   const labelOf = (id: string) => allDefs.find((d) => d.id === id)?.label ?? id;
   const remove = (from: string) => onChangeUpstream(upstream.filter((u) => u.from !== from));
+
+  // Referência cruzada por NOME: quem produz (conditionsOutAdd ou ação
+  // set-condition) e quem consome (conditionsIn) cada condition no escopo.
+  const producersOf = (name: string) =>
+    allDefs.filter((d) => d.id !== self && (
+      d.conditionsOutAdd?.includes(name) ||
+      d.actions?.some((a) => a.do === "set-condition" && a.condition === name)
+    )).map((d) => d.label);
+  const consumersOf = (name: string) =>
+    allDefs.filter((d) => d.id !== self && d.conditionsIn?.includes(name)).map((d) => d.label);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {/* Depende de (upstream do próprio job) */}
@@ -370,6 +419,101 @@ function DepsTab({ self, upstream, onChangeUpstream, triggers, allDefs }: {
         })}
         <Hint>Editado no job de destino (ou conectando no canvas). Mostrado aqui para você ver a relação dos dois lados.</Hint>
       </div>
+
+      {/* Conditions nomeadas (F16) — o outro tipo de dependência: por NOME,
+          não por aresta do grafo. Fecha o circuito com o set-condition do
+          On/Do e com eventos externos (POST /events/ingest). */}
+      <div style={{ borderTop: "1px solid var(--v2-border-subtle)", paddingTop: 12 }}>
+        <div style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--v2-text-muted)", marginBottom: 6 }}>
+          Conditions (por nome)
+        </div>
+        <Hint>
+          Além das setas do grafo, um job pode esperar/emitir <b>conditions nomeadas</b> do dia.
+          Quem cria: a saída (＋) de outro job, uma ação On/Do <b>set-condition</b>, um evento
+          externo ou o operador. O vínculo é o <b>nome exato</b>.
+        </Hint>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+          <CondChipsEditor
+            title="Entrada — espera por"
+            hint="O job fica em WAIT CONDITION até TODAS existirem no dia."
+            value={conditionsIn}
+            onChange={onChangeConditionsIn}
+            known={knownConditions}
+            listId="cond-known-in"
+            crossRef={(n) => { const p = producersOf(n); return p.length ? `criada por: ${p.join(", ")}` : "ninguém cria esta condition no escopo (evento externo/operador?)"; }}
+          />
+          <CondChipsEditor
+            title="Saída ＋ — cria ao terminar OK"
+            hint="Ao terminar OK (ou Set OK), o job CRIA estas conditions."
+            value={conditionsOutAdd}
+            onChange={onChangeConditionsOutAdd}
+            known={knownConditions}
+            listId="cond-known-add"
+            crossRef={(n) => { const c = consumersOf(n); return c.length ? `consumida por: ${c.join(", ")}` : "nenhum job espera por esta condition ainda"; }}
+          />
+          <CondChipsEditor
+            title="Saída − — remove ao terminar OK"
+            hint="Ao terminar OK, o job APAGA estas conditions (limpa o gate de quem depende delas)."
+            value={conditionsOutRemove}
+            onChange={onChangeConditionsOutRemove}
+            known={knownConditions}
+            listId="cond-known-rm"
+            crossRef={(n) => { const c = consumersOf(n); return c.length ? `trava de volta: ${c.join(", ")}` : undefined; }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Editor de chips de conditions (F16) ── */
+function CondChipsEditor({ title, hint, value, onChange, known, listId, crossRef }: {
+  title: string;
+  hint: string;
+  value: string[];
+  onChange: (v: string[]) => void;
+  known: string[];
+  listId: string;
+  crossRef?: (name: string) => string | undefined;
+}) {
+  const [draft, setDraft] = useState("");
+  const add = () => {
+    const name = draft.trim();
+    setDraft("");
+    if (!name || value.includes(name)) return;
+    onChange([...value, name]);
+  };
+  const suggestions = known.filter((k) => !value.includes(k));
+  return (
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 600, color: "var(--v2-text-secondary)", marginBottom: 4 }}>{title}</div>
+      {value.map((n) => {
+        const ref = crossRef?.(n);
+        return (
+          <div key={n} style={{ ...depRow, flexDirection: "column", alignItems: "stretch", gap: 2 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}>{n}</span>
+              <button onClick={() => onChange(value.filter((v) => v !== n))} style={iconBtn} title="Remover"><Trash2 size={12} /></button>
+            </div>
+            {ref && <div style={{ fontSize: 9.5, color: "var(--v2-text-muted)" }}>{ref}</div>}
+          </div>
+        );
+      })}
+      <div style={{ display: "flex", gap: 6 }}>
+        <input
+          value={draft}
+          list={listId}
+          placeholder="ex.: ARQUIVO-CHEGOU"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+          style={{ flex: 1, background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-subtle)", color: "var(--v2-text-primary)", padding: "5px 8px", fontSize: 11, fontFamily: "var(--v2-font-mono)", borderRadius: 3, outline: "none", boxSizing: "border-box" }}
+        />
+        <datalist id={listId}>
+          {suggestions.map((k) => <option key={k} value={k} />)}
+        </datalist>
+        <button onClick={add} disabled={!draft.trim()} style={{ ...btnStyle, borderColor: draft.trim() ? "var(--v2-accent-brand)" : "var(--v2-border-medium)", color: draft.trim() ? "var(--v2-accent-brand)" : "var(--v2-text-muted)" }}>＋</button>
+      </div>
+      <div style={{ fontSize: 9.5, color: "var(--v2-text-muted)", marginTop: 3, lineHeight: 1.4 }}>{hint}</div>
     </div>
   );
 }
