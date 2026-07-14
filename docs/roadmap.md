@@ -112,7 +112,11 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
   mudança nas arestas, as setas ficaram **muito mais curtas** — parecem nascer **atrás** do card e
   não na pontinha (borda/handle de saída) dele como antes. Investigar o que mudou (handle de origem
   / posição do source no `makeEdge`/`JOB_HANDLES`) e voltar ao visual anterior. → canvas-layout.
+ - [ ] **BUG-10 — um job que recebe rerun+ run now fica aguardando "proximo tick", isso não deve existir, job que recebe uma condição ou recebe um run now deve rodar na hora exata.
+ - [ ] **BUG-11 - Um job que nao tem dependencias e ja teve o seu horario estabelecido e se encontra dentro da janela de execução, ao finalizar ok e receber um rerun deve entrar na hora. pois todas as condições que nesse caso é apenas horario ja foi aplicada.
+ - [ ] **BUG-12 - Um job carried from outro dia, não deve impedir que um de mesmo nome entre.
 
+ 
 ### 🚀 Fase V — Self-hosting em VPS de caixa única (24/7)
 
 > **Cenário-alvo (pedido 2026-07-11):** subir um VPS Linux (ex.: Hostinger), rodar
