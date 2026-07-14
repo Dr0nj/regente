@@ -270,6 +270,11 @@ export interface JobInstance {
    *  A PRESENÇA do campo (mesmo []) indica server com a semântica de claims;
    *  ausente = modo local/legado (edge segue o status vivo do pai). */
   depsSatisfied?: string[];
+  /** Detalhe dos latches: QUAL instance do pai emitiu o evento clamado. Com
+   *  várias cópias do mesmo job no dia (Order Force/rerun), o canvas pinta
+   *  verde só a linha do par produtor→consumidor real; as linhas para as outras
+   *  cópias do pai ficam neutras. `from` = mesmo id de depsSatisfied. */
+  depsClaims?: Array<{ from: string; parentInstanceId: string }>;
 }
 
 /* ── Order Date Helper ── */

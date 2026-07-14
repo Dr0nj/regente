@@ -89,7 +89,7 @@ CANCELLED ficam de fora de propósito (R4: o backfill não pode entregar o
 evento de volta ao falho). Set OK reconverte em OK → reconsome lazy.
 
 **R10 — JSON nunca null.** Toda lista que a API expõe desse sistema
-(`blockers` do Explain, `depsSatisfied`, …) serializa como `[]`, nunca `null`
+(`blockers` do Explain, `depsSatisfied`, `depsClaims`, …) serializa como `[]`, nunca `null`
 — slice nil do Go derruba o front (`.some`/`.map` direto). Regressão coberta
 em `TestExplain_Runnable`.
 
@@ -107,6 +107,25 @@ em `TestExplain_Runnable`.
 | Run Now | não consome (bypass) | intocados; `forced` zera no próximo rerun (R7) |
 | Order Force | cópia disputa eventos LIVRES | claims próprios da cópia (R2/R7) |
 
+### Linhas do Monitoring — por PAR de instances (2026-07-14)
+
+O dia pode ter VÁRIAS cópias do mesmo job (Order Force/rerun). A dependência
+declarada existe entre todos os pares, então o canvas desenha **uma linha de
+cada cópia do pai para cada cópia do filho** (antes as cópias extras ficavam
+soltas, sem linha — report do usuário). A cor diz o papel do par:
+
+- **verde ✓** — ESTA cópia do pai emitiu o evento que ESTE consumidor clamou.
+  O detalhe vem da API: `depsClaims [{from, parentInstanceId}]` ao lado do
+  `depsSatisfied` (attachDepClaims junta `dep_claims × dep_events`).
+- **cinza** — a dependência existe mas este par não a satisfez: pendente, ou o
+  consumidor já foi satisfeito por OUTRA cópia (neutro de propósito — inclusive
+  se esta cópia falhar depois: o latch é história, R6).
+- **vermelho ✗** — esta cópia do pai falhou/cancelou e o consumidor ainda não
+  foi satisfeito por ninguém.
+
+O CARD (badge WAIT EVENT) segue **def-level**: um evento de QUALQUER cópia do
+pai libera o consumidor (R2) — a linha é informação por par, o gate não.
+
 ### Onde está no código
 
 - `server/internal/scheduler/depevents.go` — todo o motor (emit/claim/reset/
@@ -114,17 +133,21 @@ em `TestExplain_Runnable`.
 - `server/internal/scheduler/scheduler.go` — `FinishInstance` (R1/R4),
   `SetOK` (R8), pré-passe no tick (R2).
 - `server/internal/api/instances.go` + `bulk.go` — handlers de rerun/cancel
-  (ordem: `RerunDepClaims` ANTES do reset de status), Run Now (R7).
+  (ordem: `RerunDepClaims` ANTES do reset de status), Run Now (R7),
+  `attachDepClaims` (`depsSatisfied` + `depsClaims` com o produtor).
 - `server/internal/scheduler/explain.go` — gate + textos do WAIT EVENT (R10).
-- `app/src/v2/canvas-layout.ts` — pintura da linha (`evaluateEdgeState`,
-  claim-aware) e `isWaitingOnDeps` (mesma régua p/ menus).
+- `app/src/v2/canvas-layout.ts` — pintura da linha POR PAR (`evaluateEdgeState`,
+  claim-aware via `depsClaims`), régua def-level do card (`isDepSatisfied`) e
+  `isWaitingOnDeps` (mesma régua p/ menus; recebe TODAS as cópias por def).
 
 ### Testes que travam a semântica
 
 `scheduler/depevents_test.go` (cenário-guia completo + rerun após OK/NOTOK/
 Set OK) · `api/bugs_behavior_test.go` (confirmed sobrevive, forced zera,
 Set OK de WAITING) · `scheduler/setok_bugs_test.go` (ConditionsOut no Set OK)
-· `scheduler/explain_test.go` (blockers `[]`, nunca null).
+· `scheduler/explain_test.go` (blockers `[]`, nunca null) ·
+`api/depclaims_api_test.go` (depsClaims aponta a cópia certa do pai; `[]`
+nunca null).
 
 ---
 

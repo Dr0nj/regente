@@ -44,6 +44,21 @@ type instanceRow struct {
 	// cancel do pai não a apaga. SEM omitempty de propósito: a PRESENÇA do campo
 	// (mesmo []) diz ao front que o server fala a semântica nova de claims.
 	DepsSatisfied []string `json:"depsSatisfied"`
+	// DepsClaims — o DETALHE dos latches: além da def upstream, QUAL instance do
+	// pai emitiu o evento clamado (dep_events.instance_id). Com várias cópias do
+	// mesmo job no dia (Order Force/rerun), é o que permite ao Monitoring pintar
+	// verde só a linha do par produtor→consumidor REAL — as outras cópias ficam
+	// neutras. Sem omitempty (R10: lista sempre presente, nunca null).
+	DepsClaims []depClaimRef `json:"depsClaims"`
+}
+
+// depClaimRef — referência de um claim: a def upstream (`from`, o mesmo id que
+// aparece em depsSatisfied) e a instance do pai cujo término gerou o evento
+// consumido. parentInstanceId vazio só se o evento sumir do ledger (não deveria
+// — dep_events é imutável); o front trata como "satisfeita sem par conhecido".
+type depClaimRef struct {
+	From             string `json:"from"`
+	ParentInstanceID string `json:"parentInstanceId"`
 }
 
 const instanceCols = `id, definition_id, COALESCE(team,''), order_date, status, scheduled_at,
@@ -84,37 +99,48 @@ func scanInstances(rows *sql.Rows) ([]instanceRow, error) {
 		ir.Confirmed = confirmedInt == 1
 		ir.DryRun = dryRunInt == 1
 		ir.DepsSatisfied = []string{} // nunca nil: o JSON precisa carregar o campo
+		ir.DepsClaims = []depClaimRef{}
 		out = append(out, ir)
 	}
 	return out, rows.Err()
 }
 
 // attachDepClaims — anexa os latches de dependência (dep_claims, schemaV15) às
-// linhas, numa ÚNICA query pelo order_date (não por linha). Best-effort: em
-// erro, as linhas seguem com depsSatisfied=[] (o front cai no fallback visual).
+// linhas, numa ÚNICA query pelo order_date (não por linha). O LEFT JOIN em
+// dep_events expõe TAMBÉM qual instance do pai emitiu o evento clamado
+// (depsClaims) — o detalhe que pinta a linha certa quando há várias cópias do
+// mesmo job. Best-effort: em erro, as linhas seguem com depsSatisfied/
+// depsClaims=[] (o front cai no fallback visual).
 func (s *server) attachDepClaims(date string, list []instanceRow) {
 	if len(list) == 0 {
 		return
 	}
 	rows, err := s.cfg.DB.Query(
-		`SELECT c.consumer_instance_id, c.upstream_def_id
-		 FROM dep_claims c JOIN instances i ON i.id = c.consumer_instance_id
+		`SELECT c.consumer_instance_id, c.upstream_def_id, COALESCE(e.instance_id,'')
+		 FROM dep_claims c
+		 JOIN instances i ON i.id = c.consumer_instance_id
+		 LEFT JOIN dep_events e ON e.id = c.event_id
 		 WHERE i.order_date=?`, date,
 	)
 	if err != nil {
 		return
 	}
 	defer rows.Close()
-	claims := map[string][]string{}
+	sat := map[string][]string{}
+	claims := map[string][]depClaimRef{}
 	for rows.Next() {
-		var cid, up string
-		if rows.Scan(&cid, &up) == nil {
-			claims[cid] = append(claims[cid], up)
+		var cid, up, parent string
+		if rows.Scan(&cid, &up, &parent) == nil {
+			sat[cid] = append(sat[cid], up)
+			claims[cid] = append(claims[cid], depClaimRef{From: up, ParentInstanceID: parent})
 		}
 	}
 	for i := range list {
-		if c, ok := claims[list[i].ID]; ok {
+		if c, ok := sat[list[i].ID]; ok {
 			list[i].DepsSatisfied = c
+		}
+		if c, ok := claims[list[i].ID]; ok {
+			list[i].DepsClaims = c
 		}
 	}
 }
@@ -301,6 +327,9 @@ func (s *server) pageInstances(w http.ResponseWriter, r *http.Request) {
 		next = items[limit-1].ID
 		items = items[:limit]
 	}
+	// Mesmo enriquecimento do listInstances: sem isto o modo windowed pintava
+	// as linhas de dependência pelo fallback (status vivo do pai), não pelo claim.
+	s.attachDepClaims(q.date, items)
 	writeJSON(w, 200, map[string]any{"items": items, "nextCursor": next})
 }
 

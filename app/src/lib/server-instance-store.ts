@@ -33,6 +33,7 @@ interface ServerInstance {
   dryRun?: boolean;
   holdScope?: string;
   depsSatisfied?: string[];
+  depsClaims?: Array<{ from: string; parentInstanceId: string }>;
 }
 
 function parseTime(s?: string): number | undefined {
@@ -87,6 +88,9 @@ function toWeb(s: ServerInstance): JobInstance {
     // Latches de dependência (schemaV15): a linha verde do canvas é POR INSTÂNCIA
     // (claim de evento), não o status vivo do pai. Presente (mesmo []) = server novo.
     depsSatisfied: s.depsSatisfied,
+    // Detalhe do latch (qual instance do pai emitiu o evento): pinta a linha
+    // CERTA quando o dia tem várias cópias do mesmo job (Order Force/rerun).
+    depsClaims: s.depsClaims,
     output: {
       text: s.output ?? "",
       exitCode: s.exitCode ?? 0,

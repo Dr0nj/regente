@@ -1771,14 +1771,20 @@ function V2PreviewInner() {
             jobType: selectedInstance.jobType || selDef.jobType,
           } : selectedInstance;
           // WAIT EVENT (BUG-3) — mesma régua do card: decide as ações do drawer
-          // (Cancel some, Set OK aparece).
-          const instByDefId = new Map(instances.map((i) => [i.definitionId, i] as const));
+          // (Cancel some, Set OK aparece). TODAS as cópias de cada def (o dia
+          // pode ter várias — Order Force/rerun; qualquer uma satisfaz).
+          const instancesByDefId = new Map<string, typeof instances>();
+          for (const i of instances) {
+            const l = instancesByDefId.get(i.definitionId);
+            if (l) l.push(i);
+            else instancesByDefId.set(i.definitionId, [i]);
+          }
           return (
             <InstanceDetailsDrawer
               instance={enriched}
               definition={selDef}
               allDefs={runnableDefs}
-              waitEvent={isWaitingOnDeps(enriched, selDef, instByDefId)}
+              waitEvent={isWaitingOnDeps(enriched, selDef, instancesByDefId)}
               handlers={{
                 onHold: holdInstance,
                 onRelease: releaseInstance,
