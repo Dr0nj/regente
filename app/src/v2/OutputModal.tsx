@@ -25,6 +25,21 @@ export default function OutputModal({ instance, onClose }: Props) {
     const o = instance.output as unknown;
     if (typeof o === "string") return o;
     if (o === undefined || o === null) return "";
+    // Resultado do agente ({text, exitCode, agentId}): mostra o stdout+stderr
+    // de verdade, com exit code/agente num rodapé — não o JSON envelope.
+    if (typeof o === "object") {
+      const keys = Object.keys(o as object);
+      if (keys.length > 0 && keys.every((k) => k === "text" || k === "exitCode" || k === "agentId")) {
+        const r = o as { text?: string; exitCode?: number; agentId?: string };
+        const body = typeof r.text === "string" ? r.text : "";
+        const meta = [
+          r.exitCode !== undefined ? `exit code ${r.exitCode}` : "",
+          r.agentId ? `agent ${r.agentId}` : "",
+        ].filter(Boolean).join(" · ");
+        if (!meta) return body;
+        return body ? `${body}\n\n— ${meta}` : `— ${meta}`;
+      }
+    }
     try {
       return JSON.stringify(o, null, 2);
     } catch {

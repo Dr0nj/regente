@@ -142,6 +142,7 @@ func NewRouter(cfg Config) http.Handler {
 		r.Get("/instances", s.listInstances)
 		r.Get("/instances/page", s.pageInstances)       // P2/escala: paginação por cursor
 		r.Get("/instances/summary", s.summaryInstances) // P2/escala: contadores agregados
+		r.Get("/instances/{id}", s.getInstance)         // detalhe: linha + action congelada da ordem (snapshot)
 		// D-5 — query estruturada composta (POST baseline; QUERY = progressive
 		// enhancement, o verbo IETF safe+idempotente com body — mesma handler).
 		r.Post("/instances/query", s.queryInstances)

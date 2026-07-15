@@ -34,6 +34,11 @@ interface ServerInstance {
   holdScope?: string;
   depsSatisfied?: string[];
   depsClaims?: Array<{ from: string; parentInstanceId: string }>;
+  // Só no DETALHE (GET /api/instances/{id}) — a lista não os carrega (payload
+  // de escala): a action CONGELADA NA ORDEM, vinda da definition_snapshot.
+  label?: string;
+  jobType?: string;
+  actionConfig?: Record<string, unknown>;
 }
 
 function parseTime(s?: string): number | undefined {
@@ -58,8 +63,11 @@ function toWeb(s: ServerInstance): JobInstance {
   return {
     id: s.id,
     definitionId: s.definitionId,
-    label: s.definitionId,
-    jobType: "",
+    // label/jobType/actionConfig: presentes só no payload de DETALHE (a lista
+    // não os carrega por escala) — vindos da definition_snapshot da ordem.
+    label: s.label || s.definitionId,
+    jobType: s.jobType ?? "",
+    actionConfig: s.actionConfig,
     // Snapshot da diária: a folder (team) é congelada NA instância pelo server
     // (coluna `team` no INSERT). O monitoring reflete o dia como foi schedulado —
     // apagar/mover o job no Design NÃO pode reescrever a daília corrente. Por isso
@@ -91,14 +99,28 @@ function toWeb(s: ServerInstance): JobInstance {
     // Detalhe do latch (qual instance do pai emitiu o evento): pinta a linha
     // CERTA quando o dia tem várias cópias do mesmo job (Order Force/rerun).
     depsClaims: s.depsClaims,
-    output: {
-      text: s.output ?? "",
-      exitCode: s.exitCode ?? 0,
-      agentId: s.agentId,
-    },
+    // Output só existe se a run ACONTECEU (dispatch/agent/saída/fim). Antes o
+    // objeto {text:"",exitCode:0} nascia sempre — e uma WAITING nunca rodada
+    // mostrava "resultado" com exit 0 na aba Output do drawer.
+    output: (s.output || s.agentId || s.startedAt || s.finishedAt)
+      ? { text: s.output ?? "", exitCode: s.exitCode ?? 0, agentId: s.agentId }
+      : undefined,
     retries: 0,
     timeout: 0,
   };
+}
+
+// keepDetail — preserva o enriquecimento do DETALHE quando um payload mais
+// pobre (lista/WS, que não carregam actionConfig/label/jobType por escala)
+// sobrescreve a linha no espelho. O snapshot da ordem é IMUTÁVEL, então
+// preservar nunca mente — sem isto, cada refresh apagava o que o drawer
+// tinha acabado de buscar.
+function keepDetail(next: JobInstance, prev?: JobInstance): JobInstance {
+  if (!prev) return next;
+  if (next.actionConfig === undefined && prev.actionConfig !== undefined) next.actionConfig = prev.actionConfig;
+  if (!next.jobType && prev.jobType) next.jobType = prev.jobType;
+  if (next.label === next.definitionId && prev.label !== prev.definitionId) next.label = prev.label;
+  return next;
 }
 
 /* ── Cache local ── */
@@ -133,7 +155,7 @@ function notify(): void {
 
 function applyInstance(s: ServerInstance): void {
   touchedAt.set(s.id, Date.now());
-  cache.set(s.id, toWeb(s));
+  cache.set(s.id, keepDetail(toWeb(s), cache.get(s.id)));
   notify();
 }
 
@@ -208,7 +230,7 @@ async function doFetch(date: string): Promise<void> {
     // Mutado via WS durante o fetch → snapshot não regride status; o refresh
     // de cauda (agendado pelo próprio evento) reconcilia com dados completos.
     if (cache.has(s.id) && (touchedAt.get(s.id) ?? 0) >= startedAt) continue;
-    cache.set(s.id, toWeb(s));
+    cache.set(s.id, keepDetail(toWeb(s), cache.get(s.id)));
   }
   // Remoção por AUSÊNCIA só em troca de data (ver bloco acima). No mesmo dia,
   // um id que "faltou" no snapshot é truncamento transitório — preserva.
@@ -560,24 +582,36 @@ export async function refreshFromServer(): Promise<void> {
   await refresh();
 }
 
+/* ── Detalhe de UMA instance (GET /api/instances/{id}) ── */
+
+// A action CONGELADA NA ORDEM — o que a lista deliberadamente não carrega
+// (payload de escala): label/jobType/actionConfig da definition_snapshot, a
+// MESMA foto que o dispatch executa. É o que o drawer mostra em Action/Output.
+export interface InstanceOrderDetail {
+  label?: string;
+  jobType?: string;
+  actionConfig?: Record<string, unknown>;
+}
+
+export async function fetchInstanceDetail(id: string): Promise<InstanceOrderDetail | null> {
+  try {
+    const s = await api<ServerInstance>(`/api/instances/${encodeURIComponent(id)}`);
+    if (!s?.id) return null;
+    applyInstance(s); // o espelho ganha a linha mais rica de carona
+    return { label: s.label, jobType: s.jobType, actionConfig: s.actionConfig };
+  } catch (err) {
+    console.warn("[server-instances] fetchInstanceDetail failed", err);
+    return null;
+  }
+}
+
 // UI-1 — puxa UMA instance pro cache pelo id (sidebar windowed: o dia tem mais
 // jobs que o cap, a row clicada pode não estar no espelho local — sem isto o
-// drawer não abriria). Usa o LIKE do listInstances (q casa id OU definition_id,
-// daí o limit>1 + match exato aqui).
+// drawer não abriria). Antes usava o LIKE do listInstances; o detalhe por id
+// é exato e ainda traz a action congelada da ordem.
 export async function fetchInstanceById(id: string): Promise<JobInstance | null> {
   const hit = cache.get(id);
   if (hit) return hit;
-  try {
-    const date = lastFetchDate ?? todayOrderDate();
-    const arr = await api<ServerInstance[]>(
-      `/api/instances?date=${encodeURIComponent(date)}&q=${encodeURIComponent(id)}&limit=50`,
-    );
-    const exact = (arr ?? []).find((s) => s.id === id);
-    if (!exact) return null;
-    applyInstance(exact);
-    return cache.get(id) ?? null;
-  } catch (err) {
-    console.warn("[server-instances] fetchInstanceById failed", err);
-    return null;
-  }
+  await fetchInstanceDetail(id);
+  return cache.get(id) ?? null;
 }

@@ -13,6 +13,8 @@ import {
   type NeighborNode,
   fetchRCA,
   type RCA,
+  fetchInstanceDetail,
+  type InstanceOrderDetail,
 } from "@/lib/runtime-bridge";
 import { injectFailure, fetchPerfForecast, fetchJobStats, type PerfForecast, type JobStats } from "@/lib/differentials-api";
 import { isServerMode } from "@/lib/server-client";
@@ -126,6 +128,25 @@ export default function InstanceDetailsDrawer({
   const status = instance.status;
   const color = STATUS_COLOR[status];
   const [tab, setTab] = useState<Tab>("general");
+
+  // Action CONGELADA NA ORDEM — em server mode a lista não carrega actionConfig
+  // (payload de escala); o detalhe (GET /api/instances/{id}) traz a foto da
+  // definition_snapshot, a MESMA que o dispatch executa. No modo local a própria
+  // instance já tem o snapshot e o fetch é no-op (null).
+  const [orderDetail, setOrderDetail] = useState<InstanceOrderDetail | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setOrderDetail(null);
+    if (instance.actionConfig === undefined) {
+      void fetchInstanceDetail(instance.id).then((d) => { if (alive) setOrderDetail(d); });
+    }
+    return () => { alive = false; };
+  }, [instance.id, instance.actionConfig]);
+
+  // Cascata = a MESMA do dispatch (defForInstance): snapshot na instance >
+  // snapshot da ordem no server > def viva (só instance pré-snapshot/seed antigo).
+  const actionConfig = instance.actionConfig ?? orderDetail?.actionConfig ?? definition?.actionConfig;
+  const jobType = instance.jobType || orderDetail?.jobType || definition?.jobType || "—";
   // BUG-5 — gate CONFIRM ativo (card violeta): as únicas ações são Hold e
   // Confirm; Cancel/Skip/Set OK/Chaos somem até o operador decidir.
   const waitConfirm = status === "WAITING" && !instance.confirmed && !!definition?.confirm;
@@ -286,8 +307,8 @@ export default function InstanceDetailsDrawer({
         <LogPanel instanceId={instance.id} status={status} />
       ) : (
         <div style={{ flex: 1, overflowY: "auto", padding: "12px", fontSize: 11 }}>
-          {tab === "general" && <GeneralTab instance={instance} definition={definition} />}
-          {tab === "output" && <OutputTab instance={instance} />}
+          {tab === "general" && <GeneralTab instance={instance} definition={definition} jobType={jobType} actionConfig={actionConfig} />}
+          {tab === "output" && <OutputTab instance={instance} jobType={jobType} actionConfig={actionConfig} />}
           {tab === "stats" && <StatsTab instance={instance} />}
           {tab === "schedule" && <ScheduleTab definition={definition} />}
           {tab === "deps" && <DepsTab definition={definition} triggers={triggers} allDefs={allDefs} />}
@@ -369,7 +390,14 @@ export default function InstanceDetailsDrawer({
    GENERAL — detalhes do job, timeline e parâmetros/variáveis.
    ════════════════════════════════════════════════════════════════ */
 
-function GeneralTab({ instance, definition }: { instance: JobInstance; definition?: JobDefinition }) {
+function GeneralTab({ instance, definition, jobType, actionConfig }: {
+  instance: JobInstance;
+  definition?: JobDefinition;
+  /** jobType/actionConfig já MESCLADOS no drawer (snapshot da instance > detalhe
+   *  da ordem no server > def viva) — a mesma cascata do dispatch. */
+  jobType: string;
+  actionConfig?: Record<string, unknown>;
+}) {
   const description = definition?.schedule?.description?.trim();
 
   // Parâmetros = variáveis snapshotadas na instance (array) ∪ variáveis locais
@@ -380,11 +408,6 @@ function GeneralTab({ instance, definition }: { instance: JobInstance; definitio
   for (const [k, val] of Object.entries(definition?.localVars ?? {})) {
     if (!seen.has(k)) params.push([k, val]);
   }
-
-  // jobType robusto: a instance é a fonte (snapshot), mas cai pra def se vier
-  // vazia — mantém o drawer sincronizado com o card do canvas (que enriquece
-  // da def). O V2Preview também já enriquece a instance passada aqui.
-  const jobType = instance.jobType || definition?.jobType || "—";
 
   // BUG-7 — em qual AGENTE o job executa: o executor REAL da instance (server
   // grava agent_id no dispatch) vence; sem execução ainda, mostra o pin da def
@@ -423,7 +446,7 @@ function GeneralTab({ instance, definition }: { instance: JobInstance; definitio
       </Section>
 
       <Section title="Action">
-        <ActionView jobType={jobType} config={instance.actionConfig ?? {}} />
+        <ActionView jobType={jobType} config={actionConfig ?? {}} />
       </Section>
 
       <Section title="Timeline">
@@ -570,28 +593,112 @@ function jsonPretty(v: unknown): string {
 }
 
 /* ════════════════════════════════════════════════════════════════
-   OUTPUT — erro + saída da execução.
-   ════════════════════════════════════════════════════════════════ */
+   OUTPUT — erro + saída da execução, apresentada como um sysout.
+   ════════════════════════════════════════════════════════════════
+   O resultado do agente (server mode) tem o shape {text, exitCode,
+   agentId}. Despejar esse JSON cru escondia o essencial ("o que
+   rodou? saiu 0?") — agora renderiza o comando congelado na ordem,
+   a saída do agente (ou o aviso de saída vazia — sleep 60 não
+   escreve nada e isso é normal), exit code com cor e o agente.
+   Qualquer outro shape (executores locais/HTTP) segue no JSON pretty. */
 
-function OutputTab({ instance }: { instance: JobInstance }) {
-  const hasOutput = instance.output && Object.keys(instance.output).length > 0;
-  if (!instance.error && !hasOutput) {
+const AGENT_OUTPUT_KEYS = new Set(["text", "exitCode", "agentId"]);
+
+// O "o que rodou" da ordem, por tipo — a linha de comando/consulta/URL que o
+// operador espera ver junto do sysout.
+function commandOf(jobType: string, config: Record<string, unknown>): string {
+  const str = (k: string) => (typeof config[k] === "string" ? (config[k] as string).trim() : "");
+  switch (jobType) {
+    case "COMMAND":
+    case "SSH":
+    case "BATCH":
+      return str("command");
+    case "SCRIPT":
+      return [str("scriptPath"), str("args")].filter(Boolean).join(" ");
+    case "DATABASE":
+      return str("sql");
+    case "HTTP": {
+      const url = str("url");
+      return url ? `${str("method") || "GET"} ${url}` : "";
+    }
+    default:
+      return "";
+  }
+}
+
+function OutputTab({ instance, jobType, actionConfig }: {
+  instance: JobInstance;
+  jobType: string;
+  actionConfig?: Record<string, unknown>;
+}) {
+  const out = (instance.output ?? {}) as Record<string, unknown>;
+  const keys = Object.keys(out);
+  if (!instance.error && keys.length === 0) {
     return <Muted>No output produced by this run yet.</Muted>;
   }
+
+  const errorBlock = instance.error ? (
+    <Section title="Error">
+      <Pre tone="var(--v2-status-failed)">{instance.error}</Pre>
+    </Section>
+  ) : null;
+
+  const agentShape = keys.length > 0 && keys.every((k) => AGENT_OUTPUT_KEYS.has(k));
+  if (!agentShape) {
+    return (
+      <>
+        {errorBlock}
+        {keys.length > 0 && (
+          <Section title="Output">
+            <Pre tone="var(--v2-text-secondary)" maxHeight={480}>
+              {JSON.stringify(instance.output, null, 2)}
+            </Pre>
+          </Section>
+        )}
+      </>
+    );
+  }
+
+  const text = typeof out.text === "string" ? out.text : "";
+  const agentId = typeof out.agentId === "string" && out.agentId ? out.agentId : undefined;
+  const running = instance.status === "RUNNING";
+  const finished = instance.completedAt != null || instance.status === "OK" || instance.status === "NOTOK";
+  // exitCode só faz sentido com a run TERMINADA (em RUNNING o 0 é placeholder).
+  const exit = finished && typeof out.exitCode === "number" ? out.exitCode : undefined;
+  const cmd = commandOf(jobType, actionConfig ?? {});
+
   return (
     <>
-      {instance.error && (
-        <Section title="Error">
-          <Pre tone="var(--v2-status-failed)">{instance.error}</Pre>
+      {errorBlock}
+      {cmd && (
+        <Section title="Command">
+          <Pre tone="var(--v2-text-secondary)" maxHeight={160}>{cmd}</Pre>
         </Section>
       )}
-      {hasOutput && (
-        <Section title="Output">
-          <Pre tone="var(--v2-text-secondary)" maxHeight={480}>
-            {JSON.stringify(instance.output, null, 2)}
-          </Pre>
-        </Section>
-      )}
+      <Section title="Output">
+        {text ? (
+          <Pre tone="var(--v2-text-secondary)" maxHeight={480}>{text}</Pre>
+        ) : (
+          <Muted>
+            {running
+              ? "No output yet — the job is still running."
+              : "The run finished without writing to stdout/stderr."}
+          </Muted>
+        )}
+      </Section>
+      <Section title="Result">
+        {exit != null && (
+          <Field
+            label="Exit code"
+            value={String(exit)}
+            mono
+            tone={exit === 0 ? "var(--v2-status-ok)" : "var(--v2-status-failed)"}
+          />
+        )}
+        {agentId && <Field label="Agent" value={agentId} mono />}
+        {instance.completedAt != null && <Field label="Completed" value={fmtTime(instance.completedAt)} />}
+        {finished && instance.durationMs != null && <Field label="Duration" value={fmtDuration(instance.durationMs)} />}
+      </Section>
     </>
   );
 }

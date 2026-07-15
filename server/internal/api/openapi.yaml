@@ -226,6 +226,32 @@ paths:
                     description: Resposta estruturada (shape varia com o kind — text/count/byStatus/items...).
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/instances/{id}:
+    get:
+      tags: [Consulta]
+      summary: Detalhe de uma instance (+ action congelada da ordem)
+      description: |
+        A linha completa do runtime + o que a lista deliberadamente NÃO carrega
+        (payload de escala): `label`, `jobType` e `actionConfig` extraídos da
+        `definition_snapshot` — a foto da definition congelada quando a instance
+        foi ordenada, a MESMA que o dispatch executa. Editar o job no Design
+        depois da ordem não muda esta resposta. Folder ilegível pelo usuário
+        responde 404 (não vaza existência).
+      operationId: getInstance
+      x-permission: qualquer logado (leitura filtrada pelas ACLs de folder)
+      parameters: [{ $ref: "#/components/parameters/instanceId" }]
+      responses:
+        "200":
+          description: Detalhe da instance.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InstanceDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Instance não encontrada (ou folder sem leitura).
+          content:
+            text/plain:
+              schema: { type: string }
   /api/instances/{id}/hold:
     post:
       tags: [Ciclo de vida]
@@ -783,6 +809,18 @@ components:
         confirmed: { type: boolean, description: "Gate Confirm liberado (jobs confirm: true)." }
         cycleRuns: { type: integer, description: Voltas OK completadas no dia (jobs cíclicos). }
         dryRun: { type: boolean, description: Congelado na ordem (selo GHOST). }
+    InstanceDetail:
+      allOf:
+        - $ref: "#/components/schemas/Instance"
+        - type: object
+          description: Campos extraídos da definition_snapshot (a foto da ordem).
+          properties:
+            label: { type: string, description: Label do job congelado na ordem. }
+            jobType: { type: string, description: Tipo do job (COMMAND/SCRIPT/...) congelado na ordem. }
+            actionConfig:
+              type: object
+              additionalProperties: true
+              description: Parâmetros da action (ex. command/cwd) congelados na ordem — o que o dispatch executa.
     StructuredQuery:
       type: object
       description: Tudo opcional; zero-value = a diária de hoje, sem filtro. Campo desconhecido = 400.

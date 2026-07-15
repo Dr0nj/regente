@@ -77,6 +77,14 @@ export const fetchInstanceById = isServerMode()
   ? serverInstance.fetchInstanceById
   : async (id: string) => localInstance.getTodayInstances().find((i) => i.id === id) ?? null;
 
+export type InstanceOrderDetail = serverInstance.InstanceOrderDetail;
+
+// Action congelada na ordem (GET /api/instances/{id}) — server-only: no modo
+// local a própria instance já carrega o snapshot (actionConfig) desde a criação.
+export const fetchInstanceDetail = isServerMode()
+  ? serverInstance.fetchInstanceDetail
+  : async (_id: string): Promise<serverInstance.InstanceOrderDetail | null> => null;
+
 // UI-1 — re-busca o espelho do server (ex.: cap do canvas mudou em Settings).
 // Local mode: o snapshot é o próprio storage — nada a re-buscar.
 export const refreshInstancesFromServer = isServerMode()

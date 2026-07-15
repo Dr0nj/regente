@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -280,6 +281,85 @@ func (s *server) listInstances(w http.ResponseWriter, r *http.Request) {
 	// INSTÂNCIA (verde = claim), não pelo status vivo do pai.
 	s.attachDepClaims(q.date, list)
 	writeJSON(w, 200, list)
+}
+
+// instanceDetail — resposta de GET /api/instances/{id}: a linha do runtime +
+// a AÇÃO CONGELADA NA ORDEM (definition_snapshot): label, jobType e actionConfig
+// do momento em que a instance foi materializada. É o que o drawer do Monitoring
+// mostra nas seções Action/Output — a mesma foto que o dispatch executa
+// (defForInstance), não a def viva, que pode ter sido editada depois da ordem.
+// Snapshot ausente (seed antigo) → campos vazios; o front cai na def de desenho.
+type instanceDetail struct {
+	instanceRow
+	Label        string                 `json:"label,omitempty"`
+	JobType      string                 `json:"jobType,omitempty"`
+	ActionConfig map[string]interface{} `json:"actionConfig,omitempty"`
+}
+
+// getInstance — GET /api/instances/{id}. Detalhe de UMA instance, incluindo o
+// que a lista deliberadamente NÃO carrega (payload de escala): a action do
+// snapshot. RBAC igual ao list: folder ilegível responde 404 (não vaza existência).
+func (s *server) getInstance(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	rows, err := s.cfg.DB.Query(`SELECT `+instanceCols+` FROM instances WHERE id=?`, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	list, err := scanInstances(rows)
+	rows.Close()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if len(list) == 0 {
+		http.Error(w, "instance not found", http.StatusNotFound)
+		return
+	}
+	det := instanceDetail{instanceRow: list[0]}
+
+	if allowed, restrict := s.allowedTeams(r, det.OrderDate); restrict {
+		ok := false
+		for _, t := range allowed {
+			if t == det.Team {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			http.Error(w, "instance not found", http.StatusNotFound)
+			return
+		}
+	}
+
+	// Latches de dependência DESTA instance (não o attachDepClaims do dia inteiro —
+	// aqui é um lookup pontual por consumer, barato mesmo num dia de 1M).
+	if crows, err := s.cfg.DB.Query(
+		`SELECT c.upstream_def_id, COALESCE(e.instance_id,'')
+		 FROM dep_claims c LEFT JOIN dep_events e ON e.id = c.event_id
+		 WHERE c.consumer_instance_id=?`, id,
+	); err == nil {
+		for crows.Next() {
+			var up, parent string
+			if crows.Scan(&up, &parent) == nil {
+				det.DepsSatisfied = append(det.DepsSatisfied, up)
+				det.DepsClaims = append(det.DepsClaims, depClaimRef{From: up, ParentInstanceID: parent})
+			}
+		}
+		crows.Close()
+	}
+
+	var snap string
+	_ = s.cfg.DB.QueryRow(`SELECT COALESCE(definition_snapshot,'') FROM instances WHERE id=?`, id).Scan(&snap)
+	if snap != "" {
+		var d domain.JobDefinition
+		if json.Unmarshal([]byte(snap), &d) == nil {
+			det.Label = d.Label
+			det.JobType = d.JobType
+			det.ActionConfig = d.Params
+		}
+	}
+	writeJSON(w, 200, det)
 }
 
 // pageInstances — GET /api/instances/page. Paginação por CURSOR (keyset estável em
