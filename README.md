@@ -146,7 +146,11 @@ daily ou via Force Order manual.
   mini-meses + seletor de ano; os dias **destacados** são exatamente os que o job vai
   rodar, calculados pelo backend com a **mesma regra da daily** — `POST /api/schedule/preview`).
   ("Dia útil"/regra avançada saíram da frequência: dia útil depende do calendário de feriados de cada lugar.)
-- 🟢 **Dependências entre jobs** com condições (on-success/failure/complete/always).
+- 🟢 **Dependências entre jobs** com condições (on-success/failure/complete/always) e
+  **data de referência Control-M** por aresta/condition — `odat` (mesma diária de origem,
+  default), `prev` (diária anterior) e `stat` (estática, sem data). O carry-over preserva
+  o **ODAT** (a data em que a ordem entrou em schedule): um job carregado do dia 14 segue
+  "do dia 14" para eventos, conditions, linhas do grafo e agrupamento no Active Jobs.
 - 🟢 **Aprofundamento Control-M** — **execução cíclica** (o job re-arma sozinho a cada
   N min dentro da janela, com teto de voltas), **Confirm** (job só roda após liberação
   manual do operador — gate `WAIT_CONFIRM`, nem o Force bypassa), job **DATABASE** (SQL
