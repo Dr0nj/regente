@@ -43,7 +43,7 @@ mas **este README reúne tudo** — é o compilado completo da plataforma.
 Dois mundos separados, estilo Control-M:
 
 - **Monitoring** — o que está rodando hoje. Resultado da *Daily*. Só consumo:
-  hold / release / cancel / set-ok / rerun / force order, audit por instance, SLA.
+  hold (qualquer status, com release restaurando o original) / release / cancel / set-ok / rerun / delete (em hold) / force order, audit por instance, SLA.
   É um **snapshot imutável**: a folder de cada instância é congelada quando a daily
   foi schedulada — apagar ou mover o job no Design não reescreve a daily corrente.
 - **Design** — onde as definitions são editadas. Pelo botão **FOLDERS** você cria,
@@ -349,13 +349,14 @@ Todas as rotas `/api/*` exigem `Authorization: Bearer <token>`.
 | POST   | `/api/folders`                        | cria subdir                    |
 | PUT    | `/api/folders/{name}/layout`          | grade da folder no canvas (`.regente-folder.yaml`; `{}` = herda o global) |
 | GET    | `/api/instances?date=YYYY-MM-DD`      | instances do dia               |
-| POST   | `/api/instances/{id}/hold`            | Hold                           |
+| POST   | `/api/instances/{id}/hold`            | Hold (qualquer status exceto RUNNING; release restaura o original) |
 | POST   | `/api/instances/{id}/release`         | Release                        |
 | POST   | `/api/instances/{id}/cancel`          | Cancel                         |
 | POST   | `/api/instances/{id}/rerun`           | Rerun                          |
 | POST   | `/api/instances/{id}/set-ok`          | Set OK (destrava sucessores)   |
 | POST   | `/api/instances/{id}/confirm`         | Confirm (gate WAIT_CONFIRM)    |
-| POST   | `/api/bulk/instances`                 | ação em lote (hold/release/cancel/rerun/set-ok/confirm), por item |
+| DELETE | `/api/instances/{id}`                 | Delete (Control-M "Delete job" — só com o job em HOLD) |
+| POST   | `/api/bulk/instances`                 | ação em lote (hold/release/cancel/rerun/set-ok/confirm/delete), por item |
 | GET    | `/api/instances/{id}/explain`         | por que (não) rodou: gating estruturado |
 | GET    | `/api/instances/{id}/blast-radius`    | impacto de cancelar/segurar (downstream/SLA) |
 | GET    | `/api/daily/diff?from&to&folder`      | diff entre duas diárias (+/−/alterados) |
@@ -364,7 +365,7 @@ Todas as rotas `/api/*` exigem `Authorization: Bearer <token>`.
 | GET    | `/api/forecast/range?from&days`       | forecast de N dias à frente (≥1 semana) |
 | POST   | `/api/daily/run`                      | força a daily do dia           |
 | POST   | `/api/definitions/{id}/force`         | Order Force (Control-M)        |
-| POST   | `/api/folders/{name}/pause` · `/resume` | pausa/retoma workflow (WAITING↔HELD, estado preservado) |
+| POST   | `/api/folders/{name}/pause` · `/resume` | pausa/retoma workflow (dia inteiro↔HELD, carry-over incluso; resume restaura cada status) |
 | POST   | `/api/events/ingest`                  | evento externo idempotente (seta conditions / força job) |
 | POST   | `/api/scheduler/tick`                 | dispara um ciclo (cron externo, `-scheduler=external`) |
 | POST   | `/api/scheduler/daily`                | gatilho de daily dedicado (cron diário, separado do tick) |

@@ -1011,6 +1011,10 @@ type instRow struct {
 	// da daily ("" = fresca do dia; order_date É a origem). Ver odate.go.
 	CarriedFrom string
 	Snapshot    string // Fase A: def congelada na ordem (JSON); "" em instances legadas.
+	// HeldFrom — status congelado por um HOLD (schemaV16, hold geral): o hold
+	// vale pra qualquer status não-RUNNING; o release restaura este valor.
+	// Só tem significado quando Status=HELD ('' = hold legado, era WAITING).
+	HeldFrom string
 }
 
 // defForInstance devolve a definition CONGELADA no momento da ordem (snapshot),
@@ -1063,7 +1067,7 @@ func (s *Scheduler) tickOnce() {
 	// evalDeps precisa enxergar pais OK/NOTOK para decidir corretamente.
 	rows, err := s.db.Query(
 		`SELECT id, definition_id, order_date, status, scheduled_at,
-		        started_at, carried_at, COALESCE(forced,0), COALESCE(force_mode,''), COALESCE(confirmed,0), COALESCE(carried_from,''), COALESCE(definition_snapshot,'')
+		        started_at, carried_at, COALESCE(forced,0), COALESCE(force_mode,''), COALESCE(confirmed,0), COALESCE(carried_from,''), COALESCE(definition_snapshot,''), COALESCE(held_from_status,'')
 		 FROM instances WHERE order_date=?`,
 		today,
 	)
@@ -1074,7 +1078,7 @@ func (s *Scheduler) tickOnce() {
 	for rows.Next() {
 		var r instRow
 		var forcedInt, confirmedInt int
-		_ = rows.Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.CarriedFrom, &r.Snapshot)
+		_ = rows.Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.CarriedFrom, &r.Snapshot, &r.HeldFrom)
 		r.Forced = forcedInt == 1
 		r.Confirmed = confirmedInt == 1
 		insts = append(insts, r)
@@ -1104,6 +1108,14 @@ func (s *Scheduler) tickOnce() {
 	pending := make([]instRow, 0)
 	for _, r := range insts {
 		if r.Status != string(domain.StatusWaiting) && r.Status != string(domain.StatusHeld) {
+			continue
+		}
+		// Hold geral (schemaV16): um HELD pode esconder um status TERMINAL
+		// (OK/NOTOK/CANCELLED segurados). Esses não vão rodar ao serem liberados
+		// — voltam pro status original — então NÃO disputam eventos: um NOTOK em
+		// hold clamando o evento do pai violaria o "falha devolve ao pool" (R4).
+		// Só WAITING de verdade (ou HELD vindo de WAITING / hold legado '') clama.
+		if r.Status == string(domain.StatusHeld) && r.HeldFrom != "" && r.HeldFrom != string(domain.StatusWaiting) {
 			continue
 		}
 		if r.Forced && r.ForceMode != ForceModeOrder {

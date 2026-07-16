@@ -39,6 +39,11 @@ type instanceRow struct {
 	// O front usa isto para o cadeado (folder vs individual) e para bloquear o
 	// Release individual de um job segurado pela folder.
 	HoldScope string `json:"holdScope,omitempty"`
+	// HeldFromStatus — status congelado pelo HOLD (schemaV16, hold geral): o hold
+	// vale pra qualquer status não-RUNNING e o Release restaura ESTE status (não
+	// WAITING cego). '' quando não-HELD ou hold legado (era WAITING). O front usa
+	// pra rotular o Release ("volta a NOTOK") — o Delete só olha status=HELD.
+	HeldFromStatus string `json:"heldFromStatus,omitempty"`
 	// DepsSatisfied — upstream defs cujo EVENTO esta instance já CLAMOU
 	// (dep_claims, schemaV15). É o latch das "linhas verdes" do Monitoring:
 	// satisfeita uma vez, a linha fica verde pra sempre nesta instance — rerun/
@@ -66,7 +71,7 @@ const instanceCols = `id, definition_id, COALESCE(team,''), order_date, status, 
 	started_at, finished_at,
 	COALESCE(agent_id,''), COALESCE(exit_code,0), COALESCE(output,''), COALESCE(forced,0),
 	COALESCE(carried_from,''), COALESCE(confirmed,0), COALESCE(cycle_runs,0), COALESCE(dry_run,0),
-	COALESCE(hold_scope,'')`
+	COALESCE(hold_scope,''), COALESCE(held_from_status,'')`
 
 // scanInstances materializa as linhas. CRÍTICO: propaga rows.Err() e qualquer
 // erro de Scan em vez de engolir e devolver lista PARCIAL. Um erro de leitura no
@@ -84,7 +89,7 @@ func scanInstances(rows *sql.Rows) ([]instanceRow, error) {
 			&ir.ID, &ir.DefinitionID, &ir.Team, &ir.OrderDate, &ir.Status, &ir.ScheduledAt,
 			&startedAt, &finishedAt,
 			&ir.AgentID, &ir.ExitCode, &ir.Output, &forcedInt,
-			&ir.CarriedFrom, &confirmedInt, &ir.CycleRuns, &dryRunInt, &ir.HoldScope,
+			&ir.CarriedFrom, &confirmedInt, &ir.CycleRuns, &dryRunInt, &ir.HoldScope, &ir.HeldFromStatus,
 		); err != nil {
 			return nil, err
 		}
@@ -470,18 +475,50 @@ func (s *server) holdInstance(w http.ResponseWriter, r *http.Request) {
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
-	// Hold individual: hold_scope='' (liberável 1-a-1). Distinto da pausa de folder,
-	// que marca 'folder' e só sai no resume da folder (schemaV14).
-	_, err := s.cfg.DB.Exec(`UPDATE instances SET status=?, hold_scope='' WHERE id=? AND status=?`,
-		string(domain.StatusHeld), id, string(domain.StatusWaiting))
+	// Hold geral (schemaV16): segura QUALQUER status exceto RUNNING (a execução
+	// já está no agente — não há o que segurar; cancele ou espere terminar) e o
+	// próprio HELD (idempotente). held_from_status congela o status original —
+	// o Release restaura ELE, não WAITING cego (que re-executaria um OK).
+	// Hold individual: hold_scope='' (liberável 1-a-1). Distinto da pausa de
+	// folder, que marca 'folder' e só sai no resume da folder (schemaV14).
+	res, err := s.cfg.DB.Exec(
+		`UPDATE instances SET held_from_status=status, status=?, hold_scope='' WHERE id=? AND status NOT IN (?,?)`,
+		string(domain.StatusHeld), id, string(domain.StatusRunning), string(domain.StatusHeld))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		var status string
+		if err := s.cfg.DB.QueryRow(`SELECT status FROM instances WHERE id=?`, id).Scan(&status); err != nil {
+			http.Error(w, "instance not found", http.StatusNotFound)
+			return
+		}
+		if status == string(domain.StatusRunning) {
+			http.Error(w, "job RUNNING não pode ser segurado — cancele ou aguarde terminar", http.StatusConflict)
+			return
+		}
+		// Já estava HELD: no-op idempotente (ecoa o estado atual).
+		writeJSON(w, 200, map[string]string{"id": id, "status": status})
+		return
+	}
+	// heldFromStatus no broadcast: o payload parcial do WS é o que o espelho do
+	// front aplica NA HORA (o refresh de cauda reconcilia depois) — sem ele o
+	// rótulo "Release (volta a X)" só apareceria no próximo refresh cheio.
+	var heldFrom string
+	_ = s.cfg.DB.QueryRow(`SELECT COALESCE(held_from_status,'') FROM instances WHERE id=?`, id).Scan(&heldFrom)
 	s.cfg.Scheduler.EmitEvent(id, "held", "operator", "")
-	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]any{"id": id, "status": string(domain.StatusHeld), "holdScope": ""})
+	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]any{"id": id, "status": string(domain.StatusHeld), "holdScope": "", "heldFromStatus": heldFrom})
 	writeJSON(w, 200, map[string]string{"id": id, "status": string(domain.StatusHeld)})
 }
+
+// releaseSQL — Release/Resume restauram o status congelado pelo hold
+// (held_from_status, schemaV16); '' = hold legado (pré-migração), cai em
+// WAITING como sempre foi. Compartilhado pelo release individual, bulk e
+// resume de folder — os três só divergem no WHERE (escopo).
+const releaseSQL = `UPDATE instances
+	SET status = CASE WHEN COALESCE(held_from_status,'')='' THEN 'WAITING' ELSE held_from_status END,
+	    held_from_status='', hold_scope=''`
 
 func (s *server) releaseInstance(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
@@ -493,8 +530,8 @@ func (s *server) releaseInstance(w http.ResponseWriter, r *http.Request) {
 	// Control-M "Hold folder" ⇒ "Release folder"). O Release individual só age em
 	// holds individuais (hold_scope=''). O front já esconde o botão nesse caso;
 	// este 409 é a rede de segurança do servidor (idempotente/atômico).
-	res, err := s.cfg.DB.Exec(`UPDATE instances SET status=? WHERE id=? AND status=? AND hold_scope=''`,
-		string(domain.StatusWaiting), id, string(domain.StatusHeld))
+	res, err := s.cfg.DB.Exec(releaseSQL+` WHERE id=? AND status=? AND hold_scope=''`,
+		id, string(domain.StatusHeld))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -509,9 +546,55 @@ func (s *server) releaseInstance(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// O status restaurado depende do que o hold congelou — lê o resultado real.
+	status := string(domain.StatusWaiting)
+	_ = s.cfg.DB.QueryRow(`SELECT status FROM instances WHERE id=?`, id).Scan(&status)
 	s.cfg.Scheduler.EmitEvent(id, "released", "operator", "")
-	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]any{"id": id, "status": string(domain.StatusWaiting), "holdScope": ""})
-	writeJSON(w, 200, map[string]string{"id": id, "status": string(domain.StatusWaiting)})
+	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]any{"id": id, "status": status, "holdScope": "", "heldFromStatus": ""})
+	writeJSON(w, 200, map[string]string{"id": id, "status": status})
+}
+
+// deleteInstance — Control-M "Delete job": remove a ordem da tela (e do state
+// store). SÓ vale para job em HOLD — como RUNNING não é segurável, um job em
+// execução nunca é deletável; qualquer outro status vira deletável passando
+// pelo hold primeiro (o fluxo do usuário: Hold → Delete). O ledger dep_events
+// fica intacto (términos que aconteceram, aconteceram); os claims seguem o
+// SettleDepClaims: consumo OK segurado permanece gasto (invariante 2), reserva
+// não-consumida volta pro pool (R4). Os instance_events morrem junto (mesmo
+// padrão do archiveGC — sem órfãos eternos).
+func (s *server) deleteInstance(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !s.requireInstanceWrite(w, r, id) {
+		return
+	}
+	var status string
+	if err := s.cfg.DB.QueryRow(`SELECT status FROM instances WHERE id=?`, id).Scan(&status); err != nil {
+		http.Error(w, "instance not found", http.StatusNotFound)
+		return
+	}
+	if status != string(domain.StatusHeld) {
+		http.Error(w, "delete exige o job em HOLD (segure primeiro; RUNNING não é deletável)", http.StatusConflict)
+		return
+	}
+	// Claims ANTES do DELETE (o settle lê status/held_from_status da linha).
+	s.cfg.Scheduler.SettleDepClaims(id)
+	if _, err := s.cfg.DB.Exec(`DELETE FROM instance_events WHERE instance_id=?`, id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	res, err := s.cfg.DB.Exec(`DELETE FROM instances WHERE id=? AND status=?`, id, string(domain.StatusHeld))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		http.Error(w, "instance mudou de estado durante o delete — recarregue", http.StatusConflict)
+		return
+	}
+	// Eventos devolvidos ao pool podem destravar um clone em WAIT EVENT.
+	go s.cfg.Scheduler.Tick()
+	s.cfg.Hub.BroadcastWeb("instance.deleted", map[string]string{"id": id})
+	writeJSON(w, 200, map[string]string{"id": id, "status": "deleted"})
 }
 
 func (s *server) cancelInstance(w http.ResponseWriter, r *http.Request) {
@@ -519,16 +602,19 @@ func (s *server) cancelInstance(w http.ResponseWriter, r *http.Request) {
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
-	_, err := s.cfg.DB.Exec(`UPDATE instances SET status=?, finished_at=CURRENT_TIMESTAMP WHERE id=?`,
+	// Claims ANTES do UPDATE (o settle lê o status pré-cancel): consumo só se
+	// materializa no OK — o cancelado devolve os eventos que clamou (um clone
+	// pendente ou rerun pode usá-los)… EXCETO se o cancel pegou um OK (direto ou
+	// segurado por hold): consumo OK é permanente, os claims viram lápide
+	// (invariante 2 — evento consumido nunca volta pro pool). Cancel do PAI
+	// segue sem tocar claim de ninguém — isto aqui é o claim DELE como consumidor.
+	s.cfg.Scheduler.SettleDepClaims(id)
+	_, err := s.cfg.DB.Exec(`UPDATE instances SET status=?, held_from_status='', finished_at=CURRENT_TIMESTAMP WHERE id=?`,
 		string(domain.StatusCancelled), id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// Consumo só se materializa no OK: o cancelado devolve os eventos que
-	// clamou (um clone pendente ou rerun pode usá-los). Cancel do PAI segue
-	// sem tocar claim de ninguém — isto aqui é o claim DELE como consumidor.
-	s.cfg.Scheduler.ResetDepClaims(id)
 	s.cfg.Scheduler.EmitEvent(id, "cancelled", "operator", "manual cancel")
 	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusCancelled)})
 	writeJSON(w, 200, map[string]string{"id": id, "status": string(domain.StatusCancelled)})
@@ -567,11 +653,12 @@ func (s *server) rerunInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// schemaV15 — claims do consumidor ANTES do reset de status (o status
-	// terminal decide): rerun após OK vira LÁPIDE (consumo é permanente — o
-	// novo run entra em WAIT EVENT até o pai emitir término novo); rerun de
-	// não-consumido devolve os eventos pro pool. Rerun/cancel do PAI não mexe
-	// em claim nenhum — linha satisfeita fica verde.
-	s.cfg.Scheduler.RerunDepClaims(id)
+	// terminal decide — inclusive um OK escondido sob HOLD, via held_from_status):
+	// rerun após OK vira LÁPIDE (consumo é permanente — o novo run entra em
+	// WAIT EVENT até o pai emitir término novo); rerun de não-consumido devolve
+	// os eventos pro pool. Rerun/cancel do PAI não mexe em claim nenhum — linha
+	// satisfeita fica verde.
+	s.cfg.Scheduler.SettleDepClaims(id)
 	// BUG-2: `confirmed` SOBREVIVE ao rerun — um job que já passou pelo gate
 	// Confirm não volta pro CONFIRM ao ser re-rodado; ele re-entra direto no
 	// gating normal (deps/janela). Quem nunca confirmou segue exigindo Confirm.
@@ -582,6 +669,7 @@ func (s *server) rerunInstance(w http.ResponseWriter, r *http.Request) {
 	// Order Force (mode='order') mantém o forced: ela nunca teve janela real.
 	_, err := s.cfg.DB.Exec(
 		`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL,
+		        held_from_status='',
 		        forced = CASE WHEN COALESCE(force_mode,'')='' THEN 0 ELSE forced END
 		 WHERE id=?`,
 		string(domain.StatusWaiting), id,
@@ -783,7 +871,7 @@ func (s *server) forceRunInstance(w http.ResponseWriter, r *http.Request) {
 	// isso o ramo forced do tick (`ForceMode != order`) nunca ativava e o job
 	// continuava aguardando evento mesmo depois do Run Now.
 	res, err := s.cfg.DB.Exec(
-		`UPDATE instances SET status=?, forced=1, force_mode='', scheduled_at=? WHERE id=? AND status IN (?,?)`,
+		`UPDATE instances SET status=?, forced=1, force_mode='', held_from_status='', scheduled_at=? WHERE id=? AND status IN (?,?)`,
 		string(domain.StatusWaiting), time.Now(), id,
 		string(domain.StatusWaiting), string(domain.StatusHeld),
 	)

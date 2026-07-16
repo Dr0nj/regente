@@ -32,6 +32,7 @@ import { todayOrderDate } from "@/lib/orchestrator-model";
 import {
   holdInstance,
   releaseInstance,
+  deleteInstance,
   cancelInstance,
   rerunInstance,
   skipInstance,
@@ -1029,8 +1030,10 @@ function V2PreviewInner() {
         items.push({ label: "Run Now", tone: "primary", onClick: () => handleRunNowInstance(inst.id) });
       }
 
-      // Hold / Release / Cancel
-      if (status === "WAITING") {
+      // Hold / Release / Cancel — hold GERAL (2026-07-16): qualquer status
+      // exceto RUNNING (execução já no agente) e o próprio HOLD; o Release
+      // restaura o status original (heldFrom), não WAITING cego.
+      if (status !== "RUNNING" && status !== "HOLD") {
         items.push({ label: "Hold",   onClick: () => { void holdInstance(inst.id); } });
       }
       if (status === "HOLD") {
@@ -1046,7 +1049,9 @@ function V2PreviewInner() {
           });
         } else {
           items.push({
-            label: "Release",
+            // Hold geral: o release restaura o status congelado (heldFrom) —
+            // deixa isso explícito quando não é o WAITING clássico.
+            label: inst.heldFrom && inst.heldFrom !== "WAITING" ? `Release (volta a ${inst.heldFrom})` : "Release",
             tone: "primary",
             onClick: () => {
               Promise.resolve(releaseInstance(inst.id)).catch((err) => {
@@ -1055,6 +1060,18 @@ function V2PreviewInner() {
             },
           });
         }
+        // Delete (Control-M "Delete job"): SÓ aparece em HOLD — RUNNING nunca é
+        // deletável (não é segurável); os demais status passam pelo Hold antes.
+        items.push({
+          label: "Delete",
+          tone: "danger",
+          onClick: () => {
+            if (!window.confirm(`Delete "${inst.label}"?\n\nRemove a ordem da tela e do dia — a definition no Design não é tocada.`)) return;
+            Promise.resolve(deleteInstance(inst.id)).catch((err) => {
+              toast.error("Delete falhou", { detail: err instanceof Error ? err.message : String(err) });
+            });
+          },
+        });
       }
       // BUG-3 — WAIT EVENT: sem Cancel (a espera se resolve, não se cancela);
       // o Set OK abaixo conclui OK na hora, sem esperar o evento chegar.
@@ -1788,6 +1805,11 @@ function V2PreviewInner() {
               handlers={{
                 onHold: holdInstance,
                 onRelease: releaseInstance,
+                onDelete: (id) => {
+                  Promise.resolve(deleteInstance(id))
+                    .then(() => setSelectedInstanceId(null)) // a ordem sumiu — fecha o drawer
+                    .catch((err) => toast.error("Delete falhou", { detail: err instanceof Error ? err.message : String(err) }));
+                },
                 onCancel: cancelInstance,
                 onSkip: skipInstance,
                 onBypass: bypassInstance,
@@ -1893,6 +1915,7 @@ function V2PreviewInner() {
             handlers={{
               onHoldAll:    (ids) => handleBulk(ids, holdInstance, "hold"),
               onReleaseAll: (ids) => handleBulk(ids, releaseInstance, "release"),
+              onDeleteAll:  (ids) => handleBulk(ids, deleteInstance, "delete"),
               onCancelAll:  (ids) => handleBulk(ids, cancelInstance, "cancel"),
               onSetOkAll:   (ids) => handleBulk(ids, bypassInstance, "set-ok"),
               onRerunAll:   (ids) => handleBulk(ids, rerunInstance, "rerun"),

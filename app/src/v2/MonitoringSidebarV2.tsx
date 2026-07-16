@@ -562,8 +562,8 @@ export default function MonitoringSidebarV2({
               <span style={{ display: "inline-flex", gap: 2 }} onClick={(e) => e.stopPropagation()}>
                 <button
                   title={paused
-                    ? `Folder ${g.name} já está pausada — segura também qualquer WAITING novo`
-                    : `Pausar folder: segura os WAITING de ${g.name} em hold (estado preservado)`}
+                    ? `Folder ${g.name} já está pausada — pausar de novo segura também o que entrou depois (jobs novos/carry-over)`
+                    : `Pausar folder: segura TODOS os jobs de ${g.name} em hold — qualquer status (menos RUNNING), carry-over incluso; cada um congela o status atual e o Retomar restaura`}
                   onClick={() => onPauseFolder(g.name)}
                   style={paused
                     ? { ...folderActionBtn, color: HOLD_FOLDER_COLOR, borderColor: HOLD_FOLDER_COLOR, background: "rgba(245,158,11,0.12)" }
@@ -571,8 +571,8 @@ export default function MonitoringSidebarV2({
                 >⏸</button>
                 <button
                   title={paused
-                    ? `Retomar folder: libera TODOS os jobs segurados pela pausa de ${g.name}`
-                    : `Retomar folder: libera os jobs segurados pela pausa de ${g.name}`}
+                    ? `Retomar folder: libera TODOS os jobs segurados pela pausa de ${g.name}, cada um de volta ao status que tinha`
+                    : `Retomar folder: libera os jobs segurados pela pausa de ${g.name} (cada um volta ao status que tinha)`}
                   onClick={() => onResumeFolder(g.name)}
                   style={paused
                     ? { ...folderActionBtn, color: "var(--v2-status-ok)", borderColor: "var(--v2-status-ok)" }

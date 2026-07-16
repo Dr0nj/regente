@@ -252,31 +252,75 @@ paths:
           content:
             text/plain:
               schema: { type: string }
+    delete:
+      tags: [Ciclo de vida]
+      summary: Delete — remove a ordem (SÓ em HOLD)
+      description: |
+        Control-M "Delete job": remove a instance da tela e do state store.
+        Exige o job em HOLD — como RUNNING não é segurável, um job em execução
+        nunca é deletável; qualquer outro status vira deletável passando pelo
+        Hold primeiro. O ledger de eventos de dependência fica intacto: um
+        consumo OK segurado permanece gasto (o rerun de um clone segue em WAIT
+        EVENT); uma reserva não-consumida volta pro pool.
+      operationId: deleteInstance
+      x-permission: operator/admin + escrita na folder da instance
+      parameters: [{ $ref: "#/components/parameters/instanceId" }]
+      responses:
+        "200":
+          description: Removida.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActionResult" }
+              example: { id: "etl-vendas_2026-07-10_a1b2", status: deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Instance não encontrada.
+          content:
+            text/plain:
+              schema: { type: string }
+        "409":
+          description: Fora de HOLD (segure primeiro; RUNNING não é deletável).
+          content:
+            text/plain:
+              schema: { type: string }
   /api/instances/{id}/hold:
     post:
       tags: [Ciclo de vida]
-      summary: Hold — segura uma instance WAITING
+      summary: Hold — segura uma instance (qualquer status exceto RUNNING)
       description: |
-        WAITING → HELD. Instance em outro estado = no-op (a resposta ecoa o
-        status alvo mesmo assim; confira com a query composta se precisar do
-        estado real).
+        Hold geral: qualquer status → HELD, exceto RUNNING (409 — a execução já
+        está no agente; cancele ou aguarde) e o próprio HELD (no-op idempotente
+        que ecoa o estado atual). O status original fica congelado em
+        `heldFromStatus` e o Release restaura ELE — segurar um OK e liberar não
+        re-executa nada.
       operationId: holdInstance
       x-permission: operator/admin + escrita na folder da instance
       parameters: [{ $ref: "#/components/parameters/instanceId" }]
       responses:
         "200":
-          description: Hold aplicado (ou no-op se não estava WAITING).
+          description: Hold aplicado (ou no-op se já estava HELD).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ActionResult" }
               example: { id: "etl-vendas_2026-07-10_a1b2", status: HELD }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: RUNNING não pode ser segurado.
+          content:
+            text/plain:
+              schema: { type: string }
   /api/instances/{id}/release:
     post:
       tags: [Ciclo de vida]
       summary: Release — libera uma instance HELD
-      description: HELD → WAITING (o gating normal volta a valer no próximo tick).
+      description: |
+        HELD → o status ORIGINAL congelado pelo hold (`heldFromStatus`; holds
+        legados sem ele caem em WAITING). Um WAITING liberado re-entra no
+        gating normal no próximo tick; um OK/NOTOK liberado só volta a ser
+        OK/NOTOK. Job segurado por PAUSA DE FOLDER responde 409 — só o resume
+        da folder libera.
       operationId: releaseInstance
       x-permission: operator/admin + escrita na folder da instance
       parameters: [{ $ref: "#/components/parameters/instanceId" }]
@@ -289,6 +333,11 @@ paths:
               example: { id: "etl-vendas_2026-07-10_a1b2", status: WAITING }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: Segurado por pausa de folder (libere pela folder).
+          content:
+            text/plain:
+              schema: { type: string }
   /api/instances/{id}/cancel:
     post:
       tags: [Ciclo de vida]

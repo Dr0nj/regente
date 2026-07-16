@@ -16,14 +16,16 @@
 //     instance de cada definition consumidora — a cópia forçada de um job cuja
 //     dependência "já rodou" NÃO herda o evento consumido pela instance
 //     original; entra em WAIT EVENT até o pai emitir um término novo.
-//   - Rerun do CONSUMIDOR depende do run anterior ter CONSUMIDO ou não
-//     (RerunDepClaims): se terminou OK (real ou Set OK), o consumo é
-//     PERMANENTE — o claim vira LÁPIDE e o evento segue gasto para esta
-//     definition; o novo run entra em WAIT EVENT até o pai emitir um término
-//     NOVO. Se NÃO consumiu (rerun de RUNNING/HELD; NOTOK/CANCELLED já
-//     devolveram no término), os claims são deletados e os eventos voltam
-//     pro pool. É o "delete input conditions on OK" do Control-M: a condição
-//     que liberou o job SOME quando ele executa com sucesso.
+//   - Rerun/cancel/delete do CONSUMIDOR dependem do run anterior ter
+//     CONSUMIDO ou não (SettleDepClaims): se terminou OK (real, Set OK, ou um
+//     OK escondido sob um HOLD — held_from_status, hold geral 2026-07-16), o
+//     consumo é PERMANENTE — o claim vira LÁPIDE e o evento segue gasto para
+//     esta definition; o novo run entra em WAIT EVENT até o pai emitir um
+//     término NOVO. Se NÃO consumiu (rerun de RUNNING/HELD-de-WAITING;
+//     NOTOK/CANCELLED já devolveram no término), os claims são deletados e os
+//     eventos voltam pro pool. É o "delete input conditions on OK" do
+//     Control-M: a condição que liberou o job SOME quando ele executa com
+//     sucesso.
 //   - DATAS (2026-07-16, ver odate.go): o evento nasce com o ODAT do produtor
 //     (a origem da ordem — o carry-over avança order_date, nunca o ODAT) e o
 //     claim exige a diária resolvida pelo dateRef da aresta contra o ODAT do
@@ -86,29 +88,41 @@ func (s *Scheduler) emitDepEvent(instanceID string, status domain.InstanceStatus
 
 // ResetDepClaims — devolve pro pool os eventos clamados por uma instance
 // (as linhas dela resetam). Semântica de "não gastou": término NOTOK terminal
-// (FinishInstance — falha não consome) e cancel do consumidor (handlers).
-// Rerun NÃO passa por aqui — usa RerunDepClaims (consumo OK é permanente).
+// (FinishInstance — falha não consome). Ações de operador (rerun/cancel/
+// delete) NÃO passam por aqui — usam SettleDepClaims, que enxerga um consumo
+// OK escondido sob um HOLD (consumo OK é permanente).
 func (s *Scheduler) ResetDepClaims(instanceID string) {
 	if _, err := s.db.Exec(`DELETE FROM dep_claims WHERE consumer_instance_id=?`, instanceID); err != nil {
 		log.Printf("[scheduler] reset dep-claims %s: %v", instanceID, err)
 	}
 }
 
-// RerunDepClaims — rerun do CONSUMIDOR (chamar ANTES de resetar o status, com
-// o status TERMINAL ainda gravado). Regra do usuário (2026-07-14):
+// SettleDepClaims — destino dos claims quando o operador tira a instance do
+// estado atual (rerun/cancel/delete). Chamar ANTES de mudar/apagar o status —
+// é o status pré-ação que decide. Regra do usuário (2026-07-14; hold geral
+// 2026-07-16):
 //
-//   - Run anterior OK (real ou Set OK) → o consumo MATERIALIZOU e é
-//     PERMANENTE. O claim vira LÁPIDE: o consumer_instance_id ganha o sufixo
-//     "#spent@<event>" — some do claimsFor/DepsSatisfied (a linha do novo run
-//     reseta), mas o UNIQUE(event_id, consumer_def_id) continua bloqueando o
-//     evento para esta definition. O novo run entra em WAIT EVENT até o pai
-//     emitir um término NOVO. (Deletar aqui era o bug: o evento gasto voltava
-//     pro pool e o próprio rerun o re-clamava e rodava na hora.)
+//   - Run anterior OK (real, Set OK, ou um OK SEGURADO por hold — o hold geral
+//     permite HELD vindo de qualquer status; held_from_status guarda o
+//     original) → o consumo MATERIALIZOU e é PERMANENTE. O claim vira LÁPIDE:
+//     o consumer_instance_id ganha o sufixo "#spent@<event>" — some do
+//     claimsFor/DepsSatisfied (a linha do novo run reseta), mas o
+//     UNIQUE(event_id, consumer_def_id) continua bloqueando o evento para esta
+//     definition. O rerun entra em WAIT EVENT até o pai emitir um término
+//     NOVO. (Deletar aqui era o bug de 2026-07-14: o evento gasto voltava pro
+//     pool e o próprio rerun o re-clamava e rodava na hora.)
 //   - Qualquer outro status → não consumiu: claims deletados, eventos de
 //     volta ao pool (NOTOK/CANCELLED em geral já devolveram no término).
-func (s *Scheduler) RerunDepClaims(instanceID string) {
-	var status string
-	_ = s.db.QueryRow(`SELECT status FROM instances WHERE id=?`, instanceID).Scan(&status)
+func (s *Scheduler) SettleDepClaims(instanceID string) {
+	var status, heldFrom string
+	_ = s.db.QueryRow(
+		`SELECT status, COALESCE(held_from_status,'') FROM instances WHERE id=?`, instanceID,
+	).Scan(&status, &heldFrom)
+	// HELD é um véu, não um término: o que conta é o status que o hold congelou.
+	// held_from_status='' (hold legado) só podia vir de WAITING — não consumiu.
+	if status == string(domain.StatusHeld) && heldFrom != "" {
+		status = heldFrom
+	}
 	if status != string(domain.StatusOK) {
 		s.ResetDepClaims(instanceID)
 		return

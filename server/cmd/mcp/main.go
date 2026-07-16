@@ -427,8 +427,8 @@ func (m *mcpServer) tools() []map[string]interface{} {
 			}
 		}
 		out = append(out,
-			instTool("hold_job", "Segura um job WAITING (Control-M Hold) — vira HELD e não roda até um release. AÇÃO DESTRUTIVA — confirme com o operador antes."),
-			instTool("release_job", "Libera um job em HOLD de volta pra WAITING (Control-M Release). AÇÃO DESTRUTIVA — confirme com o operador antes."),
+			instTool("hold_job", "Segura um job (Control-M Hold, qualquer status exceto RUNNING) — vira HELD; o status original fica congelado e o release o restaura. AÇÃO DESTRUTIVA — confirme com o operador antes."),
+			instTool("release_job", "Libera um job em HOLD de volta pro status ORIGINAL congelado pelo hold (Control-M Release; holds legados caem em WAITING). AÇÃO DESTRUTIVA — confirme com o operador antes."),
 			instTool("cancel_job", "Cancela um job do dia (vira CANCELLED, terminal). AÇÃO DESTRUTIVA — confirme com o operador antes."),
 			instTool("confirm_job", "Confirma um job que espera no gate WAIT_CONFIRM (Control-M Confirm; def com confirm:true). AÇÃO DESTRUTIVA — confirme com o operador antes."),
 			instTool("rerun_job", "Re-executa um job (volta pra WAITING). AÇÃO DESTRUTIVA — confirme com o operador antes."),
@@ -441,13 +441,13 @@ func (m *mcpServer) tools() []map[string]interface{} {
 			},
 			map[string]interface{}{
 				"name":        "pause_folder",
-				"description": "Pausa um workflow inteiro: todos os WAITING da folder no dia viram HELD, estado preservado (attempts/cycle/scheduled_at intactos). AÇÃO DESTRUTIVA — confirme com o operador antes.",
+				"description": "Pausa um workflow inteiro: TODOS os jobs da folder no dia (qualquer status exceto RUNNING, carry-over incluso) viram HELD, estado preservado (status original congelado; attempts/cycle/scheduled_at intactos). AÇÃO DESTRUTIVA — confirme com o operador antes.",
 				"inputSchema": schema(map[string]interface{}{"folder": strProp("folder/team exato"), "date": strProp("YYYY-MM-DD (default hoje)")}, "folder"),
 				"annotations": destructive,
 			},
 			map[string]interface{}{
 				"name":        "resume_folder",
-				"description": "Retoma um workflow pausado: todos os HELD da folder no dia voltam pra WAITING (Control-M Release folder). AÇÃO DESTRUTIVA — confirme com o operador antes.",
+				"description": "Retoma um workflow pausado: todos os segurados pela pausa da folder no dia voltam pro status ORIGINAL (Control-M Release folder). AÇÃO DESTRUTIVA — confirme com o operador antes.",
 				"inputSchema": schema(map[string]interface{}{"folder": strProp("folder/team exato"), "date": strProp("YYYY-MM-DD (default hoje)")}, "folder"),
 				"annotations": destructive,
 			},
@@ -455,7 +455,7 @@ func (m *mcpServer) tools() []map[string]interface{} {
 				"name":        "bulk_action",
 				"description": "Aplica uma ação a VÁRIAS instâncias de uma vez (transacional POR ITEM no server — falha parcial reportada item a item, não aborta o lote). Máx 500 ids.",
 				"inputSchema": schema(map[string]interface{}{
-					"action": strProp("hold|release|cancel|rerun|set-ok|confirm"),
+					"action": strProp("hold|release|cancel|rerun|set-ok|confirm|delete (delete exige o job em HOLD)"),
 					"ids":    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "ids das instances (máx 500)"},
 				}, "action", "ids"),
 				"annotations": destructive,

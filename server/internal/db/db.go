@@ -484,6 +484,7 @@ var sqliteMigrations = []migration{
 	{version: 13, sql: schemaV13(sqliteID, "DATETIME")},
 	{version: 14, sql: schemaV14()},
 	{version: 15, sql: schemaV15(sqliteID, "DATETIME")},
+	{version: 16, sql: schemaV16()},
 }
 
 var pgMigrations = []migration{
@@ -502,6 +503,7 @@ var pgMigrations = []migration{
 	{version: 13, sql: schemaV13(pgID, "TIMESTAMPTZ")},
 	{version: 14, sql: schemaV14()},
 	{version: 15, sql: schemaV15(pgID, "TIMESTAMPTZ")},
+	{version: 16, sql: schemaV16()},
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
@@ -745,4 +747,17 @@ CREATE TABLE IF NOT EXISTS dep_claims (
 CREATE INDEX IF NOT EXISTS idx_dep_claims_consumer ON dep_claims(consumer_instance_id);
 
 ALTER TABLE instances ADD COLUMN force_mode TEXT NOT NULL DEFAULT ''`
+}
+
+// schemaV16 — held_from_status: o status que a instance tinha ao entrar em HOLD
+// (2026-07-16, "hold geral"). O Hold — individual, bulk ou pausa de folder —
+// passou a valer para QUALQUER status não-RUNNING (não só WAITING): segurar um
+// NOTOK congela o tratamento, segurar um OK evita rerun acidental, e a pausa de
+// folder segura o dia INTEIRO (incluindo carry-over). O Release/Resume restaura
+// o status ORIGINAL daqui em vez de mandar tudo pra WAITING (que re-executaria
+// um OK segurado). '' = hold legado/pré-migração: release cai em WAITING, o
+// comportamento antigo. Só tem significado enquanto status='HELD' — todo hold
+// sobrescreve o valor na entrada.
+func schemaV16() string {
+	return `ALTER TABLE instances ADD COLUMN held_from_status TEXT NOT NULL DEFAULT ''`
 }

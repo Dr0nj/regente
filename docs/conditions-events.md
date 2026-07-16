@@ -42,6 +42,37 @@ Referências de data, sempre relativas ao ODAT do CONSUMIDOR/produtor:
 | **prev** | `dateRef: prev` | `NOME@prev` | diária ANTERIOR = último New Day registrado em `daily_runs` antes do ODAT (cobre lacunas de server desligado); sem registro, ODAT−1 dia |
 | **stat** | `dateRef: stat` | `NOME@stat` | estática: sem data — qualquer evento livre (S1) / só a condition permanente `scope_date=''` (S2) |
 
+## Hold GERAL + Delete (2026-07-16)
+
+**Hold vale pra QUALQUER status exceto RUNNING** (a execução já está no agente
+— cancele ou aguarde) e o próprio HELD. `instances.held_from_status`
+(schemaV16) congela o status original; **Release/Resume restauram ELE**, não
+WAITING cego (que re-executaria um OK segurado). Vale pro hold individual, pro
+bulk e pra **pausa de folder — que agora segura o dia INTEIRO, carry-over
+incluso** (o carry avança `order_date`, então a carregada entra no WHERE do
+dia). Hold individual continua sobrevivendo ao pause/resume da folder
+(`hold_scope`, schemaV14).
+
+**Delete (Control-M "Delete job")** — `DELETE /api/instances/{id}` e ação
+`delete` do bulk: remove a ordem da tela e do state store (instance +
+instance_events; o ledger `dep_events` fica). **SÓ com o job em HOLD** — como
+RUNNING não é segurável, job em execução nunca é deletável; o fluxo é
+Hold → Delete. Broadcast `instance.deleted` (o espelho do front remove via
+tombstone).
+
+Interação com os claims — **`SettleDepClaims`** (rerun/cancel/delete): o HELD é
+um véu, não um término — o que decide é `held_from_status`:
+
+- efetivo **OK** (real, Set OK, ou OK segurado) → consumo é PERMANENTE: claims
+  viram LÁPIDE (`#spent@`), o evento segue gasto pra definition (invariante 2).
+  No delete a linha do claim simplesmente sobrevive à instance — o
+  `UNIQUE(event_id, consumer_def_id)` continua bloqueando.
+- qualquer outro → reserva não-consumida: claims deletados, eventos ao pool (R4).
+
+E o pré-passe de claims do tick **pula HELD vindo de status terminal**
+(OK/NOTOK/CANCELLED segurados não disputam eventos — só WAITING de verdade ou
+HELD-de-WAITING/legado clama).
+
 ## Ciclo de vida da daily (carry-over) — quem atravessa a virada
 
 Regra pura em `carryDecision` (scheduler.go); idades em **DIAS-CALENDÁRIO**
@@ -51,7 +82,7 @@ Regra pura em `carryDecision` (scheduler.go); idades em **DIAS-CALENDÁRIO**
 | estado na virada | atravessa? |
 |---|---|
 | RUNNING | SEMPRE (rastrear até terminar) |
-| HELD | SEMPRE, enquanto em hold |
+| HELD | SEMPRE, enquanto em hold (inclusive OK/NOTOK segurados pelo hold geral) |
 | NOTOK | enquanto `dias desde a FALHA ≤ keepActive\|1` (um NOTOK não-tratado persiste +1 diária) |
 | WAITING com retry AGENDADO (D-1: `attempts>1` **e** `started_at` preenchido) | regra do NOTOK (falha em tratamento) |
 | WAITING (incl. aguardando CONFIRM) | `dias desde o ODAT ≤ keepActive` — **keepActive=0 morre na 1ª virada** |
@@ -85,20 +116,26 @@ consome evento (basta o upstream existir no dia).
 **R2 — Claim.** O pré-passe do tick (`claimDepEdges`) tenta latchar as arestas
 de toda instance WAITING/HELD **antes** do gate de janela — a daily reserva o
 evento do pai assim que ele termina, mesmo faltando horas pro horário. Ordem:
-daily primeiro, forçadas depois (a cópia não rouba o evento da daily).
+daily primeiro, forçadas depois (a cópia não rouba o evento da daily). HELD
+vindo de status TERMINAL (hold geral, `held_from_status`) fica de fora — um
+NOTOK/OK segurado não disputa evento (§Hold GERAL + Delete).
 
 **R3 — Consumo materializa SÓ no OK.** Enquanto o consumidor não termina OK, o
 claim é uma reserva. Quando ele termina **OK (real ou Set OK)**, o consumo é
 **PERMANENTE**: a condição que liberou o job **SOME** — é o *delete input
 conditions on OK* do Control-M.
 
-**R4 — Falha/cancel DEVOLVEM.** NOTOK terminal e cancel do consumidor deletam
-os claims dele (`ResetDepClaims`): a condição não foi gasta por uma execução
-que não aconteceu de verdade. Um clone pendente — ou o rerun dele mesmo —
-re-clama o evento devolvido **sem** rerun do pai.
+**R4 — Falha/cancel DEVOLVEM.** NOTOK terminal deleta os claims do consumidor
+(`ResetDepClaims`); cancel passa pelo `SettleDepClaims` (2026-07-16), que
+devolve tudo que NÃO era um consumo OK: a condição não foi gasta por uma
+execução que não aconteceu de verdade. Um clone pendente — ou o rerun dele
+mesmo — re-clama o evento devolvido **sem** rerun do pai. (Cancel de um OK —
+direto ou segurado por hold — cai no R5: consumo OK nunca volta pro pool.)
 
-**R5 — Rerun do consumidor (o bug de 2026-07-14).** `RerunDepClaims`, chamado
-**ANTES** do reset de status (o status terminal decide o destino dos claims):
+**R5 — Rerun/cancel/delete do consumidor (o bug de 2026-07-14; hold geral
+2026-07-16).** `SettleDepClaims`, chamado **ANTES** do reset/remoção de status
+(o status pré-ação decide o destino dos claims — e HELD é um véu: vale o
+`held_from_status` congelado pelo hold):
 
 - run anterior **OK** → claims viram **LÁPIDE** (tombstone): o
   `consumer_instance_id` ganha sufixo `#spent@<event>`. A linha do novo run
@@ -146,9 +183,13 @@ em `TestExplain_Runnable`.
 | Job termina OK | emite evento novo (R1) | os que detinha ficam CONSUMIDOS (R3) |
 | Job termina NOTOK terminal | emite evento novo (R1) | devolvidos ao pool (R4) |
 | Set OK | emite evento novo (R8) | ficam consumidos (R8) |
-| Cancel | — | devolvidos ao pool (R4) |
-| Rerun (era OK) | — | LÁPIDE — evento segue gasto; novo run espera evento novo (R5) |
+| Cancel (não era OK) | — | devolvidos ao pool (R4) |
+| Cancel (era OK, mesmo sob hold) | — | LÁPIDE — consumo OK é permanente (R5) |
+| Rerun (era OK, mesmo sob hold) | — | LÁPIDE — evento segue gasto; novo run espera evento novo (R5) |
 | Rerun (era NOTOK/CANCELLED) | — | já devolvidos; re-clama livre (R4/R5) |
+| Hold / Release | — | intocados (o hold congela, não gasta nem devolve) |
+| Delete (era OK sob hold) | — | LÁPIDE — a linha do claim sobrevive à instance (R5) |
+| Delete (reserva não-consumida) | devolvido ao pool | deletados (R4) |
 | Rerun do PAI | novo término = evento novo | intocados no filho (R6) |
 | Run Now | não consome (bypass) | intocados; `forced` zera no próximo rerun (R7) |
 | Order Force | cópia disputa eventos LIVRES | claims próprios da cópia (R2/R7) |
@@ -181,13 +222,17 @@ pai libera o consumidor (R2) — a linha é informação por par, o gate não.
   `prevDaily`, `resolveEdgeDate` (dateRef S1), `splitCondRef` (sufixos S2),
   `daysBetween` e o índice `(def, odate)` do gate (`instIndex`).
 - `server/internal/scheduler/depevents.go` — todo o motor (emit/claim/reset/
-  rerun/backfill) + o comentário de cabeçalho espelhando estas regras.
+  settle/backfill; `SettleDepClaims` lê o `held_from_status` sob o HELD) + o
+  comentário de cabeçalho espelhando estas regras.
 - `server/internal/scheduler/scheduler.go` — `FinishInstance` (R1/R4),
   `SetOK` (R8), pré-passe no tick (R2), `carryDecision`/`carryOver` (ciclo de
   vida da daily).
-- `server/internal/api/instances.go` + `bulk.go` — handlers de rerun/cancel
-  (ordem: `RerunDepClaims` ANTES do reset de status), Run Now (R7),
-  `attachDepClaims` (`depsSatisfied` + `depsClaims` com o produtor).
+- `server/internal/api/instances.go` + `bulk.go` — handlers de hold/release
+  (hold geral: `held_from_status`, `releaseSQL` restaura), delete (só HELD),
+  rerun/cancel (ordem: `SettleDepClaims` ANTES do reset de status), Run Now
+  (R7), `attachDepClaims` (`depsSatisfied` + `depsClaims` com o produtor).
+- `server/internal/api/workflow.go` — pausa/resume de folder (dia inteiro,
+  carry-over incluso; resume restaura o status original).
 - `server/internal/scheduler/explain.go` — gate + textos do WAIT EVENT (R10).
 - `app/src/v2/canvas-layout.ts` — pintura da linha POR PAR (`evaluateEdgeState`,
   claim-aware via `depsClaims`), régua def-level do card (`isDepSatisfied`) e
@@ -200,7 +245,11 @@ Set OK) · `scheduler/lifecycle_test.go` (carryDecision por status/idade em
 dias, gap de New Day 14→16, rerun de operador ≠ retry, **TestOdat_*: escopo
 ODAT de eventos, dateRef prev/stat, sufixos @odat/@prev/@stat e ConditionsOut
 no ODAT do produtor**) · `api/bugs_behavior_test.go` (confirmed sobrevive,
-forced zera, Set OK de WAITING) · `scheduler/setok_bugs_test.go`
+forced zera, Set OK de WAITING) · `api/holdall_delete_test.go` (hold geral:
+release restaura o status original, RUNNING rejeitado, pausa de folder pega
+todos os status + carry-over, delete só em HOLD, claims de OK segurado seguem
+gastos) · `scheduler/depevents_test.go::TestDepEvents_HeldFromTerminalDoesNotClaim`
+(HELD-de-terminal não disputa evento) · `scheduler/setok_bugs_test.go`
 (ConditionsOut no Set OK) · `scheduler/explain_test.go` (blockers `[]`, nunca
 null) · `api/depclaims_api_test.go` (depsClaims aponta a cópia certa do pai;
 `[]` nunca null).
@@ -226,8 +275,10 @@ e fan-out N:M onde um estado libera muitos jobs sem contagem).
   MCP, data explícita).
 - **Vínculo = nome exato.** O circuito produtor→consumidor é fechado na UI:
   Design drawer → aba **Dependências → Conditions** (editores de Entrada /
-  Saída＋ / Saída−, com datalist do vocabulário do escopo e referência cruzada
-  de quem cria/consome cada nome) · hint equivalente no editor On/Do ·
+  Saída＋ / Saída−, com datalist do vocabulário do escopo, referência cruzada
+  de quem cria/consome cada nome — pelo nome-BASE, ignorando sufixo — e, desde
+  2026-07-16, **seletor de data Odate/Prev/Stat por linha** que edita o sufixo
+  sem digitar arroba, em entrada E saída) · hint equivalente no editor On/Do ·
   YAML (modo CODE) · mass-update (`add-condition-in`).
 - Setar condition **cutuca o tick** (BUG-10/11): quem estava só esperando ela
   roda na hora.

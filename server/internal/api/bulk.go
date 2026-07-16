@@ -2,7 +2,7 @@
 //
 // Dois alvos, respeitando o modelo de produto (memory/core/regente-product-model.md):
 //
-//	POST /api/bulk/instances                 → Monitoring: hold/release/cancel/rerun/set-ok em N instances
+//	POST /api/bulk/instances                 → Monitoring: hold/release/cancel/rerun/set-ok/confirm/delete em N instances
 //	POST /api/design/sessions/{sid}/bulk     → Design: move-folder/patch/delete em N definitions DA SESSION
 //
 // Transacional POR ITEM: falha parcial é reportada item a item, não aborta o lote.
@@ -47,7 +47,7 @@ func newBulkResponse(action string, results []bulkItemResult) bulkResponse {
 
 // ───────────────────────────────────────────────────────────────
 // Monitoring — POST /api/bulk/instances
-// body: {"action": "hold|release|cancel|rerun|set-ok", "ids": ["..."]}
+// body: {"action": "hold|release|cancel|rerun|set-ok|confirm|delete", "ids": ["..."]}
 // ───────────────────────────────────────────────────────────────
 
 func (s *server) bulkInstances(w http.ResponseWriter, r *http.Request) {
@@ -68,9 +68,9 @@ func (s *server) bulkInstances(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch req.Action {
-	case "hold", "release", "cancel", "rerun", "set-ok", "confirm":
+	case "hold", "release", "cancel", "rerun", "set-ok", "confirm", "delete":
 	default:
-		http.Error(w, "unknown action (expected hold|release|cancel|rerun|set-ok|confirm)", http.StatusBadRequest)
+		http.Error(w, "unknown action (expected hold|release|cancel|rerun|set-ok|confirm|delete)", http.StatusBadRequest)
 		return
 	}
 
@@ -93,10 +93,11 @@ func (s *server) bulkInstances(w http.ResponseWriter, r *http.Request) {
 		"action": req.Action, "total": resp.Total, "ok": resp.Ok, "failed": resp.Failed, "actor": actor,
 	})
 	// Ações que podem deixar jobs elegíveis JÁ (confirm destrava WAIT_CONFIRM;
-	// rerun/release re-entram no gating; set-ok libera dependentes) cutucam o
+	// rerun/release re-entram no gating; set-ok libera dependentes; delete pode
+	// devolver eventos ao pool e destravar um clone em WAIT EVENT) cutucam o
 	// tick uma vez — os afetados entram na hora, sem esperar o próximo ciclo.
 	switch req.Action {
-	case "confirm", "rerun", "release", "set-ok":
+	case "confirm", "rerun", "release", "set-ok", "delete":
 		if resp.Ok > 0 {
 			go s.cfg.Scheduler.Tick()
 		}
@@ -138,33 +139,46 @@ func (s *server) canWriteInstanceQuiet(r *http.Request, instanceID string) error
 func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 	switch action {
 	case "hold":
-		res, err := s.cfg.DB.Exec(`UPDATE instances SET status=? WHERE id=? AND status=?`,
-			string(domain.StatusHeld), id, string(domain.StatusWaiting))
+		// Hold geral (schemaV16): qualquer status exceto RUNNING (execução já no
+		// agente) e o próprio HELD; held_from_status congela o original — o
+		// release restaura ELE (ver holdInstance).
+		res, err := s.cfg.DB.Exec(
+			`UPDATE instances SET held_from_status=status, status=?, hold_scope='' WHERE id=? AND status NOT IN (?,?)`,
+			string(domain.StatusHeld), id, string(domain.StatusRunning), string(domain.StatusHeld))
 		if err != nil {
 			return "", err
 		}
 		if n, _ := res.RowsAffected(); n == 0 {
-			return "", fmt.Errorf("not in WAITING (hold skipped)")
+			return "", fmt.Errorf("not holdable (RUNNING ou já em HOLD)")
 		}
+		var heldFrom string
+		_ = s.cfg.DB.QueryRow(`SELECT COALESCE(held_from_status,'') FROM instances WHERE id=?`, id).Scan(&heldFrom)
 		s.cfg.Scheduler.EmitEvent(id, "held", actor, "bulk")
-		s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusHeld)})
+		s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusHeld), "holdScope": "", "heldFromStatus": heldFrom})
 		return string(domain.StatusHeld), nil
 
 	case "release":
-		res, err := s.cfg.DB.Exec(`UPDATE instances SET status=? WHERE id=? AND status=?`,
-			string(domain.StatusWaiting), id, string(domain.StatusHeld))
+		// Restaura o status congelado pelo hold (releaseSQL). Mesma regra do
+		// unitário: hold de folder NÃO libera 1-a-1 (só o resume da folder).
+		res, err := s.cfg.DB.Exec(releaseSQL+` WHERE id=? AND status=? AND hold_scope=''`,
+			id, string(domain.StatusHeld))
 		if err != nil {
 			return "", err
 		}
 		if n, _ := res.RowsAffected(); n == 0 {
-			return "", fmt.Errorf("not in HELD (release skipped)")
+			return "", fmt.Errorf("not in HELD individual (release skipped — pausa de folder libera pela folder)")
 		}
+		status := string(domain.StatusWaiting)
+		_ = s.cfg.DB.QueryRow(`SELECT status FROM instances WHERE id=?`, id).Scan(&status)
 		s.cfg.Scheduler.EmitEvent(id, "released", actor, "bulk")
-		s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusWaiting)})
-		return string(domain.StatusWaiting), nil
+		s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": status, "holdScope": "", "heldFromStatus": ""})
+		return status, nil
 
 	case "cancel":
-		res, err := s.cfg.DB.Exec(`UPDATE instances SET status=?, finished_at=CURRENT_TIMESTAMP WHERE id=?`,
+		// Claims ANTES do UPDATE (ver cancelInstance): não-consumido devolve ao
+		// pool; consumo OK (mesmo segurado por hold) permanece gasto — lápide.
+		s.cfg.Scheduler.SettleDepClaims(id)
+		res, err := s.cfg.DB.Exec(`UPDATE instances SET status=?, held_from_status='', finished_at=CURRENT_TIMESTAMP WHERE id=?`,
 			string(domain.StatusCancelled), id)
 		if err != nil {
 			return "", err
@@ -172,21 +186,45 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 		if n, _ := res.RowsAffected(); n == 0 {
 			return "", fmt.Errorf("instance not found")
 		}
-		// schemaV15 — cancelado devolve os eventos clamados (ver cancelInstance).
-		s.cfg.Scheduler.ResetDepClaims(id)
 		s.cfg.Scheduler.EmitEvent(id, "cancelled", actor, "bulk cancel")
 		s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusCancelled)})
 		return string(domain.StatusCancelled), nil
 
+	case "delete":
+		// Control-M "Delete job" (ver deleteInstance): só em HOLD — RUNNING nunca
+		// é deletável (não é segurável). Claims via settle; events do job somem.
+		var status string
+		if err := s.cfg.DB.QueryRow(`SELECT status FROM instances WHERE id=?`, id).Scan(&status); err != nil {
+			return "", fmt.Errorf("instance not found")
+		}
+		if status != string(domain.StatusHeld) {
+			return "", fmt.Errorf("delete exige HOLD (status atual: %s)", status)
+		}
+		s.cfg.Scheduler.SettleDepClaims(id)
+		if _, err := s.cfg.DB.Exec(`DELETE FROM instance_events WHERE instance_id=?`, id); err != nil {
+			return "", err
+		}
+		res, err := s.cfg.DB.Exec(`DELETE FROM instances WHERE id=? AND status=?`, id, string(domain.StatusHeld))
+		if err != nil {
+			return "", err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return "", fmt.Errorf("instance mudou de estado durante o delete")
+		}
+		s.cfg.Hub.BroadcastWeb("instance.deleted", map[string]string{"id": id})
+		return "deleted", nil
+
 	case "rerun":
 		// schemaV15 — claims ANTES do reset de status (ver rerunInstance):
-		// consumo OK é permanente (lápide → WAIT EVENT); não-consumido devolve.
-		s.cfg.Scheduler.RerunDepClaims(id)
+		// consumo OK é permanente (lápide → WAIT EVENT), inclusive um OK
+		// segurado por hold (held_from_status); não-consumido devolve.
+		s.cfg.Scheduler.SettleDepClaims(id)
 		// BUG-2: `confirmed` sobrevive ao rerun (ver rerunInstance) — job já
 		// confirmado não volta pro gate CONFIRM. Bypass do Run Now não é
 		// pegajoso (ver rerunInstance): forced zera quando mode='' .
 		res, err := s.cfg.DB.Exec(
 			`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL,
+			        held_from_status='',
 			        forced = CASE WHEN COALESCE(force_mode,'')='' THEN 0 ELSE forced END
 			 WHERE id=?`,
 			string(domain.StatusWaiting), id,

@@ -267,6 +267,11 @@ export interface JobInstance {
    *  libera). Vale só quando status==="HOLD"; guia o cadeado e bloqueia o Release
    *  individual de um job segurado pela folder. */
   holdScope?: string;
+  /** Status congelado pelo HOLD (server schemaV16, hold geral): o hold vale pra
+   *  qualquer status exceto RUNNING, e o Release restaura ESTE status — não
+   *  WAITING cego. Vale só quando status==="HOLD"; ausente/"" = hold legado
+   *  (era WAITING). O front usa pra rotular o Release ("volta a NOTOK"). */
+  heldFrom?: InstanceStatus;
   /** Latches de dependência (server schemaV15): upstream defs cujo EVENTO esta
    *  instance já CLAMOU. A linha do canvas fica verde POR INSTÂNCIA — satisfeita
    *  uma vez, rerun/cancel do pai não a apaga; só o rerun DESTA instance reseta.

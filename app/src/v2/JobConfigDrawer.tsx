@@ -387,15 +387,19 @@ function DepsTab({ self, upstream, onChangeUpstream, triggers, allDefs, conditio
   const labelOf = (id: string) => allDefs.find((d) => d.id === id)?.label ?? id;
   const remove = (from: string) => onChangeUpstream(upstream.filter((u) => u.from !== from));
 
-  // Referência cruzada por NOME: quem produz (conditionsOutAdd ou ação
+  // Referência cruzada por NOME-BASE: quem produz (conditionsOutAdd ou ação
   // set-condition) e quem consome (conditionsIn) cada condition no escopo.
+  // O sufixo de data (@odat/@prev/@stat) é referência RELATIVA de cada lado —
+  // "X@prev" na entrada espera o X que alguém cria sem sufixo na diária
+  // anterior — então o vínculo visual compara os nomes SEM o sufixo.
+  const sameCond = (a: string, b: string) => splitCondSuffix(a).base === splitCondSuffix(b).base;
   const producersOf = (name: string) =>
     allDefs.filter((d) => d.id !== self && (
-      d.conditionsOutAdd?.includes(name) ||
-      d.actions?.some((a) => a.do === "set-condition" && a.condition === name)
+      d.conditionsOutAdd?.some((c) => sameCond(c, name)) ||
+      d.actions?.some((a) => a.do === "set-condition" && !!a.condition && sameCond(a.condition, name))
     )).map((d) => d.label);
   const consumersOf = (name: string) =>
-    allDefs.filter((d) => d.id !== self && d.conditionsIn?.includes(name)).map((d) => d.label);
+    allDefs.filter((d) => d.id !== self && d.conditionsIn?.some((c) => sameCond(c, name))).map((d) => d.label);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {/* Depende de (upstream do próprio job) */}
@@ -443,11 +447,15 @@ function DepsTab({ self, upstream, onChangeUpstream, triggers, allDefs, conditio
         </div>
         {triggers.length === 0 && <Hint>Nenhum job depende deste.</Hint>}
         {triggers.map((d) => {
-          const cond = (d.upstream ?? []).find((u) => u.from === self)?.condition;
+          const edge = (d.upstream ?? []).find((u) => u.from === self);
           return (
             <div key={d.id} style={depRow}>
               <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}>{d.label}</span>
-              <span style={{ fontSize: 9, color: "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)" }}>{cond}</span>
+              <span style={{ fontSize: 9, color: "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)" }}>
+                {edge?.condition}
+                {/* dateRef da aresta (editado no job de destino) — mostrado p/ leitura */}
+                {edge?.dateRef && edge.dateRef !== "odat" ? ` · ${edge.dateRef === "prev" ? "Prev" : "Stat"}` : ""}
+              </span>
             </div>
           );
         })}
@@ -464,9 +472,11 @@ function DepsTab({ self, upstream, onChangeUpstream, triggers, allDefs, conditio
         <Hint>
           Além das setas do grafo, um job pode esperar/emitir <b>conditions nomeadas</b> do dia.
           Quem cria: a saída (＋) de outro job, uma ação On/Do <b>set-condition</b>, um evento
-          externo ou o operador. O vínculo é o <b>nome exato</b>. A DATA vai no sufixo:
-          sem sufixo = da diária de <b>origem</b> do job (ODAT); <b>NOME@prev</b> = da diária
-          anterior; <b>NOME@stat</b> = estática (sem data, vale até alguém remover).
+          externo ou o operador. O vínculo é o <b>nome exato</b>. A DATA é programável no
+          seletor de cada linha (entrada E saída) e vive como sufixo no nome:
+          <b> Odate</b> (sem sufixo) = da diária de <b>origem</b> do job (ODAT); <b>Prev</b>
+          (<code>NOME@prev</code>) = da diária anterior; <b>Stat</b> (<code>NOME@stat</code>) =
+          estática (sem data, vale até alguém remover).
         </Hint>
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
           <CondChipsEditor
@@ -503,6 +513,26 @@ function DepsTab({ self, upstream, onChangeUpstream, triggers, allDefs, conditio
 }
 
 /* ── Editor de chips de conditions (F16) ── */
+
+// A DATA de uma condition vive como sufixo no NOME (contrato do server —
+// splitCondRef em odate.go): sem sufixo/"@odat" = diária de ORIGEM do job;
+// "@prev" = diária anterior; "@stat" = permanente (sem data). O seletor por
+// linha edita o sufixo sem o usuário digitar arroba.
+function splitCondSuffix(name: string): { base: string; ref: DepDateRef } {
+  const at = name.lastIndexOf("@");
+  if (at > 0) {
+    const suffix = name.slice(at + 1).toLowerCase();
+    if (suffix === "odat" || suffix === "prev" || suffix === "stat") {
+      return { base: name.slice(0, at), ref: suffix as DepDateRef };
+    }
+  }
+  return { base: name, ref: "odat" }; // sufixo desconhecido = parte do nome
+}
+
+function withCondSuffix(base: string, ref: DepDateRef): string {
+  return ref === "odat" ? base : `${base}@${ref}`;
+}
+
 function CondChipsEditor({ title, hint, value, onChange, known, listId, crossRef }: {
   title: string;
   hint: string;
@@ -520,15 +550,37 @@ function CondChipsEditor({ title, hint, value, onChange, known, listId, crossRef
     onChange([...value, name]);
   };
   const suggestions = known.filter((k) => !value.includes(k));
+  const setRef = (name: string, ref: DepDateRef) => {
+    const next = withCondSuffix(splitCondSuffix(name).base, ref);
+    if (next === name) return;
+    if (value.includes(next)) { // já existe a variante com essa data — só remove a duplicata
+      onChange(value.filter((v) => v !== name));
+      return;
+    }
+    onChange(value.map((v) => (v === name ? next : v)));
+  };
   return (
     <div>
       <div style={{ fontSize: 10, fontWeight: 600, color: "var(--v2-text-secondary)", marginBottom: 4 }}>{title}</div>
       {value.map((n) => {
         const ref = crossRef?.(n);
+        const { base, ref: dateRef } = splitCondSuffix(n);
         return (
           <div key={n} style={{ ...depRow, flexDirection: "column", alignItems: "stretch", gap: 2 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}>{n}</span>
+              <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}>{base}</span>
+              {/* Data da condition (mesma régua do dateRef das setas): Odate =
+                  diária de origem (default) · Prev = anterior · Stat = permanente. */}
+              <select
+                value={dateRef}
+                title="Qual diária esta condition referencia (relativa à data de origem do job); Stat = permanente, sem data"
+                onChange={(e) => setRef(n, e.target.value as DepDateRef)}
+                style={{ ...selectStyle, width: 72, padding: "2px 4px", fontSize: 9 }}
+              >
+                <option value="odat">Odate</option>
+                <option value="prev">Prev</option>
+                <option value="stat">Stat</option>
+              </select>
               <button onClick={() => onChange(value.filter((v) => v !== n))} style={iconBtn} title="Remover"><Trash2 size={12} /></button>
             </div>
             {ref && <div style={{ fontSize: 9.5, color: "var(--v2-text-muted)" }}>{ref}</div>}

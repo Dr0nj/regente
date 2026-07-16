@@ -15,6 +15,8 @@ import type { JobInstance, JobDefinition } from "@/lib/orchestrator-model";
 interface MonitoringHandlers {
   onHoldAll: (ids: string[]) => Promise<void> | void;
   onReleaseAll: (ids: string[]) => Promise<void> | void;
+  /** Delete (Control-M "Delete job") — só instances em HOLD são elegíveis. */
+  onDeleteAll: (ids: string[]) => Promise<void> | void;
   onCancelAll: (ids: string[]) => Promise<void> | void;
   onSetOkAll: (ids: string[]) => Promise<void> | void;
   onRerunAll: (ids: string[]) => Promise<void> | void;
@@ -60,8 +62,16 @@ function MonitoringBar({ selected, instances, handlers }: MonitoringProps) {
     [instances, selected],
   );
 
-  const eligibleHold = selectedInstances.filter((i) => i.status === "WAITING").map((i) => i.id);
+  // Hold GERAL (2026-07-16): qualquer status exceto RUNNING (execução já no
+  // agente) e o próprio HOLD — o "Hold all" segura o que estiver selecionado,
+  // em qualquer estado, como o hold de folder do Active Jobs.
+  const eligibleHold = selectedInstances
+    .filter((i) => i.status !== "RUNNING" && i.status !== "HOLD")
+    .map((i) => i.id);
   const eligibleRelease = selectedInstances.filter((i) => i.status === "HOLD").map((i) => i.id);
+  // Delete só em HOLD (RUNNING nunca — não é segurável); os demais status
+  // passam pelo Hold antes. Espelha o guard do server (409 fora de HOLD).
+  const eligibleDelete = eligibleRelease;
   const eligibleCancel = selectedInstances
     .filter((i) => i.status === "WAITING" || i.status === "HOLD")
     .map((i) => i.id);
@@ -112,6 +122,12 @@ function MonitoringBar({ selected, instances, handlers }: MonitoringProps) {
         count={eligibleRerun.length}
         tone="neutral"
         onClick={() => void confirmAndRun("Rerun", eligibleRerun, handlers.onRerunAll)}
+      />
+      <Btn
+        label="Delete all"
+        count={eligibleDelete.length}
+        tone="danger"
+        onClick={() => void confirmAndRun("Delete", eligibleDelete, handlers.onDeleteAll)}
       />
     </Bar>
   );

@@ -86,7 +86,7 @@ func TestDepEvents_ForcedCopyWaitsFreshEvent(t *testing.T) {
 	}
 
 	// Rerun do antecessor A (o operador quer justamente passar exec pra cópia).
-	s.RerunDepClaims("A-1") // o handler faz isso ANTES do reset (A sem upstream: no-op)
+	s.SettleDepClaims("A-1") // o handler faz isso ANTES do reset (A sem upstream: no-op)
 	if _, err := s.db.Exec(
 		`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL WHERE id=?`,
 		string(domain.StatusWaiting), "A-1",
@@ -188,8 +188,8 @@ func TestDepEvents_RerunConsumerAfterOKWaitsFreshEvent(t *testing.T) {
 		t.Fatalf("B deveria rodar a OK, está %s", st)
 	}
 
-	// Rerun de B (a ordem do handler: RerunDepClaims ANTES do reset de status).
-	s.RerunDepClaims("B-1")
+	// Rerun de B (a ordem do handler: SettleDepClaims ANTES do reset de status).
+	s.SettleDepClaims("B-1")
 	_, _ = s.db.Exec(
 		`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL WHERE id=?`,
 		string(domain.StatusWaiting), "B-1",
@@ -210,7 +210,7 @@ func TestDepEvents_RerunConsumerAfterOKWaitsFreshEvent(t *testing.T) {
 	}
 
 	// Rerun do pai → término NOVO → B clama o evento fresco e roda.
-	s.RerunDepClaims("A-1")
+	s.SettleDepClaims("A-1")
 	_, _ = s.db.Exec(
 		`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL WHERE id=?`,
 		string(domain.StatusWaiting), "A-1",
@@ -241,7 +241,7 @@ func TestDepEvents_RerunConsumerAfterNotOKReclaims(t *testing.T) {
 	s.FinishInstance("B-1", domain.StatusNotOK, 1, "boom") // devolve o evento
 
 	// Rerun de B (ordem do handler) → re-clama o evento devolvido e roda.
-	s.RerunDepClaims("B-1")
+	s.SettleDepClaims("B-1")
 	_, _ = s.db.Exec(
 		`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL WHERE id=?`,
 		string(domain.StatusWaiting), "B-1",
@@ -272,7 +272,7 @@ func TestDepEvents_RerunAfterSetOKWaitsFreshEvent(t *testing.T) {
 	}
 
 	// Rerun de B → o claim virou lápide: WAIT EVENT até A terminar de novo.
-	s.RerunDepClaims("B-1")
+	s.SettleDepClaims("B-1")
 	_, _ = s.db.Exec(
 		`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL WHERE id=?`,
 		string(domain.StatusWaiting), "B-1",
@@ -350,5 +350,40 @@ func TestDepEvents_SetOKAndOnFailure(t *testing.T) {
 	}
 	if st := waitStatus(t, s, "B-1", string(domain.StatusRunning), string(domain.StatusOK)); st != string(domain.StatusRunning) && st != string(domain.StatusOK) {
 		t.Fatalf("Set OK do pai deveria destravar B, está %s", st)
+	}
+}
+
+// Hold geral (schemaV16): um HELD que esconde um status TERMINAL (OK/NOTOK/
+// CANCELLED segurados) NÃO disputa eventos no pré-passe do tick — só WAITING
+// de verdade (ou HELD vindo de WAITING / hold legado '') clama. Um NOTOK em
+// hold clamando o término do pai violaria o R4 (falha devolve ao pool).
+func TestDepEvents_HeldFromTerminalDoesNotClaim(t *testing.T) {
+	s := newTestScheduler(t)
+	today := time.Now().Format("2006-01-02")
+	defA, defB := depDefs()
+
+	// Pai com término OK livre no pool.
+	seedInst(t, s, "A-1", today, string(domain.StatusOK), defA)
+	s.emitDepEvent("A-1", domain.StatusOK)
+
+	// Consumidor NOTOK segurado por hold (hold geral) — não pode clamar.
+	seedInst(t, s, "B-held-notok", today, string(domain.StatusHeld), defB)
+	if _, err := s.db.Exec(`UPDATE instances SET held_from_status='NOTOK' WHERE id='B-held-notok'`); err != nil {
+		t.Fatal(err)
+	}
+	s.Tick()
+	if n := depClaimCount(t, s, "B-held-notok"); n != 0 {
+		t.Fatalf("HELD-de-NOTOK não podia clamar evento, tem %d claim(s)", n)
+	}
+
+	// Consumidor segurado a partir de WAITING clama normalmente (reserva o
+	// término do pai enquanto está em hold — comportamento pré-existente).
+	seedInst(t, s, "B-held-wait", today, string(domain.StatusHeld), defB)
+	if _, err := s.db.Exec(`UPDATE instances SET held_from_status='WAITING' WHERE id='B-held-wait'`); err != nil {
+		t.Fatal(err)
+	}
+	s.Tick()
+	if n := depClaimCount(t, s, "B-held-wait"); n != 1 {
+		t.Fatalf("HELD-de-WAITING deveria reservar o evento do pai, tem %d claim(s)", n)
 	}
 }

@@ -35,6 +35,12 @@ export const releaseInstance = isServerMode()
   ? serverInstance.releaseInstance
   : localInstance.releaseInstance;
 
+// Delete (Control-M "Delete job") — só aceito com o job em HOLD; remove a
+// ordem da tela e do store (server: DELETE /api/instances/{id}).
+export const deleteInstance = isServerMode()
+  ? serverInstance.deleteInstance
+  : async (id: string): Promise<void> => { localInstance.deleteInstance(id); };
+
 export const cancelInstance = isServerMode()
   ? serverInstance.cancelInstance
   : localInstance.cancelInstance;

@@ -1,17 +1,24 @@
-// Package api — Diferenciais leva 2 (2026-07-07):
+// Package api — Diferenciais leva 2 (2026-07-07; hold geral 2026-07-16):
 //
 //	D-2  Pausa/resume de WORKFLOW com estado preservado:
-//	     POST /api/folders/{name}/pause   → WAITING→HELD em massa (a daily do dia)
-//	     POST /api/folders/{name}/resume  → HELD→WAITING em massa
+//	     POST /api/folders/{name}/pause   → TODOS os status→HELD em massa (a daily do dia)
+//	     POST /api/folders/{name}/resume  → HELD→status ORIGINAL em massa
 //	D-11 Chaos engineering:
 //	     POST /api/instances/{id}/inject-failure → falha sintética via fluxo REAL
 //
 // Pausa ≠ cancel: NADA além do status muda — attempts, cycle_runs, local_vars,
 // confirmed e scheduled_at ficam intactos, então o resume retoma exatamente de
 // onde parou (um cyclic na volta 3 continua da volta 3; um retry agendado pra
-// daqui a 2 dias segue agendado). RUNNING não é pausável (termina e os
-// sucessores WAITING já estão HELD); o carry-over persiste HELD entre diárias,
-// então uma folder pode ficar pausada por dias sem perder estado.
+// daqui a 2 dias segue agendado). Hold GERAL (schemaV16): a pausa segura o dia
+// INTEIRO da folder — WAITING, NOTOK, OK, CANCELLED, e as instances de
+// CARRY-OVER (o carry avança order_date pro dia ativo, então elas entram no
+// mesmo WHERE) — congelando o status original em held_from_status; o resume
+// restaura cada um ao que era, não a WAITING cego. RUNNING é a exceção (a
+// execução já está no agente — termina e pronto; um job não é segurável nem
+// deletável em execução); HELD individual (hold_scope='') também fica de fora,
+// preservando o hold do operador através do pause/resume da folder. O
+// carry-over persiste HELD entre diárias, então uma folder pode ficar pausada
+// por dias sem perder estado.
 package api
 
 import (
@@ -21,14 +28,17 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// pauseFolder — D-2. Set-based (1 UPDATE + 1 INSERT...SELECT de eventos), não
-// por item: pausar uma folder de 50k jobs não pode ser 50k round-trips.
+// pauseFolder — D-2 + hold geral. Segura o dia INTEIRO da folder (qualquer
+// status exceto RUNNING/HELD, carry-over incluso). Set-based (1 UPDATE +
+// 1 INSERT...SELECT de eventos), não por item: pausar uma folder de 50k jobs
+// não pode ser 50k round-trips.
 func (s *server) pauseFolder(w http.ResponseWriter, r *http.Request) {
 	s.folderPauseResume(w, r, true)
 }
 
-// resumeFolder — D-2. Libera TODOS os HELD da folder no dia (semântica
-// Control-M "Release folder": o resume de workflow é um destrave em massa).
+// resumeFolder — D-2. Libera TODOS os segurados pela pausa da folder no dia,
+// restaurando o status ORIGINAL de cada um (semântica Control-M "Release
+// folder": o resume de workflow é um destrave em massa).
 func (s *server) resumeFolder(w http.ResponseWriter, r *http.Request) {
 	s.folderPauseResume(w, r, false)
 }
@@ -42,19 +52,25 @@ func (s *server) folderPauseResume(w http.ResponseWriter, r *http.Request, pause
 	if date == "" {
 		date = s.cfg.Scheduler.TodayDate()
 	}
-	from, to, kind, msg := string(domain.StatusWaiting), string(domain.StatusHeld), "paused", "workflow pause (folder "+folder+")"
 	// hold_scope separa a PAUSA DE FOLDER (D-2) de um hold individual: só a folder
 	// segura marca 'folder', e o resume só destrava o que a folder segurou —
 	// holds individuais (scope '') sobrevivem ao resume da folder. Simétrico ao
-	// Control-M "Hold folder" ⇒ "Release folder" (schemaV14).
-	//   - PAUSA:  ...status=WAITING              → status=HELD,     hold_scope='folder'
-	//   - RESUME: ...status=HELD AND scope=folder → status=WAITING, hold_scope=''
-	fromScopeClause := "" // filtro extra por hold_scope no WHERE (só no resume)
-	setScope := "'folder'"
+	// Control-M "Hold folder" ⇒ "Release folder" (schemaV14). Hold GERAL
+	// (schemaV16): a pausa pega QUALQUER status exceto RUNNING/HELD, congelando o
+	// original em held_from_status; o resume restaura cada instance ao seu.
+	//   - PAUSA:  ...status NOT IN (RUNNING,HELD)  → status=HELD, held_from_status=<original>, hold_scope='folder'
+	//   - RESUME: ...status=HELD AND scope=folder  → status=<original|WAITING>,  hold_scope=''
+	kind, msg := "paused", "workflow pause (folder "+folder+")"
+	whereSQL := ` WHERE team=? AND order_date=? AND status NOT IN (?,?)`
+	whereArgs := []any{folder, date, string(domain.StatusRunning), string(domain.StatusHeld)}
+	updSQL := `UPDATE instances SET held_from_status=status, status=?, hold_scope='folder'`
+	updSetArgs := []any{string(domain.StatusHeld)}
 	if !pause {
-		from, to, kind, msg = string(domain.StatusHeld), string(domain.StatusWaiting), "resumed", "workflow resume (folder "+folder+")"
-		fromScopeClause = " AND hold_scope=?"
-		setScope = "''"
+		kind, msg = "resumed", "workflow resume (folder "+folder+")"
+		whereSQL = ` WHERE team=? AND order_date=? AND status=? AND hold_scope=?`
+		whereArgs = []any{folder, date, string(domain.StatusHeld), "folder"}
+		updSQL = releaseSQL // restaura held_from_status ('' legado → WAITING) e zera o scope
+		updSetArgs = nil
 	}
 	actor := actorFromCtx(r)
 
@@ -65,27 +81,16 @@ func (s *server) folderPauseResume(w http.ResponseWriter, r *http.Request, pause
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	evtArgs := []any{kind, actor, msg, folder, date, from}
-	if !pause {
-		evtArgs = append(evtArgs, "folder") // resume: só os segurados pela folder
-	}
 	if _, err := tx.Exec(
 		`INSERT INTO instance_events(instance_id, kind, actor, message)
-		 SELECT id, ?, ?, ? FROM instances WHERE team=? AND order_date=? AND status=?`+fromScopeClause,
-		evtArgs...,
+		 SELECT id, ?, ?, ? FROM instances`+whereSQL,
+		append([]any{kind, actor, msg}, whereArgs...)...,
 	); err != nil {
 		_ = tx.Rollback()
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	updArgs := []any{to, folder, date, from}
-	if !pause {
-		updArgs = append(updArgs, "folder")
-	}
-	res, err := tx.Exec(
-		`UPDATE instances SET status=?, hold_scope=`+setScope+` WHERE team=? AND order_date=? AND status=?`+fromScopeClause,
-		updArgs...,
-	)
+	res, err := tx.Exec(updSQL+whereSQL, append(updSetArgs, whereArgs...)...)
 	if err != nil {
 		_ = tx.Rollback()
 		http.Error(w, err.Error(), http.StatusInternalServerError)

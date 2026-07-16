@@ -163,17 +163,42 @@ function buildAlertContext(inst: JobInstance, all: JobInstance[]): EvaluationCon
   };
 }
 
-/** Hold an instance (prevent execution) */
+/**
+ * Hold an instance (prevent execution / freeze state).
+ * Hold GERAL (paridade com o server, 2026-07-16): vale pra QUALQUER status
+ * exceto RUNNING (a execução já está em andamento) e o próprio HOLD. O status
+ * original fica em `heldFrom` — o release restaura ELE, não WAITING cego
+ * (que re-executaria um OK segurado).
+ */
 export function holdInstance(instanceId: string): void {
-  updateInstanceStatus(instanceId, "HOLD");
+  const all = localLoad<JobInstance>(INSTANCES_KEY);
+  const inst = all.find((i) => i.id === instanceId);
+  if (!inst || inst.status === "RUNNING" || inst.status === "HOLD") return;
+  inst.heldFrom = inst.status;
+  inst.status = "HOLD";
+  saveAll(all);
 }
 
-/** Release a held instance back to WAITING */
+/** Release a held instance back to its original (pre-hold) status */
 export function releaseInstance(instanceId: string): void {
-  const inst = getInstance(instanceId);
-  if (inst?.status === "HOLD") {
-    updateInstanceStatus(instanceId, "WAITING");
-  }
+  const all = localLoad<JobInstance>(INSTANCES_KEY);
+  const inst = all.find((i) => i.id === instanceId);
+  if (!inst || inst.status !== "HOLD") return;
+  inst.status = inst.heldFrom ?? "WAITING"; // hold legado (sem heldFrom) era WAITING
+  inst.heldFrom = undefined;
+  saveAll(all);
+}
+
+/**
+ * Delete — Control-M "Delete job": remove a ordem da tela (e do store).
+ * SÓ vale para job em HOLD — como RUNNING não é segurável, um job em execução
+ * nunca é deletável; qualquer outro status vira deletável passando pelo hold.
+ */
+export function deleteInstance(instanceId: string): void {
+  const all = localLoad<JobInstance>(INSTANCES_KEY);
+  const inst = all.find((i) => i.id === instanceId);
+  if (!inst || inst.status !== "HOLD") return;
+  saveAll(all.filter((i) => i.id !== instanceId));
 }
 
 /** Cancel a WAITING/HOLD instance */

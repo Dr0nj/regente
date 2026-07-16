@@ -38,6 +38,8 @@ import { useResizablePanel, ResizeHandle } from "./resizable";
 export interface InstanceActionHandlers {
   onHold: (id: string) => void;
   onRelease: (id: string) => void;
+  /** Delete (Control-M "Delete job") — remove a ordem; o server só aceita em HOLD. */
+  onDelete: (id: string) => void;
   onCancel: (id: string) => void;
   onRerun: (id: string) => void;
   onSkip: (id: string) => void;
@@ -178,7 +180,11 @@ export default function InstanceDetailsDrawer({
   const actions: ActionButton[] = ([
     // BUG-5/BUG-6 — Confirm (rótulo inglês): libera o gate Control-M Confirm.
     { label: "Confirm", onClick: () => handlers.onConfirm(instance.id), tone: "primary" as const, show: waitConfirm },
-    { label: "Hold",    onClick: () => handlers.onHold(instance.id),    tone: "neutral" as const, show: status === "WAITING" },
+    // Hold GERAL (2026-07-16): qualquer status exceto RUNNING (execução já no
+    // agente) e o próprio HOLD; o Release restaura o status original (heldFrom).
+    { label: "Hold",    onClick: () => handlers.onHold(instance.id),    tone: "neutral" as const,
+      show: status !== "RUNNING" && status !== "HOLD",
+      title: "Segura o job congelando o status atual — o Release restaura exatamente o que era" },
     // Job segurado por uma PAUSA DE FOLDER (schemaV14) não pode ser liberado
     // individualmente — só o Retomar da folder destrava. Botão desabilitado
     // apontando o caminho certo (o server também barra com 409).
@@ -187,7 +193,18 @@ export default function InstanceDetailsDrawer({
       disabled: instance.holdScope === "folder",
       title: instance.holdScope === "folder"
         ? "Segurado pela pausa da folder — libere pela folder (▶ Retomar na sidebar), não individualmente"
-        : undefined },
+        : (instance.heldFrom && instance.heldFrom !== "WAITING"
+          ? `Libera o job de volta ao status original (${instance.heldFrom})`
+          : undefined) },
+    // Delete (Control-M "Delete job"): SÓ em HOLD — RUNNING nunca é deletável
+    // (não é segurável); os demais status passam pelo Hold primeiro.
+    { label: "Delete",
+      onClick: () => {
+        if (!window.confirm(`Delete "${instance.label}"?\n\nRemove a ordem da tela e do dia — a definition no Design não é tocada.`)) return;
+        handlers.onDelete(instance.id);
+      },
+      tone: "danger" as const, show: status === "HOLD",
+      title: "Remove a ordem da tela e do dia (a definition no Design não é tocada)" },
     // BUG-3 — WAIT EVENT não exibe Cancel (a espera se resolve — Set OK abaixo);
     // BUG-5 — CONFIRM só exibe Hold/Confirm.
     { label: "Cancel",  onClick: () => handlers.onCancel(instance.id),  tone: "danger"  as const,

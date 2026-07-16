@@ -32,6 +32,7 @@ interface ServerInstance {
   cycleRuns?: number;
   dryRun?: boolean;
   holdScope?: string;
+  heldFromStatus?: string;
   depsSatisfied?: string[];
   depsClaims?: Array<{ from: string; parentInstanceId: string }>;
   // Só no DETALHE (GET /api/instances/{id}) — a lista não os carrega (payload
@@ -93,6 +94,9 @@ function toWeb(s: ServerInstance): JobInstance {
     // Origem do HOLD (schemaV14): "folder" = segurado por uma pausa de folder
     // (não liberável 1-a-1); "" / ausente = hold individual. Snapshot da instância.
     holdScope: s.holdScope,
+    // Status congelado pelo hold (schemaV16, hold geral): o Release restaura
+    // este status. Só vem quando HELD; guia o rótulo do Release na UI.
+    heldFrom: s.heldFromStatus ? (STATUS_MAP[s.heldFromStatus.toUpperCase()] ?? undefined) : undefined,
     // Latches de dependência (schemaV15): a linha verde do canvas é POR INSTÂNCIA
     // (claim de evento), não o status vivo do pai. Presente (mesmo []) = server novo.
     depsSatisfied: s.depsSatisfied,
@@ -174,6 +178,11 @@ function upsertFromEvent(payload: unknown): void {
         // hold/release parciais carregam holdScope (schemaV14) — aplica na hora
         // pro cadeado (folder vs individual) refletir antes do refresh de cauda.
         ...(p.holdScope !== undefined ? { holdScope: p.holdScope } : {}),
+        // idem heldFromStatus (schemaV16): o rótulo "Release (volta a X)" e o
+        // Delete não podem esperar o refresh cheio ("" limpa no release).
+        ...(p.heldFromStatus !== undefined
+          ? { heldFrom: p.heldFromStatus ? (STATUS_MAP[p.heldFromStatus.toUpperCase()] ?? undefined) : undefined }
+          : {}),
       };
       cache.set(p.id, next);
       notify();
@@ -206,13 +215,16 @@ export function legacyCap(): number {
 //
 // RAIZ DO "cards somem em rajada e só voltam com F5" (fechada de vez):
 // O GET /api/instances é um snapshot POSITIVO — prova o que EXISTE, nunca prova
-// que o resto sumiu. Dentro de um mesmo order_date o runtime NUNCA apaga instance
-// (não há DELETE FROM instances em produção — só o seed dev; e o server nem emite
-// instance.deleted). Logo, uma resposta same-date "menor" que o cache é SEMPRE um
-// snapshot parcial (SQLITE_BUSY/erro transitório de leitura truncando a lista num
-// 200 sob rajada de rerun/cancel/set-OK), jamais uma remoção real. Por isso NÃO se
-// deleta por ausência no mesmo dia: fazer isso era o que apagava o board. Remoção
-// por ausência só faz sentido em TROCA DE DATA (limpar o que é de outra data).
+// que o resto sumiu. Dentro de um mesmo order_date a única remoção real é o
+// DELETE explícito do operador (Control-M "Delete job", 2026-07-16) — e essa
+// chega SEMPRE pelo canal dedicado: broadcast `instance.deleted` + remoção
+// otimista no deleteInstance(), ambos via tombstone. Logo, uma resposta
+// same-date "menor" que o cache é SEMPRE um snapshot parcial (SQLITE_BUSY/erro
+// transitório truncando a lista num 200 sob rajada de rerun/cancel/set-OK),
+// jamais uma remoção real. Por isso NÃO se deleta por ausência no mesmo dia:
+// fazer isso era o que apagava o board. Remoção por ausência só faz sentido em
+// TROCA DE DATA (limpar o que é de outra data). (Custo aceito: um delete feito
+// por OUTRO cliente com o WS desconectado só some daqui no F5/troca de data.)
 let fetchGen = 0;
 
 async function doFetch(date: string): Promise<void> {
@@ -372,6 +384,17 @@ export async function holdInstance(id: string): Promise<void> {
 
 export async function releaseInstance(id: string): Promise<void> {
   await api<void>(`/api/instances/${encodeURIComponent(id)}/release`, { method: "POST" });
+}
+
+// deleteInstance — Control-M "Delete job": remove a ordem da tela e do state
+// store. O server SÓ aceita com o job em HOLD (RUNNING nunca — não é
+// segurável). Remoção otimista do espelho: tombstone + delete local na hora;
+// o broadcast `instance.deleted` cobre os outros clientes.
+export async function deleteInstance(id: string): Promise<void> {
+  await api<void>(`/api/instances/${encodeURIComponent(id)}`, { method: "DELETE" });
+  tombstones.set(id, Date.now());
+  touchedAt.delete(id);
+  if (cache.delete(id)) notify();
 }
 
 export async function cancelInstance(id: string): Promise<void> {
