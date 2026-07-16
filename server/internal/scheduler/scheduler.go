@@ -640,13 +640,14 @@ const dailyBatchChunk = 5000
 
 // carryPlan — decisão de carry-over de UMA instance na virada da daily.
 type carryPlan struct {
-	carry     bool
-	newBudget int    // orçamento a gravar na instance carregada (-1 = inalterado)
-	reason    string // p/ o evento "carried" e testes
+	carry  bool
+	reason string // p/ o evento "carried" e testes
 }
 
-// keepActiveDays — quantas diárias EXTRA um job sobrevive sem terminar OK.
-// notokDefault=true (caso NOTOK) → baseline 1 mesmo sem keepActive (DEFAULT +1).
+// keepActiveDays — quantas diárias um job sobrevive além do seu ODAT sem
+// terminar OK.
+// notokDefault=true (caso NOTOK/retry em tratamento) → baseline 1 mesmo sem
+// keepActive (um NOTOK não-tratado persiste +1 diária, DEFAULT do Control-M).
 // notokDefault=false (caso WAITING nunca-rodou) → só sobrevive se keepActive>0.
 func keepActiveDays(def domain.JobDefinition, notokDefault bool) int {
 	if def.Schedule.KeepActive > 0 {
@@ -658,74 +659,79 @@ func keepActiveDays(def domain.JobDefinition, notokDefault bool) int {
 	return 0
 }
 
-// carryDecision — REGRA pura do ciclo de vida da daily (Control-M-like). Decide se
-// uma instance no estado `status` (com `budget` atual, `attempts` executadas e a
-// def `def`) sobrevive à virada e qual orçamento ela leva. Testável sem DB.
+// carryDecision — REGRA pura do ciclo de vida da daily (Control-M-like).
+// Decide se uma instance sobrevive à virada. Testável sem DB.
 //
-//	RUNNING → carrega sempre (rastrear até terminar); orçamento intacto (-1 fica -1).
-//	HELD    → carrega sempre enquanto em hold; orçamento intacto.
-//	NOTOK   → carrega se ainda há orçamento; lazy-init = keepActive ou 1 (DEFAULT).
-//	WAITING attempts>1 → RETRY AGENDADO em andamento (D-1 retryDelayMin): já rodou
-//	        e falhou; é um NOTOK em tratamento — carrega com a MESMA regra do NOTOK,
-//	        senão um "retry após 3 dias" morreria na primeira virada da daily.
-//	WAITING (nunca rodou) → só carrega se keepActive>0; lazy-init = keepActive.
+// As idades são em DIAS-CALENDÁRIO (timezone da daily), não em "número de
+// viradas": o server desligado num dia NÃO estica a vida de ninguém — um job
+// do dia 14 com keepActive=0 não aparece no dia 16 só porque a diária do 15
+// não rodou (report do usuário, 2026-07-16).
+//
+//	ageDays         = hoje − ODAT (origem da ordem; carry não a move)
+//	activityAgeDays = hoje − última atividade (falha p/ NOTOK; última execução
+//	                  p/ retry pendente; sem timestamp, cai no ODAT)
+//
+// Regras (na ordem):
+//
+//	RUNNING → carrega SEMPRE (rastrear até terminar), qualquer idade.
+//	HELD    → carrega SEMPRE enquanto em hold, qualquer idade.
+//	NOTOK   → atravessa enquanto activityAgeDays ≤ keepActive|1: um NOTOK
+//	          não-tratado persiste +1 diária após a FALHA (não após o ODAT:
+//	          um RUNNING que atravessou dias e falhou hoje ainda ganha a
+//	          diária de amanhã pro operador ver/tratar).
+//	WAITING com RETRY AGENDADO em andamento (D-1 retryDelayMin: attempts>1 E
+//	          started_at preenchido — rerun de operador zera started_at e NÃO
+//	          cai aqui) → é um NOTOK em tratamento; mesma regra do NOTOK.
+//	WAITING (incl. aguardando Confirm) → obedece keepActive ESTRITO:
+//	          ageDays ≤ keepActive. keepActive=0 morre na primeira virada.
 //	OK/CANCELLED/outros → não carrega (encerrado).
-func carryDecision(status string, budget, attempts int, def domain.JobDefinition) carryPlan {
+func carryDecision(status string, retryPending bool, ageDays, activityAgeDays int, def domain.JobDefinition) carryPlan {
 	switch status {
 	case string(domain.StatusRunning):
-		return carryPlan{carry: true, newBudget: budget, reason: "running"}
+		return carryPlan{carry: true, reason: "running"}
 	case string(domain.StatusHeld):
-		return carryPlan{carry: true, newBudget: budget, reason: "held"}
+		return carryPlan{carry: true, reason: "held"}
 	case string(domain.StatusNotOK):
-		b := budget
-		if b < 0 { // 1ª virada como NOTOK: inicializa o orçamento
-			b = keepActiveDays(def, true)
+		if activityAgeDays <= keepActiveDays(def, true) {
+			return carryPlan{carry: true, reason: "notok"}
 		}
-		if b <= 0 {
-			return carryPlan{carry: false, newBudget: 0, reason: "notok-exhausted"}
-		}
-		return carryPlan{carry: true, newBudget: b - 1, reason: "notok"}
+		return carryPlan{carry: false, reason: "notok-expired"}
 	case string(domain.StatusWaiting):
-		notokLike := attempts > 1 // retry em andamento = falha em tratamento
-		b := budget
-		if b < 0 {
-			b = keepActiveDays(def, notokLike)
-		}
-		if b <= 0 {
-			if notokLike {
-				return carryPlan{carry: false, newBudget: 0, reason: "retry-exhausted"}
+		if retryPending {
+			if activityAgeDays <= keepActiveDays(def, true) {
+				return carryPlan{carry: true, reason: "retry-pending"}
 			}
-			return carryPlan{carry: false, newBudget: 0, reason: "waiting-no-keepactive"}
+			return carryPlan{carry: false, reason: "retry-expired"}
 		}
-		reason := "waiting-keepactive"
-		if notokLike {
-			reason = "retry-pending"
+		if ageDays <= keepActiveDays(def, false) {
+			return carryPlan{carry: true, reason: "waiting-keepactive"}
 		}
-		return carryPlan{carry: true, newBudget: b - 1, reason: reason}
+		return carryPlan{carry: false, reason: "waiting-no-keepactive"}
 	}
-	return carryPlan{carry: false, newBudget: budget, reason: "terminal"}
+	return carryPlan{carry: false, reason: "terminal"}
 }
 
 // carriedInstance — uma instance decidida a carregar pro novo dia.
 type carriedInstance struct {
 	id     string
-	from   string // order_date de origem (preservado entre múltiplas viradas)
-	budget int
+	from   string // ODAT de origem (preservado entre múltiplas viradas)
 	reason string
 }
 
 // carryOver — ciclo de vida da daily (Control-M New Day). ANTES de materializar a
 // daily de `date`, traz da diária ANTERIOR (o order_date mais recente < date) as
-// instances que sobrevivem à virada: RUNNING/HELD persistem sempre; NOTOK não-tratado
-// e WAITING/keepActive persistem enquanto têm orçamento (carry_budget). A instance
-// carregada AVANÇA seu order_date para `date` mantendo ID/status/started_at/snapshot/
-// eventos — assim o tick, a API paginada e o RBAC (todos filtram order_date) a enxergam
-// no novo dia sem nenhuma mudança. BUG-12: a carregada NÃO bloqueia a ordem fresca
-// de `date` — o check de existência do RunDaily ignora carried_from≠'' e a daily
+// instances que sobrevivem à virada (carryDecision, idades em DIAS-CALENDÁRIO a
+// partir do ODAT/última atividade — lacunas de New Day contam). A instance
+// carregada AVANÇA seu order_date para `date` mantendo ID/status/started_at/
+// snapshot/eventos — assim o tick, a API paginada e o RBAC (todos filtram
+// order_date) a enxergam no novo dia sem nenhuma mudança. O ODAT (origem) fica
+// preservado em carried_from — TODO escopo de data (eventos, conditions, UI)
+// usa ele, ver odate.go. BUG-12: a carregada NÃO bloqueia a ordem fresca de
+// `date` — o check de existência do RunDaily ignora carried_from≠'' e a daily
 // materializa a instance nova da mesma definition ao lado da carregada.
 //
 // Idempotente: instances já em `date` não estão na diária anterior, então re-rodar
-// (botão manual + auto) não move nada duas vezes nem reconsome orçamento.
+// (botão manual + auto) não move nada duas vezes.
 func (s *Scheduler) carryOver(date string) int {
 	var prev string
 	if err := s.db.QueryRow(
@@ -735,8 +741,8 @@ func (s *Scheduler) carryOver(date string) int {
 	}
 
 	rows, err := s.db.Query(
-		`SELECT id, definition_id, status, COALESCE(carry_budget,-1), COALESCE(carried_from,''),
-		        COALESCE(definition_snapshot,''), COALESCE(attempts,1)
+		`SELECT id, definition_id, status, COALESCE(carried_from,''),
+		        COALESCE(definition_snapshot,''), COALESCE(attempts,1), started_at, finished_at
 		 FROM instances
 		 WHERE order_date=? AND status NOT IN (?,?)`,
 		prev, string(domain.StatusOK), string(domain.StatusCancelled),
@@ -753,23 +759,44 @@ func (s *Scheduler) carryOver(date string) int {
 	}
 	s.mu.Unlock()
 
+	_, loc := s.DailyTimezone()
+	dayOf := func(t sql.NullTime) string {
+		if !t.Valid {
+			return ""
+		}
+		return t.Time.In(loc).Format("2006-01-02")
+	}
+
 	var plan []carriedInstance
 	for rows.Next() {
 		var id, defID, status, from, snap string
-		var budget, attempts int
-		if rows.Scan(&id, &defID, &status, &budget, &from, &snap, &attempts) != nil {
+		var attempts int
+		var startedAt, finishedAt sql.NullTime
+		if rows.Scan(&id, &defID, &status, &from, &snap, &attempts, &startedAt, &finishedAt) != nil {
 			continue
 		}
 		def, _ := defForInstance(instRow{DefID: defID, Snapshot: snap}, live)
-		d := carryDecision(status, budget, attempts, def)
+		odate := from
+		if odate == "" { // nunca carregada: a origem é a diária de onde ela vem
+			odate = prev
+		}
+		// Última atividade: falha (NOTOK) ou última execução (retry pendente).
+		// Sem timestamp, a idade cai no ODAT (conservador: não estica vida).
+		activity := dayOf(finishedAt)
+		if activity == "" {
+			activity = dayOf(startedAt)
+		}
+		if activity == "" {
+			activity = odate
+		}
+		// Retry AGENDADO em andamento (D-1): já executou (started_at) e o retry
+		// re-armou pra frente. Rerun de operador zera started_at e não conta.
+		retryPending := attempts > 1 && startedAt.Valid
+		d := carryDecision(status, retryPending, daysBetween(odate, date), daysBetween(activity, date), def)
 		if !d.carry {
 			continue
 		}
-		origin := from
-		if origin == "" { // 1ª virada: a origem da ordem é a diária de onde ela vem
-			origin = prev
-		}
-		plan = append(plan, carriedInstance{id: id, from: origin, budget: d.newBudget, reason: d.reason})
+		plan = append(plan, carriedInstance{id: id, from: odate, reason: d.reason})
 	}
 	rows.Close()
 
@@ -784,15 +811,15 @@ func (s *Scheduler) carryOver(date string) int {
 	return len(plan)
 }
 
-// applyCarry grava as viradas numa transação: avança order_date, atualiza o
-// orçamento/origem, re-arma o watchdog (carried_at) e registra o evento.
+// applyCarry grava as viradas numa transação: avança order_date, preserva o
+// ODAT (carried_from), re-arma o watchdog (carried_at) e registra o evento.
 func (s *Scheduler) applyCarry(date string, plan []carriedInstance) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	upd, err := tx.Prepare(
-		`UPDATE instances SET order_date=?, carry_budget=?, carried_from=?, carried_at=CURRENT_TIMESTAMP WHERE id=?`,
+		`UPDATE instances SET order_date=?, carried_from=?, carried_at=CURRENT_TIMESTAMP WHERE id=?`,
 	)
 	if err != nil {
 		_ = tx.Rollback()
@@ -807,12 +834,12 @@ func (s *Scheduler) applyCarry(date string, plan []carriedInstance) error {
 	defer evt.Close()
 
 	for _, c := range plan {
-		if _, err := upd.Exec(date, c.budget, c.from, c.id); err != nil {
+		if _, err := upd.Exec(date, c.from, c.id); err != nil {
 			log.Printf("[scheduler] carry update %s: %v", c.id, err)
 			continue
 		}
 		_, _ = evt.Exec(c.id, "carried", "scheduler",
-			fmt.Sprintf("carry-over para %s (%s, desde %s, budget=%d)", date, c.reason, c.from, c.budget))
+			fmt.Sprintf("carry-over para %s (%s, ODAT %s)", date, c.reason, c.from))
 	}
 	return tx.Commit()
 }
@@ -979,8 +1006,11 @@ type instRow struct {
 	// clássico (bypass total de gates); ForceModeOrder = "Order Force" do Design
 	// (ordem nova fora do agendamento que RESPEITA os gates de runtime).
 	ForceMode string
-	Confirmed bool   // Control-M Confirm: operador liberou um job confirm:true.
-	Snapshot  string // Fase A: def congelada na ordem (JSON); "" em instances legadas.
+	Confirmed bool // Control-M Confirm: operador liberou um job confirm:true.
+	// CarriedFrom — ODAT de origem quando a instance foi carregada pela virada
+	// da daily ("" = fresca do dia; order_date É a origem). Ver odate.go.
+	CarriedFrom string
+	Snapshot    string // Fase A: def congelada na ordem (JSON); "" em instances legadas.
 }
 
 // defForInstance devolve a definition CONGELADA no momento da ordem (snapshot),
@@ -1033,7 +1063,7 @@ func (s *Scheduler) tickOnce() {
 	// evalDeps precisa enxergar pais OK/NOTOK para decidir corretamente.
 	rows, err := s.db.Query(
 		`SELECT id, definition_id, order_date, status, scheduled_at,
-		        started_at, carried_at, COALESCE(forced,0), COALESCE(force_mode,''), COALESCE(confirmed,0), COALESCE(definition_snapshot,'')
+		        started_at, carried_at, COALESCE(forced,0), COALESCE(force_mode,''), COALESCE(confirmed,0), COALESCE(carried_from,''), COALESCE(definition_snapshot,'')
 		 FROM instances WHERE order_date=?`,
 		today,
 	)
@@ -1044,7 +1074,7 @@ func (s *Scheduler) tickOnce() {
 	for rows.Next() {
 		var r instRow
 		var forcedInt, confirmedInt int
-		_ = rows.Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.Snapshot)
+		_ = rows.Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.CarriedFrom, &r.Snapshot)
 		r.Forced = forcedInt == 1
 		r.Confirmed = confirmedInt == 1
 		insts = append(insts, r)
@@ -1058,16 +1088,12 @@ func (s *Scheduler) tickOnce() {
 	}
 	s.mu.Unlock()
 
-	// Agrega múltiplas instances da mesma def: mantém a "mais determinante"
-	// pelo statusRank. Daily + Forced no mesmo dia não se sobrescrevem
-	// arbitrariamente; a decisão é estável.
-	instByDef := map[string]instRow{}
-	for _, r := range insts {
-		prev, ok := instByDef[r.DefID]
-		if !ok || statusRank(r.Status) > statusRank(prev.Status) {
-			instByDef[r.DefID] = r
-		}
-	}
+	// Índice das instances do dia por (def, ODAT) + agregado por def: com o
+	// carry-over o dia ativo mistura ORIGENS diferentes (a fresca de hoje ao
+	// lado da carregada do dia 14) e o gate de dependência olha a cópia do pai
+	// da diária CERTA, nunca "qualquer uma". Dentro do mesmo (def, odate),
+	// vale a "mais determinante" pelo statusRank (decisão estável).
+	instByDef := buildInstIndex(insts)
 
 	// Pré-passe de CLAIMS de dependência (schemaV15): toda instance WAITING/HELD
 	// com upstream tenta latchar seus eventos ANTES do gating por janela — a
@@ -1642,12 +1668,15 @@ func (s *Scheduler) SetOK(id string) error {
 
 // applyConditionsOut — F16: emite as ConditionsOut de uma instance que terminou
 // OK (término real ou Set OK). Lê a def VIVA (mesma regra do FinishInstance).
+// O escopo de data é o ODAT (origem) do produtor — um job carregado do dia 14
+// que termina hoje cria a condition DO DIA 14 (quem espera é o consumidor da
+// mesma origem), com @stat/@prev resolvidos por nome.
 func (s *Scheduler) applyConditionsOut(id, actor string) {
 	if s.conditions == nil {
 		return
 	}
-	var defID, orderDate string
-	_ = s.db.QueryRow(`SELECT definition_id, order_date FROM instances WHERE id=?`, id).Scan(&defID, &orderDate)
+	var defID, odate string
+	_ = s.db.QueryRow(`SELECT definition_id, `+odateExpr+` FROM instances WHERE id=?`, id).Scan(&defID, &odate)
 	s.mu.Lock()
 	var def domain.JobDefinition
 	for _, d := range s.defs {
@@ -1658,7 +1687,7 @@ func (s *Scheduler) applyConditionsOut(id, actor string) {
 	}
 	s.mu.Unlock()
 	if def.ID != "" {
-		s.conditions.ApplyOutcomes(def, orderDate, actor)
+		s.conditions.ApplyOutcomes(def, odate, actor, s.prevDaily)
 	}
 }
 

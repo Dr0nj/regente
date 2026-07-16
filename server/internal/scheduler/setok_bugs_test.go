@@ -30,7 +30,7 @@ func TestSetOK_FromWaitingMaterializesOutputs(t *testing.T) {
 		t.Fatalf("SetOK em WAITING deveria valer (BUG-3), veio: %v", err)
 	}
 
-	if _, st, _, _ := carriedState(t, s, "prod-1"); st != string(domain.StatusOK) {
+	if _, st, _ := carriedState(t, s, "prod-1"); st != string(domain.StatusOK) {
 		t.Fatalf("esperava OK, veio %s", st)
 	}
 	var events int

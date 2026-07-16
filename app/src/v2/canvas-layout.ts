@@ -11,8 +11,8 @@ import Dagre from "@dagrejs/dagre";
 import { Position } from "@xyflow/react";
 import type { Node, Edge, NodeHandle } from "@xyflow/react";
 import type { JobNodeData } from "@/lib/job-config";
-import type { JobInstance, JobDefinition, EdgeCondition } from "@/lib/orchestrator-model";
-import { EDGE_CONDITION_DEFAULT, TEAMS } from "@/lib/orchestrator-model";
+import type { JobInstance, JobDefinition, EdgeCondition, DepDateRef } from "@/lib/orchestrator-model";
+import { EDGE_CONDITION_DEFAULT, TEAMS, odateOf } from "@/lib/orchestrator-model";
 import type { MonitoringJob } from "./MonitoringSidebarV2";
 
 export type Mode = "design" | "monitoring";
@@ -134,6 +134,9 @@ export function instanceToMonitoring(inst: JobInstance): MonitoringJob {
     holdScope: inst.status === "HOLD"
       ? (inst.holdScope === "folder" ? "folder" : "self")
       : undefined,
+    // ODAT de origem quando carregada pela virada (carry-over): a sidebar
+    // sub-agrupa os carried por data dentro da folder.
+    carriedFrom: inst.carriedFrom,
   };
 }
 
@@ -273,10 +276,37 @@ function evaluateEdgeState(
 }
 
 /**
+ * Filtra as cópias do pai cuja DATA de origem casa o dateRef da aresta
+ * (2026-07-16, escopo ODAT): o dia ativo mistura origens (a fresca de hoje ao
+ * lado da carregada do dia 14) e a dependência só existe entre pares da diária
+ * certa — sem isto, o job carregado ganhava linha (e satisfação visual) com o
+ * pai FRESCO de hoje.
+ *   - odat (default): pai com o MESMO ODAT do filho
+ *   - prev: pai de diária ANTERIOR à do filho (aproximação visual do "New Day
+ *     anterior" do server — candidatos; o claim verde é sempre exato)
+ *   - stat: qualquer cópia
+ */
+export function parentsForEdge(
+  inst: JobInstance,
+  parents: JobInstance[],
+  dateRef?: DepDateRef,
+): JobInstance[] {
+  const childOdate = odateOf(inst);
+  switch (dateRef) {
+    case "stat":
+      return parents;
+    case "prev":
+      return parents.filter((p) => odateOf(p) < childOdate);
+    default: // "odat" | undefined
+      return parents.filter((p) => odateOf(p) === childOdate);
+  }
+}
+
+/**
  * A dependência (def-level) está satisfeita para esta instance? Agrega TODAS
- * as cópias do pai no dia — é a régua do CARD (WAIT EVENT) e dos menus; a cor
- * de cada linha é por PAR (evaluateEdgeState). Um evento de QUALQUER cópia do
- * pai libera o consumidor (semântica de eventos consumíveis, R2).
+ * as cópias do pai da diária CERTA (parentsForEdge) — é a régua do CARD (WAIT
+ * EVENT) e dos menus; a cor de cada linha é por PAR (evaluateEdgeState). Um
+ * evento de QUALQUER cópia elegível do pai libera o consumidor (R2).
  */
 function isDepSatisfied(
   inst: JobInstance,
@@ -307,7 +337,12 @@ export function isWaitingOnDeps(
 ): boolean {
   if (inst.status !== "WAITING" || !def?.upstream?.length) return false;
   return def.upstream.some(
-    (u) => !isDepSatisfied(inst, u.from, u.condition ?? EDGE_CONDITION_DEFAULT, instancesByDefId.get(u.from) ?? []),
+    (u) => !isDepSatisfied(
+      inst,
+      u.from,
+      u.condition ?? EDGE_CONDITION_DEFAULT,
+      parentsForEdge(inst, instancesByDefId.get(u.from) ?? [], u.dateRef),
+    ),
   );
 }
 
@@ -599,11 +634,13 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
     if (!def?.upstream?.length) continue;
     for (const u of def.upstream) {
       const condition = u.condition ?? EDGE_CONDITION_DEFAULT;
-      const parents = instancesByDefId.get(u.from) ?? [];
+      // Só as cópias do pai da diária que o dateRef da aresta aceita: o job
+      // carregado do dia 14 conversa com o pai do dia 14, não com o de hoje.
+      const parents = parentsForEdge(inst, instancesByDefId.get(u.from) ?? [], u.dateRef);
       if (inst.status === "WAITING" && !isDepSatisfied(inst, u.from, condition, parents)) {
         waitingOnDeps.add(inst.id);
       }
-      if (!parents.length) continue; // pai não materializado: sem linha pra desenhar
+      if (!parents.length) continue; // pai não materializado na diária certa: sem linha
 
       // Detecta violação de invariante apenas para console warning.
       // EXCEÇÕES: forçadas via Run Now (manual, bypass deliberado) e instances

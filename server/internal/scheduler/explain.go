@@ -111,7 +111,7 @@ func edgeState(cond domain.EdgeCondition, upStatus string, exists bool) (satisfi
 // "bloqueado?" + saber se o 1º é dep permanente); false coleta TODOS (Explain).
 // A checagem de recurso é read-only (Shortfalls); a reserva atômica (TryAcquire)
 // fica no tick, depois deste gate passar.
-func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, instByDef map[string]instRow, claims map[string]bool, now time.Time, shortCircuit bool) []Blocker {
+func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, instByDef instIndex, claims map[string]bool, now time.Time, shortCircuit bool) []Blocker {
 	var out []Blocker
 	// add anexa o bloqueio e devolve true quando o avaliador deve PARAR (short-circuit).
 	add := func(b Blocker) bool {
@@ -151,22 +151,30 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, instByDef 
 	// claim latchado (ou 'always' com o upstream ordenado). Sem claim, o motivo
 	// distingue: pai nunca terminou (espera) × pai terminou mas o evento já foi
 	// consumido por OUTRA instance (espera um término NOVO) × pai terminou num
-	// estado incompatível (rerun/Set OK destravam).
+	// estado incompatível (rerun/Set OK destravam). A cópia do pai consultada é
+	// a da diária RESOLVIDA pelo dateRef contra o ODAT do consumidor (a origem
+	// da ordem — carry-over não muda de quem o job depende).
+	odate := r.Odate()
 	for _, u := range def.Upstream {
 		if claims[u.From] {
 			continue // latch: satisfeita para sempre para ESTA instance
 		}
-		up, exists := instByDef[u.From]
+		wantDate, anyDate := s.resolveEdgeDate(odate, u.DateRef)
+		dateLabel := ""
+		if wantDate != odate && !anyDate {
+			dateLabel = " da diária " + wantDate
+		}
+		up, exists := instByDef.lookup(u.From, wantDate, anyDate)
 		upStatus := up.Status
 		if !exists {
 			upStatus = "ainda não ordenado"
 		}
 		if u.Condition == domain.CondAlways {
 			if exists {
-				continue // always: basta o upstream existir no dia
+				continue // always: basta o upstream existir na diária resolvida
 			}
 			if add(Blocker{Kind: GateDep, Upstream: u.From, UpStatus: upStatus, Condition: string(u.Condition),
-				Detail: fmt.Sprintf("aguardando upstream '%s' (%s, ainda não ordenado)", u.From, condLabel(u.Condition))}) {
+				Detail: fmt.Sprintf("aguardando upstream '%s'%s (%s, ainda não ordenado)", u.From, dateLabel, condLabel(u.Condition))}) {
 				return out
 			}
 			continue
@@ -175,28 +183,29 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, instByDef 
 		liveSat, permanent := edgeState(u.Condition, up.Status, exists)
 		switch {
 		case !exists:
-			b.Detail = fmt.Sprintf("aguardando upstream '%s' (%s, ainda não ordenado)", u.From, condLabel(u.Condition))
+			b.Detail = fmt.Sprintf("aguardando upstream '%s'%s (%s, ainda não ordenado)", u.From, dateLabel, condLabel(u.Condition))
 		case liveSat:
 			// O estado vivo satisfaria, mas não há evento LIVRE: o término do pai
 			// já foi consumido — por outra instance desta definition (cópia
 			// forçada) ou pelo run ANTERIOR desta própria instance (rerun após
 			// OK: consumo é permanente). Rerun no pai emite um evento novo.
-			b.Detail = fmt.Sprintf("aguardando NOVO término de '%s' — o último evento já foi consumido por uma execução OK (rerun no upstream libera)", u.From)
+			b.Detail = fmt.Sprintf("aguardando NOVO término de '%s'%s — o último evento já foi consumido por uma execução OK (rerun no upstream libera)", u.From, dateLabel)
 		case permanent:
 			b.Kind = GateDepBlocked
-			b.Detail = fmt.Sprintf("upstream '%s' está %s — a aresta (%s) espera um término compatível (rerun/Set OK no upstream libera)", u.From, upStatus, condLabel(u.Condition))
+			b.Detail = fmt.Sprintf("upstream '%s'%s está %s — a aresta (%s) espera um término compatível (rerun/Set OK no upstream libera)", u.From, dateLabel, upStatus, condLabel(u.Condition))
 		default:
-			b.Detail = fmt.Sprintf("aguardando upstream '%s' (%s, está %s)", u.From, condLabel(u.Condition), upStatus)
+			b.Detail = fmt.Sprintf("aguardando upstream '%s'%s (%s, está %s)", u.From, dateLabel, condLabel(u.Condition), upStatus)
 		}
 		if add(b) {
 			return out
 		}
 	}
 
-	// 3) Conditions IN (F16).
+	// 3) Conditions IN (F16) — escopo pela diária resolvida do sufixo @odat/
+	// @prev/@stat contra o ODAT (origem) da instance, não o order_date avançado.
 	if len(def.ConditionsIn) > 0 && s.conditions != nil {
-		for _, name := range s.conditions.Missing(def.ConditionsIn, r.OrderDate) {
-			if add(Blocker{Kind: GateCondition, Condition: name, Detail: "falta a condition '" + name + "'"}) {
+		for _, m := range s.conditions.Missing(def.ConditionsIn, odate, s.prevDaily) {
+			if add(Blocker{Kind: GateCondition, Condition: m.Name, Detail: "falta a condition '" + m.Name + "'" + m.ScopeLabel}) {
 				return out
 			}
 		}
@@ -254,9 +263,9 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 	var forcedInt, confirmedInt int
 	err := s.db.QueryRow(
 		`SELECT id, definition_id, order_date, status, scheduled_at, started_at, carried_at,
-		        COALESCE(forced,0), COALESCE(force_mode,''), COALESCE(confirmed,0), COALESCE(definition_snapshot,'')
+		        COALESCE(forced,0), COALESCE(force_mode,''), COALESCE(confirmed,0), COALESCE(carried_from,''), COALESCE(definition_snapshot,'')
 		 FROM instances WHERE id=?`, instanceID,
-	).Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.Snapshot)
+	).Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.CarriedFrom, &r.Snapshot)
 	if err != nil {
 		return Explanation{}, err
 	}
@@ -320,7 +329,7 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 	claimed := s.claimsFor(r.ID)
 	s.claimDepEdges(r, def, claimed)
 
-	blockers := s.gateInstance(r, def, s.loadUpstreamInsts(r.OrderDate, def), claimed, time.Now(), false)
+	blockers := s.gateInstance(r, def, s.loadUpstreamInsts(r.Odate(), def), claimed, time.Now(), false)
 	if blockers == nil {
 		// gateInstance devolve nil quando não há bloqueio; o JSON precisa ser []
 		// (o front itera blockers direto — null quebrava a UI ao abrir o Explain
@@ -337,43 +346,57 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 	return ex, nil
 }
 
-// loadUpstreamInsts carrega SÓ as instances dos upstreams da def neste order_date
-// (agregadas por statusRank, como o tick), em vez do dia inteiro — Explain custa o
-// mesmo independente do volume da daily (100k–1M).
-func (s *Scheduler) loadUpstreamInsts(orderDate string, def domain.JobDefinition) map[string]instRow {
-	out := map[string]instRow{}
+// loadUpstreamInsts carrega SÓ as instances dos upstreams da def, nas diárias
+// RESOLVIDAS pelos dateRefs contra o ODAT do consumidor (agregadas por
+// (def, odate), como o tick) — Explain custa o mesmo independente do volume da
+// daily (100k–1M). Arestas stat derrubam o filtro de data (bounded no LIMIT:
+// só o melhor rank por def importa e instances recentes vêm primeiro).
+func (s *Scheduler) loadUpstreamInsts(odate string, def domain.JobDefinition) instIndex {
+	ix := instIndex{byDefDate: map[string]instRow{}, byDef: map[string]instRow{}}
 	if len(def.Upstream) == 0 {
-		return out
+		return ix
 	}
 	ids := make(map[string]bool, len(def.Upstream))
+	dates := make(map[string]bool, 2)
+	hasStat := false
 	for _, u := range def.Upstream {
 		ids[u.From] = true
+		if d, anyDate := s.resolveEdgeDate(odate, u.DateRef); anyDate {
+			hasStat = true
+		} else {
+			dates[d] = true
+		}
 	}
+	args := make([]any, 0, len(ids)+len(dates))
 	ph := make([]string, 0, len(ids))
-	args := make([]any, 0, len(ids)+1)
-	args = append(args, orderDate)
 	for id := range ids {
 		ph = append(ph, "?")
 		args = append(args, id)
 	}
-	rows, err := s.db.Query(
-		`SELECT definition_id, status FROM instances WHERE order_date=? AND definition_id IN (`+strings.Join(ph, ",")+`)`,
-		args...,
-	)
+	q := `SELECT definition_id, status, order_date, COALESCE(carried_from,'') FROM instances
+	      WHERE definition_id IN (` + strings.Join(ph, ",") + `)`
+	if !hasStat {
+		dph := make([]string, 0, len(dates))
+		for d := range dates {
+			dph = append(dph, "?")
+			args = append(args, d)
+		}
+		q += ` AND ` + odateExpr + ` IN (` + strings.Join(dph, ",") + `)`
+	}
+	q += ` ORDER BY order_date DESC LIMIT 500`
+	rows, err := s.db.Query(q, args...)
 	if err != nil {
-		return out
+		return ix
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var did, st string
-		if rows.Scan(&did, &st) != nil {
+		var r instRow
+		if rows.Scan(&r.DefID, &r.Status, &r.OrderDate, &r.CarriedFrom) != nil {
 			continue
 		}
-		if prev, ok := out[did]; !ok || statusRank(st) > statusRank(prev.Status) {
-			out[did] = instRow{DefID: did, Status: st}
-		}
+		ix.add(r)
 	}
-	return out
+	return ix
 }
 
 func summarizeBlockers(bs []Blocker) string {

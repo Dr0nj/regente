@@ -145,10 +145,10 @@ func TestTick_BlockedSuccessorWaitsAndRunsAfterSetOK(t *testing.T) {
 	seedInst(t, s, "filho2-1", today, string(domain.StatusWaiting), child2)
 
 	s.Tick()
-	if _, st, _, _ := carriedState(t, s, "filho-1"); st != string(domain.StatusWaiting) {
+	if _, st, _ := carriedState(t, s, "filho-1"); st != string(domain.StatusWaiting) {
 		t.Fatalf("sucessor de pai NOTOK deve permanecer WAITING (Wait Event), está %s", st)
 	}
-	if _, st, _, _ := carriedState(t, s, "filho2-1"); st != string(domain.StatusWaiting) {
+	if _, st, _ := carriedState(t, s, "filho2-1"); st != string(domain.StatusWaiting) {
 		t.Fatalf("sucessor de pai RUNNING deve permanecer WAITING (Wait Event), está %s", st)
 	}
 
@@ -157,7 +157,7 @@ func TestTick_BlockedSuccessorWaitsAndRunsAfterSetOK(t *testing.T) {
 		t.Fatalf("set-ok: %v", err)
 	}
 	s.Tick()
-	if _, st, _, _ := carriedState(t, s, "filho-1"); st == string(domain.StatusWaiting) || st == string(domain.StatusCancelled) {
+	if _, st, _ := carriedState(t, s, "filho-1"); st == string(domain.StatusWaiting) || st == string(domain.StatusCancelled) {
 		t.Fatalf("após Set OK no pai o filho deveria despachar, está %s", st)
 	}
 }
@@ -201,10 +201,10 @@ func TestTick_NoAgentNoClaim(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		s.Tick()
 	}
-	if _, st, _, _ := carriedState(t, s, "na-1"); st != string(domain.StatusWaiting) {
+	if _, st, _ := carriedState(t, s, "na-1"); st != string(domain.StatusWaiting) {
 		t.Fatalf("sem agente o job deve permanecer WAITING, está %s", st)
 	}
-	if _, st, _, _ := carriedState(t, s, "naf-1"); st != string(domain.StatusWaiting) {
+	if _, st, _ := carriedState(t, s, "naf-1"); st != string(domain.StatusWaiting) {
 		t.Fatalf("forced sem agente também deve permanecer WAITING, está %s", st)
 	}
 	// Nenhum claim = nenhum evento "started".

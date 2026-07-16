@@ -139,9 +139,12 @@ export interface JobDefinition {
    * Fase 8 — dependências upstream.
    * Define quais definitions precisam ter terminado (com dada
    * condição) antes que esta instance possa sair de WAITING.
+   * `dateRef` (2026-07-16, Control-M date de condition) diz QUAL diária do pai
+   * satisfaz, sempre relativa ao ODAT do consumidor: "odat"/ausente = mesma
+   * diária de origem; "prev" = diária anterior; "stat" = qualquer (estática).
    * Undefined/empty = sem dependências.
    */
-  upstream?: Array<{ from: string; condition: EdgeCondition }>;
+  upstream?: Array<{ from: string; condition: EdgeCondition; dateRef?: DepDateRef }>;
   /**
    * Actions / On-Do (Control-M "On/Do") — regras reativas por job.
    * Cada regra dispara no máximo uma vez por instance. Ver ActionRule.
@@ -347,6 +350,22 @@ export interface JobEdgeData {
 }
 
 export const EDGE_CONDITION_DEFAULT: EdgeCondition = "on-success";
+
+/**
+ * Referência de DATA de uma dependência (Control-M date de condition),
+ * relativa ao ODAT (data de origem) do consumidor:
+ *   - "odat" (default): término do pai da MESMA diária de origem
+ *   - "prev": término do pai da diária ANTERIOR
+ *   - "stat": estática — qualquer término livre, sem olhar data
+ */
+export type DepDateRef = "odat" | "prev" | "stat";
+
+/** ODAT — a data de ORIGEM da ordem (dia em que entrou em schedule pela 1ª
+ *  vez). O carry-over avança orderDate (dia ativo) preservando a origem em
+ *  carriedFrom; todo escopo de data (eventos, linhas, agrupamento) usa isto. */
+export function odateOf(inst: Pick<JobInstance, "orderDate" | "carriedFrom">): string {
+  return inst.carriedFrom || inst.orderDate;
+}
 
 /**
  * Times (folders) canônicos do Regente PicPay.

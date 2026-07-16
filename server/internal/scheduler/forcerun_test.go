@@ -29,7 +29,7 @@ func TestForceRun_ExistingInstanceBypassesDep_NoNewInstance(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		s.Tick()
 	}
-	if _, st, _, _ := carriedState(t, s, id); st != string(domain.StatusWaiting) {
+	if _, st, _ := carriedState(t, s, id); st != string(domain.StatusWaiting) {
 		t.Fatalf("sem force a dep deveria segurar B em WAITING, está %s", st)
 	}
 	if ex, err := s.Explain(id); err != nil || hasKind(ex.Blockers, GateDep) == nil {
@@ -51,7 +51,7 @@ func TestForceRun_ExistingInstanceBypassesDep_NoNewInstance(t *testing.T) {
 	var st string
 	for time.Now().Before(deadline) {
 		s.Tick()
-		_, st, _, _ = carriedState(t, s, id)
+		_, st, _ = carriedState(t, s, id)
 		if st == string(domain.StatusRunning) || st == string(domain.StatusOK) {
 			break
 		}
@@ -62,7 +62,7 @@ func TestForceRun_ExistingInstanceBypassesDep_NoNewInstance(t *testing.T) {
 	}
 
 	// A dep NÃO mudou (A continua RUNNING) — foi bypass puro, não satisfação.
-	if _, st, _, _ := carriedState(t, s, "A-1"); st != string(domain.StatusRunning) {
+	if _, st, _ := carriedState(t, s, "A-1"); st != string(domain.StatusRunning) {
 		t.Fatalf("A deveria continuar RUNNING (bypass, não satisfação), está %s", st)
 	}
 	// E o principal: nenhuma nova instance foi criada.
@@ -89,7 +89,7 @@ func TestForceRun_DoesNotBypassConfirm(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		s.Tick()
 	}
-	if _, st, _, _ := carriedState(t, s, id); st != string(domain.StatusWaiting) {
+	if _, st, _ := carriedState(t, s, id); st != string(domain.StatusWaiting) {
 		t.Fatalf("forced sem Confirm deve seguir WAITING, está %s", st)
 	}
 }

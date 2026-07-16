@@ -486,20 +486,25 @@ params:
   },
   {
     tag: "upstream",
-    kind: "lista de {from, condition}",
-    summary: "Dependências: este job só roda depois dos pais, conforme a condition.",
-    detail: "Pai NOTOK/CANCELLED bloqueia o filho (aresta vermelha, gate BLOCKED_DEP) — \"Set OK\" no pai libera. Force Order ignora deps de propósito.",
+    kind: "lista de {from, condition, dateRef}",
+    summary: "Dependências: este job só roda depois dos pais, conforme a condition — na diária que o dateRef aponta.",
+    detail: "Pai NOTOK/CANCELLED bloqueia o filho (aresta vermelha, gate BLOCKED_DEP) — \"Set OK\" no pai libera. Force Order ignora deps de propósito. `dateRef` (Control-M date de condition) diz QUAL diária do pai satisfaz, relativa ao ODAT (data de ORIGEM) deste job — carry-over não muda a origem.",
     forms: [
       { form: "condition omitida / \"\"", desc: "= on-success (default seguro)" },
       { form: '"on-success"', desc: "roda se o pai terminou OK" },
       { form: '"on-failure"', desc: "roda se o pai terminou NOTOK (jobs de contingência)" },
       { form: '"on-complete"', desc: "roda quando o pai TERMINA (OK ou NOTOK)" },
       { form: '"always"', desc: "como on-complete" },
+      { form: "dateRef omitido / \"odat\"", desc: "pai da MESMA diária de origem (default)" },
+      { form: 'dateRef: "prev"', desc: "pai da diária ANTERIOR (fechamento D-1)" },
+      { form: 'dateRef: "stat"', desc: "estática: qualquer término livre, sem olhar data" },
     ],
     example: `upstream:
   - from: extract-fin
   - from: valida-fin
-    condition: on-failure`,
+    condition: on-failure
+  - from: fechamento
+    dateRef: prev`,
   },
   {
     tag: "retries",
@@ -576,20 +581,21 @@ retryDelayMin: 60   # re-tenta a cada 1h`,
   {
     tag: "conditionsIn",
     kind: "lista de string",
-    summary: "Conditions GLOBAIS exigidas: o job só fica pronto quando TODAS existem no escopo do seu order_date (ou permanentes).",
-    detail: "Gate de RUNTIME (WAIT_CONDITION) — a daily ainda materializa a instance. Quem seta: `conditionsOutAdd` de outro job, ação On/Do set-condition, POST /events/ingest (evento externo) ou a UI.",
-    example: `conditionsIn: [ARQUIVO-CHEGOU, FECHAMENTO-LIBERADO]`,
+    summary: "Conditions GLOBAIS exigidas: o job só fica pronto quando TODAS existem no escopo resolvido (default = diária de ORIGEM do job, o ODAT).",
+    detail: "Gate de RUNTIME (WAIT_CONDITION) — a daily ainda materializa a instance. Quem seta: `conditionsOutAdd` de outro job, ação On/Do set-condition, POST /events/ingest (evento externo) ou a UI. A DATA vai no sufixo do nome: sem sufixo/`@odat` = diária de origem; `@prev` = diária anterior; `@stat` = estática (só a permanente satisfaz).",
+    example: `conditionsIn: [ARQUIVO-CHEGOU, FECHAMENTO@prev, AMBIENTE-OK@stat]`,
   },
   {
     tag: "conditionsOutAdd",
     kind: "lista de string",
     summary: "Conditions CRIADAS quando este job termina OK (destrava quem as exige via conditionsIn).",
-    example: `conditionsOutAdd: [EXTRACT-DONE]`,
+    detail: "Criadas no escopo da diária de ORIGEM (ODAT) do produtor — um job carregado pela virada cria a condition do SEU dia, não do dia corrente. Sufixos: `@stat` cria permanente; `@prev` cria na diária anterior.",
+    example: `conditionsOutAdd: [EXTRACT-DONE, AMBIENTE-OK@stat]`,
   },
   {
     tag: "conditionsOutRemove",
     kind: "lista de string",
-    summary: "Conditions APAGADAS quando este job termina OK (nega/limpa condição do dia).",
+    summary: "Conditions APAGADAS quando este job termina OK (nega/limpa condição do dia). Mesmos sufixos de data do conditionsOutAdd.",
   },
   {
     tag: "variables",

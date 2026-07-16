@@ -16,10 +16,29 @@ const (
 	CondAlways     EdgeCondition = "always"
 )
 
+// DateRef — QUAL diária da origem satisfaz a dependência (Control-M date de
+// condition). A referência é sempre relativa ao ODAT do CONSUMIDOR (a data em
+// que ele entrou em schedule pela primeira vez — carry-over não a muda):
+//
+//	"" | "odat" → término do pai da MESMA diária de origem (default do produto)
+//	"prev"      → término do pai da diária ANTERIOR (New Day anterior; sem
+//	              registro em daily_runs, cai em ODAT-1 dia-calendário)
+//	"stat"      → estática: qualquer término livre do pai, sem olhar data
+type DateRef string
+
+const (
+	DateRefOdat DateRef = "odat"
+	DateRefPrev DateRef = "prev"
+	DateRefStat DateRef = "stat"
+)
+
 // Upstream — dependência de um job em outro (OR implícito na ausência de `group`).
 type Upstream struct {
 	From      string        `yaml:"from" json:"from"`
 	Condition EdgeCondition `yaml:"condition" json:"condition"`
+	// DateRef — diária do pai que satisfaz esta aresta (ver type DateRef).
+	// Vazio = odat: pai e filho da mesma diária de origem.
+	DateRef DateRef `yaml:"dateRef,omitempty" json:"dateRef,omitempty"`
 }
 
 // Schedule — quando o job deve rodar (estilo Control-M).
@@ -139,7 +158,10 @@ type JobDefinition struct {
 	// F15: Recursos consumidos (nome → quantidade). Scheduler bloqueia start se faltar.
 	Resources map[string]int `yaml:"resources,omitempty" json:"resources,omitempty"`
 
-	// F16: Conditions IN/OUT (Control-M global conditions).
+	// F16: Conditions IN/OUT (Control-M global conditions). Cada nome aceita o
+	// sufixo de DATA "@odat" (default, diária de ORIGEM do job — ODAT), "@prev"
+	// (diária anterior) ou "@stat" (estática, sem data — scope_date=''). Ex.:
+	// conditionsIn: ["ARQ-CHEGOU", "FECHAMENTO@prev", "AMBIENTE-OK@stat"].
 	ConditionsIn        []string `yaml:"conditionsIn,omitempty" json:"conditionsIn,omitempty"`
 	ConditionsOutAdd    []string `yaml:"conditionsOutAdd,omitempty" json:"conditionsOutAdd,omitempty"`
 	ConditionsOutRemove []string `yaml:"conditionsOutRemove,omitempty" json:"conditionsOutRemove,omitempty"`

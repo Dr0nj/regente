@@ -104,8 +104,12 @@ func (s *Scheduler) execAction(instanceID, orderDate string, def domain.JobDefin
 		if s.conditions == nil || strings.TrimSpace(rule.Condition) == "" {
 			return
 		}
-		_ = s.conditions.Set(rule.Condition, orderDate, "actions")
-		s.hub.BroadcastWeb("condition.changed", map[string]string{"name": rule.Condition, "scopeDate": orderDate})
+		// Escopo pelo ODAT (origem) da instance — não o order_date avançado
+		// pelo carry-over — com @odat/@prev/@stat resolvidos no nome.
+		odate := s.instanceOdate(instanceID, orderDate)
+		base, scope := resolveCondScope(rule.Condition, odate, s.prevDaily)
+		_ = s.conditions.Set(base, scope, "actions")
+		s.hub.BroadcastWeb("condition.changed", map[string]string{"name": base, "scopeDate": scope})
 		s.emitEvent(instanceID, "action", "actions", "set-condition: "+rule.Condition)
 	case "run-job":
 		if strings.TrimSpace(rule.TargetJob) == "" {

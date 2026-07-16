@@ -69,7 +69,7 @@ func TestCyclic_MaxRunsStops(t *testing.T) {
 
 	s.FinishInstance(id, domain.StatusOK, 0, "volta 2")
 
-	if _, st, _, _ := carriedState(t, s, id); st != string(domain.StatusOK) {
+	if _, st, _ := carriedState(t, s, id); st != string(domain.StatusOK) {
 		t.Fatalf("máx de voltas atingido: deveria ficar OK, está %s", st)
 	}
 	var done int
@@ -88,7 +88,7 @@ func TestCyclic_WindowClosedStops(t *testing.T) {
 
 	s.FinishInstance(id, domain.StatusOK, 0, "volta única")
 
-	if _, st, _, _ := carriedState(t, s, id); st != string(domain.StatusOK) {
+	if _, st, _ := carriedState(t, s, id); st != string(domain.StatusOK) {
 		t.Fatalf("janela fechada: deveria ficar OK, está %s", st)
 	}
 }
@@ -101,7 +101,7 @@ func TestCyclic_NotOKDoesNotCycle(t *testing.T) {
 
 	s.FinishInstance(id, domain.StatusNotOK, 7, "falhou")
 
-	if _, st, _, _ := carriedState(t, s, id); st != string(domain.StatusNotOK) {
+	if _, st, _ := carriedState(t, s, id); st != string(domain.StatusNotOK) {
 		t.Fatalf("cyclic com falha deveria ficar NOTOK, está %s", st)
 	}
 }
@@ -128,10 +128,10 @@ func TestConfirm_GateBlocksUntilConfirmed(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		s.Tick()
 	}
-	if _, st, _, _ := carriedState(t, s, id); st != string(domain.StatusWaiting) {
+	if _, st, _ := carriedState(t, s, id); st != string(domain.StatusWaiting) {
 		t.Fatalf("sem Confirm o job deve permanecer WAITING, está %s", st)
 	}
-	if _, st, _, _ := carriedState(t, s, fid); st != string(domain.StatusWaiting) {
+	if _, st, _ := carriedState(t, s, fid); st != string(domain.StatusWaiting) {
 		t.Fatalf("forced sem Confirm também deve permanecer WAITING (Control-M), está %s", st)
 	}
 
@@ -149,10 +149,10 @@ func TestConfirm_GateBlocksUntilConfirmed(t *testing.T) {
 		t.Fatalf("confirm: %v", err)
 	}
 	s.Tick()
-	if _, st, _, _ := carriedState(t, s, id); st == string(domain.StatusWaiting) {
+	if _, st, _ := carriedState(t, s, id); st == string(domain.StatusWaiting) {
 		t.Fatal("confirmado, o job deveria ter sido reivindicado no tick")
 	}
-	if _, st, _, _ := carriedState(t, s, fid); st == string(domain.StatusWaiting) {
+	if _, st, _ := carriedState(t, s, fid); st == string(domain.StatusWaiting) {
 		t.Fatal("forced confirmado deveria ter sido reivindicado no tick")
 	}
 }
@@ -171,7 +171,7 @@ func TestWindowClosed_Gate(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		s.Tick()
 	}
-	if _, st, _, _ := carriedState(t, s, id); st != string(domain.StatusWaiting) {
+	if _, st, _ := carriedState(t, s, id); st != string(domain.StatusWaiting) {
 		t.Fatalf("janela fechada: deveria permanecer WAITING, está %s", st)
 	}
 	ex, err := s.Explain(id)

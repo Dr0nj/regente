@@ -84,13 +84,22 @@ func TestMaybeRetry_NoDelayKeepsClassicBackoff(t *testing.T) {
 // o MESMO scheduled_at (o prazo de "retry após 3 dias" não é resetado).
 func TestRetryPending_SurvivesDailyTurnover(t *testing.T) {
 	s := newTestScheduler(t)
-	def := domain.JobDefinition{ID: "r3d", JobType: "COMMAND", Retries: 3, RetryDelayMin: 3 * 24 * 60}
+	// keepActive=3 cobre o prazo do retry: desde 2026-07-16 a sobrevivência é em
+	// DIAS-CALENDÁRIO desde a última execução (baseline 1 sem keepActive) — um
+	// "retry após 3 dias" declara keepActive>=3 pra atravessar as viradas.
+	def := domain.JobDefinition{
+		ID: "r3d", JobType: "COMMAND", Retries: 3, RetryDelayMin: 3 * 24 * 60,
+		Schedule: domain.Schedule{KeepActive: 3},
+	}
 	snap, _ := json.Marshal(def)
 	future := time.Now().Add(72 * time.Hour)
 	if _, err := s.db.Exec(
-		`INSERT INTO instances(id, definition_id, order_date, status, scheduled_at, definition_snapshot, attempts)
-		 VALUES(?,?,?,?,?,?,2)`, // attempts=2: já rodou e falhou 1x, retry agendado
-		"r3d-i", "r3d", "2026-07-07", string(domain.StatusWaiting), future, string(snap),
+		// attempts=2 + started_at preenchido: já RODOU e falhou 1x, retry agendado
+		// (o handleRetry preserva o started_at da tentativa falha — é o que
+		// distingue retry em tratamento de um rerun de operador, que o zera).
+		`INSERT INTO instances(id, definition_id, order_date, status, scheduled_at, definition_snapshot, attempts, started_at)
+		 VALUES(?,?,?,?,?,?,2,?)`,
+		"r3d-i", "r3d", "2026-07-07", string(domain.StatusWaiting), future, string(snap), time.Now().Add(-time.Hour),
 	); err != nil {
 		t.Fatal(err)
 	}

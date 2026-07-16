@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ExternalLink, X, Trash2, ArrowRight, ArrowLeft } from "lucide-react";
-import type { JobDefinition, CalendarRef, EdgeCondition, ActionRule } from "@/lib/orchestrator-model";
+import type { JobDefinition, CalendarRef, EdgeCondition, ActionRule, DepDateRef } from "@/lib/orchestrator-model";
 import type { JobType } from "@/lib/job-config";
 import JobActionConfigEditor from "./JobActionConfigEditor";
 import OnDoEditor from "./OnDoEditor";
@@ -372,8 +372,8 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
 /* ── Aba Dependencies (2 lados) ── */
 function DepsTab({ self, upstream, onChangeUpstream, triggers, allDefs, conditionsIn, conditionsOutAdd, conditionsOutRemove, onChangeConditionsIn, onChangeConditionsOutAdd, onChangeConditionsOutRemove, knownConditions }: {
   self: string;
-  upstream: Array<{ from: string; condition: EdgeCondition }>;
-  onChangeUpstream: (u: Array<{ from: string; condition: EdgeCondition }>) => void;
+  upstream: Array<{ from: string; condition: EdgeCondition; dateRef?: DepDateRef }>;
+  onChangeUpstream: (u: Array<{ from: string; condition: EdgeCondition; dateRef?: DepDateRef }>) => void;
   triggers: JobDefinition[];
   allDefs: JobDefinition[];
   conditionsIn: string[];
@@ -408,9 +408,33 @@ function DepsTab({ self, upstream, onChangeUpstream, triggers, allDefs, conditio
           <div key={u.from} style={depRow}>
             <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}>{labelOf(u.from)}</span>
             <span style={{ fontSize: 9, color: "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)" }}>{u.condition}</span>
+            {/* Data da dependência (Control-M date de condition), relativa ao
+                ODAT do job: Odate = pai da mesma diária de origem (default);
+                Prev = da diária anterior; Stat = qualquer (estática). */}
+            <select
+              value={u.dateRef ?? "odat"}
+              title="Qual diária do pai satisfaz esta dependência (relativa à data de origem deste job)"
+              onChange={(e) => {
+                const v = e.target.value as DepDateRef;
+                onChangeUpstream(upstream.map((x) =>
+                  x.from === u.from ? { ...x, dateRef: v === "odat" ? undefined : v } : x,
+                ));
+              }}
+              style={{ ...selectStyle, width: 72, padding: "2px 4px", fontSize: 9 }}
+            >
+              <option value="odat">Odate</option>
+              <option value="prev">Prev</option>
+              <option value="stat">Stat</option>
+            </select>
             <button onClick={() => remove(u.from)} style={iconBtn} title="Remover"><Trash2 size={12} /></button>
           </div>
         ))}
+        {upstream.length > 0 && (
+          <Hint>
+            <b>Odate</b> = espera o término do pai da MESMA diária de origem (default) ·{" "}
+            <b>Prev</b> = da diária anterior · <b>Stat</b> = qualquer término livre, sem olhar data.
+          </Hint>
+        )}
       </div>
       {/* Dispara (jobs cujo upstream aponta para este) */}
       <div>
@@ -440,7 +464,9 @@ function DepsTab({ self, upstream, onChangeUpstream, triggers, allDefs, conditio
         <Hint>
           Além das setas do grafo, um job pode esperar/emitir <b>conditions nomeadas</b> do dia.
           Quem cria: a saída (＋) de outro job, uma ação On/Do <b>set-condition</b>, um evento
-          externo ou o operador. O vínculo é o <b>nome exato</b>.
+          externo ou o operador. O vínculo é o <b>nome exato</b>. A DATA vai no sufixo:
+          sem sufixo = da diária de <b>origem</b> do job (ODAT); <b>NOME@prev</b> = da diária
+          anterior; <b>NOME@stat</b> = estática (sem data, vale até alguém remover).
         </Hint>
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
           <CondChipsEditor

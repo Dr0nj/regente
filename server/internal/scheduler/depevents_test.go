@@ -32,7 +32,7 @@ func waitStatus(t *testing.T, s *Scheduler, id string, want ...string) string {
 	var st string
 	for time.Now().Before(deadline) {
 		s.Tick()
-		_, st, _, _ = carriedState(t, s, id)
+		_, st, _ = carriedState(t, s, id)
 		for _, w := range want {
 			if st == w {
 				return st
@@ -75,7 +75,7 @@ func TestDepEvents_ForcedCopyWaitsFreshEvent(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		s.Tick()
 	}
-	if _, st, _, _ := carriedState(t, s, copyID); st != string(domain.StatusWaiting) {
+	if _, st, _ := carriedState(t, s, copyID); st != string(domain.StatusWaiting) {
 		t.Fatalf("cópia forçada deveria esperar um evento NOVO, está %s", st)
 	}
 	if ex, err := s.Explain(copyID); err != nil || hasKind(ex.Blockers, GateDep) == nil {
@@ -141,7 +141,7 @@ func TestDepEvents_RerunAndCancelUpstreamKeepLatch(t *testing.T) {
 	if n := depClaimCount(t, s, "B-1"); n != 1 {
 		t.Fatalf("cancel do pai apagou o latch de B (não podia), claims=%d", n)
 	}
-	if _, st, _, _ := carriedState(t, s, "B-1"); st != string(domain.StatusOK) {
+	if _, st, _ := carriedState(t, s, "B-1"); st != string(domain.StatusOK) {
 		t.Fatalf("B deveria permanecer OK, está %s", st)
 	}
 }
@@ -166,7 +166,7 @@ func TestDepEvents_EventNotDoubleConsumed(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		s.Tick()
 	}
-	if _, st, _, _ := carriedState(t, s, "B-2"); st != string(domain.StatusWaiting) {
+	if _, st, _ := carriedState(t, s, "B-2"); st != string(domain.StatusWaiting) {
 		t.Fatalf("B-2 não pode consumir o MESMO evento que B-1: deveria estar WAITING, está %s", st)
 	}
 	if n := depClaimCount(t, s, "B-2"); n != 0 {
@@ -202,7 +202,7 @@ func TestDepEvents_RerunConsumerAfterOKWaitsFreshEvent(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		s.Tick()
 	}
-	if _, st, _, _ := carriedState(t, s, "B-1"); st != string(domain.StatusWaiting) {
+	if _, st, _ := carriedState(t, s, "B-1"); st != string(domain.StatusWaiting) {
 		t.Fatalf("rerun após OK deveria esperar evento NOVO (WAITING), está %s", st)
 	}
 	if ex, err := s.Explain("B-1"); err != nil || hasKind(ex.Blockers, GateDep) == nil {
@@ -235,7 +235,7 @@ func TestDepEvents_RerunConsumerAfterNotOKReclaims(t *testing.T) {
 
 	seedInst(t, s, "A-1", today, string(domain.StatusOK), defA)
 	seedInst(t, s, "B-1", today, string(domain.StatusRunning), defB)
-	if !s.tryClaimEdge("B-1", "B", "A", today, domain.CondOnSuccess) {
+	if !s.tryClaimEdge("B-1", "B", "A", today, false, today, domain.CondOnSuccess) {
 		t.Fatal("B-1 deveria clamar o evento de A")
 	}
 	s.FinishInstance("B-1", domain.StatusNotOK, 1, "boom") // devolve o evento
@@ -264,7 +264,7 @@ func TestDepEvents_RerunAfterSetOKWaitsFreshEvent(t *testing.T) {
 	seedInst(t, s, "A-1", today, string(domain.StatusOK), defA)
 	// B clamou o evento mas ainda não rodou (ex.: janela) — operador dá Set OK.
 	seedInst(t, s, "B-1", today, string(domain.StatusWaiting), defB)
-	if !s.tryClaimEdge("B-1", "B", "A", today, domain.CondOnSuccess) {
+	if !s.tryClaimEdge("B-1", "B", "A", today, false, today, domain.CondOnSuccess) {
 		t.Fatal("B-1 deveria clamar o evento de A")
 	}
 	if err := s.SetOK("B-1"); err != nil {
@@ -280,7 +280,7 @@ func TestDepEvents_RerunAfterSetOKWaitsFreshEvent(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		s.Tick()
 	}
-	if _, st, _, _ := carriedState(t, s, "B-1"); st != string(domain.StatusWaiting) {
+	if _, st, _ := carriedState(t, s, "B-1"); st != string(domain.StatusWaiting) {
 		t.Fatalf("rerun após Set OK deveria esperar evento NOVO (WAITING), está %s", st)
 	}
 }
@@ -296,7 +296,7 @@ func TestDepEvents_NotOKReleasesEventBackToPool(t *testing.T) {
 	seedInst(t, s, "A-1", today, string(domain.StatusOK), defA)
 	// B-1 partiu consumindo o evento de A (como o pré-passe do tick faria).
 	seedInst(t, s, "B-1", today, string(domain.StatusRunning), defB)
-	if !s.tryClaimEdge("B-1", "B", "A", today, domain.CondOnSuccess) {
+	if !s.tryClaimEdge("B-1", "B", "A", today, false, today, domain.CondOnSuccess) {
 		t.Fatal("B-1 deveria clamar o evento de A")
 	}
 
@@ -340,7 +340,7 @@ func TestDepEvents_SetOKAndOnFailure(t *testing.T) {
 	if st := waitStatus(t, s, "C-1", string(domain.StatusRunning), string(domain.StatusOK)); st != string(domain.StatusRunning) && st != string(domain.StatusOK) {
 		t.Fatalf("NOTOK do pai deveria destravar a aresta on-failure, C está %s", st)
 	}
-	if _, st, _, _ := carriedState(t, s, "B-1"); st != string(domain.StatusWaiting) {
+	if _, st, _ := carriedState(t, s, "B-1"); st != string(domain.StatusWaiting) {
 		t.Fatalf("B (on-success) deveria seguir WAITING com A NOTOK, está %s", st)
 	}
 

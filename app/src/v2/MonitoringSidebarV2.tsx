@@ -37,6 +37,10 @@ export interface MonitoringJob {
    *  segurado por uma pausa de folder (cadeado da folder, sem release individual);
    *  "self" = hold individual do operador (cadeado próprio, liberável 1-a-1). */
   holdScope?: "folder" | "self";
+  /** ODAT de origem (YYYY-MM-DD) se a instance foi CARREGADA pela virada da
+   *  daily (carry-over); ausente = fresca do dia. Guia o sub-agrupamento por
+   *  data dentro da folder (modo local) e o chip ↩ (modo windowed). */
+  carriedFrom?: string;
 }
 
 type StatusFilter = "ALL" | "RUNNING" | "FAILED" | "SUCCESS" | "WAITING";
@@ -121,6 +125,7 @@ interface PageInstance {
   startedAt?: string;
   finishedAt?: string;
   holdScope?: string;
+  carriedFrom?: string;
 }
 
 function pageToJob(p: PageInstance, folder: string, labelFor?: (defId: string) => string | undefined): MonitoringJob {
@@ -142,6 +147,7 @@ function pageToJob(p: PageInstance, folder: string, labelFor?: (defId: string) =
       ? new Date(started).toLocaleTimeString("en-GB", { hour12: false }).slice(0, 5)
       : undefined,
     holdScope: held ? (p.holdScope === "folder" ? "folder" : "self") : undefined,
+    carriedFrom: p.carriedFrom || undefined,
   };
 }
 
@@ -372,14 +378,23 @@ export default function MonitoringSidebarV2({
     });
   }, [jobs, filter, query, windowed]);
 
-  /* ── Grupos (folders) unificados: local = arrays; windowed = counts + getRow ── */
-  interface Group { name: string; count: number; local?: MonitoringJob[] }
+  /* ── Grupos (folders) unificados: local = rows (jobs + sub-headers de
+     carry-over); windowed = counts + getRow ──
+     No modo LOCAL, dentro da folder os jobs do DIA CORRENTE vêm primeiro (sem
+     sub-grupo) e os CARREGADOS pela virada (carry-over) ganham um sub-header
+     por data de origem (ODAT) — pedido do usuário (2026-07-16): dias antigos
+     agrupados, o dia de hoje limpo. `count` = nº de LINHAS (altura virtual);
+     `jobs` = nº de JOBS (badge do header). */
+  type LocalRow =
+    | { kind: "job"; job: MonitoringJob }
+    | { kind: "sub"; date: string; n: number };
+  interface Group { name: string; count: number; jobs: number; rows?: LocalRow[] }
   const groups: Group[] = useMemo(() => {
     if (windowed) {
       const src = (win.scoped ? win.viewSummary : win.summary)?.byFolder ?? {};
       return Object.entries(src)
         .filter(([, n]) => n > 0)
-        .map(([name, n]) => ({ name: (name || "—").trim() || "—", count: n }))
+        .map(([name, n]) => ({ name: (name || "—").trim() || "—", count: n, jobs: n }))
         .filter((g) => !visibleFolders || visibleFolders.has(g.name))
         .sort((a, b) => a.name.localeCompare(b.name));
     }
@@ -391,7 +406,24 @@ export default function MonitoringSidebarV2({
     }
     return [...m.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([name, arr]) => ({ name, count: arr.length, local: arr }));
+      .map(([name, arr]) => {
+        const fresh = arr.filter((j) => !j.carriedFrom);
+        const carried = arr.filter((j) => j.carriedFrom);
+        const rows: LocalRow[] = fresh.map((job) => ({ kind: "job" as const, job }));
+        if (carried.length) {
+          const byDate = new Map<string, MonitoringJob[]>();
+          for (const j of carried) {
+            const d = j.carriedFrom!;
+            if (!byDate.has(d)) byDate.set(d, []);
+            byDate.get(d)!.push(j);
+          }
+          for (const [date, jobs] of [...byDate.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+            rows.push({ kind: "sub", date, n: jobs.length });
+            for (const job of jobs) rows.push({ kind: "job", job });
+          }
+        }
+        return { name, count: rows.length, jobs: arr.length, rows };
+      });
   }, [windowed, win.scoped, win.viewSummary, win.summary, filtered, visibleFolders]);
 
   // Folders em PAUSA DE FOLDER (D-2/schemaV14): têm ≥1 job segurado pela folder.
@@ -403,7 +435,7 @@ export default function MonitoringSidebarV2({
       for (const f of win.summary?.pausedFolders ?? []) s.add((f || "—").trim() || "—");
     } else {
       for (const g of groups) {
-        if (g.local?.some((j) => j.holdScope === "folder")) s.add(g.name);
+        if (g.rows?.some((r) => r.kind === "job" && r.job.holdScope === "folder")) s.add(g.name);
       }
     }
     return s;
@@ -554,7 +586,7 @@ export default function MonitoringSidebarV2({
                 padding: "1px 5px", border: "1px solid var(--v2-border-subtle)", borderRadius: 2,
               }}
             >
-              {fmtInt(g.count)}
+              {fmtInt(g.jobs)}
             </span>
           </div>,
         );
@@ -566,7 +598,41 @@ export default function MonitoringSidebarV2({
       const last = Math.min(g.count - 1, Math.ceil((winBot - jobsTop) / ROW_H));
       for (let i = first; i <= last; i++) {
         const top = jobsTop + i * ROW_H - vTop;
-        const j = g.local ? g.local[i] : win.getRow(g.name, i);
+        const localRow = g.rows?.[i];
+        // Sub-header de carry-over (modo local): agrupa os jobs CARREGADOS por
+        // data de origem (ODAT) dentro da folder — o dia corrente fica limpo.
+        if (localRow?.kind === "sub") {
+          visibleRows.push(
+            <div
+              key={`sub-${g.name}-${localRow.date}`}
+              title={`Jobs carregados da diária de ${localRow.date} (carry-over) ainda ativos hoje`}
+              style={{
+                position: "absolute", top, left: 0, right: 0, height: ROW_H,
+                padding: "0 12px 0 22px",
+                display: "flex", alignItems: "center", gap: 6,
+                borderBottom: "1px solid var(--v2-border-subtle)",
+                background: "var(--v2-bg-elevated)",
+                boxSizing: "border-box",
+                fontSize: 9, fontFamily: "var(--v2-font-mono)",
+                color: "var(--v2-text-muted)", letterSpacing: "0.06em",
+                textTransform: "uppercase",
+              }}
+            >
+              <span style={{ color: "var(--v2-accent-brand)" }}>↩</span>
+              <span style={{ flex: 1 }}>{localRow.date} · carry-over</span>
+              <span
+                style={{
+                  padding: "0 4px", border: "1px solid var(--v2-border-subtle)",
+                  borderRadius: 2,
+                }}
+              >
+                {fmtInt(localRow.n)}
+              </span>
+            </div>,
+          );
+          continue;
+        }
+        const j = localRow ? localRow.job : (g.rows ? undefined : win.getRow(g.name, i));
         if (!j) {
           visibleRows.push(
             <div
@@ -639,6 +705,22 @@ export default function MonitoringSidebarV2({
             >
               {j.label}
             </span>
+            {/* Windowed não tem sub-headers (páginas remotas): o chip ↩ diz a
+                origem do carry-over na própria linha. No local o sub-header
+                por data já comunica. */}
+            {!g.rows && j.carriedFrom && (
+              <span
+                title={`Carregado da diária de ${j.carriedFrom} (carry-over)`}
+                style={{
+                  fontFamily: "var(--v2-font-mono)", fontSize: 8.5,
+                  color: "var(--v2-accent-brand)",
+                  border: "1px solid var(--v2-border-subtle)", borderRadius: 2,
+                  padding: "0 3px", flexShrink: 0,
+                }}
+              >
+                ↩ {j.carriedFrom.slice(5)}
+              </span>
+            )}
             <span
               style={{
                 fontFamily: "var(--v2-font-mono)", fontSize: 10, color: "var(--v2-text-muted)",

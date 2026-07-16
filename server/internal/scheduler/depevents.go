@@ -24,6 +24,12 @@
 //     devolveram no término), os claims são deletados e os eventos voltam
 //     pro pool. É o "delete input conditions on OK" do Control-M: a condição
 //     que liberou o job SOME quando ele executa com sucesso.
+//   - DATAS (2026-07-16, ver odate.go): o evento nasce com o ODAT do produtor
+//     (a origem da ordem — o carry-over avança order_date, nunca o ODAT) e o
+//     claim exige a diária resolvida pelo dateRef da aresta contra o ODAT do
+//     CONSUMIDOR: odat (default) = mesma origem · prev = diária anterior ·
+//     stat = qualquer. Um consumidor carregado do dia 14 disputa os eventos
+//     DO DIA 14 — nunca os dos jobs frescos de hoje (report do usuário).
 //
 // Compat/backfill: instances terminadas ANTES da feature não têm eventos.
 // tryClaimEdge materializa lazy o evento implícito (1 por instance terminal sem
@@ -60,10 +66,13 @@ func edgeWants(cond domain.EdgeCondition) []string {
 
 // emitDepEvent — publica o evento de dependência de um término terminal.
 // Best-effort: falha é logada, nunca quebra o fluxo de finish.
+// A data do evento é o ODAT do produtor (origem, NÃO o order_date avançado
+// pelo carry-over): um pai carregado do dia 14 que termina hoje satisfaz o
+// consumidor DO DIA 14, não o fresco de hoje.
 func (s *Scheduler) emitDepEvent(instanceID string, status domain.InstanceStatus) {
 	var defID, orderDate string
 	if err := s.db.QueryRow(
-		`SELECT definition_id, order_date FROM instances WHERE id=?`, instanceID,
+		`SELECT definition_id, `+odateExpr+` FROM instances WHERE id=?`, instanceID,
 	).Scan(&defID, &orderDate); err != nil {
 		return
 	}
@@ -171,27 +180,36 @@ func (s *Scheduler) DepsSatisfied(instanceID string) []string {
 // Retorna true se a aresta ficou satisfeita (claim novo). Idempotente sob
 // corrida: os UNIQUEs de dep_claims decidem; conflito = tenta o próximo evento.
 //
+// DATAS (2026-07-16): `wantDate` é a diária do PAI que satisfaz a aresta, já
+// resolvida pelo dateRef contra o ODAT do consumidor (odat = mesma origem;
+// prev = diária anterior; stat = anyDate, sem filtro). `consumerOdate` escopa
+// o consumo histórico (irmãos da MESMA origem disputam os mesmos eventos).
+//
 // Passos (todos idempotentes e no-op quando não há nada a fazer):
 //  1. backfill lazy: instance terminal do upstream SEM evento (pré-feature ou
 //     status escrito por fora do FinishInstance) ganha seu evento implícito;
 //  2. consumo histórico: instances do MESMO consumer_def que JÁ rodaram sem
 //     claim herdam os eventos mais antigos (elas consumiram de fato);
 //  3. claim de verdade para ESTE consumidor no evento livre mais antigo.
-func (s *Scheduler) tryClaimEdge(consumerID, consumerDefID, upstreamDefID, orderDate string, cond domain.EdgeCondition) bool {
+func (s *Scheduler) tryClaimEdge(consumerID, consumerDefID, upstreamDefID, wantDate string, anyDate bool, consumerOdate string, cond domain.EdgeCondition) bool {
 	wants := edgeWants(cond)
 	if wants == nil {
 		return false // always não consome evento (caller decide pela existência)
 	}
 
-	// 1) backfill lazy de eventos implícitos (terminais sem evento).
-	if _, err := s.db.Exec(
-		`INSERT INTO dep_events(def_id, instance_id, order_date, status)
-		 SELECT definition_id, id, order_date, status FROM instances i
-		 WHERE i.definition_id=? AND i.order_date=? AND i.status IN (?,?)
-		   AND NOT EXISTS (SELECT 1 FROM dep_events e WHERE e.instance_id = i.id)`,
-		upstreamDefID, orderDate, string(domain.StatusOK), string(domain.StatusNotOK),
-	); err != nil {
-		log.Printf("[scheduler] dep backfill %s@%s: %v", upstreamDefID, orderDate, err)
+	// 1) backfill lazy de eventos implícitos (terminais sem evento). A data do
+	// evento implícito é o ODAT da instance (origem), como no emitDepEvent.
+	backfillSQL := `INSERT INTO dep_events(def_id, instance_id, order_date, status)
+		 SELECT definition_id, id, ` + odateExpr + `, status FROM instances i
+		 WHERE i.definition_id=? AND i.status IN (?,?)
+		   AND NOT EXISTS (SELECT 1 FROM dep_events e WHERE e.instance_id = i.id)`
+	backfillArgs := []any{upstreamDefID, string(domain.StatusOK), string(domain.StatusNotOK)}
+	if !anyDate {
+		backfillSQL += ` AND ` + odateExpr + `=?`
+		backfillArgs = append(backfillArgs, wantDate)
+	}
+	if _, err := s.db.Exec(backfillSQL, backfillArgs...); err != nil {
+		log.Printf("[scheduler] dep backfill %s@%s: %v", upstreamDefID, wantDate, err)
 	}
 
 	// 2) consumo histórico: quem RODOU e não falhou (RUNNING/OK) consumiu um
@@ -202,11 +220,11 @@ func (s *Scheduler) tryClaimEdge(consumerID, consumerDefID, upstreamDefID, order
 	// (lazy, na próxima disputa).
 	if rows, err := s.db.Query(
 		`SELECT id FROM instances
-		 WHERE definition_id=? AND order_date=? AND id<>?
+		 WHERE definition_id=? AND `+odateExpr+`=? AND id<>?
 		   AND status IN (?,?)
 		   AND NOT EXISTS (SELECT 1 FROM dep_claims c WHERE c.consumer_instance_id = instances.id AND c.upstream_def_id=?)
 		 ORDER BY COALESCE(started_at, scheduled_at), id`,
-		consumerDefID, orderDate, consumerID,
+		consumerDefID, consumerOdate, consumerID,
 		string(domain.StatusRunning), string(domain.StatusOK), upstreamDefID,
 	); err == nil {
 		var started []string
@@ -218,26 +236,33 @@ func (s *Scheduler) tryClaimEdge(consumerID, consumerDefID, upstreamDefID, order
 		}
 		rows.Close()
 		for _, id := range started {
-			s.claimOldestFree(id, consumerDefID, upstreamDefID, orderDate, wants)
+			s.claimOldestFree(id, consumerDefID, upstreamDefID, wantDate, anyDate, wants)
 		}
 	}
 
 	// 3) claim para ESTE consumidor.
-	return s.claimOldestFree(consumerID, consumerDefID, upstreamDefID, orderDate, wants)
+	return s.claimOldestFree(consumerID, consumerDefID, upstreamDefID, wantDate, anyDate, wants)
 }
 
 // claimOldestFree — clama o evento livre mais antigo do upstream que case os
-// statuses da aresta. Conflito de UNIQUE (corrida) tenta o próximo candidato.
-func (s *Scheduler) claimOldestFree(consumerID, consumerDefID, upstreamDefID, orderDate string, wants []string) bool {
+// statuses da aresta (e a diária resolvida, salvo anyDate/stat). Conflito de
+// UNIQUE (corrida) tenta o próximo candidato.
+func (s *Scheduler) claimOldestFree(consumerID, consumerDefID, upstreamDefID, wantDate string, anyDate bool, wants []string) bool {
 	ph := placeholdersN(len(wants))
-	args := []any{upstreamDefID, orderDate}
+	dateFilter := ` AND e.order_date=?`
+	args := []any{upstreamDefID}
+	if anyDate {
+		dateFilter = ``
+	} else {
+		args = append(args, wantDate)
+	}
 	for _, w := range wants {
 		args = append(args, w)
 	}
 	args = append(args, consumerDefID)
 	rows, err := s.db.Query(
 		`SELECT e.id FROM dep_events e
-		 WHERE e.def_id=? AND e.order_date=? AND e.status IN (`+ph+`)
+		 WHERE e.def_id=?`+dateFilter+` AND e.status IN (`+ph+`)
 		   AND NOT EXISTS (SELECT 1 FROM dep_claims c WHERE c.event_id = e.id AND c.consumer_def_id=?)
 		 ORDER BY e.id LIMIT 20`,
 		args...,
@@ -287,11 +312,15 @@ func (s *Scheduler) claimDepEdges(r instRow, def domain.JobDefinition, claimed m
 		return false
 	}
 	newClaim := false
+	odate := r.Odate()
 	for _, u := range def.Upstream {
 		if claimed[u.From] {
 			continue
 		}
-		if s.tryClaimEdge(r.ID, def.ID, u.From, r.OrderDate, u.Condition) {
+		// Data resolvida pelo dateRef da aresta contra o ODAT do consumidor —
+		// a origem, não o order_date avançado pelo carry-over.
+		wantDate, anyDate := s.resolveEdgeDate(odate, u.DateRef)
+		if s.tryClaimEdge(r.ID, def.ID, u.From, wantDate, anyDate, odate, u.Condition) {
 			if claimed != nil {
 				claimed[u.From] = true
 			}

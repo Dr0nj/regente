@@ -18,16 +18,62 @@ O Regente tem **dois sistemas de dependência**, deliberadamente diferentes:
 
 ---
 
+## Datas — ODAT / PREV / STAT (2026-07-16)
+
+**ODAT** = a data de ORIGEM de uma ordem (Control-M ODATE): o dia em que ela
+entrou em schedule pela primeira vez. O carry-over da virada AVANÇA
+`instances.order_date` (o "dia ativo" que tick/API/RBAC filtram) preservando a
+origem em `carried_from`:
+
+```
+ODAT = COALESCE(NULLIF(carried_from,''), order_date)      (scheduler/odate.go)
+```
+
+**TODO escopo de data usa ODAT, nunca o order_date avançado.** Um job
+carregado do dia 14 continua "do dia 14": disputa os eventos do dia 14, cria
+conditions do dia 14 e aparece agrupado sob 14 na sidebar. (Antes o carregado
+disputava os eventos dos jobs FRESCOS do dia — report do usuário.)
+
+Referências de data, sempre relativas ao ODAT do CONSUMIDOR/produtor:
+
+| ref | Sistema 1 (aresta `dateRef`) | Sistema 2 (sufixo no nome) | significado |
+|---|---|---|---|
+| **odat** (default) | `dateRef:` omitido/`odat` | sem sufixo / `NOME@odat` | mesma diária de origem |
+| **prev** | `dateRef: prev` | `NOME@prev` | diária ANTERIOR = último New Day registrado em `daily_runs` antes do ODAT (cobre lacunas de server desligado); sem registro, ODAT−1 dia |
+| **stat** | `dateRef: stat` | `NOME@stat` | estática: sem data — qualquer evento livre (S1) / só a condition permanente `scope_date=''` (S2) |
+
+## Ciclo de vida da daily (carry-over) — quem atravessa a virada
+
+Regra pura em `carryDecision` (scheduler.go); idades em **DIAS-CALENDÁRIO**
+(timezone da daily), então New Day que não rodou NÃO estica vida de ninguém
+(14→16 com o 15 pulado = 2 dias):
+
+| estado na virada | atravessa? |
+|---|---|
+| RUNNING | SEMPRE (rastrear até terminar) |
+| HELD | SEMPRE, enquanto em hold |
+| NOTOK | enquanto `dias desde a FALHA ≤ keepActive\|1` (um NOTOK não-tratado persiste +1 diária) |
+| WAITING com retry AGENDADO (D-1: `attempts>1` **e** `started_at` preenchido) | regra do NOTOK (falha em tratamento) |
+| WAITING (incl. aguardando CONFIRM) | `dias desde o ODAT ≤ keepActive` — **keepActive=0 morre na 1ª virada** |
+| OK / CANCELLED | nunca |
+
+Rerun de OPERADOR zera `started_at` (handlers de rerun) — por isso ele NÃO
+conta como "retry em tratamento": um job re-rodado e esquecido em WAITING
+obedece keepActive estrito.
+
 ## Sistema 1 — Dependências do grafo = eventos consumíveis (schemaV15)
 
 Duas tabelas (ver `server/internal/db/db.go` §schemaV15):
 
 - **`dep_events`** — ledger IMUTÁVEL: todo término **terminal** de uma instance
   (OK, NOTOK pós-retries, Set OK) publica um evento `{def_id, instance_id,
-  order_date, status}`. Rerun do pai = evento NOVO. Nada apaga eventos.
+  order_date, status}` — `order_date` do evento = **ODAT do produtor** (a
+  origem, não o dia ativo). Rerun do pai = evento NOVO. Nada apaga eventos.
 - **`dep_claims`** — o consumo: uma aresta satisfeita é um **claim** (latch) do
-  consumidor sobre um evento livre. `UNIQUE(event_id, consumer_def_id)` = um
-  evento satisfaz **no máximo uma instance de cada definition** consumidora.
+  consumidor sobre um evento livre **da diária resolvida pelo `dateRef` da
+  aresta contra o ODAT do consumidor** (odat/prev/stat, ver §Datas).
+  `UNIQUE(event_id, consumer_def_id)` = um evento satisfaz **no máximo uma
+  instance de cada definition** consumidora.
 
 ### As regras (numeradas — cite pelo número em commits/testes)
 
@@ -107,12 +153,15 @@ em `TestExplain_Runnable`.
 | Run Now | não consome (bypass) | intocados; `forced` zera no próximo rerun (R7) |
 | Order Force | cópia disputa eventos LIVRES | claims próprios da cópia (R2/R7) |
 
-### Linhas do Monitoring — por PAR de instances (2026-07-14)
+### Linhas do Monitoring — por PAR de instances (2026-07-14; datas 2026-07-16)
 
-O dia pode ter VÁRIAS cópias do mesmo job (Order Force/rerun). A dependência
-declarada existe entre todos os pares, então o canvas desenha **uma linha de
-cada cópia do pai para cada cópia do filho** (antes as cópias extras ficavam
-soltas, sem linha — report do usuário). A cor diz o papel do par:
+O dia pode ter VÁRIAS cópias do mesmo job (Order Force/rerun) **e de VÁRIAS
+origens** (carry-over). A dependência declarada existe entre os pares **da
+diária que o `dateRef` aceita** (`parentsForEdge` no canvas-layout: odat =
+mesmo ODAT; prev = ODAT anterior ao do filho; stat = todas) — o carregado do
+dia 14 só ganha linha com o pai do dia 14, nunca com o fresco de hoje. Dentro
+dos pares elegíveis, o canvas desenha **uma linha de cada cópia do pai para
+cada cópia do filho**. A cor diz o papel do par:
 
 - **verde ✓** — ESTA cópia do pai emitiu o evento que ESTE consumidor clamou.
   O detalhe vem da API: `depsClaims [{from, parentInstanceId}]` ao lado do
@@ -128,10 +177,14 @@ pai libera o consumidor (R2) — a linha é informação por par, o gate não.
 
 ### Onde está no código
 
+- `server/internal/scheduler/odate.go` — ODAT (`odateExpr`, `instRow.Odate()`),
+  `prevDaily`, `resolveEdgeDate` (dateRef S1), `splitCondRef` (sufixos S2),
+  `daysBetween` e o índice `(def, odate)` do gate (`instIndex`).
 - `server/internal/scheduler/depevents.go` — todo o motor (emit/claim/reset/
   rerun/backfill) + o comentário de cabeçalho espelhando estas regras.
 - `server/internal/scheduler/scheduler.go` — `FinishInstance` (R1/R4),
-  `SetOK` (R8), pré-passe no tick (R2).
+  `SetOK` (R8), pré-passe no tick (R2), `carryDecision`/`carryOver` (ciclo de
+  vida da daily).
 - `server/internal/api/instances.go` + `bulk.go` — handlers de rerun/cancel
   (ordem: `RerunDepClaims` ANTES do reset de status), Run Now (R7),
   `attachDepClaims` (`depsSatisfied` + `depsClaims` com o produtor).
@@ -143,11 +196,14 @@ pai libera o consumidor (R2) — a linha é informação por par, o gate não.
 ### Testes que travam a semântica
 
 `scheduler/depevents_test.go` (cenário-guia completo + rerun após OK/NOTOK/
-Set OK) · `api/bugs_behavior_test.go` (confirmed sobrevive, forced zera,
-Set OK de WAITING) · `scheduler/setok_bugs_test.go` (ConditionsOut no Set OK)
-· `scheduler/explain_test.go` (blockers `[]`, nunca null) ·
-`api/depclaims_api_test.go` (depsClaims aponta a cópia certa do pai; `[]`
-nunca null).
+Set OK) · `scheduler/lifecycle_test.go` (carryDecision por status/idade em
+dias, gap de New Day 14→16, rerun de operador ≠ retry, **TestOdat_*: escopo
+ODAT de eventos, dateRef prev/stat, sufixos @odat/@prev/@stat e ConditionsOut
+no ODAT do produtor**) · `api/bugs_behavior_test.go` (confirmed sobrevive,
+forced zera, Set OK de WAITING) · `scheduler/setok_bugs_test.go`
+(ConditionsOut no Set OK) · `scheduler/explain_test.go` (blockers `[]`, nunca
+null) · `api/depclaims_api_test.go` (depsClaims aponta a cópia certa do pai;
+`[]` nunca null).
 
 ---
 
@@ -159,10 +215,15 @@ até alguém remover (diferença deliberada do Sistema 1 — cobrem sinais exter
 e fan-out N:M onde um estado libera muitos jobs sem contagem).
 
 - **Gate**: job com `conditionsIn=[X,Y]` fica **WAIT CONDITION** até TODAS
-  existirem no seu `order_date` (ou como permanentes, `scope_date=''`).
+  existirem **no escopo resolvido do sufixo de cada nome contra o ODAT do
+  job** (ver §Datas): sem sufixo/`@odat` = diária de ORIGEM (ou permanente);
+  `@prev` = diária anterior; `@stat` = só a permanente (`scope_date=''`).
 - **Quem cria/remove**: `conditionsOutAdd`/`conditionsOutRemove` de um job que
-  termina **OK ou Set OK** (`ApplyOutcomes`) · ação On/Do **`set-condition`** ·
-  evento externo (`POST /api/events/ingest`) · operador (UI/API/MCP).
+  termina **OK ou Set OK** (`ApplyOutcomes` — **no ODAT do produtor**, não no
+  dia ativo avançado; `@stat` cria/remove a permanente) · ação On/Do
+  **`set-condition`** (idem, ODAT + sufixos) · evento externo
+  (`POST /api/events/ingest`, data explícita do emissor) · operador (UI/API/
+  MCP, data explícita).
 - **Vínculo = nome exato.** O circuito produtor→consumidor é fechado na UI:
   Design drawer → aba **Dependências → Conditions** (editores de Entrada /
   Saída＋ / Saída−, com datalist do vocabulário do escopo e referência cruzada
@@ -184,6 +245,12 @@ e fan-out N:M onde um estado libera muitos jobs sem contagem).
 5. API mandando **`null` onde o front espera lista** (R10).
 6. Monitoring derivando estado de card da **def viva** (é snapshot — ver
    memória do projeto; exceções deliberadas: `waitConfirm`/`waitAgent`).
+7. Evento/condition de uma ORIGEM satisfazendo consumidor de OUTRA origem
+   sem `dateRef`/sufixo pedindo (bug 2026-07-16: o job carregado do dia 14
+   disputava os eventos dos frescos de hoje — §Datas).
+8. WAITING com `keepActive=0` (inclusive aguardando CONFIRM) **atravessando a
+   virada da daily** — e New Day pulado contando como "não passou dia"
+   (idades em dias-calendário; §Ciclo de vida).
 
 ## Checklist antes de mexer nesta área
 

@@ -81,31 +81,72 @@ func (c *ConditionEngine) List(scopeDate string) ([]domain.Condition, error) {
 	return out, nil
 }
 
-// Apply post-finish hook: para cada job que terminou OK,
-// adiciona ConditionsOutAdd e remove ConditionsOutRemove no scope do orderDate.
-func (c *ConditionEngine) ApplyOutcomes(def domain.JobDefinition, orderDate, actor string) {
-	for _, n := range def.ConditionsOutAdd {
-		_ = c.Set(n, orderDate, actor)
-	}
-	for _, n := range def.ConditionsOutRemove {
-		_ = c.Unset(n, orderDate)
+// resolveCondScope — resolve o sufixo de data de UMA condition contra o ODAT
+// (origem) do job. prevOf resolve a diária anterior (injetado pelo Scheduler —
+// daily_runs cobre lacunas de New Day).
+//
+//	NOME / NOME@odat → scope_date = ODAT do job
+//	NOME@prev        → scope_date = diária anterior ao ODAT
+//	NOME@stat        → scope_date = '' (estática/permanente)
+func resolveCondScope(name, odate string, prevOf func(string) string) (base, scope string) {
+	base, ref := splitCondRef(name)
+	switch ref {
+	case domain.DateRefStat:
+		return base, ""
+	case domain.DateRefPrev:
+		return base, prevOf(odate)
+	default:
+		return base, odate
 	}
 }
 
-// Missing returns the conditions in `names` that are NOT set for orderDate.
+// Apply post-finish hook: para cada job que terminou OK, adiciona
+// ConditionsOutAdd e remove ConditionsOutRemove — no scope resolvido de cada
+// nome (@odat default = ODAT do produtor; @prev; @stat = permanente).
+func (c *ConditionEngine) ApplyOutcomes(def domain.JobDefinition, odate, actor string, prevOf func(string) string) {
+	for _, n := range def.ConditionsOutAdd {
+		base, scope := resolveCondScope(n, odate, prevOf)
+		_ = c.Set(base, scope, actor)
+	}
+	for _, n := range def.ConditionsOutRemove {
+		base, scope := resolveCondScope(n, odate, prevOf)
+		_ = c.Unset(base, scope)
+	}
+}
+
+// MissingCond — uma condition de entrada ainda não satisfeita, com o escopo
+// resolvido (p/ o Explain dizer DE QUAL diária ela falta).
+type MissingCond struct {
+	Name       string // nome como declarado (com sufixo, se houver)
+	Base       string // nome sem sufixo (o que se procura na tabela)
+	Scope      string // scope_date resolvido ('' = estática)
+	ScopeLabel string // sufixo legível p/ mensagens ("", " (diária X)", " (estática)")
+}
+
+// Missing returns the conditions in `names` that are NOT set — cada nome com o
+// sufixo @odat/@prev/@stat resolvido contra o ODAT (origem) do job.
 // FONTE ÚNICA do "falta qual condition?" — usada pelo AllSatisfied (gating) e
 // pelo Explain ("por que não rodou"). Vazio = todas satisfeitas.
-func (c *ConditionEngine) Missing(names []string, orderDate string) []string {
-	var out []string
+func (c *ConditionEngine) Missing(names []string, odate string, prevOf func(string) string) []MissingCond {
+	var out []MissingCond
 	for _, n := range names {
-		if !c.Has(n, orderDate) {
-			out = append(out, n)
+		base, scope := resolveCondScope(n, odate, prevOf)
+		if c.Has(base, scope) {
+			continue
 		}
+		label := ""
+		switch {
+		case scope == "":
+			label = " (estática)"
+		case scope != odate:
+			label = " (diária " + scope + ")"
+		}
+		out = append(out, MissingCond{Name: n, Base: base, Scope: scope, ScopeLabel: label})
 	}
 	return out
 }
 
-// AllSatisfied returns true if every cond in `names` exists for orderDate.
-func (c *ConditionEngine) AllSatisfied(names []string, orderDate string) bool {
-	return len(c.Missing(names, orderDate)) == 0
+// AllSatisfied returns true if every cond in `names` exists no escopo resolvido.
+func (c *ConditionEngine) AllSatisfied(names []string, odate string, prevOf func(string) string) bool {
+	return len(c.Missing(names, odate, prevOf)) == 0
 }

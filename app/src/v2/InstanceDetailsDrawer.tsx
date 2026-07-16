@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { JobInstance, JobDefinition, JobSchedule } from "@/lib/orchestrator-model";
+import { odateOf } from "@/lib/orchestrator-model";
 import {
   fetchInstanceEvents,
   type InstanceEvent,
@@ -66,7 +67,14 @@ const STATUS_LABEL: Record<JobInstance["status"], string> = {
 
 function fmtTime(ms?: number): string {
   if (!ms) return "—";
-  return new Date(ms).toLocaleTimeString("en-GB", { hour12: false });
+  const d = new Date(ms);
+  const time = d.toLocaleTimeString("en-GB", { hour12: false });
+  // Instances carregadas pela virada (carry-over) têm timestamps de OUTROS
+  // dias: fora de hoje, a hora sozinha engana — prefixa dd/MM.
+  if (d.toDateString() !== new Date().toDateString()) {
+    return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")} ${time}`;
+  }
+  return time;
 }
 
 function fmtDuration(ms?: number): string {
@@ -456,7 +464,6 @@ function GeneralTab({ instance, definition, jobType, actionConfig }: {
         <Field label="Completed"  value={fmtTime(instance.completedAt)} />
         <Field label="Duration"   value={fmtDuration(instance.durationMs)} />
         <Field label="Attempts"   value={`${instance.attempts} / ${instance.retries + 1}`} />
-        {instance.carriedFrom && <Field label="Carried from" value={instance.carriedFrom} mono />}
       </Section>
 
       <Section title="Parameters">
@@ -470,7 +477,23 @@ function GeneralTab({ instance, definition, jobType, actionConfig }: {
       </Section>
 
       <Section title="Execution config">
-        <Field label="Order date" value={instance.orderDate} mono />
+        {/* Order date = ODAT, a data de ORIGEM da ordem (Control-M ODATE): o
+            carry-over avança o dia ATIVO preservando a origem — eventos,
+            conditions e agrupamento seguem a origem, então é ela que se mostra. */}
+        <Field
+          label="Order date"
+          value={odateOf(instance)}
+          mono
+          hint={instance.carriedFrom ? "origem da ordem (ODAT) — preservada pelo carry-over" : undefined}
+        />
+        {instance.carriedFrom && (
+          <Field
+            label="Active day"
+            value={instance.orderDate}
+            mono
+            hint="dia ativo atual — a instance atravessou a(s) virada(s) da daily"
+          />
+        )}
         <Field label="Manual"     value={instance.manual ? "yes" : "no"} />
         <Field label="Dry run"    value={instance.dryRun ? "yes" : "no"} />
         <Field label="Timeout"    value={`${instance.timeout}s`} />
@@ -739,7 +762,7 @@ function StatsTab({ instance }: { instance: JobInstance }) {
         {instance.cycleRuns != null && instance.cycleRuns > 0 && (
           <Field label="Cycle runs" value={String(instance.cycleRuns)} />
         )}
-        <Field label="Order date" value={instance.orderDate} mono />
+        <Field label="Order date" value={odateOf(instance)} mono />
       </Section>
 
       {/* ADV-3 — Statistics (Control-M): totais por resultado + distribuição de duração */}
@@ -1107,7 +1130,11 @@ const KIND_COLOR: Record<string, string> = {
 function fmtTS(ts: string): string {
   const d = new Date(ts);
   if (isNaN(d.getTime())) return ts;
-  return d.toLocaleTimeString("en-GB", { hour12: false }) +
+  // Data SEMPRE presente (dd/MM): o log de um job carregado pela virada
+  // atravessa dias — só a hora deixava a leitura ambígua (pedido do usuário,
+  // 2026-07-16).
+  const day = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return day + " " + d.toLocaleTimeString("en-GB", { hour12: false }) +
     "." + String(d.getMilliseconds()).padStart(3, "0");
 }
 
@@ -1487,7 +1514,7 @@ function LogPanel({ instanceId, status }: { instanceId: string; status: JobInsta
             key={e.id}
             style={{
               display: "grid",
-              gridTemplateColumns: "78px 1fr",
+              gridTemplateColumns: "108px 1fr",
               gap: 8,
               padding: "5px 0",
               borderBottom: "1px dashed var(--v2-border-subtle)",

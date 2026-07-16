@@ -68,7 +68,7 @@ interface ServerDefinition {
   confirm?: boolean;
   calendar?: string;
   calendars?: ServerCalendarRef[];
-  upstream?: Array<{ from: string; condition: EdgeCondition }>;
+  upstream?: Array<{ from: string; condition: EdgeCondition; dateRef?: "odat" | "prev" | "stat" }>;
   // JSON wire field: server expõe `actionConfig` (json tag), embora o
   // YAML em disco mantenha `params` por compat. NUNCA renomear pra params
   // aqui — o server descarta o map silenciosamente.
