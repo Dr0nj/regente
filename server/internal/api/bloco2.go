@@ -4,6 +4,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -12,6 +13,21 @@ import (
 	"github.com/Dr0nj/regente-server/internal/scheduler"
 	"github.com/go-chi/chi/v5"
 )
+
+// condName decodifica o param {name} da rota. O chi entrega o segmento AINDA
+// percent-encoded quando o cliente escapou caracteres especiais: o front manda
+// o nome via encodeURIComponent, então uma condição "FOO@Odate" chega como
+// "FOO%40Odate". Sem decodificar, o name não bate com o gravado e o set/unset
+// vira NO-OP silencioso (rota casa → HTTP 200 → toast "deletada", mas 0 linhas
+// saem) — era por isso que condições com "@" no nome não podiam ser deletadas.
+// PathUnescape é seguro/idempotente: nome sem "%" volta igual.
+func condName(r *http.Request) string {
+	n := chi.URLParam(r, "name")
+	if dec, err := url.PathUnescape(n); err == nil {
+		return dec
+	}
+	return n
+}
 
 // === F14 — Calendars ===
 
@@ -147,7 +163,7 @@ func (s *server) setCondition(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "conditions not configured", 503)
 		return
 	}
-	name := chi.URLParam(r, "name")
+	name := condName(r)
 	scope := r.URL.Query().Get("scope")
 	u, _ := auth.FromContext(r.Context())
 	actor := "operator"
@@ -173,7 +189,7 @@ func (s *server) unsetCondition(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "conditions not configured", 503)
 		return
 	}
-	name := chi.URLParam(r, "name")
+	name := condName(r)
 	scope := r.URL.Query().Get("scope")
 	if err := c.Unset(name, scope); err != nil {
 		http.Error(w, err.Error(), 500)
