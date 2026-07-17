@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/Dr0nj/regente-server/internal/auth"
-	"github.com/go-chi/chi/v5"
 )
 
 // listVariables \u2014 GET /api/variables \u2192 array ordenado por nome.
@@ -29,7 +28,7 @@ func (s *server) putVariable(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "variables not configured", 503)
 		return
 	}
-	name := chi.URLParam(r, "name")
+	name := urlName(r, "name")
 	var body struct {
 		Value string `json:"value"`
 	}
@@ -62,7 +61,7 @@ func (s *server) deleteVariable(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "variables not configured", 503)
 		return
 	}
-	name := chi.URLParam(r, "name")
+	name := urlName(r, "name")
 	if err := vs.Delete(name); err != nil {
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
 		return

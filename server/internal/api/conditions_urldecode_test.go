@@ -7,7 +7,8 @@ package api
 // rota como "FOO%40Odate". O chi entrega o {name} AINDA percent-encoded; sem
 // decodificar, set/unset viravam NO-OP silencioso — a rota casava (HTTP 200, o
 // toast dizia "deletada"), mas o DELETE ... WHERE name='FOO%40Odate' não batia
-// com o "@" gravado e 0 linhas saíam. condName() decodifica o param.
+// com o "@" gravado e 0 linhas saíam. urlName() decodifica o param (o helper
+// compartilhado que set/unset e os demais handlers de recurso-por-nome usam).
 
 import (
 	"encoding/json"

@@ -156,7 +156,7 @@ func (s *server) createFolder(w http.ResponseWriter, r *http.Request) {
 
 // renameFolder — PATCH /api/folders/{name}  body: {"newName": "..."}
 func (s *server) renameFolder(w http.ResponseWriter, r *http.Request) {
-	old := chi.URLParam(r, "name")
+	old := urlName(r, "name")
 	var req struct {
 		NewName string `json:"newName"`
 	}
@@ -179,7 +179,7 @@ func (s *server) renameFolder(w http.ResponseWriter, r *http.Request) {
 
 // deleteFolder — DELETE /api/folders/{name}?force=true|false
 func (s *server) deleteFolder(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
+	name := urlName(r, "name")
 	force := r.URL.Query().Get("force") == "true"
 	if !s.requireFolderWrite(w, r, name) {
 		return
@@ -199,7 +199,7 @@ func (s *server) deleteFolder(w http.ResponseWriter, r *http.Request) {
 // stub .regente-folder.yaml (viaja com o workspace via Git). Campo 0/ausente
 // herda o global da UI; body com ambos zerados (ou {}) REMOVE o override.
 func (s *server) setFolderLayout(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
+	name := urlName(r, "name")
 	if !s.requireFolderWrite(w, r, name) {
 		return
 	}
@@ -228,7 +228,7 @@ func (s *server) setFolderLayout(w http.ResponseWriter, r *http.Request) {
 
 // archiveFolder — POST /api/folders/{name}/archive
 func (s *server) archiveFolder(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
+	name := urlName(r, "name")
 	if !s.requireFolderWrite(w, r, name) {
 		return
 	}

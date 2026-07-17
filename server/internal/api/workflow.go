@@ -44,7 +44,7 @@ func (s *server) resumeFolder(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) folderPauseResume(w http.ResponseWriter, r *http.Request, pause bool) {
-	folder := chi.URLParam(r, "name")
+	folder := urlName(r, "name")
 	if !s.requireFolderWrite(w, r, folder) {
 		return
 	}

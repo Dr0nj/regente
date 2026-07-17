@@ -4,30 +4,17 @@ package api
 import (
 	"encoding/json"
 	"net/http"
-	"net/url"
 	"strconv"
 	"time"
 
 	"github.com/Dr0nj/regente-server/internal/auth"
 	"github.com/Dr0nj/regente-server/internal/domain"
 	"github.com/Dr0nj/regente-server/internal/scheduler"
-	"github.com/go-chi/chi/v5"
 )
 
-// condName decodifica o param {name} da rota. O chi entrega o segmento AINDA
-// percent-encoded quando o cliente escapou caracteres especiais: o front manda
-// o nome via encodeURIComponent, então uma condição "FOO@Odate" chega como
-// "FOO%40Odate". Sem decodificar, o name não bate com o gravado e o set/unset
-// vira NO-OP silencioso (rota casa → HTTP 200 → toast "deletada", mas 0 linhas
-// saem) — era por isso que condições com "@" no nome não podiam ser deletadas.
-// PathUnescape é seguro/idempotente: nome sem "%" volta igual.
-func condName(r *http.Request) string {
-	n := chi.URLParam(r, "name")
-	if dec, err := url.PathUnescape(n); err == nil {
-		return dec
-	}
-	return n
-}
+// O decode do {name} da rota vive em urlName() (urlname.go) — compartilhado por
+// todos os handlers que endereçam um recurso por nome (calendars, resources,
+// variables, conditions, folders, templates), não só por conditions.
 
 // === F14 — Calendars ===
 
@@ -51,7 +38,7 @@ func (s *server) getCalendar(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "calendars not configured", 503)
 		return
 	}
-	name := chi.URLParam(r, "name")
+	name := urlName(r, "name")
 	cal, err := cs.Get(name)
 	if err != nil {
 		http.Error(w, err.Error(), 404)
@@ -66,7 +53,7 @@ func (s *server) saveCalendar(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "calendars not configured", 503)
 		return
 	}
-	name := chi.URLParam(r, "name")
+	name := urlName(r, "name")
 	var cal domain.Calendar
 	if err := json.NewDecoder(r.Body).Decode(&cal); err != nil {
 		http.Error(w, err.Error(), 400)
@@ -86,7 +73,7 @@ func (s *server) deleteCalendar(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "calendars not configured", 503)
 		return
 	}
-	if err := cs.Delete(chi.URLParam(r, "name")); err != nil {
+	if err := cs.Delete(urlName(r, "name")); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
@@ -110,7 +97,7 @@ func (s *server) setResourceCapacity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "resources not configured", 503)
 		return
 	}
-	name := chi.URLParam(r, "name")
+	name := urlName(r, "name")
 	var body struct {
 		Capacity int `json:"capacity"`
 	}
@@ -129,7 +116,7 @@ func (s *server) deleteResource(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "resources not configured", 503)
 		return
 	}
-	name := chi.URLParam(r, "name")
+	name := urlName(r, "name")
 	if err := rt.Delete(name); err != nil {
 		http.Error(w, err.Error(), 409)
 		return
@@ -163,7 +150,7 @@ func (s *server) setCondition(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "conditions not configured", 503)
 		return
 	}
-	name := condName(r)
+	name := urlName(r, "name")
 	scope := r.URL.Query().Get("scope")
 	u, _ := auth.FromContext(r.Context())
 	actor := "operator"
@@ -189,7 +176,7 @@ func (s *server) unsetCondition(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "conditions not configured", 503)
 		return
 	}
-	name := condName(r)
+	name := urlName(r, "name")
 	scope := r.URL.Query().Get("scope")
 	if err := c.Unset(name, scope); err != nil {
 		http.Error(w, err.Error(), 500)

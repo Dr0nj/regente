@@ -122,7 +122,7 @@ func (s *server) saveTemplate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) deleteTemplate(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
+	name := urlName(r, "name")
 	res, err := s.cfg.DB.Exec(`DELETE FROM job_templates WHERE name=?`, name)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
