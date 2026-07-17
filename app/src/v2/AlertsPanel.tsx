@@ -283,6 +283,7 @@ function conditionSummary(rule: AlertRule): string {
   switch (c.type) {
     case "failure": return "Quando o workflow falha";
     case "duration_exceeded": return `Quando a duração excede ${(c.thresholdMs / 1000).toFixed(0)}s`;
+    case "slow_vs_average": return `Quando a duração passa da média histórica do job em ${(c.percentOver > 0 ? c.percentOver : 50).toFixed(0)}% (1ª execução não alerta; dispara já durante a run)`;
     case "retry_exceeded": return `Quando há mais de ${c.maxRetries} retries`;
     case "success_rate_below": return `Quando a taxa de sucesso cai abaixo de ${(c.rate * 100).toFixed(0)}%`;
     case "consecutive_failures": return `Quando há ${c.count} falhas consecutivas`;

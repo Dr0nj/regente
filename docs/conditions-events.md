@@ -36,6 +36,17 @@ liga à mão precisa colocar o nome **na entrada E na saída−** se quiser
 semântica de consumo (sem a saída−, a condição sobrevive ao OK — fan-out N:M
 deliberado).
 
+Ergonomia da setinha (2026-07-17, report "arrasto e não cria a dependência"):
+a bolinha tem pegada de 18px (nub visual segue 6px), o drop tem ímã
+(`connectionRadius`) e **soltar sobre o CARD do outro job liga** (fallback
+`onConnectEnd` — não precisa acertar o handle). A DIREÇÃO segue a bolinha de
+origem: a de **baixo** = este job produz pro alvo; a de **cima** = invertida —
+o job arrastado passa a DEPENDER do alvo. Os campos escritos são os mesmos nos
+dois gestos (invariante 9). O drawer do Design faz **AUTOSAVE** (trocar de
+job/fechar salva o que estava sujo; job novo segue exigindo Save) e recebe a
+def VIVA, mesclando por diff condições escritas por fora — um drawer aberto
+nunca mais sobrescreve a ligação recém-criada pela setinha.
+
 **Quem cria/remove condição no pool:**
 1. término **OK/Set OK** de um job (saída＋/saída−) — `ApplyOutcomes`, no ODAT
    do produtor;
@@ -210,9 +221,11 @@ toca o pool (C4).
   Organizar).
 - `app/src/v2/canvas-layout.ts` — linhas pool-aware (`evaluateEdgeState`),
   `isWaitingOnConds`, espaçamento (NODE_GAP_Y=72) e ✓ 9px.
-- `app/src/v2/V2Preview.tsx` — onConnect (setinha → condições nos dois jobs),
-  pool state, botão Condições.
-- `app/src/v2/JobConfigDrawer.tsx` — aba **Condições** unificada.
+- `app/src/v2/V2Preview.tsx` — `connectDefs` (setinha → condições nos dois
+  jobs; `onConnect` + fallback `onConnectEnd` de drop-no-card, direção pela
+  bolinha de origem), pool state, botão Condições.
+- `app/src/v2/JobConfigDrawer.tsx` — aba **Condições** unificada; autosave do
+  draft (troca de job/fechar) + merge por diff das condições externas.
 
 ## Testes que travam a semântica
 

@@ -99,6 +99,14 @@ type Scheduler struct {
 	// ARCH-3 — guarda de ticks sobrepostos (camada em-processo sempre; advisory
 	// cross-processo opt-in via EnableTickLock). Ver ticklock.go.
 	tickGuard *tickGuard
+
+	// Slow Execution pela MÉDIA histórica (2026-07-17, ver slowalert.go):
+	// slowFired deduplica o alerta por RUN (cada instance alerta no máximo uma
+	// vez, seja durante a execução ou no término); slowAvg cacheia a média por
+	// definition com TTL curto pra varredura das RUNNING ficar barata no tick.
+	slowMu    sync.Mutex
+	slowFired map[string]bool
+	slowAvg   map[string]slowAvgEntry
 }
 
 // Bus — Fase 2 (futuro serverless): transporte do control-plane. Abstrai a
@@ -139,6 +147,8 @@ func New(store *storage.FileStore, db *db.DB, bus Bus, tick time.Duration) *Sche
 		settings:  Settings{DailyAt: "00:00", Timezone: "America/Sao_Paulo"},
 		quit:      make(chan struct{}),
 		nowFn:     time.Now,
+		slowFired: map[string]bool{},
+		slowAvg:   map[string]slowAvgEntry{},
 	}
 	// ARCH-3 — guard sempre presente (camada em-processo). A camada cross-processo
 	// no Postgres é opt-in via EnableTickLock (modo serverless).
@@ -1208,6 +1218,10 @@ func (s *Scheduler) tickOnce() {
 
 	// Actions/On-Do — dimensão "runtime": shouts por duração nas instances RUNNING.
 	s.evaluateRuntimeActions(now)
+
+	// Slow Execution — alerta DURANTE a execução quando o decorrido estoura a
+	// média histórica do job + folga (rule-slow; ver slowalert.go).
+	s.evaluateSlowRunning(now)
 }
 
 // agentAvailable — há agente AGORA pra este job? SSH é agentless (roda no
@@ -1485,6 +1499,16 @@ func (s *Scheduler) buildAlertContext(id string, status domain.InstanceStatus) A
 	if startedAt.Valid && finishedAt.Valid {
 		ctx.DurationMs = finishedAt.Time.Sub(startedAt.Time).Milliseconds()
 	}
+	// Slow Execution — média histórica das execuções OK ANTERIORES (a própria
+	// instance fica de fora: a run lenta não pode puxar a régua pra cima).
+	// SlowFired: já alertou DURANTE a run (tick) → o terminal não repete.
+	ctx.AvgDurationMs, ctx.HistoryRuns = s.avgOKDurationMs(defID, id)
+	s.slowMu.Lock()
+	if s.slowFired[id] {
+		ctx.SlowFired = true
+		delete(s.slowFired, id)
+	}
+	s.slowMu.Unlock()
 	// label do snapshot congelado, se houver.
 	if snapshot != "" {
 		var def domain.JobDefinition

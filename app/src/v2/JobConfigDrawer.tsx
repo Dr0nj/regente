@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { ExternalLink, X, Trash2, ArrowRight, ArrowLeft } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ExternalLink, X, Trash2, ArrowRight, ArrowLeft, HelpCircle } from "lucide-react";
 import type { JobDefinition, CalendarRef, ActionRule, DepDateRef } from "@/lib/orchestrator-model";
 import { splitCondSuffix, withCondSuffix, producesBase } from "@/lib/conditions-model";
 import type { JobType } from "@/lib/job-config";
@@ -28,6 +28,8 @@ import { useResizablePanel, ResizeHandle } from "./resizable";
 
 export interface JobConfigHandlers {
   onSave: (def: JobDefinition) => void | Promise<void>;
+  /** Autosave (troca de job / fechar o drawer): salva SEM fechar o drawer. */
+  onAutoSave?: (def: JobDefinition) => void | Promise<void>;
   onDelete: (id: string) => void | Promise<void>;
   onClose: () => void;
 }
@@ -92,7 +94,41 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   // Schema por tipo (ADV-1) — usado pra podar params órfãos quando o tipo muda.
   const [typeFieldIdx, setTypeFieldIdx] = useState<Map<string, Set<string>> | null>(null);
 
+  /* ── Autosave (2026-07-17) ── O Design é DRAFT (o commit real é o Publish):
+     trocar de job no canvas ou fechar o drawer não perde mais o que foi mexido
+     — antes, clicar em outro job sem Save descartava tudo (report do usuário).
+     Toda edição marca dirty; o snapshot do formulário vive em liveRef
+     (atualizado no render) e é salvo na troca de job e no unmount. Job NOVO
+     fica de fora: criar continua decisão explícita do Save (fechar um NEW
+     descarta, como sempre). */
+  const dirtyRef = useRef(false);
+  // editedIdRef = de QUEM são os states na tela. No frame da troca de job o
+  // prop `definition` já é o próximo e os states ainda são do anterior — o
+  // guard evita um snapshot frankenstein (metade de cada job).
+  const editedIdRef = useRef(definition.id);
+  const liveRef = useRef<{ def: JobDefinition; dirty: boolean; isNew: boolean } | null>(null);
+  const autoSaveRef = useRef(handlers.onAutoSave);
+  autoSaveRef.current = handlers.onAutoSave;
+  const flushAutosave = useCallback((snap: { def: JobDefinition; dirty: boolean; isNew: boolean } | null) => {
+    if (!snap || !snap.dirty || snap.isNew || !autoSaveRef.current) return;
+    const d = snap.def;
+    if (!d.id.trim() || !d.label.trim() || !(d.team ?? "").trim()) return; // incompleta — não persiste sozinho
+    Promise.resolve(autoSaveRef.current(d)).catch((e: unknown) => {
+      toast.error(`Autosave de ${d.id} falhou`, { detail: e instanceof Error ? e.message : String(e) });
+    });
+  }, []);
+  /** Envolve um setter marcando o formulário como sujo (candidato a autosave). */
+  function touch<T>(setter: (v: T) => void): (v: T) => void {
+    return (v) => { dirtyRef.current = true; setter(v); };
+  }
+
   useEffect(() => {
+    // Troca de job com o drawer aberto: AUTOSAVE do anterior antes de resetar
+    // (liveRef ainda guarda o snapshot do job velho — o guard do render pulou
+    // o frame da troca). Depois o formulário vira o job novo, limpo.
+    if (editedIdRef.current !== definition.id) flushAutosave(liveRef.current);
+    editedIdRef.current = definition.id;
+    dirtyRef.current = false;
     setTab("general");
     setLabel(definition.label); setId(definition.id); setJobType(definition.jobType as JobType);
     setTeam(definition.team ?? (availableFolders.length === 1 ? availableFolders[0] : ""));
@@ -105,6 +141,40 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     setAgentTouched(false);
     setErr(null); setValidationErr(null);
   }, [definition.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fechar o drawer (X / trocar de modo) também persiste o que estava sujo.
+  useEffect(() => () => { flushAutosave(liveRef.current); }, [flushAutosave]);
+
+  // O prop `definition` é a def VIVA (V2Preview): a setinha do canvas grava
+  // condições nela COM o drawer aberto. Diffamos o que mudou POR FORA e
+  // aplicamos no estado local — sem perder o que o usuário digitou aqui e sem
+  // o Save/autosave daqui sobrescrever a ligação recém-criada (era a raiz do
+  // "liguei pela setinha e a dependência sumiu").
+  const extCondsRef = useRef({
+    in: definition.conditionsIn ?? [],
+    add: definition.conditionsOutAdd ?? [],
+    rm: definition.conditionsOutRemove ?? [],
+  });
+  const condSyncIdRef = useRef(definition.id);
+  useEffect(() => {
+    const ext = {
+      in: definition.conditionsIn ?? [],
+      add: definition.conditionsOutAdd ?? [],
+      rm: definition.conditionsOutRemove ?? [],
+    };
+    const before = extCondsRef.current;
+    extCondsRef.current = ext;
+    if (condSyncIdRef.current !== definition.id) { condSyncIdRef.current = definition.id; return; } // troca de job: o reset já repôs tudo
+    const merge = (cur: string[], now: string[], prev: string[]) => {
+      const added = now.filter((n) => !prev.includes(n) && !cur.includes(n));
+      const removed = prev.filter((n) => !now.includes(n) && cur.includes(n));
+      if (added.length === 0 && removed.length === 0) return cur;
+      return [...cur.filter((n) => !removed.includes(n)), ...added];
+    };
+    setConditionsIn((c) => merge(c, ext.in, before.in));
+    setConditionsOutAdd((c) => merge(c, ext.add, before.add));
+    setConditionsOutRemove((c) => merge(c, ext.rm, before.rm));
+  }, [definition.id, definition.conditionsIn, definition.conditionsOutAdd, definition.conditionsOutRemove]);
 
   // Pin default na CRIAÇÃO: job novo nasce marcado no primeiro agente online
   // capaz do jobType (re-decide se o jobType mudar antes do usuário tocar no
@@ -170,7 +240,12 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     setValidationErr(null);
     const next = buildDef();
     setSaving(true); setErr(null);
-    try { await handlers.onSave(next); } catch (e) { setErr(e); } finally { setSaving(false); }
+    try {
+      await handlers.onSave(next);
+      // salvo — nada pendente pro autosave do unmount (o drawer fecha em seguida)
+      dirtyRef.current = false;
+      if (liveRef.current) liveRef.current.dirty = false;
+    } catch (e) { setErr(e); } finally { setSaving(false); }
   }
 
   // D-13 — salva a FORMA deste job como template reutilizável (o server
@@ -189,6 +264,9 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   async function handleDelete() {
     if (isNew) { handlers.onClose(); return; }
     if (!confirm(`Delete definition "${definition.label}"? Vai remover o YAML do repo.`)) return;
+    // Deletou → NUNCA autosave no unmount (recriaria o job apagado).
+    dirtyRef.current = false;
+    if (liveRef.current) liveRef.current.dirty = false;
     setSaving(true);
     try { await handlers.onDelete(definition.id); } catch (e) { setErr(e); } finally { setSaving(false); }
   }
@@ -219,6 +297,12 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   const { width, onMouseDown, reset } = useResizablePanel({
     storageKey: "regente.panel.jobConfig.w", defaultWidth: 360, min: 280, max: 720, edge: "left",
   });
+
+  // Snapshot vivo do formulário pro autosave — só enquanto os states na tela
+  // pertencem a ESTE `definition` (ver editedIdRef; o frame da troca é pulado).
+  if (editedIdRef.current === definition.id) {
+    liveRef.current = { def: buildDef(), dirty: dirtyRef.current, isNew };
+  }
 
   return (
     <aside style={{
@@ -264,20 +348,20 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
       <div style={{ flex: 1, overflowY: "auto", padding: "12px", display: "flex", flexDirection: "column", gap: 12 }}>
         {tab === "general" && (
           <>
-            <Field label="Job Name"><Input value={label} onChange={setLabel} /></Field>
+            <Field label="Job Name"><Input value={label} onChange={touch(setLabel)} /></Field>
             <Field label="Job Type">
-              <select value={jobType} onChange={(e) => setJobType(e.target.value as JobType)} style={selectStyle}>
+              <select value={jobType} onChange={(e) => { dirtyRef.current = true; setJobType(e.target.value as JobType); }} style={selectStyle}>
                 {JOB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </Field>
             <Field label="Folder">
-              <select value={team} onChange={(e) => setTeam(e.target.value)} style={selectStyle}>
+              <select value={team} onChange={(e) => { dirtyRef.current = true; setTeam(e.target.value); }} style={selectStyle}>
                 <option value="">— select folder —</option>
                 {availableFolders.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </Field>
             <Field label="Agente (onde roda)">
-              <select value={agentId} onChange={(e) => { setAgentTouched(true); setAgentId(e.target.value); }} style={selectStyle}>
+              <select value={agentId} onChange={(e) => { dirtyRef.current = true; setAgentTouched(true); setAgentId(e.target.value); }} style={selectStyle}>
                 <option value="">Automático (por capability)</option>
                 {agents.map((a) => (
                   // BUG-8 — o SERVER-AGENT embutido não ganha sufixo de restrição
@@ -297,19 +381,19 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
               </div>
             </Field>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)" }}>
-              <input type="checkbox" checked={schedule.enabled} onChange={(e) => setSchedule({ ...schedule, enabled: e.target.checked })} />
+              <input type="checkbox" checked={schedule.enabled} onChange={(e) => { dirtyRef.current = true; setSchedule({ ...schedule, enabled: e.target.checked }); }} />
               Schedule habilitado
             </label>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <Field label="Retries"><Input value={String(retries)} onChange={(v) => setRetries(Number(v) || 0)} mono /></Field>
-              <Field label="Timeout (s)"><Input value={String(timeout)} onChange={(v) => setTimeoutS(Number(v) || 0)} mono /></Field>
+              <Field label="Retries"><Input value={String(retries)} onChange={(v) => { dirtyRef.current = true; setRetries(Number(v) || 0); }} mono /></Field>
+              <Field label="Timeout (s)"><Input value={String(timeout)} onChange={(v) => { dirtyRef.current = true; setTimeoutS(Number(v) || 0); }} mono /></Field>
             </div>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)" }}>
-              <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
+              <input type="checkbox" checked={dryRun} onChange={(e) => { dirtyRef.current = true; setDryRun(e.target.checked); }} />
               Dry run (log only, não executa)
             </label>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)" }}>
-              <input type="checkbox" checked={confirmReq} onChange={(e) => setConfirmReq(e.target.checked)} />
+              <input type="checkbox" checked={confirmReq} onChange={(e) => { dirtyRef.current = true; setConfirmReq(e.target.checked); }} />
               Exigir confirmação (Control-M Confirm — só roda após o operador confirmar)
             </label>
           </>
@@ -318,19 +402,19 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
         {tab === "schedule" && (
           <ScheduleEditor
             value={schedule}
-            onChange={setSchedule}
+            onChange={touch(setSchedule)}
             calendars={calendars}
-            onCalendarsChange={setCalendars}
+            onCalendarsChange={touch(setCalendars)}
             availableCalendars={calendarDefs}
           />
         )}
 
         {tab === "action" && (
-          <JobActionConfigEditor jobType={jobType} config={actionConfig} onChange={setActionConfig} />
+          <JobActionConfigEditor jobType={jobType} config={actionConfig} onChange={touch(setActionConfig)} />
         )}
 
         {tab === "ondo" && (
-          <OnDoEditor value={actions} onChange={setActions} allDefs={allDefs} selfId={definition.id} />
+          <OnDoEditor value={actions} onChange={touch(setActions)} allDefs={allDefs} selfId={definition.id} />
         )}
 
         {tab === "deps" && (
@@ -341,9 +425,9 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
             conditionsIn={conditionsIn}
             conditionsOutAdd={conditionsOutAdd}
             conditionsOutRemove={conditionsOutRemove}
-            onChangeConditionsIn={setConditionsIn}
-            onChangeConditionsOutAdd={setConditionsOutAdd}
-            onChangeConditionsOutRemove={setConditionsOutRemove}
+            onChangeConditionsIn={touch(setConditionsIn)}
+            onChangeConditionsOutAdd={touch(setConditionsOutAdd)}
+            onChangeConditionsOutRemove={touch(setConditionsOutRemove)}
             knownConditions={knownConditions}
           />
         )}
@@ -404,19 +488,57 @@ function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, cond
   // mesma topologia das linhas do canvas (name-matching).
   const dependsOn = [...new Set(conditionsIn.flatMap((n) => producersOf(n)))];
 
+  // O manual completo do modelo mora atrás do "?" — quem já sabe usar a aba
+  // não precisa ler o textão toda vez (report do usuário: poluía a tela).
+  const [showHelp, setShowHelp] = useState(false);
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <Hint>
-        <b>Toda dependência é uma condição num pool único do ambiente</b> (botão
-        “Condições” no Monitoring). Ligar A→B pela <b>setinha</b> do canvas cria a
-        condição <code>A-TO-B</code> automaticamente: saída＋ no pai, entrada +
-        saída− aqui. Fazendo <b>à mão</b>, é o mesmo lugar: digite o mesmo nome na
-        saída＋ do pai e na <b>entrada E na saída−</b> deste job (a saída− é o
-        consumo — sem ela a condição sobrevive ao OK e o rerun roda direto).
-        A DATA é o seletor de cada linha: <b>Odate</b> (default) = diária de
-        origem do job · <b>Prev</b> = diária anterior · <b>Stat</b> = estática,
-        sem data.
-      </Hint>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, position: "relative" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--v2-text-muted)" }}>
+          Modelo único — pool de condições
+        </span>
+        <button
+          onClick={() => setShowHelp((v) => !v)}
+          title="Como funcionam as condições"
+          style={{
+            marginLeft: "auto", width: 20, height: 20, borderRadius: "50%",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            background: showHelp ? "var(--v2-accent-deep)" : "transparent",
+            border: `1px solid ${showHelp ? "var(--v2-accent-brand)" : "var(--v2-border-medium)"}`,
+            color: showHelp ? "var(--v2-accent-brand)" : "var(--v2-text-muted)",
+            cursor: "pointer", padding: 0, flexShrink: 0,
+          }}
+        >
+          <HelpCircle size={13} />
+        </button>
+      </div>
+      {showHelp && (
+        <div style={{
+          position: "absolute", top: 26, left: 0, right: 0, zIndex: 10,
+          background: "var(--v2-bg-elevated)",
+          border: "1px solid var(--v2-accent-brand)", borderRadius: 8,
+          boxShadow: "0 10px 30px rgba(0,0,0,0.45)", padding: "12px 14px",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--v2-accent-brand)" }}>
+              Como funciona
+            </span>
+            <button onClick={() => setShowHelp(false)} title="Fechar" style={{ ...iconBtn, marginLeft: "auto" }}><X size={12} /></button>
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--v2-text-secondary)", lineHeight: 1.5 }}>
+            <b>Toda dependência é uma condição num pool único do ambiente</b> (botão
+            “Condições” no Monitoring). Ligar A→B pela <b>setinha</b> do canvas cria a
+            condição <code>A-TO-B</code> automaticamente: saída＋ no pai, entrada +
+            saída− aqui. Fazendo <b>à mão</b>, é o mesmo lugar: digite o mesmo nome na
+            saída＋ do pai e na <b>entrada E na saída−</b> deste job (a saída− é o
+            consumo — sem ela a condição sobrevive ao OK e o rerun roda direto).
+            A DATA é o seletor de cada linha: <b>Odate</b> (default) = diária de
+            origem do job · <b>Prev</b> = diária anterior · <b>Stat</b> = estática,
+            sem data.
+          </div>
+        </div>
+      )}
 
       <CondChipsEditor
         title="Entrada — depende de"
@@ -533,13 +655,18 @@ function CondChipsEditor({ title, hint, value, onChange, known, listId, crossRef
         );
       })}
       <div style={{ display: "flex", gap: 6 }}>
+        {/* Campo de condição NOVA — visual deliberadamente diferente das chips
+            já adicionadas (fundo elevado + borda tracejada; report do usuário:
+            mesma cor confundia o que existe com onde se digita). */}
         <input
           value={draft}
           list={listId}
-          placeholder="ex.: ARQUIVO-CHEGOU"
+          placeholder="＋ nova condição… (ex.: ARQUIVO-CHEGOU)"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
-          style={{ flex: 1, background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-subtle)", color: "var(--v2-text-primary)", padding: "5px 8px", fontSize: 11, fontFamily: "var(--v2-font-mono)", borderRadius: 3, outline: "none", boxSizing: "border-box" }}
+          onFocus={(e) => { e.currentTarget.style.borderColor = "var(--v2-accent-brand)"; }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = "var(--v2-border-medium)"; }}
+          style={{ flex: 1, background: "var(--v2-bg-elevated)", border: "1px dashed var(--v2-border-medium)", color: "var(--v2-text-primary)", padding: "5px 8px", fontSize: 11, fontFamily: "var(--v2-font-mono)", borderRadius: 3, outline: "none", boxSizing: "border-box" }}
         />
         <datalist id={listId}>
           {suggestions.map((k) => <option key={k} value={k} />)}

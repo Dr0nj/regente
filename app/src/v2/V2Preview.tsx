@@ -8,6 +8,7 @@ import {
   type Connection,
   type NodeMouseHandler,
   type OnConnect,
+  type OnConnectEnd,
   type ReactFlowInstance,
 } from "@xyflow/react";
 import JobNodeV2 from "./JobNodeV2";
@@ -757,16 +758,13 @@ function V2PreviewInner() {
     });
   }, [activeFolders]);
 
-  /* ── onConnect — a SETINHA escreve CONDIÇÕES (modelo único, 2026-07-17) ──
+  /* ── connectDefs — a SETINHA escreve CONDIÇÕES (modelo único, 2026-07-17) ──
      Ligar A→B cria a condição A-TO-B: saída＋ no produtor, entrada + saída−
      (deleção automática) no consumidor — exatamente o que o usuário faria
      digitando à mão no drawer; os dois caminhos vão pro MESMO lugar (o pool).
      Sem modal: a data default é Odate (ajustável no drawer, seletor por linha). */
-  const onConnect: OnConnect = useCallback((conn: Connection) => {
-    if (mode !== "design") return;
-    if (!conn.source || !conn.target || conn.source === conn.target) return;
-    const fromId = conn.source.replace(/^d-/, "");
-    const toId = conn.target.replace(/^d-/, "");
+  const connectDefs = useCallback((fromId: string, toId: string) => {
+    if (!fromId || !toId || fromId === toId) return;
     const producer = defs.find((d) => d.id === fromId);
     const consumer = defs.find((d) => d.id === toId);
     if (!producer || !consumer) return;
@@ -791,7 +789,41 @@ function V2PreviewInner() {
     void save().catch((e) => {
       toast.error("Falha ao salvar a condição da ligação", { detail: e instanceof Error ? e.message : String(e) });
     });
-  }, [mode, defs]);
+  }, [defs]);
+
+  const onConnect: OnConnect = useCallback((conn: Connection) => {
+    if (mode !== "design") return;
+    if (!conn.source || !conn.target) return;
+    // O RF normaliza source/target mesmo quando o arrasto COMEÇOU pela bolinha
+    // de cima (target): puxar o topo de A até a base de B chega aqui como
+    // {source: B, target: A} — A passa a depender de B, como o usuário pediu.
+    connectDefs(conn.source.replace(/^d-/, ""), conn.target.replace(/^d-/, ""));
+  }, [mode, connectDefs]);
+
+  /* ── onConnectEnd — soltar a bolinha SOBRE O CARD também liga ──
+     O RF só completa a conexão quando o mouse cai no handle certo; na prática
+     o usuário solta no CORPO do card do outro job e nada acontecia (o report
+     "arrasto e não cria a dependência"). Fallback: conexão não fechou → achamos
+     o card sob o cursor e ligamos. A DIREÇÃO segue a bolinha de ORIGEM: a de
+     baixo (source) = este job produz pro alvo; a de cima (target) = o alvo
+     produz e este job passa a DEPENDER dele. */
+  const onConnectEnd: OnConnectEnd = useCallback((event, connectionState) => {
+    if (mode !== "design") return;
+    if (connectionState.isValid) return; // caiu num handle — o onConnect resolveu
+    const from = connectionState.fromNode;
+    if (!from) return;
+    const pt = "changedTouches" in event ? event.changedTouches[0] : event;
+    const el = document.elementFromPoint(pt.clientX, pt.clientY)?.closest(".react-flow__node");
+    const toRfId = el?.getAttribute("data-id");
+    if (!toRfId || toRfId === from.id) return;
+    const fromId = from.id.replace(/^d-/, "");
+    const toId = toRfId.replace(/^d-/, "");
+    if (connectionState.fromHandle?.type === "target") {
+      connectDefs(toId, fromId); // bolinha de cima: o alvo é quem produz
+    } else {
+      connectDefs(fromId, toId);
+    }
+  }, [mode, connectDefs]);
 
   /* ── Save/Delete definition ── */
   const handleSaveDef = useCallback(async (def: JobDefinition) => {
@@ -800,6 +832,21 @@ function V2PreviewInner() {
     // Job novo NÃO re-enquadra (regra: a câmera só anda por comando do usuário).
     // Pra achar o job: clique nele na sidebar (centraliza) ou botão Organizar.
   }, []);
+  // Autosave do drawer (2026-07-17): salva SEM fechar — usado quando o usuário
+  // troca de job ou fecha o drawer com edições pendentes (Design é draft; o
+  // commit de verdade é o Publish).
+  const handleAutoSaveDef = useCallback(async (def: JobDefinition) => {
+    await saveDefinition(def);
+  }, []);
+  // Def VIVA pro drawer: a setinha (connectDefs) salva condições na def
+  // ENQUANTO ela pode estar aberta no drawer — com o snapshot congelado do
+  // clique, o próximo Save de lá SOBRESCREVIA a ligação recém-criada (raiz do
+  // "liguei e a dependência sumiu"). Job novo segue no draft local do clique.
+  const editingDefLive = useMemo(() => {
+    if (!editingDef || editingDef.isNew) return editingDef;
+    const live = defs.find((d) => d.id === editingDef.def.id);
+    return live && live !== editingDef.def ? { def: live, isNew: false } : editingDef;
+  }, [editingDef, defs]);
   const handleDeleteDef = useCallback(async (id: string) => {
     await deleteDefinition(id);
     // Limpa as condições de LIGAÇÃO automáticas (X-TO-Y) que envolvem o job
@@ -1658,6 +1705,10 @@ function V2PreviewInner() {
           onNodeContextMenu={onNodeContextMenu}
           onPaneClick={onPaneClick}
           onConnect={onConnect}
+          onConnectEnd={onConnectEnd}
+          // Ímã da setinha: soltar PERTO da bolinha fecha a conexão (o nub tem
+          // 6px visuais — sem o raio, só um drop cirúrgico conectava).
+          connectionRadius={40}
           onSelectionStart={onSelectionStart}
           onSelectionEnd={onSelectionEnd}
           onSelectionChange={handleSelectionChange}
@@ -1874,14 +1925,15 @@ function V2PreviewInner() {
           );
         })()}
 
-        {mode === "design" && editingDef && (
+        {mode === "design" && editingDefLive && (
           <JobConfigDrawer
-            definition={editingDef.def}
-            isNew={editingDef.isNew}
+            definition={editingDefLive.def}
+            isNew={editingDefLive.isNew}
             availableFolders={activeFolders ? Array.from(activeFolders).sort() : []}
             allDefs={defs}
             handlers={{
               onSave: handleSaveDef,
+              onAutoSave: handleAutoSaveDef,
               onDelete: handleDeleteDef,
               onClose: () => setEditingDef(null),
             }}

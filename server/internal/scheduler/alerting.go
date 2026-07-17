@@ -48,6 +48,9 @@ type alertCondition struct {
 	Rate        float64 `json:"rate,omitempty"`
 	WindowSize  int     `json:"windowSize,omitempty"`
 	Count       int     `json:"count,omitempty"`
+	// PercentOver — folga sobre a média histórica (slow_vs_average): o job é
+	// "lento" quando duração > média×(1+PercentOver/100). Default 50.
+	PercentOver float64 `json:"percentOver,omitempty"`
 }
 
 // AlertRule — regra carregada do DB.
@@ -72,6 +75,17 @@ type AlertContext struct {
 	MaxJobRetries       int
 	RecentSuccessRate   float64
 	ConsecutiveFailures int
+	// Slow Execution (2026-07-17) — a régua é a MÉDIA histórica do próprio job:
+	// AvgDurationMs/HistoryRuns vêm das execuções OK ANTERIORES (a run corrente
+	// fica de fora). HistoryRuns=0 = primeira execução ⇒ a regra não se aplica.
+	AvgDurationMs int64
+	HistoryRuns   int
+	// Running — o contexto é de uma instance AINDA em execução (varredura do
+	// tick; DurationMs = decorrido). Muda só o verbo da mensagem.
+	Running bool
+	// SlowFired — esta run JÁ alertou lentidão durante a execução; o caminho
+	// terminal não repete o disparo.
+	SlowFired bool
 }
 
 // defaultRules — idênticas às do frontend (mesmos ids/cooldowns).
@@ -79,14 +93,30 @@ var defaultRules = []AlertRule{
 	{ID: "rule-failure", Name: "Workflow Failure", Enabled: true, WorkflowPattern: "*",
 		ConditionJSON: `{"type":"failure"}`, Severity: "critical", Channels: "toast", CooldownMs: 0},
 	{ID: "rule-slow", Name: "Slow Execution", Enabled: true, WorkflowPattern: "*",
-		ConditionJSON: `{"type":"duration_exceeded","thresholdMs":30000}`, Severity: "warning", Channels: "toast", CooldownMs: 300000},
+		ConditionJSON: slowDefaultJSON, Severity: "warning", Channels: "toast", CooldownMs: 300000},
 	{ID: "rule-retries", Name: "Excessive Retries", Enabled: true, WorkflowPattern: "*",
 		ConditionJSON: `{"type":"retry_exceeded","maxRetries":3}`, Severity: "warning", Channels: "toast", CooldownMs: 120000},
 }
 
+// slowDefaultJSON — condição default da rule-slow: lento = passou da própria
+// média histórica em 50% (jobs sem histórico nunca alertam).
+const slowDefaultJSON = `{"type":"slow_vs_average","percentOver":50}`
+
+// oldSlowDefaultJSON — o default ANTIGO (teto fixo de 30s), reconhecido pela
+// migração do SeedDefaults: só quem nunca customizou a regra é migrado.
+const oldSlowDefaultJSON = `{"type":"duration_exceeded","thresholdMs":30000}`
+
 // SeedDefaults insere as regras default uma vez (idempotente: pula se a tabela
-// já tiver regras). Chamado no boot.
+// já tiver regras). Chamado no boot. Também migra a rule-slow default antiga
+// (30s fixos) para a régua por média histórica — condition_json customizado
+// pelo usuário nunca é tocado.
 func (e *AlertEngine) SeedDefaults() {
+	if _, err := e.db.Exec(
+		`UPDATE alert_rules SET condition_json=? WHERE id='rule-slow' AND condition_json=?`,
+		slowDefaultJSON, oldSlowDefaultJSON,
+	); err != nil {
+		log.Printf("[alerts] migrate rule-slow: %v", err)
+	}
 	var n int
 	if err := e.db.QueryRow(`SELECT COUNT(*) FROM alert_rules`).Scan(&n); err != nil {
 		log.Printf("[alerts] seed check: %v", err)
@@ -134,6 +164,54 @@ func (e *AlertEngine) Evaluate(ctx AlertContext) {
 		}
 		e.fire(r, cond, ctx)
 	}
+}
+
+// SlowRules — regras HABILITADAS do tipo slow_vs_average (uma query; o tick
+// chama 1× por ciclo antes de varrer as RUNNING).
+func (e *AlertEngine) SlowRules() []AlertRule {
+	rules, err := e.ListRules()
+	if err != nil {
+		return nil
+	}
+	var out []AlertRule
+	for _, r := range rules {
+		if !r.Enabled {
+			continue
+		}
+		var cond alertCondition
+		if json.Unmarshal([]byte(r.ConditionJSON), &cond) != nil || cond.Type != "slow_vs_average" {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// FireSlowRules — avalia as regras de lentidão (já filtradas por SlowRules)
+// contra uma instance RUNNING (ctx.Running=true; DurationMs = decorrido). É o
+// caminho do tick: o alerta tem que sair ENQUANTO o job estoura a média, não
+// só quando terminar. Retorna true se disparou (o scheduler marca a run para
+// não re-alertar).
+func (e *AlertEngine) FireSlowRules(rules []AlertRule, ctx AlertContext) bool {
+	fired := false
+	for _, r := range rules {
+		if !matchesWorkflow(r.WorkflowPattern, ctx.WorkflowID) {
+			continue
+		}
+		if e.onCooldown(cooldownKey(r.ID, ctx.WorkflowID), r.CooldownMs) {
+			continue
+		}
+		var cond alertCondition
+		if json.Unmarshal([]byte(r.ConditionJSON), &cond) != nil {
+			continue
+		}
+		if !evalCondition(cond, ctx) {
+			continue
+		}
+		e.fire(r, cond, ctx)
+		fired = true
+	}
+	return fired
 }
 
 func (e *AlertEngine) fire(r AlertRule, cond alertCondition, ctx AlertContext) {
@@ -550,6 +628,18 @@ func evalCondition(c alertCondition, ctx AlertContext) bool {
 		return ctx.Status == string(domain.StatusNotOK)
 	case "duration_exceeded":
 		return ctx.DurationMs > c.ThresholdMs
+	case "slow_vs_average":
+		// Lento = passou da própria média histórica + folga. Primeira execução
+		// (sem histórico) NUNCA alerta; SlowFired deduplica o disparo terminal
+		// de quem já alertou durante a run.
+		if ctx.SlowFired || ctx.HistoryRuns <= 0 || ctx.AvgDurationMs <= 0 {
+			return false
+		}
+		pct := c.PercentOver
+		if pct <= 0 {
+			pct = 50
+		}
+		return float64(ctx.DurationMs) > float64(ctx.AvgDurationMs)*(1+pct/100)
 	case "retry_exceeded":
 		return ctx.MaxJobRetries > c.MaxRetries
 	case "success_rate_below":
@@ -570,6 +660,17 @@ func buildMessage(c alertCondition, ctx AlertContext) string {
 		return fmt.Sprintf("Workflow %q failed after %.1fs", wf, float64(ctx.DurationMs)/1000)
 	case "duration_exceeded":
 		return fmt.Sprintf("Workflow %q exceeded %ds threshold (took %.1fs)", wf, c.ThresholdMs/1000, float64(ctx.DurationMs)/1000)
+	case "slow_vs_average":
+		over := 0.0
+		if ctx.AvgDurationMs > 0 {
+			over = (float64(ctx.DurationMs)/float64(ctx.AvgDurationMs) - 1) * 100
+		}
+		verb := "took"
+		if ctx.Running {
+			verb = "is running for"
+		}
+		return fmt.Sprintf("Workflow %q %s %.1fs — %.0f%% over its %.1fs average (%d runs)",
+			wf, verb, float64(ctx.DurationMs)/1000, over, float64(ctx.AvgDurationMs)/1000, ctx.HistoryRuns)
 	case "retry_exceeded":
 		return fmt.Sprintf("Workflow %q had %d retries (limit: %d)", wf, ctx.MaxJobRetries, c.MaxRetries)
 	case "success_rate_below":

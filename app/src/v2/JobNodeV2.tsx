@@ -236,14 +236,21 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
         </div>
       </div>
 
+      {/* Bolinhas de ligação — o nub VISÍVEL segue 6px, mas a caixa real tem
+          18px (borda transparente + background-clip): com 6px clicáveis era
+          quase impossível INICIAR o arrasto da setinha. O CSS do RF centra o
+          handle na borda do card via translate(-50%, ±50%), então crescer a
+          caixa não desloca o centro — as âncoras estáticas (JOB_HANDLES em
+          canvas-layout) continuam batendo. */}
       <Handle
         type="target"
         position={Position.Top}
         style={{
           background: "var(--v2-border-strong)",
-          border: "none",
-          width: 6,
-          height: 6,
+          backgroundClip: "padding-box",
+          border: "6px solid transparent",
+          width: 18,
+          height: 18,
         }}
       />
       <Handle
@@ -251,9 +258,10 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
         position={Position.Bottom}
         style={{
           background: "var(--v2-border-strong)",
-          border: "none",
-          width: 6,
-          height: 6,
+          backgroundClip: "padding-box",
+          border: "6px solid transparent",
+          width: 18,
+          height: 18,
         }}
       />
     </div>

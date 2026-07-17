@@ -165,6 +165,13 @@ function buildAlertContext(inst: JobInstance, all: JobInstance[]): EvaluationCon
     else break;
   }
 
+  // Slow Execution — média das execuções OK ANTERIORES (a própria run fica de
+  // fora pra não puxar a régua). historyRuns=0 ⇒ primeira execução, sem alerta.
+  const okPrev = history.filter((i) => i.status === "OK" && i.id !== inst.id && typeof i.durationMs === "number");
+  const avgDurationMs = okPrev.length > 0
+    ? okPrev.reduce((sum, i) => sum + (i.durationMs ?? 0), 0) / okPrev.length
+    : 0;
+
   return {
     workflowId: inst.definitionId,
     workflowName: inst.label,
@@ -173,6 +180,8 @@ function buildAlertContext(inst: JobInstance, all: JobInstance[]): EvaluationCon
     maxJobRetries: Math.max(0, inst.attempts - 1),
     recentSuccessRate,
     consecutiveFailures,
+    avgDurationMs,
+    historyRuns: okPrev.length,
   };
 }
 
