@@ -485,6 +485,7 @@ var sqliteMigrations = []migration{
 	{version: 14, sql: schemaV14()},
 	{version: 15, sql: schemaV15(sqliteID, "DATETIME")},
 	{version: 16, sql: schemaV16()},
+	{version: 17, sql: schemaV17("DATETIME")},
 }
 
 var pgMigrations = []migration{
@@ -504,6 +505,7 @@ var pgMigrations = []migration{
 	{version: 14, sql: schemaV14()},
 	{version: 15, sql: schemaV15(pgID, "TIMESTAMPTZ")},
 	{version: 16, sql: schemaV16()},
+	{version: 17, sql: schemaV17("TIMESTAMPTZ")},
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
@@ -702,6 +704,11 @@ func schemaV14() string {
 
 // schemaV15 — eventos de dependência com CONSUMO por instância (2026-07-13).
 //
+// ⚠️ APOSENTADO (2026-07-17): as tabelas dep_events/dep_claims ficaram órfãs —
+// a unificação de dependências no POOL de condições (domain/conditions.go)
+// removeu todo o runtime de eventos/claims. As tabelas permanecem no schema
+// por compat de migração (bancos existentes), mas nada mais escreve ou lê.
+//
 // Motivação (report do usuário): a satisfação de uma dependência era derivada do
 // status VIVO do upstream — rerun/cancel do pai "apagava" linhas já satisfeitas
 // no Monitoring, e uma CÓPIA forçada do filho nascia com a condição já aceita
@@ -747,6 +754,17 @@ CREATE TABLE IF NOT EXISTS dep_claims (
 CREATE INDEX IF NOT EXISTS idx_dep_claims_consumer ON dep_claims(consumer_instance_id);
 
 ALTER TABLE instances ADD COLUMN force_mode TEXT NOT NULL DEFAULT ''`
+}
+
+// schemaV17 — meta_flags: marcadores de migrações one-time que precisam de
+// LÓGICA Go (não só SQL) — ex.: o backfill do pool de condições na unificação
+// de dependências (scheduler.MigrateConditionsUnify, 2026-07-17). Cada rotina
+// checa/insere seu nome aqui para rodar exatamente uma vez por banco.
+func schemaV17(ts string) string {
+	return `CREATE TABLE IF NOT EXISTS meta_flags (
+	name    TEXT PRIMARY KEY,
+	done_at ` + ts + ` DEFAULT CURRENT_TIMESTAMP
+)`
 }
 
 // schemaV16 — held_from_status: o status que a instance tinha ao entrar em HOLD

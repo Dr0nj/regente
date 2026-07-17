@@ -22,9 +22,7 @@ const (
 	GateWindow       GateKind = "WAIT_WINDOW"    // ainda não chegou o horário agendado
 	GateWindowClosed GateKind = "WINDOW_CLOSED"  // a janela (WindowTo) já fechou hoje — não submete mais
 	GateConfirm      GateKind = "WAIT_CONFIRM"   // Control-M Confirm: aguarda liberação do operador
-	GateDep          GateKind = "WAIT_DEP"       // upstream ainda não satisfez a condição
-	GateDepBlocked   GateKind = "BLOCKED_DEP"    // upstream tornou a dep impossível → CANCELLED
-	GateCondition    GateKind = "WAIT_CONDITION" // falta uma condition IN (F16)
+	GateCondition    GateKind = "WAIT_CONDITION" // falta uma condição de entrada no pool (modelo único)
 	GateAgent        GateKind = "WAIT_AGENT"     // nenhum agente online com a capability (ou o pinado offline)
 	GateResource     GateKind = "WAIT_RESOURCE"  // recurso/quota indisponível (F15)
 )
@@ -34,8 +32,6 @@ const (
 type Blocker struct {
 	Kind      GateKind `json:"kind"`
 	Detail    string   `json:"detail"`
-	Upstream  string   `json:"upstream,omitempty"`
-	UpStatus  string   `json:"upstreamStatus,omitempty"`
 	Condition string   `json:"condition,omitempty"`
 	Resource  string   `json:"resource,omitempty"`
 	Want      int      `json:"want,omitempty"`
@@ -53,65 +49,24 @@ type Explanation struct {
 	Blockers   []Blocker `json:"blockers"`
 }
 
-// edgeState — REGRA pura de UMA dependência upstream (Control-M condition).
-// FONTE ÚNICA: usada pelo evalDeps (decisão do tick) e pelo gateInstance (Explain).
-//
-//	satisfied=true  → a aresta está OK
-//	permanent=true  → o upstream tornou a aresta IMPOSSÍVEL (sucessor vira CANCELLED)
-//	exists=false    → o upstream ainda não foi materializado neste order_date (espera)
-func edgeState(cond domain.EdgeCondition, upStatus string, exists bool) (satisfied, permanent bool) {
-	if !exists {
-		return false, false
-	}
-	switch cond {
-	// Condition VAZIA = on-success (default do produto, igual ao front). Antes
-	// "" caía em on-complete — uma def YAML escrita à mão sem `condition:`
-	// rodava o filho mesmo com o pai NOTOK. Default seguro: só sucesso libera.
-	case domain.CondOnSuccess, "":
-		if upStatus == string(domain.StatusOK) {
-			return true, false
-		}
-		if upStatus == string(domain.StatusNotOK) || upStatus == string(domain.StatusCancelled) {
-			return false, true
-		}
-		return false, false
-	case domain.CondOnFailure:
-		if upStatus == string(domain.StatusNotOK) {
-			return true, false
-		}
-		if upStatus == string(domain.StatusOK) {
-			return false, true
-		}
-		return false, false
-	case domain.CondOnComplete:
-		if upStatus == string(domain.StatusOK) || upStatus == string(domain.StatusNotOK) {
-			return true, false
-		}
-		return false, false
-	case domain.CondAlways:
-		return true, false
-	}
-	return false, false
-}
-
 // gateInstance — FONTE ÚNICA do gating de uma instance WAITING. Avalia janela,
-// deps, conditions e recursos (read-only) e devolve os bloqueios ATIVOS. Vazio =
-// pode rodar. Ordem = a do tick (janela → deps → conditions → recursos).
+// condições e recursos (read-only) e devolve os bloqueios ATIVOS. Vazio =
+// pode rodar. Ordem = a do tick (janela → confirm → condições → agente → recursos).
 //
-// `claims` = latches de dependência desta instance (dep_claims, schemaV15):
-// aresta clamada é satisfeita PARA SEMPRE para esta instance — rerun/cancel do
-// upstream não a desfaz. Aresta sem claim espera um EVENTO livre (o tick tenta
-// clamar no pré-passe; aqui o gate só lê). nil = sem latch conhecido.
+// CONDIÇÕES são o modelo ÚNICO de dependência (2026-07-17): o job espera as
+// ConditionsIn existirem no POOL, no escopo resolvido de cada sufixo contra o
+// seu ODAT. A setinha do grafo é só açúcar que escreve condições — não existe
+// gate separado de "upstream". `condIdx` é a foto do pool pré-carregada pelo
+// tick (nil = consulta direta, caminho do Explain/Force).
 //
 // Instance FORÇADA (r.Forced) pula os gates de JANELA (1 e 1b): a ordem manual
-// nasce elegível agora — mas deps/conditions/agente/recursos/Confirm valem
+// nasce elegível agora — mas condições/agente/recursos/Confirm valem
 // (force_mode='order'; o Run Now nem passa por aqui).
 //
-// shortCircuit=true para no 1º bloqueio (hot path do tick, que só precisa de
-// "bloqueado?" + saber se o 1º é dep permanente); false coleta TODOS (Explain).
-// A checagem de recurso é read-only (Shortfalls); a reserva atômica (TryAcquire)
-// fica no tick, depois deste gate passar.
-func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, instByDef instIndex, claims map[string]bool, now time.Time, shortCircuit bool) []Blocker {
+// shortCircuit=true para no 1º bloqueio (hot path do tick); false coleta
+// TODOS (Explain). A checagem de recurso é read-only (Shortfalls); a reserva
+// atômica (TryAcquire) fica no tick, depois deste gate passar.
+func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx CondIndex, now time.Time, shortCircuit bool) []Blocker {
 	var out []Blocker
 	// add anexa o bloqueio e devolve true quando o avaliador deve PARAR (short-circuit).
 	add := func(b Blocker) bool {
@@ -147,65 +102,17 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, instByDef 
 		}
 	}
 
-	// 2) Dependências upstream — por EVENTO consumível (schemaV15). Satisfeita ⇔
-	// claim latchado (ou 'always' com o upstream ordenado). Sem claim, o motivo
-	// distingue: pai nunca terminou (espera) × pai terminou mas o evento já foi
-	// consumido por OUTRA instance (espera um término NOVO) × pai terminou num
-	// estado incompatível (rerun/Set OK destravam). A cópia do pai consultada é
-	// a da diária RESOLVIDA pelo dateRef contra o ODAT do consumidor (a origem
-	// da ordem — carry-over não muda de quem o job depende).
+	// 2) Condições de entrada — o modelo ÚNICO de dependência: cada nome de
+	// ConditionsIn precisa existir no POOL, no escopo resolvido do sufixo
+	// @odat/@prev/@stat contra o ODAT (origem) da instance, não o order_date
+	// avançado pelo carry-over. Quem cria: término OK/Set OK de quem tem a
+	// condição na saída＋, ação On/Do set-condition, evento externo ou operador.
+	// Quem apaga: saída− de um OK/Set OK, ou o operador (painel Condições).
 	odate := r.Odate()
-	for _, u := range def.Upstream {
-		if claims[u.From] {
-			continue // latch: satisfeita para sempre para ESTA instance
-		}
-		wantDate, anyDate := s.resolveEdgeDate(odate, u.DateRef)
-		dateLabel := ""
-		if wantDate != odate && !anyDate {
-			dateLabel = " da diária " + wantDate
-		}
-		up, exists := instByDef.lookup(u.From, wantDate, anyDate)
-		upStatus := up.Status
-		if !exists {
-			upStatus = "ainda não ordenado"
-		}
-		if u.Condition == domain.CondAlways {
-			if exists {
-				continue // always: basta o upstream existir na diária resolvida
-			}
-			if add(Blocker{Kind: GateDep, Upstream: u.From, UpStatus: upStatus, Condition: string(u.Condition),
-				Detail: fmt.Sprintf("aguardando upstream '%s'%s (%s, ainda não ordenado)", u.From, dateLabel, condLabel(u.Condition))}) {
-				return out
-			}
-			continue
-		}
-		b := Blocker{Kind: GateDep, Upstream: u.From, UpStatus: upStatus, Condition: string(u.Condition)}
-		liveSat, permanent := edgeState(u.Condition, up.Status, exists)
-		switch {
-		case !exists:
-			b.Detail = fmt.Sprintf("aguardando upstream '%s'%s (%s, ainda não ordenado)", u.From, dateLabel, condLabel(u.Condition))
-		case liveSat:
-			// O estado vivo satisfaria, mas não há evento LIVRE: o término do pai
-			// já foi consumido — por outra instance desta definition (cópia
-			// forçada) ou pelo run ANTERIOR desta própria instance (rerun após
-			// OK: consumo é permanente). Rerun no pai emite um evento novo.
-			b.Detail = fmt.Sprintf("aguardando NOVO término de '%s'%s — o último evento já foi consumido por uma execução OK (rerun no upstream libera)", u.From, dateLabel)
-		case permanent:
-			b.Kind = GateDepBlocked
-			b.Detail = fmt.Sprintf("upstream '%s'%s está %s — a aresta (%s) espera um término compatível (rerun/Set OK no upstream libera)", u.From, dateLabel, upStatus, condLabel(u.Condition))
-		default:
-			b.Detail = fmt.Sprintf("aguardando upstream '%s'%s (%s, está %s)", u.From, dateLabel, condLabel(u.Condition), upStatus)
-		}
-		if add(b) {
-			return out
-		}
-	}
-
-	// 3) Conditions IN (F16) — escopo pela diária resolvida do sufixo @odat/
-	// @prev/@stat contra o ODAT (origem) da instance, não o order_date avançado.
 	if len(def.ConditionsIn) > 0 && s.conditions != nil {
-		for _, m := range s.conditions.Missing(def.ConditionsIn, odate, s.prevDaily) {
-			if add(Blocker{Kind: GateCondition, Condition: m.Name, Detail: "falta a condition '" + m.Name + "'" + m.ScopeLabel}) {
+		for _, m := range s.conditions.MissingIdx(def.ConditionsIn, odate, s.prevDaily, condIdx) {
+			if add(Blocker{Kind: GateCondition, Condition: m.Name,
+				Detail: "falta a condição '" + m.Name + "'" + m.ScopeLabel + " no pool (quem a cria precisa terminar OK — ou adicione no painel Condições)"}) {
 				return out
 			}
 		}
@@ -247,13 +154,6 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, instByDef 
 	}
 
 	return out
-}
-
-func condLabel(c domain.EdgeCondition) string {
-	if c == "" {
-		return string(domain.CondOnSuccess) // default do produto (= front)
-	}
-	return string(c)
 }
 
 // Explain monta a explicação de uma instance: para WAITING, roda gateInstance em
@@ -319,17 +219,11 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 			return ex, nil
 		}
 		ex.Runnable = true
-		ex.Summary = "Run Now — despacho imediato (bypassa janela, deps, conditions e recursos)."
+		ex.Summary = "Run Now — despacho imediato (bypassa janela, condições e recursos)."
 		return ex, nil
 	}
 
-	// Latches de dependência (schemaV15) — inclui claim-on-observe: se há um
-	// evento LIVRE do upstream, o Explain latcha agora, exatamente como o
-	// pré-passe do tick faria ~2s depois (mesma fonte, nunca diverge).
-	claimed := s.claimsFor(r.ID)
-	s.claimDepEdges(r, def, claimed)
-
-	blockers := s.gateInstance(r, def, s.loadUpstreamInsts(r.Odate(), def), claimed, time.Now(), false)
+	blockers := s.gateInstance(r, def, nil, time.Now(), false)
 	if blockers == nil {
 		// gateInstance devolve nil quando não há bloqueio; o JSON precisa ser []
 		// (o front itera blockers direto — null quebrava a UI ao abrir o Explain
@@ -344,59 +238,6 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 		ex.Summary = summarizeBlockers(blockers)
 	}
 	return ex, nil
-}
-
-// loadUpstreamInsts carrega SÓ as instances dos upstreams da def, nas diárias
-// RESOLVIDAS pelos dateRefs contra o ODAT do consumidor (agregadas por
-// (def, odate), como o tick) — Explain custa o mesmo independente do volume da
-// daily (100k–1M). Arestas stat derrubam o filtro de data (bounded no LIMIT:
-// só o melhor rank por def importa e instances recentes vêm primeiro).
-func (s *Scheduler) loadUpstreamInsts(odate string, def domain.JobDefinition) instIndex {
-	ix := instIndex{byDefDate: map[string]instRow{}, byDef: map[string]instRow{}}
-	if len(def.Upstream) == 0 {
-		return ix
-	}
-	ids := make(map[string]bool, len(def.Upstream))
-	dates := make(map[string]bool, 2)
-	hasStat := false
-	for _, u := range def.Upstream {
-		ids[u.From] = true
-		if d, anyDate := s.resolveEdgeDate(odate, u.DateRef); anyDate {
-			hasStat = true
-		} else {
-			dates[d] = true
-		}
-	}
-	args := make([]any, 0, len(ids)+len(dates))
-	ph := make([]string, 0, len(ids))
-	for id := range ids {
-		ph = append(ph, "?")
-		args = append(args, id)
-	}
-	q := `SELECT definition_id, status, order_date, COALESCE(carried_from,'') FROM instances
-	      WHERE definition_id IN (` + strings.Join(ph, ",") + `)`
-	if !hasStat {
-		dph := make([]string, 0, len(dates))
-		for d := range dates {
-			dph = append(dph, "?")
-			args = append(args, d)
-		}
-		q += ` AND ` + odateExpr + ` IN (` + strings.Join(dph, ",") + `)`
-	}
-	q += ` ORDER BY order_date DESC LIMIT 500`
-	rows, err := s.db.Query(q, args...)
-	if err != nil {
-		return ix
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var r instRow
-		if rows.Scan(&r.DefID, &r.Status, &r.OrderDate, &r.CarriedFrom) != nil {
-			continue
-		}
-		ix.add(r)
-	}
-	return ix
 }
 
 func summarizeBlockers(bs []Blocker) string {

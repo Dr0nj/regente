@@ -1,8 +1,8 @@
 package scheduler
 
 // Regressão BUG-3/BUG-4 (report 2026-07-13): Set OK vale para WAITING (WAIT
-// EVENT) e MATERIALIZA as saídas do job como um término OK de verdade —
-// dep_event consumível (schemaV15) + ConditionsOut (F16).
+// COND) e MATERIALIZA as saídas do job como um término OK de verdade —
+// aplica as ConditionsOut (adiciona/remove no pool).
 
 import (
 	"testing"
@@ -11,8 +11,8 @@ import (
 	"github.com/Dr0nj/regente-server/internal/domain"
 )
 
-// Set OK num job WAITING (preso em WAIT EVENT) conclui OK, publica o evento
-// consumível e emite as ConditionsOut da def.
+// Set OK num job WAITING (preso em WAIT COND) conclui OK e emite as
+// ConditionsOut da def.
 func TestSetOK_FromWaitingMaterializesOutputs(t *testing.T) {
 	s := newTestScheduler(t)
 	s.AttachConditions(NewConditionEngine(s.db))
@@ -32,10 +32,6 @@ func TestSetOK_FromWaitingMaterializesOutputs(t *testing.T) {
 
 	if _, st, _ := carriedState(t, s, "prod-1"); st != string(domain.StatusOK) {
 		t.Fatalf("esperava OK, veio %s", st)
-	}
-	var events int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM dep_events WHERE instance_id=?`, "prod-1").Scan(&events); err != nil || events != 1 {
-		t.Fatalf("Set OK deveria emitir 1 dep_event, veio %d (err=%v)", events, err)
 	}
 	// BUG-4: a ConditionOut materializa — dependentes por condition destravam.
 	if !s.conditions.Has("prod-done", today) {

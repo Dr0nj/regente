@@ -44,27 +44,6 @@ type instanceRow struct {
 	// WAITING cego). '' quando não-HELD ou hold legado (era WAITING). O front usa
 	// pra rotular o Release ("volta a NOTOK") — o Delete só olha status=HELD.
 	HeldFromStatus string `json:"heldFromStatus,omitempty"`
-	// DepsSatisfied — upstream defs cujo EVENTO esta instance já CLAMOU
-	// (dep_claims, schemaV15). É o latch das "linhas verdes" do Monitoring:
-	// satisfeita uma vez, a linha fica verde pra sempre nesta instance — rerun/
-	// cancel do pai não a apaga. SEM omitempty de propósito: a PRESENÇA do campo
-	// (mesmo []) diz ao front que o server fala a semântica nova de claims.
-	DepsSatisfied []string `json:"depsSatisfied"`
-	// DepsClaims — o DETALHE dos latches: além da def upstream, QUAL instance do
-	// pai emitiu o evento clamado (dep_events.instance_id). Com várias cópias do
-	// mesmo job no dia (Order Force/rerun), é o que permite ao Monitoring pintar
-	// verde só a linha do par produtor→consumidor REAL — as outras cópias ficam
-	// neutras. Sem omitempty (R10: lista sempre presente, nunca null).
-	DepsClaims []depClaimRef `json:"depsClaims"`
-}
-
-// depClaimRef — referência de um claim: a def upstream (`from`, o mesmo id que
-// aparece em depsSatisfied) e a instance do pai cujo término gerou o evento
-// consumido. parentInstanceId vazio só se o evento sumir do ledger (não deveria
-// — dep_events é imutável); o front trata como "satisfeita sem par conhecido".
-type depClaimRef struct {
-	From             string `json:"from"`
-	ParentInstanceID string `json:"parentInstanceId"`
 }
 
 const instanceCols = `id, definition_id, COALESCE(team,''), order_date, status, scheduled_at,
@@ -104,51 +83,9 @@ func scanInstances(rows *sql.Rows) ([]instanceRow, error) {
 		ir.Forced = forcedInt == 1
 		ir.Confirmed = confirmedInt == 1
 		ir.DryRun = dryRunInt == 1
-		ir.DepsSatisfied = []string{} // nunca nil: o JSON precisa carregar o campo
-		ir.DepsClaims = []depClaimRef{}
 		out = append(out, ir)
 	}
 	return out, rows.Err()
-}
-
-// attachDepClaims — anexa os latches de dependência (dep_claims, schemaV15) às
-// linhas, numa ÚNICA query pelo order_date (não por linha). O LEFT JOIN em
-// dep_events expõe TAMBÉM qual instance do pai emitiu o evento clamado
-// (depsClaims) — o detalhe que pinta a linha certa quando há várias cópias do
-// mesmo job. Best-effort: em erro, as linhas seguem com depsSatisfied/
-// depsClaims=[] (o front cai no fallback visual).
-func (s *server) attachDepClaims(date string, list []instanceRow) {
-	if len(list) == 0 {
-		return
-	}
-	rows, err := s.cfg.DB.Query(
-		`SELECT c.consumer_instance_id, c.upstream_def_id, COALESCE(e.instance_id,'')
-		 FROM dep_claims c
-		 JOIN instances i ON i.id = c.consumer_instance_id
-		 LEFT JOIN dep_events e ON e.id = c.event_id
-		 WHERE i.order_date=?`, date,
-	)
-	if err != nil {
-		return
-	}
-	defer rows.Close()
-	sat := map[string][]string{}
-	claims := map[string][]depClaimRef{}
-	for rows.Next() {
-		var cid, up, parent string
-		if rows.Scan(&cid, &up, &parent) == nil {
-			sat[cid] = append(sat[cid], up)
-			claims[cid] = append(claims[cid], depClaimRef{From: up, ParentInstanceID: parent})
-		}
-	}
-	for i := range list {
-		if c, ok := sat[list[i].ID]; ok {
-			list[i].DepsSatisfied = c
-		}
-		if c, ok := claims[list[i].ID]; ok {
-			list[i].DepsClaims = c
-		}
-	}
 }
 
 // instanceQuery — P2/escala: filtros server-side de /api/instances*. Tudo opcional
@@ -282,9 +219,6 @@ func (s *server) listInstances(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// schemaV15 — latches de dependência pro Monitoring pintar as linhas por
-	// INSTÂNCIA (verde = claim), não pelo status vivo do pai.
-	s.attachDepClaims(q.date, list)
 	writeJSON(w, 200, list)
 }
 
@@ -335,23 +269,6 @@ func (s *server) getInstance(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "instance not found", http.StatusNotFound)
 			return
 		}
-	}
-
-	// Latches de dependência DESTA instance (não o attachDepClaims do dia inteiro —
-	// aqui é um lookup pontual por consumer, barato mesmo num dia de 1M).
-	if crows, err := s.cfg.DB.Query(
-		`SELECT c.upstream_def_id, COALESCE(e.instance_id,'')
-		 FROM dep_claims c LEFT JOIN dep_events e ON e.id = c.event_id
-		 WHERE c.consumer_instance_id=?`, id,
-	); err == nil {
-		for crows.Next() {
-			var up, parent string
-			if crows.Scan(&up, &parent) == nil {
-				det.DepsSatisfied = append(det.DepsSatisfied, up)
-				det.DepsClaims = append(det.DepsClaims, depClaimRef{From: up, ParentInstanceID: parent})
-			}
-		}
-		crows.Close()
 	}
 
 	var snap string
@@ -412,9 +329,6 @@ func (s *server) pageInstances(w http.ResponseWriter, r *http.Request) {
 		next = items[limit-1].ID
 		items = items[:limit]
 	}
-	// Mesmo enriquecimento do listInstances: sem isto o modo windowed pintava
-	// as linhas de dependência pelo fallback (status vivo do pai), não pelo claim.
-	s.attachDepClaims(q.date, items)
 	writeJSON(w, 200, map[string]any{"items": items, "nextCursor": next})
 }
 
@@ -557,11 +471,10 @@ func (s *server) releaseInstance(w http.ResponseWriter, r *http.Request) {
 // deleteInstance — Control-M "Delete job": remove a ordem da tela (e do state
 // store). SÓ vale para job em HOLD — como RUNNING não é segurável, um job em
 // execução nunca é deletável; qualquer outro status vira deletável passando
-// pelo hold primeiro (o fluxo do usuário: Hold → Delete). O ledger dep_events
-// fica intacto (términos que aconteceram, aconteceram); os claims seguem o
-// SettleDepClaims: consumo OK segurado permanece gasto (invariante 2), reserva
-// não-consumida volta pro pool (R4). Os instance_events morrem junto (mesmo
-// padrão do archiveGC — sem órfãos eternos).
+// pelo hold primeiro (o fluxo do usuário: Hold → Delete). O POOL de condições
+// fica intacto: condições que a instance adicionou/removeu em términos OK já
+// aconteceram (deletar a ordem não desfaz história); um WAITING deletado nunca
+// aplicou saídas. Os instance_events morrem junto (mesmo padrão do archiveGC).
 func (s *server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !s.requireInstanceWrite(w, r, id) {
@@ -576,8 +489,6 @@ func (s *server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "delete exige o job em HOLD (segure primeiro; RUNNING não é deletável)", http.StatusConflict)
 		return
 	}
-	// Claims ANTES do DELETE (o settle lê status/held_from_status da linha).
-	s.cfg.Scheduler.SettleDepClaims(id)
 	if _, err := s.cfg.DB.Exec(`DELETE FROM instance_events WHERE instance_id=?`, id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -591,7 +502,6 @@ func (s *server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "instance mudou de estado durante o delete — recarregue", http.StatusConflict)
 		return
 	}
-	// Eventos devolvidos ao pool podem destravar um clone em WAIT EVENT.
 	go s.cfg.Scheduler.Tick()
 	s.cfg.Hub.BroadcastWeb("instance.deleted", map[string]string{"id": id})
 	writeJSON(w, 200, map[string]string{"id": id, "status": "deleted"})
@@ -602,13 +512,9 @@ func (s *server) cancelInstance(w http.ResponseWriter, r *http.Request) {
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
-	// Claims ANTES do UPDATE (o settle lê o status pré-cancel): consumo só se
-	// materializa no OK — o cancelado devolve os eventos que clamou (um clone
-	// pendente ou rerun pode usá-los)… EXCETO se o cancel pegou um OK (direto ou
-	// segurado por hold): consumo OK é permanente, os claims viram lápide
-	// (invariante 2 — evento consumido nunca volta pro pool). Cancel do PAI
-	// segue sem tocar claim de ninguém — isto aqui é o claim DELE como consumidor.
-	s.cfg.Scheduler.SettleDepClaims(id)
+	// Modelo único de condições: cancel NÃO toca o pool. Um WAITING cancelado
+	// nunca aplicou saídas (a condição de entrada segue lá pra um clone/rerun);
+	// um OK cancelado já consumiu (as OutRemove rodaram no término — história).
 	_, err := s.cfg.DB.Exec(`UPDATE instances SET status=?, held_from_status='', finished_at=CURRENT_TIMESTAMP WHERE id=?`,
 		string(domain.StatusCancelled), id)
 	if err != nil {
@@ -652,20 +558,18 @@ func (s *server) rerunInstance(w http.ResponseWriter, r *http.Request) {
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
-	// schemaV15 — claims do consumidor ANTES do reset de status (o status
-	// terminal decide — inclusive um OK escondido sob HOLD, via held_from_status):
-	// rerun após OK vira LÁPIDE (consumo é permanente — o novo run entra em
-	// WAIT EVENT até o pai emitir término novo); rerun de não-consumido devolve
-	// os eventos pro pool. Rerun/cancel do PAI não mexe em claim nenhum — linha
-	// satisfeita fica verde.
-	s.cfg.Scheduler.SettleDepClaims(id)
+	// Modelo único de condições: rerun NÃO toca o pool — o gate re-avalia o que
+	// EXISTE. Rerun após OK espera de novo (o próprio OK consumiu a condição de
+	// entrada via OutRemove); rerun após NOTOK roda direto (falha não consome,
+	// a condição segue no pool).
+	//
 	// BUG-2: `confirmed` SOBREVIVE ao rerun — um job que já passou pelo gate
 	// Confirm não volta pro CONFIRM ao ser re-rodado; ele re-entra direto no
 	// gating normal (deps/janela). Quem nunca confirmou segue exigindo Confirm.
 	//
 	// O bypass do Run Now NÃO é pegajoso: rerun de instance com forced=1 e
 	// force_mode='' volta ao gating normal (senão o rerun re-dispara na hora,
-	// ignorando WAIT EVENT — quer bypass de novo? Run Now de novo). A cópia de
+	// ignorando WAIT COND — quer bypass de novo? Run Now de novo). A cópia de
 	// Order Force (mode='order') mantém o forced: ela nunca teve janela real.
 	_, err := s.cfg.DB.Exec(
 		`UPDATE instances SET status=?, started_at=NULL, finished_at=NULL, exit_code=NULL, output=NULL,

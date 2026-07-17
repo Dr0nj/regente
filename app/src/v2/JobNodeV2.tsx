@@ -218,11 +218,12 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
                 }}
               />
               {/* Control-M parity: aguardando confirmação lê "CONFIRM" (violeta);
-                  preso por dependência lê "WAIT EVENT"; sem agente online lê
+                  preso por condição de entrada ausente do pool lê "WAIT COND"
+                  (modelo único de dependências); sem agente online lê
                   "WAIT AGENT" (azul claro); "WAIT" = horário. */}
               {waitConfirm ? "CONFIRM"
                 : waitAgent ? "WAIT AGENT"
-                : data.status === "WAITING" && data.waitEvent ? "WAIT EVENT"
+                : data.status === "WAITING" && data.waitEvent ? "WAIT COND"
                 : STATUS_LABEL[data.status]}
             </span>
             {data.lastRun && (

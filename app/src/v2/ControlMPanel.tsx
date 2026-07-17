@@ -1,10 +1,11 @@
 // Bloco 2 — Control-M parity panel.
-// Tabs: Calendars, Resources, Conditions, SLA, Forecast, Analytics, Variables.
+// Tabs: Calendars, Resources, SLA, Forecast, Analytics, Variables.
+// (Conditions saiu daqui: o pool de condições vive no MONITORING, botão
+// "Condições" ao lado do Organizar — ver ConditionsPanel.tsx.)
 import { useEffect, useState } from "react";
 import {
   listCalendars, saveCalendar, deleteCalendar, type Calendar,
   listResources, setResourceCapacity, deleteResource, type ResourceState,
-  listConditions, setCondition, unsetCondition, type Condition,
   listSLABreaches, type SLABreach,
   getForecast, type ForecastReport,
   fetchSummary, fetchTopFailing, fetchMTTR,
@@ -12,12 +13,11 @@ import {
   listVariables, putVariable, deleteVariable, type Variable,
 } from "../lib/bloco2-api";
 
-type Tab = "calendars" | "resources" | "conditions" | "sla" | "forecast" | "analytics" | "variables";
+type Tab = "calendars" | "resources" | "sla" | "forecast" | "analytics" | "variables";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "calendars", label: "Calendars" },
   { id: "resources", label: "Resources" },
-  { id: "conditions", label: "Conditions" },
   { id: "sla", label: "SLA" },
   { id: "forecast", label: "Forecast" },
   { id: "analytics", label: "Analytics" },
@@ -55,7 +55,6 @@ export function ControlMPanel({ onClose }: { onClose: () => void }) {
         <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
           {tab === "calendars" && <CalendarsView />}
           {tab === "resources" && <ResourcesView />}
-          {tab === "conditions" && <ConditionsView />}
           {tab === "sla" && <SLAView />}
           {tab === "forecast" && <ForecastView />}
           {tab === "analytics" && <AnalyticsView />}
@@ -229,40 +228,6 @@ function ResourcesView() {
                   title={r.used > 0 ? "in use; release first" : "delete"}
                 >delete</button>
               </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-// === F16 ===
-function ConditionsView() {
-  const [items, setItems] = useState<Condition[]>([]);
-  const [name, setName] = useState("");
-  const [scope, setScope] = useState(new Date().toISOString().slice(0, 10));
-  const reload = () => listConditions("*").then(setItems).catch(() => setItems([]));
-  useEffect(() => { reload(); const i = setInterval(reload, 5000); return () => clearInterval(i); }, []);
-  return (
-    <div>
-      <h3 style={{ marginTop: 0 }}>Conditions IN/OUT (F16)</h3>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <input placeholder="condition name" value={name} onChange={e => setName(e.target.value)} style={inp} />
-        <input placeholder="scope date (YYYY-MM-DD or empty=permanent)" value={scope} onChange={e => setScope(e.target.value)} style={{ ...inp, width: 280 }} />
-        <button onClick={() => { if (name) setCondition(name, scope).then(() => { setName(""); reload(); }); }} style={btn}>Set</button>
-      </div>
-      <table style={tbl}>
-        <thead><tr><th style={th}>Name</th><th style={th}>Scope</th><th style={th}>Set At</th><th style={th}>Set By</th><th style={th}></th></tr></thead>
-        <tbody>
-          {items.length === 0 && <tr><td colSpan={5} style={{ ...td, textAlign: "center", color: "var(--v2-text-muted)" }}>No conditions set.</td></tr>}
-          {items.map(c => (
-            <tr key={c.name + "|" + c.scopeDate}>
-              <td style={td}>{c.name}</td>
-              <td style={td}>{c.scopeDate || <em style={{ color: "var(--v2-text-muted)" }}>permanent</em>}</td>
-              <td style={td}>{new Date(c.setAt).toLocaleString()}</td>
-              <td style={td}>{c.setBy}</td>
-              <td style={td}><button onClick={() => unsetCondition(c.name, c.scopeDate).then(reload)} style={btnDanger}>unset</button></td>
             </tr>
           ))}
         </tbody>

@@ -16,9 +16,12 @@ import {
   type InstanceStatus,
   createInstance,
   todayOrderDate,
+  odateOf,
 } from "@/lib/orchestrator-model";
 import { localLoad, localSave } from "@/lib/persistence";
 import { evaluateAlerts, type EvaluationContext } from "@/lib/alerting";
+import { applyOutcomesLocal } from "@/lib/conditions-store";
+import { getDefinitions } from "@/lib/definition-store";
 
 /* ── Storage ── */
 
@@ -127,6 +130,16 @@ export function updateInstanceStatus(
     try {
       evaluateAlerts(buildAlertContext(inst, all));
     } catch { /* alerting must never break the runtime */ }
+  }
+
+  // Modelo único de condições: um término OK (execução do tick, Skip ou
+  // Bypass/Set OK local) APLICA as saídas — adiciona ConditionsOutAdd e remove
+  // ConditionsOutRemove do pool local (o consumo). NOTOK não toca o pool.
+  if (status === "OK" && prevStatus !== "OK") {
+    try {
+      const def = getDefinitions().find((d) => d.id === inst.definitionId);
+      applyOutcomesLocal(def, odateOf(inst), "local-ok");
+    } catch { /* conditions must never break the runtime */ }
   }
 }
 

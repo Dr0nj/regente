@@ -371,6 +371,11 @@ func main() {
 		log.Printf("[quotas] tracker reconstruído: %d instances RUNNING re-registradas", n)
 	}
 
+	// Unificação de dependências → pool de condições (2026-07-17): backfill
+	// one-time para instances ordenadas antes do upgrade (pai já OK ⇒ semeia a
+	// condição sintetizada; guardado por meta_flags).
+	sched.MigrateConditionsUnify()
+
 	// Enterprise/Operação — reconciler de drift GitOps (opt-in). O git-poll já
 	// auto-sincroniza; este fecha o lado OPERACIONAL: quando runtime≠Git, alerta
 	// pelos MESMOS canais do R7 (Slack/PagerDuty/…), e o modo "sync" reconcilia

@@ -86,6 +86,7 @@ export function getSchedulableDefinitions(nodes: Node<JobNodeData>[]): JobDefini
    ────────────────────────────────────────────────────────────── */
 
 import { container } from "@/lib/container";
+import { normalizeDefsConditions } from "@/lib/conditions-model";
 
 type DefinitionsListener = (defs: JobDefinition[]) => void;
 
@@ -100,13 +101,16 @@ function emitChange(): void {
   }
 }
 
-/** Carrega do storage configurado. Idempotente em chamadas paralelas. */
+/** Carrega do storage configurado. Idempotente em chamadas paralelas.
+ *  Normalização do modelo único de condições (conditions-model): em server
+ *  mode as defs já vêm normalizadas (no-op idempotente); em local mode isto
+ *  expande `upstream` legado do localStorage e deriva a visão de topologia. */
 export async function loadDefinitions(): Promise<JobDefinition[]> {
   if (_loaded) return _cache;
   if (_loading) return _loading;
   _loading = (async () => {
     try {
-      _cache = await container.storage.list();
+      _cache = normalizeDefsConditions(await container.storage.list());
       _loaded = true;
       emitChange();
       return _cache;
@@ -128,19 +132,22 @@ export function onDefinitionsChange(fn: DefinitionsListener): () => void {
   return () => { _listeners.delete(fn); };
 }
 
-/** Upsert de uma definition — grava no storage e atualiza cache. */
+/** Upsert de uma definition — grava no storage e atualiza cache. A visão
+ *  `upstream` é re-derivada no ESCOPO inteiro (uma condição nova pode ligar
+ *  este job a produtores/consumidores existentes). */
 export async function saveDefinition(def: JobDefinition): Promise<void> {
   await container.storage.save(def);
   const idx = _cache.findIndex((d) => d.id === def.id);
   if (idx >= 0) _cache = [..._cache.slice(0, idx), def, ..._cache.slice(idx + 1)];
   else _cache = [..._cache, def];
+  _cache = normalizeDefsConditions(_cache);
   emitChange();
 }
 
 /** Remove por id. */
 export async function deleteDefinition(id: string): Promise<void> {
   await container.storage.remove(id);
-  _cache = _cache.filter((d) => d.id !== id);
+  _cache = normalizeDefsConditions(_cache.filter((d) => d.id !== id));
   emitChange();
 }
 
@@ -154,7 +161,7 @@ export async function clearAllDefinitions(): Promise<void> {
 
 /** Força refetch do storage (útil quando mudanças externas chegam via WS). */
 export async function reloadDefinitions(): Promise<JobDefinition[]> {
-  _cache = await container.storage.list();
+  _cache = normalizeDefsConditions(await container.storage.list());
   _loaded = true;
   emitChange();
   return _cache;

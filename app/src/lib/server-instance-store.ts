@@ -33,8 +33,6 @@ interface ServerInstance {
   dryRun?: boolean;
   holdScope?: string;
   heldFromStatus?: string;
-  depsSatisfied?: string[];
-  depsClaims?: Array<{ from: string; parentInstanceId: string }>;
   // Só no DETALHE (GET /api/instances/{id}) — a lista não os carrega (payload
   // de escala): a action CONGELADA NA ORDEM, vinda da definition_snapshot.
   label?: string;
@@ -97,12 +95,8 @@ function toWeb(s: ServerInstance): JobInstance {
     // Status congelado pelo hold (schemaV16, hold geral): o Release restaura
     // este status. Só vem quando HELD; guia o rótulo do Release na UI.
     heldFrom: s.heldFromStatus ? (STATUS_MAP[s.heldFromStatus.toUpperCase()] ?? undefined) : undefined,
-    // Latches de dependência (schemaV15): a linha verde do canvas é POR INSTÂNCIA
-    // (claim de evento), não o status vivo do pai. Presente (mesmo []) = server novo.
-    depsSatisfied: s.depsSatisfied,
-    // Detalhe do latch (qual instance do pai emitiu o evento): pinta a linha
-    // CERTA quando o dia tem várias cópias do mesmo job (Order Force/rerun).
-    depsClaims: s.depsClaims,
+    // (Os antigos depsSatisfied/depsClaims do schemaV15 foram aposentados: a
+    // linha do canvas agora é reflexo do POOL de condições — conditions-store.)
     // Output só existe se a run ACONTECEU (dispatch/agent/saída/fim). Antes o
     // objeto {text:"",exitCode:0} nascia sempre — e uma WAITING nunca rodada
     // mostrava "resultado" com exit 0 na aba Output do drawer.

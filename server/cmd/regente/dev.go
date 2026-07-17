@@ -84,6 +84,7 @@ func cmdDev(args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sched.ReloadDefs()
+	sched.MigrateConditionsUnify() // unificação deps→condições: backfill one-time
 	created := sched.RunDaily(*date)
 	go sched.Run(ctx)
 

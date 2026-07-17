@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -144,6 +143,10 @@ func New(store *storage.FileStore, db *db.DB, bus Bus, tick time.Duration) *Sche
 	// ARCH-3 — guard sempre presente (camada em-processo). A camada cross-processo
 	// no Postgres é opt-in via EnableTickLock (modo serverless).
 	s.tickGuard = &tickGuard{db: db}
+	// O pool de condições é o modelo ÚNICO de dependência (2026-07-17) — não é
+	// mais uma engine opcional "F16": nasce junto com o scheduler. AttachConditions
+	// segue existindo para o main plugar o broadcast (e para testes trocarem).
+	s.AttachConditions(NewConditionEngine(db))
 	return s
 }
 
@@ -184,7 +187,20 @@ func (s *Scheduler) Stop() {
 
 func (s *Scheduler) AttachCalendars(c *storage.CalendarStore) { s.calStore = c }
 func (s *Scheduler) AttachResources(r *ResourceTracker)       { s.resources = r }
-func (s *Scheduler) AttachConditions(c *ConditionEngine)      { s.conditions = c }
+// AttachConditions pluga o pool de condições e liga o broadcast de mudanças:
+// o painel Condições do Monitoring e as linhas do grafo são um REFLEXO do
+// pool, então toda mudança (job OK, Set OK, ação On/Do, operador, migração)
+// vira um `condition.changed` no WS.
+func (s *Scheduler) AttachConditions(c *ConditionEngine) {
+	s.conditions = c
+	if c != nil {
+		c.OnChange(func(name, scope, kind string) {
+			s.hub.BroadcastWeb("condition.changed", map[string]string{
+				"name": name, "scope": scope, "kind": kind,
+			})
+		})
+	}
+}
 func (s *Scheduler) AttachSLA(sl *SLAEngine)                  { s.sla = sl }
 func (s *Scheduler) AttachAlerts(a *AlertEngine)              { s.alerts = a }
 func (s *Scheduler) AttachVariables(v *storage.VariableStore) { s.variables = v }
@@ -1021,11 +1037,17 @@ type instRow struct {
 // caindo na def viva só para instances legadas sem snapshot. Garante que uma
 // mudança publicada no Design durante o dia NÃO altere o que a instance de hoje
 // executa (imutabilidade Control-M-like).
+//
+// Snapshots ordenados ANTES da unificação de condições podem carregar
+// `upstream` legado sem as condições explícitas: ExpandSnapshotConditions
+// converte o lado consumidor (In + OutRemove) em memória, para o gate destas
+// instances continuar valendo no modelo único (o OutAdd do pai vem da def
+// viva normalizada — ver applyConditionsOut).
 func defForInstance(r instRow, live map[string]domain.JobDefinition) (domain.JobDefinition, bool) {
 	if r.Snapshot != "" {
 		var d domain.JobDefinition
 		if err := json.Unmarshal([]byte(r.Snapshot), &d); err == nil {
-			return d, true
+			return domain.ExpandSnapshotConditions(d, live), true
 		}
 	}
 	d, ok := live[r.DefID]
@@ -1092,57 +1114,12 @@ func (s *Scheduler) tickOnce() {
 	}
 	s.mu.Unlock()
 
-	// Índice das instances do dia por (def, ODAT) + agregado por def: com o
-	// carry-over o dia ativo mistura ORIGENS diferentes (a fresca de hoje ao
-	// lado da carregada do dia 14) e o gate de dependência olha a cópia do pai
-	// da diária CERTA, nunca "qualquer uma". Dentro do mesmo (def, odate),
-	// vale a "mais determinante" pelo statusRank (decisão estável).
-	instByDef := buildInstIndex(insts)
-
-	// Pré-passe de CLAIMS de dependência (schemaV15): toda instance WAITING/HELD
-	// com upstream tenta latchar seus eventos ANTES do gating por janela — a
-	// instance do dia reserva o término do pai assim que ele acontece, mesmo
-	// pré-horário, e uma cópia forçada depois não rouba o evento dela. Ordem de
-	// prioridade determinística: daily antes de forçadas, depois horário e id.
-	dayClaims := s.loadDayClaims(today)
-	pending := make([]instRow, 0)
-	for _, r := range insts {
-		if r.Status != string(domain.StatusWaiting) && r.Status != string(domain.StatusHeld) {
-			continue
-		}
-		// Hold geral (schemaV16): um HELD pode esconder um status TERMINAL
-		// (OK/NOTOK/CANCELLED segurados). Esses não vão rodar ao serem liberados
-		// — voltam pro status original — então NÃO disputam eventos: um NOTOK em
-		// hold clamando o evento do pai violaria o "falha devolve ao pool" (R4).
-		// Só WAITING de verdade (ou HELD vindo de WAITING / hold legado '') clama.
-		if r.Status == string(domain.StatusHeld) && r.HeldFrom != "" && r.HeldFrom != string(domain.StatusWaiting) {
-			continue
-		}
-		if r.Forced && r.ForceMode != ForceModeOrder {
-			continue // Run Now bypassa deps — não consome evento
-		}
-		pending = append(pending, r)
-	}
-	sort.Slice(pending, func(i, j int) bool {
-		if pending[i].Forced != pending[j].Forced {
-			return !pending[i].Forced // daily primeiro
-		}
-		if !pending[i].ScheduledAt.Equal(pending[j].ScheduledAt) {
-			return pending[i].ScheduledAt.Before(pending[j].ScheduledAt)
-		}
-		return pending[i].ID < pending[j].ID
-	})
-	for _, r := range pending {
-		def, ok := defForInstance(r, defs)
-		if !ok || len(def.Upstream) == 0 {
-			continue
-		}
-		claimed := dayClaims[r.ID]
-		if claimed == nil {
-			claimed = map[string]bool{}
-			dayClaims[r.ID] = claimed
-		}
-		s.claimDepEdges(r, def, claimed)
+	// Foto do POOL de condições (modelo único de dependência): uma query por
+	// tick, consultada in-memory pelo gate de cada instance WAITING. O pool é
+	// pequeno (condições vivas do ambiente); o volume está nas instances.
+	var condIdx CondIndex
+	if s.conditions != nil {
+		condIdx = s.conditions.LoadIndex()
 	}
 
 	for _, r := range insts {
@@ -1172,15 +1149,15 @@ func (s *Scheduler) tickOnce() {
 		if !ok {
 			continue
 		}
-		// "Run Now" (forced sem force_mode) bypassa deps/janela/conditions/recursos
+		// "Run Now" (forced sem force_mode) bypassa janela/condições/recursos
 		// — mas NÃO o agente: sem agente disponível, nem o forced é reivindicado
 		// (senão pisca RUNNING↔WAITING). Também NÃO bypassa o Confirm: no Control-M
 		// a confirmação é um wait de runtime (o job forçado continua "Wait User"
 		// até o operador confirmar). O "Order Force" do Design (force_mode='order')
 		// NÃO cai aqui: é uma ordem nova fora do AGENDAMENTO, mas os gates de
-		// runtime (deps por evento, conditions, agente, recursos) valem — a cópia
-		// forçada de um job com dependência entra em WAIT EVENT até o pai emitir
-		// um término NOVO (o evento consumido pela instance original não a satisfaz).
+		// runtime (condições, agente, recursos, confirm) valem — a cópia forçada
+		// de um job cuja condição de entrada já foi CONSUMIDA (deletada por um OK)
+		// entra em WAIT COND até alguém recriá-la (rerun do pai, operador, ação).
 		if r.Forced && r.ForceMode != ForceModeOrder {
 			if def.Confirm && !r.Confirmed {
 				continue
@@ -1196,15 +1173,13 @@ func (s *Scheduler) tickOnce() {
 		// usa pra dizer o porquê. short-circuit no 1º bloqueio (hot path). Nenhum
 		// gate bloqueia o dispatch sem aparecer aqui, então o Explain nunca diverge.
 		//
-		// Paridade Control-M (2026-07-02): dep "permanentemente" impossível NÃO
-		// cancela mais o sucessor — ele fica WAITING (Wait Event) até o operador
-		// agir. O flip é reversível na prática: rerun do pai (NOTOK→WAITING→OK) ou
-		// Set OK destravam a aresta e o tick despacha o sucessor sozinho. O
-		// auto-CANCEL antigo matava o sucessor ~2s após o pai falhar, e o Set OK
-		// no pai não revivia ninguém (CANCELLED é terminal) — quebrava o fluxo
-		// padrão de operação. Quem nunca ficar elegível morre na virada da daily
+		// Paridade Control-M (2026-07-02): condição de entrada que "nunca virá"
+		// NÃO cancela o sucessor — ele fica WAITING (WAIT COND) até o operador
+		// agir. O flip é reversível na prática: rerun/Set OK de quem cria a
+		// condição (ou um set manual no painel) e o tick despacha o sucessor
+		// sozinho. Quem nunca ficar elegível morre na virada da daily
 		// (WAITING-nunca-rodou não carrega), como no Control-M.
-		if blockers := s.gateInstance(r, def, instByDef, dayClaims[r.ID], now, true); len(blockers) > 0 {
+		if blockers := s.gateInstance(r, def, condIdx, now, true); len(blockers) > 0 {
 			// Sem agente: registra 1 evento com throttle (5min) pra visibilidade
 			// no histórico — o estado NÃO muda (segue WAITING, sem broadcast).
 			if blockers[0].Kind == GateAgent {
@@ -1389,24 +1364,16 @@ func (s *Scheduler) FinishInstance(id string, status domain.InstanceStatus, exit
 		`UPDATE instances SET status=?, exit_code=?, output=?, finished_at=CURRENT_TIMESTAMP WHERE id=?`,
 		string(status), exitCode, output, id,
 	)
-	// schemaV15 — término TERMINAL publica o evento de dependência (consumível
-	// UMA vez por definition consumidora). Rerun deste job emitirá um evento NOVO.
-	if status == domain.StatusOK || status == domain.StatusNotOK {
-		s.emitDepEvent(id, status)
-	}
-	// Consumo só se MATERIALIZA no OK (regra do usuário): a falha terminal
-	// DEVOLVE os eventos que esta instance clamou — a condição não foi "gasta"
-	// por uma execução que não deu certo. Um clone pendente (ou o rerun deste
-	// próprio job) pode re-clamar o evento devolvido. Durante os retries (P15,
-	// return antecipado acima) o claim segue seguro — ninguém rouba no meio.
-	if status == domain.StatusNotOK {
-		s.ResetDepClaims(id)
-	}
 	// F15 — release resources holdings
 	if s.resources != nil {
 		s.resources.Release(id)
 	}
-	// F16 — emit ConditionsOut on OK
+	// Modelo único de condições: o término OK aplica as saídas — ADICIONA as
+	// ConditionsOutAdd ao pool e REMOVE as ConditionsOutRemove. A remoção das
+	// condições de ENTRADA (armada automaticamente pela setinha no OutRemove) é
+	// o CONSUMO: um rerun depois deste OK volta a esperar, porque a condição que
+	// o liberou sumiu do pool. NOTOK não aplica nada — a condição de entrada
+	// continua lá e o rerun roda direto (falha não consome).
 	if status == domain.StatusOK {
 		s.applyConditionsOut(id, "scheduler")
 	}
@@ -1665,11 +1632,11 @@ func (s *Scheduler) SetOK(id string) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return fmt.Errorf("instance %s changed state during Set OK — retry", id)
 	}
-	// schemaV15 — Set OK é um término OK aos olhos dos sucessores: publica o
-	// evento consumível (é o gatilho que destrava on-success a partir de pai falho).
-	s.emitDepEvent(id, domain.StatusOK)
-	// BUG-4 — Set OK também MATERIALIZA as ConditionsOut (F16), como um término
-	// OK de verdade faria: dependentes por condition destravam igual.
+	// Set OK é um término OK de verdade aos olhos das condições (regra do
+	// usuário): APLICA as saídas — adiciona as ConditionsOutAdd (destrava
+	// sucessores a partir de um pai falho) E remove as ConditionsOutRemove
+	// (consome as condições de entrada: Set OK + rerun ⇒ o job volta a esperar,
+	// porque o próprio Set OK apagou a condição do pool).
 	s.applyConditionsOut(id, "set-ok")
 	s.emitEvent(id, "set-ok", "operator", fmt.Sprintf("flipped from %s to OK", status))
 	s.hub.BroadcastWeb("instance.changed", map[string]interface{}{
@@ -1678,38 +1645,70 @@ func (s *Scheduler) SetOK(id string) error {
 	return nil
 }
 
-// applyConditionsOut — F16: emite as ConditionsOut de uma instance que terminou
-// OK (término real ou Set OK). Lê a def VIVA (mesma regra do FinishInstance).
+// applyConditionsOut — aplica as SAÍDAS de condição de uma instance que
+// terminou OK (término real ou Set OK): adiciona OutAdd, remove OutRemove.
 // O escopo de data é o ODAT (origem) do produtor — um job carregado do dia 14
-// que termina hoje cria a condition DO DIA 14 (quem espera é o consumidor da
+// que termina hoje cria a condição DO DIA 14 (quem espera é o consumidor da
 // mesma origem), com @stat/@prev resolvidos por nome.
+//
+// Fonte das saídas = UNIÃO do snapshot congelado com a def viva: o snapshot é
+// a foto do que foi ordenado (imutabilidade do Monitoring) e a def viva cobre
+// instances ordenadas ANTES da unificação, cujo snapshot não tem o OutAdd
+// sintetizado do upstream legado (a expansão produtor-side vive na def viva).
 func (s *Scheduler) applyConditionsOut(id, actor string) {
 	if s.conditions == nil {
 		return
 	}
-	var defID, odate string
-	_ = s.db.QueryRow(`SELECT definition_id, `+odateExpr+` FROM instances WHERE id=?`, id).Scan(&defID, &odate)
+	var defID, odate, snapshot string
+	_ = s.db.QueryRow(
+		`SELECT definition_id, `+odateExpr+`, COALESCE(definition_snapshot,'') FROM instances WHERE id=?`, id,
+	).Scan(&defID, &odate, &snapshot)
 	s.mu.Lock()
-	var def domain.JobDefinition
+	var live domain.JobDefinition
 	for _, d := range s.defs {
 		if d.ID == defID {
-			def = d
+			live = d
 			break
 		}
 	}
 	s.mu.Unlock()
+	def := live
+	if snapshot != "" {
+		var snap domain.JobDefinition
+		if json.Unmarshal([]byte(snapshot), &snap) == nil && snap.ID != "" {
+			snap.ConditionsOutAdd = unionStr(snap.ConditionsOutAdd, live.ConditionsOutAdd)
+			snap.ConditionsOutRemove = unionStr(snap.ConditionsOutRemove, live.ConditionsOutRemove)
+			def = snap
+		}
+	}
 	if def.ID != "" {
 		s.conditions.ApplyOutcomes(def, odate, actor, s.prevDaily)
 	}
 }
 
+func unionStr(a, b []string) []string {
+	out := append([]string{}, a...)
+	for _, s := range b {
+		found := false
+		for _, x := range out {
+			if x == s {
+				found = true
+				break
+			}
+		}
+		if !found {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // ForceOrder cria uma instance NOVA fora do agendamento (Control-M "Order
-// Force"). Desde o schemaV15 a ordem forçada NÃO bypassa mais os gates de
-// RUNTIME: dependências valem por EVENTO consumível (a cópia de um job cuja
-// dependência "já rodou" entra em WAIT EVENT até o pai emitir um término novo
-// — o evento consumido pela instance original não a satisfaz), e conditions/
-// agente/recursos/Confirm continuam valendo. O que ela bypassa é o AGENDAMENTO
-// (calendário/janela/horário — a ordem nasce elegível agora).
+// Force"). A ordem forçada NÃO bypassa os gates de RUNTIME: condições de
+// entrada valem contra o pool (a cópia de um job cuja condição já foi
+// CONSUMIDA — deletada pelo OK do consumidor — entra em WAIT COND até alguém
+// recriá-la), e agente/recursos/Confirm continuam valendo. O que ela bypassa
+// é o AGENDAMENTO (calendário/janela/horário — a ordem nasce elegível agora).
 func (s *Scheduler) ForceOrder(defID string) (string, error) {
 	s.mu.Lock()
 	var def *domain.JobDefinition
@@ -1743,18 +1742,16 @@ func (s *Scheduler) ForceOrder(defID string) (string, error) {
 	}
 	s.emitEvent(id, "force-ordered", "operator", msg)
 	s.hub.BroadcastWeb("instance.changed", map[string]interface{}{"id": id, "status": "WAITING", "forced": true})
-	// Tenta despachar JÁ, pelo MESMO gating do tick (deps por evento, conditions,
-	// agente, recursos, Confirm — nada de caminho paralelo): sem bloqueio, roda
-	// na hora, como o Force sempre fez; bloqueado, fica WAITING com o motivo
-	// visível no Explain e o tick assume dali (ex.: WAIT EVENT até o pai rodar
-	// de novo; WAIT_CONFIRM até o operador confirmar).
+	// Tenta despachar JÁ, pelo MESMO gating do tick (condições, agente,
+	// recursos, Confirm — nada de caminho paralelo): sem bloqueio, roda na
+	// hora, como o Force sempre fez; bloqueado, fica WAITING com o motivo
+	// visível no Explain e o tick assume dali (ex.: WAIT COND até a condição
+	// existir; WAIT_CONFIRM até o operador confirmar).
 	r := instRow{
 		ID: id, DefID: defID, OrderDate: today, Status: string(domain.StatusWaiting),
 		ScheduledAt: now, Forced: true, ForceMode: ForceModeOrder, Snapshot: string(snap),
 	}
-	claimed := map[string]bool{}
-	s.claimDepEdges(r, *def, claimed)
-	if blockers := s.gateInstance(r, *def, s.loadUpstreamInsts(today, *def), claimed, now, true); len(blockers) > 0 {
+	if blockers := s.gateInstance(r, *def, nil, now, true); len(blockers) > 0 {
 		s.emitEvent(id, "submitted", "operator", "force aguardando gate: "+blockers[0].Detail)
 		return id, nil
 	}

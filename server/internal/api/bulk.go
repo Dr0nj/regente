@@ -175,9 +175,7 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 		return status, nil
 
 	case "cancel":
-		// Claims ANTES do UPDATE (ver cancelInstance): não-consumido devolve ao
-		// pool; consumo OK (mesmo segurado por hold) permanece gasto — lápide.
-		s.cfg.Scheduler.SettleDepClaims(id)
+		// Cancel não toca o pool de condições (ver cancelInstance).
 		res, err := s.cfg.DB.Exec(`UPDATE instances SET status=?, held_from_status='', finished_at=CURRENT_TIMESTAMP WHERE id=?`,
 			string(domain.StatusCancelled), id)
 		if err != nil {
@@ -192,7 +190,7 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 
 	case "delete":
 		// Control-M "Delete job" (ver deleteInstance): só em HOLD — RUNNING nunca
-		// é deletável (não é segurável). Claims via settle; events do job somem.
+		// é deletável (não é segurável). O pool de condições fica intacto.
 		var status string
 		if err := s.cfg.DB.QueryRow(`SELECT status FROM instances WHERE id=?`, id).Scan(&status); err != nil {
 			return "", fmt.Errorf("instance not found")
@@ -200,7 +198,6 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 		if status != string(domain.StatusHeld) {
 			return "", fmt.Errorf("delete exige HOLD (status atual: %s)", status)
 		}
-		s.cfg.Scheduler.SettleDepClaims(id)
 		if _, err := s.cfg.DB.Exec(`DELETE FROM instance_events WHERE instance_id=?`, id); err != nil {
 			return "", err
 		}
@@ -215,10 +212,9 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 		return "deleted", nil
 
 	case "rerun":
-		// schemaV15 — claims ANTES do reset de status (ver rerunInstance):
-		// consumo OK é permanente (lápide → WAIT EVENT), inclusive um OK
-		// segurado por hold (held_from_status); não-consumido devolve.
-		s.cfg.Scheduler.SettleDepClaims(id)
+		// Rerun não toca o pool: o gate re-avalia o que existe (rerun após OK
+		// espera — o OK consumiu a entrada via OutRemove; ver rerunInstance).
+		//
 		// BUG-2: `confirmed` sobrevive ao rerun (ver rerunInstance) — job já
 		// confirmado não volta pro gate CONFIRM. Bypass do Run Now não é
 		// pegajoso (ver rerunInstance): forced zera quando mode='' .

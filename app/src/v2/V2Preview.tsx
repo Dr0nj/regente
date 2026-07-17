@@ -26,7 +26,6 @@ import type { JobType } from "@/lib/job-config";
 import type {
   JobInstance,
   JobDefinition,
-  EdgeCondition,
 } from "@/lib/orchestrator-model";
 import { todayOrderDate } from "@/lib/orchestrator-model";
 import {
@@ -73,9 +72,8 @@ import { PublishButton } from "./PublishButton";
 import { getDesignSessionId, setDesignSessionId, onDesignSessionChange, onDesignSessionConflict } from "@/lib/server-client";
 import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, createDesignSession, openSessionFolder, createSessionFolder, listDesignSessions, deleteDesignSession, type DesignSession, type SessionStatus, type PublishResult } from "@/lib/design-session-api";
 import { toast, ToastHost } from "./Toast";
-import EdgeConditionModal from "./EdgeConditionModal";
 import { getGitInfo, commitUrl } from "@/lib/git-info";
-import { FolderOpen, Play, Zap, GitCommitHorizontal, GitCompare, FlaskConical, LayoutGrid, ChevronLeft, ChevronRight, Code, Wand2, GanttChartSquare, HelpCircle } from "lucide-react";
+import { FolderOpen, Play, Zap, GitCommitHorizontal, GitCompare, FlaskConical, LayoutGrid, ChevronLeft, ChevronRight, Code, Wand2, GanttChartSquare, HelpCircle, ListChecks } from "lucide-react";
 import CodeModeView from "./CodeModeView";
 import MassUpdateDialog from "./MassUpdateDialog";
 import TimelineView from "./TimelineView";
@@ -93,13 +91,16 @@ import {
   instanceToMonitoring,
   buildMonitoringCanvas,
   buildDesignCanvas,
-  isWaitingOnDeps,
+  isWaitingOnConds,
   type AgentAvailability,
   type Canvas,
   type LayoutConfig,
   type LayoutOverrides,
   type Mode,
 } from "./canvas-layout";
+import { linkCondName } from "@/lib/conditions-model";
+import { conditionPool, onConditionsChange } from "@/lib/conditions-store";
+import ConditionsPanel from "./ConditionsPanel";
 import { listAgents } from "@/lib/agents-api";
 import NavMinimap from "./NavMinimap";
 import { useCanvasCamera } from "./hooks/useCanvasCamera";
@@ -519,9 +520,15 @@ function V2PreviewInner() {
     });
   }, [instances, runnableDefs, effectiveFolders]);
 
+  // POOL de condições — o "lugar" único que as linhas do grafo refletem e que
+  // o painel Condições lista. Ressincronizado via WS (server) / storage (local).
+  const [condPool, setCondPool] = useState<ReadonlySet<string>>(() => conditionPool());
+  const [showConditions, setShowConditions] = useState(false);
+  useEffect(() => onConditionsChange(() => setCondPool(conditionPool())), []);
+
   const canvas = useMemo<Canvas>(
-    () => (mode === "monitoring" ? buildMonitoringCanvas(filteredInstances, filteredRunnableDefs, layoutCfg, agentAvail, folderLayouts) : buildDesignCanvas(designDefsWithDraft, layoutCfg, folderLayouts)),
-    [mode, filteredInstances, filteredRunnableDefs, designDefsWithDraft, layoutCfg, agentAvail, folderLayouts],
+    () => (mode === "monitoring" ? buildMonitoringCanvas(filteredInstances, filteredRunnableDefs, layoutCfg, agentAvail, folderLayouts, condPool) : buildDesignCanvas(designDefsWithDraft, layoutCfg, folderLayouts)),
+    [mode, filteredInstances, filteredRunnableDefs, designDefsWithDraft, layoutCfg, agentAvail, folderLayouts, condPool],
   );
 
   // Seleção threaded no prop CONTROLADO de nós. O ReactFlow guarda seleção no
@@ -532,11 +539,15 @@ function V2PreviewInner() {
   // onSelectionChange) para que o destaque neon PERSISTA entre rebuilds.
   // Sem seleção, devolvemos canvas.nodes intacto (o RF já mostra tudo sem halo).
   // Geometria/câmera continuam em canvas.nodes — selecionar NÃO mexe na câmera.
+  // SEMPRE mapeia com `selected` booleano explícito — inclusive com a seleção
+  // vazia. Com `selected: undefined` o RF preservava a seleção INTERNA dele
+  // (que um micro-drag de clique rápido ativa), acumulando nós destacados que
+  // o selectedIds não conhecia — o "travou com 2 selecionados" dos cliques
+  // rápidos alternados: sem estado nosso, nada limpava o highlight fantasma.
   const displayNodes = useMemo<Node[]>(() => {
-    if (selectedIds.size === 0) return canvas.nodes;
     return canvas.nodes.map((n) => {
       const sel = n.type !== "laneLabel" && selectedIds.has(n.id.replace(/^[md]-/, ""));
-      return sel === !!n.selected ? n : { ...n, selected: sel };
+      return sel === !!n.selected ? (n.selected === undefined ? { ...n, selected: false } : n) : { ...n, selected: sel };
     });
   }, [canvas.nodes, selectedIds]);
 
@@ -746,32 +757,41 @@ function V2PreviewInner() {
     });
   }, [activeFolders]);
 
-  /* ── onConnect (Fase 8: edges com condição) ──
-     window.prompt substituído por EdgeConditionModal (2026-06-12). */
-  const [pendingConn, setPendingConn] = useState<{ fromId: string; toId: string } | null>(null);
+  /* ── onConnect — a SETINHA escreve CONDIÇÕES (modelo único, 2026-07-17) ──
+     Ligar A→B cria a condição A-TO-B: saída＋ no produtor, entrada + saída−
+     (deleção automática) no consumidor — exatamente o que o usuário faria
+     digitando à mão no drawer; os dois caminhos vão pro MESMO lugar (o pool).
+     Sem modal: a data default é Odate (ajustável no drawer, seletor por linha). */
   const onConnect: OnConnect = useCallback((conn: Connection) => {
     if (mode !== "design") return;
     if (!conn.source || !conn.target || conn.source === conn.target) return;
-    setPendingConn({
-      fromId: conn.source.replace(/^d-/, ""),
-      toId: conn.target.replace(/^d-/, ""),
+    const fromId = conn.source.replace(/^d-/, "");
+    const toId = conn.target.replace(/^d-/, "");
+    const producer = defs.find((d) => d.id === fromId);
+    const consumer = defs.find((d) => d.id === toId);
+    if (!producer || !consumer) return;
+    const name = linkCondName(fromId, toId);
+    const has = (list: string[] | undefined, v: string) => (list ?? []).includes(v);
+    if (has(producer.conditionsOutAdd, name) && has(consumer.conditionsIn, name)) return; // já ligados
+    const save = async () => {
+      if (!has(producer.conditionsOutAdd, name)) {
+        await saveDefinition({ ...producer, conditionsOutAdd: [...(producer.conditionsOutAdd ?? []), name] });
+      }
+      if (!has(consumer.conditionsIn, name) || !has(consumer.conditionsOutRemove, name)) {
+        await saveDefinition({
+          ...consumer,
+          conditionsIn: has(consumer.conditionsIn, name) ? consumer.conditionsIn : [...(consumer.conditionsIn ?? []), name],
+          conditionsOutRemove: has(consumer.conditionsOutRemove, name) ? consumer.conditionsOutRemove : [...(consumer.conditionsOutRemove ?? []), name],
+        });
+      }
+      toast.success(`Condição ${name} criada`, {
+        detail: `${producer.label} adiciona no OK · ${consumer.label} espera e deleta no OK`,
+      });
+    };
+    void save().catch((e) => {
+      toast.error("Falha ao salvar a condição da ligação", { detail: e instanceof Error ? e.message : String(e) });
     });
-  }, [mode]);
-
-  const confirmConnection = useCallback((condition: EdgeCondition) => {
-    if (!pendingConn) return;
-    const { fromId, toId } = pendingConn;
-    setPendingConn(null);
-    const target = defs.find((d) => d.id === toId);
-    if (!target) return;
-    const up = target.upstream ?? [];
-    // remove aresta prévia do mesmo `from` para evitar duplicatas
-    const next = [...up.filter((u) => u.from !== fromId), { from: fromId, condition }];
-    const updated: JobDefinition = { ...target, upstream: next };
-    void saveDefinition(updated).catch((e) => {
-      toast.error("Falha ao salvar dependência", { detail: e instanceof Error ? e.message : String(e) });
-    });
-  }, [pendingConn, defs]);
+  }, [mode, defs]);
 
   /* ── Save/Delete definition ── */
   const handleSaveDef = useCallback(async (def: JobDefinition) => {
@@ -782,10 +802,27 @@ function V2PreviewInner() {
   }, []);
   const handleDeleteDef = useCallback(async (id: string) => {
     await deleteDefinition(id);
-    // também remove referências upstream em outras definitions
+    // Limpa as condições de LIGAÇÃO automáticas (X-TO-Y) que envolvem o job
+    // deletado nas outras defs — senão o consumidor fica preso esperando uma
+    // condição que ninguém mais produz. Condições MANUAIS (nomes do usuário)
+    // ficam intactas: podem ter outros produtores/consumidores.
+    const touches = (n: string) => {
+      const base = n.split("@")[0];
+      return base.startsWith(`${id.toUpperCase()}-TO-`) || base.endsWith(`-TO-${id.toUpperCase()}`);
+    };
     for (const d of getDefinitions()) {
-      if (d.upstream?.some((u) => u.from === id)) {
-        await saveDefinition({ ...d, upstream: d.upstream.filter((u) => u.from !== id) });
+      const cIn = (d.conditionsIn ?? []).filter((n) => !touches(n));
+      const cAdd = (d.conditionsOutAdd ?? []).filter((n) => !touches(n));
+      const cRm = (d.conditionsOutRemove ?? []).filter((n) => !touches(n));
+      if (cIn.length !== (d.conditionsIn ?? []).length ||
+          cAdd.length !== (d.conditionsOutAdd ?? []).length ||
+          cRm.length !== (d.conditionsOutRemove ?? []).length) {
+        await saveDefinition({
+          ...d,
+          conditionsIn: cIn.length ? cIn : undefined,
+          conditionsOutAdd: cAdd.length ? cAdd : undefined,
+          conditionsOutRemove: cRm.length ? cRm : undefined,
+        });
       }
     }
     setEditingDef(null);
@@ -1374,6 +1411,24 @@ function V2PreviewInner() {
             </button>
 
             <button
+              onClick={() => setShowConditions((v) => !v)}
+              title="Condições — o pool do ambiente: toda condição adicionada (por job OK, Set OK, ação On/Do ou operador), com data. Deletar aqui trava quem depende dela; adicionar libera."
+              style={{
+                padding: "5px 10px",
+                background: showConditions ? "var(--v2-accent-deep)" : "transparent",
+                border: `1px solid ${showConditions ? "var(--v2-accent-brand)" : "var(--v2-border-medium)"}`,
+                color: showConditions ? "var(--v2-accent-brand)" : "var(--v2-text-primary)",
+                borderRadius: 3,
+                fontSize: 10, fontFamily: "var(--v2-font-mono)",
+                letterSpacing: "0.06em", textTransform: "uppercase",
+                cursor: "pointer", fontWeight: 600,
+                display: "flex", alignItems: "center", gap: 6,
+              }}
+            >
+              <ListChecks size={11} /> Condições
+            </button>
+
+            <button
               onClick={() => organizeView(300)}
               title="Organizar — re-enquadra o canvas no mesmo limite da entrada (os jobs já se alinham sozinhos: dependentes em fluxo, soltos em grade)"
               style={{
@@ -1594,6 +1649,11 @@ function V2PreviewInner() {
           selectionOnDrag={false}
           selectionKeyCode="Shift"
           multiSelectionKeyCode={["Shift", "Meta", "Control"]}
+          // Cliques rápidos viram micro-DRAGS — com selectNodesOnDrag (default
+          // true) o RF selecionava o nó internamente no dragstart, fora do
+          // selectedIds (o dono da seleção é o onNodeClick). Acumulava
+          // destaque fantasma em 2 nós sob cliques alternados rápidos.
+          selectNodesOnDrag={false}
           onNodeClick={onNodeClick}
           onNodeContextMenu={onNodeContextMenu}
           onPaneClick={onPaneClick}
@@ -1787,21 +1847,14 @@ function V2PreviewInner() {
             label: selectedInstance.label && selectedInstance.label !== selectedInstance.definitionId ? selectedInstance.label : selDef.label,
             jobType: selectedInstance.jobType || selDef.jobType,
           } : selectedInstance;
-          // WAIT EVENT (BUG-3) — mesma régua do card: decide as ações do drawer
-          // (Cancel some, Set OK aparece). TODAS as cópias de cada def (o dia
-          // pode ter várias — Order Force/rerun; qualquer uma satisfaz).
-          const instancesByDefId = new Map<string, typeof instances>();
-          for (const i of instances) {
-            const l = instancesByDefId.get(i.definitionId);
-            if (l) l.push(i);
-            else instancesByDefId.set(i.definitionId, [i]);
-          }
+          // WAIT COND (BUG-3) — mesma régua do card (pool de condições):
+          // decide as ações do drawer (Cancel some, Set OK aparece).
           return (
             <InstanceDetailsDrawer
               instance={enriched}
               definition={selDef}
               allDefs={runnableDefs}
-              waitEvent={isWaitingOnDeps(enriched, selDef, instancesByDefId)}
+              waitEvent={isWaitingOnConds(enriched, selDef, condPool)}
               handlers={{
                 onHold: holdInstance,
                 onRelease: releaseInstance,
@@ -1937,14 +1990,10 @@ function V2PreviewInner() {
           />
         )}
 
-        {/* Modal de condição da dependência (substitui window.prompt) */}
-        {pendingConn && (
-          <EdgeConditionModal
-            fromLabel={defs.find((d) => d.id === pendingConn.fromId)?.label ?? pendingConn.fromId}
-            toLabel={defs.find((d) => d.id === pendingConn.toId)?.label ?? pendingConn.toId}
-            onConfirm={confirmConnection}
-            onCancel={() => setPendingConn(null)}
-          />
+        {/* Painel Condições — o POOL do ambiente (só no Monitoring, ao lado
+            do Organizar): lista/adiciona/deleta as condições com data. */}
+        {showConditions && mode === "monitoring" && (
+          <ConditionsPanel onClose={() => setShowConditions(false)} />
         )}
 
         {/* P3/escala — ViewPoint server-driven cobre o canvas quando ligado */}

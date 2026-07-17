@@ -125,7 +125,9 @@ func TestRerun_ClearsRunNowBypass(t *testing.T) {
 	}
 }
 
-// BUG-3: Set OK numa instance WAITING (WAIT EVENT) conclui OK na hora.
+// BUG-3: Set OK numa instance WAITING (WAIT COND) conclui OK na hora.
+// (As saídas de condição do Set OK são cobertas em scheduler/setok_bugs_test.go
+// e scheduler/conditions_unify_test.go.)
 func TestSetOK_FromWaiting(t *testing.T) {
 	srv, d := newOpsTestServer(t)
 	seedInstanceFull(t, d, "we-1", "WAITING", 0, "", 0)
@@ -142,14 +144,6 @@ func TestSetOK_FromWaiting(t *testing.T) {
 	}
 	if status != "OK" {
 		t.Fatalf("Set OK deveria flipar WAITING→OK, veio %s", status)
-	}
-	// schemaV15: o Set OK publica o evento consumível pros dependentes.
-	var events int
-	if err := d.QueryRow(`SELECT COUNT(*) FROM dep_events WHERE instance_id=?`, "we-1").Scan(&events); err != nil {
-		t.Fatalf("dep_events: %v", err)
-	}
-	if events != 1 {
-		t.Fatalf("Set OK deveria emitir 1 dep_event, veio %d", events)
 	}
 }
 

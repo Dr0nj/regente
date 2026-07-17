@@ -13,6 +13,7 @@ import type { Node, Edge, NodeHandle } from "@xyflow/react";
 import type { JobNodeData } from "@/lib/job-config";
 import type { JobInstance, JobDefinition, EdgeCondition, DepDateRef } from "@/lib/orchestrator-model";
 import { EDGE_CONDITION_DEFAULT, TEAMS, odateOf } from "@/lib/orchestrator-model";
+import { edgeCondNames, missingConds, poolHas } from "@/lib/conditions-model";
 import type { MonitoringJob } from "./MonitoringSidebarV2";
 
 export type Mode = "design" | "monitoring";
@@ -73,7 +74,10 @@ export const PAN_CROSS_SLACK = 40;
 // Design — margem (px de mundo) pros LADOS da caixa dos jobs: visão mais contida
 // que o Monitoring — não atravessa, só respira ao redor do conteúdo.
 export const DESIGN_PAN_MARGIN_X = 360;
-const NODE_GAP_Y = 28; // ranksep dagre (dep vertical)
+// ranksep dagre (dep vertical): folga suficiente pra LINHA de dependência
+// aparecer entre pai e filho — com 28px os cards quase encostavam e só o ✓
+// ficava visível (report do usuário, 2026-07-17).
+const NODE_GAP_Y = 72;
 const NODE_GAP_X = 36; // nodesep dagre (jobs paralelos na mesma linha)
 const COL_PADDING_X = 24;
 // Grade dos jobs SOLTOS (sem dependência interna). Configurável em Settings (Fase 2).
@@ -204,75 +208,34 @@ function groupByTeam<T extends { team?: string }>(items: T[]): Map<string, T[]> 
 }
 
 /**
- * Estado de satisfação de uma dependência (Control-M semantics).
+ * Estado de uma linha de dependência — REFLEXO DO POOL de condições (modelo
+ * único, 2026-07-17; docs/conditions-events.md). A linha P→C existe porque
+ * alguma condição liga os dois (edgeCondNames: entradas de C que P produz), e
+ * a cor diz o estado dessa condição PARA ESTE consumidor:
  *
- * Desde o schemaV15 a linha é POR INSTÂNCIA (consumidora), não do pai — e,
- * desde 2026-07-14, POR PAR: o dia pode ter VÁRIAS cópias do mesmo job (Order
- * Force/rerun), então cada cópia do pai ganha a sua linha até cada cópia do
- * filho (a dependência existe entre todas), e a cor diz o papel de cada par:
- *   - CLAIM latchado com produtor conhecido (inst.depsClaims) → VERDE só no
- *     par produtor→consumidor REAL; as linhas para as outras cópias do pai
- *     ficam neutras (cinza). Verde é pra sempre nesta instance — rerun/cancel
- *     do pai NÃO apaga a linha; só o rerun da própria instance reseta. No
- *     server o consumo de um run OK é PERMANENTE: o rerun entra em WAIT EVENT
- *     (linha pendente) até o pai emitir um término NOVO.
- *   - Claim sem detalhe do produtor (depsSatisfied, compat) → verde em todos
- *     os pares (não dá pra saber qual cópia satisfez).
- *   - Consumidor que JÁ RODOU (RUNNING/OK/NOTOK) → verde (satisfez ao partir;
- *     cobre modo local/instances legadas sem claim).
- *   - Sem claim e sem ter rodado: a cor segue o estado vivo DAQUELA cópia do
- *     pai (cinza pendente / vermelho NOTOK-CANCELLED), MAS pai OK sem evento
- *     livre = pendente (o término foi consumido por outra instance — WAIT
- *     EVENT da cópia forçada, que espera um término NOVO).
- *
- * O CARD (WAIT EVENT) segue sendo def-level: a dependência está satisfeita se
- * ALGUM par satisfez (isDepSatisfied) — a linha é informação por par, o gate é
- * por definition (um evento de qualquer cópia do pai libera o consumidor).
+ *   - VERDE ✓  — a condição existe no pool (o consumidor pode rodar), ou o
+ *     consumidor JÁ RODOU sobre ela (RUNNING/OK — no OK ele a consome via
+ *     saída−, mas a linha continua verde: deu certo).
+ *   - VERMELHO ✗ — o job SUBSEQUENTE está com erro (NOTOK).
+ *   - CINZA — a condição não existe (ainda não criada, consumida por um OK
+ *     anterior — ex.: Set OK + rerun — ou deletada no painel Condições) e o
+ *     consumidor está esperando.
  */
 type DepState = "satisfied" | "blocked" | "pending";
 
-function evaluateDepState(parentStatus: JobInstance["status"]): DepState {
-  if (parentStatus === "OK") return "satisfied";
-  if (parentStatus === "NOTOK" || parentStatus === "CANCELLED") return "blocked";
-  return "pending"; // WAITING/RUNNING/HOLD
-}
-
-function instStarted(i: JobInstance): boolean {
-  return i.status === "RUNNING" || i.status === "OK" || i.status === "NOTOK";
-}
-
-/** Claim desta instance sobre a def upstream (detalhe do produtor; server novo). */
-function claimFor(inst: JobInstance, upstreamId: string) {
-  return inst.depsClaims?.find((c) => c.from === upstreamId);
-}
-
-/** Estado da aresta upstream→inst POR PAR de instances, claim-aware (ver
- *  comentário do DepState). `parent` é UMA cópia específica do pai. */
+/** Estado da linha POR PAR (cópia do pai × cópia do filho), pool-aware. */
 function evaluateEdgeState(
   inst: JobInstance,
-  upstreamId: string,
-  condition: EdgeCondition,
-  parent: JobInstance | undefined,
+  linkNames: string[],
+  pool: ReadonlySet<string>,
 ): DepState {
-  const claim = claimFor(inst, upstreamId);
-  if (claim?.parentInstanceId) {
-    // Sabemos QUAL cópia do pai emitiu o evento clamado: verde só no par real;
-    // as linhas para as outras cópias ficam neutras (a dependência existe,
-    // mas não foi aquele término que a satisfez).
-    return parent && claim.parentInstanceId === parent.id ? "satisfied" : "pending";
+  if (inst.status === "NOTOK") return "blocked"; // vermelho = subsequente com erro
+  if (inst.status === "RUNNING" || inst.status === "OK") return "satisfied";
+  const odat = odateOf(inst);
+  if (linkNames.length > 0 && linkNames.every((n) => poolHas(pool, n, odat))) {
+    return "satisfied"; // a condição está lá — reflexo direto do pool
   }
-  if (inst.depsSatisfied?.includes(upstreamId)) return "satisfied"; // claim sem detalhe (compat)
-  // 'always' não consome evento: satisfeita pela existência do pai no dia.
-  if (condition === "always") return parent ? "satisfied" : "pending";
-  if (instStarted(inst)) return "satisfied";
-  if (!parent) return "pending";
-  const live = evaluateDepState(parent.status);
-  if (Array.isArray(inst.depsSatisfied) && live === "satisfied") {
-    // Server com semântica de claims: pai OK mas ESTA instance não latchou —
-    // o evento já foi consumido (cópia forçada esperando um término novo).
-    return "pending";
-  }
-  return live;
+  return "pending";
 }
 
 /**
@@ -303,47 +266,18 @@ export function parentsForEdge(
 }
 
 /**
- * A dependência (def-level) está satisfeita para esta instance? Agrega TODAS
- * as cópias do pai da diária CERTA (parentsForEdge) — é a régua do CARD (WAIT
- * EVENT) e dos menus; a cor de cada linha é por PAR (evaluateEdgeState). Um
- * evento de QUALQUER cópia elegível do pai libera o consumidor (R2).
+ * WAIT COND de UMA instance — a MESMA régua do gate do server: WAITING com
+ * alguma condição de ENTRADA ausente do pool (todas as ConditionsIn, não só as
+ * de setinha). Run Now (`manual`) bypassa. Exportada pro drawer/menus
+ * decidirem as ações contextuais sem duplicar a semântica.
  */
-function isDepSatisfied(
-  inst: JobInstance,
-  upstreamId: string,
-  condition: EdgeCondition,
-  parents: JobInstance[],
-): boolean {
-  if (claimFor(inst, upstreamId) || inst.depsSatisfied?.includes(upstreamId)) return true;
-  if (condition === "always") return parents.length > 0;
-  if (instStarted(inst)) return true;
-  // Server com semântica de claims: sem claim latchado = pendente, mesmo com
-  // alguma cópia do pai OK (o evento pode ter sido consumido por outra).
-  if (Array.isArray(inst.depsSatisfied)) return false;
-  return parents.some((p) => evaluateDepState(p.status) === "satisfied");
-}
-
-/**
- * WAIT EVENT de UMA instance — a MESMA régua que pinta o card do canvas
- * (WAITING com alguma dependência def-level não satisfeita, claim-aware).
- * Exportada pro drawer/menus decidirem as ações contextuais (BUG-3) sem
- * duplicar a semântica de claims do schemaV15. Recebe TODAS as instances de
- * cada def (o dia pode ter várias cópias do mesmo job).
- */
-export function isWaitingOnDeps(
+export function isWaitingOnConds(
   inst: JobInstance,
   def: JobDefinition | undefined,
-  instancesByDefId: Map<string, JobInstance[]>,
+  pool: ReadonlySet<string>,
 ): boolean {
-  if (inst.status !== "WAITING" || !def?.upstream?.length) return false;
-  return def.upstream.some(
-    (u) => !isDepSatisfied(
-      inst,
-      u.from,
-      u.condition ?? EDGE_CONDITION_DEFAULT,
-      parentsForEdge(inst, instancesByDefId.get(u.from) ?? [], u.dateRef),
-    ),
-  );
+  if (inst.status !== "WAITING" || inst.manual) return false;
+  return missingConds(def, odateOf(inst), pool).length > 0;
 }
 
 function edgeStyleForState(state: DepState, _condition: EdgeCondition) {
@@ -358,29 +292,6 @@ function edgeStyleForState(state: DepState, _condition: EdgeCondition) {
   }
   // pending — neutro/cinza, sem label
   return { stroke: "#525252", labelFill: "#a3a3a3", labelBg: "#1c1917", dash };
-}
-
-/**
- * Detecta violação de invariante: o par (status pai, status filho, condição)
- * representa um estado que jamais deveria existir num scheduler correto.
- * Ex.: filho RUNNING/OK antes do pai terminar com on-success.
- *
- * Isto é APENAS detecção/warning; o scheduler-runtime é quem previne
- * promoção. Este guard captura stale data do localStorage.
- */
-function isConditionInvariantViolated(
-  parentStatus: JobInstance["status"],
-  childStatus: JobInstance["status"],
-  condition: EdgeCondition,
-): boolean {
-  const childStarted = childStatus === "RUNNING" || childStatus === "OK" || childStatus === "NOTOK";
-  if (!childStarted) return false;
-  if (condition === "on-success") return parentStatus !== "OK";
-  if (condition === "on-failure") return parentStatus !== "NOTOK";
-  if (condition === "on-complete" || condition === "always") {
-    return parentStatus !== "OK" && parentStatus !== "NOTOK";
-  }
-  return false;
 }
 
 function makeEdge(
@@ -407,7 +318,9 @@ function makeEdge(
       strokeWidth: 1.5,
       strokeDasharray: s.dash,
     },
-    labelStyle: { fill: s.labelFill, fontSize: 12, fontFamily: "JetBrains Mono, monospace", fontWeight: 700 },
+    // ✓ pequeno de propósito: o símbolo é um selo, a LINHA é a informação —
+    // grande demais ele cobria a linha inteira entre cards próximos.
+    labelStyle: { fill: s.labelFill, fontSize: 9, fontFamily: "JetBrains Mono, monospace", fontWeight: 700 },
     labelBgStyle: { fill: s.labelBg },
   };
 }
@@ -592,8 +505,9 @@ function hasAgentFor(def: JobDefinition | undefined, jobType: string, agents: Ag
   return agents.caps.has(jt);
 }
 
-export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT, agents?: AgentAvailability | null, overrides?: LayoutOverrides | null): Canvas {
-  // Edges a partir do upstream da definition, resolvidas para instances do mesmo dia.
+export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT, agents?: AgentAvailability | null, overrides?: LayoutOverrides | null, pool: ReadonlySet<string> = new Set()): Canvas {
+  // Edges a partir da TOPOLOGIA derivada das condições (def.upstream é a visão
+  // por name-matching produtor→consumidor); as CORES refletem o POOL.
   const defsById = new Map(defs.map((d) => [d.id, d] as const));
 
   // Enriquecimento: server mode devolve instances sem team/label/jobType
@@ -621,49 +535,36 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
     else instancesByDefId.set(i.definitionId, [i]);
   }
 
-  // WAIT EVENT (paridade Control-M): instance WAITING cuja dependência ainda não
-  // liberou — pai não rodou / rodando / falhou. O card mostra "WAIT EVENT" em vez
-  // de "WAIT" pra distinguir de "esperando o horário". Régua def-level
-  // (isDepSatisfied): um evento de qualquer cópia do pai libera o consumidor.
+  // WAIT COND: instance WAITING com alguma condição de ENTRADA ausente do
+  // pool — a MESMA régua do gate do server (todas as ConditionsIn, não só as
+  // de setinha). O card mostra "WAIT COND" pra distinguir de "esperando o
+  // horário".
   const waitingOnDeps = new Set<string>();
 
   const edges: Edge[] = [];
   const rawEdges: Array<{ source: string; target: string }> = [];
   for (const inst of instances) {
     const def = defsById.get(inst.definitionId);
+    if (isWaitingOnConds(inst, def, pool)) waitingOnDeps.add(inst.id);
     if (!def?.upstream?.length) continue;
     for (const u of def.upstream) {
       const condition = u.condition ?? EDGE_CONDITION_DEFAULT;
-      // Só as cópias do pai da diária que o dateRef da aresta aceita: o job
+      // Só as cópias do pai da diária que o dateRef da visão aceita: o job
       // carregado do dia 14 conversa com o pai do dia 14, não com o de hoje.
       const parents = parentsForEdge(inst, instancesByDefId.get(u.from) ?? [], u.dateRef);
-      if (inst.status === "WAITING" && !isDepSatisfied(inst, u.from, condition, parents)) {
-        waitingOnDeps.add(inst.id);
-      }
       if (!parents.length) continue; // pai não materializado na diária certa: sem linha
 
-      // Detecta violação de invariante apenas para console warning.
-      // EXCEÇÕES: forçadas via Run Now (manual, bypass deliberado) e instances
-      // com o claim latchado (rodaram sobre um evento REAL do pai; o pai pode
-      // ter sido re-rodado/cancelado depois — não é violação, é o latch).
-      // Com várias cópias do pai, só acusa se NENHUMA delas explica o filho
-      // ter partido (uma cópia nova WAITING ao lado de um filho que já rodou
-      // é normal — o par que satisfez é outro).
-      const violated = !inst.manual && !claimFor(inst, u.from) && !inst.depsSatisfied?.includes(u.from) &&
-        parents.every((p) => isConditionInvariantViolated(p.status, inst.status, condition));
-      if (violated && typeof console !== "undefined") {
-        // eslint-disable-next-line no-console
-        console.warn(
-          `[regente] dependency invariant suspicious: ${u.from} -${condition}-> ${inst.label}(${inst.status}) — nenhuma cópia do pai em estado compatível`,
-        );
-      }
+      // As condições que LIGAM este par (entradas do filho que o pai produz):
+      // a cor da linha é o estado delas no POOL para este consumidor.
+      const producerDef = defsById.get(u.from);
+      const linkNames = producerDef && def ? edgeCondNames(producerDef, def) : [];
 
-      // Uma linha POR CÓPIA do pai (todos os pares): o estado de cada par diz
-      // qual término satisfez (verde ✓), qual está pendente/neutro (cinza) e
-      // qual falhou (vermelho ✗) — evaluateEdgeState é claim-aware.
+      // Uma linha POR CÓPIA do pai (todos os pares) — o reflexo do pool:
+      // verde ✓ = condição existe (ou o filho rodou sobre ela); cinza =
+      // ainda não existe / consumida / deletada; vermelho ✗ = filho NOTOK.
+      const state = evaluateEdgeState(inst, linkNames, pool);
       const tgt = `m-${inst.id}`;
       for (const parent of parents) {
-        const state = evaluateEdgeState(inst, u.from, condition, parent);
         const src = `m-${parent.id}`;
         rawEdges.push({ source: src, target: tgt });
         edges.push(makeEdge(src, tgt, condition, state));

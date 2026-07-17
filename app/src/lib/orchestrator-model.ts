@@ -272,17 +272,6 @@ export interface JobInstance {
    *  WAITING cego. Vale só quando status==="HOLD"; ausente/"" = hold legado
    *  (era WAITING). O front usa pra rotular o Release ("volta a NOTOK"). */
   heldFrom?: InstanceStatus;
-  /** Latches de dependência (server schemaV15): upstream defs cujo EVENTO esta
-   *  instance já CLAMOU. A linha do canvas fica verde POR INSTÂNCIA — satisfeita
-   *  uma vez, rerun/cancel do pai não a apaga; só o rerun DESTA instance reseta.
-   *  A PRESENÇA do campo (mesmo []) indica server com a semântica de claims;
-   *  ausente = modo local/legado (edge segue o status vivo do pai). */
-  depsSatisfied?: string[];
-  /** Detalhe dos latches: QUAL instance do pai emitiu o evento clamado. Com
-   *  várias cópias do mesmo job no dia (Order Force/rerun), o canvas pinta
-   *  verde só a linha do par produtor→consumidor real; as linhas para as outras
-   *  cópias do pai ficam neutras. `from` = mesmo id de depsSatisfied. */
-  depsClaims?: Array<{ from: string; parentInstanceId: string }>;
 }
 
 /* ── Order Date Helper ── */

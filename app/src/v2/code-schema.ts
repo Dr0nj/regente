@@ -486,9 +486,9 @@ params:
   },
   {
     tag: "upstream",
-    kind: "lista de {from, condition, dateRef}",
-    summary: "Dependências: este job só roda depois dos pais, conforme a condition — na diária que o dateRef aponta.",
-    detail: "Pai NOTOK/CANCELLED bloqueia o filho (aresta vermelha, gate BLOCKED_DEP) — \"Set OK\" no pai libera. Force Order ignora deps de propósito. `dateRef` (Control-M date de condition) diz QUAL diária do pai satisfaz, relativa ao ODAT (data de ORIGEM) deste job — carry-over não muda a origem.",
+    kind: "lista de {from, condition, dateRef} — LEGADO (açúcar de leitura)",
+    summary: "Forma LEGADA de dependência: ao carregar, vira CONDIÇÕES explícitas (modelo único) — A-TO-B no conditionsOutAdd do pai e no conditionsIn + conditionsOutRemove do filho.",
+    detail: "Desde a unificação (2026-07-17) toda dependência é uma CONDIÇÃO num pool global (painel Condições do Monitoring). `upstream:` segue aceito no YAML como atalho: a expansão é automática e idempotente, e o campo nunca é persistido de volta (vira só visão de topologia). Prefira declarar as condições diretamente. `dateRef` vira o sufixo @prev/@stat da condição de ENTRADA, relativo ao ODAT (origem) deste job.",
     forms: [
       { form: "condition omitida / \"\"", desc: "= on-success (default seguro)" },
       { form: '"on-success"', desc: "roda se o pai terminou OK" },

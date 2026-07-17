@@ -52,39 +52,6 @@ func hasKind(bs []Blocker, k GateKind) *Blocker {
 	return nil
 }
 
-// TestEdgeState — a regra pura por-aresta (fonte única de evalDeps + gateInstance).
-func TestEdgeState(t *testing.T) {
-	OK, NOK := string(domain.StatusOK), string(domain.StatusNotOK)
-	WAIT := string(domain.StatusWaiting)
-	cases := []struct {
-		name             string
-		cond             domain.EdgeCondition
-		up               string
-		exists           bool
-		wantSat, wantPrm bool
-	}{
-		{"on-success OK satisfaz", domain.CondOnSuccess, OK, true, true, false},
-		{"on-success NOTOK bloqueia perm", domain.CondOnSuccess, NOK, true, false, true},
-		{"on-success WAIT espera", domain.CondOnSuccess, WAIT, true, false, false},
-		{"on-failure NOTOK satisfaz", domain.CondOnFailure, NOK, true, true, false},
-		{"on-failure OK bloqueia perm", domain.CondOnFailure, OK, true, false, true},
-		{"on-complete OK satisfaz", domain.CondOnComplete, OK, true, true, false},
-		{"on-complete NOTOK satisfaz", domain.CondOnComplete, NOK, true, true, false},
-		{"vazio = on-success (default do produto)", domain.EdgeCondition(""), OK, true, true, false},
-		{"vazio com pai NOTOK bloqueia (nao e on-complete)", domain.EdgeCondition(""), NOK, true, false, true},
-		{"always satisfaz sempre", domain.CondAlways, WAIT, true, true, false},
-		{"inexistente espera", domain.CondOnComplete, "", false, false, false},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			sat, prm := edgeState(c.cond, c.up, c.exists)
-			if sat != c.wantSat || prm != c.wantPrm {
-				t.Fatalf("edgeState=(%v,%v) esperava (%v,%v)", sat, prm, c.wantSat, c.wantPrm)
-			}
-		})
-	}
-}
-
 func TestExplain_Runnable(t *testing.T) {
 	s := newTestScheduler(t)
 	def := domain.JobDefinition{ID: "r", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true}}
@@ -116,30 +83,19 @@ func TestExplain_Window(t *testing.T) {
 	}
 }
 
-func TestExplain_WaitDep(t *testing.T) {
+// Dependência de grafo (snapshot legado com upstream) = condição sintetizada:
+// o Explain aponta WAIT_CONDITION da condição A-TO-B enquanto o pai não cria.
+func TestExplain_WaitDepBecomesCondition(t *testing.T) {
 	s := newTestScheduler(t)
 	def := domain.JobDefinition{ID: "d", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true},
-		Upstream: []domain.Upstream{{From: "up", Condition: domain.CondOnComplete}}}
+		Upstream: []domain.Upstream{{From: "up", Condition: domain.CondOnSuccess}}}
 	seedWaitingEx(t, s, "d-1", time.Now().Add(-time.Hour), def)
 	seedStatusEx(t, s, "up-1", "up", string(domain.StatusWaiting)) // upstream ainda rodando
 
 	ex := explainOf(t, s, "d-1")
-	b := hasKind(ex.Blockers, GateDep)
-	if b == nil || b.Upstream != "up" {
-		t.Fatalf("esperava WAIT_DEP de 'up', veio %+v", ex.Blockers)
-	}
-}
-
-func TestExplain_BlockedDep(t *testing.T) {
-	s := newTestScheduler(t)
-	def := domain.JobDefinition{ID: "b", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true},
-		Upstream: []domain.Upstream{{From: "up", Condition: domain.CondOnSuccess}}}
-	seedWaitingEx(t, s, "b-1", time.Now().Add(-time.Hour), def)
-	seedStatusEx(t, s, "up-1", "up", string(domain.StatusNotOK)) // on-success + NOTOK = impossível
-
-	ex := explainOf(t, s, "b-1")
-	if hasKind(ex.Blockers, GateDepBlocked) == nil {
-		t.Fatalf("esperava BLOCKED_DEP, veio %+v", ex.Blockers)
+	b := hasKind(ex.Blockers, GateCondition)
+	if b == nil || b.Condition != domain.LinkCondName("up", "d") {
+		t.Fatalf("esperava WAIT_CONDITION de '%s', veio %+v", domain.LinkCondName("up", "d"), ex.Blockers)
 	}
 }
 

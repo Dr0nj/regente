@@ -127,18 +127,16 @@ func TestTick_BlockedSuccessorWaitsAndRunsAfterSetOK(t *testing.T) {
 	s := newTestScheduler(t)
 	today := time.Now().Format("2006-01-02")
 
-	parent := domain.JobDefinition{ID: "pai", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true}}
-	child := domain.JobDefinition{
-		ID: "filho", JobType: "COMMAND",
-		Schedule: domain.Schedule{Enabled: true},
-		Upstream: []domain.Upstream{{From: "pai", Condition: domain.CondOnSuccess}},
-	}
-	runningParent := domain.JobDefinition{ID: "pai2", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true}}
-	child2 := domain.JobDefinition{
-		ID: "filho2", JobType: "COMMAND",
-		Schedule: domain.Schedule{Enabled: true},
-		Upstream: []domain.Upstream{{From: "pai2", Condition: domain.CondOnSuccess}},
-	}
+	defs := domain.NormalizeConditions([]domain.JobDefinition{
+		{ID: "pai", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true}},
+		{ID: "filho", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true},
+			Upstream: []domain.Upstream{{From: "pai", Condition: domain.CondOnSuccess}}},
+		{ID: "pai2", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true}},
+		{ID: "filho2", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true},
+			Upstream: []domain.Upstream{{From: "pai2", Condition: domain.CondOnSuccess}}},
+	})
+	parent, child, runningParent, child2 := defs[0], defs[1], defs[2], defs[3]
+	s.defs = defs // applyConditionsOut faz união com a def viva normalizada
 	seedInst(t, s, "pai-1", today, string(domain.StatusNotOK), parent)
 	seedInst(t, s, "filho-1", today, string(domain.StatusWaiting), child)
 	seedInst(t, s, "pai2-1", today, string(domain.StatusRunning), runningParent)

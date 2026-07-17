@@ -77,7 +77,14 @@ func (s *FileStore) List() ([]domain.JobDefinition, error) {
 		out = append(out, def)
 		return nil
 	})
-	return out, err
+	if err != nil {
+		return out, err
+	}
+	// Normalização do modelo ÚNICO de condições (domain/conditions.go): expande
+	// `upstream` legado em condições explícitas e recalcula upstream como VISÃO
+	// derivada. Este é o CHOKEPOINT de leitura — scheduler, API, sessions e
+	// publish enxergam sempre defs normalizadas.
+	return domain.NormalizeConditions(out), nil
 }
 
 // Save grava a definition e, opcionalmente, faz commit git.
@@ -87,6 +94,10 @@ func (s *FileStore) Save(def domain.JobDefinition) error {
 	if def.ID == "" || def.Team == "" {
 		return fmt.Errorf("definition requires id and team")
 	}
+	// `upstream` é VISÃO derivada das condições (List recalcula sempre) — nunca
+	// persiste. Persistir a visão faria o YAML re-expandi-la como aresta legada
+	// se o usuário removesse as condições explícitas depois.
+	def.Upstream = nil
 	dir := filepath.Join(s.definitionsDir(), def.Team)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err

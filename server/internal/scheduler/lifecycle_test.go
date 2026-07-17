@@ -374,18 +374,25 @@ func TestWatchdog_CarriedRunningReArmed(t *testing.T) {
 // ODAT — escopo de data de eventos e conditions (2026-07-16).
 // ---------------------------------------------------------------------------
 
-// TestOdat_CarriedConsumerDoesNotClaimFreshEvent — o report do usuário: um
-// consumidor CARREGADO do dia 14 não pode latchar o evento do pai FRESCO de
-// hoje (nem o contrário). O evento é emitido com o ODAT do produtor e o claim
-// casa evento×consumidor pela MESMA origem.
-func TestOdat_CarriedConsumerDoesNotClaimFreshEvent(t *testing.T) {
+// gateBlockedByCondition — o gate da instance aponta WAIT_CONDITION?
+func gateBlockedByCondition(s *Scheduler, r instRow, def domain.JobDefinition) bool {
+	blockers := s.gateInstance(r, def, nil, time.Now(), false)
+	return hasKind(blockers, GateCondition) != nil
+}
+
+// TestOdat_CarriedConsumerNotFedByFreshParent — o report do usuário: um
+// consumidor CARREGADO do dia 14 não pode ser alimentado pela condição do pai
+// FRESCO de hoje. No modelo único, o pai adiciona a condição NO SEU ODAT e o
+// consumidor procura a condição do ODAT DELE — origens diferentes não se veem.
+func TestOdat_CarriedConsumerNotFedByFreshParent(t *testing.T) {
 	s := newTestScheduler(t)
-	parent := defKeep("pai", 0)
-	child := domain.JobDefinition{
-		ID: "filho", JobType: "COMMAND",
-		Schedule: domain.Schedule{Enabled: true},
-		Upstream: []domain.Upstream{{From: "pai", Condition: domain.CondOnSuccess}},
-	}
+	defs := domain.NormalizeConditions([]domain.JobDefinition{
+		defKeep("pai", 0),
+		{ID: "filho", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true},
+			Upstream: []domain.Upstream{{From: "pai", Condition: domain.CondOnSuccess}}},
+	})
+	parent, child := defs[0], defs[1]
+	s.defs = defs
 	today := time.Now().Format("2006-01-02")
 
 	// Consumidor carregado do dia 14 (order_date avançado, ODAT preservado).
@@ -397,17 +404,18 @@ func TestOdat_CarriedConsumerDoesNotClaimFreshEvent(t *testing.T) {
 	); err != nil {
 		t.Fatalf("seed filho-14: %v", err)
 	}
-	// Pai FRESCO de hoje termina OK → evento com ODAT de hoje.
+	// Pai FRESCO de hoje termina OK → condição criada com ODAT de HOJE.
 	seedInst(t, s, "pai-hoje", today, string(domain.StatusRunning), parent)
 	s.FinishInstance("pai-hoje", domain.StatusOK, 0, "")
 
-	// O carregado tenta latchar: NÃO pode (datas de origem diferentes).
-	r := instRow{ID: "filho-14", DefID: "filho", OrderDate: today, CarriedFrom: "2026-07-14", Status: string(domain.StatusWaiting)}
-	if s.claimDepEdges(r, child, map[string]bool{}) {
-		t.Fatalf("consumidor do dia 14 latchou o evento do pai fresco de hoje — escopo ODAT violado")
+	// O carregado segue bloqueado (a condição de HOJE não é a do dia 14).
+	r := instRow{ID: "filho-14", DefID: "filho", OrderDate: today, CarriedFrom: "2026-07-14",
+		Status: string(domain.StatusWaiting), Snapshot: string(snapC)}
+	if !gateBlockedByCondition(s, r, child) {
+		t.Fatalf("consumidor do dia 14 foi liberado pela condição do pai fresco de hoje — escopo ODAT violado")
 	}
 
-	// Pai carregado da MESMA origem termina → o carregado latcha.
+	// Pai carregado da MESMA origem termina → condição do dia 14 → libera.
 	snapP, _ := json.Marshal(parent)
 	if _, err := s.db.Exec(
 		`INSERT INTO instances(id, definition_id, order_date, status, scheduled_at, definition_snapshot, carried_from)
@@ -417,53 +425,59 @@ func TestOdat_CarriedConsumerDoesNotClaimFreshEvent(t *testing.T) {
 		t.Fatalf("seed pai-14: %v", err)
 	}
 	s.FinishInstance("pai-14", domain.StatusOK, 0, "")
-	if !s.claimDepEdges(r, child, map[string]bool{}) {
-		t.Fatalf("consumidor do dia 14 deveria latchar o término do pai da MESMA origem")
+	if gateBlockedByCondition(s, r, child) {
+		t.Fatalf("consumidor do dia 14 deveria ser liberado pelo término do pai da MESMA origem")
 	}
 
-	// E o evento consumido pelo carregado não sobra pro fresco de hoje... o
-	// fresco espera o pai de HOJE (que já emitiu) — latcha o evento de hoje.
+	// E o fresco de hoje é liberado pela condição de HOJE (que o pai fresco criou).
 	seedInst(t, s, "filho-hoje", today, string(domain.StatusWaiting), child)
 	rf := instRow{ID: "filho-hoje", DefID: "filho", OrderDate: today, Status: string(domain.StatusWaiting)}
-	if !s.claimDepEdges(rf, child, map[string]bool{}) {
-		t.Fatalf("consumidor fresco deveria latchar o evento do pai fresco (mesma origem: hoje)")
+	if gateBlockedByCondition(s, rf, child) {
+		t.Fatalf("consumidor fresco deveria ser liberado pela condição do pai fresco (mesma origem: hoje)")
 	}
 }
 
-// TestOdat_DateRefPrevAndStat — dateRef=prev latcha o término do pai da diária
-// ANTERIOR; dateRef=stat latcha qualquer término livre, sem olhar data.
+// TestOdat_DateRefPrevAndStat — sufixo @prev procura a condição da diária
+// ANTERIOR; @stat procura a permanente (o produtor de aresta stat cria a
+// permanente na expansão).
 func TestOdat_DateRefPrevAndStat(t *testing.T) {
 	s := newTestScheduler(t)
-	parent := defKeep("pai", 0)
 	today := time.Now().Format("2006-01-02")
 	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
 
-	// Pai de ONTEM terminou OK (evento com ODAT de ontem, ainda livre).
+	defsPrev := domain.NormalizeConditions([]domain.JobDefinition{
+		defKeep("pai", 0),
+		{ID: "filho-prev", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true},
+			Upstream: []domain.Upstream{{From: "pai", Condition: domain.CondOnSuccess, DateRef: domain.DateRefPrev}}},
+	})
+	parent, childPrev := defsPrev[0], defsPrev[1]
+	s.defs = defsPrev
+
+	// Pai de ONTEM terminou OK → condição com ODAT de ontem.
 	seedInst(t, s, "pai-ontem", yesterday, string(domain.StatusRunning), parent)
 	s.FinishInstance("pai-ontem", domain.StatusOK, 0, "")
 
-	childPrev := domain.JobDefinition{
-		ID: "filho-prev", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true},
-		Upstream: []domain.Upstream{{From: "pai", Condition: domain.CondOnSuccess, DateRef: domain.DateRefPrev}},
-	}
 	seedInst(t, s, "fp-hoje", today, string(domain.StatusWaiting), childPrev)
 	rp := instRow{ID: "fp-hoje", DefID: "filho-prev", OrderDate: today, Status: string(domain.StatusWaiting)}
-	if !s.claimDepEdges(rp, childPrev, map[string]bool{}) {
-		t.Fatalf("dateRef=prev deveria latchar o término do pai de ontem")
+	if gateBlockedByCondition(s, rp, childPrev) {
+		t.Fatalf("@prev deveria achar a condição do pai de ontem")
 	}
 
-	// stat: pai de anteontem, qualquer data serve.
+	// stat: pai de anteontem cria a PERMANENTE; o filho @stat enxerga.
+	defsStat := domain.NormalizeConditions([]domain.JobDefinition{
+		defKeep("pai2", 0),
+		{ID: "filho-stat", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true},
+			Upstream: []domain.Upstream{{From: "pai2", Condition: domain.CondOnSuccess, DateRef: domain.DateRefStat}}},
+	})
+	parent2, childStat := defsStat[0], defsStat[1]
+	s.defs = defsStat
 	older := time.Now().AddDate(0, 0, -3).Format("2006-01-02")
-	seedInst(t, s, "pai-velho", older, string(domain.StatusRunning), parent)
+	seedInst(t, s, "pai-velho", older, string(domain.StatusRunning), parent2)
 	s.FinishInstance("pai-velho", domain.StatusOK, 0, "")
-	childStat := domain.JobDefinition{
-		ID: "filho-stat", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true},
-		Upstream: []domain.Upstream{{From: "pai", Condition: domain.CondOnSuccess, DateRef: domain.DateRefStat}},
-	}
 	seedInst(t, s, "fs-hoje", today, string(domain.StatusWaiting), childStat)
 	rs := instRow{ID: "fs-hoje", DefID: "filho-stat", OrderDate: today, Status: string(domain.StatusWaiting)}
-	if !s.claimDepEdges(rs, childStat, map[string]bool{}) {
-		t.Fatalf("dateRef=stat deveria latchar qualquer término livre do pai")
+	if gateBlockedByCondition(s, rs, childStat) {
+		t.Fatalf("@stat deveria achar a condição permanente criada pelo pai de qualquer data")
 	}
 }
 

@@ -13,11 +13,15 @@
 package scheduler
 
 import (
-	"strings"
 	"time"
 
 	"github.com/Dr0nj/regente-server/internal/domain"
 )
+
+// ForceModeOrder — instances.force_mode do "Order Force" (Design): ordem NOVA
+// fora do agendamento que RESPEITA os gates de runtime (condições, agente,
+// recursos, confirm). "" = "Run Now" clássico (bypass).
+const ForceModeOrder = "order"
 
 // odateExpr — expressão SQL do ODAT de uma linha de instances.
 const odateExpr = `COALESCE(NULLIF(carried_from,''), order_date)`
@@ -56,33 +60,10 @@ func (s *Scheduler) prevDaily(odate string) string {
 	return odate
 }
 
-// resolveEdgeDate — resolve o dateRef de uma aresta upstream contra o ODAT do
-// consumidor. anyDate=true (stat) = sem filtro de data.
-func (s *Scheduler) resolveEdgeDate(consumerOdate string, ref domain.DateRef) (date string, anyDate bool) {
-	switch ref {
-	case domain.DateRefStat:
-		return "", true
-	case domain.DateRefPrev:
-		return s.prevDaily(consumerOdate), false
-	default: // "" | odat
-		return consumerOdate, false
-	}
-}
-
-// splitCondRef — "NOME@prev" → ("NOME", "prev"). Sem sufixo (ou sufixo
-// desconhecido, tratado como parte do nome) = odat. Case-insensitive no ref.
+// splitCondRef — "NOME@prev" → ("NOME", "prev"). Regra canônica no domain
+// (SplitCondRef) — o mesmo parser que a normalização de defs usa.
 func splitCondRef(name string) (base string, ref domain.DateRef) {
-	if i := strings.LastIndex(name, "@"); i > 0 {
-		switch strings.ToLower(name[i+1:]) {
-		case "odat":
-			return name[:i], domain.DateRefOdat
-		case "prev":
-			return name[:i], domain.DateRefPrev
-		case "stat":
-			return name[:i], domain.DateRefStat
-		}
-	}
-	return name, domain.DateRefOdat
+	return domain.SplitCondRef(name)
 }
 
 // daysBetween — dias-calendário entre duas datas YYYY-MM-DD (b - a).
@@ -96,43 +77,3 @@ func daysBetween(a, b string) int {
 	return int(tb.Sub(ta).Hours() / 24)
 }
 
-// instIndex — instances indexadas por (definition, ODAT) + agregado por
-// definition. Com o carry-over o dia ativo mistura origens (a fresca de hoje
-// ao lado da carregada do dia 14); o gate de dependência consulta a cópia do
-// pai da diária resolvida pela aresta (odat/prev) — só stat aceita qualquer.
-// Dentro da mesma chave vence a "mais determinante" pelo statusRank.
-type instIndex struct {
-	byDefDate map[string]instRow
-	byDef     map[string]instRow
-}
-
-func defDateKey(defID, odate string) string { return defID + "\x00" + odate }
-
-func buildInstIndex(insts []instRow) instIndex {
-	ix := instIndex{byDefDate: map[string]instRow{}, byDef: map[string]instRow{}}
-	for _, r := range insts {
-		ix.add(r)
-	}
-	return ix
-}
-
-func (ix instIndex) add(r instRow) {
-	k := defDateKey(r.DefID, r.Odate())
-	if prev, ok := ix.byDefDate[k]; !ok || statusRank(r.Status) > statusRank(prev.Status) {
-		ix.byDefDate[k] = r
-	}
-	if prev, ok := ix.byDef[r.DefID]; !ok || statusRank(r.Status) > statusRank(prev.Status) {
-		ix.byDef[r.DefID] = r
-	}
-}
-
-// lookup — a cópia do upstream que casa a data resolvida da aresta
-// (anyDate/stat = qualquer diária, melhor rank).
-func (ix instIndex) lookup(defID, date string, anyDate bool) (instRow, bool) {
-	if anyDate {
-		r, ok := ix.byDef[defID]
-		return r, ok
-	}
-	r, ok := ix.byDefDate[defDateKey(defID, date)]
-	return r, ok
-}

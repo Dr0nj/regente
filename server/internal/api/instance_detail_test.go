@@ -38,12 +38,11 @@ func TestGetInstance_ExposesFrozenAction(t *testing.T) {
 		t.Fatalf("detail: esperava 200, veio %d", resp.StatusCode)
 	}
 	var det struct {
-		ID            string         `json:"id"`
-		Team          string         `json:"team"`
-		Label         string         `json:"label"`
-		JobType       string         `json:"jobType"`
-		ActionConfig  map[string]any `json:"actionConfig"`
-		DepsSatisfied []string       `json:"depsSatisfied"`
+		ID           string         `json:"id"`
+		Team         string         `json:"team"`
+		Label        string         `json:"label"`
+		JobType      string         `json:"jobType"`
+		ActionConfig map[string]any `json:"actionConfig"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&det); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -58,9 +57,6 @@ func TestGetInstance_ExposesFrozenAction(t *testing.T) {
 	}
 	if cmd, _ := det.ActionConfig["command"].(string); cmd != "sleep 60" {
 		t.Fatalf("actionConfig.command: esperava 'sleep 60', veio %v", det.ActionConfig)
-	}
-	if det.DepsSatisfied == nil {
-		t.Fatal("depsSatisfied null (R10: lista sempre presente)")
 	}
 
 	// Id inexistente → 404.

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ExternalLink, X, Trash2, ArrowRight, ArrowLeft } from "lucide-react";
-import type { JobDefinition, CalendarRef, EdgeCondition, ActionRule, DepDateRef } from "@/lib/orchestrator-model";
+import type { JobDefinition, CalendarRef, ActionRule, DepDateRef } from "@/lib/orchestrator-model";
+import { splitCondSuffix, withCondSuffix, producesBase } from "@/lib/conditions-model";
 import type { JobType } from "@/lib/job-config";
 import JobActionConfigEditor from "./JobActionConfigEditor";
 import OnDoEditor from "./OnDoEditor";
@@ -38,7 +39,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "schedule", label: "Schedule" },
   { id: "action", label: "Action" },
   { id: "ondo", label: "On/Do" },
-  { id: "deps", label: "Dependências" },
+  { id: "deps", label: "Condições" },
 ];
 
 interface Props {
@@ -65,10 +66,10 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   const [actionConfig, setActionConfig] = useState<Record<string, unknown>>(definition.actionConfig ?? {});
   const [calendars, setCalendars] = useState<CalendarRef[]>(definition.calendars ?? []);
   const [actions, setActions] = useState<ActionRule[]>(definition.actions ?? []);
-  const [upstream, setUpstream] = useState(definition.upstream ?? []);
-  // F16 — conditions nomeadas (entrada = gate WAIT_CONDITION; saída = set/unset
-  // no término OK). Editáveis aqui pra fechar o circuito com o set-condition
-  // do On/Do: o nome que um job seta é o mesmo que outro declara na entrada.
+  // CONDIÇÕES — o modelo ÚNICO de dependência: entrada (espera no pool),
+  // saída＋ (cria no OK/Set OK), saída− (deleta no OK/Set OK = consumo).
+  // A setinha do canvas escreve AQUI (out+ no pai; in + out− neste job) —
+  // ligar pela caixinha ou digitar à mão dá no mesmo lugar (o pool).
   const [conditionsIn, setConditionsIn] = useState<string[]>(definition.conditionsIn ?? []);
   const [conditionsOutAdd, setConditionsOutAdd] = useState<string[]>(definition.conditionsOutAdd ?? []);
   const [conditionsOutRemove, setConditionsOutRemove] = useState<string[]>(definition.conditionsOutRemove ?? []);
@@ -98,7 +99,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     setSchedule(definition.schedule);
     setRetries(definition.retries ?? 2); setTimeoutS(definition.timeout ?? 300);
     setDryRun(definition.dryRun ?? false); setConfirmReq(definition.confirm ?? false); setActionConfig(definition.actionConfig ?? {});
-    setCalendars(definition.calendars ?? []); setActions(definition.actions ?? []); setUpstream(definition.upstream ?? []);
+    setCalendars(definition.calendars ?? []); setActions(definition.actions ?? []);
     setConditionsIn(definition.conditionsIn ?? []); setConditionsOutAdd(definition.conditionsOutAdd ?? []); setConditionsOutRemove(definition.conditionsOutRemove ?? []);
     setAgentId(typeof definition.actionConfig?._agentId === "string" ? (definition.actionConfig._agentId as string) : "");
     setAgentTouched(false);
@@ -152,7 +153,10 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
       actionConfig: { ...prunedConfig, _agentId: agentId.trim() || undefined },
       calendars: calendars.length ? calendars : undefined,
       actions: actions.length ? actions : undefined,
-      upstream: upstream.length ? upstream : undefined,
+      // `upstream` é VISÃO derivada das condições (nunca editada/persistida
+      // aqui) — o save reescreve a def SEM ela; a topologia renasce do
+      // name-matching na normalização (conditions-model / FileStore.List).
+      upstream: undefined,
       conditionsIn: conditionsIn.length ? conditionsIn : undefined,
       conditionsOutAdd: conditionsOutAdd.length ? conditionsOutAdd : undefined,
       conditionsOutRemove: conditionsOutRemove.length ? conditionsOutRemove : undefined,
@@ -189,8 +193,13 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     try { await handlers.onDelete(definition.id); } catch (e) { setErr(e); } finally { setSaving(false); }
   }
 
-  // Jobs que DEPENDEM deste (this.id ∈ outro.upstream.from) → "dispara".
-  const triggers = allDefs.filter((d) => (d.upstream ?? []).some((u) => u.from === definition.id));
+  // Jobs que DEPENDEM deste → "dispara": consumidores de alguma condição que
+  // ESTE job (no estado atual do formulário) cria — name-matching, a mesma
+  // regra da topologia derivada.
+  const selfDraft: JobDefinition = { ...definition, conditionsOutAdd, actions };
+  const triggers = allDefs.filter((d) =>
+    d.id !== definition.id &&
+    (d.conditionsIn ?? []).some((n) => producesBase(selfDraft, splitCondSuffix(n).base)));
 
   // Vocabulário de conditions do escopo: todo nome já usado em qualquer def
   // (entrada, saída ou ação set-condition) vira sugestão no editor — o vínculo
@@ -246,7 +255,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
             color: tab === t.id ? "var(--v2-text-primary)" : "var(--v2-text-muted)",
             fontWeight: tab === t.id ? 600 : 500, fontFamily: "var(--v2-font-mono)",
           }}>{t.label}
-            {t.id === "deps" && (upstream.length + triggers.length + condCount > 0) ? ` (${upstream.length + triggers.length + condCount})` : ""}
+            {t.id === "deps" && (triggers.length + condCount > 0) ? ` (${triggers.length + condCount})` : ""}
             {t.id === "ondo" && actions.length > 0 ? ` (${actions.length})` : ""}
           </button>
         ))}
@@ -327,8 +336,6 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
         {tab === "deps" && (
           <DepsTab
             self={definition.id}
-            upstream={upstream}
-            onChangeUpstream={setUpstream}
             triggers={triggers}
             allDefs={allDefs}
             conditionsIn={conditionsIn}
@@ -369,11 +376,9 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   );
 }
 
-/* ── Aba Dependencies (2 lados) ── */
-function DepsTab({ self, upstream, onChangeUpstream, triggers, allDefs, conditionsIn, conditionsOutAdd, conditionsOutRemove, onChangeConditionsIn, onChangeConditionsOutAdd, onChangeConditionsOutRemove, knownConditions }: {
+/* ── Aba CONDIÇÕES — o modelo único de dependência ── */
+function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, conditionsOutRemove, onChangeConditionsIn, onChangeConditionsOutAdd, onChangeConditionsOutRemove, knownConditions }: {
   self: string;
-  upstream: Array<{ from: string; condition: EdgeCondition; dateRef?: DepDateRef }>;
-  onChangeUpstream: (u: Array<{ from: string; condition: EdgeCondition; dateRef?: DepDateRef }>) => void;
   triggers: JobDefinition[];
   allDefs: JobDefinition[];
   conditionsIn: string[];
@@ -384,154 +389,94 @@ function DepsTab({ self, upstream, onChangeUpstream, triggers, allDefs, conditio
   onChangeConditionsOutRemove: (v: string[]) => void;
   knownConditions: string[];
 }) {
-  const labelOf = (id: string) => allDefs.find((d) => d.id === id)?.label ?? id;
-  const remove = (from: string) => onChangeUpstream(upstream.filter((u) => u.from !== from));
-
   // Referência cruzada por NOME-BASE: quem produz (conditionsOutAdd ou ação
-  // set-condition) e quem consome (conditionsIn) cada condition no escopo.
+  // set-condition) e quem consome (conditionsIn) cada condição no escopo.
   // O sufixo de data (@odat/@prev/@stat) é referência RELATIVA de cada lado —
   // "X@prev" na entrada espera o X que alguém cria sem sufixo na diária
   // anterior — então o vínculo visual compara os nomes SEM o sufixo.
   const sameCond = (a: string, b: string) => splitCondSuffix(a).base === splitCondSuffix(b).base;
   const producersOf = (name: string) =>
-    allDefs.filter((d) => d.id !== self && (
-      d.conditionsOutAdd?.some((c) => sameCond(c, name)) ||
-      d.actions?.some((a) => a.do === "set-condition" && !!a.condition && sameCond(a.condition, name))
-    )).map((d) => d.label);
+    allDefs.filter((d) => d.id !== self && producesBase(d, splitCondSuffix(name).base)).map((d) => d.label);
   const consumersOf = (name: string) =>
     allDefs.filter((d) => d.id !== self && d.conditionsIn?.some((c) => sameCond(c, name))).map((d) => d.label);
+
+  // "Depende de" (leitura): os produtores de cada condição de ENTRADA — a
+  // mesma topologia das linhas do canvas (name-matching).
+  const dependsOn = [...new Set(conditionsIn.flatMap((n) => producersOf(n)))];
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {/* Depende de (upstream do próprio job) */}
-      <div>
+      <Hint>
+        <b>Toda dependência é uma condição num pool único do ambiente</b> (botão
+        “Condições” no Monitoring). Ligar A→B pela <b>setinha</b> do canvas cria a
+        condição <code>A-TO-B</code> automaticamente: saída＋ no pai, entrada +
+        saída− aqui. Fazendo <b>à mão</b>, é o mesmo lugar: digite o mesmo nome na
+        saída＋ do pai e na <b>entrada E na saída−</b> deste job (a saída− é o
+        consumo — sem ela a condição sobrevive ao OK e o rerun roda direto).
+        A DATA é o seletor de cada linha: <b>Odate</b> (default) = diária de
+        origem do job · <b>Prev</b> = diária anterior · <b>Stat</b> = estática,
+        sem data.
+      </Hint>
+
+      <CondChipsEditor
+        title="Entrada — depende de"
+        hint="O job fica em WAIT COND até TODAS existirem no pool. Set OK + rerun volta a esperar se a saída− apagou a condição."
+        value={conditionsIn}
+        onChange={onChangeConditionsIn}
+        known={knownConditions}
+        listId="cond-known-in"
+        crossRef={(n) => { const p = producersOf(n); return p.length ? `criada por: ${p.join(", ")}` : "ninguém cria esta condição no escopo (operador/painel Condições?)"; }}
+      />
+      <CondChipsEditor
+        title="Saída ＋ — adiciona ao terminar OK"
+        hint="Ao terminar OK (ou Set OK), o job ADICIONA estas condições ao pool."
+        value={conditionsOutAdd}
+        onChange={onChangeConditionsOutAdd}
+        known={knownConditions}
+        listId="cond-known-add"
+        crossRef={(n) => { const c = consumersOf(n); return c.length ? `consumida por: ${c.join(", ")}` : "nenhum job espera por esta condição ainda"; }}
+      />
+      <CondChipsEditor
+        title="Saída − — deleta ao terminar OK (consumo)"
+        hint="Ao terminar OK (ou Set OK), o job APAGA estas condições do pool — é o consumo da entrada."
+        value={conditionsOutRemove}
+        onChange={onChangeConditionsOutRemove}
+        known={knownConditions}
+        listId="cond-known-rm"
+        crossRef={(n) => { const c = consumersOf(n); return c.length ? `trava de volta: ${c.join(", ")}` : undefined; }}
+      />
+
+      {/* Vista dos dois lados (leitura, derivada por name-matching) */}
+      <div style={{ borderTop: "1px solid var(--v2-border-subtle)", paddingTop: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--v2-text-muted)", marginBottom: 6 }}>
           <ArrowLeft size={11} /> Depende de
         </div>
-        {upstream.length === 0 && <Hint>Este job não espera nenhum outro. Conecte um job → este no canvas para criar.</Hint>}
-        {upstream.map((u) => (
-          <div key={u.from} style={depRow}>
-            <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}>{labelOf(u.from)}</span>
-            <span style={{ fontSize: 9, color: "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)" }}>{u.condition}</span>
-            {/* Data da dependência (Control-M date de condition), relativa ao
-                ODAT do job: Odate = pai da mesma diária de origem (default);
-                Prev = da diária anterior; Stat = qualquer (estática). */}
-            <select
-              value={u.dateRef ?? "odat"}
-              title="Qual diária do pai satisfaz esta dependência (relativa à data de origem deste job)"
-              onChange={(e) => {
-                const v = e.target.value as DepDateRef;
-                onChangeUpstream(upstream.map((x) =>
-                  x.from === u.from ? { ...x, dateRef: v === "odat" ? undefined : v } : x,
-                ));
-              }}
-              style={{ ...selectStyle, width: 72, padding: "2px 4px", fontSize: 9 }}
-            >
-              <option value="odat">Odate</option>
-              <option value="prev">Prev</option>
-              <option value="stat">Stat</option>
-            </select>
-            <button onClick={() => remove(u.from)} style={iconBtn} title="Remover"><Trash2 size={12} /></button>
+        {dependsOn.length === 0 && <Hint>Nenhum job cria as condições de entrada deste (ou não há entrada).</Hint>}
+        {dependsOn.map((l) => (
+          <div key={l} style={depRow}>
+            <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}>{l}</span>
           </div>
         ))}
-        {upstream.length > 0 && (
-          <Hint>
-            <b>Odate</b> = espera o término do pai da MESMA diária de origem (default) ·{" "}
-            <b>Prev</b> = da diária anterior · <b>Stat</b> = qualquer término livre, sem olhar data.
-          </Hint>
-        )}
-      </div>
-      {/* Dispara (jobs cujo upstream aponta para este) */}
-      <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--v2-text-muted)", marginBottom: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--v2-text-muted)", margin: "10px 0 6px" }}>
           <ArrowRight size={11} /> Dispara
         </div>
-        {triggers.length === 0 && <Hint>Nenhum job depende deste.</Hint>}
-        {triggers.map((d) => {
-          const edge = (d.upstream ?? []).find((u) => u.from === self);
-          return (
-            <div key={d.id} style={depRow}>
-              <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}>{d.label}</span>
-              <span style={{ fontSize: 9, color: "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)" }}>
-                {edge?.condition}
-                {/* dateRef da aresta (editado no job de destino) — mostrado p/ leitura */}
-                {edge?.dateRef && edge.dateRef !== "odat" ? ` · ${edge.dateRef === "prev" ? "Prev" : "Stat"}` : ""}
-              </span>
-            </div>
-          );
-        })}
-        <Hint>Editado no job de destino (ou conectando no canvas). Mostrado aqui para você ver a relação dos dois lados.</Hint>
-      </div>
-
-      {/* Conditions nomeadas (F16) — o outro tipo de dependência: por NOME,
-          não por aresta do grafo. Fecha o circuito com o set-condition do
-          On/Do e com eventos externos (POST /events/ingest). */}
-      <div style={{ borderTop: "1px solid var(--v2-border-subtle)", paddingTop: 12 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--v2-text-muted)", marginBottom: 6 }}>
-          Conditions (por nome)
-        </div>
-        <Hint>
-          Além das setas do grafo, um job pode esperar/emitir <b>conditions nomeadas</b> do dia.
-          Quem cria: a saída (＋) de outro job, uma ação On/Do <b>set-condition</b>, um evento
-          externo ou o operador. O vínculo é o <b>nome exato</b>. A DATA é programável no
-          seletor de cada linha (entrada E saída) e vive como sufixo no nome:
-          <b> Odate</b> (sem sufixo) = da diária de <b>origem</b> do job (ODAT); <b>Prev</b>
-          (<code>NOME@prev</code>) = da diária anterior; <b>Stat</b> (<code>NOME@stat</code>) =
-          estática (sem data, vale até alguém remover).
-        </Hint>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
-          <CondChipsEditor
-            title="Entrada — espera por"
-            hint="O job fica em WAIT CONDITION até TODAS existirem no dia."
-            value={conditionsIn}
-            onChange={onChangeConditionsIn}
-            known={knownConditions}
-            listId="cond-known-in"
-            crossRef={(n) => { const p = producersOf(n); return p.length ? `criada por: ${p.join(", ")}` : "ninguém cria esta condition no escopo (evento externo/operador?)"; }}
-          />
-          <CondChipsEditor
-            title="Saída ＋ — cria ao terminar OK"
-            hint="Ao terminar OK (ou Set OK), o job CRIA estas conditions."
-            value={conditionsOutAdd}
-            onChange={onChangeConditionsOutAdd}
-            known={knownConditions}
-            listId="cond-known-add"
-            crossRef={(n) => { const c = consumersOf(n); return c.length ? `consumida por: ${c.join(", ")}` : "nenhum job espera por esta condition ainda"; }}
-          />
-          <CondChipsEditor
-            title="Saída − — remove ao terminar OK"
-            hint="Ao terminar OK, o job APAGA estas conditions (limpa o gate de quem depende delas)."
-            value={conditionsOutRemove}
-            onChange={onChangeConditionsOutRemove}
-            known={knownConditions}
-            listId="cond-known-rm"
-            crossRef={(n) => { const c = consumersOf(n); return c.length ? `trava de volta: ${c.join(", ")}` : undefined; }}
-          />
-        </div>
+        {triggers.length === 0 && <Hint>Nenhum job espera pelas condições que este cria.</Hint>}
+        {triggers.map((d) => (
+          <div key={d.id} style={depRow}>
+            <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}>{d.label}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-/* ── Editor de chips de conditions (F16) ── */
-
-// A DATA de uma condition vive como sufixo no NOME (contrato do server —
-// splitCondRef em odate.go): sem sufixo/"@odat" = diária de ORIGEM do job;
+/* ── Editor de chips de condições ── */
+// A DATA de uma condição vive como sufixo no NOME (contrato do server —
+// domain.SplitCondRef): sem sufixo/"@odat" = diária de ORIGEM do job;
 // "@prev" = diária anterior; "@stat" = permanente (sem data). O seletor por
-// linha edita o sufixo sem o usuário digitar arroba.
-function splitCondSuffix(name: string): { base: string; ref: DepDateRef } {
-  const at = name.lastIndexOf("@");
-  if (at > 0) {
-    const suffix = name.slice(at + 1).toLowerCase();
-    if (suffix === "odat" || suffix === "prev" || suffix === "stat") {
-      return { base: name.slice(0, at), ref: suffix as DepDateRef };
-    }
-  }
-  return { base: name, ref: "odat" }; // sufixo desconhecido = parte do nome
-}
-
-function withCondSuffix(base: string, ref: DepDateRef): string {
-  return ref === "odat" ? base : `${base}@${ref}`;
-}
+// linha edita o sufixo sem o usuário digitar arroba (helpers em
+// lib/conditions-model — os MESMOS do canvas e da normalização).
 
 function CondChipsEditor({ title, hint, value, onChange, known, listId, crossRef }: {
   title: string;

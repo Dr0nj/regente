@@ -25,15 +25,15 @@ func TestForceRun_ExistingInstanceBypassesDep_NoNewInstance(t *testing.T) {
 	seedInst(t, s, "A-1", today, string(domain.StatusRunning), defA)
 	id := seedInst(t, s, "B-1", today, string(domain.StatusWaiting), defB)
 
-	// Sem force: a dep segura B em WAITING (gate WAIT_DEP).
+	// Sem force: a condição sintetizada A-TO-B não existe → WAIT_CONDITION.
 	for i := 0; i < 3; i++ {
 		s.Tick()
 	}
 	if _, st, _ := carriedState(t, s, id); st != string(domain.StatusWaiting) {
 		t.Fatalf("sem force a dep deveria segurar B em WAITING, está %s", st)
 	}
-	if ex, err := s.Explain(id); err != nil || hasKind(ex.Blockers, GateDep) == nil {
-		t.Fatalf("Explain deveria apontar WAIT_DEP, veio %+v (err=%v)", ex.Blockers, err)
+	if ex, err := s.Explain(id); err != nil || hasKind(ex.Blockers, GateCondition) == nil {
+		t.Fatalf("Explain deveria apontar WAIT_CONDITION, veio %+v (err=%v)", ex.Blockers, err)
 	}
 
 	before := countInstances(t, s)

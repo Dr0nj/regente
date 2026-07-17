@@ -17,10 +17,9 @@
 import {
   type JobDefinition,
   type JobInstance,
-  type EdgeCondition,
   todayOrderDate,
   createInstance,
-  EDGE_CONDITION_DEFAULT,
+  odateOf,
 } from "@/lib/orchestrator-model";
 import {
   getTodayInstances,
@@ -29,6 +28,8 @@ import {
 } from "@/lib/instance-store";
 import { container } from "@/lib/container";
 import { localLoad, localSave } from "@/lib/persistence";
+import { missingConds } from "@/lib/conditions-model";
+import { conditionPool } from "@/lib/conditions-store";
 
 const INSTANCES_KEY = "regente:instances";
 
@@ -112,110 +113,29 @@ function computeScheduledAt(def: JobDefinition): Date {
 const _running = new Set<string>();
 
 /**
- * Avalia condição de uma dependência upstream contra o status da
- * instance correspondente.
- */
-function conditionMet(condition: EdgeCondition, upstreamStatus: JobInstance["status"]): boolean {
-  if (upstreamStatus === "OK") {
-    return condition === "on-success" || condition === "on-complete" || condition === "always";
-  }
-  if (upstreamStatus === "NOTOK") {
-    return condition === "on-failure" || condition === "on-complete" || condition === "always";
-  }
-  return false; // WAITING/RUNNING/HOLD/CANCELLED → ainda não resolvido
-}
-
-/**
- * Verifica se uma dependência é incompatível: pai terminou mas
- * condição jamais será satisfeita. Nesse caso, o filho deve ser
- * cancelado para não ficar preso em WAITING eterno.
- */
-function conditionPermanentlyFailed(
-  condition: EdgeCondition,
-  upstreamStatus: JobInstance["status"],
-): boolean {
-  if (upstreamStatus === "OK") return condition === "on-failure";
-  if (upstreamStatus === "NOTOK") return condition === "on-success";
-  if (upstreamStatus === "CANCELLED") return true;
-  return false;
-}
-
-interface DepEvaluation {
-  allReady: boolean;
-  anyPending: boolean;
-  permanentlyBlocked: boolean;
-}
-
-function evaluateDependencies(
-  inst: JobInstance,
-  defsById: Map<string, JobDefinition>,
-  todayInstances: JobInstance[],
-): DepEvaluation {
-  const def = defsById.get(inst.definitionId);
-  const ups = def?.upstream ?? [];
-  if (ups.length === 0) {
-    return { allReady: true, anyPending: false, permanentlyBlocked: false };
-  }
-
-  let allReady = true;
-  let anyPending = false;
-  let permanentlyBlocked = false;
-
-  for (const u of ups) {
-    const cond = u.condition ?? EDGE_CONDITION_DEFAULT;
-    const parent = todayInstances.find((i) => i.definitionId === u.from);
-    if (!parent) {
-      // pai não foi materializado hoje → bloqueia indefinidamente
-      allReady = false;
-      permanentlyBlocked = true;
-      continue;
-    }
-    if (parent.status === "WAITING" || parent.status === "RUNNING" || parent.status === "HOLD") {
-      allReady = false;
-      anyPending = true;
-      continue;
-    }
-    if (conditionPermanentlyFailed(cond, parent.status)) {
-      allReady = false;
-      permanentlyBlocked = true;
-      continue;
-    }
-    if (!conditionMet(cond, parent.status)) {
-      allReady = false;
-      anyPending = true;
-    }
-  }
-
-  return { allReady, anyPending, permanentlyBlocked };
-}
-
-/**
  * Executa um único tick. Para cada instance WAITING:
- *   - se `scheduledAt` <= agora E deps prontas → RUNNING + executor.execute
- *   - se dep permanentemente bloqueou → CANCELLED
+ *   - se `scheduledAt` <= agora E as CONDIÇÕES de entrada existem no pool →
+ *     RUNNING + executor.execute (modelo único de condições — a mesma régua
+ *     do server: docs/conditions-events.md). Quem cria/apaga condição no pool
+ *     é o término OK (instance-store) e o operador (painel Condições);
+ *     condição ausente = espera (nunca auto-CANCEL, paridade Control-M).
  */
 export async function tickOnce(defs: JobDefinition[]): Promise<void> {
   const now = Date.now();
   const today = getTodayInstances();
   const defsById = new Map(defs.map((d) => [d.id, d] as const));
+  const pool = conditionPool();
 
   for (const inst of today) {
     if (inst.status !== "WAITING") continue;
     if (_running.has(inst.id)) continue;
 
-    // Run Now / Force: uma instance `manual` bypassa as deps (e não é cancelada
-    // por dep permanentemente bloqueada) — paridade com o ramo forced do server.
-    // A janela ainda vale, mas forceRunInstance já zera scheduledAt pra agora.
+    // Run Now / Force: uma instance `manual` bypassa as condições — paridade
+    // com o ramo forced do server. A janela ainda vale, mas forceRunInstance
+    // já zera scheduledAt pra agora.
     if (!inst.manual) {
-      const dep = evaluateDependencies(inst, defsById, today);
-
-      if (dep.permanentlyBlocked && !dep.anyPending) {
-        updateInstanceStatus(inst.id, "CANCELLED", {
-          output: { blockedByUpstream: true },
-        });
-        continue;
-      }
-      if (!dep.allReady) continue;
+      const def = defsById.get(inst.definitionId);
+      if (missingConds(def, odateOf(inst), pool).length > 0) continue;
     }
     if (inst.scheduledAt > now) continue;
 
