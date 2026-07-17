@@ -53,10 +53,37 @@ interface Props {
   handlers: JobConfigHandlers;
 }
 
+/* ── ID derivado do Job Name (Opção A, 2026-07-17) ── O `id` é o JOBNAME de
+   verdade (nome do YAML, referência do upstream e das condições X-TO-Y da
+   setinha): nasce como slug do nome digitado — minúsculo, sem acento — em vez
+   do `jobtype-<timestamp>` ilegível, e fica IMUTÁVEL depois de criado (toda
+   referência do sistema aponta pra ele; renomear o label não o altera). */
+function slugifyJobName(v: string): string {
+  return v
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+// Colisão com id existente → sufixo numérico (extract, extract-2, extract-3…).
+function uniqueJobId(label: string, taken: ReadonlySet<string>): string {
+  const base = slugifyJobName(label);
+  if (!base || !taken.has(base)) return base;
+  for (let n = 2; ; n++) {
+    const cand = `${base}-${n}`;
+    if (!taken.has(cand)) return cand;
+  }
+}
+
 export default function JobConfigDrawer({ definition, isNew, availableFolders, allDefs = [], handlers }: Props) {
   const [tab, setTab] = useState<Tab>("general");
   const [label, setLabel] = useState(definition.label);
   const [id, setId] = useState(definition.id);
+  // idTouched — o usuário editou o ID à mão? Enquanto não editar, um job NOVO
+  // tem o id SEGUINDO o Job Name digitado (slug); depois do primeiro toque o
+  // campo vira manual. Job existente: id read-only (imutável por design).
+  const [idTouched, setIdTouched] = useState(false);
   const [jobType, setJobType] = useState<JobType>(definition.jobType as JobType);
   const initialTeam = definition.team ?? (availableFolders.length === 1 ? availableFolders[0] : "");
   const [team, setTeam] = useState(initialTeam);
@@ -130,7 +157,17 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     editedIdRef.current = definition.id;
     dirtyRef.current = false;
     setTab("general");
-    setLabel(definition.label); setId(definition.id); setJobType(definition.jobType as JobType);
+    setLabel(definition.label);
+    // Job NOVO: id nasce do Job Name (Opção A) — o `jobtype-<timestamp>` que o
+    // V2Preview sugere é só fallback enquanto o slug do nome ficar vazio.
+    if (isNew) {
+      const taken = new Set(allDefs.map((d) => d.id));
+      setId(uniqueJobId(definition.label, taken) || definition.id);
+    } else {
+      setId(definition.id);
+    }
+    setIdTouched(false);
+    setJobType(definition.jobType as JobType);
     setTeam(definition.team ?? (availableFolders.length === 1 ? availableFolders[0] : ""));
     setSchedule(definition.schedule);
     setRetries(definition.retries ?? 2); setTimeoutS(definition.timeout ?? 300);
@@ -237,8 +274,18 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     if (!label.trim()) { setValidationErr("label obrigatório"); setTab("general"); return; }
     if (!team.trim()) { setValidationErr("folder obrigatória"); setTab("general"); return; }
     if (!id.trim()) { setValidationErr("id obrigatório"); setTab("general"); return; }
+    // Job novo: normaliza o id final (slug) e barra colisão ANTES do save —
+    // o save do server é upsert, então id repetido SOBRESCREVERIA o job antigo.
+    const finalId = isNew ? slugifyJobName(id) : id.trim();
+    if (isNew) {
+      if (!finalId) { setValidationErr("id inválido — use letras e números"); setTab("general"); return; }
+      if (allDefs.some((d) => d.id === finalId)) {
+        setValidationErr(`id "${finalId}" já existe — escolha outro`); setTab("general"); return;
+      }
+      if (finalId !== id) setId(finalId);
+    }
     setValidationErr(null);
-    const next = buildDef();
+    const next = { ...buildDef(), id: finalId };
     setSaving(true); setErr(null);
     try {
       await handlers.onSave(next);
@@ -348,7 +395,26 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
       <div style={{ flex: 1, overflowY: "auto", padding: "12px", display: "flex", flexDirection: "column", gap: 12 }}>
         {tab === "general" && (
           <>
-            <Field label="Job Name"><Input value={label} onChange={touch(setLabel)} /></Field>
+            <Field label="Job Name"><Input value={label} onChange={(v) => {
+              dirtyRef.current = true;
+              setLabel(v);
+              // Auto-follow: em job novo o id acompanha o nome até o usuário
+              // editar o campo ID à mão (aí a escolha manual vence).
+              if (isNew && !idTouched) {
+                const taken = new Set(allDefs.map((d) => d.id));
+                setId(uniqueJobId(v, taken));
+              }
+            }} /></Field>
+            <Field label={isNew ? "ID (único — vira o nome do YAML e das condições X-TO-Y)" : "ID (imutável — nome do YAML e das condições X-TO-Y)"}>
+              <Input value={id} mono disabled={!isNew} placeholder="derivado do Job Name"
+                onChange={(v) => {
+                  dirtyRef.current = true; setIdTouched(true);
+                  // Sanitização leve ao digitar (minúsculo, sem acento, sem chars
+                  // inválidos); o aparo de hífens das pontas fica pro Save, senão
+                  // digitar "meu-job" perde o hífen no meio do caminho.
+                  setId(v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9-]+/g, "-"));
+                }} />
+            </Field>
             <Field label="Job Type">
               <select value={jobType} onChange={(e) => { dirtyRef.current = true; setJobType(e.target.value as JobType); }} style={selectStyle}>
                 {JOB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
