@@ -186,4 +186,11 @@ export interface JobNodeData {
    * botão no painel de detalhe) libera o job — sai do violeta e executa.
    */
   waitConfirm?: boolean;
+  /**
+   * WAITING preso no gate F15 "WAIT RESOURCE": a ordem exige um recurso/quota
+   * que não tem unidade livre no pool (semáforo Control-M). Só deriva quando o
+   * job já está no horário e não está preso por condição/agente/confirm (a
+   * ordem dos gates do server). O card mostra o selo âmbar "WAIT RESOURCE".
+   */
+  waitResource?: boolean;
 }

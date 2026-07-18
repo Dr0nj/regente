@@ -55,6 +55,9 @@ type instanceRow struct {
 	PinnedAgent string   `json:"pinnedAgent,omitempty"`
 	CondsIn     []string `json:"condsIn,omitempty"`
 	CondsOutAdd []string `json:"condsOutAdd,omitempty"`
+	// F15 (schemaV19) — recursos/quotas congelados na ordem (nome→qtd). Entrada
+	// do card WAIT RESOURCE; mesmo dado que o gate F15 lê do snapshot.
+	Resources map[string]int `json:"resources,omitempty"`
 }
 
 const instanceCols = `id, definition_id, COALESCE(team,''), order_date, status, scheduled_at,
@@ -63,7 +66,8 @@ const instanceCols = `id, definition_id, COALESCE(team,''), order_date, status, 
 	COALESCE(carried_from,''), COALESCE(confirmed,0), COALESCE(cycle_runs,0), COALESCE(dry_run,0),
 	COALESCE(hold_scope,''), COALESCE(held_from_status,''),
 	COALESCE(label,''), COALESCE(job_type,''), COALESCE(confirm_req,0),
-	COALESCE(environment,''), COALESCE(pinned_agent,''), COALESCE(conds_in,''), COALESCE(conds_out_add,'')`
+	COALESCE(environment,''), COALESCE(pinned_agent,''), COALESCE(conds_in,''), COALESCE(conds_out_add,''),
+	COALESCE(resources,'')`
 
 // scanInstances materializa as linhas. CRÍTICO: propaga rows.Err() e qualquer
 // erro de Scan em vez de engolir e devolver lista PARCIAL. Um erro de leitura no
@@ -77,14 +81,14 @@ func scanInstances(rows *sql.Rows) ([]instanceRow, error) {
 		var ir instanceRow
 		var startedAt, finishedAt sql.NullTime
 		var forcedInt, confirmedInt, dryRunInt, confirmReqInt int
-		var condsIn, condsOutAdd string
+		var condsIn, condsOutAdd, resources string
 		if err := rows.Scan(
 			&ir.ID, &ir.DefinitionID, &ir.Team, &ir.OrderDate, &ir.Status, &ir.ScheduledAt,
 			&startedAt, &finishedAt,
 			&ir.AgentID, &ir.ExitCode, &ir.Output, &forcedInt,
 			&ir.CarriedFrom, &confirmedInt, &ir.CycleRuns, &dryRunInt, &ir.HoldScope, &ir.HeldFromStatus,
 			&ir.Label, &ir.JobType, &confirmReqInt,
-			&ir.Environment, &ir.PinnedAgent, &condsIn, &condsOutAdd,
+			&ir.Environment, &ir.PinnedAgent, &condsIn, &condsOutAdd, &resources,
 		); err != nil {
 			return nil, err
 		}
@@ -102,6 +106,7 @@ func scanInstances(rows *sql.Rows) ([]instanceRow, error) {
 		ir.ConfirmReq = confirmReqInt == 1
 		ir.CondsIn = decodeConds(condsIn)
 		ir.CondsOutAdd = decodeConds(condsOutAdd)
+		ir.Resources = decodeResources(resources)
 		out = append(out, ir)
 	}
 	return out, rows.Err()
@@ -118,6 +123,19 @@ func decodeConds(raw string) []string {
 		return nil
 	}
 	return list
+}
+
+// decodeResources — coluna resources ('' ou JSON {nome:qtd}) → mapa (nil quando
+// vazio; o omitempty do JSON esconde). Conteúdo inválido é tratado como vazio.
+func decodeResources(raw string) map[string]int {
+	if raw == "" {
+		return nil
+	}
+	var m map[string]int
+	if json.Unmarshal([]byte(raw), &m) != nil || len(m) == 0 {
+		return nil
+	}
+	return m
 }
 
 // instanceQuery — P2/escala: filtros server-side de /api/instances*. Tudo opcional

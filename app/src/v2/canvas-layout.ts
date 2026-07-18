@@ -513,11 +513,33 @@ function hasAgentFor(jobType: string, pinnedAgent: string | undefined, agents: A
   return agents.caps.has(jt);
 }
 
-export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT, agents?: AgentAvailability | null, overrides?: LayoutOverrides | null, pool: ReadonlySet<string> = new Set()): Canvas {
+/** Estado do pool de recursos (GET /api/resources) p/ o card WAIT RESOURCE. */
+export type ResourcePool = ReadonlyMap<string, { capacity: number; used: number }>;
+
+// Job em WAIT RESOURCE? Algum recurso CONGELADO na ordem (F15) sem unidade livre
+// no pool. Recurso desconhecido no pool → capacidade default 1 (mesma semântica
+// do TryAcquire do server). `used` já conta os holders RUNNING; um WAITING não
+// segura, então a régua é used+qty > cap. Pedido multi-recurso é tudo-ou-nada,
+// então falta de QUALQUER um já bloqueia.
+function hasResourceShortfall(resources: Record<string, number> | undefined, pool: ResourcePool): boolean {
+  if (!resources) return false;
+  for (const [name, qty] of Object.entries(resources)) {
+    const st = pool.get(name);
+    const cap = st ? st.capacity : 1;
+    const used = st ? st.used : 0;
+    if (used + qty > cap) return true;
+  }
+  return false;
+}
+
+export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT, agents?: AgentAvailability | null, overrides?: LayoutOverrides | null, pool: ReadonlySet<string> = new Set(), resourcePool?: ResourcePool | null): Canvas {
   // M1 — Monitoring 100% INSTANCE-DRIVEN: tudo (label/tipo/linhas/gates) vem
   // CONGELADO na ordem (schemaV18), nunca da def viva. As `defs` entram só como
   // FALLBACK de instance LEGADA sem backfill (label/jobType vazios).
   const defsById = new Map(defs.map((d) => [d.id, d] as const));
+  // Relógio do gate de janela: WAIT RESOURCE só vale pra job já no horário (antes
+  // disso é "WAIT" de agendamento). Rebuild por tick mantém isto fresco.
+  const nowMs = Date.now();
 
   // Enriquecimento (só legado): instance sem colunas congeladas cai na def viva
   // pra folder/label/tipo aparecerem. Instance com snapshot (o caso normal) usa
@@ -641,6 +663,17 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
         // confirmReq CONGELADO na ordem (schemaV18) — ligar Confirm no Design não
         // reescreve cards já materializados. O gate do server é o mesmo snapshot.
         waitConfirm: inst.status === "WAITING" && !inst.confirmed && !!inst.confirmReq,
+        // WAIT RESOURCE (âmbar): a ordem exige um recurso/quota (F15 congelado,
+        // schemaV19) sem unidade livre no pool. Deriva na MESMA ordem dos gates
+        // do server (janela → confirm → cond → agente → recurso): só quando o
+        // job já está no horário e não está preso por condição/confirm/agente —
+        // aí o único motivo restante é o recurso. Sem pool carregado, não acusa.
+        waitResource: !!resourcePool && inst.status === "WAITING" &&
+          inst.scheduledAt <= nowMs &&
+          !waitingOnDeps.has(inst.id) &&
+          !(!!inst.confirmReq && !inst.confirmed) &&
+          !(!!agents && !hasAgentFor(inst.jobType, inst.pinnedAgent, agents)) &&
+          hasResourceShortfall(inst.resources, resourcePool),
       } as JobNodeData,
       draggable: false,
       zIndex: 10,

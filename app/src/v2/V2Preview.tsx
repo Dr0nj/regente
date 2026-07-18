@@ -15,8 +15,6 @@ import JobNodeV2 from "./JobNodeV2";
 import LaneLabelNode from "./LaneLabelNode";
 import MonitoringSidebarV2 from "./MonitoringSidebarV2";
 import ScaleMonitor from "./ScaleMonitor";
-import DailyDiffModal from "./DailyDiffModal";
-import DryRunModal from "./DryRunModal";
 import DesignSidebarV2 from "./DesignSidebarV2";
 import InstanceDetailsDrawer from "./InstanceDetailsDrawer";
 import JobConfigDrawer from "./JobConfigDrawer";
@@ -51,12 +49,10 @@ import {
   reloadDefinitions,
 } from "@/lib/definition-store";
 import {
-  runDaily,
   getLastDailyRun,
   fetchDailyStatus,
   normalizeDbTime,
 } from "@/lib/runtime-bridge";
-import { container } from "@/lib/container";
 import { onServerEvent, isServerMode, onAuthEvent, setAuthToken, SERVER_URL } from "@/lib/server-client";
 import { fetchMe, loadCachedUser, type AuthUser } from "@/lib/auth-api";
 import { LoginForm } from "./LoginForm";
@@ -74,11 +70,9 @@ import { getDesignSessionId, setDesignSessionId, onDesignSessionChange, onDesign
 import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, createDesignSession, openSessionFolder, createSessionFolder, listDesignSessions, deleteDesignSession, type DesignSession, type SessionStatus, type PublishResult } from "@/lib/design-session-api";
 import { toast, ToastHost } from "./Toast";
 import { getGitInfo, commitUrl } from "@/lib/git-info";
-import { FolderOpen, Play, Zap, GitCommitHorizontal, GitCompare, FlaskConical, LayoutGrid, ChevronLeft, ChevronRight, Code, Wand2, GanttChartSquare, HelpCircle, ListChecks } from "lucide-react";
+import { FolderOpen, Zap, GitCommitHorizontal, LayoutGrid, ChevronLeft, ChevronRight, Code, Wand2, ListChecks, Boxes } from "lucide-react";
 import CodeModeView from "./CodeModeView";
 import MassUpdateDialog from "./MassUpdateDialog";
-import TimelineView from "./TimelineView";
-import WhatIfPanel from "./WhatIfPanel";
 import { pauseFolder, resumeFolder } from "@/lib/differentials-api";
 
 import "@xyflow/react/dist/style.css";
@@ -102,7 +96,9 @@ import {
 import { linkCondName } from "@/lib/conditions-model";
 import { conditionPool, onConditionsChange } from "@/lib/conditions-store";
 import ConditionsPanel from "./ConditionsPanel";
+import ResourcesPanel from "./ResourcesPanel";
 import { listAgents } from "@/lib/agents-api";
+import { listResources } from "@/lib/bloco2-api";
 import NavMinimap from "./NavMinimap";
 import { useCanvasCamera } from "./hooks/useCanvasCamera";
 import { useOrchestratorData } from "./hooks/useOrchestratorData";
@@ -115,15 +111,11 @@ function V2PreviewInner() {
   const [mode, setMode] = useState<Mode>("monitoring");
   // P3/escala — ViewPoint server-driven (paginado/virtualizado), p/ 100k–1M jobs.
   const [scaleView, setScaleView] = useState(false);
-  const [showDiff, setShowDiff] = useState(false);
-  const [showDryRun, setShowDryRun] = useState(false);
-  // D-12 — Timeline (Gantt) da daily sobreposta ao canvas do Monitoring.
-  const [showTimeline, setShowTimeline] = useState(false);
-  // ADV-3 — What-If (simulação de cenário) sobreposto ao canvas do Monitoring.
-  const [showWhatIf, setShowWhatIf] = useState(false);
+  // Diff / Dry Run / Timeline / What-If migraram pro Control Panel (2026-07-18):
+  // viraram abas de lá, então o estado de overlay saiu daqui.
   // Dados do canvas (defs + instances) e ciclo de vida deles (carga inicial,
   // subscribes, scheduler local, resync via WS) vivem no hook.
-  const { defs, publishedDefs, instances, ready, reloadDefs, syncInstances } = useOrchestratorData();
+  const { defs, publishedDefs, instances, ready, reloadDefs } = useOrchestratorData();
   // Defs PUBLICADAS (workspace principal) — o que o scheduler realmente ordena.
   // Em server mode com design session ativa, `defs` é o DRAFT da session; o
   // Monitoring e o Force enxergam por AQUI (um job que só existe no draft,
@@ -525,11 +517,28 @@ function V2PreviewInner() {
   // o painel Condições lista. Ressincronizado via WS (server) / storage (local).
   const [condPool, setCondPool] = useState<ReadonlySet<string>>(() => conditionPool());
   const [showConditions, setShowConditions] = useState(false);
+  // Painel Recursos (pool de quotas) — irmão do Condições, só no Monitoring.
+  const [showResources, setShowResources] = useState(false);
   useEffect(() => onConditionsChange(() => setCondPool(conditionPool())), []);
 
+  // Pool de recursos (F15) p/ o card WAIT RESOURCE — mesma fonte do painel
+  // Recursos. Sem WS de recurso, poll curto no Monitoring; alimenta o canvas.
+  const [resourcePool, setResourcePool] = useState<Map<string, { capacity: number; used: number }>>(new Map());
+  useEffect(() => {
+    if (mode !== "monitoring" || !isServerMode()) return;
+    let cancel = false;
+    const load = () => listResources().then((rs) => {
+      if (cancel) return;
+      setResourcePool(new Map(rs.map((r) => [r.name, { capacity: r.capacity, used: r.used }])));
+    }).catch(() => {});
+    load();
+    const i = setInterval(load, 4000);
+    return () => { cancel = true; clearInterval(i); };
+  }, [mode]);
+
   const canvas = useMemo<Canvas>(
-    () => (mode === "monitoring" ? buildMonitoringCanvas(filteredInstances, filteredRunnableDefs, layoutCfg, agentAvail, folderLayouts, condPool) : buildDesignCanvas(designDefsWithDraft, layoutCfg, folderLayouts)),
-    [mode, filteredInstances, filteredRunnableDefs, designDefsWithDraft, layoutCfg, agentAvail, folderLayouts, condPool],
+    () => (mode === "monitoring" ? buildMonitoringCanvas(filteredInstances, filteredRunnableDefs, layoutCfg, agentAvail, folderLayouts, condPool, resourcePool) : buildDesignCanvas(designDefsWithDraft, layoutCfg, folderLayouts)),
+    [mode, filteredInstances, filteredRunnableDefs, designDefsWithDraft, layoutCfg, agentAvail, folderLayouts, condPool, resourcePool],
   );
 
   // Seleção threaded no prop CONTROLADO de nós. O ReactFlow guarda seleção no
@@ -876,25 +885,9 @@ function V2PreviewInner() {
     setEditingDef(null);
   }, []);
 
-  /* ── Run Daily ── */
-  const handleRunDaily = useCallback(() => {
-    const created = runDaily(defs);
-    setLastDaily(new Date().toISOString());
-    // NÃO reenquadramos aqui: se o board estava vazio, o gate de entrada ancora os
-    // jobs quando eles aparecem (0→N); se já havia jobs, a câmera fica onde está
-    // (antes um fitView aqui fazia os jobs "sumirem" e exigia F5).
-    if (container.storageBackend === "server") {
-      // server mode: refresh é assíncrono via WS; UI re-renderiza sozinha
-      return;
-    }
-    if (created.length > 0) {
-      syncInstances();
-    } else {
-      toast.info("Nenhuma definition elegível", {
-        detail: "Sem schedule habilitado ou instances já materializadas hoje.",
-      });
-    }
-  }, [defs, syncInstances]);
+  // A daily é AUTOMÁTICA (server: autoDailyIfDue roda no tick e faz catch-up se
+  // o server estava offline na virada). O antigo botão "Run Daily" foi removido
+  // (2026-07-18) — materializar um job criado depois da virada é papel do Force.
 
   const handleRerunInstance = useCallback((id: string) => {
     Promise.resolve(rerunInstance(id)).then((fresh) => {
@@ -1187,7 +1180,7 @@ function V2PreviewInner() {
     [mode, defs, runnableDefs, instances, handleForce, handleRunNowInstance, handleDeleteDef, handleRerunInstance],
   );
 
-  // hasDefs gate os botões do Monitoring (Run Daily/Force) — conta o PUBLICADO.
+  // hasDefs gate o botão Force do Monitoring — conta o PUBLICADO.
   const hasDefs = runnableDefs.length > 0;
   const hasInstances = instances.length > 0;
 
@@ -1349,26 +1342,6 @@ function V2PreviewInner() {
         {mode === "monitoring" && (
           <>
             <button
-              onClick={handleRunDaily}
-              disabled={!hasDefs}
-              title={hasDefs ? "Materializa instances de hoje a partir das definitions" : "Crie definitions no Design primeiro"}
-              style={{
-                padding: "5px 10px",
-                background: "transparent",
-                border: "1px solid var(--v2-accent-brand)",
-                color: hasDefs ? "var(--v2-accent-brand)" : "var(--v2-text-muted)",
-                borderColor: hasDefs ? "var(--v2-accent-brand)" : "var(--v2-border-medium)",
-                borderRadius: 3,
-                fontSize: 10, fontFamily: "var(--v2-font-mono)",
-                letterSpacing: "0.06em", textTransform: "uppercase",
-                cursor: hasDefs ? "pointer" : "not-allowed", fontWeight: 600,
-                display: "flex", alignItems: "center", gap: 6,
-              }}
-            >
-              <Play size={11} /> Run Daily
-            </button>
-
-            <button
               onClick={() => setScaleView((v) => !v)}
               title="ViewPoint server-driven — paginado/virtualizado, aguenta 100k–1M jobs/dia"
               style={{
@@ -1387,13 +1360,13 @@ function V2PreviewInner() {
             </button>
 
             <button
-              onClick={() => setShowDiff(true)}
-              title="Diff de Daily — o que mudou em relação à diária anterior (jobs +/−, schedule, deps, def)"
+              onClick={() => { setShowResources((v) => !v); setShowConditions(false); }}
+              title="Recursos — o pool de quotas do ambiente: capacidade e uso de cada recurso (semáforo). Job sem unidade livre fica em WAIT RESOURCE. Quem consome se escolhe no Design (aba Condições → Recursos)."
               style={{
                 padding: "5px 10px",
-                background: "transparent",
-                border: "1px solid var(--v2-border-medium)",
-                color: "var(--v2-text-primary)",
+                background: showResources ? "rgba(245,158,11,0.15)" : "transparent",
+                border: `1px solid ${showResources ? "#f59e0b" : "var(--v2-border-medium)"}`,
+                color: showResources ? "#f59e0b" : "var(--v2-text-primary)",
                 borderRadius: 3,
                 fontSize: 10, fontFamily: "var(--v2-font-mono)",
                 letterSpacing: "0.06em", textTransform: "uppercase",
@@ -1401,65 +1374,11 @@ function V2PreviewInner() {
                 display: "flex", alignItems: "center", gap: 6,
               }}
             >
-              <GitCompare size={11} /> Diff
+              <Boxes size={11} /> Recursos
             </button>
 
             <button
-              onClick={() => setShowDryRun(true)}
-              title="Dry Run — simular a daily de uma data futura sem materializar (quem roda / espera / nunca dispara)"
-              style={{
-                padding: "5px 10px",
-                background: "transparent",
-                border: "1px solid var(--v2-border-medium)",
-                color: "var(--v2-text-primary)",
-                borderRadius: 3,
-                fontSize: 10, fontFamily: "var(--v2-font-mono)",
-                letterSpacing: "0.06em", textTransform: "uppercase",
-                cursor: "pointer", fontWeight: 600,
-                display: "flex", alignItems: "center", gap: 6,
-              }}
-            >
-              <FlaskConical size={11} /> Dry Run
-            </button>
-
-            <button
-              onClick={() => setShowTimeline(true)}
-              title="Timeline — Gantt da daily: barras reais (started→finished) e previstas (p50 histórico), linha do agora"
-              style={{
-                padding: "5px 10px",
-                background: "transparent",
-                border: "1px solid var(--v2-border-medium)",
-                color: "var(--v2-text-primary)",
-                borderRadius: 3,
-                fontSize: 10, fontFamily: "var(--v2-font-mono)",
-                letterSpacing: "0.06em", textTransform: "uppercase",
-                cursor: "pointer", fontWeight: 600,
-                display: "flex", alignItems: "center", gap: 6,
-              }}
-            >
-              <GanttChartSquare size={11} /> Timeline
-            </button>
-
-            <button
-              onClick={() => setShowWhatIf(true)}
-              title="What-If — simula um cenário (job atrasa/demora/falha/não roda) e mostra o impacto rio abaixo com durações reais; nada é materializado"
-              style={{
-                padding: "5px 10px",
-                background: "transparent",
-                border: "1px solid var(--v2-border-medium)",
-                color: "var(--v2-text-primary)",
-                borderRadius: 3,
-                fontSize: 10, fontFamily: "var(--v2-font-mono)",
-                letterSpacing: "0.06em", textTransform: "uppercase",
-                cursor: "pointer", fontWeight: 600,
-                display: "flex", alignItems: "center", gap: 6,
-              }}
-            >
-              <HelpCircle size={11} /> What-If
-            </button>
-
-            <button
-              onClick={() => setShowConditions((v) => !v)}
+              onClick={() => { setShowConditions((v) => !v); setShowResources(false); }}
               title="Condições — o pool do ambiente: toda condição adicionada (por job OK, Set OK, ação On/Do ou operador), com data. Deletar aqui trava quem depende dela; adicionar libera."
               style={{
                 padding: "5px 10px",
@@ -1766,7 +1685,7 @@ function V2PreviewInner() {
           <EmptyState
             title={hasDefs ? "Nenhuma instance hoje" : "Ambiente vazio"}
             hint={hasDefs
-              ? "Clique em Run Daily na topbar para materializar os jobs do dia."
+              ? "A daily materializa os jobs automaticamente no horário. Para rodar um job agora, use o Force."
               : "Vá para Design mode e crie jobs arrastando tipos da palette."}
           />
         )}
@@ -1996,20 +1915,7 @@ function V2PreviewInner() {
         )}
 
         {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
-        {showDiff && <DailyDiffModal onClose={() => setShowDiff(false)} />}
-        {showDryRun && <DryRunModal onClose={() => setShowDryRun(false)} />}
-        {/* D-12 — Gantt da daily (working set atual; barras previstas via p50 histórico) */}
-        {showTimeline && mode === "monitoring" && (
-          <TimelineView
-            instances={filteredInstances}
-            onClose={() => setShowTimeline(false)}
-            onSelect={(id) => { setSelectedInstanceId(id); setShowTimeline(false); }}
-          />
-        )}
-        {/* ADV-3 — What-If: simulação de cenário sobre a diária (read-only) */}
-        {showWhatIf && mode === "monitoring" && (
-          <WhatIfPanel defs={defs} onClose={() => setShowWhatIf(false)} />
-        )}
+        {/* Diff / Dry Run / Timeline / What-If migraram pro Control Panel (abas). */}
 
         <PRBannerHost />
 
@@ -2048,6 +1954,12 @@ function V2PreviewInner() {
             do Organizar): lista/adiciona/deleta as condições com data. */}
         {showConditions && mode === "monitoring" && (
           <ConditionsPanel onClose={() => setShowConditions(false)} />
+        )}
+
+        {/* Painel Recursos — o POOL de quotas (só no Monitoring, irmão do
+            Condições): capacidade/uso de cada recurso, com ajuste e delete. */}
+        {showResources && mode === "monitoring" && (
+          <ResourcesPanel onClose={() => setShowResources(false)} />
         )}
 
         {/* P3/escala — ViewPoint server-driven cobre o canvas quando ligado */}

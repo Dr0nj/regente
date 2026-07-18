@@ -47,10 +47,8 @@ const inputStyle: React.CSSProperties = {
 
 export default function WhatIfPanel({
   defs,
-  onClose,
 }: {
   defs: JobDefinition[];
-  onClose: () => void;
 }) {
   const sortedDefs = useMemo(
     () => [...defs].sort((a, b) => (a.team + a.label).localeCompare(b.team + b.label)),
@@ -92,11 +90,9 @@ export default function WhatIfPanel({
 
   return (
     <div
-      className="v2-grain"
       style={{
-        position: "absolute", inset: 10, zIndex: 20,
-        background: "var(--v2-bg-surface)", border: "1px solid var(--v2-border-medium)",
-        borderRadius: 16, boxShadow: "0 10px 30px rgba(0,0,0,0.45)",
+        width: "100%", height: "100%",
+        background: "var(--v2-bg-surface)",
         display: "flex", flexDirection: "column", overflow: "hidden",
         fontFamily: "var(--v2-font-sans)", color: "var(--v2-text-primary)",
       }}
@@ -112,16 +108,6 @@ export default function WhatIfPanel({
         <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>
           read-only · durações reais (p50 do histórico) · nada é materializado
         </span>
-        <button
-          onClick={onClose}
-          style={{
-            marginLeft: "auto", background: "transparent", border: "1px solid var(--v2-border-medium)",
-            color: "var(--v2-text-secondary)", borderRadius: 3, padding: "3px 10px",
-            fontSize: 10, fontFamily: "var(--v2-font-mono)", cursor: "pointer",
-          }}
-        >
-          fechar
-        </button>
       </div>
 
       {/* builder do cenário */}

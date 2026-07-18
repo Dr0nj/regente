@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { fetchDailyDiff, type DailyDiff, type DiffDefChange } from "@/lib/runtime-bridge";
 
 /* ──────────────────────────────────────────────────────────────
-   DailyDiffModal — "o que mudou entre duas diárias?"
+   DailyDiffView — "o que mudou entre duas diárias?"
    Diferencial Git-native: compara snapshots congelados (commit_sha +
    definition_snapshot) de dois order_date. Default: hoje vs a diária anterior.
+   Vive como aba do Control Panel (painel inline; o X é do Control Panel).
    ────────────────────────────────────────────────────────────── */
 
 function truncate(s: string, n = 80): string {
@@ -12,7 +13,7 @@ function truncate(s: string, n = 80): string {
   return s.length > n ? s.slice(0, n) + "…" : s;
 }
 
-export default function DailyDiffModal({ onClose }: { onClose: () => void }) {
+export default function DailyDiffModal() {
   const [diff, setDiff] = useState<DailyDiff | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,19 +30,9 @@ export default function DailyDiffModal({ onClose }: { onClose: () => void }) {
   const c = diff?.counts;
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "absolute", inset: 0, zIndex: 50,
-        background: "rgba(0,0,0,0.55)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-      }}
-    >
       <div
-        onClick={(e) => e.stopPropagation()}
-        className="v2-neon-card"
         style={{
-          width: 640, maxWidth: "92vw", maxHeight: "84vh",
+          width: "100%", height: "100%",
           display: "flex", flexDirection: "column",
           background: "var(--v2-bg-surface)", borderRadius: 6,
           fontFamily: "var(--v2-font-sans)", color: "var(--v2-text-primary)",
@@ -58,7 +49,6 @@ export default function DailyDiffModal({ onClose }: { onClose: () => void }) {
               {diff?.sameCommit ? " · mesmo commit (defs idênticas)" : diff?.commitB ? ` · commit ${diff.commitB.slice(0, 7)}` : ""}
             </div>
           </div>
-          <button onClick={onClose} aria-label="close" style={{ background: "transparent", border: "none", color: "var(--v2-text-muted)", cursor: "pointer", fontSize: 16, padding: 4 }}>×</button>
         </div>
 
         {/* counts */}
@@ -93,7 +83,6 @@ export default function DailyDiffModal({ onClose }: { onClose: () => void }) {
           )}
         </div>
       </div>
-    </div>
   );
 }
 

@@ -92,7 +92,7 @@ daily ou via Force Order manual.
 - 🟢 **Diff de Daily** (diferencial Git-native): compara duas diárias (hoje vs a anterior,
   ou `?from&to&folder`) → jobs **adicionados / removidos / alterados**, com diff **por-campo**
   (schedule, deps, recursos, def). Lê os snapshots congelados (`commit_sha` + `definition_snapshot`)
-  → exato e barato, sem reprocessar Git. `GET /api/daily/diff` + modal "Diff" na topbar.
+  → exato e barato, sem reprocessar Git. `GET /api/daily/diff` + aba "Diff" no Control Panel.
 - 🟢 **Blast Radius** (diferencial): "se eu **cancelar/segurar** este job agora, qual o impacto?"
   → jobs downstream que deixam de rodar em cascata, SLAs em risco, folders afetadas e profundidade.
   Análise de uma AÇÃO (não do grafo estático): BFS no grafo de deps, só pelo raio. `GET
@@ -100,12 +100,12 @@ daily ou via Force Order manual.
 - 🟢 **Dry Run** (diferencial): **simula a daily de qualquer data sem materializar** — quem **roda**,
   quem **espera** (depois de quem) e quem **nunca dispara** (e por quê: fora do calendário, dependência
   que não roda, condition órfã…), com cascata transitiva. Reusa a mesma decisão de agendamento do RunDaily.
-  `GET /api/daily/dryrun?date=` + modal "Dry Run" (com seletor de data).
+  `GET /api/daily/dryrun?date=` + aba "Dry Run" no Control Panel (com seletor de data).
 - 🟢 **What-If** — *"e se o job X atrasar 40min / demorar o dobro / falhar / não rodar?"*: projeta a
   diária **baseline × cenário** com durações reais (p50 do histórico) e a semântica de deps do engine
   (falha simulada bloqueia on-success e **destrava** o recovery on-failure) → quem atrasa, quem
-  bloqueia, que SLA passa a estourar. Read-only, nada é materializado. `POST /api/whatif` + painel
-  "What-If" no Monitoring. **Statistics** por job (taxa de sucesso, min/avg/p50/p90/max) na aba Stats
+  bloqueia, que SLA passa a estourar. Read-only, nada é materializado. `POST /api/whatif` + aba
+  "What-If" no Control Panel. **Statistics** por job (taxa de sucesso, min/avg/p50/p90/max) na aba Stats
   do drawer (`GET /api/analytics/jobstats`).
 - 🟢 **Schema dedicado por jobType** — cada tipo tem contrato declarado de params (obrigatórios,
   tipos de valor, enums, aliases): typo de campo e valor errado acusados **na hora** (lint/save);

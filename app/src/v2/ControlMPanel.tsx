@@ -1,28 +1,43 @@
 // Bloco 2 — Control-M parity panel.
-// Tabs: Calendars, Resources, SLA, Forecast, Analytics, Variables.
-// (Conditions saiu daqui: o pool de condições vive no MONITORING, botão
-// "Condições" ao lado do Organizar — ver ConditionsPanel.tsx.)
+// Tabs: Calendars, SLA, Forecast, Analytics, Variables + Diff, Dry Run,
+// Timeline, What-If (ferramentas de análise/simulação que saíram da toolbar
+// do Monitoring pra cá — 2026-07-18).
+// (Conditions vive no MONITORING, botão "Condições"; Resources também saiu
+// daqui pro Monitoring, botão "Recursos" — ver ResourcesPanel.tsx.)
 import { useEffect, useState } from "react";
 import {
   listCalendars, saveCalendar, deleteCalendar, type Calendar,
-  listResources, setResourceCapacity, deleteResource, type ResourceState,
   listSLABreaches, type SLABreach,
   getForecast, type ForecastReport,
   fetchSummary, fetchTopFailing, fetchMTTR,
   type AnalyticsSummary, type TopFailingItem, type MTTRItem,
   listVariables, putVariable, deleteVariable, type Variable,
 } from "../lib/bloco2-api";
+import type { JobInstance } from "../lib/orchestrator-model";
+import { getTodayInstances, onInstanceChange, refreshInstancesFromServer } from "../lib/runtime-bridge";
+import { getDefinitions, onDefinitionsChange, reloadDefinitions } from "../lib/definition-store";
+import DailyDiffModal from "./DailyDiffModal";
+import DryRunModal from "./DryRunModal";
+import TimelineView from "./TimelineView";
+import WhatIfPanel from "./WhatIfPanel";
 
-type Tab = "calendars" | "resources" | "sla" | "forecast" | "analytics" | "variables";
+type Tab = "calendars" | "sla" | "forecast" | "analytics" | "variables" | "diff" | "dryrun" | "timeline" | "whatif";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "calendars", label: "Calendars" },
-  { id: "resources", label: "Resources" },
   { id: "sla", label: "SLA" },
   { id: "forecast", label: "Forecast" },
   { id: "analytics", label: "Analytics" },
   { id: "variables", label: "Variables" },
+  { id: "diff", label: "Diff" },
+  { id: "dryrun", label: "Dry Run" },
+  { id: "timeline", label: "Timeline" },
+  { id: "whatif", label: "What-If" },
 ];
+
+// Tabs "cheias" — os painéis inline (Diff/DryRun/Timeline/What-If) gerenciam o
+// próprio scroll e ocupam a altura toda; as demais usam o corpo padded padrão.
+const FULL_TABS = new Set<Tab>(["diff", "dryrun", "timeline", "whatif"]);
 
 export function ControlMPanel({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("calendars");
@@ -52,14 +67,22 @@ export function ControlMPanel({ onClose }: { onClose: () => void }) {
             }}>{t.label}</button>
           ))}
         </div>
-        <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
-          {tab === "calendars" && <CalendarsView />}
-          {tab === "resources" && <ResourcesView />}
-          {tab === "sla" && <SLAView />}
-          {tab === "forecast" && <ForecastView />}
-          {tab === "analytics" && <AnalyticsView />}
-          {tab === "variables" && <VariablesView />}
-        </div>
+        {FULL_TABS.has(tab) ? (
+          <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+            {tab === "diff" && <DailyDiffModal />}
+            {tab === "dryrun" && <DryRunModal />}
+            {tab === "timeline" && <TimelineTab />}
+            {tab === "whatif" && <WhatIfTab />}
+          </div>
+        ) : (
+          <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+            {tab === "calendars" && <CalendarsView />}
+            {tab === "sla" && <SLAView />}
+            {tab === "forecast" && <ForecastView />}
+            {tab === "analytics" && <AnalyticsView />}
+            {tab === "variables" && <VariablesView />}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -193,47 +216,30 @@ function CalendarEditor({ cal, onSave, onCancel }: { cal: Calendar; onSave: (c: 
   );
 }
 
-// === F15 ===
-function ResourcesView() {
-  const [items, setItems] = useState<ResourceState[]>([]);
-  const [name, setName] = useState("");
-  const [cap, setCap] = useState(1);
-  const reload = () => listResources().then(setItems).catch(() => setItems([]));
-  useEffect(() => { reload(); const i = setInterval(reload, 5000); return () => clearInterval(i); }, []);
-  return (
-    <div>
-      <h3 style={{ marginTop: 0 }}>Resources / Quotas (F15)</h3>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <input placeholder="resource name" value={name} onChange={e => setName(e.target.value)} style={inp} />
-        <input type="number" min={0} value={cap} onChange={e => setCap(parseInt(e.target.value || "0"))} style={{ ...inp, width: 80 }} />
-        <button onClick={() => { if (name) setResourceCapacity(name, cap).then(() => { setName(""); reload(); }); }} style={btn}>Set capacity</button>
-      </div>
-      <table style={tbl}>
-        <thead><tr><th style={th}>Name</th><th style={th}>Capacity</th><th style={th}>Used</th><th style={th}>Free</th><th style={th}></th></tr></thead>
-        <tbody>
-          {items.length === 0 && <tr><td colSpan={5} style={{ ...td, textAlign: "center", color: "var(--v2-text-muted)" }}>No resources yet.</td></tr>}
-          {items.map(r => (
-            <tr key={r.name}>
-              <td style={td}>{r.name}</td>
-              <td style={td}>{r.capacity}</td>
-              <td style={td}>{r.used}</td>
-              <td style={{ ...td, color: r.capacity - r.used <= 0 ? "var(--v2-status-failed)" : "var(--v2-status-ok)" }}>{r.capacity - r.used}</td>
-              <td style={td}>
-                <button
-                  onClick={() => {
-                    if (r.used > 0) { alert(`Cannot delete "${r.name}": in use (${r.used}).`); return; }
-                    if (confirm(`Delete resource "${r.name}"?`)) deleteResource(r.name).then(reload).catch(e => alert(e.message || String(e)));
-                  }}
-                  style={btnDanger}
-                  title={r.used > 0 ? "in use; release first" : "delete"}
-                >delete</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+// Timeline / What-If — antes botões da toolbar do Monitoring; agora abas daqui.
+// Buscam os próprios dados (a lista de hoje e as defs publicadas) e assinam as
+// mudanças ao vivo, já que o Control Panel abre fora do contexto do board.
+function TimelineTab() {
+  const [instances, setInstances] = useState<JobInstance[]>([]);
+  useEffect(() => {
+    let cancel = false;
+    const sync = () => { if (!cancel) setInstances(getTodayInstances()); };
+    void refreshInstancesFromServer().then(sync).catch(sync);
+    const off = onInstanceChange(sync);
+    return () => { cancel = true; off(); };
+  }, []);
+  return <TimelineView instances={instances} />;
+}
+
+function WhatIfTab() {
+  const [defs, setDefs] = useState(getDefinitions());
+  useEffect(() => {
+    let cancel = false;
+    void reloadDefinitions().then(() => { if (!cancel) setDefs(getDefinitions()); }).catch(() => {});
+    const off = onDefinitionsChange(setDefs);
+    return () => { cancel = true; off(); };
+  }, []);
+  return <WhatIfPanel defs={defs} />;
 }
 
 // === F19 ===

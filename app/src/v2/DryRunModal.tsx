@@ -21,7 +21,7 @@ const OUTCOME: Record<DryRunJob["outcome"], { label: string; color: string }> = 
 };
 const ORDER: DryRunJob["outcome"][] = ["BLOCKED", "WAIT", "RUN", "NOT_SCHEDULED"];
 
-export default function DryRunModal({ onClose }: { onClose: () => void }) {
+export default function DryRunModal() {
   const [date, setDate] = useState<string>(tomorrow());
   const [dr, setDr] = useState<DryRun | null>(null);
   const [loading, setLoading] = useState(true);
@@ -43,11 +43,8 @@ export default function DryRunModal({ onClose }: { onClose: () => void }) {
   const grouped = ORDER.map((o) => ({ o, jobs: (dr?.jobs ?? []).filter((j) => j.outcome === o) })).filter((g) => g.jobs.length > 0);
 
   return (
-    <div onClick={onClose} style={{ position: "absolute", inset: 0, zIndex: 50, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div
-        onClick={(e) => e.stopPropagation()}
-        className="v2-neon-card"
-        style={{ width: 660, maxWidth: "92vw", maxHeight: "84vh", display: "flex", flexDirection: "column", background: "var(--v2-bg-surface)", borderRadius: 6, fontFamily: "var(--v2-font-sans)", color: "var(--v2-text-primary)", overflow: "hidden" }}
+        style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", background: "var(--v2-bg-surface)", borderRadius: 6, fontFamily: "var(--v2-font-sans)", color: "var(--v2-text-primary)", overflow: "hidden" }}
       >
         {/* header */}
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--v2-border-subtle)", display: "flex", alignItems: "center", gap: 12 }}>
@@ -63,7 +60,6 @@ export default function DryRunModal({ onClose }: { onClose: () => void }) {
             onChange={(e) => setDate(e.target.value)}
             style={{ background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-medium)", color: "var(--v2-text-primary)", padding: "5px 8px", fontSize: 11, fontFamily: "var(--v2-font-mono)", borderRadius: 3, colorScheme: "dark" }}
           />
-          <button onClick={onClose} aria-label="close" style={{ background: "transparent", border: "none", color: "var(--v2-text-muted)", cursor: "pointer", fontSize: 16, padding: 4 }}>×</button>
         </div>
 
         {/* counts */}
@@ -103,7 +99,6 @@ export default function DryRunModal({ onClose }: { onClose: () => void }) {
           {dr?.truncated && <Muted>… lista truncada (contadores acima são exatos).</Muted>}
         </div>
       </div>
-    </div>
   );
 }
 

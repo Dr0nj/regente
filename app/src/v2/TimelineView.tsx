@@ -34,11 +34,9 @@ const STATUS_BAR: Record<string, string> = {
 
 export default function TimelineView({
   instances,
-  onClose,
   onSelect,
 }: {
   instances: JobInstance[];
-  onClose: () => void;
   onSelect?: (id: string) => void;
 }) {
   const [p50, setP50] = useState<Record<string, number>>({});
@@ -93,11 +91,9 @@ export default function TimelineView({
 
   return (
     <div
-      className="v2-grain"
       style={{
-        position: "absolute", inset: 10, zIndex: 20,
-        background: "var(--v2-bg-surface)", border: "1px solid var(--v2-border-medium)",
-        borderRadius: 16, boxShadow: "0 10px 30px rgba(0,0,0,0.45)",
+        width: "100%", height: "100%",
+        background: "var(--v2-bg-surface)",
         display: "flex", flexDirection: "column", overflow: "hidden",
         fontFamily: "var(--v2-font-sans)", color: "var(--v2-text-primary)",
       }}
@@ -118,16 +114,6 @@ export default function TimelineView({
             mostrando {MAX_ROWS} de {instances.length}
           </span>
         )}
-        <button
-          onClick={onClose}
-          style={{
-            marginLeft: "auto", background: "transparent", color: "var(--v2-text-secondary)",
-            border: "1px solid var(--v2-border-medium)", borderRadius: 6, padding: "4px 10px",
-            cursor: "pointer", fontSize: 11, fontFamily: "inherit",
-          }}
-        >
-          Fechar ✕
-        </button>
       </div>
 
       {/* corpo com scroll (labels fixas via sticky) */}

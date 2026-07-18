@@ -289,6 +289,10 @@ export interface JobInstance {
   condsIn?: string[];
   /** Condições de SAÍDA＋ congeladas — produtoras das linhas do grafo. */
   condsOutAdd?: string[];
+  /** F15 (server schemaV19) — recursos/quotas CONGELADOS na ordem (nome→qtd).
+   *  Entrada do card WAIT RESOURCE; mudar os recursos do job no Design não
+   *  reescreve ordens já materializadas. */
+  resources?: Record<string, number>;
 }
 
 /* ── Order Date Helper ── */
@@ -334,6 +338,7 @@ export function createInstance(
     pinnedAgent: typeof def.actionConfig?._agentId === "string" ? def.actionConfig._agentId : undefined,
     condsIn: def.conditionsIn,
     condsOutAdd: def.conditionsOutAdd,
+    resources: def.resources,
   };
 }
 

@@ -487,6 +487,7 @@ var sqliteMigrations = []migration{
 	{version: 16, sql: schemaV16()},
 	{version: 17, sql: schemaV17("DATETIME")},
 	{version: 18, sql: schemaV18()},
+	{version: 19, sql: schemaV19()},
 }
 
 var pgMigrations = []migration{
@@ -508,6 +509,7 @@ var pgMigrations = []migration{
 	{version: 16, sql: schemaV16()},
 	{version: 17, sql: schemaV17("TIMESTAMPTZ")},
 	{version: 18, sql: schemaV18()},
+	{version: 19, sql: schemaV19()},
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
@@ -793,6 +795,19 @@ ALTER TABLE instances ADD COLUMN environment TEXT NOT NULL DEFAULT '';
 ALTER TABLE instances ADD COLUMN pinned_agent TEXT NOT NULL DEFAULT '';
 ALTER TABLE instances ADD COLUMN conds_in TEXT NOT NULL DEFAULT '';
 ALTER TABLE instances ADD COLUMN conds_out_add TEXT NOT NULL DEFAULT ''`
+}
+
+// schemaV19 — recursos/quotas (F15) CONGELADOS na instance (2026-07-18). Mesmo
+// racional dos campos M1 (v18): o card "WAIT RESOURCE" do Monitoring deriva do
+// que a ORDEM exigia, não da def viva — mudar os recursos de um job no Design
+// não reescreve cards já ordenados. JSON {nome: qtd}; '' = sem recurso. O gate
+// do scheduler já lê os recursos do definition_snapshot (defForInstance), então
+// esta coluna só PROMOVE o mesmo dado pra lista sem parsear o snapshot por linha.
+// Backfill em Go (parse do snapshot) roda no boot via meta_flags (v19).
+// ALTER idêntico em SQLite e Postgres; instances antigas ficam com '' (o card
+// cai no fallback: sem recurso conhecido, sem selo).
+func schemaV19() string {
+	return `ALTER TABLE instances ADD COLUMN resources TEXT NOT NULL DEFAULT ''`
 }
 
 // schemaV16 — held_from_status: o status que a instance tinha ao entrar em HOLD

@@ -38,15 +38,22 @@ const WAIT_AGENT_COLOR = "#38bdf8";
 // WAIT CONFIRM — violeta: WAITING preso no gate Control-M "Wait for confirmation",
 // aguardando o operador confirmar. Card inteiro tinge de violeta + tag CONFIRM.
 const WAIT_CONFIRM_COLOR = "#a78bfa";
+// WAIT RESOURCE — âmbar: WAITING sem unidade livre de um recurso/quota (F15).
+// Mesma cor do bloco Recursos do drawer e do painel Recursos do Monitoring.
+const WAIT_RESOURCE_COLOR = "#f59e0b";
 
 function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
   const waitConfirm = data.status === "WAITING" && !!data.waitConfirm;
   const waitAgent = data.status === "WAITING" && !!data.waitAgent;
-  // Confirmação é um gate humano — tem prioridade visual sobre o WAIT AGENT.
+  const waitResource = data.status === "WAITING" && !!data.waitResource;
+  // Prioridade visual segue a ordem dos gates: confirm (humano) > agente >
+  // recurso. WAIT COND não recolore (usa a cor de WAITING), só troca o rótulo.
   const statusColor = waitConfirm
     ? WAIT_CONFIRM_COLOR
     : waitAgent
     ? WAIT_AGENT_COLOR
+    : waitResource
+    ? WAIT_RESOURCE_COLOR
     : STATUS_COLOR[data.status];
   const isRunning = data.status === "RUNNING";
 
@@ -224,6 +231,7 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
               {waitConfirm ? "CONFIRM"
                 : waitAgent ? "WAIT AGENT"
                 : data.status === "WAITING" && data.waitEvent ? "WAIT COND"
+                : waitResource ? "WAIT RESOURCE"
                 : STATUS_LABEL[data.status]}
             </span>
             {data.lastRun && (

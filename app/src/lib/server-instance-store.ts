@@ -43,6 +43,7 @@ interface ServerInstance {
   pinnedAgent?: string;
   condsIn?: string[];
   condsOutAdd?: string[];
+  resources?: Record<string, number>; // F15 (schemaV19) — entrada do WAIT RESOURCE.
   // Só no DETALHE (GET /api/instances/{id}) — a lista não a carrega (payload
   // de escala): a action CONGELADA NA ORDEM, vinda da definition_snapshot.
   actionConfig?: Record<string, unknown>;
@@ -86,6 +87,7 @@ function toWeb(s: ServerInstance): JobInstance {
     pinnedAgent: s.pinnedAgent,
     condsIn: s.condsIn,
     condsOutAdd: s.condsOutAdd,
+    resources: s.resources,
     // Snapshot da diária: a folder (team) é congelada NA instância pelo server
     // (coluna `team` no INSERT). O monitoring reflete o dia como foi schedulado —
     // apagar/mover o job no Design NÃO pode reescrever a daília corrente. Por isso
@@ -144,6 +146,7 @@ function keepDetail(next: JobInstance, prev?: JobInstance): JobInstance {
   if (next.confirmReq === undefined && prev.confirmReq !== undefined) next.confirmReq = prev.confirmReq;
   if (next.environment === undefined && prev.environment !== undefined) next.environment = prev.environment;
   if (next.pinnedAgent === undefined && prev.pinnedAgent !== undefined) next.pinnedAgent = prev.pinnedAgent;
+  if (next.resources === undefined && prev.resources !== undefined) next.resources = prev.resources;
   return next;
 }
 

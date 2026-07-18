@@ -381,6 +381,10 @@ func main() {
 	// da união produtor nos snapshots em voo. Guardado por meta_flags.
 	sched.MigrateMonitoringSnapshot()
 
+	// F15 (schemaV19): backfill one-time da coluna `resources` congelada a partir
+	// do definition_snapshot — entrada do card WAIT RESOURCE. Guardado por meta_flags.
+	sched.MigrateResourcesSnapshot()
+
 	// Enterprise/Operação — reconciler de drift GitOps (opt-in). O git-poll já
 	// auto-sincroniza; este fecha o lado OPERACIONAL: quando runtime≠Git, alerta
 	// pelos MESMOS canais do R7 (Slack/PagerDuty/…), e o modo "sync" reconcilia

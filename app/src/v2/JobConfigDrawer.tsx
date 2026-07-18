@@ -9,7 +9,7 @@ import ScheduleEditor from "./ScheduleEditor";
 import { DefinitionAuditPanel } from "./DefinitionAuditPanel";
 import { ErrorDialog } from "./ErrorDialog";
 import { getGitInfo, definitionFileUrl } from "@/lib/git-info";
-import { listCalendars, type Calendar } from "@/lib/bloco2-api";
+import { listCalendars, type Calendar, listResources, type ResourceState } from "@/lib/bloco2-api";
 import { listAgents, type AgentInfo } from "@/lib/agents-api";
 import { jobTypeFieldIndex, pruneConfigForType } from "@/lib/jobtypes-api";
 import { saveTemplate } from "@/lib/differentials-api";
@@ -102,6 +102,12 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   const [conditionsIn, setConditionsIn] = useState<string[]>(definition.conditionsIn ?? []);
   const [conditionsOutAdd, setConditionsOutAdd] = useState<string[]>(definition.conditionsOutAdd ?? []);
   const [conditionsOutRemove, setConditionsOutRemove] = useState<string[]>(definition.conditionsOutRemove ?? []);
+  // F15 — RECURSOS/QUOTAS consumidos pelo job (nome → quantidade). Vive na mesma
+  // aba Condições, mas é um eixo DIFERENTE: condição = pré-requisito lógico (pool
+  // do ambiente); recurso = limite de concorrência (semáforo). O gate é WAIT
+  // RESOURCE (fila), não WAIT COND. Editado aqui, separado visualmente.
+  const [resources, setResources] = useState<Record<string, number>>(definition.resources ?? {});
+  const [availableResources, setAvailableResources] = useState<ResourceState[]>([]);
   const [agentId, setAgentId] = useState<string>(
     typeof definition.actionConfig?._agentId === "string" ? (definition.actionConfig._agentId as string) : ""
   );
@@ -174,6 +180,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     setDryRun(definition.dryRun ?? false); setConfirmReq(definition.confirm ?? false); setActionConfig(definition.actionConfig ?? {});
     setCalendars(definition.calendars ?? []); setActions(definition.actions ?? []);
     setConditionsIn(definition.conditionsIn ?? []); setConditionsOutAdd(definition.conditionsOutAdd ?? []); setConditionsOutRemove(definition.conditionsOutRemove ?? []);
+    setResources(definition.resources ?? {});
     setAgentId(typeof definition.actionConfig?._agentId === "string" ? (definition.actionConfig._agentId as string) : "");
     setAgentTouched(false);
     setErr(null); setValidationErr(null);
@@ -238,6 +245,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     let cancel = false;
     void listCalendars().then((cs) => { if (!cancel) setCalendarDefs(cs); }).catch(() => {});
     void listAgents().then((a) => { if (!cancel) setAgents(a); }).catch(() => {});
+    void listResources().then((r) => { if (!cancel) setAvailableResources(r); }).catch(() => {});
     void jobTypeFieldIndex().then((m) => { if (!cancel) setTypeFieldIdx(m); }).catch(() => {});
     return () => { cancel = true; };
   }, []);
@@ -267,6 +275,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
       conditionsIn: conditionsIn.length ? conditionsIn : undefined,
       conditionsOutAdd: conditionsOutAdd.length ? conditionsOutAdd : undefined,
       conditionsOutRemove: conditionsOutRemove.length ? conditionsOutRemove : undefined,
+      resources: Object.keys(resources).length ? resources : undefined,
     };
   }
 
@@ -339,7 +348,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     }
     return [...s].sort();
   }, [allDefs]);
-  const condCount = conditionsIn.length + conditionsOutAdd.length + conditionsOutRemove.length;
+  const condCount = conditionsIn.length + conditionsOutAdd.length + conditionsOutRemove.length + Object.keys(resources).length;
 
   const { width, onMouseDown, reset } = useResizablePanel({
     storageKey: "regente.panel.jobConfig.w", defaultWidth: 360, min: 280, max: 720, edge: "left",
@@ -495,6 +504,9 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
             onChangeConditionsOutAdd={touch(setConditionsOutAdd)}
             onChangeConditionsOutRemove={touch(setConditionsOutRemove)}
             knownConditions={knownConditions}
+            resources={resources}
+            onChangeResources={touch(setResources)}
+            availableResources={availableResources}
           />
         )}
 
@@ -527,7 +539,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
 }
 
 /* ── Aba CONDIÇÕES — o modelo único de dependência ── */
-function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, conditionsOutRemove, onChangeConditionsIn, onChangeConditionsOutAdd, onChangeConditionsOutRemove, knownConditions }: {
+function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, conditionsOutRemove, onChangeConditionsIn, onChangeConditionsOutAdd, onChangeConditionsOutRemove, knownConditions, resources, onChangeResources, availableResources }: {
   self: string;
   triggers: JobDefinition[];
   allDefs: JobDefinition[];
@@ -538,6 +550,9 @@ function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, cond
   onChangeConditionsOutAdd: (v: string[]) => void;
   onChangeConditionsOutRemove: (v: string[]) => void;
   knownConditions: string[];
+  resources: Record<string, number>;
+  onChangeResources: (v: Record<string, number>) => void;
+  availableResources: ResourceState[];
 }) {
   // Referência cruzada por NOME-BASE: quem produz (conditionsOutAdd ou ação
   // set-condition) e quem consome (conditionsIn) cada condição no escopo.
@@ -559,7 +574,17 @@ function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, cond
   const [showHelp, setShowHelp] = useState(false);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14, position: "relative" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* ── RECURSOS / QUOTAS ── Eixo SEPARADO das condições: limite de
+          concorrência (semáforo), não pré-requisito lógico. Bloco próprio com
+          moldura âmbar pra deixar a fronteira visual explícita. */}
+      <ResourcesEditor resources={resources} onChange={onChangeResources} available={availableResources} />
+
+      {/* Divisória forte entre os dois eixos (recurso × condição). */}
+      <div style={{ borderTop: "1px dashed var(--v2-border-strong)", margin: "2px 0 0" }} />
+
+      {/* ── CONDIÇÕES ── (position:relative isola o popover "?" deste bloco) */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, position: "relative" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--v2-text-muted)" }}>
           Modelo único — pool de condições
@@ -654,6 +679,92 @@ function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, cond
             <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}>{d.label}</span>
           </div>
         ))}
+      </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Editor de RECURSOS / quotas (F15) ── Eixo DISTINTO das condições: não é
+   pré-requisito lógico (pool do ambiente) e sim limite de concorrência
+   (semáforo Control-M). Nome → quantidade consumida; sem unidade livre o job
+   fica em WAIT RESOURCE (fila). Pedido multi-recurso é tudo-ou-nada. A moldura
+   âmbar marca a fronteira visual pedida. A CAPACIDADE de cada recurso é gerida
+   no Monitoring (painel Recursos) — aqui só se ESCOLHE quais o job consome. */
+const RES_ACCENT = "#f59e0b";
+function ResourcesEditor({ resources, onChange, available }: {
+  resources: Record<string, number>;
+  onChange: (v: Record<string, number>) => void;
+  available: ResourceState[];
+}) {
+  const [draftName, setDraftName] = useState("");
+  const [draftQty, setDraftQty] = useState("1");
+  const entries = Object.entries(resources);
+  const capOf = (name: string) => available.find((r) => r.name === name);
+  const add = () => {
+    const name = draftName.trim();
+    const qty = Math.max(1, parseInt(draftQty || "1", 10) || 1);
+    if (!name || name in resources) { setDraftName(""); return; }
+    onChange({ ...resources, [name]: qty });
+    setDraftName(""); setDraftQty("1");
+  };
+  const setQty = (name: string, qty: number) => onChange({ ...resources, [name]: Math.max(1, qty || 1) });
+  const remove = (name: string) => { const next = { ...resources }; delete next[name]; onChange(next); };
+  const suggestions = available.filter((r) => !(r.name in resources));
+  const numInput: React.CSSProperties = {
+    width: 54, background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-subtle)",
+    color: "var(--v2-text-primary)", padding: "3px 6px", fontSize: 11,
+    fontFamily: "var(--v2-font-mono)", borderRadius: 3, boxSizing: "border-box",
+  };
+  return (
+    <div style={{
+      border: `1px solid ${RES_ACCENT}55`, borderRadius: 8, padding: "10px 12px",
+      background: "rgba(245,158,11,0.05)", display: "flex", flexDirection: "column", gap: 8,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: RES_ACCENT }} />
+        <span style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: RES_ACCENT, fontWeight: 700 }}>
+          Recursos / Quotas
+        </span>
+      </div>
+      <div style={{ fontSize: 9.5, color: "var(--v2-text-muted)", lineHeight: 1.45 }}>
+        Limita execução simultânea (semáforo). Sem unidade livre no pool, o job espera em <b style={{ color: RES_ACCENT }}>WAIT RESOURCE</b> (fila) — não é dependência lógica. Vários recursos = tudo-ou-nada.
+      </div>
+      {entries.map(([name, qty]) => {
+        const cap = capOf(name);
+        return (
+          <div key={name} style={{ ...depRow, borderColor: `${RES_ACCENT}44` }}>
+            <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}>{name}</span>
+            <span style={{ fontSize: 9, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>
+              {cap ? `cap ${cap.capacity} · uso ${cap.used}` : "novo · cap 1 ao criar"}
+            </span>
+            <input type="number" min={1} value={qty} title="quantidade consumida por este job"
+              onChange={(e) => setQty(name, parseInt(e.target.value, 10))} style={numInput} />
+            <button onClick={() => remove(name)} style={iconBtn} title="Remover recurso"><Trash2 size={12} /></button>
+          </div>
+        );
+      })}
+      <div style={{ display: "flex", gap: 6 }}>
+        <input
+          value={draftName}
+          list="job-known-resources"
+          placeholder="＋ recurso… (ex.: SAP)"
+          onChange={(e) => setDraftName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+          onFocus={(e) => { e.currentTarget.style.borderColor = RES_ACCENT; }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = "var(--v2-border-medium)"; }}
+          style={{ flex: 1, background: "var(--v2-bg-elevated)", border: "1px dashed var(--v2-border-medium)", color: "var(--v2-text-primary)", padding: "5px 8px", fontSize: 11, fontFamily: "var(--v2-font-mono)", borderRadius: 3, outline: "none", boxSizing: "border-box" }}
+        />
+        <datalist id="job-known-resources">
+          {suggestions.map((r) => <option key={r.name} value={r.name}>{`cap ${r.capacity}`}</option>)}
+        </datalist>
+        <input type="number" min={1} value={draftQty} title="quantidade"
+          onChange={(e) => setDraftQty(e.target.value.replace(/\D/g, ""))}
+          style={{ ...numInput, background: "var(--v2-bg-elevated)", border: "1px dashed var(--v2-border-medium)" }} />
+        <button onClick={add} disabled={!draftName.trim()} style={{ ...btnStyle, borderColor: draftName.trim() ? RES_ACCENT : "var(--v2-border-medium)", color: draftName.trim() ? RES_ACCENT : "var(--v2-text-muted)" }}>＋</button>
+      </div>
+      <div style={{ fontSize: 9, color: "var(--v2-text-muted)", lineHeight: 1.4 }}>
+        A capacidade é gerida no Monitoring (painel <b>Recursos</b>). Recurso novo nasce com capacidade 1 (lock exclusivo) até ajustar lá.
       </div>
     </div>
   );
