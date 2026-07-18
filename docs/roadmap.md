@@ -100,6 +100,58 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
   (Monitoring com grafo · ViewPoint @1M · Explain), decidir se torna o repo público (ou
   publica o case como artigo) e postar no LinkedIn. Nenhum agente pode fazer isso por você.
 
+### 🔮 Visão futura (avaliar PÓS-testes, não committado)
+
+> Ideias registradas para **avaliação posterior**, depois de estabilizar/testar o core em
+> uso real. NÃO são compromisso de build — entram aqui pra não se perder e pra decidir com
+> calma se/quando valem. Cada uma vira item de trabalho de verdade só depois de um "vai".
+
+#### 🤖 AI_AGENT — JobType com prompts para LLM
+
+- [ ] **AI-1 — JobType `AI_AGENT` (execução dirigida por prompt).** **Motivação:** evoluir
+  o Regente para um scheduler **híbrido** onde parte dos jobs são descritos em **linguagem
+  natural** e executados por agentes de IA, mantendo toda a robustez Control-M (imutabilidade
+  do Monitoring, conditions, carry-over, audit, approval, SLA). Permite que analistas/
+  não-técnicos criem automações complexas sem escrever código, enquanto operações mantém
+  controle, rastreabilidade e governança. **Exemplo (caixinha CADOC3040):**
+
+  ```yaml
+  id: CADOC3040
+  label: Processamento BACEN D+1
+  jobType: AI_AGENT
+  prompt: |
+    Vá até o servidor 1234 e execute o programa datastage.
+    Aguarde o término. Se OK, rode o validador bacen.sh.
+    Se tudo sucesso, transfira o arquivo via SFTP para o servidor Y no caminho Z.
+    No final envie email de sucesso ou falha detalhado.
+    Sempre retorne JSON estruturado no output.
+  model: claude-3-5-sonnet-20240620
+  temperature: 0.0
+  timeout: 45m
+  approvalRequired: true
+  outputSchema: json
+  ```
+
+  **Escopo inicial (Fase 1):**
+  - Novo jobType no schema (`typeschema.go`) com campos: `prompt`, `model`, `temperature`,
+    `maxTokens`, `approvalRequired`, `toolsAllowed`, `outputSchema`.
+  - Integração com o `regente-mcp` existente (tool interna `execute_ai_prompt`).
+  - Execução via agente ou diretamente pelo MCP.
+  - Parsing robusto de output (JSON mode + fallback) → `output`, `exitCode`, `%%SET` variables.
+  - Approval gate + audit COMPLETO (prompt + modelo + resposta da LLM).
+  - Integração com conditions, On-Do, SLA, Explain, Blast Radius e Monitoring imutável.
+
+  **Fases futuras:**
+  - **AI-2:** multi-step agents + memory entre runs.
+  - **AI-3:** human-in-the-loop avançado + feedback loop.
+  - **AI-4:** orquestração de múltiplos agentes dentro de um job.
+
+  **Dependências:** condições unificadas estáveis, daily/carry-over maduro, MCP writes
+  sólido, segurança de prompts (secrets + sandbox). **Risco:** hallucination e custo →
+  mitigar com output estruturado obrigatório, approval para jobs críticos e modelos mais
+  baratos para tarefas simples. **Status:** planejado (prioridade média-alta **após**
+  estabilizar o core).
+
 ---
 
 # ✅ Entregue *(tracking por tópico)*
