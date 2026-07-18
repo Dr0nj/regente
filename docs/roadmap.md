@@ -108,49 +108,70 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 #### 🤖 AI_AGENT — JobType com prompts para LLM
 
-- [ ] **AI-1 — JobType `AI_AGENT` (execução dirigida por prompt).** **Motivação:** evoluir
-  o Regente para um scheduler **híbrido** onde parte dos jobs são descritos em **linguagem
-  natural** e executados por agentes de IA, mantendo toda a robustez Control-M (imutabilidade
-  do Monitoring, conditions, carry-over, audit, approval, SLA). Permite que analistas/
-  não-técnicos criem automações complexas sem escrever código, enquanto operações mantém
-  controle, rastreabilidade e governança. **Exemplo (caixinha CADOC3040):**
+- [ ] **AI-1 — JobType `AI_AGENT` (execução dirigida por prompt, isolada em sandbox).**
+  **Status:** planejado (prioridade média-alta **após** estabilizar o core). **Motivação:**
+  transformar o Regente em um scheduler **híbrido** (determinístico + inteligente), onde
+  parte dos jobs são descritos em **linguagem natural** e executados por agentes de IA,
+  mantendo toda a robustez e governança Control-M (imutabilidade do Monitoring, conditions
+  unificadas, carry-over, audit, approval gates, SLA etc.). Permite que analistas e usuários
+  de negócio criem automações complexas sem escrever código, enquanto a operação mantém
+  controle total, rastreabilidade e segurança. **Exemplo (health check de servidor):**
 
   ```yaml
-  id: CADOC3040
-  label: Processamento BACEN D+1
+  id: HEALTH-CHECK-SRV-1234
+  label: Health Check Servidor Produção 1234
   jobType: AI_AGENT
   prompt: |
-    Vá até o servidor 1234 e execute o programa datastage.
-    Aguarde o término. Se OK, rode o validador bacen.sh.
-    Se tudo sucesso, transfira o arquivo via SFTP para o servidor Y no caminho Z.
-    No final envie email de sucesso ou falha detalhado.
-    Sempre retorne JSON estruturado no output.
+    Realize um health check completo no servidor Linux atual.
+
+    Verifique:
+    - Uso de CPU, memória e disco
+    - Processos críticos que não estão rodando
+    - Portas esperadas que estão fechadas
+    - Serviços essenciais (nginx, postgresql, redis, etc.)
+    - Últimos erros nos logs do sistema e aplicações
+    - Conexões de rede anormais
+
+    No final, gere um relatório claro com:
+    - Status geral (Healthy / Degraded / Critical)
+    - Principais problemas encontrados
+    - Recomendações de ação
+
+    Sempre retorne um JSON estruturado no output final.
   model: claude-3-5-sonnet-20240620
   temperature: 0.0
-  timeout: 45m
+  timeout: 10m
   approvalRequired: true
   outputSchema: json
+  sandbox: docker     # execução isolada em container
   ```
 
-  **Escopo inicial (Fase 1):**
-  - Novo jobType no schema (`typeschema.go`) com campos: `prompt`, `model`, `temperature`,
-    `maxTokens`, `approvalRequired`, `toolsAllowed`, `outputSchema`.
+  **Escopo inicial (Fase 1 - AI-1):**
+  - Novo jobType `AI_AGENT` no schema (`typeschema.go`).
+  - Campos principais: `prompt`, `model`, `temperature`, `maxTokens`, `approvalRequired`,
+    `toolsAllowed`, `outputSchema`, `sandbox`.
   - Integração com o `regente-mcp` existente (tool interna `execute_ai_prompt`).
-  - Execução via agente ou diretamente pelo MCP.
-  - Parsing robusto de output (JSON mode + fallback) → `output`, `exitCode`, `%%SET` variables.
-  - Approval gate + audit COMPLETO (prompt + modelo + resposta da LLM).
-  - Integração com conditions, On-Do, SLA, Explain, Blast Radius e Monitoring imutável.
+  - **Execução isolada obrigatória:** cada job roda dentro de um container Docker efêmero
+    (sandbox) com privilégios mínimos, limitação de recursos e filesystem restrito.
+  - Parsing robusto do output (prioridade para JSON + fallback) → mapeia para `output`,
+    `exitCode` e variáveis `%%SET`.
+  - Approval gate + audit completo (prompt enviado + modelo + resposta bruta da LLM).
+  - Integração plena com conditions, On-Do, SLA, Explain, Blast Radius e Monitoring imutável.
 
   **Fases futuras:**
-  - **AI-2:** multi-step agents + memory entre runs.
-  - **AI-3:** human-in-the-loop avançado + feedback loop.
-  - **AI-4:** orquestração de múltiplos agentes dentro de um job.
+  - **AI-2:** multi-step agents + memória persistente entre execuções.
+  - **AI-3:** human-in-the-loop avançado + loops de feedback.
+  - **AI-4:** orquestração de múltiplos agentes dentro de um único job.
 
-  **Dependências:** condições unificadas estáveis, daily/carry-over maduro, MCP writes
-  sólido, segurança de prompts (secrets + sandbox). **Risco:** hallucination e custo →
-  mitigar com output estruturado obrigatório, approval para jobs críticos e modelos mais
-  baratos para tarefas simples. **Status:** planejado (prioridade média-alta **após**
-  estabilizar o core).
+  **Dependências críticas:** condições unificadas estáveis, daily/carry-over maduro, MCP com
+  writes confiável, e controles de segurança fortes (secrets, sandbox, whitelist de tools).
+
+  **Riscos conhecidos e mitigação:**
+  - **Hallucination / comandos perigosos** → execução obrigatoriamente isolada em sandbox +
+    tools limitadas (whitelist) + approval humano em jobs sensíveis.
+  - **Custo** → suporte a modelos locais (Ollama) e modelos mais baratos para tarefas simples.
+  - **Segurança** → sandbox Docker com `cap-drop=ALL`, usuário sem privilégios e volumes
+    read-only.
 
 ---
 
