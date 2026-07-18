@@ -486,6 +486,7 @@ var sqliteMigrations = []migration{
 	{version: 15, sql: schemaV15(sqliteID, "DATETIME")},
 	{version: 16, sql: schemaV16()},
 	{version: 17, sql: schemaV17("DATETIME")},
+	{version: 18, sql: schemaV18()},
 }
 
 var pgMigrations = []migration{
@@ -506,6 +507,7 @@ var pgMigrations = []migration{
 	{version: 15, sql: schemaV15(pgID, "TIMESTAMPTZ")},
 	{version: 16, sql: schemaV16()},
 	{version: 17, sql: schemaV17("TIMESTAMPTZ")},
+	{version: 18, sql: schemaV18()},
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
@@ -765,6 +767,32 @@ func schemaV17(ts string) string {
 	name    TEXT PRIMARY KEY,
 	done_at ` + ts + ` DEFAULT CURRENT_TIMESTAMP
 )`
+}
+
+// schemaV18 — M1: imutabilidade TOTAL do Monitoring (2026-07-17). Tudo que o
+// card/lista/grafo exibem passa a vir CONGELADO na instance (mesmo racional do
+// dry_run v9 e do team v4, agora completo):
+//   - label / job_type: nome e tipo exibidos — renomear/trocar tipo no Design
+//     não pode reescrever cards já ordenados (report do usuário).
+//   - confirm_req: o gate visual WAIT CONFIRM (def.confirm da ordem).
+//   - environment / pinned_agent: entradas do WAIT AGENT (roteamento congelado).
+//   - conds_in / conds_out_add: JSON arrays (strings com sufixo @odat/@prev/@stat)
+//     das condições da ordem — as LINHAS do grafo do Monitoring derivam daqui,
+//     nunca mais da topologia viva do Design (criar job novo no dia não redesenha
+//     instancias antigas). conds_in já gravado EXPANDIDO (ExpandSnapshotConditions
+//     cobre upstream legado).
+// Backfill em Go (parse do definition_snapshot) roda no boot via meta_flags —
+// ver scheduler.MigrateMonitoringSnapshot. Instances antigas sem snapshot ficam
+// com defaults ('' — o front cai na def viva SÓ nesse caso legado).
+// ALTERs idênticos em SQLite e Postgres.
+func schemaV18() string {
+	return `ALTER TABLE instances ADD COLUMN label TEXT NOT NULL DEFAULT '';
+ALTER TABLE instances ADD COLUMN job_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE instances ADD COLUMN confirm_req INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE instances ADD COLUMN environment TEXT NOT NULL DEFAULT '';
+ALTER TABLE instances ADD COLUMN pinned_agent TEXT NOT NULL DEFAULT '';
+ALTER TABLE instances ADD COLUMN conds_in TEXT NOT NULL DEFAULT '';
+ALTER TABLE instances ADD COLUMN conds_out_add TEXT NOT NULL DEFAULT ''`
 }
 
 // schemaV16 — held_from_status: o status que a instance tinha ao entrar em HOLD

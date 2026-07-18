@@ -33,10 +33,18 @@ interface ServerInstance {
   dryRun?: boolean;
   holdScope?: string;
   heldFromStatus?: string;
-  // Só no DETALHE (GET /api/instances/{id}) — a lista não os carrega (payload
-  // de escala): a action CONGELADA NA ORDEM, vinda da definition_snapshot.
+  // M1 (schemaV18) — CONGELADOS na ordem, agora vêm NA LISTA também (o
+  // Monitoring inteiro é imutável): label/tipo exibidos, gates (confirm/agente)
+  // e as condições da ordem que desenham as linhas do grafo.
   label?: string;
   jobType?: string;
+  confirmReq?: boolean;
+  environment?: string;
+  pinnedAgent?: string;
+  condsIn?: string[];
+  condsOutAdd?: string[];
+  // Só no DETALHE (GET /api/instances/{id}) — a lista não a carrega (payload
+  // de escala): a action CONGELADA NA ORDEM, vinda da definition_snapshot.
   actionConfig?: Record<string, unknown>;
 }
 
@@ -62,11 +70,22 @@ function toWeb(s: ServerInstance): JobInstance {
   return {
     id: s.id,
     definitionId: s.definitionId,
-    // label/jobType/actionConfig: presentes só no payload de DETALHE (a lista
-    // não os carrega por escala) — vindos da definition_snapshot da ordem.
-    label: s.label || s.definitionId,
+    // label/jobType: CONGELADOS na ordem (schemaV18), agora na lista — nunca
+    // mais da def viva. Instance legada sem backfill vem VAZIA (não coagimos pra
+    // definitionId): o canvas cai na def viva só quando label==="". Coagir
+    // apagaria a distinção "frozen label que POR ACASO é igual ao id" × "legado
+    // sem label" — era a raiz do card mostrar o nome novo da def viva.
+    label: s.label ?? "",
     jobType: s.jobType ?? "",
+    // actionConfig só no payload de DETALHE (a lista não a carrega por escala).
     actionConfig: s.actionConfig,
+    // M1: gates e condições congelados da ordem — origem das linhas do grafo e
+    // dos selos WAIT CONFIRM/WAIT AGENT no Monitoring.
+    confirmReq: s.confirmReq,
+    environment: s.environment,
+    pinnedAgent: s.pinnedAgent,
+    condsIn: s.condsIn,
+    condsOutAdd: s.condsOutAdd,
     // Snapshot da diária: a folder (team) é congelada NA instância pelo server
     // (coluna `team` no INSERT). O monitoring reflete o dia como foi schedulado —
     // apagar/mover o job no Design NÃO pode reescrever a daília corrente. Por isso
@@ -117,7 +136,14 @@ function keepDetail(next: JobInstance, prev?: JobInstance): JobInstance {
   if (!prev) return next;
   if (next.actionConfig === undefined && prev.actionConfig !== undefined) next.actionConfig = prev.actionConfig;
   if (!next.jobType && prev.jobType) next.jobType = prev.jobType;
-  if (next.label === next.definitionId && prev.label !== prev.definitionId) next.label = prev.label;
+  if (!next.label && prev.label) next.label = prev.label;
+  // M1: colunas congeladas — um payload WS mais pobre nunca deve apagar o que
+  // já veio da lista (o snapshot é imutável, preservar não mente).
+  if (next.condsIn === undefined && prev.condsIn !== undefined) next.condsIn = prev.condsIn;
+  if (next.condsOutAdd === undefined && prev.condsOutAdd !== undefined) next.condsOutAdd = prev.condsOutAdd;
+  if (next.confirmReq === undefined && prev.confirmReq !== undefined) next.confirmReq = prev.confirmReq;
+  if (next.environment === undefined && prev.environment !== undefined) next.environment = prev.environment;
+  if (next.pinnedAgent === undefined && prev.pinnedAgent !== undefined) next.pinnedAgent = prev.pinnedAgent;
   return next;
 }
 
@@ -608,14 +634,17 @@ export interface InstanceOrderDetail {
   label?: string;
   jobType?: string;
   actionConfig?: Record<string, unknown>;
+  // M1: a DEF CONGELADA INTEIRA (definition_snapshot) — o drawer lê Schedule e
+  // Condições daqui, não da def viva do Design. Ausente em instance legada.
+  snapshotDef?: JobDefinition;
 }
 
 export async function fetchInstanceDetail(id: string): Promise<InstanceOrderDetail | null> {
   try {
-    const s = await api<ServerInstance>(`/api/instances/${encodeURIComponent(id)}`);
+    const s = await api<ServerInstance & { snapshotDef?: JobDefinition }>(`/api/instances/${encodeURIComponent(id)}`);
     if (!s?.id) return null;
     applyInstance(s); // o espelho ganha a linha mais rica de carona
-    return { label: s.label, jobType: s.jobType, actionConfig: s.actionConfig };
+    return { label: s.label, jobType: s.jobType, actionConfig: s.actionConfig, snapshotDef: s.snapshotDef };
   } catch (err) {
     console.warn("[server-instances] fetchInstanceDetail failed", err);
     return null;

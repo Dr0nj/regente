@@ -657,6 +657,9 @@ type pendingInstance struct {
 	// Torna o selo 👻GHOST do Monitoring imutável: mudar dryRun no Design só reflete
 	// na próxima ordem. Ver schemaV9 e canvas-layout.buildMonitoringCanvas.
 	dryRun bool
+	// M1 (schemaV18): label/job_type/confirm_req/environment/pinned_agent/conds_*
+	// congelados da def no momento da ordem — o Monitoring inteiro é imutável.
+	mcols monitorCols
 }
 
 // dailyBatchChunk — tamanho do lote por transação na materialização. Bound o WAL
@@ -937,7 +940,8 @@ func (s *Scheduler) RunDaily(date string) int {
 		batch = append(batch, pendingInstance{
 			id: d.ID + "-" + date, defID: d.ID, team: d.Team,
 			scheduledAt: computeScheduledAt(d, date), snapshot: string(snap),
-			dryRun: d.DryRun, // congela dryRun (ver pendingInstance).
+			dryRun: d.DryRun,          // congela dryRun (ver pendingInstance).
+			mcols:  frozenMonitorCols(d), // M1: congela o resto do que o Monitoring exibe.
 		})
 	}
 
@@ -973,7 +977,8 @@ func (s *Scheduler) insertDailyChunk(date, commitSHA string, chunk []pendingInst
 		log.Printf("[scheduler] daily %s: begin tx: %v", date, err)
 		return 0
 	}
-	insStmt, err := tx.Prepare(`INSERT INTO instances(id, definition_id, team, order_date, status, scheduled_at, definition_commit_sha, definition_snapshot, dry_run) VALUES(?,?,?,?,?,?,?,?,?)`)
+	insStmt, err := tx.Prepare(`INSERT INTO instances(id, definition_id, team, order_date, status, scheduled_at, definition_commit_sha, definition_snapshot, dry_run,
+		label, job_type, confirm_req, environment, pinned_agent, conds_in, conds_out_add) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		_ = tx.Rollback()
 		log.Printf("[scheduler] daily %s: prepare insert: %v", date, err)
@@ -990,7 +995,8 @@ func (s *Scheduler) insertDailyChunk(date, commitSHA string, chunk []pendingInst
 
 	created := 0
 	for _, p := range chunk {
-		if _, err := insStmt.Exec(p.id, p.defID, p.team, date, string(domain.StatusWaiting), p.scheduledAt, commitSHA, p.snapshot, boolToInt(p.dryRun)); err != nil {
+		if _, err := insStmt.Exec(p.id, p.defID, p.team, date, string(domain.StatusWaiting), p.scheduledAt, commitSHA, p.snapshot, boolToInt(p.dryRun),
+			p.mcols.label, p.mcols.jobType, p.mcols.confirmReq, p.mcols.environment, p.mcols.pinned, p.mcols.condsIn, p.mcols.condsOutAdd); err != nil {
 			log.Printf("[scheduler] insert %s: %v", p.id, err)
 			continue
 		}
@@ -1675,10 +1681,13 @@ func (s *Scheduler) SetOK(id string) error {
 // que termina hoje cria a condição DO DIA 14 (quem espera é o consumidor da
 // mesma origem), com @stat/@prev resolvidos por nome.
 //
-// Fonte das saídas = UNIÃO do snapshot congelado com a def viva: o snapshot é
-// a foto do que foi ordenado (imutabilidade do Monitoring) e a def viva cobre
-// instances ordenadas ANTES da unificação, cujo snapshot não tem o OutAdd
-// sintetizado do upstream legado (a expansão produtor-side vive na def viva).
+// Fonte das saídas = SÓ o snapshot congelado na ordem (M1, 2026-07-17): criar
+// um consumidor novo no Design DEPOIS da ordem não faz o OK de hoje produzir a
+// condição nova — só a próxima ordem (Force/daily) carrega o OutAdd novo, como
+// no Active Jobs File do Control-M. (Antes era snapshot ∪ def viva, por causa
+// de instances pré-unificação; MigrateMonitoringSnapshot congelou essa união
+// nos snapshots em voo uma única vez no upgrade.) Def viva só como fallback de
+// instance LEGADA sem snapshot nenhum.
 func (s *Scheduler) applyConditionsOut(id, actor string) {
 	if s.conditions == nil {
 		return
@@ -1687,23 +1696,22 @@ func (s *Scheduler) applyConditionsOut(id, actor string) {
 	_ = s.db.QueryRow(
 		`SELECT definition_id, `+odateExpr+`, COALESCE(definition_snapshot,'') FROM instances WHERE id=?`, id,
 	).Scan(&defID, &odate, &snapshot)
-	s.mu.Lock()
-	var live domain.JobDefinition
-	for _, d := range s.defs {
-		if d.ID == defID {
-			live = d
-			break
-		}
-	}
-	s.mu.Unlock()
-	def := live
+	var def domain.JobDefinition
 	if snapshot != "" {
 		var snap domain.JobDefinition
 		if json.Unmarshal([]byte(snapshot), &snap) == nil && snap.ID != "" {
-			snap.ConditionsOutAdd = unionStr(snap.ConditionsOutAdd, live.ConditionsOutAdd)
-			snap.ConditionsOutRemove = unionStr(snap.ConditionsOutRemove, live.ConditionsOutRemove)
 			def = snap
 		}
+	}
+	if def.ID == "" { // legado sem snapshot: def viva, melhor esforço
+		s.mu.Lock()
+		for _, d := range s.defs {
+			if d.ID == defID {
+				def = d
+				break
+			}
+		}
+		s.mu.Unlock()
 	}
 	if def.ID != "" {
 		s.conditions.ApplyOutcomes(def, odate, actor, s.prevDaily)
@@ -1752,10 +1760,13 @@ func (s *Scheduler) ForceOrder(defID string) (string, error) {
 	today := now.Format("2006-01-02")
 	id := defID + "-FORCE-" + now.Format("150405")
 	snap, _ := json.Marshal(*def) // Fase A: congela a def no momento da ordem manual.
+	mc := frozenMonitorCols(*def) // M1: Force congela a def publicada ATUAL — é a ordem nova.
 	_, err := s.db.Exec(
-		// dry_run congelado da def NO MOMENTO do force (imutável depois) — ver schemaV9.
-		`INSERT INTO instances(id, definition_id, team, order_date, status, scheduled_at, forced, force_mode, definition_commit_sha, definition_snapshot, dry_run) VALUES(?,?,?,?,?,?,1,?,?,?,?)`,
+		// dry_run + colunas M1 congelados da def NO MOMENTO do force (imutável depois).
+		`INSERT INTO instances(id, definition_id, team, order_date, status, scheduled_at, forced, force_mode, definition_commit_sha, definition_snapshot, dry_run,
+			label, job_type, confirm_req, environment, pinned_agent, conds_in, conds_out_add) VALUES(?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?)`,
 		id, defID, def.Team, today, string(domain.StatusWaiting), now, ForceModeOrder, commitSHA, string(snap), boolToInt(def.DryRun),
+		mc.label, mc.jobType, mc.confirmReq, mc.environment, mc.pinned, mc.condsIn, mc.condsOutAdd,
 	)
 	if err != nil {
 		return "", err

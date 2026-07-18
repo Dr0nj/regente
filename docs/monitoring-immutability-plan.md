@@ -1,9 +1,25 @@
 # Plano — Imutabilidade TOTAL do Monitoring (Active Jobs File de verdade)
 
-> **Status: ABERTO (item M1 do §🔜 Backlog do roadmap).** Escrito em 2026-07-17 a partir do
-> report do usuário; o levantamento de código abaixo foi feito NO DIA, com arquivo:linha.
-> Quem for implementar: siga as etapas na ordem, **releia `docs/conditions-events.md` antes
-> da E2** e atualize spec+testes no MESMO commit (regra da casa).
+> **Status: ✅ IMPLEMENTADO (2026-07-18).** Etapas E1–E5 entregues, testadas (Go +
+> `tsc`/`vite`) e VALIDADAS AO VIVO em server real offline. Este doc fica como registro
+> do racional e do mapa de vazamentos. O que foi feito, resumido:
+> - **E1** — schemaV18 (`label`/`job_type`/`confirm_req`/`environment`/`pinned_agent`/
+>   `conds_in`/`conds_out_add` na `instances`) + `frozenMonitorCols`/`producedConds`
+>   gravando nos INSERTs (RunDaily/ForceOrder) + backfill one-time `MigrateMonitoringSnapshot`
+>   (`monitorsnapshot.go`) + colunas em `instanceCols`/`scanInstances` (`instances.go`).
+> - **E2** — `applyConditionsOut` snapshot-only (união produtor congelada no upgrade pelo
+>   mesmo backfill).
+> - **E3** — `buildMonitoringCanvas` 100% instance-driven (edges por matching de `condsIn`×
+>   `condsOutAdd` congelados; `waitConfirm`/`waitAgent`/`isWaitingOnConds` pelos campos da
+>   instance; helpers `inst*` em `conditions-model.ts`). **Sharp-edge corrigido na validação:
+>   NUNCA testar "label vazio" com `label !== definitionId`** — um label congelado legítimo
+>   pode ser igual ao id (era a raiz do card mostrar o nome NOVO da def viva); `toWeb` deixa
+>   label vazio pro legado e o fallback é `inst.label || def.label`.
+> - **E4** — drawer lê `snapshotDef` (def congelada inteira) do `GET /instances/{id}`.
+> - **E5** — `monitorsnapshot_test.go` (rename congelado · Force convive · consumidor novo
+>   não retroage · daily seguinte pega def nova · backfill) + validação ao vivo.
+>
+> Histórico original (levantamento de 2026-07-17) abaixo — mantido como referência.
 
 ## O contrato (pedido do usuário, 2026-07-17 — é a semântica Control-M do Active Jobs File)
 

@@ -662,7 +662,8 @@ function V2PreviewInner() {
         ? {
             ...inst,
             team: inst.team || def.team,
-            label: inst.label && inst.label !== inst.definitionId ? inst.label : def.label,
+            // M1: label CONGELADO vence (mesmo == id); vazio (legado) → def viva.
+            label: inst.label || def.label,
             jobType: inst.jobType || def.jobType,
           }
         : inst;
@@ -1895,7 +1896,8 @@ function V2PreviewInner() {
           const enriched = selDef ? {
             ...selectedInstance,
             team: selectedInstance.team || selDef.team,
-            label: selectedInstance.label && selectedInstance.label !== selectedInstance.definitionId ? selectedInstance.label : selDef.label,
+            // M1: label CONGELADO vence (mesmo == id); vazio (legado) → def viva.
+            label: selectedInstance.label || selDef.label,
             jobType: selectedInstance.jobType || selDef.jobType,
           } : selectedInstance;
           // WAIT COND (BUG-3) — mesma régua do card (pool de condições):

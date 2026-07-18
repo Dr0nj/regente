@@ -376,6 +376,11 @@ func main() {
 	// condição sintetizada; guardado por meta_flags).
 	sched.MigrateConditionsUnify()
 
+	// M1 (schemaV18): backfill one-time das colunas congeladas do Monitoring
+	// (label/job_type/conds/…) a partir do definition_snapshot + congelamento
+	// da união produtor nos snapshots em voo. Guardado por meta_flags.
+	sched.MigrateMonitoringSnapshot()
+
 	// Enterprise/Operação — reconciler de drift GitOps (opt-in). O git-poll já
 	// auto-sincroniza; este fecha o lado OPERACIONAL: quando runtime≠Git, alerta
 	// pelos MESMOS canais do R7 (Slack/PagerDuty/…), e o modo "sync" reconcilia

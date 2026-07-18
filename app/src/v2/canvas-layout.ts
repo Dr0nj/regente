@@ -13,7 +13,7 @@ import type { Node, Edge, NodeHandle } from "@xyflow/react";
 import type { JobNodeData } from "@/lib/job-config";
 import type { JobInstance, JobDefinition, EdgeCondition, DepDateRef } from "@/lib/orchestrator-model";
 import { EDGE_CONDITION_DEFAULT, TEAMS, odateOf } from "@/lib/orchestrator-model";
-import { edgeCondNames, missingConds, poolHas } from "@/lib/conditions-model";
+import { missingConds, poolHas, splitCondSuffix, instEdgeCondNames, instMissingConds } from "@/lib/conditions-model";
 import type { MonitoringJob } from "./MonitoringSidebarV2";
 
 export type Mode = "design" | "monitoring";
@@ -270,6 +270,11 @@ export function parentsForEdge(
  * alguma condição de ENTRADA ausente do pool (todas as ConditionsIn, não só as
  * de setinha). Run Now (`manual`) bypassa. Exportada pro drawer/menus
  * decidirem as ações contextuais sem duplicar a semântica.
+ *
+ * M1: usa as condições CONGELADAS na ordem (`inst.condsIn`), não a def viva —
+ * criar/editar deps no Design não muda o gate visual de instances já ordenadas.
+ * A def viva é só fallback de instance LEGADA sem snapshot de conds
+ * (`condsIn === undefined`).
  */
 export function isWaitingOnConds(
   inst: JobInstance,
@@ -277,7 +282,10 @@ export function isWaitingOnConds(
   pool: ReadonlySet<string>,
 ): boolean {
   if (inst.status !== "WAITING" || inst.manual) return false;
-  return missingConds(def, odateOf(inst), pool).length > 0;
+  const missing = inst.condsIn !== undefined
+    ? instMissingConds(inst.condsIn, odateOf(inst), pool)
+    : missingConds(def, odateOf(inst), pool);
+  return missing.length > 0;
 }
 
 function edgeStyleForState(state: DepState, _condition: EdgeCondition) {
@@ -495,79 +503,88 @@ export interface AgentAvailability {
   caps: Set<string>;  // capabilities anunciadas pelos agentes online (UPPERCASE)
 }
 
-// Job tem agente disponível? Pinado (actionConfig._agentId) exige o id online;
+// Job tem agente disponível? Pinado (congelado na ordem) exige o id online;
 // senão basta alguém anunciar a capability do jobType. SSH é agentless.
-function hasAgentFor(def: JobDefinition | undefined, jobType: string, agents: AgentAvailability): boolean {
+// M1: lê jobType/pinnedAgent CONGELADOS na instância, não a def viva.
+function hasAgentFor(jobType: string, pinnedAgent: string | undefined, agents: AgentAvailability): boolean {
   const jt = (jobType || "").toUpperCase();
   if (jt === "SSH" || jt === "") return true;
-  const pinned = (def?.actionConfig as Record<string, unknown> | undefined)?._agentId;
-  if (typeof pinned === "string" && pinned) return agents.ids.has(pinned);
+  if (pinnedAgent) return agents.ids.has(pinnedAgent);
   return agents.caps.has(jt);
 }
 
 export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT, agents?: AgentAvailability | null, overrides?: LayoutOverrides | null, pool: ReadonlySet<string> = new Set()): Canvas {
-  // Edges a partir da TOPOLOGIA derivada das condições (def.upstream é a visão
-  // por name-matching produtor→consumidor); as CORES refletem o POOL.
+  // M1 — Monitoring 100% INSTANCE-DRIVEN: tudo (label/tipo/linhas/gates) vem
+  // CONGELADO na ordem (schemaV18), nunca da def viva. As `defs` entram só como
+  // FALLBACK de instance LEGADA sem backfill (label/jobType vazios).
   const defsById = new Map(defs.map((d) => [d.id, d] as const));
 
-  // Enriquecimento: server mode devolve instances sem team/label/jobType
-  // (server-instance-store.toWeb hardcoda undefined). Fundimos a partir
-  // da definition correspondente para que folder/label apareçam no monitoring.
+  // Enriquecimento (só legado): instance sem colunas congeladas cai na def viva
+  // pra folder/label/tipo aparecerem. Instance com snapshot (o caso normal) usa
+  // os próprios campos — editar a def no Design não a reescreve.
   const instances: JobInstance[] = rawInstances.map((inst) => {
     const def = defsById.get(inst.definitionId);
-    if (!def) return inst;
+    if (!def) return inst.label ? inst : { ...inst, label: inst.definitionId };
     return {
       ...inst,
       team: inst.team || def.team,
-      label: inst.label && inst.label !== inst.definitionId ? inst.label : def.label,
+      // Frozen label (mesmo quando IGUAL ao id) vence; SÓ o vazio (legado sem
+      // backfill) cai na def viva. Nunca comparar com definitionId — um label
+      // congelado legítimo pode ser igual ao id (foi a raiz do card com o nome novo).
+      label: inst.label || def.label,
       jobType: inst.jobType || def.jobType,
     };
   });
 
-  // TODAS as instances de cada def: o dia pode ter várias cópias do mesmo job
-  // (Order Force/rerun) e a dependência existe entre TODOS os pares — antes o
-  // mapa guardava UMA instance por def e as cópias extras ficavam soltas no
-  // grafo, sem linha nenhuma (report do usuário, 2026-07-14).
-  const instancesByDefId = new Map<string, JobInstance[]>();
-  for (const i of instances) {
-    const list = instancesByDefId.get(i.definitionId);
-    if (list) list.push(i);
-    else instancesByDefId.set(i.definitionId, [i]);
-  }
-
   // WAIT COND: instance WAITING com alguma condição de ENTRADA ausente do
-  // pool — a MESMA régua do gate do server (todas as ConditionsIn, não só as
-  // de setinha). O card mostra "WAIT COND" pra distinguir de "esperando o
-  // horário".
+  // pool — a MESMA régua do gate do server (todas as condsIn congeladas). O
+  // card mostra "WAIT COND" pra distinguir de "esperando o horário".
   const waitingOnDeps = new Set<string>();
+
+  // Índice PRODUTOR (do snapshot): base da condição → instances cujo condsOutAdd
+  // congelado a adiciona. É a fonte ÚNICA das linhas do grafo — nunca a
+  // topologia viva do Design (`def.upstream`), que só vale no modo design.
+  // Assim, criar/ligar jobs novos no Design não desenha linhas em instances já
+  // ordenadas; a linha nova só aparece na cópia forçada (que tem a saída no
+  // próprio snapshot).
+  const producersByBase = new Map<string, JobInstance[]>();
+  for (const p of instances) {
+    for (const n of p.condsOutAdd ?? []) {
+      const base = splitCondSuffix(n).base;
+      const list = producersByBase.get(base);
+      if (list) list.push(p);
+      else producersByBase.set(base, [p]);
+    }
+  }
 
   const edges: Edge[] = [];
   const rawEdges: Array<{ source: string; target: string }> = [];
-  for (const inst of instances) {
-    const def = defsById.get(inst.definitionId);
-    if (isWaitingOnConds(inst, def, pool)) waitingOnDeps.add(inst.id);
-    if (!def?.upstream?.length) continue;
-    for (const u of def.upstream) {
-      const condition = u.condition ?? EDGE_CONDITION_DEFAULT;
-      // Só as cópias do pai da diária que o dateRef da visão aceita: o job
-      // carregado do dia 14 conversa com o pai do dia 14, não com o de hoje.
-      const parents = parentsForEdge(inst, instancesByDefId.get(u.from) ?? [], u.dateRef);
-      if (!parents.length) continue; // pai não materializado na diária certa: sem linha
-
-      // As condições que LIGAM este par (entradas do filho que o pai produz):
-      // a cor da linha é o estado delas no POOL para este consumidor.
-      const producerDef = defsById.get(u.from);
-      const linkNames = producerDef && def ? edgeCondNames(producerDef, def) : [];
-
-      // Uma linha POR CÓPIA do pai (todos os pares) — o reflexo do pool:
-      // verde ✓ = condição existe (ou o filho rodou sobre ela); cinza =
-      // ainda não existe / consumida / deletada; vermelho ✗ = filho NOTOK.
-      const state = evaluateEdgeState(inst, linkNames, pool);
-      const tgt = `m-${inst.id}`;
+  for (const inst of instances) { // inst = CONSUMIDOR
+    if (isWaitingOnConds(inst, defsById.get(inst.definitionId), pool)) waitingOnDeps.add(inst.id);
+    const cin = inst.condsIn ?? [];
+    if (!cin.length) continue;
+    const tgt = `m-${inst.id}`;
+    const linkedParents = new Set<string>(); // 1 linha por par (produtor, consumidor)
+    for (const n of cin) {
+      const { base, ref } = splitCondSuffix(n);
+      const producers = producersByBase.get(base);
+      if (!producers) continue;
+      // Só as cópias do produtor da diária que o SUFIXO da entrada aceita
+      // (@odat mesma origem · @prev anterior · @stat qualquer): o filho
+      // carregado do dia 14 conversa com o pai do 14, não com o fresco de hoje.
+      const parents = parentsForEdge(inst, producers, ref);
       for (const parent of parents) {
+        if (parent.id === inst.id || linkedParents.has(parent.id)) continue;
+        linkedParents.add(parent.id);
+        // As condições que LIGAM este par (entradas do filho que ESTE pai
+        // produz): a cor da linha é o estado delas no POOL para este consumidor.
+        // verde ✓ = existe (ou o filho rodou sobre ela); cinza = ainda não
+        // existe / consumida / deletada; vermelho ✗ = filho NOTOK.
+        const linkNames = instEdgeCondNames(parent.condsOutAdd, cin);
+        const state = evaluateEdgeState(inst, linkNames, pool);
         const src = `m-${parent.id}`;
         rawEdges.push({ source: src, target: tgt });
-        edges.push(makeEdge(src, tgt, condition, state));
+        edges.push(makeEdge(src, tgt, EDGE_CONDITION_DEFAULT, state));
       }
     }
   }
@@ -616,14 +633,14 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
         // WAIT AGENT (azul claro): WAITING sem bloqueio de dependência e sem
         // agente online capaz de executar. Só deriva quando a lista de agentes
         // já carregou (agents != null) — sem info, não acusa nada.
+        // M1: jobType/pinnedAgent CONGELADOS na ordem (schemaV18), não a def viva.
         waitAgent: !!agents && inst.status === "WAITING" && !waitingOnDeps.has(inst.id) &&
-          !hasAgentFor(defsById.get(inst.definitionId), inst.jobType, agents),
-        // WAIT CONFIRM (violeta): a def exige confirmação (Control-M "Wait for
-        // confirmation") e esta instância ainda não foi confirmada. Mesma leitura
-        // que o gate do server (def.Confirm && !confirmed) e que o waitAgent acima
-        // — deriva do estado vivo pra refletir o gate real de execução.
-        waitConfirm: inst.status === "WAITING" && !inst.confirmed &&
-          !!defsById.get(inst.definitionId)?.confirm,
+          !hasAgentFor(inst.jobType, inst.pinnedAgent, agents),
+        // WAIT CONFIRM (violeta): a ordem exige confirmação (Control-M "Wait for
+        // confirmation") e esta instância ainda não foi confirmada. M1: lê o
+        // confirmReq CONGELADO na ordem (schemaV18) — ligar Confirm no Design não
+        // reescreve cards já materializados. O gate do server é o mesmo snapshot.
+        waitConfirm: inst.status === "WAITING" && !inst.confirmed && !!inst.confirmReq,
       } as JobNodeData,
       draggable: false,
       zIndex: 10,

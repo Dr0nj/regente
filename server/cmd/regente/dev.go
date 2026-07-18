@@ -84,7 +84,8 @@ func cmdDev(args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sched.ReloadDefs()
-	sched.MigrateConditionsUnify() // unificação deps→condições: backfill one-time
+	sched.MigrateConditionsUnify()      // unificação deps→condições: backfill one-time
+	sched.MigrateMonitoringSnapshot()   // M1: colunas congeladas do Monitoring (schemaV18)
 	created := sched.RunDaily(*date)
 	go sched.Run(ctx)
 

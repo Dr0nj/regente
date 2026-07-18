@@ -137,19 +137,29 @@ O campo `upstream` NÃO é mais gate nem é persistido:
 
 **Snapshots** ordenados antes da unificação: `defForInstance` expande o lado
 consumidor em memória (`ExpandSnapshotConditions`, com a regra de idempotência
-contra as defs vivas); `applyConditionsOut` usa a UNIÃO snapshot∪def-viva
-(o OutAdd sintetizado do pai legado vive na def viva). Backfill one-time no
-boot (`MigrateConditionsUnify`, flag em `meta_flags` schemaV17): par
+contra as defs vivas). **`applyConditionsOut` é SNAPSHOT-ONLY (M1, 2026-07-17):**
+as saídas aplicadas no OK/Set OK vêm SÓ da def congelada na ordem — criar um
+consumidor novo no Design depois da ordem NÃO faz o OK de hoje produzir a
+condição nova (só a próxima ordem Force/daily carrega o OutAdd novo). A união
+snapshot∪def-viva que existia por compat pré-unificação foi CONGELADA nos
+snapshots em voo uma única vez no upgrade (`MigrateMonitoringSnapshot`,
+meta_flags `monitoring-snapshot-v18`); def viva só como fallback de instance
+legada SEM snapshot. Backfill one-time da unificação no boot
+(`MigrateConditionsUnify`, flag em `meta_flags` schemaV17): par
 (pai já OK, filho WAITING não-consumido) semeia a condição no pool.
 **dep_events/dep_claims (schemaV15) estão APOSENTADAS** — tabelas ficam no
 banco por compat, nada lê/escreve.
 
 ## Linhas do Monitoring — reflexo do pool
 
-Topologia = visão derivada (`def.upstream`); pares por cópia como antes
-(`parentsForEdge` filtra a diária que o dateRef aceita — carregado do 14 só
-ganha linha com o pai do 14). A COR é o estado das condições que LIGAM o par
-(`edgeCondNames`: entradas do filho que o pai produz) para ESTE consumidor:
+Topologia = **matching instance-a-instance pelos SNAPSHOTS da ordem** (M1,
+2026-07-17): cada instance carrega `condsIn`/`condsOutAdd` congelados
+(schemaV18) e a linha existe quando o `condsOutAdd` de uma cópia produz uma
+entrada do `condsIn` da outra, respeitando o sufixo de data (`@odat` mesma
+origem · `@prev` diária anterior · `@stat` qualquer — carregado do 14 só ganha
+linha com o pai do 14). Criar/ligar jobs novos no Design NÃO redesenha
+instances já ordenadas; a topologia viva (`def.upstream` derivado) é só do
+DESIGN. A COR é o estado das condições que LIGAM o par para ESTE consumidor:
 
 - **verde ✓** — a condição existe no pool, OU o consumidor já rodou sobre ela
   (RUNNING/OK — no OK ele consome, mas a linha segue verde: deu certo);
@@ -188,9 +198,10 @@ toca o pool (C4).
 3. Deleção no painel NÃO travando o dependente, ou adição NÃO liberando (C6).
 4. Bypass de Run Now sobrevivendo a um rerun (C5).
 5. API mandando `null` onde o front espera lista (C7).
-6. Monitoring derivando estado de card da def viva (é snapshot; exceções
-   deliberadas: `waitConfirm`/`waitAgent` — o WAIT COND lê o POOL, que é
-   estado de runtime, não def).
+6. Monitoring derivando QUALQUER coisa de card da def viva (M1: label, tipo,
+   linhas, `waitConfirm`, `waitAgent` e as saídas do `applyConditionsOut` são
+   TODOS do snapshot/colunas congeladas; o WAIT COND lê o POOL, que é estado
+   de runtime, não def — e a lista de entradas que ele checa é a congelada).
 7. Condição de uma ORIGEM satisfazendo consumidor de OUTRA origem sem o
    sufixo pedir (§Datas — job do dia 14 não come condição de hoje).
 8. `upstream` derivado sendo PERSISTIDO (re-expandiria como aresta legada).
@@ -206,9 +217,12 @@ toca o pool (C4).
   Set/Unset (broadcast via OnChange), `CondIndex` (foto por tick),
   `MissingIdx` (fonte única do "falta qual?"), `ApplyOutcomes`.
 - `server/internal/scheduler/scheduler.go` — gate no tick (condIdx),
-  `FinishInstance`/`SetOK` → `applyConditionsOut` (união snapshot∪viva),
+  `FinishInstance`/`SetOK` → `applyConditionsOut` (snapshot-only, M1),
   `defForInstance` (expansão de snapshot), `ForceOrder`.
 - `server/internal/scheduler/condmigrate.go` — backfill one-time (meta_flags).
+- `server/internal/scheduler/monitorsnapshot.go` — colunas congeladas schemaV18
+  (`frozenMonitorCols`) + `MigrateMonitoringSnapshot` (backfill + congelamento
+  da união produtor nos snapshots em voo).
 - `server/internal/scheduler/explain.go` — `gateInstance` (WAIT_CONDITION),
   Explain.
 - `server/internal/storage/file.go` — List normaliza; Save descarta upstream.

@@ -29,10 +29,14 @@ import { useResizablePanel, ResizeHandle } from "./resizable";
    Reestruturado em abas nomeadas (2026-07-09):
      General · Output · Logs · Statistics · Schedule ·
      Dependencies · Neighborhood · Why not?
-   A instance é IMUTÁVEL (snapshot da ordem). Schedule/Dependencies
-   traduzem a DEFINITION de desenho (rótulo "design", read-only) —
-   o que o usuário pediu para consultar. Runtime (output/logs/stats/
-   why-not/neighborhood) vem da instance e dos endpoints do server.
+   A instance é IMUTÁVEL (snapshot da ordem). M1 (2026-07-18): TODAS as
+   abas de configuração — General/Schedule/Dependencies — leem a DEF
+   CONGELADA na ordem (definition_snapshot, via GET /instances/{id});
+   a def viva do Design entra só como fallback de instance legada sem
+   snapshot. Editar/publicar no Design não altera o drawer de um card já
+   ordenado (antes Schedule/Deps liam a def viva, "design read-only" —
+   revertido). Runtime (output/logs/stats/why-not/neighborhood) vem da
+   instance e dos endpoints do server.
    ────────────────────────────────────────────────────────────── */
 
 export interface InstanceActionHandlers {
@@ -147,23 +151,31 @@ export default function InstanceDetailsDrawer({
   useEffect(() => {
     let alive = true;
     setOrderDetail(null);
-    if (instance.actionConfig === undefined) {
-      void fetchInstanceDetail(instance.id).then((d) => { if (alive) setOrderDetail(d); });
-    }
+    // M1: SEMPRE busca o detalhe em server mode (não só quando falta a action) —
+    // ele traz a DEF CONGELADA inteira (snapshotDef) que as abas Schedule/
+    // Condições/General usam pra ser imutáveis. Em local mode fetchInstanceDetail
+    // é no-op (null) e a def viva é a foto (o snapshot completo não viaja local).
+    void fetchInstanceDetail(instance.id).then((d) => { if (alive) setOrderDetail(d); });
     return () => { alive = false; };
-  }, [instance.id, instance.actionConfig]);
+  }, [instance.id]);
 
   // Cascata = a MESMA do dispatch (defForInstance): snapshot na instance >
   // snapshot da ordem no server > def viva (só instance pré-snapshot/seed antigo).
   const actionConfig = instance.actionConfig ?? orderDetail?.actionConfig ?? definition?.actionConfig;
   const jobType = instance.jobType || orderDetail?.jobType || definition?.jobType || "—";
+  // M1 — DEF CONGELADA da ordem: Schedule/Condições/General leem DAQUI, não da
+  // def viva do Design. É o definition_snapshot (a foto que o dispatch executou);
+  // a def viva entra só como fallback de instance legada sem snapshot.
+  const orderDef = orderDetail?.snapshotDef ?? definition;
   // BUG-5 — gate CONFIRM ativo (card violeta): as únicas ações são Hold e
-  // Confirm; Cancel/Skip/Set OK/Chaos somem até o operador decidir.
-  const waitConfirm = status === "WAITING" && !instance.confirmed && !!definition?.confirm;
+  // Confirm; Cancel/Skip/Set OK/Chaos somem até o operador decidir. M1: lê o
+  // confirmReq CONGELADO na ordem (coluna schemaV18); def viva só fallback.
+  const waitConfirm = status === "WAITING" && !instance.confirmed &&
+    !!(instance.confirmReq ?? orderDef?.confirm);
 
   // Downstream estático: jobs cujo upstream aponta para este (mesma lógica do Design).
   const triggers = allDefs.filter((d) => (d.upstream ?? []).some((u) => u.from === instance.definitionId));
-  const depsCount = (definition?.upstream?.length ?? 0) + triggers.length;
+  const depsCount = (orderDef?.upstream?.length ?? 0) + triggers.length;
 
   // D-11 chaos — falha sintética pelo fluxo REAL (retry/actions/alerts reagem
   // como numa falha orgânica). Server-mode only; confirmação explícita.
@@ -332,11 +344,11 @@ export default function InstanceDetailsDrawer({
         <LogPanel instanceId={instance.id} status={status} />
       ) : (
         <div style={{ flex: 1, overflowY: "auto", padding: "12px", fontSize: 11 }}>
-          {tab === "general" && <GeneralTab instance={instance} definition={definition} jobType={jobType} actionConfig={actionConfig} />}
+          {tab === "general" && <GeneralTab instance={instance} definition={orderDef} jobType={jobType} actionConfig={actionConfig} />}
           {tab === "output" && <OutputTab instance={instance} jobType={jobType} actionConfig={actionConfig} />}
           {tab === "stats" && <StatsTab instance={instance} />}
-          {tab === "schedule" && <ScheduleTab definition={definition} />}
-          {tab === "deps" && <DepsTab definition={definition} triggers={triggers} allDefs={allDefs} />}
+          {tab === "schedule" && <ScheduleTab definition={orderDef} />}
+          {tab === "deps" && <DepsTab definition={orderDef} triggers={triggers} allDefs={allDefs} />}
           {tab === "neighborhood" && (
             <>
               <NeighborhoodPanel instanceId={instance.id} autoLoad />
@@ -836,7 +848,7 @@ function StatTile({ label, value, tone }: { label: string; value: string; tone?:
 }
 
 /* ════════════════════════════════════════════════════════════════
-   SCHEDULE — tradução read-only do schedule de DESENHO.
+   SCHEDULE — tradução read-only do schedule CONGELADO na ordem (M1).
    ════════════════════════════════════════════════════════════════ */
 
 const DOW_LABEL: Record<string, string> = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
@@ -870,7 +882,7 @@ const SHIFT_LABEL: Record<string, string> = {
 
 function ScheduleTab({ definition }: { definition?: JobDefinition }) {
   if (!definition) {
-    return <Muted>Definition not available — this instance's design schedule can't be shown (the job may have been deleted or renamed).</Muted>;
+    return <Muted>Snapshot not available — this order's frozen schedule can't be shown (legacy instance without snapshot).</Muted>;
   }
   const s = definition.schedule;
   const window = `${s.windowFrom || "—"} → ${s.windowTo || "—"}`;
@@ -882,7 +894,7 @@ function ScheduleTab({ definition }: { definition?: JobDefinition }) {
   return (
     <>
       <div style={{ marginBottom: 10, fontSize: 10, color: "var(--v2-text-muted)", lineHeight: 1.45 }}>
-        Read-only translation of the <b style={{ color: "var(--v2-text-secondary)" }}>design</b> schedule — edit it in Design.
+        Schedule <b style={{ color: "var(--v2-text-secondary)" }}>frozen at order time</b> — the current Design may differ; changes apply only to the next order.
       </div>
       <Section title="When">
         <Field label="Status" value={s.enabled ? "Enabled" : "Disabled"} tone={s.enabled ? "var(--v2-status-ok)" : "var(--v2-text-muted)"} />
@@ -919,7 +931,10 @@ function ScheduleTab({ definition }: { definition?: JobDefinition }) {
 }
 
 /* ════════════════════════════════════════════════════════════════
-   DEPENDENCIES — relacionamentos, recursos e conditions (design).
+   DEPENDENCIES — relacionamentos, recursos e conditions CONGELADOS na
+   ordem (M1). Upstream/conditions/resources vêm do definition_snapshot;
+   "Triggers" (downstream) segue derivado do Design (não é do snapshot
+   desta instance — é "quem dependeria dela no desenho atual").
    ════════════════════════════════════════════════════════════════ */
 
 function DepsTab({ definition, triggers, allDefs }: { definition?: JobDefinition; triggers: JobDefinition[]; allDefs: JobDefinition[] }) {

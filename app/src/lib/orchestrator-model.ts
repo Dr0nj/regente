@@ -272,6 +272,23 @@ export interface JobInstance {
    *  WAITING cego. Vale só quando status==="HOLD"; ausente/"" = hold legado
    *  (era WAITING). O front usa pra rotular o Release ("volta a NOTOK"). */
   heldFrom?: InstanceStatus;
+  /* ── M1 (server schemaV18) — Monitoring IMUTÁVEL ──
+     Tudo que o card/lista/grafo exibem vem CONGELADO na ordem, NUNCA da def
+     viva: renomear/trocar tipo/criar jobs+condições novos no Design não
+     reescreve instances já ordenadas (só a próxima ordem via Force/daily).
+     Instance legada sem backfill vem com estes campos vazios — o canvas cai
+     na def viva SÓ nesse caso. */
+  /** Control-M Confirm exigido pela ordem (def.confirm congelado) — gate WAIT CONFIRM. */
+  confirmReq?: boolean;
+  /** Ambiente congelado (roteamento) — entrada do WAIT AGENT. */
+  environment?: string;
+  /** Agente pinado congelado (def.agentId) — entrada do WAIT AGENT. */
+  pinnedAgent?: string;
+  /** Condições de ENTRADA congeladas (com sufixo @odat/@prev/@stat) — gate WAIT
+   *  COND e origem das LINHAS do grafo do Monitoring. */
+  condsIn?: string[];
+  /** Condições de SAÍDA＋ congeladas — produtoras das linhas do grafo. */
+  condsOutAdd?: string[];
 }
 
 /* ── Order Date Helper ── */
@@ -311,6 +328,12 @@ export function createInstance(
     timeout: def.timeout,
     variables: def.variables,
     dryRun: def.dryRun,
+    // M1: congela o que o Monitoring exibe (mesmo racional do dryRun acima).
+    confirmReq: def.confirm,
+    environment: def.environment,
+    pinnedAgent: typeof def.actionConfig?._agentId === "string" ? def.actionConfig._agentId : undefined,
+    condsIn: def.conditionsIn,
+    condsOutAdd: def.conditionsOutAdd,
   };
 }
 

@@ -44,13 +44,26 @@ type instanceRow struct {
 	// WAITING cego). '' quando não-HELD ou hold legado (era WAITING). O front usa
 	// pra rotular o Release ("volta a NOTOK") — o Delete só olha status=HELD.
 	HeldFromStatus string `json:"heldFromStatus,omitempty"`
+	// M1 (schemaV18) — Monitoring IMUTÁVEL: tudo que o card/lista/grafo exibem
+	// vem CONGELADO da ordem (label/tipo/gates/condições), nunca da def viva.
+	// Instances legadas sem backfill ficam com ''/vazio e o front cai na def
+	// viva SÓ nesse caso.
+	Label       string   `json:"label,omitempty"`
+	JobType     string   `json:"jobType,omitempty"`
+	ConfirmReq  bool     `json:"confirmReq,omitempty"`
+	Environment string   `json:"environment,omitempty"`
+	PinnedAgent string   `json:"pinnedAgent,omitempty"`
+	CondsIn     []string `json:"condsIn,omitempty"`
+	CondsOutAdd []string `json:"condsOutAdd,omitempty"`
 }
 
 const instanceCols = `id, definition_id, COALESCE(team,''), order_date, status, scheduled_at,
 	started_at, finished_at,
 	COALESCE(agent_id,''), COALESCE(exit_code,0), COALESCE(output,''), COALESCE(forced,0),
 	COALESCE(carried_from,''), COALESCE(confirmed,0), COALESCE(cycle_runs,0), COALESCE(dry_run,0),
-	COALESCE(hold_scope,''), COALESCE(held_from_status,'')`
+	COALESCE(hold_scope,''), COALESCE(held_from_status,''),
+	COALESCE(label,''), COALESCE(job_type,''), COALESCE(confirm_req,0),
+	COALESCE(environment,''), COALESCE(pinned_agent,''), COALESCE(conds_in,''), COALESCE(conds_out_add,'')`
 
 // scanInstances materializa as linhas. CRÍTICO: propaga rows.Err() e qualquer
 // erro de Scan em vez de engolir e devolver lista PARCIAL. Um erro de leitura no
@@ -63,12 +76,15 @@ func scanInstances(rows *sql.Rows) ([]instanceRow, error) {
 	for rows.Next() {
 		var ir instanceRow
 		var startedAt, finishedAt sql.NullTime
-		var forcedInt, confirmedInt, dryRunInt int
+		var forcedInt, confirmedInt, dryRunInt, confirmReqInt int
+		var condsIn, condsOutAdd string
 		if err := rows.Scan(
 			&ir.ID, &ir.DefinitionID, &ir.Team, &ir.OrderDate, &ir.Status, &ir.ScheduledAt,
 			&startedAt, &finishedAt,
 			&ir.AgentID, &ir.ExitCode, &ir.Output, &forcedInt,
 			&ir.CarriedFrom, &confirmedInt, &ir.CycleRuns, &dryRunInt, &ir.HoldScope, &ir.HeldFromStatus,
+			&ir.Label, &ir.JobType, &confirmReqInt,
+			&ir.Environment, &ir.PinnedAgent, &condsIn, &condsOutAdd,
 		); err != nil {
 			return nil, err
 		}
@@ -83,9 +99,25 @@ func scanInstances(rows *sql.Rows) ([]instanceRow, error) {
 		ir.Forced = forcedInt == 1
 		ir.Confirmed = confirmedInt == 1
 		ir.DryRun = dryRunInt == 1
+		ir.ConfirmReq = confirmReqInt == 1
+		ir.CondsIn = decodeConds(condsIn)
+		ir.CondsOutAdd = decodeConds(condsOutAdd)
 		out = append(out, ir)
 	}
 	return out, rows.Err()
+}
+
+// decodeConds — coluna conds_* ('' ou JSON array de strings) → slice ([] = nil,
+// o omitempty do JSON esconde). Conteúdo inválido é tratado como vazio.
+func decodeConds(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	var list []string
+	if json.Unmarshal([]byte(raw), &list) != nil || len(list) == 0 {
+		return nil
+	}
+	return list
 }
 
 // instanceQuery — P2/escala: filtros server-side de /api/instances*. Tudo opcional
@@ -228,11 +260,18 @@ func (s *server) listInstances(w http.ResponseWriter, r *http.Request) {
 // mostra nas seções Action/Output — a mesma foto que o dispatch executa
 // (defForInstance), não a def viva, que pode ter sido editada depois da ordem.
 // Snapshot ausente (seed antigo) → campos vazios; o front cai na def de desenho.
+// M1: Label/JobType agora vivem no próprio instanceRow (colunas congeladas
+// schemaV18); o detalhe acrescenta a action E a DEF CONGELADA INTEIRA
+// (definition_snapshot) — o drawer do Monitoring lê Schedule/Condições dela,
+// não da def viva do Design (imutabilidade total). Payload só do detalhe (a
+// lista de escala não carrega nada disso).
 type instanceDetail struct {
 	instanceRow
-	Label        string                 `json:"label,omitempty"`
-	JobType      string                 `json:"jobType,omitempty"`
 	ActionConfig map[string]interface{} `json:"actionConfig,omitempty"`
+	// SnapshotDef — a JobDefinition congelada na ordem (JSON cru do domain, que
+	// o front consome como JobDefinition: mesmos json tags). Vazio em instance
+	// legada sem snapshot (o drawer cai na def viva só nesse caso).
+	SnapshotDef json.RawMessage `json:"snapshotDef,omitempty"`
 }
 
 // getInstance — GET /api/instances/{id}. Detalhe de UMA instance, incluindo o
@@ -276,9 +315,16 @@ func (s *server) getInstance(w http.ResponseWriter, r *http.Request) {
 	if snap != "" {
 		var d domain.JobDefinition
 		if json.Unmarshal([]byte(snap), &d) == nil {
-			det.Label = d.Label
-			det.JobType = d.JobType
+			// Label/JobType já vêm das colunas congeladas (M1); reforço só p/
+			// instance legada com snapshot mas sem backfill de coluna.
+			if det.Label == "" {
+				det.Label = d.Label
+			}
+			if det.JobType == "" {
+				det.JobType = d.JobType
+			}
 			det.ActionConfig = d.Params
+			det.SnapshotDef = json.RawMessage(snap) // def congelada inteira p/ Schedule/Deps
 		}
 	}
 	writeJSON(w, 200, det)

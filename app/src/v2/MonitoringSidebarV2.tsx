@@ -126,6 +126,9 @@ interface PageInstance {
   finishedAt?: string;
   holdScope?: string;
   carriedFrom?: string;
+  // M1 (schemaV18): label/jobType CONGELADOS na ordem — vêm na /page também.
+  label?: string;
+  jobType?: string;
 }
 
 function pageToJob(p: PageInstance, folder: string, labelFor?: (defId: string) => string | undefined): MonitoringJob {
@@ -138,9 +141,11 @@ function pageToJob(p: PageInstance, folder: string, labelFor?: (defId: string) =
   const held = upper === "HELD" || upper === "HOLD";
   return {
     id: p.id,
-    label: labelFor?.(p.definitionId) ?? p.definitionId,
+    // M1: label CONGELADO na ordem (imutável); labelFor (def viva) e o id são
+    // só fallback de instance LEGADA sem backfill.
+    label: p.label || labelFor?.(p.definitionId) || p.definitionId,
     team: p.team || folder,
-    jobType: "" as JobNodeData["jobType"],
+    jobType: (p.jobType ?? "") as JobNodeData["jobType"],
     status: SERVER_STATUS_TO_UI[upper] ?? "WAITING",
     durationMs,
     startedAt: Number.isFinite(started)

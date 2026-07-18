@@ -136,7 +136,7 @@ func TestTick_BlockedSuccessorWaitsAndRunsAfterSetOK(t *testing.T) {
 			Upstream: []domain.Upstream{{From: "pai2", Condition: domain.CondOnSuccess}}},
 	})
 	parent, child, runningParent, child2 := defs[0], defs[1], defs[2], defs[3]
-	s.defs = defs // applyConditionsOut faz união com a def viva normalizada
+	s.defs = defs // gate/Explain resolvem def por aqui; applyConditionsOut é snapshot-only (M1)
 	seedInst(t, s, "pai-1", today, string(domain.StatusNotOK), parent)
 	seedInst(t, s, "filho-1", today, string(domain.StatusWaiting), child)
 	seedInst(t, s, "pai2-1", today, string(domain.StatusRunning), runningParent)

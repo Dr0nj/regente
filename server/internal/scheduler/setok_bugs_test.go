@@ -23,7 +23,7 @@ func TestSetOK_FromWaitingMaterializesOutputs(t *testing.T) {
 		Schedule:         domain.Schedule{Enabled: true},
 		ConditionsOutAdd: []string{"prod-done"},
 	}
-	s.defs = []domain.JobDefinition{def} // applyConditionsOut lê a def viva
+	s.defs = []domain.JobDefinition{def} // M1: applyConditionsOut lê o SNAPSHOT (def viva só fallback sem snapshot)
 	seedInst(t, s, "prod-1", today, string(domain.StatusWaiting), def)
 
 	if err := s.SetOK("prod-1"); err != nil {
