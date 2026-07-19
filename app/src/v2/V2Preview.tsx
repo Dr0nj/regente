@@ -749,7 +749,10 @@ function V2PreviewInner() {
       label: suggestedId,
       jobType: type,
       team: draftTeam,
-      schedule: { enabled: true, frequency: "daily", runAt: "06:00" },
+      // Horário começa VAZIO de propósito: o operador escolhe a janela/horário no
+      // drawer. Sem runAt e sem janela, o daily ordena o job pra rodar já (sem trava
+      // de horário) — o padrão 06:00 antigo escondia esse passo e confundia testes.
+      schedule: { enabled: true, frequency: "daily" },
       retries: 2,
       timeout: 300,
     };

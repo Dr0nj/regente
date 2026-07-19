@@ -83,6 +83,43 @@ func TestExplain_Window(t *testing.T) {
 	}
 }
 
+// Order Force (force_mode='order') NÃO bypassa a janela de horário: é ordem nova
+// fora do agendamento, mas o WindowFrom é gate de runtime. Regressão do report
+// "janela 22:58 mas o job entrou 22:57" — Order Force despachava ignorando a janela
+// porque o gate ficava sob `if !r.Forced`.
+func TestExplain_OrderForceRespectsWindow(t *testing.T) {
+	s := newTestScheduler(t)
+	now := time.Now()
+	future := now.Add(90 * time.Minute) // janela abre daqui 90min
+	orderDate := future.Format("2006-01-02")
+	def := domain.JobDefinition{ID: "of", JobType: "COMMAND",
+		Schedule: domain.Schedule{Enabled: true, WindowFrom: future.Format("15:04")}}
+	snap, _ := json.Marshal(def)
+	// Order Force: forced=1, force_mode='order', scheduled_at=now (fora do agendamento).
+	if _, err := s.db.Exec(
+		`INSERT INTO instances(id, definition_id, order_date, status, scheduled_at, forced, force_mode, definition_snapshot) VALUES(?,?,?,?,?,1,?,?)`,
+		"of-1", "of", orderDate, string(domain.StatusWaiting), now, ForceModeOrder, string(snap),
+	); err != nil {
+		t.Fatalf("seed order-force: %v", err)
+	}
+
+	ex := explainOf(t, s, "of-1")
+	if ex.Runnable || hasKind(ex.Blockers, GateWindow) == nil {
+		t.Fatalf("Order Force com janela futura deveria esperar (WAIT_WINDOW), veio runnable=%v blockers=%+v", ex.Runnable, ex.Blockers)
+	}
+
+	// "Run Now" (forced sem force_mode) SEGUE bypassando a janela.
+	if _, err := s.db.Exec(
+		`INSERT INTO instances(id, definition_id, order_date, status, scheduled_at, forced, definition_snapshot) VALUES(?,?,?,?,?,1,?)`,
+		"rn-1", "of", orderDate, string(domain.StatusWaiting), now, string(snap),
+	); err != nil {
+		t.Fatalf("seed run-now: %v", err)
+	}
+	if ex := explainOf(t, s, "rn-1"); !ex.Runnable {
+		t.Fatalf("Run Now (bypass total) deveria rodar mesmo com janela futura, veio %+v", ex)
+	}
+}
+
 // Dependência de grafo (snapshot legado com upstream) = condição sintetizada:
 // o Explain aponta WAIT_CONDITION da condição A-TO-B enquanto o pai não cria.
 func TestExplain_WaitDepBecomesCondition(t *testing.T) {

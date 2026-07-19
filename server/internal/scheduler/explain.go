@@ -74,11 +74,35 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 		return shortCircuit
 	}
 
-	if !r.Forced {
-		// 1) Janela — ainda não chegou o horário agendado.
+	// "Run Now" clássico (forced sem force_mode) ignora TUDO — inclusive a janela
+	// de horário. Já o "Order Force" do Design (force_mode='order') é uma ordem NOVA
+	// fora do AGENDAMENTO, mas respeita os gates de RUNTIME; a janela de horário é
+	// um deles (paridade Control-M: um force-order espera o "From Time" e não submete
+	// passado o "To Time"). Por isso o gate de janela vale pro Order Force também;
+	// só o total-bypass do Run Now escapa.
+	totalBypass := r.Forced && r.ForceMode != ForceModeOrder
+	if !totalBypass {
+		// 1) Janela — ainda não chegou o horário agendado (scheduled_at). Num daily
+		// o scheduled_at JÁ é o WindowFrom (computeScheduledAt), então este teste
+		// basta e o carry-over segue intocado.
 		if now.Before(r.ScheduledAt) {
 			if add(Blocker{Kind: GateWindow, Detail: "ainda não chegou o horário agendado (" + r.ScheduledAt.Format("15:04") + ")"}) {
 				return out
+			}
+		}
+		// 1a) Início da janela p/ Order Force: seu scheduled_at é "now" (ordem fora
+		// do agendamento), então o WindowFrom NÃO está embutido no scheduled_at —
+		// aplicamos a trava de início explicitamente só aqui, sem tocar no daily.
+		if r.Forced && r.ForceMode == ForceModeOrder {
+			if hh, mm, okW := parseHHMM(def.Schedule.WindowFrom); okW {
+				if t, err := time.Parse("2006-01-02", r.OrderDate); err == nil {
+					windowStart := time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.Local)
+					if now.Before(windowStart) {
+						if add(Blocker{Kind: GateWindow, Detail: "janela de execução abre às " + def.Schedule.WindowFrom}) {
+							return out
+						}
+					}
+				}
 			}
 		}
 		// 1b) Janela fechou (Control-M time window): passou de WindowTo, não submete
