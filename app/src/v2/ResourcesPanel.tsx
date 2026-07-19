@@ -13,10 +13,11 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { X, Trash2, RefreshCw } from "lucide-react";
+import { X, Trash2, RefreshCw, Plus } from "lucide-react";
 import { listResources, setResourceCapacity, deleteResource, type ResourceState } from "@/lib/bloco2-api";
 import { toast } from "./Toast";
 import { useResizablePanel, ResizeHandle } from "./resizable";
+import { addToggleStyle } from "./add-toggle";
 
 const RES_ACCENT = "#f59e0b"; // âmbar — mesma cor do bloco Recursos do drawer
 
@@ -25,6 +26,7 @@ export default function ResourcesPanel({ onClose }: { onClose: () => void }) {
   const [filter, setFilter] = useState("");
   const [draftName, setDraftName] = useState("");
   const [draftCap, setDraftCap] = useState("1");
+  const [adding, setAdding] = useState(false); // bloco de adição escondido até clicar no ＋ (padrão do produto)
   const [busy, setBusy] = useState(false);
 
   const reload = () => listResources().then(setItems).catch(() => setItems([]));
@@ -91,19 +93,23 @@ export default function ResourcesPanel({ onClose }: { onClose: () => void }) {
         <span style={{ width: 6, height: 6, borderRadius: "50%", background: RES_ACCENT }} />
         <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.04em" }}>RECURSOS DO AMBIENTE</span>
         <span style={{ fontSize: 10, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>{items.length}</span>
-        <button onClick={() => void reload()} title="Recarregar" style={{ marginLeft: "auto", ...iconBtn }}><RefreshCw size={12} /></button>
+        <button onClick={() => setAdding((v) => !v)} title={adding ? "Fechar" : "Adicionar recurso"}
+          style={{ marginLeft: "auto", ...addToggleStyle(adding, RES_ACCENT) }}>{adding ? <X size={12} /> : <Plus size={12} />}</button>
+        <button onClick={() => void reload()} title="Recarregar" style={iconBtn}><RefreshCw size={12} /></button>
         <button onClick={onClose} title="Fechar" style={iconBtn}><X size={14} /></button>
       </div>
 
-      {/* Add / set capacity */}
+      {/* Add / set capacity — escondido até clicar no ＋ do cabeçalho (workspace limpo). */}
+      {adding && (
       <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--v2-border-subtle)", display: "flex", flexDirection: "column", gap: 6 }}>
         <div style={{ display: "flex", gap: 6 }}>
           {/* Campo NOVO com visual distinto (fundo elevado + borda tracejada). */}
           <input
+            autoFocus
             value={draftName}
-            placeholder="＋ recurso… (ex.: SAP)"
+            placeholder="recurso… (ex.: SAP)"
             onChange={(e) => setDraftName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submit(); } }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submit(); } else if (e.key === "Escape") { setDraftName(""); setAdding(false); } }}
             onFocus={(e) => { e.currentTarget.style.borderColor = RES_ACCENT; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = "var(--v2-border-medium)"; }}
             style={{ ...inputStyle, background: "var(--v2-bg-elevated)", border: "1px dashed var(--v2-border-medium)" }}
@@ -123,6 +129,7 @@ export default function ResourcesPanel({ onClose }: { onClose: () => void }) {
           Capacidade = quantos jobs com o recurso rodam ao mesmo tempo. Escolha QUAIS jobs consomem no Design (aba Condições → Recursos).
         </div>
       </div>
+      )}
 
       {/* Filtro */}
       <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--v2-border-subtle)" }}>

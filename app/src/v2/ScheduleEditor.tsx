@@ -15,10 +15,11 @@
  * O PREVIEW no rodapé traduz frequência + meses + calendários + horário em
  * linguagem natural.
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { JobSchedule, ScheduleFrequency, CalendarRef } from "@/lib/orchestrator-model";
 import type { Calendar } from "@/lib/bloco2-api";
+import { fetchDailyStatus } from "@/lib/server-scheduler-runtime";
 import SchedulePreviewCalendar from "./SchedulePreviewCalendar";
 
 const WEEKDAYS: Array<{ id: string; label: string }> = [
@@ -49,6 +50,26 @@ export default function ScheduleEditor({ value, onChange, calendars, onCalendars
   // "daily" é o default; frequências legadas (businessday/advanced) caem em daily na UI.
   const freq: ScheduleFrequency = (s.frequency === "weekly" || s.frequency === "monthly") ? s.frequency : "daily";
   const patch = (p: Partial<JobSchedule>) => onChange({ ...s, ...p });
+
+  // Relógio do SERVER — o horário da janela é SEMPRE no fuso do server (report do
+  // usuário: "o horário sempre é o do server"). Mostrar o relógio dele aqui evita
+  // configurar no fuso errado. Uma busca só (barato); silencioso se falhar.
+  const [serverClock, setServerClock] = useState<{ now: string; tz: string } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void fetchDailyStatus().then((st) => {
+      if (!alive || !st?.serverNow) return;
+      const d = new Date(st.serverNow);
+      const hhmm = Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false });
+      setServerClock({ now: hhmm, tz: st.timezone || "local do server" });
+    });
+    return () => { alive = false; };
+  }, []);
+
+  // "A partir de" consolida o antigo "Roda às" (runAt): o início da janela É o
+  // horário de início. Jobs legados com runAt aparecem no campo; qualquer edição
+  // migra pra windowFrom e zera o runAt (o server já prefere runAt→windowFrom).
+  const fromVal = s.windowFrom || s.runAt || "";
 
   const toggleInArr = <T,>(arr: T[] | undefined, v: T): T[] => {
     const set = new Set(arr ?? []);
@@ -109,13 +130,18 @@ export default function ScheduleEditor({ value, onChange, calendars, onCalendars
       {/* Calendários — trabalham junto com as regras (include/exclude) */}
       <CalendarSection calendars={calendars} onChange={onCalendarsChange} available={availableCalendars} />
 
-      {/* Horário / janela / cíclico */}
-      <Group label="Horário">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-          <Sub label="Roda às (HH:MM)"><TimeInput value={s.runAt ?? ""} onChange={(v) => patch({ runAt: v })} placeholder="06:00" /></Sub>
-          <Sub label="Janela de"><TimeInput value={s.windowFrom ?? ""} onChange={(v) => patch({ windowFrom: v })} placeholder="--:--" /></Sub>
-          <Sub label="Janela até"><TimeInput value={s.windowTo ?? ""} onChange={(v) => patch({ windowTo: v })} placeholder="--:--" /></Sub>
+      {/* Janela de execução — 2 campos: início ("a partir de") e fim ("até").
+          O antigo "Roda às" saiu: o início da janela É o horário de início. */}
+      <Group label="Janela de execução">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <Sub label="A partir de (HH:MM)"><TimeInput value={fromVal} onChange={(v) => patch({ windowFrom: v, runAt: "" })} placeholder="--:--" /></Sub>
+          <Sub label="Até (HH:MM)"><TimeInput value={s.windowTo ?? ""} onChange={(v) => patch({ windowTo: v })} placeholder="--:--" /></Sub>
         </div>
+        <Hint>
+          Horários no <b>fuso do servidor</b>{serverClock ? <> (agora lá: <b style={{ color: "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)" }}>{serverClock.now}</b> · {serverClock.tz})</> : ""}.
+          <br /><b>Ambos vazios</b> = roda assim que possível (sem condição, ao entrar na diária; com condição, assim que ela for satisfeita).
+          <br /><b>A partir de</b> = só começa depois desse horário. <b>Até</b> = não roda depois desse horário — nem se a condição chegar depois.
+        </Hint>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)", marginTop: 8, flexWrap: "wrap" }}>
           <input type="checkbox" checked={!!s.cyclic} onChange={(e) => patch({ cyclic: e.target.checked })} />
           Cíclico — repete a cada
@@ -274,7 +300,10 @@ function SchedulePreview({ schedule: s, calendars, calDefs }: { schedule: JobSch
   if (inc.length) parts.push(`só nos dias de ${inc.map(calPhrase).join(" e ")}`);
   if (exc.length) parts.push(`exceto ${exc.map(calPhrase).join(" e ")}`);
   if ((s.monthsOfYear ?? []).length) parts.push(`apenas em ${(s.monthsOfYear ?? []).map((m) => MONTHS[m - 1]).join(", ")}`);
-  if (s.runAt) parts.push(`às ${s.runAt}`);
+  const from = s.windowFrom || s.runAt;
+  if (from && s.windowTo) parts.push(`das ${from} às ${s.windowTo}`);
+  else if (from) parts.push(`a partir das ${from}`);
+  else if (s.windowTo) parts.push(`até às ${s.windowTo}`);
   if (s.cyclic && s.intervalMin) parts.push(`repetindo a cada ${s.intervalMin}min`);
   if (s.keepActive && s.keepActive > 0) parts.push(`keep active ${s.keepActive}d`);
 

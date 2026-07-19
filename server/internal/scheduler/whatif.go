@@ -179,9 +179,14 @@ func WhatIf(defs []domain.JobDefinition, calendars map[string]*domain.Calendar,
 				return out[id]
 			}
 
-			// Início: âncora própria (runAt ou T0) vs fim do último upstream.
+			// Início: âncora própria (janela "a partir de" — runAt legado ou
+			// windowFrom, mesma preferência do computeScheduledAt) vs fim do upstream.
 			start := t0
-			if hm := d.Schedule.RunAt; len(hm) == 5 {
+			hm := d.Schedule.RunAt
+			if hm == "" {
+				hm = d.Schedule.WindowFrom
+			}
+			if len(hm) == 5 {
 				hh, mm := 0, 0
 				_, _ = fmtScanHM(hm, &hh, &mm)
 				start = time.Date(od.Year(), od.Month(), od.Day(), hh, mm, 0, 0, time.Local)

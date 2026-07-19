@@ -72,7 +72,9 @@ func cmdDev(args []string) error {
 	sched := scheduler.New(store, database, h, 2*time.Second)
 	sched.DemoMode = true // sem agente: mock-finish OK — é o ponto do dev mode
 	sched.AttachCalendars(storage.NewCalendarStore(*workspace))
-	sched.AttachResources(scheduler.NewResourceTracker())
+	resTracker := scheduler.NewResourceTracker()
+	_ = resTracker.LoadFromDB(database) // registry de capacidade durável (tabela `resources`)
+	sched.AttachResources(resTracker)
 	sched.AttachConditions(scheduler.NewConditionEngine(database))
 	sched.AttachSLA(scheduler.NewSLAEngine(database, h))
 	sched.AttachLeader(leader.SingleNode{})

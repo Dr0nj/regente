@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ExternalLink, X, Trash2, ArrowRight, ArrowLeft, HelpCircle } from "lucide-react";
+import { ExternalLink, X, Trash2, ArrowRight, ArrowLeft, HelpCircle, Plus } from "lucide-react";
+import { addToggleStyle } from "./add-toggle";
 import type { JobDefinition, CalendarRef, ActionRule, DepDateRef } from "@/lib/orchestrator-model";
 import { splitCondSuffix, withCondSuffix, producesBase } from "@/lib/conditions-model";
 import type { JobType } from "@/lib/job-config";
@@ -617,23 +618,38 @@ function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, cond
             </span>
             <button onClick={() => setShowHelp(false)} title="Fechar" style={{ ...iconBtn, marginLeft: "auto" }}><X size={12} /></button>
           </div>
-          <div style={{ fontSize: 10.5, color: "var(--v2-text-secondary)", lineHeight: 1.5 }}>
-            <b>Toda dependência é uma condição num pool único do ambiente</b> (botão
-            “Condições” no Monitoring). Ligar A→B pela <b>setinha</b> do canvas cria a
-            condição <code>A-TO-B</code> automaticamente: saída＋ no pai, entrada +
-            saída− aqui. Fazendo <b>à mão</b>, é o mesmo lugar: digite o mesmo nome na
-            saída＋ do pai e na <b>entrada E na saída−</b> deste job (a saída− é o
-            consumo — sem ela a condição sobrevive ao OK e o rerun roda direto).
-            A DATA é o seletor de cada linha: <b>Odate</b> (default) = diária de
-            origem do job · <b>Prev</b> = diária anterior · <b>Stat</b> = estática,
-            sem data.
+          <div style={{ fontSize: 10.5, color: "var(--v2-text-secondary)", lineHeight: 1.5, display: "flex", flexDirection: "column", gap: 10, maxHeight: 340, overflowY: "auto" }}>
+            <HelpTopic title="Modelo — pool único">
+              <b>Toda dependência é uma condição num pool único do ambiente</b> (botão
+              “Condições” no Monitoring). Ligar A→B pela <b>setinha</b> do canvas cria a
+              condição <code>A-TO-B</code> automaticamente: saída＋ no pai, entrada +
+              saída− aqui. Fazendo <b>à mão</b>, é o mesmo lugar: o mesmo nome na saída＋
+              do pai e na <b>entrada E na saída−</b> deste job.
+            </HelpTopic>
+            <HelpTopic title="Entrada — depende de">
+              O job fica em <b>WAIT COND</b> até <b>TODAS</b> as condições de entrada
+              existirem no pool. <b>Set OK + rerun</b> volta a esperar se a saída− já
+              apagou a condição.
+            </HelpTopic>
+            <HelpTopic title="Saída ＋ — adiciona ao terminar OK">
+              Ao terminar OK (ou Set OK), o job <b>ADICIONA</b> estas condições ao pool
+              — é o que libera quem depende delas.
+            </HelpTopic>
+            <HelpTopic title="Saída − — deleta ao terminar OK (consumo)">
+              Ao terminar OK (ou Set OK), o job <b>APAGA</b> estas condições do pool — é
+              o <b>consumo</b> da entrada. Sem a saída−, a condição sobrevive ao OK e o
+              rerun roda direto.
+            </HelpTopic>
+            <HelpTopic title="Datas — o seletor de cada linha">
+              <b>Odate</b> (default) = diária de origem do job · <b>Prev</b> = diária
+              anterior · <b>Stat</b> = estática, sem data.
+            </HelpTopic>
           </div>
         </div>
       )}
 
       <CondChipsEditor
         title="Entrada — depende de"
-        hint="O job fica em WAIT COND até TODAS existirem no pool. Set OK + rerun volta a esperar se a saída− apagou a condição."
         value={conditionsIn}
         onChange={onChangeConditionsIn}
         known={knownConditions}
@@ -642,7 +658,6 @@ function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, cond
       />
       <CondChipsEditor
         title="Saída ＋ — adiciona ao terminar OK"
-        hint="Ao terminar OK (ou Set OK), o job ADICIONA estas condições ao pool."
         value={conditionsOutAdd}
         onChange={onChangeConditionsOutAdd}
         known={knownConditions}
@@ -651,7 +666,6 @@ function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, cond
       />
       <CondChipsEditor
         title="Saída − — deleta ao terminar OK (consumo)"
-        hint="Ao terminar OK (ou Set OK), o job APAGA estas condições do pool — é o consumo da entrada."
         value={conditionsOutRemove}
         onChange={onChangeConditionsOutRemove}
         known={knownConditions}
@@ -699,6 +713,8 @@ function ResourcesEditor({ resources, onChange, available }: {
 }) {
   const [draftName, setDraftName] = useState("");
   const [draftQty, setDraftQty] = useState("1");
+  const [showHelp, setShowHelp] = useState(false);
+  const [adding, setAdding] = useState(false); // campo escondido até clicar no ＋ (padrão do produto)
   const entries = Object.entries(resources);
   const capOf = (name: string) => available.find((r) => r.name === name);
   const add = () => {
@@ -719,17 +735,38 @@ function ResourcesEditor({ resources, onChange, available }: {
   return (
     <div style={{
       border: `1px solid ${RES_ACCENT}55`, borderRadius: 8, padding: "10px 12px",
-      background: "rgba(245,158,11,0.05)", display: "flex", flexDirection: "column", gap: 8,
+      background: "rgba(245,158,11,0.05)", display: "flex", flexDirection: "column", gap: 8, position: "relative",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ width: 6, height: 6, borderRadius: "50%", background: RES_ACCENT }} />
         <span style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: RES_ACCENT, fontWeight: 700 }}>
           Recursos / Quotas
         </span>
+        <button onClick={() => setShowHelp((v) => !v)} title="Como funcionam os recursos" style={{ ...addToggleStyle(showHelp, RES_ACCENT), marginLeft: "auto" }}>
+          <HelpCircle size={13} />
+        </button>
+        <button onClick={() => setAdding((v) => !v)} title={adding ? "Fechar" : "Adicionar recurso"} style={addToggleStyle(adding, RES_ACCENT)}>
+          {adding ? <X size={12} /> : <Plus size={12} />}
+        </button>
       </div>
-      <div style={{ fontSize: 9.5, color: "var(--v2-text-muted)", lineHeight: 1.45 }}>
-        Limita execução simultânea (semáforo). Sem unidade livre no pool, o job espera em <b style={{ color: RES_ACCENT }}>WAIT RESOURCE</b> (fila) — não é dependência lógica. Vários recursos = tudo-ou-nada.
-      </div>
+      {showHelp && (
+        <div style={{ position: "absolute", top: 30, left: 8, right: 8, zIndex: 10, background: "var(--v2-bg-elevated)", border: `1px solid ${RES_ACCENT}`, borderRadius: 8, boxShadow: "0 10px 30px rgba(0,0,0,0.45)", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: RES_ACCENT }}>Como funcionam os recursos</span>
+            <button onClick={() => setShowHelp(false)} title="Fechar" style={{ ...iconBtn, marginLeft: "auto" }}><X size={12} /></button>
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--v2-text-secondary)", lineHeight: 1.5 }}>
+            Recurso é um <b>semáforo de concorrência</b> (quota), não pré-requisito lógico.
+            Sem unidade livre no pool, o job espera em <b style={{ color: RES_ACCENT }}>WAIT RESOURCE</b> (fila).
+            Vários recursos num job = <b>tudo-ou-nada</b> (só começa se couber em todos de uma vez).
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--v2-text-secondary)", lineHeight: 1.5 }}>
+            Aqui só se ESCOLHE quais o job consome e quanto. A <b>capacidade</b> de cada recurso é
+            gerida no Monitoring (painel <b>Recursos</b>) e sobrevive a restart. Recurso novo nasce com
+            capacidade 1 (lock exclusivo) até ajustar lá.
+          </div>
+        </div>
+      )}
       {entries.map(([name, qty]) => {
         const cap = capOf(name);
         return (
@@ -744,28 +781,28 @@ function ResourcesEditor({ resources, onChange, available }: {
           </div>
         );
       })}
-      <div style={{ display: "flex", gap: 6 }}>
-        <input
-          value={draftName}
-          list="job-known-resources"
-          placeholder="＋ recurso… (ex.: SAP)"
-          onChange={(e) => setDraftName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
-          onFocus={(e) => { e.currentTarget.style.borderColor = RES_ACCENT; }}
-          onBlur={(e) => { e.currentTarget.style.borderColor = "var(--v2-border-medium)"; }}
-          style={{ flex: 1, background: "var(--v2-bg-elevated)", border: "1px dashed var(--v2-border-medium)", color: "var(--v2-text-primary)", padding: "5px 8px", fontSize: 11, fontFamily: "var(--v2-font-mono)", borderRadius: 3, outline: "none", boxSizing: "border-box" }}
-        />
-        <datalist id="job-known-resources">
-          {suggestions.map((r) => <option key={r.name} value={r.name}>{`cap ${r.capacity}`}</option>)}
-        </datalist>
-        <input type="number" min={1} value={draftQty} title="quantidade"
-          onChange={(e) => setDraftQty(e.target.value.replace(/\D/g, ""))}
-          style={{ ...numInput, background: "var(--v2-bg-elevated)", border: "1px dashed var(--v2-border-medium)" }} />
-        <button onClick={add} disabled={!draftName.trim()} style={{ ...btnStyle, borderColor: draftName.trim() ? RES_ACCENT : "var(--v2-border-medium)", color: draftName.trim() ? RES_ACCENT : "var(--v2-text-muted)" }}>＋</button>
-      </div>
-      <div style={{ fontSize: 9, color: "var(--v2-text-muted)", lineHeight: 1.4 }}>
-        A capacidade é gerida no Monitoring (painel <b>Recursos</b>). Recurso novo nasce com capacidade 1 (lock exclusivo) até ajustar lá.
-      </div>
+      {adding && (
+        <div style={{ display: "flex", gap: 6 }}>
+          <input
+            autoFocus
+            value={draftName}
+            list="job-known-resources"
+            placeholder="recurso… (ex.: SAP)"
+            onChange={(e) => setDraftName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } else if (e.key === "Escape") { setDraftName(""); setAdding(false); } }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = RES_ACCENT; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = "var(--v2-border-medium)"; }}
+            style={{ flex: 1, background: "var(--v2-bg-elevated)", border: "1px dashed var(--v2-border-medium)", color: "var(--v2-text-primary)", padding: "5px 8px", fontSize: 11, fontFamily: "var(--v2-font-mono)", borderRadius: 3, outline: "none", boxSizing: "border-box" }}
+          />
+          <datalist id="job-known-resources">
+            {suggestions.map((r) => <option key={r.name} value={r.name}>{`cap ${r.capacity}`}</option>)}
+          </datalist>
+          <input type="number" min={1} value={draftQty} title="quantidade"
+            onChange={(e) => setDraftQty(e.target.value.replace(/\D/g, ""))}
+            style={{ ...numInput, background: "var(--v2-bg-elevated)", border: "1px dashed var(--v2-border-medium)" }} />
+          <button onClick={add} disabled={!draftName.trim()} title="Adicionar" style={{ ...btnStyle, borderColor: draftName.trim() ? RES_ACCENT : "var(--v2-border-medium)", color: draftName.trim() ? RES_ACCENT : "var(--v2-text-muted)" }}>＋</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -777,9 +814,8 @@ function ResourcesEditor({ resources, onChange, available }: {
 // linha edita o sufixo sem o usuário digitar arroba (helpers em
 // lib/conditions-model — os MESMOS do canvas e da normalização).
 
-function CondChipsEditor({ title, hint, value, onChange, known, listId, crossRef }: {
+function CondChipsEditor({ title, value, onChange, known, listId, crossRef }: {
   title: string;
-  hint: string;
   value: string[];
   onChange: (v: string[]) => void;
   known: string[];
@@ -787,6 +823,11 @@ function CondChipsEditor({ title, hint, value, onChange, known, listId, crossRef
   crossRef?: (name: string) => string | undefined;
 }) {
   const [draft, setDraft] = useState("");
+  // Padrão "+ ao lado do título" (regra do produto): o campo de digitar fica
+  // ESCONDIDO até clicar no ＋ — inclusive para a PRIMEIRA condição. Some quando
+  // não se está adicionando (workspace limpo). Fica aberto após adicionar pra
+  // encadear várias; o ＋ vira ✕ pra fechar.
+  const [adding, setAdding] = useState(false);
   const add = () => {
     const name = draft.trim();
     setDraft("");
@@ -805,7 +846,12 @@ function CondChipsEditor({ title, hint, value, onChange, known, listId, crossRef
   };
   return (
     <div>
-      <div style={{ fontSize: 10, fontWeight: 600, color: "var(--v2-text-secondary)", marginBottom: 4 }}>{title}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: value.length ? 4 : 0 }}>
+        <span style={{ fontSize: 10, fontWeight: 600, color: "var(--v2-text-secondary)" }}>{title}</span>
+        <button onClick={() => setAdding((v) => !v)} title={adding ? "Fechar" : "Adicionar condição"} style={addToggleStyle(adding)}>
+          {adding ? <X size={12} /> : <Plus size={12} />}
+        </button>
+      </div>
       {value.map((n) => {
         const ref = crossRef?.(n);
         const { base, ref: dateRef } = splitCondSuffix(n);
@@ -831,26 +877,27 @@ function CondChipsEditor({ title, hint, value, onChange, known, listId, crossRef
           </div>
         );
       })}
-      <div style={{ display: "flex", gap: 6 }}>
-        {/* Campo de condição NOVA — visual deliberadamente diferente das chips
-            já adicionadas (fundo elevado + borda tracejada; report do usuário:
-            mesma cor confundia o que existe com onde se digita). */}
-        <input
-          value={draft}
-          list={listId}
-          placeholder="＋ nova condição… (ex.: ARQUIVO-CHEGOU)"
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
-          onFocus={(e) => { e.currentTarget.style.borderColor = "var(--v2-accent-brand)"; }}
-          onBlur={(e) => { e.currentTarget.style.borderColor = "var(--v2-border-medium)"; }}
-          style={{ flex: 1, background: "var(--v2-bg-elevated)", border: "1px dashed var(--v2-border-medium)", color: "var(--v2-text-primary)", padding: "5px 8px", fontSize: 11, fontFamily: "var(--v2-font-mono)", borderRadius: 3, outline: "none", boxSizing: "border-box" }}
-        />
-        <datalist id={listId}>
-          {suggestions.map((k) => <option key={k} value={k} />)}
-        </datalist>
-        <button onClick={add} disabled={!draft.trim()} style={{ ...btnStyle, borderColor: draft.trim() ? "var(--v2-accent-brand)" : "var(--v2-border-medium)", color: draft.trim() ? "var(--v2-accent-brand)" : "var(--v2-text-muted)" }}>＋</button>
-      </div>
-      <div style={{ fontSize: 9.5, color: "var(--v2-text-muted)", marginTop: 3, lineHeight: 1.4 }}>{hint}</div>
+      {adding && (
+        <div style={{ display: "flex", gap: 6, marginTop: value.length ? 4 : 0 }}>
+          {/* Campo de condição NOVA — só aparece ao clicar no ＋ do título. Visual
+              distinto das chips (fundo elevado + borda tracejada). */}
+          <input
+            autoFocus
+            value={draft}
+            list={listId}
+            placeholder="nova condição… (ex.: ARQUIVO-CHEGOU)"
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } else if (e.key === "Escape") { setDraft(""); setAdding(false); } }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = "var(--v2-accent-brand)"; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = "var(--v2-border-medium)"; }}
+            style={{ flex: 1, background: "var(--v2-bg-elevated)", border: "1px dashed var(--v2-border-medium)", color: "var(--v2-text-primary)", padding: "5px 8px", fontSize: 11, fontFamily: "var(--v2-font-mono)", borderRadius: 3, outline: "none", boxSizing: "border-box" }}
+          />
+          <datalist id={listId}>
+            {suggestions.map((k) => <option key={k} value={k} />)}
+          </datalist>
+          <button onClick={add} disabled={!draft.trim()} title="Adicionar" style={{ ...btnStyle, borderColor: draft.trim() ? "var(--v2-accent-brand)" : "var(--v2-border-medium)", color: draft.trim() ? "var(--v2-accent-brand)" : "var(--v2-text-muted)" }}>＋</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -861,6 +908,16 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 function Hint({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 10.5, color: "var(--v2-text-muted)", lineHeight: 1.45 }}>{children}</div>;
+}
+// HelpTopic — uma seção temática dentro de um popover "?" (título + corpo). Toda
+// explicação sai do workspace e vem morar aqui, separada por tema.
+function HelpTopic({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--v2-accent-brand)", marginBottom: 3 }}>{title}</div>
+      <div>{children}</div>
+    </div>
+  );
 }
 function Input({ value, onChange, disabled, mono, placeholder }: { value: string; onChange: (v: string) => void; disabled?: boolean; mono?: boolean; placeholder?: string }) {
   return <input value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} placeholder={placeholder}

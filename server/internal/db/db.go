@@ -193,6 +193,7 @@ func toDollar(query string) string {
 var pgConflict = map[string]string{
 	"conditions": "(name, scope_date) DO UPDATE SET set_at=EXCLUDED.set_at, set_by=EXCLUDED.set_by",
 	"daily_runs": "(order_date) DO UPDATE SET started_at=EXCLUDED.started_at",
+	"resources":  "(name) DO UPDATE SET capacity=EXCLUDED.capacity",
 }
 
 func pgUpsert(query string) string {
@@ -488,6 +489,7 @@ var sqliteMigrations = []migration{
 	{version: 17, sql: schemaV17("DATETIME")},
 	{version: 18, sql: schemaV18()},
 	{version: 19, sql: schemaV19()},
+	{version: 20, sql: schemaV20()},
 }
 
 var pgMigrations = []migration{
@@ -510,6 +512,7 @@ var pgMigrations = []migration{
 	{version: 17, sql: schemaV17("TIMESTAMPTZ")},
 	{version: 18, sql: schemaV18()},
 	{version: 19, sql: schemaV19()},
+	{version: 20, sql: schemaV20()},
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.
@@ -808,6 +811,21 @@ ALTER TABLE instances ADD COLUMN conds_out_add TEXT NOT NULL DEFAULT ''`
 // cai no fallback: sem recurso conhecido, sem selo).
 func schemaV19() string {
 	return `ALTER TABLE instances ADD COLUMN resources TEXT NOT NULL DEFAULT ''`
+}
+
+// schemaV20 — recursos/quotas (F15) PERSISTIDOS no ambiente (2026-07-18). Até
+// aqui o registry de CAPACIDADE vivia só em memória (ResourceTracker): reiniciar
+// o server zerava tudo o que o operador tinha configurado no painel Recursos —
+// só o USO de instances RUNNING era reconstruído (RebuildResourcesFromRunning), e
+// ainda por chute (capacity = qtd detida). Esta tabela dá durabilidade ao
+// registry: SetCapacity/Delete gravam aqui e o boot recarrega (ResourceTracker.
+// LoadFromDB) ANTES do rebuild de uso. name = PK; capacity = execuções
+// simultâneas permitidas (0 = bloqueia). DDL idêntico nos dois dialetos.
+func schemaV20() string {
+	return `CREATE TABLE IF NOT EXISTS resources (
+	name     TEXT PRIMARY KEY,
+	capacity INTEGER NOT NULL DEFAULT 0
+)`
 }
 
 // schemaV16 — held_from_status: o status que a instance tinha ao entrar em HOLD

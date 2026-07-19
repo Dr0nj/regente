@@ -100,6 +100,87 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
   (Monitoring com grafo · ViewPoint @1M · Explain), decidir se torna o repo público (ou
   publica o case como artigo) e postar no LinkedIn. Nenhum agente pode fazer isso por você.
 
+### 🔀 Condições AND/OR — lógica booleana na entrada do job
+
+> **Committed (pedido 2026-07-18).** Hoje a entrada (`ConditionsIn`) é um **AND
+> implícito**: o job só roda quando TODAS as condições existem no pool. Falta o
+> **OR** e o **agrupamento** ("parênteses"). **Fechar isto = fechar o tema
+> Condições 100% (testado e operando)** — é o critério de aceite do usuário.
+> Contexto que JÁ mudou e este item assume como base: a janela virou **2 campos**
+> ("a partir de" = `windowFrom` · "até" = `windowTo`; o `runAt` saiu da UI) e o
+> registry de recursos agora **persiste** (tabela `resources`). LER
+> [`docs/conditions-events.md`](conditions-events.md) ANTES de mexer — o pool de
+> condições é o modelo ÚNICO de dependência (não reintroduzir "upstream" nem gate
+> separado). Ver [[regente-dep-events-claims]].
+
+- [ ] **CL-1 — Expressão booleana de entrada (grupos AND/OR, forma DNF).**
+  **Modelo canônico:** a entrada vira uma lista de **GRUPOS**; os grupos são
+  combinados por um operador de topo, e cada grupo combina seus membros por um
+  operador próprio (dois níveis, cada nível com seu operador — cobre os dois
+  exemplos do usuário). Avaliação: `topOp( grupoEval(g) for g in grupos )`, onde
+  `grupoEval = grupoOp(membro ∈ pool ?)`.
+  - `(COND1 AND COND2) OR COND3` → `grupos=[{op:AND,[C1,C2]},{op:AND,[C3]}]`, `topOp=OR`.
+  - `(C1 OR C2 OR C3) AND C4` → `grupos=[{op:OR,[C1,C2,C3]},{op:AND,[C4]}]`, `topOp=AND`.
+  - **Semântica OR = "o primeiro que chegar satisfaz e dispara"** — assim que
+    QUALQUER grupo fica verdadeiro, o job roda (não espera os outros).
+
+- [ ] **CL-2 — Caso especial "1 condição OR horário" (fallback por tempo).**
+  Com **UMA** condição, permitir o operador **OR** contra o HORÁRIO: o job roda
+  quando **a condição chega OU quando o "a partir de" (`windowFrom`) é atingido**,
+  o que vier primeiro (fallback temporal). Representar com um **membro-token
+  especial `$TIME`** que é satisfeito quando `now >= scheduledAt` (o mesmo relógio
+  do gate de janela): `grupos=[{op:AND,[C1]},{op:AND,[$TIME]}], topOp=OR`. **Só
+  oferecer o toggle quando há `windowFrom` preenchido** (sem tempo não há o que
+  "OR-ar" — degrada pra só a condição). **Cuidado com a janela:** hoje `windowFrom`
+  é um **piso implícito** (mesmo com condição presente, espera o horário). Quando
+  a lógica usa `$TIME` explicitamente, `windowFrom` **deixa de ser piso** e passa a
+  ser SÓ o token `$TIME` na expressão (senão o OR nunca anteciparia). `windowTo`
+  ("até") continua **teto duro SEMPRE** (`WINDOW_CLOSED` vale independentemente da lógica).
+
+- [ ] **CL-3 — Data model + persistência + imutabilidade.**
+  Campo novo **opcional** na `JobDefinition` (`domain/model.go`), ex.:
+  `ConditionLogic *ConditionLogic` com `{ Op string; Groups []CondGroup }` e
+  `CondGroup { Op string; Members []string }` (membros carregam o sufixo de data
+  `@odat/@prev/@stat` como hoje; `$TIME` é membro reservado). **Backward-compat:**
+  `ConditionsIn` (lista plana) continua válido e = **um grupo AND** quando
+  `ConditionLogic` é nil (nada quebra). **Imutabilidade M1:** a lógica tem que ser
+  **congelada no snapshot da instance** igual `ConditionsIn` (schema novo:
+  promover pra coluna OU derivar do `definition_snapshot`); o card do Monitoring e o
+  Explain leem a lógica CONGELADA, não a def viva — ver
+  [[regente-monitoring-immutable-snapshot]].
+
+- [ ] **CL-4 — Gate + Explain + linhas do canvas.**
+  Estender o passo de condições do **`gateInstance`** (fonte única, `explain.go`):
+  em vez de "qualquer `MissingIdx` bloqueia", avaliar a expressão contra o
+  `CondIndex` (foto do pool, 1 query/tick — hot path) + o token `$TIME`. Bloqueia
+  só se **NENHUM** grupo é satisfazível. O **Explain** precisa dizer QUAL ramo falta
+  ("aguardando (C1 E C2) OU C3 — nenhum satisfeito"), não só listar condições
+  soltas. As **linhas do grafo** (reflexo do pool) devem distinguir visualmente
+  membros de grupos OR (ex.: linha tracejada/rótulo "OR") de AND. A **setinha** do
+  canvas continua criando AND simples (grupo único); o OR/agrupamento é manual no
+  drawer.
+
+- [ ] **CL-5 — UI (drawer, aba Condições) + regras de UX já adotadas.**
+  Editor de grupos na **Entrada — depende de**: uma "coluna de parênteses" antes das
+  condições pra **selecionar quais entram no grupo** e escolher a **relação (AND/OR)
+  dentro do grupo**, mais o **operador de topo** entre grupos (forma livre à
+  escolha do implementador — o usuário sugeriu parênteses, mas aceita design
+  melhor). Reusar os padrões JÁ entregues nesta rodada: **botão ＋ ao lado do
+  título** revela o campo (escondido por padrão, `addToggleStyle` em
+  `v2/add-toggle.ts`) e **toda explicação vai pro "?"** (`HelpTopic`, separado por
+  tema — Modelo · Entrada · Saída＋ · Saída− · Datas), workspace limpo. Adicionar um
+  tema "AND/OR" no "?". **Só a ENTRADA tem lógica** — Saída＋/Saída− continuam listas
+  planas (não faz sentido OR na saída).
+
+- [ ] **CL-6 — Testes + docs + critério de fecho.**
+  Baterias no `scheduler` cobrindo: DNF `(C1∧C2)∨C3`, `(C1∨C2)∧C3`, `$TIME` OR
+  cond (antecipa por cond antes do horário E dispara por horário sem cond),
+  `windowTo` como teto mesmo com grupo satisfeito depois, retro-compat
+  (`ConditionsIn` plano = AND), e imutabilidade (mudar a lógica na def NÃO reescreve
+  instance já ordenada). Atualizar `docs/conditions-events.md` (o modelo passa a ter
+  lógica booleana) e a mente ([[regente-dep-events-claims]]). **Só então** marcar o
+  tema Condições como 100% (mover CL-* pro §Entregue + changelog).
+
 ### 🔮 Visão futura (avaliar PÓS-testes, não committado)
 
 > Ideias registradas para **avaliação posterior**, depois de estabilizar/testar o core em
@@ -927,6 +1008,7 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 
 | Quando | O que | Detalhe |
 |----|--------|---------|
+| ✅ | ~~**Recursos PERSISTEM no ambiente (registry durável) + janela do job 3→2 campos (A partir de / Até) com relógio do server + padrão "＋ ao lado do título" e ajuda no "?" nas Condições/Recursos + roadmap AND/OR (CL-1…6)**~~ | **Feito (2026-07-18, auditoria + reports do usuário).** **(1) AUDITORIA de recursos — metade "ambiente" NÃO persistia (bug), metade "job" já persistia.** O `ResourceTracker` (F15) era 100% em memória: `main.go` criava `NewResourceTracker()` VAZIO no boot e `setResourceCapacity` só mexia no mapa — nenhuma tabela. Reiniciar o server zerava tudo que o operador tinha configurado no painel Recursos (só o USO de RUNNING era reconstruído por `RebuildResourcesFromRunning`, e por chute `cap=qtd`). O recurso escolhido NO JOB (`def.Resources`) já era durável (YAML no workspace + snapshot da instance, schemaV19). **Fix:** `schemaV20` cria a tabela **`resources`** (name PK, capacity); `SetCapacity`/`Delete`/auto-create do `TryAcquire` gravam (upsert `INSERT OR REPLACE`, entrada no `pgConflict`); `ResourceTracker.LoadFromDB` recarrega no boot ANTES do rebuild de uso (`main.go`+`dev.go`). Teste `resources_persist_test.go` (SetCapacity + auto-create sobrevivem a "restart" = novo tracker/mesmo DB; Delete é durável). **Validado AO VIVO com restart REAL do binário:** `PUT /api/resources/SLOTS {capacity:5}` → linha `('SLOTS',5)` na tabela → **kill do server → subir de novo com o mesmo DB → `GET /api/resources` = SLOTS cap 5** (antes voltava `[]`). **(2) Janela do job: 3 campos → 2.** Saiu o "Roda às" (`runAt`) da UI; ficaram **"A partir de"** (`windowFrom`, piso de início) e **"Até"** (`windowTo`, teto). O backend já casava com essa semântica (`computeScheduledAt` prefere runAt→windowFrom; gate `WAIT_WINDOW`/`WINDOW_CLOSED` no `explain.go`) — a mudança é de UI + consolidação (edição migra runAt→windowFrom e zera runAt; `whatif.go` usa o mesmo fallback). Ambos vazios = roda assim que possível (sem cond na entrada da diária; com cond, ao ser satisfeita); só "Até" = não roda depois do horário nem se a cond chegar depois; "A partir de" = só começa depois. Como o horário é SEMPRE no fuso do server (report do usuário), o editor mostra **o relógio do server ao vivo** (`fetchDailyStatus`, "agora lá: HH:MM · tz") + os 3 comportamentos em texto; preview atualizado ("das X às Y"). **(3) Padrão "＋ ao lado do título" (regra do produto, `v2/add-toggle.ts`):** o campo de digitar condição/recurso fica ESCONDIDO até clicar no ＋ — inclusive pra PRIMEIRA linha —, deixando o workspace limpo. Aplicado no drawer do Design (Entrada/Saída＋/Saída− + bloco Recursos) e nos painéis do Monitoring (Condições e Recursos). **(4) Ajuda no "?":** toda explicação saiu do workspace pro popover "?" separado por tema (`HelpTopic`: Modelo · Entrada · Saída＋ · Saída− · Datas nas condições; um "?" âmbar próprio no bloco Recursos). **(5) Roadmap:** spec detalhada **CL-1…CL-6** (condições AND/OR — grupos DNF, "1 cond OR horário" via token `$TIME`, data model + imutabilidade, gate/Explain/linhas, UI, testes) no §Backlog, pra fechar o tema Condições 100%. **Testes:** suíte Go (db+api+scheduler) + `go vet` + `tsc -b`/`vite build` verdes. **Validado AO VIVO** (server completo :8099, bare repo local, SPA @origin, demo-mode): Schedule com 2 campos + relógio "21:37 · local do server" + preview "das 06:00 às 22:00"; aba Condições com ＋/? nos dois eixos e campos escondidos até clicar (Saída＋ vazia → ＋ revelou "nova condição…"); painel Recursos do Monitoring idem; "?" das condições com as 5 seções. |
 | ✅ | ~~**Recursos/Quotas (F15) CONFIGURÁVEIS por job (aba Condições, separados das condições) + aba Recursos migrada pro Monitoring + Diff/Dry Run/Timeline/What-If migrados pro Control Panel + botão "Run Daily" removido + card WAIT RESOURCE**~~ | **Feito (2026-07-18, report do usuário: "criei o recurso SAP limite 1 no Control Panel mas não consigo escolher QUEM tem o recurso"):** o backend F15 já era completo (`TryAcquire` all-or-nothing, `Release`, `Shortfalls`, gate `WAIT_RESOURCE` no `explain.go`, round-trip do campo `resources`), mas faltava a UI de CONFIGURAÇÃO e a organização estava trocada. **(1) Configurar no job:** o `JobConfigDrawer` (Design → aba **Condições**) ganhou um bloco **RECURSOS / QUOTAS** (moldura âmbar, `ResourcesEditor`) VISUALMENTE separado do pool de condições — nome→quantidade, sugestão via `GET /api/resources` + capacidade/uso atual, hint "sem unidade livre → WAIT RESOURCE (fila); multi-recurso = tudo-ou-nada". `resources` entra no `buildDef()` (já fazia round-trip pelo `ServerApiAdapter`/`code-schema`). **(2) Aba Recursos saiu do Control Panel → Monitoring:** novo `ResourcesPanel.tsx` (irmão do `ConditionsPanel`, botão **Recursos** ao lado de Condições) — lista/ajusta-capacidade/deleta o pool ao vivo (poll 4s, sem WS de recurso). **(3) Diff/Dry Run/Timeline/What-If saíram do Monitoring → Control Panel:** os 4 viraram abas (painéis inline, sem overlay); Timeline/What-If buscam os próprios dados (`getTodayInstances`/`getDefinitions`). **(4) Botão "Run Daily" REMOVIDO:** a daily é automática (`autoDailyIfDue` roda no tick e faz catch-up se o server estava offline na virada); materializar um job criado depois é papel do Force. O `autoDailyIfDue` NÃO foi tocado; o endpoint `POST /api/daily/run` fica (CLI/MCP). **(5) Card WAIT RESOURCE (âmbar):** `schemaV19` congela `resources` na `instances` (padrão M1 — `frozenMonitorCols`/`resourcesJSON`, INSERTs de RunDaily/ForceOrder, `instanceCols`/`scanInstances`/`decodeResources`, backfill one-time `MigrateResourcesSnapshot` meta_flags `monitoring-resources-v19`); `buildMonitoringCanvas` recebe o pool de recursos e deriva `waitResource` na ORDEM dos gates (janela→confirm→cond→agente→recurso: só job já no horário, sem cond/confirm/agente pendente, com shortfall); selo "WAIT RESOURCE" no `JobNodeV2`. **NÃO** mexeu na lógica de condições (pedido explícito). **Testes:** suíte Go inteira (db+api+scheduler) + `tsc -b`/`vite build` verdes. **Validado AO VIVO** (server completo :9191, bare repo local, SPA @origin, `-scheduler=external`): jobs JOB1-SAP/JOB3-SAP com `resources:{SAP:1}` + SAP cap=0 → **ambos WAIT RESOURCE** no card, JOB2-LIVRE (sem recurso) em WAIT; a lista `/api/instances` devolveu `resources:{SAP:1}` congelado (schemaV19); Control Panel com abas Diff/Dry Run/Timeline/What-If renderizando; painel Recursos no Monitoring; toolbar sem Run Daily; drawer do Design com o bloco RECURSOS/QUOTAS (SAP cap 0 · uso 0) acima do pool de condições. |
 | ✅ | ~~**M1 — Imutabilidade TOTAL do Monitoring (Active Jobs File de verdade): label/tipo/linhas/gates/condições congelados na ordem**~~ | **Feito (2026-07-18, report do usuário: "mudei nome/tipo no Design e o Monitoring mudou no F5; criei jobs novos e as condições já apareceram nos cards antigos — o card só deveria mudar se eu FORÇAR").** Contrato = Control-M Active Jobs File: a instance congela TUDO que o card/lista/grafo exibem na hora da ordem; mudança no Design só entra via **Force** (ordem NOVA, as duas convivem — `job0002` + `job0002-b`) ou na **daily seguinte**. O gate de execução JÁ era snapshot (`defForInstance`); faltavam a exibição e o lado produtor das condições. **Entregue por [`docs/monitoring-immutability-plan.md`](monitoring-immutability-plan.md) (E1–E5):** **(E1)** `schemaV18` congela na `instances` `label`/`job_type`/`confirm_req`/`environment`/`pinned_agent`/`conds_in`/`conds_out_add` (JSON com sufixo `@odat/@prev/@stat`; `conds_out_add` = OutAdd ∪ ações set-condition via `producedConds`) — gravados nos INSERTs de RunDaily/ForceOrder (`frozenMonitorCols`) e expostos em `instanceCols`/`scanInstances`; backfill one-time no boot (`MigrateMonitoringSnapshot`, meta_flags `monitoring-snapshot-v18`, `monitorsnapshot.go`) preenche instances existentes do `definition_snapshot`. **(E2)** `applyConditionsOut` virou SNAPSHOT-ONLY — o OK de um job já ordenado NÃO produz condição de consumidor criado DEPOIS; a união snapshot∪def-viva (compat pré-unificação) foi congelada nos snapshots em voo uma vez no upgrade. **(E3)** `buildMonitoringCanvas` 100% instance-driven: as LINHAS derivam do matching `condsOutAdd`×`condsIn` congelados entre instances (nunca mais `def.upstream` viva), `waitConfirm`/`waitAgent`/`isWaitingOnConds` leem os campos congelados (helpers `inst*` em `conditions-model.ts`); a def viva é só fallback de instance legada. **(E4)** o drawer lê a def congelada inteira (`snapshotDef` do `GET /instances/{id}`) nas abas General/Schedule/Condições — revertida a decisão antiga "Schedule/Deps da def viva (design read-only)". **Sharp-edge achado E CORRIGIDO na validação ao vivo:** o fallback de label usava `inst.label !== definitionId` como teste de "vazio" — um label congelado legítimo IGUAL ao id (ex.: `job0002`) caía na def viva e o card mostrava o nome NOVO; fix = `toWeb` deixa label vazio pro legado e o fallback é `inst.label || def.label` nos 3 sites de enriquecimento (canvas-layout, monitoringJobs, drawer) + sidebar windowed. **Testes:** `scheduler/monitorsnapshot_test.go` (rename+tipo congelados após ordenar · Force pós-rename convive, def atual na cópia · consumidor novo → OK do pai antigo NÃO cria a condição, cópia forçada nova cria · daily seguinte pega a def nova · backfill preenche colunas, idempotente); suíte Go inteira + `tsc -b`/`vite build` verdes. **Validado AO VIVO** (server completo :18687, bare repo local, demo-mode): daily de `job0002/COMMAND`; renomeei p/ `job0002-b/SSH` + push + git-sync → **def viva SSH mas a instance/lista/drawer(snapshotDef) seguiram `job0002/COMMAND` c/ `echo pai` antigo**; Force → **duas convivem** no canvas (`job0002/COMMAND` congelada + `job0002-b/SSH` da def atual); criei `job0003` dependendo de `job0002` → **Set OK na daily antiga NÃO criou `JOB0002-TO-JOB0003`** (pool vazio), cópia forçada nova (snapshot já com a saída) **criou**; zero erro de console. |
 | ✅ | ~~**ID do job derivado do Job Name (Opção A) — fim do `command-k3x9z` nas condições da setinha**~~ | **Feito (2026-07-17, report do usuário "a setinha coloca id-TO-id ilegível; quero nome único"):** avaliação primeiro (pedida sem mexer): trocar a CHAVE pro label seria a mecânica errada (label é texto livre e mutável — rename viraria WAIT COND silencioso em tudo que referencia o nome; Control-M separa JOBNAME × DESCRIPTION exatamente como `id` × `label`). O que faltava era o usuário ESCOLHER/VER o id — a UI gerava `jobtype-<timestamp>` escondido (`V2Preview.onDrop`) e ele vazava pros nomes de condição `A-TO-B`. **Entregue (Opção A, `JobConfigDrawer.tsx`):** em job NOVO o **id nasce do Job Name digitado** (slug: minúsculo, sem acento via NFD, não-alfanumérico→hífen) e **segue o nome ao vivo** até o usuário editar o campo ID à mão (`idTouched`); colisão ganha sufixo numérico (`extract`, `extract-2`); campo **ID visível na aba Geral** — editável (com sanitização leve ao digitar) só em NEW, **read-only em job existente** (imutável por design); Save de job novo normaliza o slug final e **barra colisão com erro claro** (o save do server é upsert — id repetido sobrescreveria o job antigo em silêncio). Setinha entre "Extração" e "Load" agora grava `EXTRACAO-TO-LOAD`, legível como no Control-M. **Validado AO VIVO** (server completo em porta alta + bare repo local): "Extração FIN Diária" → id `extracao-fin-diaria` acompanhando a digitação; segundo job com o MESMO nome → `extracao-fin-diaria-2`; Save gravou o working set com o id derivado; job existente com ID travado. `tsc -b && vite build` verdes. |

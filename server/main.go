@@ -317,7 +317,14 @@ func main() {
 	// === Bloco 2 — Control-M parity engines ===
 	calStore := storage.NewCalendarStore(*workspace)
 	sched.AttachCalendars(calStore)
-	sched.AttachResources(scheduler.NewResourceTracker())
+	resTracker := scheduler.NewResourceTracker()
+	// Registry de capacidade DURÁVEL: recarrega o que o operador configurou no
+	// painel Recursos (tabela `resources`) — sem isto, restart zerava as quotas do
+	// ambiente. Antes do RebuildResourcesFromRunning (que só reconstrói o USO).
+	if err := resTracker.LoadFromDB(database); err != nil {
+		log.Printf("[quotas] load do registry falhou: %v", err)
+	}
+	sched.AttachResources(resTracker)
 	sched.AttachConditions(scheduler.NewConditionEngine(database))
 	sched.AttachSLA(scheduler.NewSLAEngine(database, h))
 	alertEngine := scheduler.NewAlertEngine(database, h)
