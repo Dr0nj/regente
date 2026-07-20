@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, X, Trash2, ArrowRight, ArrowLeft, HelpCircle, Plus } from "lucide-react";
 import { addToggleStyle } from "./add-toggle";
-import type { JobDefinition, CalendarRef, ActionRule, DepDateRef } from "@/lib/orchestrator-model";
+import type { JobDefinition, CalendarRef, ActionRule, DepDateRef, ConditionLogic, CondGroup, CondBoolOp } from "@/lib/orchestrator-model";
+import { COND_TIME_TOKEN } from "@/lib/orchestrator-model";
 import { splitCondSuffix, withCondSuffix, producesBase } from "@/lib/conditions-model";
 import type { JobType } from "@/lib/job-config";
 import JobActionConfigEditor from "./JobActionConfigEditor";
@@ -103,6 +104,10 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   const [conditionsIn, setConditionsIn] = useState<string[]>(definition.conditionsIn ?? []);
   const [conditionsOutAdd, setConditionsOutAdd] = useState<string[]>(definition.conditionsOutAdd ?? []);
   const [conditionsOutRemove, setConditionsOutRemove] = useState<string[]>(definition.conditionsOutRemove ?? []);
+  // CL — lógica booleana de ENTRADA (AND/OR). undefined = AND implícito de
+  // conditionsIn (retrocompat). Quando presente, conditionsIn é mantido como a
+  // UNIÃO dos membros (topologia/linhas/snapshot leem conditionsIn).
+  const [conditionLogic, setConditionLogic] = useState<ConditionLogic | undefined>(definition.conditionLogic);
   // F15 — RECURSOS/QUOTAS consumidos pelo job (nome → quantidade). Vive na mesma
   // aba Condições, mas é um eixo DIFERENTE: condição = pré-requisito lógico (pool
   // do ambiente); recurso = limite de concorrência (semáforo). O gate é WAIT
@@ -181,6 +186,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     setDryRun(definition.dryRun ?? false); setConfirmReq(definition.confirm ?? false); setActionConfig(definition.actionConfig ?? {});
     setCalendars(definition.calendars ?? []); setActions(definition.actions ?? []);
     setConditionsIn(definition.conditionsIn ?? []); setConditionsOutAdd(definition.conditionsOutAdd ?? []); setConditionsOutRemove(definition.conditionsOutRemove ?? []);
+    setConditionLogic(definition.conditionLogic);
     setResources(definition.resources ?? {});
     setAgentId(typeof definition.actionConfig?._agentId === "string" ? (definition.actionConfig._agentId as string) : "");
     setAgentTouched(false);
@@ -276,6 +282,9 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
       conditionsIn: conditionsIn.length ? conditionsIn : undefined,
       conditionsOutAdd: conditionsOutAdd.length ? conditionsOutAdd : undefined,
       conditionsOutRemove: conditionsOutRemove.length ? conditionsOutRemove : undefined,
+      // CL — poda grupos vazios ao salvar (espelha o NormalizeConditions do
+      // backend) pra o working-set local não reter grupos fantasma; sem grupo = nil.
+      conditionLogic: pruneConditionLogic(conditionLogic),
       resources: Object.keys(resources).length ? resources : undefined,
     };
   }
@@ -501,7 +510,10 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
             conditionsIn={conditionsIn}
             conditionsOutAdd={conditionsOutAdd}
             conditionsOutRemove={conditionsOutRemove}
+            conditionLogic={conditionLogic}
+            windowFrom={schedule.windowFrom}
             onChangeConditionsIn={touch(setConditionsIn)}
+            onChangeConditionLogic={touch(setConditionLogic)}
             onChangeConditionsOutAdd={touch(setConditionsOutAdd)}
             onChangeConditionsOutRemove={touch(setConditionsOutRemove)}
             knownConditions={knownConditions}
@@ -540,14 +552,17 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
 }
 
 /* ── Aba CONDIÇÕES — o modelo único de dependência ── */
-function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, conditionsOutRemove, onChangeConditionsIn, onChangeConditionsOutAdd, onChangeConditionsOutRemove, knownConditions, resources, onChangeResources, availableResources }: {
+function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, conditionsOutRemove, conditionLogic, windowFrom, onChangeConditionsIn, onChangeConditionLogic, onChangeConditionsOutAdd, onChangeConditionsOutRemove, knownConditions, resources, onChangeResources, availableResources }: {
   self: string;
   triggers: JobDefinition[];
   allDefs: JobDefinition[];
   conditionsIn: string[];
   conditionsOutAdd: string[];
   conditionsOutRemove: string[];
+  conditionLogic?: ConditionLogic;
+  windowFrom?: string;
   onChangeConditionsIn: (v: string[]) => void;
+  onChangeConditionLogic: (v: ConditionLogic | undefined) => void;
   onChangeConditionsOutAdd: (v: string[]) => void;
   onChangeConditionsOutRemove: (v: string[]) => void;
   knownConditions: string[];
@@ -631,6 +646,21 @@ function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, cond
               existirem no pool. <b>Set OK + rerun</b> volta a esperar se a saída− já
               apagou a condição.
             </HelpTopic>
+            <HelpTopic title="AND/OR — lógica de entrada">
+              Por padrão a entrada é um <b>E</b> (todas exigidas). Clique em
+              <b> AND/OR</b> ao lado de “Entrada” para agrupar: cada <b>grupo</b> tem
+              seu operador (<b>E</b>/<b>OU</b>) e os grupos se combinam por um operador
+              de <b>topo</b>. Ex.: <code>(C1 E C2) OU C3</code> roda pelo primeiro ramo
+              que fechar. Uma condição adicionada pela <b>setinha</b> num job com lógica
+              vira <b>requisito E</b> (obrigatória).
+            </HelpTopic>
+            <HelpTopic title="OU horário — fallback temporal">
+              Com <b>uma</b> condição e o <b>“a partir de”</b> (windowFrom) preenchido,
+              aparece o atalho <b>OU rodar no horário</b>: o job roda quando a condição
+              chega <b>OU</b> quando o horário é atingido — o que vier primeiro. Aí o
+              horário deixa de ser um piso e vira o membro <b>⏱ horário</b> da
+              expressão. O <b>“até”</b> (windowTo) segue como teto duro sempre.
+            </HelpTopic>
             <HelpTopic title="Saída ＋ — adiciona ao terminar OK">
               Ao terminar OK (ou Set OK), o job <b>ADICIONA</b> estas condições ao pool
               — é o que libera quem depende delas.
@@ -648,12 +678,13 @@ function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, cond
         </div>
       )}
 
-      <CondChipsEditor
-        title="Entrada — depende de"
-        value={conditionsIn}
-        onChange={onChangeConditionsIn}
+      <EntryConditions
+        conditionsIn={conditionsIn}
+        conditionLogic={conditionLogic}
+        windowFrom={windowFrom}
+        onChangeConditionsIn={onChangeConditionsIn}
+        onChangeConditionLogic={onChangeConditionLogic}
         known={knownConditions}
-        listId="cond-known-in"
         crossRef={(n) => { const p = producersOf(n); return p.length ? `criada por: ${p.join(", ")}` : "ninguém cria esta condição no escopo (operador/painel Condições?)"; }}
       />
       <CondChipsEditor
@@ -814,13 +845,14 @@ function ResourcesEditor({ resources, onChange, available }: {
 // linha edita o sufixo sem o usuário digitar arroba (helpers em
 // lib/conditions-model — os MESMOS do canvas e da normalização).
 
-function CondChipsEditor({ title, value, onChange, known, listId, crossRef }: {
+function CondChipsEditor({ title, value, onChange, known, listId, crossRef, headerExtra }: {
   title: string;
   value: string[];
   onChange: (v: string[]) => void;
   known: string[];
   listId: string;
   crossRef?: (name: string) => string | undefined;
+  headerExtra?: React.ReactNode;
 }) {
   const [draft, setDraft] = useState("");
   // Padrão "+ ao lado do título" (regra do produto): o campo de digitar fica
@@ -851,6 +883,7 @@ function CondChipsEditor({ title, value, onChange, known, listId, crossRef }: {
         <button onClick={() => setAdding((v) => !v)} title={adding ? "Fechar" : "Adicionar condição"} style={addToggleStyle(adding)}>
           {adding ? <X size={12} /> : <Plus size={12} />}
         </button>
+        {headerExtra}
       </div>
       {value.map((n) => {
         const ref = crossRef?.(n);
@@ -896,6 +929,233 @@ function CondChipsEditor({ title, value, onChange, known, listId, crossRef }: {
             {suggestions.map((k) => <option key={k} value={k} />)}
           </datalist>
           <button onClick={add} disabled={!draft.trim()} title="Adicionar" style={{ ...btnStyle, borderColor: draft.trim() ? "var(--v2-accent-brand)" : "var(--v2-border-medium)", color: draft.trim() ? "var(--v2-accent-brand)" : "var(--v2-text-muted)" }}>＋</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Entrada com lógica AND/OR (CL) ── Progressivo: por padrão a entrada é uma
+   lista plana (AND implícito, igual antes). O toggle "AND/OR" revela o editor de
+   GRUPOS — cada grupo com seu operador (E/OU) + um operador de TOPO entre grupos
+   (forma DNF, espelha domain.ConditionLogic). A UI mantém `conditionsIn` = UNIÃO
+   dos membros (topologia/linhas/snapshot leem conditionsIn); `conditionLogic` só
+   existe no modo avançado. Uma condição vinda de fora (setinha) que não está em
+   nenhum grupo é preservada e o backend a trata como requisito AND avulso. */
+const AND_OR_ACCENT = "var(--v2-accent-brand)";
+// pruneConditionLogic — remove grupos vazios; sem grupo restante vira undefined
+// (AND implícito). Espelha o NormalizeConditions do backend pra o save do front
+// não reter grupos fantasma. Usado no buildDef (momento do save, não da edição:
+// durante a edição um grupo recém-criado fica vazio de propósito).
+function pruneConditionLogic(l?: ConditionLogic): ConditionLogic | undefined {
+  if (!l) return undefined;
+  const groups = l.groups.filter((g) => g.members.length > 0);
+  return groups.length ? { op: l.op, groups } : undefined;
+}
+function EntryConditions({ conditionsIn, conditionLogic, windowFrom, onChangeConditionsIn, onChangeConditionLogic, known, crossRef }: {
+  conditionsIn: string[];
+  conditionLogic?: ConditionLogic;
+  windowFrom?: string;
+  onChangeConditionsIn: (v: string[]) => void;
+  onChangeConditionLogic: (v: ConditionLogic | undefined) => void;
+  known: string[];
+  crossRef?: (name: string) => string | undefined;
+}) {
+  const advanced = !!conditionLogic;
+  // Ligar o avançado: semeia um grupo AND com as condições atuais (ou vazio).
+  const enable = () => onChangeConditionLogic({ op: "AND", groups: [{ op: "AND", members: [...conditionsIn] }] });
+  // Desligar: some a lógica; conditionsIn permanece como lista plana (AND).
+  const disable = () => onChangeConditionLogic(undefined);
+  // editLogic — recomputa conditionsIn = avulsos (fora da lógica anterior) ∪ novos
+  // membros; nunca perde uma condição adicionada por fora (setinha). O token
+  // $TIME NÃO é condição do pool → nunca entra em conditionsIn.
+  const editLogic = (next: ConditionLogic) => {
+    const oldMembers = new Set((conditionLogic?.groups ?? []).flatMap((g) => g.members));
+    const loose = conditionsIn.filter((n) => !oldMembers.has(n));
+    const newMembers = next.groups.flatMap((g) => g.members).filter((m) => m !== COND_TIME_TOKEN);
+    onChangeConditionsIn([...new Set([...loose, ...newMembers])]);
+    onChangeConditionLogic(next);
+  };
+  // CL-2 — fallback temporal: com UMA condição e "a partir de" preenchido, roda
+  // pela condição OU pelo horário (o que vier primeiro). Cria a DNF (C1) OU ($TIME).
+  const enableTimeFallback = () => onChangeConditionLogic({
+    op: "OR", groups: [{ op: "AND", members: [conditionsIn[0]] }, { op: "AND", members: [COND_TIME_TOKEN] }],
+  });
+  const advToggle = (
+    <button onClick={advanced ? disable : enable}
+      title={advanced ? "Voltar para lista simples (E)" : "Agrupar com lógica AND/OR"}
+      style={{ marginLeft: "auto", fontSize: 8.5, letterSpacing: "0.06em", fontWeight: 700, padding: "2px 7px", borderRadius: 10, cursor: "pointer",
+        background: advanced ? "var(--v2-accent-deep)" : "transparent",
+        border: `1px solid ${advanced ? AND_OR_ACCENT : "var(--v2-border-medium)"}`,
+        color: advanced ? AND_OR_ACCENT : "var(--v2-text-muted)" }}>
+      AND/OR
+    </button>
+  );
+  if (!advanced) {
+    return (
+      <div>
+        <CondChipsEditor title="Entrada — depende de" value={conditionsIn} onChange={onChangeConditionsIn}
+          known={known} listId="cond-known-in" crossRef={crossRef} headerExtra={advToggle} />
+        {/* Atalho CL-2: só oferecido com UMA condição e windowFrom preenchido. */}
+        {conditionsIn.length === 1 && windowFrom && (
+          <button onClick={enableTimeFallback}
+            title={`Roda quando a condição chega OU às ${windowFrom} — o que vier primeiro`}
+            style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left",
+              background: "transparent", border: "1px dashed var(--v2-border-medium)", borderRadius: 4, padding: "5px 8px",
+              color: "var(--v2-text-muted)", cursor: "pointer", fontSize: 10 }}>
+            <Plus size={11} /> <span>OU rodar no horário (a partir de <b>{windowFrom}</b>) — o que vier primeiro</span>
+          </button>
+        )}
+      </div>
+    );
+  }
+  return <GroupedLogicEditor logic={conditionLogic!} onChange={editLogic} onDisable={disable} known={known} crossRef={crossRef} windowFrom={windowFrom} />;
+}
+
+// OpToggle — chave E/OU (pill de dois botões), usada no topo e por grupo.
+function OpToggle({ value, onChange, title }: { value: CondBoolOp; onChange: (op: CondBoolOp) => void; title?: string }) {
+  return (
+    <div title={title} style={{ display: "inline-flex", border: "1px solid var(--v2-border-medium)", borderRadius: 10, overflow: "hidden" }}>
+      {(["AND", "OR"] as CondBoolOp[]).map((op) => (
+        <button key={op} onClick={() => onChange(op)}
+          style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.06em", padding: "2px 8px", cursor: "pointer", border: "none",
+            background: value === op ? "var(--v2-accent-deep)" : "transparent",
+            color: value === op ? AND_OR_ACCENT : "var(--v2-text-muted)" }}>
+          {op === "AND" ? "E" : "OU"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function GroupedLogicEditor({ logic, onChange, onDisable, known, crossRef, windowFrom }: {
+  logic: ConditionLogic;
+  onChange: (v: ConditionLogic) => void;
+  onDisable: () => void;
+  known: string[];
+  crossRef?: (name: string) => string | undefined;
+  windowFrom?: string;
+}) {
+  const setGroups = (groups: CondGroup[]) => onChange({ ...logic, groups });
+  const patchGroup = (gi: number, patch: Partial<CondGroup>) => setGroups(logic.groups.map((g, i) => (i === gi ? { ...g, ...patch } : g)));
+  const addGroup = () => setGroups([...logic.groups, { op: "AND", members: [] }]);
+  const removeGroup = (gi: number) => setGroups(logic.groups.filter((_, i) => i !== gi));
+  const addMember = (gi: number, name: string) => {
+    const g = logic.groups[gi];
+    if (!name || g.members.includes(name)) return;
+    patchGroup(gi, { members: [...g.members, name] });
+  };
+  const removeMember = (gi: number, name: string) => patchGroup(gi, { members: logic.groups[gi].members.filter((m) => m !== name) });
+  const setMemberRef = (gi: number, name: string, ref: DepDateRef) => {
+    const next = withCondSuffix(splitCondSuffix(name).base, ref);
+    const g = logic.groups[gi];
+    if (next === name) return;
+    patchGroup(gi, { members: g.members.includes(next) ? g.members.filter((m) => m !== name) : g.members.map((m) => (m === name ? next : m)) });
+  };
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <span style={{ fontSize: 10, fontWeight: 600, color: "var(--v2-text-secondary)" }}>Entrada — lógica AND/OR</span>
+        {logic.groups.length > 1 && <OpToggle value={logic.op} onChange={(op) => onChange({ ...logic, op })} title="Operador ENTRE os grupos" />}
+        <button onClick={onDisable} title="Voltar para lista simples (E)"
+          style={{ marginLeft: "auto", fontSize: 8.5, letterSpacing: "0.06em", fontWeight: 700, padding: "2px 7px", borderRadius: 10, cursor: "pointer",
+            background: "var(--v2-accent-deep)", border: `1px solid ${AND_OR_ACCENT}`, color: AND_OR_ACCENT }}>
+          AND/OR
+        </button>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {logic.groups.map((g, gi) => (
+          <div key={gi}>
+            {gi > 0 && (
+              <div style={{ textAlign: "center", fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", color: AND_OR_ACCENT, margin: "2px 0" }}>
+                {logic.op === "OR" ? "OU" : "E"}
+              </div>
+            )}
+            <GroupBox index={gi} group={g} canRemove={logic.groups.length > 1} windowFrom={windowFrom}
+              onSetOp={(op) => patchGroup(gi, { op })} onRemove={() => removeGroup(gi)}
+              onAddMember={(n) => addMember(gi, n)} onRemoveMember={(n) => removeMember(gi, n)}
+              onSetMemberRef={(n, ref) => setMemberRef(gi, n, ref)} known={known} crossRef={crossRef} />
+          </div>
+        ))}
+      </div>
+      <button onClick={addGroup} style={{ ...btnStyle, marginTop: 8, borderColor: AND_OR_ACCENT, color: AND_OR_ACCENT }}>＋ grupo</button>
+    </div>
+  );
+}
+
+function GroupBox({ index, group, canRemove, windowFrom, onSetOp, onRemove, onAddMember, onRemoveMember, onSetMemberRef, known, crossRef }: {
+  index: number;
+  group: CondGroup;
+  canRemove: boolean;
+  windowFrom?: string;
+  onSetOp: (op: CondBoolOp) => void;
+  onRemove: () => void;
+  onAddMember: (name: string) => void;
+  onRemoveMember: (name: string) => void;
+  onSetMemberRef: (name: string, ref: DepDateRef) => void;
+  known: string[];
+  crossRef?: (name: string) => string | undefined;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState("");
+  const listId = `cond-grp-${index}`;
+  const add = () => { const n = draft.trim(); setDraft(""); if (n) onAddMember(n); };
+  const suggestions = known.filter((k) => !group.members.includes(k));
+  const hasTime = group.members.includes(COND_TIME_TOKEN);
+  return (
+    <div style={{ border: "1px solid var(--v2-border-subtle)", borderRadius: 6, padding: "8px 10px", background: "var(--v2-bg-canvas)", display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--v2-text-muted)", fontWeight: 700 }}>Grupo {index + 1}</span>
+        {group.members.length > 1 && <OpToggle value={group.op} onChange={onSetOp} title="Operador DENTRO do grupo" />}
+        {/* CL-2 — adicionar o token de horário ($TIME) ao grupo; só com windowFrom. */}
+        {windowFrom && !hasTime && (
+          <button onClick={() => onAddMember(COND_TIME_TOKEN)} title={`Adicionar o horário (a partir de ${windowFrom}) como membro`}
+            style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.04em", padding: "2px 6px", borderRadius: 8, cursor: "pointer",
+              background: "transparent", border: "1px solid var(--v2-border-medium)", color: "var(--v2-text-muted)" }}>
+            ＋ horário
+          </button>
+        )}
+        <button onClick={() => setAdding((v) => !v)} title={adding ? "Fechar" : "Adicionar condição ao grupo"} style={{ ...addToggleStyle(adding), marginLeft: windowFrom && !hasTime ? 0 : "auto" }}>
+          {adding ? <X size={12} /> : <Plus size={12} />}
+        </button>
+        {canRemove && <button onClick={onRemove} title="Remover grupo" style={iconBtn}><Trash2 size={12} /></button>}
+      </div>
+      {group.members.length === 0 && !adding && <Hint>Grupo vazio — clique no ＋ para adicionar.</Hint>}
+      {group.members.map((n) => {
+        // Token de horário ($TIME): membro especial, sem seletor de data.
+        if (n === COND_TIME_TOKEN) {
+          return (
+            <div key={n} style={{ ...depRow, marginBottom: 0, borderColor: `${AND_OR_ACCENT}` }}>
+              <span style={{ flex: 1, fontSize: 12, color: AND_OR_ACCENT, fontWeight: 600 }}>⏱ horário{windowFrom ? ` (a partir de ${windowFrom})` : ""}</span>
+              <button onClick={() => onRemoveMember(n)} style={iconBtn} title="Remover"><Trash2 size={12} /></button>
+            </div>
+          );
+        }
+        const { base, ref } = splitCondSuffix(n);
+        const xref = crossRef?.(n);
+        return (
+          <div key={n} style={{ ...depRow, flexDirection: "column", alignItems: "stretch", gap: 2, marginBottom: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}>{base}</span>
+              <select value={ref} onChange={(e) => onSetMemberRef(n, e.target.value as DepDateRef)} title="Diária referenciada (Stat = permanente)" style={{ ...selectStyle, width: 72, padding: "2px 4px", fontSize: 9 }}>
+                <option value="odat">Odate</option>
+                <option value="prev">Prev</option>
+                <option value="stat">Stat</option>
+              </select>
+              <button onClick={() => onRemoveMember(n)} style={iconBtn} title="Remover"><Trash2 size={12} /></button>
+            </div>
+            {xref && <div style={{ fontSize: 9.5, color: "var(--v2-text-muted)" }}>{xref}</div>}
+          </div>
+        );
+      })}
+      {adding && (
+        <div style={{ display: "flex", gap: 6 }}>
+          <input autoFocus value={draft} list={listId} placeholder="condição… (ex.: ARQUIVO-CHEGOU)"
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } else if (e.key === "Escape") { setDraft(""); setAdding(false); } }}
+            style={{ flex: 1, background: "var(--v2-bg-elevated)", border: "1px dashed var(--v2-border-medium)", color: "var(--v2-text-primary)", padding: "5px 8px", fontSize: 11, fontFamily: "var(--v2-font-mono)", borderRadius: 3, outline: "none", boxSizing: "border-box" }} />
+          <datalist id={listId}>{suggestions.map((k) => <option key={k} value={k} />)}</datalist>
+          <button onClick={add} disabled={!draft.trim()} style={{ ...btnStyle, borderColor: draft.trim() ? AND_OR_ACCENT : "var(--v2-border-medium)", color: draft.trim() ? AND_OR_ACCENT : "var(--v2-text-muted)" }}>＋</button>
         </div>
       )}
     </div>

@@ -170,6 +170,11 @@ export interface JobDefinition {
   conditionsOutAdd?: string[];
   /** F16 — conditions OUT removidas quando o job termina OK. */
   conditionsOutRemove?: string[];
+  /** CL — lógica booleana de ENTRADA (AND/OR, forma DNF). Opcional: ausente =
+   *  AND implícito de `conditionsIn` (retrocompat). Presente = a expressão que o
+   *  gate do server avalia; seus membros também constam em `conditionsIn` (a
+   *  união — mantém topologia/linhas/snapshot). Congelada na ordem (M1). */
+  conditionLogic?: ConditionLogic;
   /** F18 — variáveis locais do job (escopo definition, mapa nome→valor),
    *  interpoláveis nos params. Distinto de `variables` (array snapshotado na
    *  instance): esta é a config viva do desenho. */
@@ -179,6 +184,28 @@ export interface JobDefinition {
   /** F17 — sub-workflow: folder que precisa terminar OK antes deste job. */
   subWorkflow?: { folder: string; variables?: Record<string, string> };
 }
+
+/**
+ * CL — lógica booleana de ENTRADA (AND/OR em forma DNF, espelha
+ * domain.ConditionLogic). `op` combina os GRUPOS (topo); cada grupo combina
+ * seus membros pelo `CondGroup.op`. Avaliação: op( group.op(member ∈ pool?) ).
+ *   (C1 AND C2) OR C3  →  { op:"OR",  groups:[{op:"AND",members:[C1,C2]},{op:"AND",members:[C3]}] }
+ *   (C1 OR C2) AND C3  →  { op:"AND", groups:[{op:"OR",members:[C1,C2]},{op:"AND",members:[C3]}] }
+ * Membros carregam o sufixo de data (@odat/@prev/@stat) como em conditionsIn.
+ */
+export interface ConditionLogic {
+  op: CondBoolOp;
+  groups: CondGroup[];
+}
+export interface CondGroup {
+  op: CondBoolOp;
+  members: string[];
+}
+export type CondBoolOp = "AND" | "OR";
+/** Membro RESERVADO da lógica: satisfeito quando o "a partir de" (windowFrom) é
+ *  atingido. Base do fallback temporal "condição OU horário" (CL-2). NÃO entra em
+ *  conditionsIn (não é condição do pool). Espelha domain.CondTokenTime. */
+export const COND_TIME_TOKEN = "$TIME";
 
 /**
  * ActionRule — uma regra "On <gatilho> Do <ação>" (Control-M On/Do).
@@ -299,6 +326,9 @@ export interface JobInstance {
    *  Entrada do card WAIT RESOURCE; mudar os recursos do job no Design não
    *  reescreve ordens já materializadas. */
   resources?: Record<string, number>;
+  /** CL (server schemaV21) — lógica AND/OR CONGELADA na ordem. Entrada das LINHAS
+   *  OR do grafo do Monitoring (CL-4); nil = linhas AND. Imutável como o resto. */
+  condLogic?: ConditionLogic;
 }
 
 /* ── Order Date Helper ── */
@@ -345,6 +375,7 @@ export function createInstance(
     condsIn: def.conditionsIn,
     condsOutAdd: def.conditionsOutAdd,
     resources: def.resources,
+    condLogic: def.conditionLogic,
   };
 }
 

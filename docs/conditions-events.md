@@ -116,6 +116,86 @@ tipo de condição imutável"*.
 **C7 — JSON nunca null.** Toda lista da API (`blockers` do Explain, etc.)
 serializa `[]`, nunca `null` (slice nil derruba o front).
 
+## Lógica booleana de entrada — AND/OR (CL)
+
+> **Status: TEMA FECHADO — CL-1…CL-6 entregues e validados. CL-1 (avaliador DNF),
+> CL-2 (fallback `$TIME` + desacople do piso `windowFrom` + toggle na UI), CL-3
+> (data model + imutabilidade), CL-4 (gate + Explain OR-aware + LINHAS OR do
+> canvas), CL-5 (editor de grupos no drawer), CL-6 (bateria + docs + validação ao
+> vivo).**
+> Validação ao vivo (2026-07-20, servidor git-backed): construir `(A) OU (B)` no
+> drawer persiste `conditionLogic` no YAML via round-trip completo (`conditionsIn`
+> = união dos membros, `conditionsOutAdd` preservado, reabre limpo); e a **linha OR
+> do canvas do Design** renderiza pontilhada com rótulo **"OU"** (baseline AND era
+> tracejado sem rótulo). O visual OR do **Monitoring** usa o MESMO `makeEdge`/
+> `condIsAlternative` a partir da coluna congelada `cond_logic` (schemaV21) —
+> coberto por `TestList_SerializesCondLogic` e pelo código compartilhado.
+> A UI é a aba **Condições** do drawer (Design): a entrada é lista plana (AND) por
+> padrão e o toggle **AND/OR** revela o editor de GRUPOS (cada grupo com E/OU +
+> operador de topo). A UI mantém `conditionsIn` = união dos membros;
+> `conditionLogic` só existe no modo avançado.
+
+A entrada de um job deixou de ser SÓ um AND implícito de `conditionsIn`: ganhou
+um campo **opcional** `conditionLogic` — uma expressão booleana em **forma DNF**
+(disjunção de conjunções, dois níveis, cada nível com seu operador):
+
+```
+conditionLogic:
+  op: OR                      # operador de TOPO entre os grupos
+  groups:
+    - { op: AND, members: [C1, C2] }
+    - { op: AND, members: [C3] }
+```
+
+- **Modelo canônico:** `topOp( grupoOp(membro ∈ pool?) for grupo in groups )`.
+  - `(C1 AND C2) OR C3` → `op:OR, groups:[{AND,[C1,C2]},{AND,[C3]}]`.
+  - `(C1 OR C2) AND C3` → `op:AND, groups:[{OR,[C1,C2]},{AND,[C3]}]`.
+- **Semântica do OR:** o **primeiro ramo que chega satisfaz e dispara** — assim
+  que QUALQUER grupo fica verdadeiro, o job roda (não espera os demais).
+- **Membros** carregam o sufixo de data `@odat/@prev/@stat` como sempre. O token
+  reservado **`$TIME`** é satisfeito quando `now >= scheduledAt` (mesmo relógio
+  do gate de janela) — é a base do fallback temporal "condição OU horário"
+  (CL-2); o gate já o avalia, mas o desacoplamento do piso `windowFrom` é CL-2.
+- **Retrocompat (C1 continua valendo):** `conditionLogic` ausente/nil = **UM
+  grupo AND** sobre `conditionsIn` — o gate antigo, byte a byte (um blocker por
+  condição faltante). Com lógica, o gate bloqueia só se **NENHUM ramo é
+  satisfazível** e emite UM blocker com a expressão (`RenderExpr`, ex.:
+  "aguardando (C1 E C2) OU C3 — nenhum ramo satisfeito"); o Explain mostra o
+  mesmo texto.
+- **Invariante membros ⊆ `conditionsIn`:** todo membro não-`$TIME` também consta
+  em `conditionsIn` (garantido por `NormalizeConditions` no chokepoint de
+  leitura). Assim topologia (`upstream` derivado), linhas do Monitoring e a
+  coluna congelada `conds_in` seguem lendo `conditionsIn` **sem saber da
+  lógica** — só a AVALIAÇÃO do gate usa `conditionLogic`.
+- **Membros AVULSOS = requisito AND:** um nome de `conditionsIn` que NÃO está em
+  nenhum grupo da lógica é ANDado com a expressão inteira
+  (`satisfeito = topOp(grupos) E todos-os-avulsos`). É o que faz a **setinha**
+  "just work" num job com lógica: ela adiciona a condição simples em
+  `conditionsIn` e ela vira obrigatória, sem precisar dobrar a aresta dentro de
+  um OR ambíguo. A UI preserva os avulsos ao editar os grupos.
+- **Imutabilidade M1:** `conditionLogic` é congelada no `definition_snapshot`
+  como o resto da def (o gate lê via `defForInstance`); mudar a lógica na def
+  viva NÃO relaxa uma instance já ordenada. O card/Explain leem a lógica
+  CONGELADA. Ver [[regente-monitoring-immutable-snapshot]].
+- **Linhas OR do canvas (CL-4):** uma aresta P→C é "alternativa" (OU) quando a
+  condição que a liga é membro de um grupo OR na lógica do consumidor
+  (`condIsAlternative` em `lib/conditions-model.ts`) — renderizada pontilhada +
+  rótulo "OU" (`makeEdge(...,alt)` em `v2/canvas-layout.ts`). No **Design** vem da
+  def viva (`buildDesignCanvas`); no **Monitoring** vem da coluna CONGELADA
+  `cond_logic` (schemaV21) — `frozenMonitorCols`/`MigrateCondLogicSnapshot`/
+  `instanceRow.CondLogic`/`JobInstance.condLogic` (imutável, nunca a def viva).
+  A setinha sempre cria AND (linha sólida).
+- **Código:** tipos + avaliador puro em `domain/conditions.go`
+  (`ConditionLogic`, `CondGroup`, `EvalConditionLogic`, `RenderExpr`,
+  `looseMembers`, `UsesTimeToken`); wiring do gate em `scheduler/explain.go`
+  (`gateInstance`, `$TIME` desacopla o piso de janela). Front: tipos em
+  `lib/orchestrator-model.ts`, round-trip em
+  `lib/adapters/storage/ServerApiAdapter.ts`, editor (`EntryConditions`,
+  `GroupedLogicEditor`, `GroupBox`, `OpToggle`) em `v2/JobConfigDrawer.tsx`.
+  Testes: `domain/conditionlogic_test.go` (avaliador puro/DNF/`$TIME`/avulsos/
+  normalização), `scheduler/condlogic_gate_test.go` (gate+Explain+`$TIME`+
+  imutabilidade) e `api/bugs_behavior_test.go::TestList_SerializesCondLogic`.
+
 ## `upstream[]` — legado e visão derivada
 
 O campo `upstream` NÃO é mais gate nem é persistido:

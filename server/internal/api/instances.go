@@ -64,6 +64,9 @@ type instanceRow struct {
 	// F15 (schemaV19) — recursos/quotas congelados na ordem (nome→qtd). Entrada
 	// do card WAIT RESOURCE; mesmo dado que o gate F15 lê do snapshot.
 	Resources map[string]int `json:"resources,omitempty"`
+	// CL (schemaV21) — lógica AND/OR congelada na ordem. Entrada das LINHAS OR do
+	// grafo (CL-4); nil = sem lógica (linhas AND). Mesma foto que o gate avalia.
+	CondLogic *domain.ConditionLogic `json:"condLogic,omitempty"`
 }
 
 const instanceCols = `id, definition_id, COALESCE(team,''), order_date, status, scheduled_at,
@@ -73,7 +76,7 @@ const instanceCols = `id, definition_id, COALESCE(team,''), order_date, status, 
 	COALESCE(hold_scope,''), COALESCE(held_from_status,''),
 	COALESCE(label,''), COALESCE(job_type,''), COALESCE(confirm_req,0),
 	COALESCE(environment,''), COALESCE(pinned_agent,''), COALESCE(conds_in,''), COALESCE(conds_out_add,''),
-	COALESCE(resources,'')`
+	COALESCE(resources,''), COALESCE(cond_logic,'')`
 
 // scanInstances materializa as linhas. CRÍTICO: propaga rows.Err() e qualquer
 // erro de Scan em vez de engolir e devolver lista PARCIAL. Um erro de leitura no
@@ -87,14 +90,14 @@ func scanInstances(rows *sql.Rows) ([]instanceRow, error) {
 		var ir instanceRow
 		var startedAt, finishedAt sql.NullTime
 		var forcedInt, confirmedInt, dryRunInt, confirmReqInt int
-		var condsIn, condsOutAdd, resources string
+		var condsIn, condsOutAdd, resources, condLogic string
 		if err := rows.Scan(
 			&ir.ID, &ir.DefinitionID, &ir.Team, &ir.OrderDate, &ir.Status, &ir.ScheduledAt,
 			&startedAt, &finishedAt,
 			&ir.AgentID, &ir.ExitCode, &ir.Output, &forcedInt, &ir.ForceMode,
 			&ir.CarriedFrom, &confirmedInt, &ir.CycleRuns, &dryRunInt, &ir.HoldScope, &ir.HeldFromStatus,
 			&ir.Label, &ir.JobType, &confirmReqInt,
-			&ir.Environment, &ir.PinnedAgent, &condsIn, &condsOutAdd, &resources,
+			&ir.Environment, &ir.PinnedAgent, &condsIn, &condsOutAdd, &resources, &condLogic,
 		); err != nil {
 			return nil, err
 		}
@@ -113,6 +116,7 @@ func scanInstances(rows *sql.Rows) ([]instanceRow, error) {
 		ir.CondsIn = decodeConds(condsIn)
 		ir.CondsOutAdd = decodeConds(condsOutAdd)
 		ir.Resources = decodeResources(resources)
+		ir.CondLogic = decodeCondLogic(condLogic)
 		out = append(out, ir)
 	}
 	return out, rows.Err()
@@ -142,6 +146,20 @@ func decodeResources(raw string) map[string]int {
 		return nil
 	}
 	return m
+}
+
+// decodeCondLogic — coluna cond_logic ('' ou JSON do domain.ConditionLogic) →
+// *ConditionLogic (nil quando vazio/sem grupos; o omitempty esconde). Entrada das
+// linhas OR do grafo (CL-4). Conteúdo inválido é tratado como sem lógica.
+func decodeCondLogic(raw string) *domain.ConditionLogic {
+	if raw == "" {
+		return nil
+	}
+	var l domain.ConditionLogic
+	if json.Unmarshal([]byte(raw), &l) != nil || len(l.Groups) == 0 {
+		return nil
+	}
+	return &l
 }
 
 // instanceQuery — P2/escala: filtros server-side de /api/instances*. Tudo opcional

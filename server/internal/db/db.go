@@ -490,6 +490,7 @@ var sqliteMigrations = []migration{
 	{version: 18, sql: schemaV18()},
 	{version: 19, sql: schemaV19()},
 	{version: 20, sql: schemaV20()},
+	{version: 21, sql: schemaV21()},
 }
 
 var pgMigrations = []migration{
@@ -513,6 +514,18 @@ var pgMigrations = []migration{
 	{version: 18, sql: schemaV18()},
 	{version: 19, sql: schemaV19()},
 	{version: 20, sql: schemaV20()},
+	{version: 21, sql: schemaV21()},
+}
+
+// schemaV21 — lógica booleana de entrada (CL) CONGELADA na instance (2026-07-20).
+// Mesmo racional dos campos M1 (v18): as LINHAS do Monitoring distinguem membros
+// de grupos OR (CL-4) a partir do que a ORDEM tinha, não da def viva. JSON do
+// domain.ConditionLogic; '' = sem lógica (AND implícito de conds_in). O gate já lê
+// a lógica do definition_snapshot (defForInstance); esta coluna só PROMOVE o dado
+// pra lista sem parsear o snapshot por linha. Backfill em Go via meta_flags (v21).
+// ALTER idêntico nos dois dialetos; instances antigas ficam com '' (linhas AND).
+func schemaV21() string {
+	return `ALTER TABLE instances ADD COLUMN cond_logic TEXT NOT NULL DEFAULT ''`
 }
 
 // schemaV3 — ciclo de vida do alerta: como o evento foi tratado pelo operador.

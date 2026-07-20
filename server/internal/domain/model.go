@@ -166,6 +166,16 @@ type JobDefinition struct {
 	ConditionsOutAdd    []string `yaml:"conditionsOutAdd,omitempty" json:"conditionsOutAdd,omitempty"`
 	ConditionsOutRemove []string `yaml:"conditionsOutRemove,omitempty" json:"conditionsOutRemove,omitempty"`
 
+	// CL — lógica booleana de ENTRADA (AND/OR em forma DNF; ver domain/conditions.go
+	// e docs/conditions-events.md). OPCIONAL: quando nil, `ConditionsIn` é um AND
+	// implícito de TODOS os nomes (retrocompat total — nada muda). Quando presente,
+	// É a expressão que o gate avalia; seus membros não-`$TIME` devem também constar
+	// em `ConditionsIn` (mantém topologia/linhas/coluna congelada `conds_in`
+	// intactas — NormalizeConditions garante o superconjunto). Congelada no
+	// definition_snapshot como o resto da def (imutabilidade M1) — o card do
+	// Monitoring e o Explain leem a lógica CONGELADA, nunca a def viva.
+	ConditionLogic *ConditionLogic `yaml:"conditionLogic,omitempty" json:"conditionLogic,omitempty"`
+
 	// F17: Sub-workflow — referencia outro folder/team que precisa terminar OK.
 	SubWorkflow *SubWorkflowRef `yaml:"subWorkflow,omitempty" json:"subWorkflow,omitempty"`
 

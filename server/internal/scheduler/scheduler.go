@@ -978,7 +978,7 @@ func (s *Scheduler) insertDailyChunk(date, commitSHA string, chunk []pendingInst
 		return 0
 	}
 	insStmt, err := tx.Prepare(`INSERT INTO instances(id, definition_id, team, order_date, status, scheduled_at, definition_commit_sha, definition_snapshot, dry_run,
-		label, job_type, confirm_req, environment, pinned_agent, conds_in, conds_out_add, resources) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+		label, job_type, confirm_req, environment, pinned_agent, conds_in, conds_out_add, resources, cond_logic) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		_ = tx.Rollback()
 		log.Printf("[scheduler] daily %s: prepare insert: %v", date, err)
@@ -996,7 +996,7 @@ func (s *Scheduler) insertDailyChunk(date, commitSHA string, chunk []pendingInst
 	created := 0
 	for _, p := range chunk {
 		if _, err := insStmt.Exec(p.id, p.defID, p.team, date, string(domain.StatusWaiting), p.scheduledAt, commitSHA, p.snapshot, boolToInt(p.dryRun),
-			p.mcols.label, p.mcols.jobType, p.mcols.confirmReq, p.mcols.environment, p.mcols.pinned, p.mcols.condsIn, p.mcols.condsOutAdd, p.mcols.resources); err != nil {
+			p.mcols.label, p.mcols.jobType, p.mcols.confirmReq, p.mcols.environment, p.mcols.pinned, p.mcols.condsIn, p.mcols.condsOutAdd, p.mcols.resources, p.mcols.condLogic); err != nil {
 			log.Printf("[scheduler] insert %s: %v", p.id, err)
 			continue
 		}
@@ -1764,9 +1764,9 @@ func (s *Scheduler) ForceOrder(defID string) (string, error) {
 	_, err := s.db.Exec(
 		// dry_run + colunas M1 congelados da def NO MOMENTO do force (imutável depois).
 		`INSERT INTO instances(id, definition_id, team, order_date, status, scheduled_at, forced, force_mode, definition_commit_sha, definition_snapshot, dry_run,
-			label, job_type, confirm_req, environment, pinned_agent, conds_in, conds_out_add, resources) VALUES(?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			label, job_type, confirm_req, environment, pinned_agent, conds_in, conds_out_add, resources, cond_logic) VALUES(?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		id, defID, def.Team, today, string(domain.StatusWaiting), now, ForceModeOrder, commitSHA, string(snap), boolToInt(def.DryRun),
-		mc.label, mc.jobType, mc.confirmReq, mc.environment, mc.pinned, mc.condsIn, mc.condsOutAdd, mc.resources,
+		mc.label, mc.jobType, mc.confirmReq, mc.environment, mc.pinned, mc.condsIn, mc.condsOutAdd, mc.resources, mc.condLogic,
 	)
 	if err != nil {
 		return "", err

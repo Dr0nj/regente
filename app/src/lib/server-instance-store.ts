@@ -8,7 +8,7 @@
  * Ativado via `runtime-bridge` quando `VITE_REGENTE_SERVER_URL` está setado.
  */
 
-import type { JobDefinition, JobInstance, InstanceStatus } from "@/lib/orchestrator-model";
+import type { JobDefinition, JobInstance, InstanceStatus, ConditionLogic } from "@/lib/orchestrator-model";
 import { todayOrderDate } from "@/lib/orchestrator-model";
 import { api, onServerEvent } from "@/lib/server-client";
 
@@ -47,6 +47,7 @@ interface ServerInstance {
   condsIn?: string[];
   condsOutAdd?: string[];
   resources?: Record<string, number>; // F15 (schemaV19) — entrada do WAIT RESOURCE.
+  condLogic?: ConditionLogic; // CL (schemaV21) — lógica AND/OR congelada; linhas OR (CL-4).
   // Só no DETALHE (GET /api/instances/{id}) — a lista não a carrega (payload
   // de escala): a action CONGELADA NA ORDEM, vinda da definition_snapshot.
   actionConfig?: Record<string, unknown>;
@@ -91,6 +92,7 @@ function toWeb(s: ServerInstance): JobInstance {
     condsIn: s.condsIn,
     condsOutAdd: s.condsOutAdd,
     resources: s.resources,
+    condLogic: s.condLogic,
     // Snapshot da diária: a folder (team) é congelada NA instância pelo server
     // (coluna `team` no INSERT). O monitoring reflete o dia como foi schedulado —
     // apagar/mover o job no Design NÃO pode reescrever a daília corrente. Por isso

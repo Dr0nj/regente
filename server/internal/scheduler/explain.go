@@ -81,11 +81,16 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 	// passado o "To Time"). Por isso o gate de janela vale pro Order Force também;
 	// só o total-bypass do Run Now escapa.
 	totalBypass := r.Forced && r.ForceMode != ForceModeOrder
+	// CL-2: quando a lógica de entrada usa o token $TIME, o piso de JANELA (gates
+	// 1 e 1a) deixa de valer — a trava de início vira SÓ o $TIME dentro da
+	// expressão (`(cond) OU ($TIME)`), senão o OR nunca anteciparia por condição
+	// antes do WindowFrom. O TETO (1b, WindowTo/WINDOW_CLOSED) continua SEMPRE.
+	timeInLogic := def.ConditionLogic.UsesTimeToken()
 	if !totalBypass {
 		// 1) Janela — ainda não chegou o horário agendado (scheduled_at). Num daily
 		// o scheduled_at JÁ é o WindowFrom (computeScheduledAt), então este teste
-		// basta e o carry-over segue intocado.
-		if now.Before(r.ScheduledAt) {
+		// basta e o carry-over segue intocado. Pulado quando o $TIME está na lógica.
+		if !timeInLogic && now.Before(r.ScheduledAt) {
 			if add(Blocker{Kind: GateWindow, Detail: "ainda não chegou o horário agendado (" + r.ScheduledAt.Format("15:04") + ")"}) {
 				return out
 			}
@@ -93,7 +98,8 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 		// 1a) Início da janela p/ Order Force: seu scheduled_at é "now" (ordem fora
 		// do agendamento), então o WindowFrom NÃO está embutido no scheduled_at —
 		// aplicamos a trava de início explicitamente só aqui, sem tocar no daily.
-		if r.Forced && r.ForceMode == ForceModeOrder {
+		// Também pulado quando o $TIME está na lógica (o token cobre o início).
+		if !timeInLogic && r.Forced && r.ForceMode == ForceModeOrder {
 			if hh, mm, okW := parseHHMM(def.Schedule.WindowFrom); okW {
 				if t, err := time.Parse("2006-01-02", r.OrderDate); err == nil {
 					windowStart := time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.Local)
@@ -132,8 +138,32 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 	// avançado pelo carry-over. Quem cria: término OK/Set OK de quem tem a
 	// condição na saída＋, ação On/Do set-condition, evento externo ou operador.
 	// Quem apaga: saída− de um OK/Set OK, ou o operador (painel Condições).
+	//
+	// CL: quando a def tem lógica booleana (ConditionLogic — grupos AND/OR em
+	// forma DNF), o gate avalia a EXPRESSÃO contra o pool + o token $TIME e
+	// bloqueia só se NENHUM ramo é satisfazível (um blocker que descreve a
+	// expressão). Sem lógica (nil) é o AND implícito de todas as ConditionsIn —
+	// caminho clássico, um blocker por condição faltante (inalterado).
 	odate := r.Odate()
-	if len(def.ConditionsIn) > 0 && s.conditions != nil {
+	if s.conditions != nil && def.ConditionLogic != nil && len(def.ConditionLogic.Groups) > 0 {
+		// $TIME = o "a partir de" (windowFrom, já embutido no scheduled_at do
+		// daily). NB: o gate de JANELA (1) segue sendo piso enquanto CL-2 não o
+		// desacopla — sem UI produzindo $TIME hoje, não há regressão viva.
+		timeReady := !now.Before(r.ScheduledAt)
+		sat := func(m string) bool {
+			if m == domain.CondTokenTime {
+				return timeReady
+			}
+			base, scope := resolveCondScope(m, odate, s.prevDaily)
+			return s.conditions.hasIdx(base, scope, condIdx)
+		}
+		if ev := domain.EvalConditionLogic(def.ConditionLogic, def.ConditionsIn, sat); !ev.Satisfied {
+			if add(Blocker{Kind: GateCondition,
+				Detail: "aguardando " + ev.RenderExpr() + " — nenhum ramo satisfeito no pool"}) {
+				return out
+			}
+		}
+	} else if len(def.ConditionsIn) > 0 && s.conditions != nil {
 		for _, m := range s.conditions.MissingIdx(def.ConditionsIn, odate, s.prevDaily, condIdx) {
 			if add(Blocker{Kind: GateCondition, Condition: m.Name,
 				Detail: "falta a condição '" + m.Name + "'" + m.ScopeLabel + " no pool (quem a cria precisa terminar OK — ou adicione no painel Condições)"}) {

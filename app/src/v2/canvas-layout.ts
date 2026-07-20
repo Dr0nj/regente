@@ -13,7 +13,7 @@ import type { Node, Edge, NodeHandle } from "@xyflow/react";
 import type { JobNodeData } from "@/lib/job-config";
 import type { JobInstance, JobDefinition, EdgeCondition, DepDateRef } from "@/lib/orchestrator-model";
 import { EDGE_CONDITION_DEFAULT, TEAMS, odateOf } from "@/lib/orchestrator-model";
-import { missingConds, poolHas, splitCondSuffix, instEdgeCondNames, instMissingConds } from "@/lib/conditions-model";
+import { missingConds, poolHas, splitCondSuffix, instEdgeCondNames, instMissingConds, producesBase, condIsAlternative } from "@/lib/conditions-model";
 import type { MonitoringJob } from "./MonitoringSidebarV2";
 
 export type Mode = "design" | "monitoring";
@@ -288,7 +288,7 @@ export function isWaitingOnConds(
   return missing.length > 0;
 }
 
-function edgeStyleForState(state: DepState, _condition: EdgeCondition) {
+function edgeStyleForState(state: DepState) {
   // Padrão visual idêntico para condições do mesmo estado.
   // Todas as edges são tracejadas (uniformidade visual).
   const dash = "5 4";
@@ -307,9 +307,16 @@ function makeEdge(
   target: string,
   condition: EdgeCondition,
   state: DepState,
+  // CL-4: `alt` = a condição que liga este par é um membro ALTERNATIVO (OR) na
+  // lógica do consumidor — não um requisito duro (AND). A linha ganha um
+  // tracejado mais fino (pontilhado) e o rótulo "OU", pra o grafo distinguir
+  // ramos alternativos de dependências obrigatórias. A setinha sempre cria AND.
+  alt = false,
 ): Edge {
-  const s = edgeStyleForState(state, condition);
-  const label = state === "satisfied" ? "✓" : state === "blocked" ? "✗" : "";
+  const s = edgeStyleForState(state);
+  const dash = alt ? "1.5 4" : s.dash;
+  const sym = state === "satisfied" ? "✓" : state === "blocked" ? "✗" : "";
+  const label = alt ? (sym ? `${sym} OU` : "OU") : sym;
   return {
     id: `e-${source}-${target}`,
     source,
@@ -320,11 +327,11 @@ function makeEdge(
     // e a camada default de edges fica ABAIXO dos nós — sem elevar, o retângulo
     // opaco da folder engole todas as linhas de dependência.
     zIndex: 5,
-    data: { condition, state },
+    data: { condition, state, alt },
     style: {
       stroke: s.stroke,
       strokeWidth: 1.5,
-      strokeDasharray: s.dash,
+      strokeDasharray: dash,
     },
     // ✓ pequeno de propósito: o símbolo é um selo, a LINHA é a informação —
     // grande demais ele cobria a linha inteira entre cards próximos.
@@ -604,9 +611,12 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
         // existe / consumida / deletada; vermelho ✗ = filho NOTOK.
         const linkNames = instEdgeCondNames(parent.condsOutAdd, cin);
         const state = evaluateEdgeState(inst, linkNames, pool);
+        // CL-4: aresta "alternativa" (OU) quando a condição que liga o par é
+        // membro de um grupo OR na lógica CONGELADA da ordem (nunca a def viva).
+        const alt = linkNames.some((n) => condIsAlternative(inst.condLogic, n));
         const src = `m-${parent.id}`;
         rawEdges.push({ source: src, target: tgt });
-        edges.push(makeEdge(src, tgt, EDGE_CONDITION_DEFAULT, state));
+        edges.push(makeEdge(src, tgt, EDGE_CONDITION_DEFAULT, state, alt));
       }
     }
   }
@@ -693,13 +703,23 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
 export function buildDesignCanvas(defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT, overrides?: LayoutOverrides | null): Canvas {
   const edges: Edge[] = [];
   const rawEdges: Array<{ source: string; target: string }> = [];
+  const defsById = new Map(defs.map((d) => [d.id, d]));
   for (const def of defs) {
     if (!def.upstream?.length) continue;
+    // Uma aresta P→C é "alternativa" (OU) quando a condição que a liga é membro
+    // de um grupo OR na lógica de C — dica visual do CL-4. A setinha só cria AND.
+    const edgeAlt = (fromId: string) => {
+      const p = defsById.get(fromId);
+      if (!p || !def.conditionLogic) return false;
+      return (def.conditionsIn ?? []).some(
+        (n) => producesBase(p, splitCondSuffix(n).base) && condIsAlternative(def.conditionLogic, n),
+      );
+    };
     for (const u of def.upstream) {
       const src = `d-${u.from}`;
       const tgt = `d-${def.id}`;
       rawEdges.push({ source: src, target: tgt });
-      edges.push(makeEdge(src, tgt, u.condition ?? EDGE_CONDITION_DEFAULT, "pending"));
+      edges.push(makeEdge(src, tgt, u.condition ?? EDGE_CONDITION_DEFAULT, "pending", edgeAlt(u.from)));
     }
   }
 

@@ -84,6 +84,7 @@ interface ServerDefinition {
   conditionsIn?: string[];
   conditionsOutAdd?: string[];
   conditionsOutRemove?: string[];
+  conditionLogic?: JobDefinition["conditionLogic"];
   variables?: Record<string, string>;
   sla?: { expectedDurationMin?: number; deadlineHM?: string; severity?: string; webhookUrl?: string };
   subWorkflow?: { folder: string; variables?: Record<string, string> };
@@ -158,6 +159,7 @@ function toWeb(d: ServerDefinition): JobDefinition {
     conditionsIn: d.conditionsIn,
     conditionsOutAdd: d.conditionsOutAdd,
     conditionsOutRemove: d.conditionsOutRemove,
+    conditionLogic: d.conditionLogic,
     localVars: d.variables,
     sla: d.sla,
     subWorkflow: d.subWorkflow,
@@ -191,6 +193,7 @@ function toServer(d: JobDefinition): ServerDefinition {
     conditionsIn: d.conditionsIn?.length ? d.conditionsIn : undefined,
     conditionsOutAdd: d.conditionsOutAdd?.length ? d.conditionsOutAdd : undefined,
     conditionsOutRemove: d.conditionsOutRemove?.length ? d.conditionsOutRemove : undefined,
+    conditionLogic: d.conditionLogic?.groups?.length ? d.conditionLogic : undefined,
     variables: d.localVars && Object.keys(d.localVars).length ? d.localVars : undefined,
     sla: d.sla,
     subWorkflow: d.subWorkflow,

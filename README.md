@@ -156,6 +156,12 @@ daily ou via Force Order manual.
   linha — `Odate` (diária de origem, default), `Prev` (anterior) e `Stat`
   (estática, sem data). O carry-over preserva o **ODAT**: um job carregado do
   dia 14 segue "do dia 14" para condições, linhas do grafo e Active Jobs.
+  **Lógica AND/OR na entrada**: por padrão a entrada é um E (todas exigidas), mas
+  o toggle **AND/OR** no drawer agrupa as condições — cada grupo com seu operador
+  (E/OU) + um operador de topo entre grupos, ex. `(C1 E C2) OU C3` (roda pelo
+  primeiro ramo que fechar). Com uma condição e um horário "a partir de", o
+  atalho **"OU no horário"** roda quando a condição chega OU quando o horário é
+  atingido — o que vier primeiro. As linhas OR do grafo ficam pontilhadas.
 - 🟢 **Aprofundamento Control-M** — **execução cíclica** (o job re-arma sozinho a cada
   N min dentro da janela, com teto de voltas), **Confirm** (job só roda após liberação
   manual do operador — gate `WAIT_CONFIRM`, nem o Force bypassa), job **DATABASE** (SQL

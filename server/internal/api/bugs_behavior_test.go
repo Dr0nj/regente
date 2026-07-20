@@ -161,6 +161,41 @@ func TestList_SerializesForceMode(t *testing.T) {
 	}
 }
 
+// CL-4: a coluna cond_logic (schemaV21) congelada serializa como condLogic na
+// lista de instances — entrada das linhas OR do grafo. '' → nil (linhas AND).
+func TestList_SerializesCondLogic(t *testing.T) {
+	srv, d := newOpsTestServer(t)
+	date := time.Now().Format("2006-01-02")
+	logic := `{"op":"OR","groups":[{"op":"AND","members":["A"]},{"op":"AND","members":["B"]}]}`
+	if _, err := d.Exec(
+		`INSERT INTO instances(id, definition_id, order_date, status, scheduled_at, cond_logic) VALUES(?,?,?,?,?,?)`,
+		"cl-1", "def-cl", date, "WAITING", time.Now(), logic,
+	); err != nil {
+		t.Fatalf("seed cl-1: %v", err)
+	}
+	seedInstanceFull(t, d, "flat-1", "WAITING", 0, "", 0) // sem lógica → condLogic nil
+
+	resp := doReq(t, srv.Client(), http.MethodGet, srv.URL+"/api/instances?date="+date, "test-token", "")
+	if resp.StatusCode != 200 {
+		t.Fatalf("list: esperava 200, veio %d", resp.StatusCode)
+	}
+	defer resp.Body.Close()
+	var list []instanceRow
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	byID := map[string]instanceRow{}
+	for _, r := range list {
+		byID[r.ID] = r
+	}
+	if cl := byID["cl-1"].CondLogic; cl == nil || cl.Op != "OR" || len(cl.Groups) != 2 {
+		t.Fatalf("cond_logic deveria serializar {OR, 2 grupos}, veio %+v", cl)
+	}
+	if byID["flat-1"].CondLogic != nil {
+		t.Fatalf("instance sem lógica deveria ter condLogic nil, veio %+v", byID["flat-1"].CondLogic)
+	}
+}
+
 // BUG-3: Set OK numa instance WAITING (WAIT COND) conclui OK na hora.
 // (As saídas de condição do Set OK são cobertas em scheduler/setok_bugs_test.go
 // e scheduler/conditions_unify_test.go.)

@@ -38,6 +38,7 @@
 - **Enterprise readiness** — Postgres/HA, segurança (RBAC/SSO/mTLS/SIEM), operação, qualidade, backlog E1–E6.
 - **Escala Control-M (100k–1M/dia)** — write-path (1M/17s), read-path paginado, UI ViewPoint validada @1M.
 - **Aprofundamento Control-M** — lifecycle da daily, On-Do, cyclic, CONFIRM, DATABASE, `%%` vars, CTM-1/2/3.
+- **Condições AND/OR (CL-1…CL-6)** — lógica booleana DNF na entrada (grupos E/OU + operador de topo), token `$TIME` (fallback "condição OU horário"), editor no drawer, linhas OR no canvas, imutabilidade M1 (`cond_logic` schemaV21). Tema Condições 100%.
 - **Diferenciais além do Control-M** — Explain/Diff/Blast/Dry Run/Neighborhood/RCA/Event log/NL-query + D-1…D-15.
 - **Jobs as code (modo CODE)** — editor YAML do working set no Design + CODE-1 (guia do schema, lint ao vivo).
 - **Agent-native (MCP)** — servidor stdio com **11 read + 11 write** gated (MCP-1 fechado 2026-07-08).
@@ -99,87 +100,6 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 - [ ] **Z (publicação)** — **AÇÃO MANUAL SUA:** revisar o texto, escolher prints
   (Monitoring com grafo · ViewPoint @1M · Explain), decidir se torna o repo público (ou
   publica o case como artigo) e postar no LinkedIn. Nenhum agente pode fazer isso por você.
-
-### 🔀 Condições AND/OR — lógica booleana na entrada do job
-
-> **Committed (pedido 2026-07-18).** Hoje a entrada (`ConditionsIn`) é um **AND
-> implícito**: o job só roda quando TODAS as condições existem no pool. Falta o
-> **OR** e o **agrupamento** ("parênteses"). **Fechar isto = fechar o tema
-> Condições 100% (testado e operando)** — é o critério de aceite do usuário.
-> Contexto que JÁ mudou e este item assume como base: a janela virou **2 campos**
-> ("a partir de" = `windowFrom` · "até" = `windowTo`; o `runAt` saiu da UI) e o
-> registry de recursos agora **persiste** (tabela `resources`). LER
-> [`docs/conditions-events.md`](conditions-events.md) ANTES de mexer — o pool de
-> condições é o modelo ÚNICO de dependência (não reintroduzir "upstream" nem gate
-> separado). Ver [[regente-dep-events-claims]].
-
-- [ ] **CL-1 — Expressão booleana de entrada (grupos AND/OR, forma DNF).**
-  **Modelo canônico:** a entrada vira uma lista de **GRUPOS**; os grupos são
-  combinados por um operador de topo, e cada grupo combina seus membros por um
-  operador próprio (dois níveis, cada nível com seu operador — cobre os dois
-  exemplos do usuário). Avaliação: `topOp( grupoEval(g) for g in grupos )`, onde
-  `grupoEval = grupoOp(membro ∈ pool ?)`.
-  - `(COND1 AND COND2) OR COND3` → `grupos=[{op:AND,[C1,C2]},{op:AND,[C3]}]`, `topOp=OR`.
-  - `(C1 OR C2 OR C3) AND C4` → `grupos=[{op:OR,[C1,C2,C3]},{op:AND,[C4]}]`, `topOp=AND`.
-  - **Semântica OR = "o primeiro que chegar satisfaz e dispara"** — assim que
-    QUALQUER grupo fica verdadeiro, o job roda (não espera os outros).
-
-- [ ] **CL-2 — Caso especial "1 condição OR horário" (fallback por tempo).**
-  Com **UMA** condição, permitir o operador **OR** contra o HORÁRIO: o job roda
-  quando **a condição chega OU quando o "a partir de" (`windowFrom`) é atingido**,
-  o que vier primeiro (fallback temporal). Representar com um **membro-token
-  especial `$TIME`** que é satisfeito quando `now >= scheduledAt` (o mesmo relógio
-  do gate de janela): `grupos=[{op:AND,[C1]},{op:AND,[$TIME]}], topOp=OR`. **Só
-  oferecer o toggle quando há `windowFrom` preenchido** (sem tempo não há o que
-  "OR-ar" — degrada pra só a condição). **Cuidado com a janela:** hoje `windowFrom`
-  é um **piso implícito** (mesmo com condição presente, espera o horário). Quando
-  a lógica usa `$TIME` explicitamente, `windowFrom` **deixa de ser piso** e passa a
-  ser SÓ o token `$TIME` na expressão (senão o OR nunca anteciparia). `windowTo`
-  ("até") continua **teto duro SEMPRE** (`WINDOW_CLOSED` vale independentemente da lógica).
-
-- [ ] **CL-3 — Data model + persistência + imutabilidade.**
-  Campo novo **opcional** na `JobDefinition` (`domain/model.go`), ex.:
-  `ConditionLogic *ConditionLogic` com `{ Op string; Groups []CondGroup }` e
-  `CondGroup { Op string; Members []string }` (membros carregam o sufixo de data
-  `@odat/@prev/@stat` como hoje; `$TIME` é membro reservado). **Backward-compat:**
-  `ConditionsIn` (lista plana) continua válido e = **um grupo AND** quando
-  `ConditionLogic` é nil (nada quebra). **Imutabilidade M1:** a lógica tem que ser
-  **congelada no snapshot da instance** igual `ConditionsIn` (schema novo:
-  promover pra coluna OU derivar do `definition_snapshot`); o card do Monitoring e o
-  Explain leem a lógica CONGELADA, não a def viva — ver
-  [[regente-monitoring-immutable-snapshot]].
-
-- [ ] **CL-4 — Gate + Explain + linhas do canvas.**
-  Estender o passo de condições do **`gateInstance`** (fonte única, `explain.go`):
-  em vez de "qualquer `MissingIdx` bloqueia", avaliar a expressão contra o
-  `CondIndex` (foto do pool, 1 query/tick — hot path) + o token `$TIME`. Bloqueia
-  só se **NENHUM** grupo é satisfazível. O **Explain** precisa dizer QUAL ramo falta
-  ("aguardando (C1 E C2) OU C3 — nenhum satisfeito"), não só listar condições
-  soltas. As **linhas do grafo** (reflexo do pool) devem distinguir visualmente
-  membros de grupos OR (ex.: linha tracejada/rótulo "OR") de AND. A **setinha** do
-  canvas continua criando AND simples (grupo único); o OR/agrupamento é manual no
-  drawer.
-
-- [ ] **CL-5 — UI (drawer, aba Condições) + regras de UX já adotadas.**
-  Editor de grupos na **Entrada — depende de**: uma "coluna de parênteses" antes das
-  condições pra **selecionar quais entram no grupo** e escolher a **relação (AND/OR)
-  dentro do grupo**, mais o **operador de topo** entre grupos (forma livre à
-  escolha do implementador — o usuário sugeriu parênteses, mas aceita design
-  melhor). Reusar os padrões JÁ entregues nesta rodada: **botão ＋ ao lado do
-  título** revela o campo (escondido por padrão, `addToggleStyle` em
-  `v2/add-toggle.ts`) e **toda explicação vai pro "?"** (`HelpTopic`, separado por
-  tema — Modelo · Entrada · Saída＋ · Saída− · Datas), workspace limpo. Adicionar um
-  tema "AND/OR" no "?". **Só a ENTRADA tem lógica** — Saída＋/Saída− continuam listas
-  planas (não faz sentido OR na saída).
-
-- [ ] **CL-6 — Testes + docs + critério de fecho.**
-  Baterias no `scheduler` cobrindo: DNF `(C1∧C2)∨C3`, `(C1∨C2)∧C3`, `$TIME` OR
-  cond (antecipa por cond antes do horário E dispara por horário sem cond),
-  `windowTo` como teto mesmo com grupo satisfeito depois, retro-compat
-  (`ConditionsIn` plano = AND), e imutabilidade (mudar a lógica na def NÃO reescreve
-  instance já ordenada). Atualizar `docs/conditions-events.md` (o modelo passa a ter
-  lógica booleana) e a mente ([[regente-dep-events-claims]]). **Só então** marcar o
-  tema Condições como 100% (mover CL-* pro §Entregue + changelog).
 
 ### 🔮 Visão futura (avaliar PÓS-testes, não committado)
 
@@ -1008,6 +928,7 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 
 | Quando | O que | Detalhe |
 |----|--------|---------|
+| ✅ | ~~**Condições AND/OR — lógica booleana na entrada do job (CL-1…CL-6). TEMA CONDIÇÕES FECHADO.**~~ | **Feito (2026-07-20, pedido do usuário "AND/OR na entrada + agrupamento; fechar isto = fechar Condições 100%").** A entrada deixou de ser um AND implícito de `ConditionsIn` e ganhou um campo OPCIONAL `ConditionLogic{Op, Groups[]}` (forma DNF: `topOp(grupoOp(membro))`). **CL-1** avaliador puro `EvalConditionLogic` (`domain/conditions.go`): `(C1∧C2)∨C3`, `(C1∨C2)∧C3`, OR = "primeiro ramo que chega dispara"; membros AVULSOS de `ConditionsIn` fora da lógica = requisito AND (a setinha "just works" num job com lógica). **CL-2** token reservado `$TIME` (satisfeito quando `now>=scheduledAt`): com 1 condição + `windowFrom`, toggle "OU no horário" cria `(C1) OU ($TIME)`; quando a lógica usa `$TIME` o **piso de janela** (`gateInstance` gates 1/1a) é desacoplado (senão o OR nunca anteciparia por condição); `windowTo` segue teto duro. **CL-3** data model + retrocompat (`ConditionLogic` nil = AND de `ConditionsIn`) + imutabilidade M1 (congela no `definition_snapshot`, o gate lê via `defForInstance`); `NormalizeConditions` garante `ConditionsIn ⊇ membros` (topologia/linhas/`conds_in` intactos). **CL-4** gate + Explain OR-aware (`RenderExpr` "aguardando (C1 E C2) OU C3 — nenhum ramo satisfeito") + **linhas OR do canvas** (`condIsAlternative`/`makeEdge(alt)`: aresta pontilhada + rótulo "OU"; Design lê a def viva, Monitoring a coluna CONGELADA `cond_logic` **schemaV21** — `frozenMonitorCols`/`MigrateCondLogicSnapshot`/`instanceRow.CondLogic`). **CL-5** editor progressivo no drawer (aba Condições → Entrada): lista plana AND por padrão, toggle **AND/OR** revela grupos (E/OU por grupo + operador de topo, `EntryConditions`/`GroupedLogicEditor`/`GroupBox`/`OpToggle`), `?` com tema "AND/OR"; round-trip no `ServerApiAdapter`. **CL-6** bateria (`domain/conditionlogic_test.go`, `scheduler/condlogic_gate_test.go`, `api/…TestList_SerializesCondLogic`), docs (`conditions-events.md` §CL) e mente ([[regente-dep-events-claims]]). **Validado ao vivo** (servidor git-backed): `(A) OU (B)` no drawer → `conditionLogic` no YAML via round-trip completo, reabre limpo (grupo vazio podado por `pruneConditionLogic`), e a **linha OR do Design** renderiza pontilhada+"OU" (baseline AND era tracejado sem rótulo). Suítes `scheduler`+`api`+`domain`+`db` + `tsc`+`vite build`+`eslint` verdes. |
 | ✅ | ~~**Fim da tag "⚡FORCED": Run Now não marca nada · Order Force (colocado na mão) ganha selo 🖐 MANUAL**~~ | **Feito (2026-07-18, pedido do usuário "faz uma auditoria na tag forced inteira, vamos tirar ela — Run Now não precisa de tag; job forçado pode ficar com MANUAL e uma mãozinha").** Auditoria completa do `forced`: o flag interno (`instances.forced`/`force_mode`) é LOAD-BEARING (dirige o gate `totalBypass` do Run Now) e FICA; o que sai é a **tag visual**. O selo `⚡FORCED` acendia pros DOIS caminhos de forçar (Run Now E Order Force) porque o front só recebia `forced` (bool), sem o `force_mode`. **Novo modelo (regra do usuário):** **Run Now** (`force_mode=''`, força uma instance EXISTENTE — só nudge) → **NENHUMA tag**; **Order Force** (`force_mode='order'`, ordem NOVA colocada na mão no Design) → **selo `🖐 MANUAL`** (âmbar, mesma moldura do antigo). **Server:** `instanceRow` expõe `forceMode` (novo campo JSON), `instanceCols`+`scanInstances` lêem `COALESCE(force_mode,'')` — flui pra lista E detalhe; broadcast parcial de force já dispara refresh cheio, então a tag resolve ao vivo sem plumbing extra no WS. **Front:** `JobInstance.manualOrder` (novo, = `forceMode==='order'`; `manual` segue `!!forced` pro bypass do tick LOCAL, intocado); `JobNodeData.forced`→`manualOrder`; badge `⚡FORCED`→`🖐 MANUAL` (`JobNodeV2`), linha-de-tags/altura do card e handles agora keyed em `manualOrder||dryRun` (Run Now volta pro card base); `FolderCardsView` "· forced"→"· 🖐 manual"; drawer "Manual: yes/no"→"yes (Order Force)/no"; comentários de `job-config.ts`/`canvas-layout.ts` atualizados. **Testes:** `api/bugs_behavior_test.go::TestList_SerializesForceMode` (lista serializa `forceMode='order'` no Order Force; omite no Run Now/daily = sem selo); `TestRunNow_ClearsOrderForceMode`/`TestRerun_ClearsRunNowBypass` seguem verdes; suíte `internal/api` + `go build ./server/...` + `tsc`/`vite build` verdes. |
 | ✅ | ~~**Order Force passa a RESPEITAR a janela de horário (WindowFrom/WindowTo) + job novo do Design nasce SEM horário (era 06:00)**~~ | **Feito (2026-07-18, report do usuário "janela 22:58→23:00 mas o job entrou 22:57 — a parte de horário do schedule não funciona"):** raiz DUPLA. **(1) Order Force ignorava a janela.** O gate de janela em `explain.go` ficava sob `if !r.Forced`, então TODA instance forçada pulava o `WAIT_WINDOW`/`WINDOW_CLOSED` — inclusive o **"Order Force"** do Design (`force_mode='order'`, ordem NOVA fora do agendamento), que por contrato respeita os gates de RUNTIME (condições, agente, recursos, Confirm). A janela de horário É um gate de runtime (paridade Control-M: um force-order espera o "From Time" e não submete passado o "To Time"), mas estava fora dessa lista por causa do guard. Como o `ForceOrder` grava `scheduled_at = now`, o job entrava no mesmo instante da ordem (o 22:57 do report), ignorando o WindowFrom 22:58. **Fix:** guard trocado por `totalBypass := r.Forced && r.ForceMode != ForceModeOrder` — só o **"Run Now"** clássico (`force_mode=''`, bypass TOTAL por design) escapa; o Order Force volta a passar pelos 3 checks de janela. Como o `scheduled_at` do Order Force é `now` (não embute o WindowFrom como o daily via `computeScheduledAt`), foi somada a trava de início explícita **só pro Order Force** (`WindowFrom` × `order_date`), sem tocar no caminho daily/carry-over (o daily segue gatado pelo `scheduled_at`). Daily e "Run Now" **inalterados**. **(2) Job novo nascia com `runAt:"06:00"`** (`V2Preview.onDrop`) — o padrão escondia que o horário é um passo do operador e confundia o teste de janela; agora nasce **VAZIO** (`schedule:{enabled:true,frequency:"daily"}`), o operador escolhe a janela no drawer. **Testes:** `explain_test.go` novo `TestExplain_OrderForceRespectsWindow` (Order Force com janela futura → `WAIT_WINDOW`, não-runnable; "Run Now" sem force_mode → runnable mesmo com janela futura); `TestExplain_TerminalAndForced` (Run Now bypass) segue verde; suíte `internal/scheduler` inteira + `go build ./server/...` + `tsc`/`vite build` verdes. |
 | ✅ | ~~**Recursos PERSISTEM no ambiente (registry durável) + janela do job 3→2 campos (A partir de / Até) com relógio do server + padrão "＋ ao lado do título" e ajuda no "?" nas Condições/Recursos + roadmap AND/OR (CL-1…6)**~~ | **Feito (2026-07-18, auditoria + reports do usuário).** **(1) AUDITORIA de recursos — metade "ambiente" NÃO persistia (bug), metade "job" já persistia.** O `ResourceTracker` (F15) era 100% em memória: `main.go` criava `NewResourceTracker()` VAZIO no boot e `setResourceCapacity` só mexia no mapa — nenhuma tabela. Reiniciar o server zerava tudo que o operador tinha configurado no painel Recursos (só o USO de RUNNING era reconstruído por `RebuildResourcesFromRunning`, e por chute `cap=qtd`). O recurso escolhido NO JOB (`def.Resources`) já era durável (YAML no workspace + snapshot da instance, schemaV19). **Fix:** `schemaV20` cria a tabela **`resources`** (name PK, capacity); `SetCapacity`/`Delete`/auto-create do `TryAcquire` gravam (upsert `INSERT OR REPLACE`, entrada no `pgConflict`); `ResourceTracker.LoadFromDB` recarrega no boot ANTES do rebuild de uso (`main.go`+`dev.go`). Teste `resources_persist_test.go` (SetCapacity + auto-create sobrevivem a "restart" = novo tracker/mesmo DB; Delete é durável). **Validado AO VIVO com restart REAL do binário:** `PUT /api/resources/SLOTS {capacity:5}` → linha `('SLOTS',5)` na tabela → **kill do server → subir de novo com o mesmo DB → `GET /api/resources` = SLOTS cap 5** (antes voltava `[]`). **(2) Janela do job: 3 campos → 2.** Saiu o "Roda às" (`runAt`) da UI; ficaram **"A partir de"** (`windowFrom`, piso de início) e **"Até"** (`windowTo`, teto). O backend já casava com essa semântica (`computeScheduledAt` prefere runAt→windowFrom; gate `WAIT_WINDOW`/`WINDOW_CLOSED` no `explain.go`) — a mudança é de UI + consolidação (edição migra runAt→windowFrom e zera runAt; `whatif.go` usa o mesmo fallback). Ambos vazios = roda assim que possível (sem cond na entrada da diária; com cond, ao ser satisfeita); só "Até" = não roda depois do horário nem se a cond chegar depois; "A partir de" = só começa depois. Como o horário é SEMPRE no fuso do server (report do usuário), o editor mostra **o relógio do server ao vivo** (`fetchDailyStatus`, "agora lá: HH:MM · tz") + os 3 comportamentos em texto; preview atualizado ("das X às Y"). **(3) Padrão "＋ ao lado do título" (regra do produto, `v2/add-toggle.ts`):** o campo de digitar condição/recurso fica ESCONDIDO até clicar no ＋ — inclusive pra PRIMEIRA linha —, deixando o workspace limpo. Aplicado no drawer do Design (Entrada/Saída＋/Saída− + bloco Recursos) e nos painéis do Monitoring (Condições e Recursos). **(4) Ajuda no "?":** toda explicação saiu do workspace pro popover "?" separado por tema (`HelpTopic`: Modelo · Entrada · Saída＋ · Saída− · Datas nas condições; um "?" âmbar próprio no bloco Recursos). **(5) Roadmap:** spec detalhada **CL-1…CL-6** (condições AND/OR — grupos DNF, "1 cond OR horário" via token `$TIME`, data model + imutabilidade, gate/Explain/linhas, UI, testes) no §Backlog, pra fechar o tema Condições 100%. **Testes:** suíte Go (db+api+scheduler) + `go vet` + `tsc -b`/`vite build` verdes. **Validado AO VIVO** (server completo :8099, bare repo local, SPA @origin, demo-mode): Schedule com 2 campos + relógio "21:37 · local do server" + preview "das 06:00 às 22:00"; aba Condições com ＋/? nos dois eixos e campos escondidos até clicar (Saída＋ vazia → ＋ revelou "nova condição…"); painel Recursos do Monitoring idem; "?" das condições com as 5 seções. |

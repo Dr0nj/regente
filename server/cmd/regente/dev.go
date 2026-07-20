@@ -89,6 +89,7 @@ func cmdDev(args []string) error {
 	sched.MigrateConditionsUnify()      // unificação deps→condições: backfill one-time
 	sched.MigrateMonitoringSnapshot()   // M1: colunas congeladas do Monitoring (schemaV18)
 	sched.MigrateResourcesSnapshot()    // F15: recursos congelados (schemaV19)
+	sched.MigrateCondLogicSnapshot()    // CL: lógica AND/OR congelada (schemaV21) — linhas OR
 	created := sched.RunDaily(*date)
 	go sched.Run(ctx)
 

@@ -26,6 +26,7 @@ type monitorCols struct {
 	environment, pinned  string
 	condsIn, condsOutAdd string
 	resources            string // F15 (v19): JSON {nome: qtd} da ordem; entrada do WAIT RESOURCE.
+	condLogic            string // CL (v21): JSON da lógica AND/OR da ordem; entrada das linhas OR (CL-4).
 }
 
 func frozenMonitorCols(d domain.JobDefinition) monitorCols {
@@ -38,7 +39,18 @@ func frozenMonitorCols(d domain.JobDefinition) monitorCols {
 		condsIn:     condsJSON(d.ConditionsIn),
 		condsOutAdd: condsJSON(producedConds(d)),
 		resources:   resourcesJSON(d.Resources),
+		condLogic:   condLogicJSON(d.ConditionLogic),
 	}
+}
+
+// condLogicJSON — *ConditionLogic → JSON; nil/sem grupos → '' (coluna no default,
+// sem alocar no scan). A instance sem lógica desenha linhas AND (sólidas).
+func condLogicJSON(l *domain.ConditionLogic) string {
+	if l == nil || len(l.Groups) == 0 {
+		return ""
+	}
+	b, _ := json.Marshal(l)
+	return string(b)
 }
 
 // resourcesJSON — mapa nome→qtd → JSON; vazio → '' (coluna no default, sem
@@ -223,5 +235,60 @@ func (s *Scheduler) MigrateResourcesSnapshot() {
 	}
 	if filled > 0 {
 		log.Printf("[monitoring] backfill v19: %d instance(s) com recursos congelados", filled)
+	}
+}
+
+const condLogicSnapshotFlag = "monitoring-condlogic-v21"
+
+// MigrateCondLogicSnapshot — backfill one-time do schemaV21 (meta_flags). Promove
+// a lógica AND/OR do definition_snapshot pra coluna cond_logic das instances já
+// ordenadas, pras linhas OR (CL-4) valerem no dia inteiro já no primeiro boot.
+// Instances sem snapshot ou sem lógica ficam com '' (linhas AND, sólidas). Chamar
+// no boot logo após MigrateResourcesSnapshot.
+func (s *Scheduler) MigrateCondLogicSnapshot() {
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM meta_flags WHERE name=?`, condLogicSnapshotFlag).Scan(&n); err != nil {
+		log.Printf("[monitoring] backfill v21: meta_flags indisponível: %v", err)
+		return
+	}
+	if n > 0 {
+		return // já rodou
+	}
+
+	type row struct{ id, snap string }
+	var rowsAll []row
+	if rows, err := s.db.Query(
+		`SELECT id, definition_snapshot FROM instances WHERE COALESCE(cond_logic,'')='' AND COALESCE(definition_snapshot,'')<>''`,
+	); err == nil {
+		for rows.Next() {
+			var r row
+			if rows.Scan(&r.id, &r.snap) == nil {
+				rowsAll = append(rowsAll, r)
+			}
+		}
+		rows.Close()
+	} else {
+		log.Printf("[monitoring] backfill v21: query: %v", err)
+	}
+
+	filled := 0
+	for _, r := range rowsAll {
+		var def domain.JobDefinition
+		if json.Unmarshal([]byte(r.snap), &def) != nil || def.ConditionLogic == nil {
+			continue // sem lógica na ordem → fica '' (linhas AND)
+		}
+		if _, err := s.db.Exec(`UPDATE instances SET cond_logic=? WHERE id=?`, condLogicJSON(def.ConditionLogic), r.id); err != nil {
+			log.Printf("[monitoring] backfill v21: update %s: %v", r.id, err)
+			continue
+		}
+		filled++
+	}
+
+	if _, err := s.db.Exec(`INSERT INTO meta_flags(name) VALUES(?)`, condLogicSnapshotFlag); err != nil {
+		log.Printf("[monitoring] backfill v21: falha ao marcar flag: %v", err)
+		return
+	}
+	if filled > 0 {
+		log.Printf("[monitoring] backfill v21: %d instance(s) com lógica AND/OR congelada", filled)
 	}
 }

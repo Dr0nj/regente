@@ -392,6 +392,10 @@ func main() {
 	// do definition_snapshot — entrada do card WAIT RESOURCE. Guardado por meta_flags.
 	sched.MigrateResourcesSnapshot()
 
+	// CL (schemaV21): backfill one-time da coluna `cond_logic` congelada — entrada
+	// das linhas OR do grafo (CL-4). Guardado por meta_flags.
+	sched.MigrateCondLogicSnapshot()
+
 	// Enterprise/Operação — reconciler de drift GitOps (opt-in). O git-poll já
 	// auto-sincroniza; este fecha o lado OPERACIONAL: quando runtime≠Git, alerta
 	// pelos MESMOS canais do R7 (Slack/PagerDuty/…), e o modo "sync" reconcilia
