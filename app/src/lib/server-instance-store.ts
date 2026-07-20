@@ -27,6 +27,9 @@ interface ServerInstance {
   exitCode?: number;
   output?: string;
   forced?: boolean;
+  // Como foi forçada (schemaV15): "" = Run Now (sem tag) · "order" = Order Force
+  // (colocada na mão → selo 🖐 MANUAL). `forced` sozinho não distingue os dois.
+  forceMode?: string;
   carriedFrom?: string;
   confirmed?: boolean;
   cycleRuns?: number;
@@ -102,6 +105,10 @@ function toWeb(s: ServerInstance): JobInstance {
     durationMs: started && completed ? completed - started : undefined,
     attempts: 0,
     manual: !!s.forced,
+    // Selo 🖐 MANUAL = SÓ Order Force (colocada na mão). Run Now (force_mode='')
+    // força uma instance existente e NÃO ganha tag — pedido do usuário: "um job
+    // que recebe Run Now não precisa de tag; um job forçado fica com MANUAL".
+    manualOrder: s.forceMode === "order",
     carriedFrom: s.carriedFrom || undefined,
     confirmed: s.confirmed,
     cycleRuns: s.cycleRuns,
@@ -619,6 +626,7 @@ export async function forceInstance(def: JobDefinition): Promise<JobInstance> {
     status: "WAITING",
     attempts: 0,
     manual: true,
+    manualOrder: true, // Order Force (colocada na mão) → selo 🖐 MANUAL.
     retries: def.retries,
     timeout: def.timeout,
   };

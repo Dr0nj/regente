@@ -145,12 +145,14 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
 
           {/* Linha de TAGS — só renderiza quando há tag (senão o card mantém a
               altura compacta de sempre; a célula de layout de 72px absorve a
-              linha extra sem colidir com o vizinho). */}
-          {(data.forced || data.dryRun) && (
+              linha extra sem colidir com o vizinho). Selos possíveis: 🖐 MANUAL
+              (ordem colocada na mão = Order Force) e 👻 GHOST (dry-run). Run Now
+              NÃO tem selo — só nudge de uma instance que já existe. */}
+          {(data.manualOrder || data.dryRun) && (
             <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
-              {data.forced && (
+              {data.manualOrder && (
                 <span
-                  title="Force — ordem manual fora do agendamento. Order Force (Design) respeita os gates de runtime (deps/conditions/agente); Run Now (Monitoring) bypassa deps."
+                  title="Colocado na mão — Order Force (Design): ordem nova fora do agendamento, respeitando os gates de runtime (janela/condições/agente/recursos). Run Now não marca nada."
                   style={{
                     fontSize: "var(--v2-text-xs)",
                     fontFamily: "var(--v2-font-mono)",
@@ -164,7 +166,7 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
                     flexShrink: 0,
                   }}
                 >
-                  ⚡FORCED
+                  🖐 MANUAL
                 </span>
               )}
               {data.dryRun && (

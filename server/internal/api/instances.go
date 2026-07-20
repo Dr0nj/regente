@@ -26,6 +26,12 @@ type instanceRow struct {
 	ExitCode     int        `json:"exitCode,omitempty"`
 	Output       string     `json:"output,omitempty"`
 	Forced       bool       `json:"forced,omitempty"`
+	// ForceMode — COMO a ordem foi forçada (schemaV15): "" = "Run Now" (bypass
+	// total de uma instance existente, SEM marca visual — é só nudge de execução)
+	// vs "order" = "Order Force" (ordem NOVA colocada na mão pelo operador →
+	// selo 🖐 MANUAL no card). O front usa isto pra distinguir os dois: `forced`
+	// sozinho não diferencia, e um Run Now numa daily não deve ganhar tag.
+	ForceMode    string     `json:"forceMode,omitempty"`
 	CarriedFrom  string     `json:"carriedFrom,omitempty"` // ciclo de vida da daily: dia de origem se foi carregada da diária anterior.
 	Confirmed    bool       `json:"confirmed,omitempty"`   // Control-M Confirm: operador liberou (job confirm:true).
 	CycleRuns    int        `json:"cycleRuns,omitempty"`   // cyclic runtime: voltas OK completadas no dia.
@@ -62,7 +68,7 @@ type instanceRow struct {
 
 const instanceCols = `id, definition_id, COALESCE(team,''), order_date, status, scheduled_at,
 	started_at, finished_at,
-	COALESCE(agent_id,''), COALESCE(exit_code,0), COALESCE(output,''), COALESCE(forced,0),
+	COALESCE(agent_id,''), COALESCE(exit_code,0), COALESCE(output,''), COALESCE(forced,0), COALESCE(force_mode,''),
 	COALESCE(carried_from,''), COALESCE(confirmed,0), COALESCE(cycle_runs,0), COALESCE(dry_run,0),
 	COALESCE(hold_scope,''), COALESCE(held_from_status,''),
 	COALESCE(label,''), COALESCE(job_type,''), COALESCE(confirm_req,0),
@@ -85,7 +91,7 @@ func scanInstances(rows *sql.Rows) ([]instanceRow, error) {
 		if err := rows.Scan(
 			&ir.ID, &ir.DefinitionID, &ir.Team, &ir.OrderDate, &ir.Status, &ir.ScheduledAt,
 			&startedAt, &finishedAt,
-			&ir.AgentID, &ir.ExitCode, &ir.Output, &forcedInt,
+			&ir.AgentID, &ir.ExitCode, &ir.Output, &forcedInt, &ir.ForceMode,
 			&ir.CarriedFrom, &confirmedInt, &ir.CycleRuns, &dryRunInt, &ir.HoldScope, &ir.HeldFromStatus,
 			&ir.Label, &ir.JobType, &confirmReqInt,
 			&ir.Environment, &ir.PinnedAgent, &condsIn, &condsOutAdd, &resources,

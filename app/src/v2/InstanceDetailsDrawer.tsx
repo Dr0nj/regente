@@ -523,7 +523,7 @@ function GeneralTab({ instance, definition, jobType, actionConfig }: {
             hint="dia ativo atual — a instance atravessou a(s) virada(s) da daily"
           />
         )}
-        <Field label="Manual"     value={instance.manual ? "yes" : "no"} />
+        <Field label="Manual"     value={instance.manualOrder ? "yes (Order Force)" : "no"} />
         <Field label="Dry run"    value={instance.dryRun ? "yes" : "no"} />
         <Field label="Timeout"    value={`${instance.timeout}s`} />
       </Section>

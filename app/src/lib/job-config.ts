@@ -148,11 +148,12 @@ export interface JobNodeData {
   dryRun?: boolean;
   mode?: "design" | "monitoring";
   /**
-   * Instance foi criada via Force Order (Control-M semantics): bypassa
-   * deps/cron. UI deve mostrar badge FORCED para diferenciar de runs
-   * scheduled/condition-satisfied.
+   * Ordem colocada NA MÃO pelo operador — "Order Force" do Design (Control-M
+   * force order, force_mode='order'): ordem NOVA fora do agendamento. O card
+   * mostra o selo 🖐 MANUAL. Um "Run Now" (força uma instance EXISTENTE,
+   * force_mode='') NÃO seta isto — não leva tag nenhuma (pedido do usuário).
    */
-  forced?: boolean;
+  manualOrder?: boolean;
   /**
    * WAITING segurado por DEPENDÊNCIA (pai não rodou / rodando / falhou) —
    * Control-M "Wait Event". O card mostra "WAIT EVENT" em vez de "WAIT"

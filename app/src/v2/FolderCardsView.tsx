@@ -569,7 +569,7 @@ function InstanceCard({
       >
         <span>{inst.jobType}</span>
         {inst.startedAt && <span>· {fmtHm(inst.startedAt)}</span>}
-        {inst.manual && <span style={{ color: "var(--v2-status-hold)" }}>· forced</span>}
+        {inst.manualOrder && <span style={{ color: "var(--v2-status-hold)" }}>· 🖐 manual</span>}
       </div>
     </div>
   );

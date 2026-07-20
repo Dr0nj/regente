@@ -247,8 +247,14 @@ export interface JobInstance {
   error?: string;
   /** Execution output/result */
   output?: Record<string, unknown>;
-  /** Whether this was a manual (Run Now/Force) trigger */
+  /** Whether this was a manual (Run Now/Force) trigger. NOTA: `manual` cobre os
+   *  DOIS caminhos de forçar (bypass de deps no tick local). NÃO usar pra tag
+   *  visual — Run Now não ganha selo; use `manualOrder`. */
   manual: boolean;
+  /** Ordem colocada NA MÃO pelo operador ("Order Force" do Design, force_mode=
+   *  'order'): a ÚNICA que ganha o selo 🖐 MANUAL no card. Run Now (força uma
+   *  instance já existente, force_mode='') NÃO seta isto — não leva tag nenhuma. */
+  manualOrder?: boolean;
   /** Ciclo de vida da daily: order_date de origem se a instância foi carregada
    *  da diária anterior (carry-over Control-M); ausente se nasceu hoje. */
   carriedFrom?: string;

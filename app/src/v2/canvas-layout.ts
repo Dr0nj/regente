@@ -625,8 +625,9 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
       // Handles estáticos (ver JOB_HANDLES): mantém a LINHA de dependência
       // posicionável mesmo antes/sem a medição — sob rajada a edge não some.
       // BUG-9: card com linha de tags é mais alto — o handle de saída desce
-      // junto, senão a seta nasce atrás do card.
-      handles: (inst.manual || inst.dryRun) ? JOB_HANDLES_TAGGED : JOB_HANDLES,
+      // junto, senão a seta nasce atrás do card. Só MANUAL (Order Force) e GHOST
+      // (dry-run) fazem a linha de tags; Run Now não leva selo → card base.
+      handles: (inst.manualOrder || inst.dryRun) ? JOB_HANDLES_TAGGED : JOB_HANDLES,
       data: {
         label: inst.label,
         jobType: inst.jobType,
@@ -634,7 +635,9 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
         team: inst.team,
         lastRun: inst.startedAt ? fmtHm(inst.startedAt) : undefined,
         mode: "monitoring",
-        forced: inst.manual,
+        // Selo 🖐 MANUAL = SÓ Order Force (ordem colocada na mão). Run Now força
+        // uma instance existente e NÃO ganha tag (force_mode='' → manualOrder=false).
+        manualOrder: inst.manualOrder,
         // Selo 👻GHOST ("job roda sem fazer nada — log only"): lê o dryRun
         // CONGELADO na própria instância (snapshot da ordem), NUNCA a def viva.
         //

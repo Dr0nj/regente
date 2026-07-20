@@ -11,6 +11,7 @@ package api
 //	         esperar o evento chegar.
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
 	"time"
@@ -122,6 +123,41 @@ func TestRerun_ClearsRunNowBypass(t *testing.T) {
 	}
 	if forced != 1 {
 		t.Fatalf("rerun da cópia Order Force deveria MANTER forced=1, veio %d", forced)
+	}
+}
+
+// 2026-07-18: fim da tag "FORCED". O front distingue Run Now × Order Force pelo
+// `forceMode` serializado — SÓ o Order Force (colocado na mão) ganha o selo 🖐
+// MANUAL; Run Now força uma instance existente e NÃO leva tag. Garante que a
+// lista expõe force_mode e que o omitempty esconde Run Now/daily (= sem selo).
+func TestList_SerializesForceMode(t *testing.T) {
+	srv, d := newOpsTestServer(t)
+	seedInstanceFull(t, d, "of-1", "WAITING", 1, "order", 0) // Order Force → MANUAL
+	seedInstanceFull(t, d, "rn-1", "RUNNING", 1, "", 0)      // Run Now → sem tag
+	seedInstanceFull(t, d, "day-1", "WAITING", 0, "", 0)     // daily → sem tag
+
+	date := time.Now().Format("2006-01-02")
+	resp := doReq(t, srv.Client(), http.MethodGet, srv.URL+"/api/instances?date="+date, "test-token", "")
+	if resp.StatusCode != 200 {
+		t.Fatalf("list: esperava 200, veio %d", resp.StatusCode)
+	}
+	defer resp.Body.Close()
+	var list []instanceRow
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	byID := map[string]instanceRow{}
+	for _, r := range list {
+		byID[r.ID] = r
+	}
+	if got := byID["of-1"].ForceMode; got != "order" {
+		t.Fatalf("Order Force deveria serializar forceMode='order' (→ selo MANUAL), veio %q", got)
+	}
+	if got := byID["rn-1"].ForceMode; got != "" {
+		t.Fatalf("Run Now NÃO deveria ter forceMode (sem tag), veio %q", got)
+	}
+	if got := byID["day-1"].ForceMode; got != "" {
+		t.Fatalf("daily NÃO deveria ter forceMode, veio %q", got)
 	}
 }
 
