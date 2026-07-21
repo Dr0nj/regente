@@ -150,6 +150,7 @@ export default function InstanceDetailsDrawer({
   const [orderDetail, setOrderDetail] = useState<InstanceOrderDetail | null>(null);
   useEffect(() => {
     let alive = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- M1/invariante 5: limpa o detalhe da ordem ao trocar de instance pra NUNCA vazar o snapshot de outra; reset-on-id-change crítico e o no-leak exige validação ao vivo p/ refatorar; ver roadmap §RH
     setOrderDetail(null);
     // M1: SEMPRE busca o detalhe em server mode (não só quando falta a action) —
     // ele traz a DEF CONGELADA inteira (snapshotDef) que as abas Schedule/
@@ -766,6 +767,7 @@ function StatsTab({ instance }: { instance: JobInstance }) {
 
   useEffect(() => {
     let alive = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- StatsTab: invalida pf/stats ao trocar de definitionId (loading enquanto refetcha); reset-on-dep-change; ver roadmap §RH
     setLoaded(false);
     Promise.all([
       fetchPerfForecast(instance.definitionId),
@@ -1354,6 +1356,7 @@ function RCAPanel({ instanceId }: { instanceId: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- RCAPanel: reseta loading ao trocar de instanceId (loading inicia true; refetch por instance evita mostrar a RCA da instance anterior); reset-on-dep-change; ver roadmap §RH
     setLoading(true);
     fetchRCA(instanceId)
       .then((r) => { if (!cancelled) setRca(r); })
@@ -1417,6 +1420,7 @@ function NeighborhoodPanel({ instanceId, autoLoad }: { instanceId: string; autoL
 
   // Aba dedicada: carrega sozinho ao montar (radius 1).
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- NeighborhoodTab: load(1) auto ao montar/trocar de instance seta opened/loading/radius de propósito (autoLoad-gated); reset-on-dep-change; ver roadmap §RH
     if (autoLoad) load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instanceId, autoLoad]);
