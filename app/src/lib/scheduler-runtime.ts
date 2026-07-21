@@ -77,15 +77,6 @@ export function runDaily(defs: JobDefinition[]): JobInstance[] {
 }
 
 /**
- * Limpa a flag de daily (útil para re-executar durante dev/teste).
- */
-export function clearDailyFlag(): void {
-  if (typeof window !== "undefined") {
-    window.localStorage.removeItem(DAILY_FLAG_KEY);
-  }
-}
-
-/**
  * Calcula um `scheduledAt` razoável a partir do cron. Para MVP,
  * se o cron contém `H M * * *` pegamos H:M de hoje; caso contrário
  * usamos "now" (o job estará pronto imediatamente).
@@ -192,10 +183,6 @@ export function stopScheduler(): void {
     clearInterval(_tickHandle);
     _tickHandle = null;
   }
-}
-
-export function isSchedulerRunning(): boolean {
-  return _tickHandle !== null;
 }
 
 /** Dispara um notify no instance-store relendo e reescrevendo. */

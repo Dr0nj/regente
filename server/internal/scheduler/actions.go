@@ -25,6 +25,7 @@ package scheduler
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -198,6 +199,11 @@ func (s *Scheduler) evaluateRuntimeActions(now time.Time) {
 			continue
 		}
 		todo = append(todo, pending{id, orderDate, def, int(now.Sub(started).Minutes())})
+	}
+	// Parcial = ações runtime que faltaram ficam pro próximo tick (idempotentes
+	// pelo ledger action_fires); só registra o porquê.
+	if err := rows.Err(); err != nil {
+		log.Printf("[actions] varredura de RUNNING incompleta: %v", err)
 	}
 	// Aplica fora do cursor (applyActions escreve no ledger).
 	for _, p := range todo {

@@ -81,21 +81,29 @@ type CondIndex map[string]bool
 
 func condKey(name, scope string) string { return name + "\x00" + scope }
 
-// LoadIndex — carrega o pool inteiro num CondIndex.
-func (c *ConditionEngine) LoadIndex() CondIndex {
+// LoadIndex — carrega o pool inteiro num CondIndex. Erro (query/scan/iteração)
+// NUNCA vira índice parcial/vazio silencioso: um pool "vazio" faria o gate ver
+// toda condição como faltante e estagnar os jobs condicionais sem pista. O
+// caller (tick) loga e usa idx nil — hasIdx com nil consulta o banco direto,
+// então o gating segue CORRETO (só sem o cache do tick).
+func (c *ConditionEngine) LoadIndex() (CondIndex, error) {
 	idx := CondIndex{}
 	rows, err := c.db.Query(`SELECT name, scope_date FROM conditions`)
 	if err != nil {
-		return idx
+		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var name, scope string
-		if rows.Scan(&name, &scope) == nil {
-			idx[condKey(name, scope)] = true
+		if err := rows.Scan(&name, &scope); err != nil {
+			return nil, err
 		}
+		idx[condKey(name, scope)] = true
 	}
-	return idx
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return idx, nil
 }
 
 // hasIdx — existência no índice (ou no banco, se idx nil): escopo exato OU permanente.
@@ -125,8 +133,13 @@ func (c *ConditionEngine) List(scopeDate string) ([]domain.Condition, error) {
 	out := []domain.Condition{}
 	for rows.Next() {
 		var c domain.Condition
-		_ = rows.Scan(&c.Name, &c.ScopeDate, &c.SetAt, &c.SetBy)
+		if err := rows.Scan(&c.Name, &c.ScopeDate, &c.SetAt, &c.SetBy); err != nil {
+			return nil, err
+		}
 		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -176,8 +189,8 @@ type MissingCond struct {
 // Missing returns the conditions in `names` that are NOT set — cada nome com o
 // sufixo @odat/@prev/@stat resolvido contra o ODAT (origem) do job.
 // FONTE ÚNICA do "falta qual condição?" — usada pelo gate do tick (com o
-// CondIndex pré-carregado), pelo AllSatisfied e pelo Explain ("por que não
-// rodou"). Vazio = todas satisfeitas. idx nil = consulta direta ao banco.
+// CondIndex pré-carregado) e pelo Explain ("por que não rodou").
+// Vazio = todas satisfeitas. idx nil = consulta direta ao banco.
 func (c *ConditionEngine) Missing(names []string, odate string, prevOf func(string) string) []MissingCond {
 	return c.MissingIdx(names, odate, prevOf, nil)
 }
@@ -199,9 +212,4 @@ func (c *ConditionEngine) MissingIdx(names []string, odate string, prevOf func(s
 		out = append(out, MissingCond{Name: n, Base: base, Scope: scope, ScopeLabel: label})
 	}
 	return out
-}
-
-// AllSatisfied returns true if every cond in `names` exists no escopo resolvido.
-func (c *ConditionEngine) AllSatisfied(names []string, odate string, prevOf func(string) string) bool {
-	return len(c.Missing(names, odate, prevOf)) == 0
 }

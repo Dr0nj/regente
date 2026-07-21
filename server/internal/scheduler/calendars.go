@@ -50,19 +50,6 @@ func IsEligibleDate(cal *domain.Calendar, date time.Time) bool {
 	return false
 }
 
-// NextEligible returns the next N eligible dates starting from `from`.
-func NextEligible(cal *domain.Calendar, from time.Time, n int) []time.Time {
-	out := make([]time.Time, 0, n)
-	d := from
-	for i := 0; i < 365 && len(out) < n; i++ {
-		if IsEligibleDate(cal, d) {
-			out = append(out, d)
-		}
-		d = d.AddDate(0, 0, 1)
-	}
-	return out
-}
-
 // calLookup — abstrai o CalendarStore (evita ciclo de import; o store implementa Get).
 type calLookup interface {
 	Get(name string) (*domain.Calendar, error)

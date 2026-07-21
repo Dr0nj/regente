@@ -143,7 +143,11 @@ func (s *Scheduler) BuildDailyReport(date string) (*DailyReport, error) {
 			rep.Counts.Cancelled = n
 		}
 	}
+	errIter := rows.Err()
 	rows.Close()
+	if errIter != nil {
+		return nil, errIter // report com contagem parcial mentiria no e-mail do dia
+	}
 	rep.Closed = rep.Counts.Waiting == 0 && rep.Counts.Running == 0
 
 	// Failures (NOTOK) — detalhe cap 100; o total exato já está em Counts.NotOK.
@@ -167,7 +171,11 @@ func (s *Scheduler) BuildDailyReport(date string) (*DailyReport, error) {
 		}
 		rep.Failures = append(rep.Failures, f)
 	}
+	errIter = frows.Err()
 	frows.Close()
+	if errIter != nil {
+		return nil, errIter
+	}
 
 	// SLA breaches das instances DO DIA (direto da tabela — funciona mesmo sem
 	// o SLAEngine atachado; cap igual ao de failures).
@@ -185,7 +193,11 @@ func (s *Scheduler) BuildDailyReport(date string) (*DailyReport, error) {
 			}
 			rep.SLABreaches = append(rep.SLABreaches, b)
 		}
+		errIter = brows.Err()
 		brows.Close()
+		if errIter != nil {
+			return nil, errIter
+		}
 	}
 	return rep, nil
 }

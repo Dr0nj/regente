@@ -154,5 +154,8 @@ func (s *Scheduler) defInstanceStatus(orderDate, defID string) string {
 			best = st
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return "" // parcial mentiria o status "mais determinante"; "" = desconhecido
+	}
 	return best
 }

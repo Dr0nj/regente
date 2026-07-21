@@ -14,6 +14,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -224,6 +225,9 @@ func (s *server) countByStatus(where string, args []any) (map[string]int, int) {
 				total += n
 			}
 		}
+		if err := rows.Err(); err != nil {
+			log.Printf("[api] countByStatus: iteração incompleta (contagem parcial): %v", err)
+		}
 		rows.Close()
 	}
 	return byStatus, total
@@ -251,6 +255,9 @@ func (s *server) resolveJobRef(ref, date string, allowed []string, restrict bool
 		if rk := instanceStatusRank(st); rk > bestRank {
 			bestRank, bestID = rk, id
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return "" // parcial poderia eleger a instance ERRADA; "" = não resolvido
 	}
 	return bestID
 }

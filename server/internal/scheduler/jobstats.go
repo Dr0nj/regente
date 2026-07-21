@@ -83,6 +83,10 @@ func (s *Scheduler) JobStats(defID string) JobStats {
 			st.NotOK++
 		}
 	}
+	if err := rows.Err(); err != nil {
+		// Estatística sobre janela incompleta mente (success rate/min/max tortos).
+		return JobStats{DefID: defID, Window: jobStatsWindow}
+	}
 	if st.OK+st.NotOK > 0 {
 		st.SuccessRate = float64(st.OK) / float64(st.OK+st.NotOK)
 	}

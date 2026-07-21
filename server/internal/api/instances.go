@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -255,6 +256,8 @@ func (s *server) allowedTeams(r *http.Request, date string) (teams []string, res
 	if !ok || u == nil || u.Role == auth.RoleAdmin {
 		return nil, false
 	}
+	// Erro (query/iteração) é FAIL-CLOSED por construção: folders fora do set só
+	// SOMEM da visão do usuário, nunca aparecem a mais — mas registra o porquê.
 	var distinct []string
 	if rows, err := s.cfg.DB.Query("SELECT DISTINCT team FROM instances WHERE order_date=?", date); err == nil {
 		for rows.Next() {
@@ -263,7 +266,12 @@ func (s *server) allowedTeams(r *http.Request, date string) (teams []string, res
 				distinct = append(distinct, t)
 			}
 		}
+		if err := rows.Err(); err != nil {
+			log.Printf("[api] allowedTeams: iteração incompleta (RBAC fail-closed): %v", err)
+		}
 		rows.Close()
+	} else {
+		log.Printf("[api] allowedTeams: query (RBAC fail-closed): %v", err)
 	}
 	readable, _ := auth.FilterReadableFolders(s.cfg.DB, u, distinct)
 	return readable, true
@@ -428,46 +436,75 @@ func (s *server) summaryInstances(w http.ResponseWriter, r *http.Request) {
 	allowed, restrict := s.allowedTeams(r, q.date)
 	where, args := q.where(allowed, restrict)
 
+	// Summary PARCIAL é pior que erro: `total` decide o modo da sidebar windowed
+	// e os cards do dashboard — número torto silencioso desorienta o operador.
+	// Qualquer falha (query ou iteração) responde 500; o cliente preserva o estado.
 	byStatus := map[string]int{}
 	total := 0
-	if rows, err := s.cfg.DB.Query(`SELECT status, COUNT(*) FROM instances WHERE `+where+` GROUP BY status`, args...); err == nil {
-		for rows.Next() {
-			var st string
-			var n int
-			if rows.Scan(&st, &n) == nil {
-				byStatus[st] = n
-				total += n
-			}
-		}
-		rows.Close()
+	rows, err := s.cfg.DB.Query(`SELECT status, COUNT(*) FROM instances WHERE `+where+` GROUP BY status`, args...)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
 	}
+	for rows.Next() {
+		var st string
+		var n int
+		if rows.Scan(&st, &n) == nil {
+			byStatus[st] = n
+			total += n
+		}
+	}
+	errIter := rows.Err()
+	rows.Close()
+	if errIter != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "row iteration: " + errIter.Error()})
+		return
+	}
+
 	byFolder := map[string]int{}
-	if rows, err := s.cfg.DB.Query(`SELECT team, COUNT(*) FROM instances WHERE `+where+` GROUP BY team`, args...); err == nil {
-		for rows.Next() {
-			var t string
-			var n int
-			if rows.Scan(&t, &n) == nil {
-				byFolder[t] = n
-			}
-		}
-		rows.Close()
+	rows, err = s.cfg.DB.Query(`SELECT team, COUNT(*) FROM instances WHERE `+where+` GROUP BY team`, args...)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
 	}
+	for rows.Next() {
+		var t string
+		var n int
+		if rows.Scan(&t, &n) == nil {
+			byFolder[t] = n
+		}
+	}
+	errIter = rows.Err()
+	rows.Close()
+	if errIter != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "row iteration: " + errIter.Error()})
+		return
+	}
+
 	// pausedFolders — folders com pelo menos um job segurado por PAUSA DE FOLDER
 	// (status HELD + hold_scope='folder', schemaV14). Alimenta o cadeado da folder
 	// e o estado do botão pausar/retomar na sidebar do modo windowed (no modo local
 	// o front deriva isso do holdScope das próprias instances). [] se nenhuma.
 	pausedFolders := []string{}
-	if rows, err := s.cfg.DB.Query(
+	rows, err = s.cfg.DB.Query(
 		`SELECT DISTINCT team FROM instances WHERE `+where+` AND status=? AND hold_scope='folder'`,
 		append(args, string(domain.StatusHeld))...,
-	); err == nil {
-		for rows.Next() {
-			var t string
-			if rows.Scan(&t) == nil {
-				pausedFolders = append(pausedFolders, t)
-			}
+	)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	for rows.Next() {
+		var t string
+		if rows.Scan(&t) == nil {
+			pausedFolders = append(pausedFolders, t)
 		}
-		rows.Close()
+	}
+	errIter = rows.Err()
+	rows.Close()
+	if errIter != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "row iteration: " + errIter.Error()})
+		return
 	}
 	writeJSON(w, 200, map[string]any{"date": q.date, "total": total, "byStatus": byStatus, "byFolder": byFolder, "pausedFolders": pausedFolders})
 }
@@ -968,6 +1005,9 @@ func (s *server) listInstanceEvents(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		out = append(out, e)
+	}
+	if !rowsOK(w, rows) {
+		return
 	}
 	writeJSON(w, 200, out)
 }

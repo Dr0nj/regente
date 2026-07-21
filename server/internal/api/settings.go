@@ -45,6 +45,9 @@ func (s *server) getSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		m[k] = v
 	}
+	if !rowsOK(w, rows) {
+		return
+	}
 	writeJSON(w, 200, m)
 }
 
@@ -63,6 +66,8 @@ func (s *server) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	// Snapshot dos valores atuais ANTES do write — é o "de" do diff de auditoria
 	// e o filtro de no-op (chave re-enviada com o mesmo valor não vira evento).
+	// `old` parcial só degrada o diff de auditoria (chave "nova" que já existia);
+	// não bloqueia o write — erro de iteração é 500 mesmo assim por honestidade.
 	old := map[string]string{}
 	if rows, err := s.cfg.DB.Query(`SELECT key, value FROM settings`); err == nil {
 		for rows.Next() {
@@ -70,6 +75,10 @@ func (s *server) putSettings(w http.ResponseWriter, r *http.Request) {
 			if rows.Scan(&k, &v) == nil {
 				old[k] = v
 			}
+		}
+		if !rowsOK(w, rows) {
+			rows.Close()
+			return
 		}
 		rows.Close()
 	}

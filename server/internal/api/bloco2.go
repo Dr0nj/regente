@@ -277,6 +277,9 @@ func (s *server) analyticsSummary(w http.ResponseWriter, r *http.Request) {
 		_ = rows.Scan(&st, &n)
 		counts[st] = n
 	}
+	if !rowsOK(w, rows) {
+		return
+	}
 	writeJSON(w, 200, map[string]any{"since": since, "counts": counts})
 }
 
@@ -305,6 +308,9 @@ func (s *server) analyticsTopFailing(w http.ResponseWriter, r *http.Request) {
 		var i item
 		_ = rows.Scan(&i.DefID, &i.Fails)
 		out = append(out, i)
+	}
+	if !rowsOK(w, rows) {
+		return
 	}
 	writeJSON(w, 200, map[string]any{"since": since, "topFailing": out})
 }
@@ -339,6 +345,9 @@ func (s *server) analyticsMTTR(w http.ResponseWriter, r *http.Request) {
 		var i item
 		_ = rows.Scan(&i.DefID, &i.AvgSec, &i.Runs)
 		out = append(out, i)
+	}
+	if !rowsOK(w, rows) {
+		return
 	}
 	writeJSON(w, 200, map[string]any{"since": since, "mttr": out})
 }

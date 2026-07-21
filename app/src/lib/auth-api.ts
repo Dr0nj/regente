@@ -109,13 +109,6 @@ export async function listUserACLs(userId: number): Promise<FolderACL[]> {
   return await api<FolderACL[]>(`/api/users/${userId}/acls`);
 }
 
-export async function setUserACL(userId: number, folder: string, perms: string): Promise<void> {
-  await api(`/api/users/${userId}/acls/${encodeURIComponent(folder)}`, {
-    method: "PATCH",
-    body: JSON.stringify({ perms }),
-  });
-}
-
 export async function replaceUserACLs(userId: number, acls: Array<{ folder: string; perms: string }>): Promise<FolderACL[]> {
   return await api<FolderACL[]>(`/api/users/${userId}/acls`, {
     method: "PUT",

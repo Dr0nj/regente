@@ -65,11 +65,6 @@ export function getInstance(instanceId: string): JobInstance | undefined {
   return localLoad<JobInstance>(INSTANCES_KEY).find((i) => i.id === instanceId);
 }
 
-/** Get instances for a specific definition (today) */
-export function getInstancesForDefinition(definitionId: string): JobInstance[] {
-  return getTodayInstances().filter((i) => i.definitionId === definitionId);
-}
-
 /** Save all instances (internal) */
 function saveAll(instances: JobInstance[]): void {
   localSave(INSTANCES_KEY, instances, MAX_INSTANCES);
@@ -254,37 +249,6 @@ export function rerunInstance(instanceId: string): JobInstance | null {
   };
 
   return orderJob(def, new Date(), true);
-}
-
-/** Clear instances for a specific date (cleanup) */
-export function clearInstances(orderDate?: string): void {
-  if (orderDate) {
-    const all = localLoad<JobInstance>(INSTANCES_KEY);
-    saveAll(all.filter((i) => i.orderDate !== orderDate));
-  } else {
-    localStorage.removeItem(INSTANCES_KEY);
-    notify();
-  }
-}
-
-/** Summary stats for today's instances */
-export function getTodayStats(): {
-  total: number;
-  waiting: number;
-  running: number;
-  ok: number;
-  notOk: number;
-  hold: number;
-} {
-  const today = getTodayInstances();
-  return {
-    total: today.length,
-    waiting: today.filter((i) => i.status === "WAITING").length,
-    running: today.filter((i) => i.status === "RUNNING").length,
-    ok: today.filter((i) => i.status === "OK").length,
-    notOk: today.filter((i) => i.status === "NOTOK").length,
-    hold: today.filter((i) => i.status === "HOLD").length,
-  };
 }
 
 /* ──────────────────────────────────────────────────────────────

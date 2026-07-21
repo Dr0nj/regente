@@ -53,6 +53,9 @@ func (s *server) listViewpoints(w http.ResponseWriter, r *http.Request) {
 		v.Shared = sharedInt == 1
 		out = append(out, v)
 	}
+	if !rowsOK(w, rows) {
+		return
+	}
 	writeJSON(w, 200, out)
 }
 

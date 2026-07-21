@@ -175,6 +175,9 @@ func (s *Scheduler) loadDailyDefs(date, folder string) (map[string]string, strin
 			commit = sha
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
 	return out, commit, nil
 }
 

@@ -40,7 +40,7 @@ export default function TimelineView({
   onSelect?: (id: string) => void;
 }) {
   const [p50, setP50] = useState<Record<string, number>>({});
-  const [now, setNow] = useState<number>(Date.now());
+  const [now, setNow] = useState<number>(() => Date.now());
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

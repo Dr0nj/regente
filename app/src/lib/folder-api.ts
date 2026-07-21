@@ -29,22 +29,9 @@ function listPath(): string {
   const sid = getDesignSessionId();
   return sid ? `/api/design/sessions/${encodeURIComponent(sid)}/folders` : "/api/folders";
 }
-function createPath(): string {
-  const sid = getDesignSessionId();
-  return sid ? `/api/design/sessions/${encodeURIComponent(sid)}/folders` : "/api/folders";
-}
-
 export async function listFolders(): Promise<FolderInfo[]> {
   if (!isServerMode()) return [];
   return await api<FolderInfo[]>(listPath());
-}
-
-export async function createFolder(name: string): Promise<void> {
-  if (!isServerMode()) return;
-  await api(createPath(), {
-    method: "POST",
-    body: JSON.stringify({ name }),
-  });
 }
 
 export async function renameFolder(oldName: string, newName: string): Promise<void> {

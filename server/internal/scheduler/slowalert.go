@@ -10,6 +10,7 @@ package scheduler
 
 import (
 	"encoding/json"
+	"log"
 	"time"
 
 	"github.com/Dr0nj/regente-server/internal/domain"
@@ -50,6 +51,11 @@ func (s *Scheduler) avgOKDurationMs(defID, excludeID string) (int64, int) {
 				n++
 			}
 		}
+	}
+	if err := rows.Err(); err != nil {
+		// Média sobre histórico incompleto puxaria a régua pra baixo → falso
+		// "slow"; sem régua a regra simplesmente não se aplica neste ciclo.
+		return 0, 0
 	}
 	if n == 0 {
 		return 0, 0
@@ -140,7 +146,14 @@ func (s *Scheduler) evaluateSlowRunning(now time.Time) {
 		}
 		cands = append(cands, cand{id, defID, elapsed, avg, runs})
 	}
+	errIter := rows.Err()
 	rows.Close()
+	if errIter != nil {
+		// `alive` incompleto podaria slowFired de runs AINDA vivas → alerta de
+		// lentidão re-disparado em duplicata. Aborta o ciclo; o próximo tick refaz.
+		log.Printf("[alerts] slow scan: iteração incompleta (ciclo pulado): %v", errIter)
+		return
+	}
 
 	// Poda do ledger: runs que saíram de RUNNING (terminadas, Set OK, cancel,
 	// delete) liberam a entrada — o caminho terminal também consome a sua.

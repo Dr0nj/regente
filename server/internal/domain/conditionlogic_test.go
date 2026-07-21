@@ -36,6 +36,33 @@ func TestEvalLogic_NilIsFlatAND(t *testing.T) {
 	}
 }
 
+// Hardening: grupo VAZIO é neutro, nunca "satisfeito" — uma lógica congelada
+// malformada (snapshot/cond_logic não repassa pela poda do normalize) com grupo
+// vazio sob OR de topo NÃO pode disparar o job na hora. Todos vazios = sem
+// lógica (AND implícito das flatIn).
+func TestEvalLogic_EmptyGroupIsNeutral(t *testing.T) {
+	// OR de topo com um grupo vazio + um grupo insatisfeito: NÃO satisfaz.
+	logic := &ConditionLogic{Op: CondOpOr, Groups: []CondGroup{
+		{Op: CondOpAnd, Members: nil},
+		{Op: CondOpAnd, Members: []string{"C1"}},
+	}}
+	if EvalConditionLogic(logic, []string{"C1"}, satOf()).Satisfied {
+		t.Fatal("grupo vazio sob OR não podia satisfazer a expressão")
+	}
+	// O grupo não-vazio segue mandando: C1 no pool → satisfaz.
+	if !EvalConditionLogic(logic, []string{"C1"}, satOf("C1")).Satisfied {
+		t.Fatal("com C1 satisfeito o OR devia fechar")
+	}
+	// TODOS os grupos vazios = sem lógica → AND implícito das flatIn.
+	allEmpty := &ConditionLogic{Op: CondOpOr, Groups: []CondGroup{{Op: CondOpAnd}, {Op: CondOpOr}}}
+	if EvalConditionLogic(allEmpty, []string{"C1"}, satOf()).Satisfied {
+		t.Fatal("só grupos vazios: devia cair no AND implícito de flatIn (C1 falta)")
+	}
+	if !EvalConditionLogic(allEmpty, []string{"C1"}, satOf("C1")).Satisfied {
+		t.Fatal("só grupos vazios com flatIn satisfeita devia satisfazer")
+	}
+}
+
 // (C1 AND C2) OR C3 — dispara pelo ramo AND OU só por C3.
 func TestEvalLogic_AndOrThird(t *testing.T) {
 	logic := &ConditionLogic{Op: CondOpOr, Groups: []CondGroup{

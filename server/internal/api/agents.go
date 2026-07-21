@@ -150,6 +150,9 @@ func (s *server) listAgents(w http.ResponseWriter, r *http.Request) {
 		seen[a.ID] = true
 		out = append(out, a)
 	}
+	if !rowsOK(w, rows) {
+		return
+	}
 	// Agents online em outro nó SEM linha no DB deste nó (nós com DBs separados):
 	// ainda assim aparecem na frota do cluster.
 	for id, ra := range remote {
@@ -270,6 +273,9 @@ func (s *server) listAgentTokens(w http.ResponseWriter, r *http.Request) {
 			"id": id, "label": label, "tokenPrefix": prefix + "…",
 			"createdAt": createdAt, "lastUsedAt": lastUsed,
 		})
+	}
+	if !rowsOK(w, rows) {
+		return
 	}
 	writeJSON(w, 200, out)
 }

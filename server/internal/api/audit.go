@@ -133,5 +133,8 @@ func (s *server) listDefinitionAudit(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, e)
 	}
+	if !rowsOK(w, rows) {
+		return
+	}
 	writeJSON(w, 200, out)
 }

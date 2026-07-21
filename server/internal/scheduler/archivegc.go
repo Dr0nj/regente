@@ -87,6 +87,11 @@ func (s *Scheduler) archiveGC() {
 			daysToGo = append(daysToGo, d)
 		}
 	}
+	// Parcial é inofensivo aqui (archiveDay é idempotente e a próxima rodada
+	// pega os dias que faltaram) — só registra o porquê da rodada curta.
+	if err := rows.Err(); err != nil {
+		log.Printf("[scheduler] archive: listagem de dias incompleta: %v", err)
+	}
 	rows.Close()
 
 	for _, day := range daysToGo {

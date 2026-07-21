@@ -33,13 +33,20 @@ func (s *Scheduler) MigrateConditionsUnify() {
 	if n > 0 {
 		return // já rodou
 	}
+	// Erro de query/iteração ABORTA sem marcar a flag (semeadura parcial deixaria
+	// consumidores presos em WAIT COND pra sempre — a flag diria "já rodou");
+	// próximo boot re-tenta.
 	seeded := 0
 	rows, err := s.db.Query(
 		`SELECT id, definition_id, ` + odateExpr + `, COALESCE(definition_snapshot,'')
 		 FROM instances
 		 WHERE status IN ('WAITING','HELD') AND definition_snapshot LIKE '%"upstream"%'`,
 	)
-	if err == nil {
+	if err != nil {
+		log.Printf("[conditions] backfill: query (flag não marcada, retry no próximo boot): %v", err)
+		return
+	}
+	{
 		type consumer struct{ id, defID, odate, snap string }
 		var consumers []consumer
 		for rows.Next() {
@@ -48,7 +55,12 @@ func (s *Scheduler) MigrateConditionsUnify() {
 				consumers = append(consumers, c)
 			}
 		}
+		errIter := rows.Err()
 		rows.Close()
+		if errIter != nil {
+			log.Printf("[conditions] backfill: iteração (flag não marcada, retry no próximo boot): %v", errIter)
+			return
+		}
 		for _, c := range consumers {
 			var def domain.JobDefinition
 			if json.Unmarshal([]byte(c.snap), &def) != nil {

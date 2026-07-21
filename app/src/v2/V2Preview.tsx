@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -14,12 +14,8 @@ import {
 import JobNodeV2 from "./JobNodeV2";
 import LaneLabelNode from "./LaneLabelNode";
 import MonitoringSidebarV2 from "./MonitoringSidebarV2";
-import ScaleMonitor from "./ScaleMonitor";
 import DesignSidebarV2 from "./DesignSidebarV2";
-import InstanceDetailsDrawer from "./InstanceDetailsDrawer";
-import JobConfigDrawer from "./JobConfigDrawer";
 import CanvasContextMenu, { type ContextMenuItem } from "./CanvasContextMenu";
-import FolderManagerDialog from "./FolderManagerDialog";
 import BulkActionBar from "./BulkActionBar";
 import type { JobType } from "@/lib/job-config";
 import type {
@@ -58,11 +54,8 @@ import { fetchMe, loadCachedUser, type AuthUser } from "@/lib/auth-api";
 import { LoginForm } from "./LoginForm";
 import { UserMenu } from "./UserMenu";
 import { UsersDialog } from "./UsersDialog";
-import { ControlMPanel } from "./ControlMPanel";
-import { AlertsPanel } from "./AlertsPanel";
 import { setAlertNotifier } from "@/lib/alerting";
 import { fetchUnacknowledgedCount } from "@/lib/alerts-api";
-import { SettingsDialog } from "./SettingsDialog";
 import { GitStatusBadge } from "./GitStatusBadge";
 import { PRBannerHost } from "./PRBannerHost";
 import { PublishButton } from "./PublishButton";
@@ -71,9 +64,21 @@ import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, creat
 import { toast, ToastHost } from "./Toast";
 import { getGitInfo, commitUrl } from "@/lib/git-info";
 import { FolderOpen, Zap, GitCommitHorizontal, LayoutGrid, ChevronLeft, ChevronRight, Code, Wand2, ListChecks, Boxes } from "lucide-react";
-import CodeModeView from "./CodeModeView";
-import MassUpdateDialog from "./MassUpdateDialog";
 import { pauseFolder, resumeFolder } from "@/lib/differentials-api";
+
+// Code-splitting: views/diálogos PESADOS e condicionais saem do chunk inicial
+// (React.lazy + Suspense fallback null — todos montam sob flag/estado, então o
+// primeiro paint do Monitoring não paga por eles). O canvas (React Flow) fica
+// no chunk principal de propósito: é o coração das duas views.
+const InstanceDetailsDrawer = lazy(() => import("./InstanceDetailsDrawer"));
+const JobConfigDrawer = lazy(() => import("./JobConfigDrawer"));
+const FolderManagerDialog = lazy(() => import("./FolderManagerDialog"));
+const ScaleMonitor = lazy(() => import("./ScaleMonitor"));
+const CodeModeView = lazy(() => import("./CodeModeView"));
+const MassUpdateDialog = lazy(() => import("./MassUpdateDialog"));
+const ControlMPanel = lazy(() => import("./ControlMPanel").then((m) => ({ default: m.ControlMPanel })));
+const AlertsPanel = lazy(() => import("./AlertsPanel").then((m) => ({ default: m.AlertsPanel })));
+const SettingsDialog = lazy(() => import("./SettingsDialog").then((m) => ({ default: m.SettingsDialog })));
 
 import "@xyflow/react/dist/style.css";
 import "@/index.css";
@@ -1707,12 +1712,14 @@ function V2PreviewInner() {
 
         {/* Job-as-code — editor YAML cobre o palco do Design (linha luxo + guia do schema). */}
         {mode === "design" && codeMode && designSessionId && (
-          <CodeModeView
-            sessionId={designSessionId}
-            folders={activeFolders ? Array.from(activeFolders).sort() : []}
-            onExit={() => setCodeMode(false)}
-            onApplied={reloadDefs}
-          />
+          <Suspense fallback={null}>
+            <CodeModeView
+              sessionId={designSessionId}
+              folders={activeFolders ? Array.from(activeFolders).sort() : []}
+              onExit={() => setCodeMode(false)}
+              onApplied={reloadDefs}
+            />
+          </Suspense>
         )}
 
         {/* Recuperação de draft: sessions sujas esquecidas deste actor (F5, aba
@@ -1825,43 +1832,47 @@ function V2PreviewInner() {
           // WAIT COND (BUG-3) — mesma régua do card (pool de condições):
           // decide as ações do drawer (Cancel some, Set OK aparece).
           return (
-            <InstanceDetailsDrawer
-              instance={enriched}
-              definition={selDef}
-              allDefs={runnableDefs}
-              waitEvent={isWaitingOnConds(enriched, selDef, condPool)}
-              handlers={{
-                onHold: holdInstance,
-                onRelease: releaseInstance,
-                onDelete: (id) => {
-                  Promise.resolve(deleteInstance(id))
-                    .then(() => setSelectedInstanceId(null)) // a ordem sumiu — fecha o drawer
-                    .catch((err) => toast.error("Delete falhou", { detail: err instanceof Error ? err.message : String(err) }));
-                },
-                onCancel: cancelInstance,
-                onSkip: skipInstance,
-                onBypass: bypassInstance,
-                onRerun: handleRerunInstance,
-                onConfirm: confirmInstance,
-                onClose: () => setSelectedInstanceId(null),
-              }}
-            />
+            <Suspense fallback={null}>
+              <InstanceDetailsDrawer
+                instance={enriched}
+                definition={selDef}
+                allDefs={runnableDefs}
+                waitEvent={isWaitingOnConds(enriched, selDef, condPool)}
+                handlers={{
+                  onHold: holdInstance,
+                  onRelease: releaseInstance,
+                  onDelete: (id) => {
+                    Promise.resolve(deleteInstance(id))
+                      .then(() => setSelectedInstanceId(null)) // a ordem sumiu — fecha o drawer
+                      .catch((err) => toast.error("Delete falhou", { detail: err instanceof Error ? err.message : String(err) }));
+                  },
+                  onCancel: cancelInstance,
+                  onSkip: skipInstance,
+                  onBypass: bypassInstance,
+                  onRerun: handleRerunInstance,
+                  onConfirm: confirmInstance,
+                  onClose: () => setSelectedInstanceId(null),
+                }}
+              />
+            </Suspense>
           );
         })()}
 
         {mode === "design" && editingDefLive && (
-          <JobConfigDrawer
-            definition={editingDefLive.def}
-            isNew={editingDefLive.isNew}
-            availableFolders={activeFolders ? Array.from(activeFolders).sort() : []}
-            allDefs={defs}
-            handlers={{
-              onSave: handleSaveDef,
-              onAutoSave: handleAutoSaveDef,
-              onDelete: handleDeleteDef,
-              onClose: () => setEditingDef(null),
-            }}
-          />
+          <Suspense fallback={null}>
+            <JobConfigDrawer
+              definition={editingDefLive.def}
+              isNew={editingDefLive.isNew}
+              availableFolders={activeFolders ? Array.from(activeFolders).sort() : []}
+              allDefs={defs}
+              handlers={{
+                onSave: handleSaveDef,
+                onAutoSave: handleAutoSaveDef,
+                onDelete: handleDeleteDef,
+                onClose: () => setEditingDef(null),
+              }}
+            />
+          </Suspense>
         )}
 
         {ctxMenu && (
@@ -1874,50 +1885,64 @@ function V2PreviewInner() {
         )}
 
         {showFolderManager && (
-          <FolderManagerDialog
-            visibleFolders={visibleFolders}
-            onChangeVisible={setVisibleFolders}
-            activeFolders={activeFolders ?? new Set()}
-            onOpenFolder={(name) => addFolder("open", name)}
-            onCreateFolder={(name) => addFolder("create", name)}
-            onCloseFolder={closeFolder}
-            sessionId={designSessionId}
-            newFolderCount={designSessionNewFolders.length}
-            onPublished={handlePublished}
-            onDiscardSession={handleDiscardSession}
-            inDesignMode={mode === "design"}
-            onOpened={() => { setMode("design"); setShowFolderManager(false); }}
-            onClose={() => setShowFolderManager(false)}
-          />
+          <Suspense fallback={null}>
+            <FolderManagerDialog
+              visibleFolders={visibleFolders}
+              onChangeVisible={setVisibleFolders}
+              activeFolders={activeFolders ?? new Set()}
+              onOpenFolder={(name) => addFolder("open", name)}
+              onCreateFolder={(name) => addFolder("create", name)}
+              onCloseFolder={closeFolder}
+              sessionId={designSessionId}
+              newFolderCount={designSessionNewFolders.length}
+              onPublished={handlePublished}
+              onDiscardSession={handleDiscardSession}
+              inDesignMode={mode === "design"}
+              onOpened={() => { setMode("design"); setShowFolderManager(false); }}
+              onClose={() => setShowFolderManager(false)}
+            />
+          </Suspense>
         )}
 
         {showUsers && me && me.role === "admin" && (
           <UsersDialog meId={me.id} onClose={() => setShowUsers(false)} />
         )}
 
-        {showControlM && <ControlMPanel onClose={() => setShowControlM(false)} />}
+        {showControlM && (
+          <Suspense fallback={null}>
+            <ControlMPanel onClose={() => setShowControlM(false)} />
+          </Suspense>
+        )}
 
         {/* CTM-3 — Find & Update rico (preview + undo, transacional por item). */}
         {showMassUpdate && designSessionId && (
-          <MassUpdateDialog
-            sessionId={designSessionId}
-            folders={activeFolders ? Array.from(activeFolders).sort() : []}
-            defs={filteredDefs}
-            presetIds={selectedIds.size > 0 ? [...selectedIds] : undefined}
-            onClose={() => setShowMassUpdate(false)}
-            onChanged={reloadDefs}
-          />
+          <Suspense fallback={null}>
+            <MassUpdateDialog
+              sessionId={designSessionId}
+              folders={activeFolders ? Array.from(activeFolders).sort() : []}
+              defs={filteredDefs}
+              presetIds={selectedIds.size > 0 ? [...selectedIds] : undefined}
+              onClose={() => setShowMassUpdate(false)}
+              onChanged={reloadDefs}
+            />
+          </Suspense>
         )}
 
         {showAlerts && (
-          <AlertsPanel
-            onClose={() => setShowAlerts(false)}
-            onChange={() => { void fetchUnacknowledgedCount().then(setUnreadAlerts); }}
-            isAdmin={me?.role === "admin"}
-          />
+          <Suspense fallback={null}>
+            <AlertsPanel
+              onClose={() => setShowAlerts(false)}
+              onChange={() => { void fetchUnacknowledgedCount().then(setUnreadAlerts); }}
+              isAdmin={me?.role === "admin"}
+            />
+          </Suspense>
         )}
 
-        {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
+        {showSettings && (
+          <Suspense fallback={null}>
+            <SettingsDialog onClose={() => setShowSettings(false)} />
+          </Suspense>
+        )}
         {/* Diff / Dry Run / Timeline / What-If migraram pro Control Panel (abas). */}
 
         <PRBannerHost />
@@ -1967,7 +1992,9 @@ function V2PreviewInner() {
 
         {/* P3/escala — ViewPoint server-driven cobre o canvas quando ligado */}
         {mode === "monitoring" && scaleView && (
-          <ScaleMonitor onClose={() => setScaleView(false)} />
+          <Suspense fallback={null}>
+            <ScaleMonitor onClose={() => setScaleView(false)} />
+          </Suspense>
         )}
 
         <ToastHost />

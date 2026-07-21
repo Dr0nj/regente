@@ -131,17 +131,6 @@ export async function bulkSessionDefinitions(
   );
 }
 
-/** Bulk em instances (Monitoring): hold | release | cancel | rerun | set-ok. */
-export async function bulkInstancesApi(
-  action: "hold" | "release" | "cancel" | "rerun" | "set-ok",
-  ids: string[],
-): Promise<BulkResponse> {
-  return await api<BulkResponse>("/api/bulk/instances", {
-    method: "POST",
-    body: JSON.stringify({ action, ids }),
-  });
-}
-
 // ── Job-as-code (modo código do Design, 2026-07-06) ─────────────────────────
 
 export interface SessionCode {

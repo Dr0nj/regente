@@ -52,30 +52,6 @@ export function nodesToDefinitions(nodes: Node<JobNodeData>[]): JobDefinition[] 
     .map(nodeToDefinition);
 }
 
-/* ── Definition → Partial Node update ── */
-
-/**
- * Apply a schedule from a JobDefinition back to a node's data.
- * This is used when the schedule editor in the properties panel updates.
- */
-export function definitionScheduleToNodeData(def: JobDefinition): Partial<JobNodeData> {
-  return {
-    schedule: def.schedule.cronExpression,
-  };
-}
-
-/* ── Bulk export ── */
-
-/**
- * Get all enabled definitions (with valid cron) from a set of nodes.
- * Used by the scheduler to load definitions.
- */
-export function getSchedulableDefinitions(nodes: Node<JobNodeData>[]): JobDefinition[] {
-  return nodesToDefinitions(nodes).filter(
-    (d) => d.schedule.enabled && d.schedule.cronExpression,
-  );
-}
-
 /* ──────────────────────────────────────────────────────────────
    Fase 7 — Runtime store (async, com subscribers)
    ──────────────────────────────────────────────────────────────
@@ -148,14 +124,6 @@ export async function saveDefinition(def: JobDefinition): Promise<void> {
 export async function deleteDefinition(id: string): Promise<void> {
   await container.storage.remove(id);
   _cache = normalizeDefsConditions(_cache.filter((d) => d.id !== id));
-  emitChange();
-}
-
-/** Reset (útil em testes / limpar tudo no dev). */
-export async function clearAllDefinitions(): Promise<void> {
-  const ids = _cache.map((d) => d.id);
-  for (const id of ids) await container.storage.remove(id);
-  _cache = [];
   emitChange();
 }
 

@@ -54,7 +54,12 @@ func (s *Scheduler) PerfForecast(defID string) PerfForecast {
 			}
 		}
 	}
+	errIter := rows.Err()
 	rows.Close()
+	if errIter != nil {
+		// Amostra incompleta enviesa a previsão — melhor "sem dados" que torto.
+		return PerfForecast{DefID: defID, Samples: []DurationSample{}}
+	}
 	// query veio nova→velha; série temporal quer velha→nova.
 	for i, j := 0, len(pf.Samples)-1; i < j; i, j = i+1, j-1 {
 		pf.Samples[i], pf.Samples[j] = pf.Samples[j], pf.Samples[i]
@@ -119,7 +124,12 @@ func (s *Scheduler) DayDurations(date string, lookbackDays int) map[string]int64
 			}
 		}
 	}
+	errIter := rows.Err()
 	rows.Close()
+	if errIter != nil {
+		// p50 sobre amostra incompleta enviesa — melhor "sem dados" que torto.
+		return map[string]int64{}
+	}
 	out := make(map[string]int64, len(byDef))
 	for id, durs := range byDef {
 		out[id] = percentile(durs, 50)

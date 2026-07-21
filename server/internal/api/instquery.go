@@ -18,6 +18,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -171,6 +172,9 @@ func (s *server) queryInstances(w http.ResponseWriter, r *http.Request) {
 				total += g.Count
 			}
 		}
+		if !rowsOK(w, rows) {
+			return
+		}
 		writeJSON(w, 200, map[string]any{"groupBy": q.GroupBy, "groups": groups, "total": total})
 		return
 	}
@@ -220,6 +224,7 @@ func (s *server) allowedTeamsRange(r *http.Request, q structuredQuery) ([]string
 	case q.Date == "":
 		sqlStr, args = "SELECT DISTINCT team FROM instances WHERE order_date=?", []any{time.Now().Format("2006-01-02")}
 	}
+	// Fail-closed como o allowedTeams de dia único: parcial só ESTREITA a visão.
 	var distinct []string
 	if rows, err := s.cfg.DB.Query(sqlStr, args...); err == nil {
 		for rows.Next() {
@@ -228,7 +233,12 @@ func (s *server) allowedTeamsRange(r *http.Request, q structuredQuery) ([]string
 				distinct = append(distinct, t)
 			}
 		}
+		if err := rows.Err(); err != nil {
+			log.Printf("[api] allowedTeamsRange: iteração incompleta (RBAC fail-closed): %v", err)
+		}
 		rows.Close()
+	} else {
+		log.Printf("[api] allowedTeamsRange: query (RBAC fail-closed): %v", err)
 	}
 	readable, _ := auth.FilterReadableFolders(s.cfg.DB, u, distinct)
 	return readable, true

@@ -141,17 +141,3 @@ export function describeCron(expression: string): string {
   return parts.join(" ");
 }
 
-/**
- * Validate a cron expression string. Returns error message or null.
- */
-export function validateCron(expression: string): string | null {
-  if (!expression || !expression.trim()) return null; // empty is OK (no schedule)
-  const cron = parseCron(expression);
-  if (!cron) return "Invalid cron: expected 5 or 6 space-separated fields";
-  if (cron.minute.values.size === 0) return "Invalid minute field";
-  if (cron.hour.values.size === 0) return "Invalid hour field";
-  if (cron.dayOfMonth.values.size === 0) return "Invalid day-of-month field";
-  if (cron.month.values.size === 0) return "Invalid month field";
-  if (cron.dayOfWeek.values.size === 0) return "Invalid day-of-week field";
-  return null;
-}

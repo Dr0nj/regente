@@ -13,7 +13,6 @@ import {
   acknowledgeAll,
   toggleAlertRule,
   setAlertRuleChannels,
-  setAlertRuleCooldown,
   getUnacknowledgedCount,
   type AlertChannel,
   type AlertEvent,
@@ -69,16 +68,6 @@ export async function updateRuleChannels(id: string, channels: AlertChannel[]): 
   setAlertRuleChannels(id, channels);
 }
 
-export async function updateRuleCooldown(id: string, cooldownMs: number): Promise<void> {
-  if (isServerMode()) {
-    await api(`/api/alerts/rules/${encodeURIComponent(id)}/cooldown`, {
-      method: "PUT",
-      body: JSON.stringify({ cooldownMs }),
-    });
-    return;
-  }
-  setAlertRuleCooldown(id, cooldownMs);
-}
 
 export async function fetchUnacknowledgedCount(): Promise<number> {
   if (isServerMode()) {

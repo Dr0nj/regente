@@ -312,8 +312,9 @@ type CondLogicEval struct {
 	Satisfied bool
 }
 
-// evalGroup — avalia UM grupo pelo seu operador. Grupo sem membros = satisfeito
-// (nunca bloqueia por grupo vazio malformado).
+// evalGroup — avalia UM grupo pelo seu operador. NB: EvalConditionLogic filtra
+// grupos vazios ANTES (vazio = neutro, nunca "satisfeito" — senão um OR de topo
+// dispararia por grupo malformado); o caso len==0 aqui é só defesa de borda.
 func evalGroup(g CondGroup, sat func(member string) bool) CondGroupEval {
 	gop := normCondOp(g.Op)
 	ge := CondGroupEval{Op: gop, Members: g.Members}
@@ -362,8 +363,21 @@ func looseMembers(logic *ConditionLogic, flatIn []string) []string {
 // nome de ConditionsIn fora da lógica é requisito AND (a setinha adiciona
 // condição simples num job com lógica → obrigatória).
 func EvalConditionLogic(logic *ConditionLogic, flatIn []string, sat func(member string) bool) CondLogicEval {
-	// Sem lógica: AND implícito de todas as flatIn.
-	if logic == nil || len(logic.Groups) == 0 {
+	// Grupos VAZIOS são ignorados na avaliação (não "satisfeitos"): a lógica
+	// normalizada nunca os tem (normalizeConditionLogic poda no chokepoint), mas
+	// a lógica CONGELADA num snapshot/cond_logic não repassa pela poda ao ser
+	// decodificada — e um grupo vazio contado como satisfeito sob OR de topo
+	// DISPARARIA o job na hora. Vazio = neutro; todos vazios = sem lógica.
+	var groups []CondGroup
+	if logic != nil {
+		for _, g := range logic.Groups {
+			if len(g.Members) > 0 {
+				groups = append(groups, g)
+			}
+		}
+	}
+	// Sem lógica (nil, sem grupos, ou só grupos vazios): AND implícito das flatIn.
+	if len(groups) == 0 {
 		res := CondLogicEval{Op: CondOpAnd}
 		if len(flatIn) == 0 {
 			res.Satisfied = true
@@ -377,7 +391,7 @@ func EvalConditionLogic(logic *ConditionLogic, flatIn []string, sat func(member 
 	topOp := normCondOp(logic.Op)
 	res := CondLogicEval{Op: topOp}
 	anySat, allSat := false, true
-	for _, g := range logic.Groups {
+	for _, g := range groups {
 		ge := evalGroup(g, sat)
 		if ge.Satisfied {
 			anySat = true

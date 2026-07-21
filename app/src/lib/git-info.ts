@@ -39,7 +39,3 @@ export function commitUrl(st: GitStatus | null, sha?: string): string | null {
   if (!st?.webUrl || !sha) return null;
   return `${st.webUrl}/commit/${sha}`;
 }
-
-export function repoUrl(st: GitStatus | null): string | null {
-  return st?.webUrl ?? null;
-}

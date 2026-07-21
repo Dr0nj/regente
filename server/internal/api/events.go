@@ -120,6 +120,9 @@ func (s *server) listEventLog(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, ev)
 	}
+	if !rowsOK(w, rows) {
+		return
+	}
 
 	next := ""
 	if len(items) > limit {

@@ -2,6 +2,7 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -465,4 +466,17 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// rowsOK — fecha o contrato dos handlers de listagem: erro de ITERAÇÃO
+// (rows.Err após o for rows.Next) vira 500 em vez de um 200 com resultado
+// PARCIAL silencioso — relevante com o backend Postgres via rede, onde a
+// conexão pode cair no meio do cursor. Chamar depois do loop, antes do
+// writeJSON do payload. true = iteração completa, pode responder.
+func rowsOK(w http.ResponseWriter, rows *sql.Rows) bool {
+	if err := rows.Err(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "row iteration: " + err.Error()})
+		return false
+	}
+	return true
 }

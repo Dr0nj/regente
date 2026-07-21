@@ -143,6 +143,9 @@ func (m *SessionManager) Restore() error {
 		m.mu.Unlock()
 		restored++
 	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("design_sessions iteração (restauradas %d): %w", restored, err)
+	}
 	log.Printf("[design-restore] restored=%d dropped=%d", restored, dropped)
 	return nil
 }
@@ -221,7 +224,10 @@ func (m *SessionManager) StartGC(ttl, tick time.Duration) {
 	}()
 }
 
-// StopGC para a goroutine e aguarda terminar.
+// StopGC para a goroutine e aguarda terminar. Sem caller em produção HOJE
+// (aparece no deadcode do CI) — mantido DE PROPÓSITO: é o teardown que um
+// teste que chame StartGC precisa no t.Cleanup, senão a goroutine escreve no
+// DB do t.TempDir() depois do teste (a classe de flake "directory not empty").
 func (m *SessionManager) StopGC() {
 	m.mu.Lock()
 	stop, stopped := m.gcStop, m.gcStopped

@@ -56,4 +56,8 @@ jobs:
         with:
           node-version: "20"
       - run: npm ci
+      # Gate ERRO-only: eslint sai !=0 só com erros (o no-unused-vars '^_' e
+      # qualquer regra 'error' nova). As regras react-hooks/react-refresh
+      # load-bearing são 'warn' (visíveis, não bloqueiam) — ver eslint.config.js.
+      - run: npm run lint
       - run: npm run build

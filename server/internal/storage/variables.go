@@ -55,6 +55,11 @@ func (s *VariableStore) Reload() error {
 		}
 		next[v.Name] = v
 	}
+	// NUNCA trocar o cache por um snapshot parcial: variável que "sumiu" faria
+	// %%VAR resolver vazio no comando do job. Erro preserva o cache anterior.
+	if err := rows.Err(); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	s.cache = next
 	s.mu.Unlock()

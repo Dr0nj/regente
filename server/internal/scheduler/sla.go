@@ -80,6 +80,10 @@ func (e *SLAEngine) Evaluate(defs map[string]domain.JobDefinition, now time.Time
 			}
 		}
 	}
+	// Parcial = checks que faltaram ficam pro próximo ciclo; só registra o porquê.
+	if err := rows.Err(); err != nil {
+		log.Printf("[sla] varredura de RUNNING incompleta: %v", err)
+	}
 }
 
 func (e *SLAEngine) recordBreach(instanceID, defID, kind, severity, msg, webhook string) {
@@ -158,9 +162,14 @@ func (e *SLAEngine) ListBreaches(limit int) ([]domain.SLABreach, error) {
 	for rows.Next() {
 		var b domain.SLABreach
 		var notInt int
-		_ = rows.Scan(&b.ID, &b.InstanceID, &b.DefID, &b.Kind, &b.Severity, &b.Message, &b.DetectedAt, &notInt)
+		if err := rows.Scan(&b.ID, &b.InstanceID, &b.DefID, &b.Kind, &b.Severity, &b.Message, &b.DetectedAt, &notInt); err != nil {
+			return nil, err
+		}
 		b.Notified = notInt == 1
 		out = append(out, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

@@ -446,7 +446,12 @@ func (s *Scheduler) RebuildResourcesFromRunning() (int, error) {
 			recs = append(recs, rec{id, snap})
 		}
 	}
+	errIter := rows.Err()
 	rows.Close()
+	if errIter != nil {
+		// Rebuild parcial mentiria sobre o uso real (quotas furariam no failover).
+		return 0, errIter
+	}
 
 	n := 0
 	for _, rc := range recs {
@@ -761,12 +766,22 @@ type carriedInstance struct {
 //
 // Idempotente: instances já em `date` não estão na diária anterior, então re-rodar
 // (botão manual + auto) não move nada duas vezes.
-func (s *Scheduler) carryOver(date string) int {
+//
+// Erro (query/iteração/apply) NUNCA gera carry PARCIAL: o plano só é aplicado
+// depois da leitura completa, e qualquer falha devolve error — o RunDaily aborta
+// SEM marcar daily_runs e o autoDailyIfDue re-tenta no próximo tick (mesma
+// filosofia do dailySync Opção B: melhor adiar do que materializar pela metade;
+// uma instance não-carregada some do board sem isso, pois o carry só olha a
+// diária imediatamente anterior).
+func (s *Scheduler) carryOver(date string) (int, error) {
 	var prev string
 	if err := s.db.QueryRow(
 		`SELECT COALESCE(MAX(order_date),'') FROM instances WHERE order_date < ?`, date,
-	).Scan(&prev); err != nil || prev == "" {
-		return 0
+	).Scan(&prev); err != nil {
+		return 0, fmt.Errorf("diária anterior: %w", err)
+	}
+	if prev == "" {
+		return 0, nil // primeira daily do ambiente: nada a carregar
 	}
 
 	rows, err := s.db.Query(
@@ -777,8 +792,7 @@ func (s *Scheduler) carryOver(date string) int {
 		prev, string(domain.StatusOK), string(domain.StatusCancelled),
 	)
 	if err != nil {
-		log.Printf("[scheduler] carry-over %s: query: %v", date, err)
-		return 0
+		return 0, fmt.Errorf("query: %w", err)
 	}
 
 	s.mu.Lock()
@@ -827,17 +841,22 @@ func (s *Scheduler) carryOver(date string) int {
 		}
 		plan = append(plan, carriedInstance{id: id, from: odate, reason: d.reason})
 	}
+	errIter := rows.Err()
 	rows.Close()
+	if errIter != nil {
+		// Iteração incompleta = plano incompleto. Não aplicar NADA (metade
+		// avançada e metade estranhada na diária velha é pior que adiar).
+		return 0, fmt.Errorf("iteração: %w", errIter)
+	}
 
 	if len(plan) == 0 {
-		return 0
+		return 0, nil
 	}
 	if err := s.applyCarry(date, plan); err != nil {
-		log.Printf("[scheduler] carry-over %s: apply: %v", date, err)
-		return 0
+		return 0, fmt.Errorf("apply: %w", err)
 	}
 	log.Printf("[scheduler] carry-over %s: %d instances trazidas da diária %s", date, len(plan), prev)
-	return len(plan)
+	return len(plan), nil
 }
 
 // applyCarry grava as viradas numa transação: avança order_date, preserva o
@@ -896,8 +915,14 @@ func (s *Scheduler) RunDaily(date string) int {
 	// instances que sobrevivem à virada (RUNNING/HELD/NOTOK-não-tratado/keepActive)
 	// AVANÇANDO seu order_date para hoje. BUG-12: a carregada NÃO conta como "já
 	// existe" — a fresca do dia entra junto (o passo 1 filtra carried_from).
-	// Idempotente (re-rodar não re-move).
-	carried := s.carryOver(date)
+	// Idempotente (re-rodar não re-move). Falha no carry ABORTA a daily antes de
+	// marcar daily_runs → autoDailyIfDue re-tenta no próximo tick (carry parcial
+	// estranharia instances na diária velha, invisíveis pro board).
+	carried, err := s.carryOver(date)
+	if err != nil {
+		log.Printf("[scheduler] daily %s ABORTADA (carry-over: %v) — retry no próximo tick", date, err)
+		return 0
+	}
 
 	// 1) Existência em UMA query (set-based), não um COUNT(*) por def.
 	// BUG-12: instances CARREGADAS (carry-over, carried_from≠'') NÃO contam como
@@ -905,17 +930,31 @@ func (s *Scheduler) RunDaily(date string) int {
 	// atravessando a virada, keepActive) não impede a ordem FRESCA de hoje de
 	// entrar, como no New Day do Control-M. Só a fresca do dia (carried_from='')
 	// bloqueia duplicata — re-rodar a daily segue idempotente.
+	//
+	// Erro (query/scan/iteração) ABORTA a daily: um set de existência INCOMPLETO
+	// faria o re-run materializar DUPLICATAS de tudo que ficou fora do set (antes,
+	// erro de query prosseguia com set VAZIO = duplicaria o dia inteiro). Sem
+	// daily_runs marcado, o autoDailyIfDue re-tenta no próximo tick.
 	existing := make(map[string]struct{})
-	if rows, err := s.db.Query("SELECT definition_id FROM instances WHERE order_date=? AND COALESCE(carried_from,'')=''", date); err == nil {
-		for rows.Next() {
-			var id string
-			if rows.Scan(&id) == nil {
-				existing[id] = struct{}{}
-			}
+	rows, err := s.db.Query("SELECT definition_id FROM instances WHERE order_date=? AND COALESCE(carried_from,'')=''", date)
+	if err != nil {
+		log.Printf("[scheduler] daily %s ABORTADA (existência: %v) — retry no próximo tick", date, err)
+		return 0
+	}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			log.Printf("[scheduler] daily %s ABORTADA (existência/scan: %v) — retry no próximo tick", date, err)
+			return 0
 		}
-		rows.Close()
-	} else {
-		log.Printf("[scheduler] daily %s: existência: %v", date, err)
+		existing[id] = struct{}{}
+	}
+	errIter := rows.Err()
+	rows.Close()
+	if errIter != nil {
+		log.Printf("[scheduler] daily %s ABORTADA (existência/iteração: %v) — retry no próximo tick", date, errIter)
+		return 0
 	}
 
 	// 2) Gating (schedule + calendars) decidido em MEMÓRIA — sem tocar o banco.
@@ -1121,6 +1160,11 @@ func (s *Scheduler) tickOnce() {
 		r.Confirmed = confirmedInt == 1
 		insts = append(insts, r)
 	}
+	// Iteração incompleta = tick parcial (instances de fora ficam pro próximo
+	// tick — benigno, mas tem que aparecer no log pra não virar mistério).
+	if err := rows.Err(); err != nil {
+		log.Printf("[scheduler] tick: leitura das instances incompleta (%d lidas): %v", len(insts), err)
+	}
 	rows.Close()
 
 	s.mu.Lock()
@@ -1133,9 +1177,16 @@ func (s *Scheduler) tickOnce() {
 	// Foto do POOL de condições (modelo único de dependência): uma query por
 	// tick, consultada in-memory pelo gate de cada instance WAITING. O pool é
 	// pequeno (condições vivas do ambiente); o volume está nas instances.
+	// Falha no load → idx nil: hasIdx cai na consulta DIRETA ao banco por
+	// condição (gating segue correto, só sem o cache) — nunca índice vazio,
+	// que estagnaria todo job condicional em silêncio.
 	var condIdx CondIndex
 	if s.conditions != nil {
-		condIdx = s.conditions.LoadIndex()
+		var err error
+		if condIdx, err = s.conditions.LoadIndex(); err != nil {
+			log.Printf("[conditions] load do pool falhou (tick segue com consulta direta): %v", err)
+			condIdx = nil
+		}
 	}
 
 	for _, r := range insts {
@@ -1538,6 +1589,9 @@ func (s *Scheduler) buildAlertContext(id string, status domain.InstanceStatus) A
 			if rows.Scan(&st) == nil {
 				hist = append(hist, st)
 			}
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("[scheduler] alert context %s: histórico incompleto: %v", defID, err)
 		}
 		// success rate sobre a janela das últimas 10.
 		window := hist

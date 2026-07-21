@@ -82,6 +82,10 @@ func (t *Tx) Exec(query string, args ...any) (sql.Result, error) {
 	return t.Tx.Exec(rebind(query, t.dialect), args...)
 }
 
+// Query/QueryRow — sem caller HOJE (aparecem no deadcode do CI), mas são
+// SOMBRAS DELIBERADAS dos métodos promovidos do *sql.Tx (mesmo racional do
+// Prepare abaixo): sem elas, um `tx.Query` futuro cairia no método cru SEM o
+// rebind de placeholder e quebraria só no Postgres. Não remover.
 func (t *Tx) Query(query string, args ...any) (*sql.Rows, error) {
 	return t.Tx.Query(rebind(query, t.dialect), args...)
 }
@@ -242,6 +246,13 @@ func Migrate(d *DB) error {
 		if rows.Scan(&v) == nil {
 			applied[v] = true
 		}
+	}
+	// `applied` INCOMPLETO re-rodaria migrations já aplicadas (ALTER TABLE
+	// duplicado no melhor caso, mutação de dados repetida no pior) — aborta o
+	// boot em vez de arriscar.
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return fmt.Errorf("schema_migrations: %w", err)
 	}
 	_ = rows.Close()
 

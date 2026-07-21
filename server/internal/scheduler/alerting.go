@@ -725,6 +725,9 @@ func (e *AlertEngine) ListEvents(limit int) ([]AlertEventRow, error) {
 		ev.Acknowledged = ackInt == 1
 		out = append(out, ev)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -799,6 +802,9 @@ func (e *AlertEngine) ListRules() ([]AlertRule, error) {
 		}
 		r.Enabled = enInt == 1
 		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

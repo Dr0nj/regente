@@ -17,6 +17,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -163,6 +164,11 @@ func (s *server) auditExport(w http.ResponseWriter, r *http.Request) {
 			_ = enc.Encode(line)
 			written++
 		}
+		// Stream truncado é SEGURO (cada linha carrega o cursor; o cliente
+		// retoma dali) — mas o motivo precisa aparecer no log.
+		if err := rows.Err(); err != nil {
+			log.Printf("[export] instance_events: iteração incompleta (cliente retoma pelo cursor): %v", err)
+		}
 		rows.Close()
 		if written >= limit {
 			return
@@ -198,5 +204,8 @@ func (s *server) auditExport(w http.ResponseWriter, r *http.Request) {
 		line.TS = ts.UTC().Format(time.RFC3339)
 		_ = enc.Encode(line)
 		written++
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("[export] audit_events: iteração incompleta (cliente retoma pelo cursor): %v", err)
 	}
 }

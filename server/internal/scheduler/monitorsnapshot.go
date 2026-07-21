@@ -119,20 +119,28 @@ func (s *Scheduler) MigrateMonitoringSnapshot() {
 	}
 	s.mu.Unlock()
 
+	// Erro de query/iteração ABORTA sem marcar a flag (senão o backfill ficaria
+	// parcial PARA SEMPRE — a flag diria "já rodou"); próximo boot re-tenta.
 	type row struct{ id, defID, status, snap string }
 	var rowsAll []row
-	if rows, err := s.db.Query(
+	rows, err := s.db.Query(
 		`SELECT id, definition_id, status, COALESCE(definition_snapshot,'') FROM instances WHERE COALESCE(label,'')=''`,
-	); err == nil {
-		for rows.Next() {
-			var r row
-			if rows.Scan(&r.id, &r.defID, &r.status, &r.snap) == nil {
-				rowsAll = append(rowsAll, r)
-			}
+	)
+	if err != nil {
+		log.Printf("[monitoring] backfill v18: query (flag não marcada, retry no próximo boot): %v", err)
+		return
+	}
+	for rows.Next() {
+		var r row
+		if rows.Scan(&r.id, &r.defID, &r.status, &r.snap) == nil {
+			rowsAll = append(rowsAll, r)
 		}
-		rows.Close()
-	} else {
-		log.Printf("[monitoring] backfill v18: query: %v", err)
+	}
+	errIter := rows.Err()
+	rows.Close()
+	if errIter != nil {
+		log.Printf("[monitoring] backfill v18: iteração (flag não marcada, retry no próximo boot): %v", errIter)
+		return
 	}
 
 	filled, frozen := 0, 0
@@ -199,21 +207,28 @@ func (s *Scheduler) MigrateResourcesSnapshot() {
 		return // já rodou
 	}
 
+	// Só instances com snapshot e ainda sem a coluna preenchida. Erro de query/
+	// iteração ABORTA sem marcar a flag (backfill parcial permanente senão).
 	type row struct{ id, snap string }
 	var rowsAll []row
-	// Só instances com snapshot e ainda sem a coluna preenchida.
-	if rows, err := s.db.Query(
+	rows, err := s.db.Query(
 		`SELECT id, definition_snapshot FROM instances WHERE COALESCE(resources,'')='' AND COALESCE(definition_snapshot,'')<>''`,
-	); err == nil {
-		for rows.Next() {
-			var r row
-			if rows.Scan(&r.id, &r.snap) == nil {
-				rowsAll = append(rowsAll, r)
-			}
+	)
+	if err != nil {
+		log.Printf("[monitoring] backfill v19: query (flag não marcada, retry no próximo boot): %v", err)
+		return
+	}
+	for rows.Next() {
+		var r row
+		if rows.Scan(&r.id, &r.snap) == nil {
+			rowsAll = append(rowsAll, r)
 		}
-		rows.Close()
-	} else {
-		log.Printf("[monitoring] backfill v19: query: %v", err)
+	}
+	errIter := rows.Err()
+	rows.Close()
+	if errIter != nil {
+		log.Printf("[monitoring] backfill v19: iteração (flag não marcada, retry no próximo boot): %v", errIter)
+		return
 	}
 
 	filled := 0
@@ -255,20 +270,27 @@ func (s *Scheduler) MigrateCondLogicSnapshot() {
 		return // já rodou
 	}
 
+	// Erro de query/iteração ABORTA sem marcar a flag (backfill parcial permanente senão).
 	type row struct{ id, snap string }
 	var rowsAll []row
-	if rows, err := s.db.Query(
+	rows, err := s.db.Query(
 		`SELECT id, definition_snapshot FROM instances WHERE COALESCE(cond_logic,'')='' AND COALESCE(definition_snapshot,'')<>''`,
-	); err == nil {
-		for rows.Next() {
-			var r row
-			if rows.Scan(&r.id, &r.snap) == nil {
-				rowsAll = append(rowsAll, r)
-			}
+	)
+	if err != nil {
+		log.Printf("[monitoring] backfill v21: query (flag não marcada, retry no próximo boot): %v", err)
+		return
+	}
+	for rows.Next() {
+		var r row
+		if rows.Scan(&r.id, &r.snap) == nil {
+			rowsAll = append(rowsAll, r)
 		}
-		rows.Close()
-	} else {
-		log.Printf("[monitoring] backfill v21: query: %v", err)
+	}
+	errIter := rows.Err()
+	rows.Close()
+	if errIter != nil {
+		log.Printf("[monitoring] backfill v21: iteração (flag não marcada, retry no próximo boot): %v", errIter)
+		return
 	}
 
 	filled := 0
