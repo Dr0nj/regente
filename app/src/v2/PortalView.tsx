@@ -27,13 +27,14 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
 
 export default function PortalView() {
   const [me, setMe] = useState<AuthUser | null>(() => loadCachedUser());
-  const [authChecked, setAuthChecked] = useState(false);
+  // A1: em local mode não há auth a checar → inicia true (era set síncrono no efeito); ver roadmap §RH
+  const [authChecked, setAuthChecked] = useState(() => !isServerMode());
   const [jobs, setJobs] = useState<SelfServiceJob[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [firing, setFiring] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!isServerMode()) { setAuthChecked(true); return; }
+    if (!isServerMode()) return; // authChecked já inicia true em local mode (A1)
     fetchMe().then((u) => { setMe(u); setAuthChecked(true); }).catch(() => setAuthChecked(true));
   }, []);
 
