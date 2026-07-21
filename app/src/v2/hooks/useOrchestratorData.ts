@@ -94,6 +94,7 @@ export function useOrchestratorData() {
       setDefs([...list]);
       updateSchedulerDefs([...list]);
     });
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- leitura inicial pós-subscribe; mover pra useState quebraria o re-sync quando o efeito re-roda; ver roadmap §RH
     setInstances(getTodayInstances());
     // SEM refiltro por todayOrderDate aqui: getTodayInstances já resolve o "hoje"
     // em cada modo (local filtra por data local; server devolve o dia que o SERVER

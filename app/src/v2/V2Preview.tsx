@@ -217,6 +217,7 @@ function V2PreviewInner() {
   const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null);
   useEffect(() => onDesignSessionChange((sid) => setDesignSessionIdState(sid)), []);
   // Session morreu/publicada/descartada → sai do modo código (o editor edita a session).
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- lifecycle de session P2/P7/P8; sair do code mode quando a session morre é reset síncrono de estado transitório; ver roadmap §RH
   useEffect(() => { if (!designSessionId) setCodeMode(false); }, [designSessionId]);
   // P7 (2026-04-26): outra aba assumiu a mesma session → libera essa aba.
   useEffect(() =>
@@ -231,6 +232,7 @@ function V2PreviewInner() {
   // P2: quando entra em session, busca detalhes e popula sessionFolders.
   useEffect(() => {
     if (!designSessionId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- lifecycle de session P2; limpa o escopo de folders no ramo sem-session (estado transitório); ver roadmap §RH
       setActiveFolders(null);
       setDesignSessionNewFolders([]);
       return;
@@ -264,6 +266,7 @@ function V2PreviewInner() {
   }, [designSessionId]);
   // P8: polling 30s do drift status enquanto session ativa.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- lifecycle de session P8; zera o drift status quando não há session (estado transitório); ver roadmap §RH
     if (!designSessionId) { setSessionStatus(null); return; }
     let cancel = false;
     const tick = () => {
@@ -283,6 +286,7 @@ function V2PreviewInner() {
   //      10min protege uma session limpa ativa em outra aba (polling toca a cada 30s).
   const [orphanSessions, setOrphanSessions] = useState<DesignSession[]>([]);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- lifecycle de session (boot); sem server/user não há órfãs a reclassificar (estado transitório); ver roadmap §RH
     if (!isServerMode() || !me) { setOrphanSessions([]); return; }
     let cancel = false;
     void listDesignSessions()

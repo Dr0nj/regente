@@ -100,14 +100,17 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
   // Espelhos sempre-frescos p/ os listeners nativos (anexados 1× — não podem
   // fechar sobre `mode`/bounds de um render antigo).
   const modeRef = useRef(mode);
+  // eslint-disable-next-line react-hooks/refs -- espelho fresco p/ listener nativo (anexado 1×); a câmera só escreve via apply() e este ref é parte da trava de extent — refatorar já causou câmera pulando; ver roadmap §RH
   modeRef.current = mode;
 
   const bounds = useMemo(() => contentBounds(canvas), [canvas]);
   const boundsRef = useRef(bounds);
+  // eslint-disable-next-line react-hooks/refs -- espelho fresco p/ listener nativo (anexado 1×); a câmera só escreve via apply() e este ref é parte da trava de extent — refatorar já causou câmera pulando; ver roadmap §RH
   boundsRef.current = bounds;
 
   const hasNodes = canvas.nodes.length > 0;
   const hasNodesRef = useRef(hasNodes);
+  // eslint-disable-next-line react-hooks/refs -- espelho fresco p/ listener nativo (anexado 1×); a câmera só escreve via apply() e este ref é parte da trava de extent — refatorar já causou câmera pulando; ver roadmap §RH
   hasNodesRef.current = hasNodes;
 
   // extentFor — limite de pan DINÂMICO (px de mundo) pra um zoom/pane dados.
@@ -141,7 +144,8 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
   // Hidrata as câmeras salvas 1× (não a cada render). null! + guarda = ref
   // preguiçosa tipada como Map não-nulo nos usos abaixo.
   const savedViewports = useRef<Map<string, SavedViewport>>(null!);
-  if (!savedViewports.current) savedViewports.current = loadPersistedViewports();
+  // lazy-init 1× no padrão que a regra aceita (ref.current == null); ver roadmap §RH
+  if (savedViewports.current == null) savedViewports.current = loadPersistedViewports();
   const prevKeyRef = useRef(viewContextKey);
 
   // remember — grava a câmera da view ATIVA a cada movimento. É o que faz
@@ -404,6 +408,7 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
     const node = canvas.nodes.find((n) => n.id === `m-${pendingFocusId}`);
     if (!node) return; // ainda não materializou — espera o próximo re-layout
     focusOnPoint(node.position.x + NODE_W / 2, node.position.y + NODE_H / 2, getViewport().zoom);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- limpa o foco pendente após enquadrar 1× (Force Order materializa o nó async); a câmera só escreve via apply() e o foco é one-shot; ver roadmap §RH
     setPendingFocusId(null);
   }, [pendingFocusId, canvas.nodes, focusOnPoint, getViewport]);
 

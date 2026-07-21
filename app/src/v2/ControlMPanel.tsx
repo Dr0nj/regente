@@ -278,6 +278,7 @@ function ForecastView() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [report, setReport] = useState<ForecastReport | null>(null);
   const run = () => getForecast(date).then(setReport).catch(() => setReport(null));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- roda 1× no mount por design; adicionar `run` re-fetcharia a cada mudança de data (mudança de comportamento); o botão "Run forecast" cobre re-runs; ver roadmap §RH
   useEffect(() => { run(); }, []);
   return (
     <div>

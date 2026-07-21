@@ -57,6 +57,7 @@ interface Props {
 }
 
 /** Tradução natural de uma regra (gatilho → ação). */
+// eslint-disable-next-line react-refresh/only-export-components -- helper público `describeRule` convive com o componente no mesmo módulo; mover = churn sem ganho; ver roadmap §RH
 export function describeRule(r: ActionRule, jobLabel: (id: string) => string): string {
   let when: string;
   switch (r.on) {

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /* ──────────────────────────────────────────────────────────────
    useResizablePanel — torna painéis laterais (absolute) maleáveis.
@@ -18,6 +18,7 @@ export interface ResizableOpts {
   edge: "left" | "right";
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- hook público convive com o componente ResizeHandle no mesmo módulo; mover = churn de imports sem ganho de prod; ver roadmap §RH
 export function useResizablePanel(opts: ResizableOpts) {
   const { storageKey, defaultWidth, min, max, edge } = opts;
   const [width, setWidth] = useState<number>(() => {
@@ -25,7 +26,10 @@ export function useResizablePanel(opts: ResizableOpts) {
     return saved && saved >= min && saved <= max ? saved : defaultWidth;
   });
   const widthRef = useRef(width);
-  widthRef.current = width;
+  // leitores são handlers de mouse (pós-commit) → efeito é equivalente ao write em render; ver roadmap §RH
+  useEffect(() => {
+    widthRef.current = width;
+  }, [width]);
 
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {

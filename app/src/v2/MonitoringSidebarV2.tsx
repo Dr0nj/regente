@@ -199,6 +199,7 @@ function useDayWindow(active: boolean, filter: StatusFilter, search: string, lab
   // Filtro/busca mudou → o working set é outro: zera páginas e reescopa.
   useEffect(() => {
     clearPages();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset do working set windowed quando filtro/busca muda (clearPages+bump+summary); paginação/throttle é contrato — ver roadmap §RH invariante 3
     bump();
     void loadSummary();
   }, [loadSummary, clearPages, bump]);
@@ -470,12 +471,14 @@ export default function MonitoringSidebarV2({
 
   // Offsets dos grupos no espaço VIRTUAL (px teóricos do dia inteiro).
   const { groupTops, virtualH } = useMemo(() => {
+    // for simples (sem map) p/ não mutar o acumulador dentro de callback — mesmos
+    // arrays, puro; ver roadmap §RH.
+    const tops: number[] = [];
     let y = 0;
-    const tops = groups.map((g) => {
-      const t = y;
+    for (const g of groups) {
+      tops.push(y);
       y += HEADER_H + (collapsed.has(g.name) ? 0 : g.count * ROW_H);
-      return t;
-    });
+    }
     return { groupTops: tops, virtualH: y };
   }, [groups, collapsed]);
 

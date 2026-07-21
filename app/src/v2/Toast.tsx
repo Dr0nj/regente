@@ -34,6 +34,7 @@ function emit(kind: ToastKind, title: string, opts?: Partial<ToastInput>) {
   }
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- API pública `toast` convive com o componente Toaster no mesmo módulo; mover = churn de imports sem ganho; ver roadmap §RH
 export const toast = {
   success: (title: string, opts?: Partial<ToastInput>) => emit("success", title, opts),
   error:   (title: string, opts?: Partial<ToastInput>) => emit("error", title, opts),
