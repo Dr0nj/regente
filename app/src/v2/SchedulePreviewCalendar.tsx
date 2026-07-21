@@ -40,6 +40,7 @@ export default function SchedulePreviewCalendar({ schedule, calendars }: Props) 
   useEffect(() => {
     if (!server) return;
     const my = ++reqId.current;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset síncrono de loading/err a cada mudança de sig/year antes do debounce (250ms); descarte de resposta obsoleta via reqId; reset-on-dep-change com debounce, não reset de mount; ver roadmap §RH
     setLoading(true);
     setErr(null);
     const t = setTimeout(() => {
