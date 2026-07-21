@@ -41,20 +41,22 @@ function Sparkline({ pf }: { pf: PerfForecast }) {
 }
 
 export default function ForecastPanel({ defId, isRunning }: { defId: string; isRunning: boolean }) {
-  const [pf, setPf] = useState<PerfForecast | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  // A3: guarda { forId, data } setado SÓ no callback async; loaded/pf viram derivação
+  // (o "null enquanto carrega" some do efeito e fica imune a resposta atrasada de outro
+  // defId). Comportamento idêntico ao setLoaded(false) na troca de defId. Ver roadmap §RH.
+  const [pfState, setPfState] = useState<{ forId: string; data: PerfForecast | null } | null>(null);
 
   useEffect(() => {
     let alive = true;
-    setLoaded(false);
     fetchPerfForecast(defId).then((out) => {
       if (!alive) return;
-      setPf(out);
-      setLoaded(true);
+      setPfState({ forId: defId, data: out });
     });
     return () => { alive = false; };
   }, [defId]);
 
+  const loaded = pfState != null && pfState.forId === defId;
+  const pf = loaded ? pfState!.data : null;
   if (!loaded || !pf || pf.samples.length < 2) return null; // sem histórico, sem painel
 
   const stat = (label: string, value: string, tone?: string) => (
