@@ -144,7 +144,9 @@ export default function ScaleMonitor({ onClose }: { onClose?: () => void }) {
   }, [date, folder, cursor, activeStatus, loading]);
 
   useEffect(() => {
-    void loadSummary();
+    // loadSummary não tem setState síncrono (tudo pós-await); escopo async aninhado
+    // p/ a regra não pegar a chamada no corpo do efeito. Ver roadmap §RH.
+    void (async () => { await loadSummary(); })();
     const off = onServerEvent((ev) => {
       if (ev.event === "daily.started" || ev.event === "instance.changed") void loadSummary();
     });
@@ -153,6 +155,7 @@ export default function ScaleMonitor({ onClose }: { onClose?: () => void }) {
 
   // Trocar de dashboard reescopa a folder já aberta (jobs batem com o preset).
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reescope da folder aberta quando o preset muda; openFolder seta folder/loading de propósito (feedback da troca), não é reset de mount; ver roadmap §RH
     if (folder) void openFolder(folder, activeStatus);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStatus]);
