@@ -451,7 +451,7 @@ function V2PreviewInner() {
 
   // F11.10 — resolve /me on mount + handle 401 events
   useEffect(() => {
-    if (!isServerMode()) { setAuthChecked(true); return; }
+    if (!isServerMode()) return; // authChecked já inicia !isServerMode() (A1) — set redundante
     let cancel = false;
 
     // F20 — fetch env label (public endpoint, no auth)
