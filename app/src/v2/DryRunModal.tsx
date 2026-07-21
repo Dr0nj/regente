@@ -36,6 +36,7 @@ export default function DryRunModal() {
       .finally(() => setLoading(false));
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load() reseta loading/error de forma síncrona ao trocar de data (feedback de troca); reset-on-dep-change legítimo (não mount); ver roadmap §RH
   useEffect(() => { load(date); }, [date, load]);
 
   const c = dr?.counts;
