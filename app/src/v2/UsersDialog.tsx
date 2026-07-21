@@ -29,14 +29,24 @@ export function UsersDialog({ meId, onClose }: UsersDialogProps) {
   // F11.10b acls
   const [aclFor, setAclFor] = useState<AuthUser | null>(null);
 
-  async function reload() {
-    setLoading(true); setErr(null);
-    try { setUsers(await listUsers()); }
-    catch (e: unknown) { setErr(e instanceof Error ? e.message : "load falhou"); }
+  // A2: parte async-only (só setStates pós-await) p/ o efeito de mount; os handlers
+  // seguem chamando reload() com o reset síncrono (permitido fora de efeito). loading
+  // já inicia true → o mount não precisa do set síncrono. Ver roadmap §RH.
+  async function loadUsers() {
+    try {
+      const list = await listUsers();
+      setUsers(list);
+    } catch (e: unknown) { setErr(e instanceof Error ? e.message : "load falhou"); }
     finally { setLoading(false); }
   }
+  async function reload() {
+    setLoading(true); setErr(null);
+    await loadUsers();
+  }
 
-  useEffect(() => { reload(); }, []);
+  // loading já inicia true → mount não precisa do reset síncrono; a carga roda num
+  // escopo async aninhado (setState só pós-await) em vez de no corpo do efeito. Ver §RH.
+  useEffect(() => { void (async () => { await loadUsers(); })(); }, []);
 
   async function doCreate(e: React.FormEvent) {
     e.preventDefault();
