@@ -94,19 +94,26 @@ export default function FolderManagerDialog({
   const [busy, setBusy] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setErr(null);
+  // A2: parte async-only (só setStates pós-await) p/ o mount; os handlers seguem
+  // chamando refresh() com o reset síncrono. loading já inicia true → o mount não
+  // precisa do set síncrono. Ordem de execução preservada. Ver roadmap §RH.
+  const loadFolders = useCallback(async () => {
     try {
-      setFolders(await listFolders());
+      const list = await listFolders();
+      setFolders(list);
     } catch (e: unknown) {
       setErr((e as Error).message ?? "failed to load folders");
     } finally {
       setLoading(false);
     }
   }, []);
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setErr(null);
+    await loadFolders();
+  }, [loadFolders]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void (async () => { await loadFolders(); })(); }, [loadFolders]);
 
   // ESC fecha (ou cancela seleção/criação primeiro).
   useEffect(() => {
