@@ -131,9 +131,18 @@ serializa `[]`, nunca `null` (slice nil derruba o front).
 > `condIsAlternative` a partir da coluna congelada `cond_logic` (schemaV21) —
 > coberto por `TestList_SerializesCondLogic` e pelo código compartilhado.
 > A UI é a aba **Condições** do drawer (Design): a entrada é lista plana (AND) por
-> padrão e o toggle **AND/OR** revela o editor de GRUPOS (cada grupo com E/OU +
-> operador de topo). A UI mantém `conditionsIn` = união dos membros;
-> `conditionLogic` só existe no modo avançado.
+> padrão e o toggle **AND/OR** revela o editor de GRUPOS (cada grupo com AND/OR +
+> operador de topo — rótulos em inglês, o vocabulário canônico do `op:`; o rótulo
+> das linhas OR do canvas é **"OR"**). A UI mantém `conditionsIn` = união dos
+> membros; `conditionLogic` só existe no modo avançado.
+> **Descobribilidade do CL-2 (2026-07-21, report "não achei o OR com horário"):**
+> o atalho **"OR rodar no horário"** aparece SEMPRE que há UMA condição — com
+> `windowFrom` ele cria a DNF `(C1) OU ($TIME)`; sem `windowFrom` ele fica
+> esmaecido e o clique abre a aba **Horário** (o guard na UI segue: `$TIME` sem
+> "A partir de" seria satisfeito imediatamente e anularia a condição). O
+> **＋ horário** de cada grupo idem; um membro ⏱ órfão de `windowFrom` (janela
+> apagada depois de adicionar o token) fica ÂMBAR com o aviso "satisfeito
+> imediatamente".
 
 A entrada de um job deixou de ser SÓ um AND implícito de `conditionsIn`: ganhou
 um campo **opcional** `conditionLogic` — uma expressão booleana em **forma DNF**

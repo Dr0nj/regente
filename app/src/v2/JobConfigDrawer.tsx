@@ -525,6 +525,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
             conditionsOutRemove={conditionsOutRemove}
             conditionLogic={conditionLogic}
             windowFrom={schedule.windowFrom}
+            onOpenSchedule={() => setTab("schedule")}
             onChangeConditionsIn={touch(setConditionsIn)}
             onChangeConditionLogic={touch(setConditionLogic)}
             onChangeConditionsOutAdd={touch(setConditionsOutAdd)}
@@ -565,7 +566,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
 }
 
 /* ── Aba CONDIÇÕES — o modelo único de dependência ── */
-function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, conditionsOutRemove, conditionLogic, windowFrom, onChangeConditionsIn, onChangeConditionLogic, onChangeConditionsOutAdd, onChangeConditionsOutRemove, knownConditions, resources, onChangeResources, availableResources }: {
+function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, conditionsOutRemove, conditionLogic, windowFrom, onOpenSchedule, onChangeConditionsIn, onChangeConditionLogic, onChangeConditionsOutAdd, onChangeConditionsOutRemove, knownConditions, resources, onChangeResources, availableResources }: {
   self: string;
   triggers: JobDefinition[];
   allDefs: JobDefinition[];
@@ -574,6 +575,7 @@ function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, cond
   conditionsOutRemove: string[];
   conditionLogic?: ConditionLogic;
   windowFrom?: string;
+  onOpenSchedule: () => void;
   onChangeConditionsIn: (v: string[]) => void;
   onChangeConditionLogic: (v: ConditionLogic | undefined) => void;
   onChangeConditionsOutAdd: (v: string[]) => void;
@@ -660,19 +662,21 @@ function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, cond
               apagou a condição.
             </HelpTopic>
             <HelpTopic title="AND/OR — lógica de entrada">
-              Por padrão a entrada é um <b>E</b> (todas exigidas). Clique em
+              Por padrão a entrada é um <b>AND</b> (todas exigidas). Clique em
               <b> AND/OR</b> ao lado de “Entrada” para agrupar: cada <b>grupo</b> tem
-              seu operador (<b>E</b>/<b>OU</b>) e os grupos se combinam por um operador
-              de <b>topo</b>. Ex.: <code>(C1 E C2) OU C3</code> roda pelo primeiro ramo
+              seu operador (<b>AND</b>/<b>OR</b>) e os grupos se combinam por um operador
+              de <b>topo</b>. Ex.: <code>(C1 AND C2) OR C3</code> roda pelo primeiro ramo
               que fechar. Uma condição adicionada pela <b>setinha</b> num job com lógica
-              vira <b>requisito E</b> (obrigatória).
+              vira <b>requisito AND</b> (obrigatória).
             </HelpTopic>
-            <HelpTopic title="OU horário — fallback temporal">
-              Com <b>uma</b> condição e o <b>“a partir de”</b> (windowFrom) preenchido,
-              aparece o atalho <b>OU rodar no horário</b>: o job roda quando a condição
-              chega <b>OU</b> quando o horário é atingido — o que vier primeiro. Aí o
-              horário deixa de ser um piso e vira o membro <b>⏱ horário</b> da
-              expressão. O <b>“até”</b> (windowTo) segue como teto duro sempre.
+            <HelpTopic title="OR horário — fallback temporal">
+              Com <b>uma</b> condição aparece o atalho <b>OR rodar no horário</b>: o job
+              roda quando a condição chega <b>OU</b> quando o horário é atingido — o que
+              vier primeiro. O horário deixa de ser um piso e vira o membro
+              <b> ⏱ horário</b> da expressão. Precisa do <b>“a partir de”</b> (aba
+              Horário) — sem ele o atalho leva você até lá. Nos <b>grupos</b>, o botão
+              <b> ＋ horário</b> adiciona o mesmo membro. O <b>“até”</b> (windowTo)
+              segue como teto duro sempre.
             </HelpTopic>
             <HelpTopic title="Saída ＋ — adiciona ao terminar OK">
               Ao terminar OK (ou Set OK), o job <b>ADICIONA</b> estas condições ao pool
@@ -695,6 +699,7 @@ function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, cond
         conditionsIn={conditionsIn}
         conditionLogic={conditionLogic}
         windowFrom={windowFrom}
+        onOpenSchedule={onOpenSchedule}
         onChangeConditionsIn={onChangeConditionsIn}
         onChangeConditionLogic={onChangeConditionLogic}
         known={knownConditions}
@@ -950,7 +955,7 @@ function CondChipsEditor({ title, value, onChange, known, listId, crossRef, head
 
 /* ── Entrada com lógica AND/OR (CL) ── Progressivo: por padrão a entrada é uma
    lista plana (AND implícito, igual antes). O toggle "AND/OR" revela o editor de
-   GRUPOS — cada grupo com seu operador (E/OU) + um operador de TOPO entre grupos
+   GRUPOS — cada grupo com seu operador (AND/OR) + um operador de TOPO entre grupos
    (forma DNF, espelha domain.ConditionLogic). A UI mantém `conditionsIn` = UNIÃO
    dos membros (topologia/linhas/snapshot leem conditionsIn); `conditionLogic` só
    existe no modo avançado. Uma condição vinda de fora (setinha) que não está em
@@ -965,10 +970,11 @@ function pruneConditionLogic(l?: ConditionLogic): ConditionLogic | undefined {
   const groups = l.groups.filter((g) => g.members.length > 0);
   return groups.length ? { op: l.op, groups } : undefined;
 }
-function EntryConditions({ conditionsIn, conditionLogic, windowFrom, onChangeConditionsIn, onChangeConditionLogic, known, crossRef }: {
+function EntryConditions({ conditionsIn, conditionLogic, windowFrom, onOpenSchedule, onChangeConditionsIn, onChangeConditionLogic, known, crossRef }: {
   conditionsIn: string[];
   conditionLogic?: ConditionLogic;
   windowFrom?: string;
+  onOpenSchedule: () => void;
   onChangeConditionsIn: (v: string[]) => void;
   onChangeConditionLogic: (v: ConditionLogic | undefined) => void;
   known: string[];
@@ -1009,23 +1015,36 @@ function EntryConditions({ conditionsIn, conditionLogic, windowFrom, onChangeCon
       <div>
         <CondChipsEditor title="Entrada — depende de" value={conditionsIn} onChange={onChangeConditionsIn}
           known={known} listId="cond-known-in" crossRef={crossRef} headerExtra={advToggle} />
-        {/* Atalho CL-2: só oferecido com UMA condição e windowFrom preenchido. */}
-        {conditionsIn.length === 1 && windowFrom && (
+        {/* Atalho CL-2: sempre visível com UMA condição — o fallback temporal não
+            pode ficar invisível (report: "não achei formas de fazer OR com o
+            horário"). Sem windowFrom o clique leva à aba Horário: $TIME sem "A
+            partir de" seria satisfeito imediatamente e anularia a condição. */}
+        {conditionsIn.length === 1 && (windowFrom ? (
           <button onClick={enableTimeFallback}
             title={`Roda quando a condição chega OU às ${windowFrom} — o que vier primeiro`}
             style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left",
               background: "transparent", border: "1px dashed var(--v2-border-medium)", borderRadius: 4, padding: "5px 8px",
               color: "var(--v2-text-muted)", cursor: "pointer", fontSize: 10 }}>
-            <Plus size={11} /> <span>OU rodar no horário (a partir de <b>{windowFrom}</b>) — o que vier primeiro</span>
+            <Plus size={11} /> <span><b>OR</b> rodar no horário (a partir de <b>{windowFrom}</b>) — o que vier primeiro</span>
           </button>
-        )}
+        ) : (
+          <button onClick={onOpenSchedule}
+            title={'O fallback "condição OR horário" precisa do início de janela — clique para definir o "A partir de" na aba Horário'}
+            style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left",
+              background: "transparent", border: "1px dashed var(--v2-border-subtle)", borderRadius: 4, padding: "5px 8px",
+              color: "var(--v2-text-muted)", opacity: 0.75, cursor: "pointer", fontSize: 10 }}>
+            <Plus size={11} /> <span><b>OR</b> rodar no horário — precisa do <b>“A partir de”</b> (clique para abrir a aba Horário)</span>
+          </button>
+        ))}
       </div>
     );
   }
-  return <GroupedLogicEditor logic={conditionLogic!} onChange={editLogic} onDisable={disable} known={known} crossRef={crossRef} windowFrom={windowFrom} />;
+  return <GroupedLogicEditor logic={conditionLogic!} onChange={editLogic} onDisable={disable} known={known} crossRef={crossRef} windowFrom={windowFrom} onOpenSchedule={onOpenSchedule} />;
 }
 
-// OpToggle — chave E/OU (pill de dois botões), usada no topo e por grupo.
+// OpToggle — chave AND/OR (pill de dois botões), usada no topo e por grupo.
+// Rótulos em inglês de propósito (pedido do usuário): AND/OR é o vocabulário
+// canônico do operador — o mesmo do YAML (`op: AND|OR`) e do toggle do header.
 function OpToggle({ value, onChange, title }: { value: CondBoolOp; onChange: (op: CondBoolOp) => void; title?: string }) {
   return (
     <div title={title} style={{ display: "inline-flex", border: "1px solid var(--v2-border-medium)", borderRadius: 10, overflow: "hidden" }}>
@@ -1034,20 +1053,21 @@ function OpToggle({ value, onChange, title }: { value: CondBoolOp; onChange: (op
           style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.06em", padding: "2px 8px", cursor: "pointer", border: "none",
             background: value === op ? "var(--v2-accent-deep)" : "transparent",
             color: value === op ? AND_OR_ACCENT : "var(--v2-text-muted)" }}>
-          {op === "AND" ? "E" : "OU"}
+          {op}
         </button>
       ))}
     </div>
   );
 }
 
-function GroupedLogicEditor({ logic, onChange, onDisable, known, crossRef, windowFrom }: {
+function GroupedLogicEditor({ logic, onChange, onDisable, known, crossRef, windowFrom, onOpenSchedule }: {
   logic: ConditionLogic;
   onChange: (v: ConditionLogic) => void;
   onDisable: () => void;
   known: string[];
   crossRef?: (name: string) => string | undefined;
   windowFrom?: string;
+  onOpenSchedule: () => void;
 }) {
   const setGroups = (groups: CondGroup[]) => onChange({ ...logic, groups });
   const patchGroup = (gi: number, patch: Partial<CondGroup>) => setGroups(logic.groups.map((g, i) => (i === gi ? { ...g, ...patch } : g)));
@@ -1070,7 +1090,7 @@ function GroupedLogicEditor({ logic, onChange, onDisable, known, crossRef, windo
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
         <span style={{ fontSize: 10, fontWeight: 600, color: "var(--v2-text-secondary)" }}>Entrada — lógica AND/OR</span>
         {logic.groups.length > 1 && <OpToggle value={logic.op} onChange={(op) => onChange({ ...logic, op })} title="Operador ENTRE os grupos" />}
-        <button onClick={onDisable} title="Voltar para lista simples (E)"
+        <button onClick={onDisable} title="Voltar para lista simples (AND)"
           style={{ marginLeft: "auto", fontSize: 8.5, letterSpacing: "0.06em", fontWeight: 700, padding: "2px 7px", borderRadius: 10, cursor: "pointer",
             background: "var(--v2-accent-deep)", border: `1px solid ${AND_OR_ACCENT}`, color: AND_OR_ACCENT }}>
           AND/OR
@@ -1081,10 +1101,10 @@ function GroupedLogicEditor({ logic, onChange, onDisable, known, crossRef, windo
           <div key={gi}>
             {gi > 0 && (
               <div style={{ textAlign: "center", fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", color: AND_OR_ACCENT, margin: "2px 0" }}>
-                {logic.op === "OR" ? "OU" : "E"}
+                {logic.op}
               </div>
             )}
-            <GroupBox index={gi} group={g} canRemove={logic.groups.length > 1} windowFrom={windowFrom}
+            <GroupBox index={gi} group={g} canRemove={logic.groups.length > 1} windowFrom={windowFrom} onOpenSchedule={onOpenSchedule}
               onSetOp={(op) => patchGroup(gi, { op })} onRemove={() => removeGroup(gi)}
               onAddMember={(n) => addMember(gi, n)} onRemoveMember={(n) => removeMember(gi, n)}
               onSetMemberRef={(n, ref) => setMemberRef(gi, n, ref)} known={known} crossRef={crossRef} />
@@ -1096,11 +1116,12 @@ function GroupedLogicEditor({ logic, onChange, onDisable, known, crossRef, windo
   );
 }
 
-function GroupBox({ index, group, canRemove, windowFrom, onSetOp, onRemove, onAddMember, onRemoveMember, onSetMemberRef, known, crossRef }: {
+function GroupBox({ index, group, canRemove, windowFrom, onOpenSchedule, onSetOp, onRemove, onAddMember, onRemoveMember, onSetMemberRef, known, crossRef }: {
   index: number;
   group: CondGroup;
   canRemove: boolean;
   windowFrom?: string;
+  onOpenSchedule: () => void;
   onSetOp: (op: CondBoolOp) => void;
   onRemove: () => void;
   onAddMember: (name: string) => void;
@@ -1120,26 +1141,37 @@ function GroupBox({ index, group, canRemove, windowFrom, onSetOp, onRemove, onAd
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--v2-text-muted)", fontWeight: 700 }}>Grupo {index + 1}</span>
         {group.members.length > 1 && <OpToggle value={group.op} onChange={onSetOp} title="Operador DENTRO do grupo" />}
-        {/* CL-2 — adicionar o token de horário ($TIME) ao grupo; só com windowFrom. */}
-        {windowFrom && !hasTime && (
-          <button onClick={() => onAddMember(COND_TIME_TOKEN)} title={`Adicionar o horário (a partir de ${windowFrom}) como membro`}
+        {/* CL-2 — adicionar o token de horário ($TIME) ao grupo. Sempre visível
+            (descobribilidade); sem windowFrom o clique abre a aba Horário, pois
+            $TIME sem "A partir de" é satisfeito imediatamente. */}
+        {!hasTime && (
+          <button onClick={() => (windowFrom ? onAddMember(COND_TIME_TOKEN) : onOpenSchedule())}
+            title={windowFrom
+              ? `Adicionar o horário (a partir de ${windowFrom}) como membro`
+              : 'Precisa do "A partir de" — clique para abrir a aba Horário'}
             style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.04em", padding: "2px 6px", borderRadius: 8, cursor: "pointer",
-              background: "transparent", border: "1px solid var(--v2-border-medium)", color: "var(--v2-text-muted)" }}>
+              background: "transparent", border: `1px ${windowFrom ? "solid" : "dashed"} var(--v2-border-medium)`,
+              color: "var(--v2-text-muted)", opacity: windowFrom ? 1 : 0.65 }}>
             ＋ horário
           </button>
         )}
-        <button onClick={() => setAdding((v) => !v)} title={adding ? "Fechar" : "Adicionar condição ao grupo"} style={{ ...addToggleStyle(adding), marginLeft: windowFrom && !hasTime ? 0 : "auto" }}>
+        <button onClick={() => setAdding((v) => !v)} title={adding ? "Fechar" : "Adicionar condição ao grupo"} style={{ ...addToggleStyle(adding), marginLeft: !hasTime ? 0 : "auto" }}>
           {adding ? <X size={12} /> : <Plus size={12} />}
         </button>
         {canRemove && <button onClick={onRemove} title="Remover grupo" style={iconBtn}><Trash2 size={12} /></button>}
       </div>
       {group.members.length === 0 && !adding && <Hint>Grupo vazio — clique no ＋ para adicionar.</Hint>}
       {group.members.map((n) => {
-        // Token de horário ($TIME): membro especial, sem seletor de data.
+        // Token de horário ($TIME): membro especial, sem seletor de data. Sem
+        // windowFrom (apagado depois) o token é satisfeito imediatamente — a
+        // linha fica ÂMBAR avisando, senão o OR anula a condição em silêncio.
         if (n === COND_TIME_TOKEN) {
+          const noWindow = !windowFrom;
           return (
-            <div key={n} style={{ ...depRow, marginBottom: 0, borderColor: `${AND_OR_ACCENT}` }}>
-              <span style={{ flex: 1, fontSize: 12, color: AND_OR_ACCENT, fontWeight: 600 }}>⏱ horário{windowFrom ? ` (a partir de ${windowFrom})` : ""}</span>
+            <div key={n} style={{ ...depRow, marginBottom: 0, borderColor: noWindow ? "#f59e0b" : `${AND_OR_ACCENT}` }}>
+              <span style={{ flex: 1, fontSize: 12, color: noWindow ? "#f59e0b" : AND_OR_ACCENT, fontWeight: 600 }}>
+                ⏱ horário{noWindow ? " — sem “A partir de”: satisfeito imediatamente" : ` (a partir de ${windowFrom})`}
+              </span>
               <button onClick={() => onRemoveMember(n)} style={iconBtn} title="Remover"><Trash2 size={12} /></button>
             </div>
           );

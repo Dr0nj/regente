@@ -309,14 +309,15 @@ function makeEdge(
   state: DepState,
   // CL-4: `alt` = a condição que liga este par é um membro ALTERNATIVO (OR) na
   // lógica do consumidor — não um requisito duro (AND). A linha ganha um
-  // tracejado mais fino (pontilhado) e o rótulo "OU", pra o grafo distinguir
-  // ramos alternativos de dependências obrigatórias. A setinha sempre cria AND.
+  // tracejado mais fino (pontilhado) e o rótulo "OR" (mesmo vocabulário do
+  // toggle AND/OR do drawer), pra o grafo distinguir ramos alternativos de
+  // dependências obrigatórias. A setinha sempre cria AND.
   alt = false,
 ): Edge {
   const s = edgeStyleForState(state);
   const dash = alt ? "1.5 4" : s.dash;
   const sym = state === "satisfied" ? "✓" : state === "blocked" ? "✗" : "";
-  const label = alt ? (sym ? `${sym} OU` : "OU") : sym;
+  const label = alt ? (sym ? `${sym} OR` : "OR") : sym;
   return {
     id: `e-${source}-${target}`,
     source,
