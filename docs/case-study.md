@@ -5,8 +5,8 @@
 > construído do zero como monorepo Go + React, com **Git como fonte de verdade** das
 > definições. Validado ao vivo com **1.000.000 de jobs/dia** (materialização em 17s,
 > summary em 51ms), roda de um único binário num VPS de US$5 até HA multi-nó com Postgres,
-> e expõe o plano de controle a agentes de IA via **MCP (22 tools)**. ~40k linhas de Go,
-> ~24k de TypeScript, 372 testes.
+> e expõe o plano de controle a agentes de IA via **MCP (22 tools)**. ~44k linhas de Go,
+> ~24k de TypeScript, 427 testes.
 
 ---
 
@@ -57,14 +57,17 @@ Explain — por construção, não por disciplina.
 A paridade não é a lista de features — é o comportamento nas bordas:
 
 - **Daily / New Day** — materialização set-based em lote (1 commit por chunk de 5k),
-  carry-over com orçamento (`keepActive`): RUNNING/HELD atravessam a virada; NOTOK
-  não tratado sobrevive N diárias; WAITING que nunca rodou morre.
-- **Dependências como EVENTOS consumíveis** — cada término terminal de um job publica um
-  evento; a aresta do sucessor satisfaz **clamando** um evento livre (latch por
-  instância). Um evento satisfaz no máximo uma instância de cada definition — a cópia
-  forçada de um job cuja dependência "já rodou" espera um término **novo**, e rerun/cancel
-  do pai **não apagam** a linha verde de quem já satisfez. Rerun do próprio consumidor
-  reseta os claims dele.
+  carry-over honesto: a ordem que atravessa a virada **avança de dia preservando a data
+  de origem** — tudo que é escopado por data (condições `@odat`, variáveis, janelas)
+  continua usando a data em que a ordem nasceu. RUNNING/HELD sempre atravessam; NOTOK
+  não tratado sobrevive os dias configurados desde a falha; WAITING só com retenção
+  explícita.
+- **Dependências como CONDIÇÕES explícitas num pool único** — a seta A→B do canvas é
+  açúcar para uma condição nomeada (`A-TO-B`): o OK do pai **cria** a condição, a
+  entrada do sucessor **aguarda** por ela, e uma saída negativa **consome** (deleta) —
+  o que modela fan-in com consumo, como no Control-M. A entrada aceita **lógica E/OU
+  real** (grupos com operador de topo) e o token `$TIME` ("condição OU horário");
+  rerun do pai desfaz o OK e quem depende **volta a aguardar** um término novo.
 - **Force com dois gestos** — "Run Now" destrava a instância existente (bypass de
   janela/deps/recursos; Confirm e agente nunca são bypassados); "Order Force" cria uma
   ordem nova fora do agendamento que **respeita** os gates de runtime.
@@ -97,12 +100,11 @@ Onde dá pra ser melhor que o original sem inventar moda:
 
 Cenário de 1M jobs/dia seedado e operado ao vivo:
 
-| Métrica | Resultado |
-|---|---|
-| Materialização da daily (write-path) | **1.000.000 instances em ~17s** |
-| Summary do dia (read-path) | **51ms @100k**, paginação keyset+offset |
-| UI com 1M de jobs | dashboard instantâneo; folder abre em ~39ms; **37 rows no DOM** (virtualização) |
-| Board do canvas | cap configurável (500–5000) + ViewPoint server-driven pro dia inteiro |
+- **Materialização da daily (write-path):** 1.000.000 de instances em **~17s**.
+- **Summary do dia (read-path):** **51ms @100k**, paginação keyset+offset.
+- **UI com 1M de jobs:** dashboard instantâneo; folder abre em ~39ms; **37 rows no
+  DOM** para o dia inteiro (virtualização).
+- **Board do canvas:** cap configurável (500–5000) + ViewPoint server-driven.
 
 As decisões que pagaram a conta: existência set-based (1 query, não 1 por def), inserts
 em lote com prepared statements, claim atômico de dispatch (`UPDATE … WHERE status=WAITING`),
@@ -116,7 +118,7 @@ estoura float32 acima de ~16,7M px — detalhe que só aparece com 1M de linhas)
 - **Panic-recovery** em todo ponto de entrada do scheduler; watchdog de RUNNING preso;
   self-monitoring (R7) que alerta pelos próprios canais do produto.
 - **Backup online** (`-backup` = VACUUM INTO), DR documentado, retenção/archives com GC.
-- **372 testes Go** — inclusive baterias exaustivas de calendário (dois caminhos de
+- **427 testes Go** — inclusive baterias exaustivas de calendário (dois caminhos de
   "dia útil especial" têm que concordar dia a dia por um mês inteiro) e um oráculo de
   forecast escrito à mão, independente do código que ele valida.
 
@@ -135,7 +137,22 @@ PAT via secrets provider, nginx+certbot dão TLS com renovação. O mesmo produt
 HA com Postgres roda inteiro numa máquina de US$5 — essa amplitude era um objetivo, não
 um acidente.
 
-## 9. Lições que valem para qualquer sistema
+## 9. O próximo passo: IA que não sai do perímetro *(roadmap, spec pronta)*
+
+O público Control-M vive em ambiente regulado — bancos, seguradoras, utilities — onde
+sysout, logs e dados de host **não podem sair do perímetro**. Todo scheduler "com IA"
+do mercado manda esses dados pra uma API de nuvem; o próximo jobType do Regente, o
+`AI_AGENT`, faz o inverso: a LLM roda **no mesmo host do agente** (Ollama/llama.cpp/
+vLLM), analisa sysout e logs ali mesmo, e o server recebe só o veredito — nenhum dado
+viaja. O prompt é parte da definição, então **congela no snapshot imutável da ordem**:
+o prompt exato que rodou fica auditável pra sempre, e Confirm, conditions, SLA, RBAC e
+audit trail funcionam sem uma linha nova, porque `AI_AGENT` é um jobType como outro
+qualquer. A primeira fase é análise-only, **sem tools** — um prompt injetado no máximo
+produz um relatório errado, nunca um comando executado. Caso de fábrica: RCA automático
+quando um job falha, com saída validada por JSON Schema virando variáveis para os
+sucessores.
+
+## 10. Lições que valem para qualquer sistema
 
 1. **Imutabilidade é feature de produto, não detalhe de storage.** Congelar a definição
    na ordem eliminou uma classe inteira de bugs de "mudou sozinho".
@@ -143,27 +160,30 @@ um acidente.
    diverge do dispatch porque É o dispatch.
 3. **Estado durável > goroutines pacientes.** Retry de 3 dias vive no banco, não num
    sleep.
-4. **Satisfação de dependência é um latch, não uma leitura.** Derivar a aresta do status
-   vivo do pai quebra na primeira operação humana (rerun/cancel); eventos consumíveis
-   com claim por instância modelam o que o operador espera.
+4. **Satisfação de dependência é estado explícito, não uma leitura.** Derivar a aresta
+   do status vivo do pai quebra na primeira operação humana (rerun/cancel); condições
+   nomeadas criadas e consumidas num pool — e congeladas na ordem — modelam o que o
+   operador espera.
 5. **Escala é aditiva se o caminho quente for set-based desde o começo.** O mesmo código
    que atende 10 jobs atende 1M — as otimizações foram de forma de acesso, não de
    arquitetura.
 6. **Teste contra um oráculo, não contra a própria função.** As baterias de calendário
    pegaram divergências reais que testes espelho jamais veriam.
 
-## 10. Números do projeto
+## 11. Números do projeto
 
-| | |
-|---|---|
-| Código | ~40,5k linhas Go (server+agent) · ~23,9k linhas TS/TSX (UI) |
-| Testes | 372 funções de teste Go em 86 arquivos + validações E2E ao vivo |
-| Executores | COMMAND · SCRIPT · HTTP/REST · SSH agentless · DATABASE · FILE_WATCH · MFT · WASM · K8s · Lambda · Batch · Glue · Step Functions · Cloud Run |
-| Escala | 1M jobs/dia validado ao vivo (write 17s · summary 51ms · UI virtualizada) |
-| Deploy | binário único (SQLite) → HA multi-nó (Postgres + leader election) → serverless portátil (tick externo) |
-| Interface | UI React (Design/Monitoring), 17 temas, CLI, OpenAPI, MCP (22 tools) |
+- **Código:** ~44k linhas Go (server+agent) · ~24k linhas TS/TSX (UI).
+- **Testes:** 427 funções de teste Go em 97 arquivos + validações E2E ao vivo.
+- **Executores:** COMMAND · SCRIPT · HTTP/REST · SSH agentless · DATABASE · FILE_WATCH
+  · MFT · WASM · K8s · Lambda · Batch · Glue · Step Functions · Cloud Run.
+- **Escala:** 1M jobs/dia validado ao vivo (write 17s · summary 51ms · UI virtualizada).
+- **Deploy:** binário único (SQLite) → HA multi-nó (Postgres + leader election) →
+  serverless portátil (tick externo).
+- **Interface:** UI React (Design/Monitoring), 17 temas, CLI, OpenAPI, MCP (22 tools).
 
 ---
 
-*Escrito em 2026-07-13, ao fechar a Fase Z do roadmap. Detalhes de cada entrega, com
-datas e commits, em [`docs/roadmap.md`](roadmap.md).*
+*Escrito em 2026-07-13, ao fechar a Fase Z do roadmap; revisado em 2026-07-21 (condições
+E/OU e carry-over por data de origem no lugar dos modelos aposentados · números
+atualizados · seção AI_AGENT · formato pronto pra artigo, sem tabelas). Detalhes de cada
+entrega, com datas e commits, em [`docs/roadmap.md`](roadmap.md).*
