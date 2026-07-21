@@ -147,18 +147,20 @@ export default function InstanceDetailsDrawer({
   // (payload de escala); o detalhe (GET /api/instances/{id}) traz a foto da
   // definition_snapshot, a MESMA que o dispatch executa. No modo local a própria
   // instance já tem o snapshot e o fetch é no-op (null).
-  const [orderDetail, setOrderDetail] = useState<InstanceOrderDetail | null>(null);
+  // A3/invariante 5: guarda { forId, data } setado SÓ no callback async → orderDetail
+  // vira derivação por instance.id; NUNCA vaza o detalhe de outra instance (o "null
+  // enquanto carrega" some do efeito e fica imune a resposta atrasada). Ver roadmap §RH.
+  const [orderDetailState, setOrderDetailState] = useState<{ forId: string; data: InstanceOrderDetail | null } | null>(null);
   useEffect(() => {
     let alive = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- M1/invariante 5: limpa o detalhe da ordem ao trocar de instance pra NUNCA vazar o snapshot de outra; reset-on-id-change crítico e o no-leak exige validação ao vivo p/ refatorar; ver roadmap §RH
-    setOrderDetail(null);
     // M1: SEMPRE busca o detalhe em server mode (não só quando falta a action) —
     // ele traz a DEF CONGELADA inteira (snapshotDef) que as abas Schedule/
     // Condições/General usam pra ser imutáveis. Em local mode fetchInstanceDetail
     // é no-op (null) e a def viva é a foto (o snapshot completo não viaja local).
-    void fetchInstanceDetail(instance.id).then((d) => { if (alive) setOrderDetail(d); });
+    void fetchInstanceDetail(instance.id).then((d) => { if (alive) setOrderDetailState({ forId: instance.id, data: d }); });
     return () => { alive = false; };
   }, [instance.id]);
+  const orderDetail = orderDetailState?.forId === instance.id ? orderDetailState.data : null;
 
   // Cascata = a MESMA do dispatch (defForInstance): snapshot na instance >
   // snapshot da ordem no server > def viva (só instance pré-snapshot/seed antigo).
@@ -761,26 +763,25 @@ function OutputTab({ instance, jobType, actionConfig }: {
    ════════════════════════════════════════════════════════════════ */
 
 function StatsTab({ instance }: { instance: JobInstance }) {
-  const [pf, setPf] = useState<PerfForecast | null>(null);
-  const [stats, setStats] = useState<JobStats | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  // A3: { forId, pf, stats } setado só no callback async → loaded/pf/stats derivados
+  // por definitionId (fim do setLoaded síncrono; imune a resposta atrasada). Ver §RH.
+  const [st, setSt] = useState<{ forId: string; pf: PerfForecast | null; stats: JobStats | null } | null>(null);
 
   useEffect(() => {
     let alive = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- StatsTab: invalida pf/stats ao trocar de definitionId (loading enquanto refetcha); reset-on-dep-change; ver roadmap §RH
-    setLoaded(false);
     Promise.all([
       fetchPerfForecast(instance.definitionId),
       fetchJobStats(instance.definitionId), // ADV-3 — retrato histórico
-    ]).then(([forecast, st]) => {
+    ]).then(([forecast, s]) => {
       if (!alive) return;
-      setPf(forecast);
-      setStats(st);
-      setLoaded(true);
+      setSt({ forId: instance.definitionId, pf: forecast, stats: s });
     });
     return () => { alive = false; };
   }, [instance.definitionId]);
 
+  const loaded = st?.forId === instance.definitionId;
+  const pf = loaded ? st!.pf : null;
+  const stats = loaded ? st!.stats : null;
   const hasHistory = pf && pf.samples.length >= 2;
 
   return (
@@ -1351,19 +1352,20 @@ function BlastPanel({ instanceId }: { instanceId: string }) {
 /* ── RCA ("what's the root cause?") — auto-loads for NOTOK/blocked ── */
 
 function RCAPanel({ instanceId }: { instanceId: string }) {
-  const [rca, setRca] = useState<RCA | null>(null);
-  const [loading, setLoading] = useState(true);
+  // A3: { forId, rca } setado só no callback → loading/rca derivados por instanceId
+  // (evita mostrar a RCA da instance anterior; imune a resposta atrasada). Ver §RH.
+  const [st, setSt] = useState<{ forId: string; rca: RCA | null } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- RCAPanel: reseta loading ao trocar de instanceId (loading inicia true; refetch por instance evita mostrar a RCA da instance anterior); reset-on-dep-change; ver roadmap §RH
-    setLoading(true);
     fetchRCA(instanceId)
-      .then((r) => { if (!cancelled) setRca(r); })
-      .catch(() => { if (!cancelled) setRca(null); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .then((r) => { if (!cancelled) setSt({ forId: instanceId, rca: r }); })
+      .catch(() => { if (!cancelled) setSt({ forId: instanceId, rca: null }); });
     return () => { cancelled = true; };
   }, [instanceId]);
+
+  const loading = st?.forId !== instanceId;
+  const rca = loading ? null : st!.rca;
 
   // Modo local (null) ou sem raízes → não mostra o painel (evita ruído em job OK).
   if (!loading && (!rca || rca.roots.length === 0)) return null;
