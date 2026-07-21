@@ -92,6 +92,178 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > `Restart=always` + `rolling-upgrade.sh`. VPS derruba/sobe/atualiza sem perder estado.
 > **Nada disso está no backlog** — os V* acima são só empacotamento/UX de instalação.
 
+### 🧹 Trilha RH — Higiene react-hooks (catraca: 38 warnings → 0 + regras em `error`)
+
+> **Spec escrita em 2026-07-21 pra ser executada POR OUTRO MODELO lendo só esta seção.**
+> Contexto: a auditoria (levas 1/2, commits `e24f4c7`/`85b74d6`) zerou os ERROS de eslint e
+> rebaixou 4 regras react-hooks/react-refresh pra `warn` no `app/eslint.config.js`, deixando
+> **38 warnings** visíveis. O objetivo desta trilha NÃO é "zerar warnings" — é a **CATRACA**:
+> consertar o mecânico, ANOTAR o deliberado com `eslint-disable` + motivo na linha, e **voltar
+> as 4 regras pra `error`** (RH-4), pra que código novo nunca mais adicione violação (hoje,
+> `warn` global não segura nada e o app vai crescer por copy-paste dos padrões existentes).
+> Bônus futuro: com as regras verdes o app fica elegível ao React Compiler (auto-memo — vale
+> muito no canvas @1M jobs).
+
+> #### ⛔ INVARIANTES DE EXPERIÊNCIA — o produto NÃO pode mudar NADA do que o usuário vê
+>
+> Esta trilha é 100% refactor interno. **Se qualquer item abaixo mudar, a entrega está ERRADA
+> — reverta o site e ANOTE em vez de consertar.** Bugs listados aqui JÁ FORAM corrigidos uma
+> vez e NÃO PODEM VOLTAR (exigência explícita do usuário em 2026-07-21):
+>
+> 1. **Câmera do canvas NUNCA se move sozinha** — só por drag/wheel/clique-na-sidebar/
+>    Organizar/Force. O **limite de pan (extent) dinâmico** continua EXATO como está
+>    (monitoring "atravessa por pouco", design preso à caixa, conteúdo menor que a tela =
+>    pinado). `useCanvasCamera.apply()` é o ÚNICO caminho de escrita da câmera. **Proibido
+>    refatorar `useCanvasCamera.ts` nesta trilha — só anotação (ver tabela).**
+> 2. **Cards e linhas do canvas NUNCA somem** — as três blindagens do ReactFlow v12 ficam
+>    intocadas: `initialWidth/Height` nos nós, `JOB_HANDLES` estáticos, `zIndex:5` no
+>    `makeEdge` (tudo em `canvas-layout.ts` — esta trilha nem deveria tocar nesse arquivo).
+> 3. **Sidebar ACTIVE JOBS (windowed) preserva o comportamento atual**: decisão de modo por
+>    `summary.total`, paginação por summary+page, **throttle do refresh de summary em rajada
+>    de eventos** (o "delay pra puxar") e o reset de páginas quando filtro/busca muda. O
+>    efeito em `MonitoringSidebarV2.tsx:202` é parte disso → **ANOTAR, não refatorar**.
+> 4. **Autosave do JobConfigDrawer continua idêntico**: trocar de job salva o anterior,
+>    fechar o drawer salva, job NOVO só persiste no Save explícito, e a troca de job NUNCA
+>    mistura estado de dois jobs (guard `editedIdRef` — "snapshot frankenstein").
+> 5. **Drawer do Monitoring segue IMUTÁVEL (M1)**: `orderDetail` busca `GET /instances/{id}`
+>    ao trocar de instance e o conteúdo NUNCA vaza de uma instance pra outra.
+> 6. **Delays/pollings atuais não mudam**: drift da session a cada 30s, throttle do summary,
+>    debounce do SchedulePreviewCalendar, tick de 60s do TimelineView. Nenhum número muda.
+> 7. **Seleção neon, WAIT COND/CONFIRM/RESOURCE, linhas OR — tudo visual fica igual.**
+>
+> **Regras de ouro pro executor:** (a) NÃO "aproveite pra melhorar" nada fora da receita;
+> (b) um commit por LOTE (RH-1, RH-2 por arquivo, RH-3 sozinho); (c) rode
+> `npx tsc -b && npx vite build && npx eslint .` no `app/` após CADA arquivo; (d) as receitas
+> abaixo foram escolhidas POR SITE depois de ler o código — se o código no local não bater
+> com a descrição, PARE e anote em vez de improvisar; (e) NÃO atualize versões de
+> react/plugins nesta trilha; (f) anotação é SEMPRE aceitável, mudança de comportamento NUNCA.
+>
+> **Como reproduzir a lista (38):** `cd app && npx eslint .` (as posições abaixo são de
+> 2026-07-21, commit `7e18ce6` — podem deslocar; procure pelo PADRÃO descrito, não pela linha).
+
+- [ ] **RH-1 — Anotar os deliberados + consertar os triviais** *(meio dia, risco ~zero).*
+  Formato da anotação (sempre com motivo, nunca disable "seco"):
+  `// eslint-disable-next-line react-hooks/<regra> -- <motivo curto>; ver roadmap §RH`
+  1. **`v2/hooks/useCanvasCamera.ts` — ANOTAR os 5** (`refs` @103/107/111/144 + 
+     `set-state-in-effect` @407). Motivo pro comentário: "câmera tem caminho único de
+     escrita (apply); refs lidos em render fazem parte da trava de extent — refatorar já
+     causou regressão de câmera pulando". EXCEÇÃO opcional @144: o lazy-init
+     `if (!savedViewports.current)` pode virar `if (savedViewports.current == null)` — é o
+     padrão que a regra aceita; se ainda reclamar, anote e siga.
+  2. **`v2/MonitoringSidebarV2.tsx:202` (`set-state-in-effect`) — ANOTAR.** Motivo:
+     "reset do working set windowed quando filtro/busca muda (clearPages+bump+summary);
+     comportamento de paginação/throttle é contrato — ver §RH invariante 3".
+  3. **`v2/hooks/useOrchestratorData.ts:97` (`set-state-in-effect`) — ANOTAR.** É a espinha
+     de dados do app (subscribe + leitura inicial `setInstances(getTodayInstances())`); o
+     comentário no código explica por que NÃO refiltra por data local. Motivo: "leitura
+     inicial pós-subscribe; mover pra useState quebraria o re-sync quando o efeito re-roda".
+  4. **`v2/V2Preview.tsx` @220/234/267/286 (`set-state-in-effect`) — ANOTAR os 4.** São o
+     ciclo de vida de design session (P2/P7/P8: sair do code mode quando a session morre,
+     limpar activeFolders no ramo sem-session, poll de drift 30s, órfãs no boot) — código
+     endurecido por bugs reais; o ganho de refatorar não paga o risco. Motivo: "lifecycle de
+     session P2/P7/P8; resets síncronos fazem parte do contrato de estados transitórios".
+  5. **`v2/ControlMPanel.tsx:281` (`exhaustive-deps`) — ANOTAR.** O efeito roda o forecast
+     1× no mount; o botão "Run forecast" cobre o resto. Adicionar `run` nas deps faria
+     re-fetch a cada mudança de data = MUDANÇA de comportamento. Motivo: "roda 1× no mount
+     por design; o botão cobre re-runs".
+  6. **`only-export-components` ×3 — ANOTAR** (`v2/Toast.tsx:37` `toast`, `v2/OnDoEditor.tsx:60`
+     `describeRule`, `v2/resizable.tsx:21` `useResizablePanel`). Regra é só DX de Fast
+     Refresh; mover `toast` de arquivo = churn de import em dezenas de arquivos sem ganho de
+     prod. Motivo: "API pública do módulo convive com o componente; mover = churn sem ganho".
+  7. **CONSERTAR `v2/MonitoringSidebarV2.tsx:476` (`immutability`)** — o `useMemo` de
+     `groupTops/virtualH` muta o acumulador `y` dentro de um `.map()`. Reescrever como
+     `for` simples (sem map) produzindo os MESMOS arrays — puro, zero mudança. Validar:
+     sidebar windowed com grupos recolhidos/expandidos mantém offsets idênticos.
+  8. **CONSERTAR `v2/resizable.tsx:28` (`refs`)** — `widthRef.current = width` no corpo do
+     render → mover pra `useEffect(() => { widthRef.current = width; }, [width])`. Os
+     leitores são handlers de mouse (rodam pós-commit) — equivalente. Validar: arrastar o
+     handle de um painel resizable (Condições) continua fluido e persiste no localStorage.
+- [ ] **RH-2 — Família "loading/reset síncrono antes de fetch assíncrono"** *(1–2 dias, um
+  commit POR ARQUIVO, mecânico mas exige atenção).* O padrão: `useEffect` que faz
+  `setLoading(true)`/`setX(null)` SÍNCRONO e depois dispara fetch com setStates assíncronos
+  (os assíncronos são PERMITIDOS pela regra — só o síncrono é flagado). **Três receitas —
+  escolher a indicada por site:**
+  - **(A1) Estado inicial correto** — quando o reset síncrono só importa no mount:
+    `useState(false)` → `useState(true)` (ou lazy `useState(() => expr)`); remove o set
+    síncrono do efeito. Sites: `v2/PortalView.tsx:36` (`setAuthChecked(true)` no ramo
+    local-mode → inicial `useState(!isServerMode())`) · `v2/V2Preview.tsx:450` (idem
+    authChecked — MESMA receita, é o único site de V2Preview que NÃO é pra anotar).
+  - **(A2) Variante async-only pro efeito** — quando a mesma função serve efeito E
+    handlers: extrair `doFetch()` só com os setStates assíncronos; o efeito chama
+    `doFetch()` com estado inicial `loading=true` (A1); handlers continuam chamando a
+    versão com reset síncrono (permitido em handler). Sites: `v2/DryRunModal.tsx:39` ·
+    `v2/FolderManagerDialog.tsx:109` · `v2/UsersDialog.tsx:39` · `v2/ScaleMonitor.tsx:147`
+    e `:156` (o efeito chama `loadSummary`/`openFolder` que setam sync no início).
+  - **(A3) Estado derivado `{forId, data}`** — quando o reset síncrono existe pra INVALIDAR
+    dado da chave anterior (trocou instance/def): guardar `{forId, data}` num state só,
+    setado APENAS no callback assíncrono, e derivar
+    `const data = st.forId === currentId ? st.data : null` /
+    `const loading = st.forId !== currentId`. Comportamento idêntico (o "null enquanto
+    carrega" vira derivação) e imune a resposta atrasada de outra chave. Sites:
+    `v2/InstanceDetailsDrawer.tsx:153` (**orderDetail M1 — invariante 5**: derivar por
+    `instance.id`; NÃO mexer no fetch nem no merge/keepDetail) · `:769` (StatsTab
+    `setLoaded(false)` → derivar de `pf`/`stats` com `forId=definitionId`) · `:1357`
+    (RCAPanel: inicial já é `true`; derivar loading por `forId=instanceId`) · `:1420`
+    (NeighborhoodTab: `load()` chamado do efeito → A2+A3) · `v2/ForecastPanel.tsx:49`
+    (`setLoaded(false)` → derivar: `PerfForecast` carrega `defId`) ·
+    `v2/SchedulePreviewCalendar.tsx:43` (derivar loading do `reqId`/assinatura `sig` que JÁ
+    existem; o debounce e o descarte de resposta obsoleta ficam intocados).
+  - **Validação ao vivo obrigatória por arquivo** (server completo — ver protocolo):
+    drawer abre limpo ao trocar de instance (sem conteúdo da anterior piscando), Stats/RCA/
+    Neighborhood carregam, Dry Run abre, Users lista, portal self-service abre, preview de
+    calendário atualiza ao editar schedule.
+- [ ] **RH-3 — `v2/JobConfigDrawer.tsx` (o delicado — SOZINHO num commit, com validação de
+  autosave completa).** 8 warnings no arquivo:
+  - `refs` @150 (`autoSaveRef.current = handlers.onAutoSave` no render) → mover pra
+    `useEffect`. Leitor é o flush (pós-commit) — equivalente.
+  - `refs` @369/370 (snapshot vivo `liveRef.current = { def: buildDef(), … }` no corpo do
+    render, guardado por `editedIdRef`) — é o CORAÇÃO do autosave (invariante 4). Receita:
+    mover o bloco INTEIRO (incluindo o guard `editedIdRef.current === definition.id`) pra um
+    `useEffect` SEM array de deps (roda a cada commit), declarado DEPOIS do efeito de reset
+    @168. Por que é equivalente: o efeito de reset (dispara na troca de id) lê o
+    `liveRef` escrito no COMMIT ANTERIOR — exatamente o snapshot do job anterior; o guard
+    continua pulando o frame da troca. **Se qualquer teste de autosave abaixo falhar,
+    REVERTA e anote os 3 com motivo** ("snapshot de render pro autosave; ver invariante 4").
+  - `set-state-in-effect` @171 (reset de form na troca de `definition.id`: setTab/setLabel/
+    setId/…) — é o padrão "resetar estado quando a prop muda". Receita React-oficial:
+    NÃO transformar em key-remount (o drawer guarda width/scroll; remount mudaria UX).
+    Manter o efeito e ANOTAR com motivo ("reset de formulário na troca de job; key-remount
+    perderia largura/scroll do drawer") — OU, se preferir consertar de verdade, mover o
+    reset pra "adjust during render" comparando `prevIdRef` (padrão do react.dev) — só se
+    TODOS os testes de autosave passarem.
+  - `set-state-in-effect` @236/245 (auto-pick de agente pra job NOVO quando jobType muda,
+    `setAgentId` sync) — ANOTAR ("auto-sugestão de agente em job novo; roda em resposta a
+    dados assíncronos de agents, não é reset mecânico").
+  - **Testes de autosave (TODOS, ao vivo, server completo):** editar label do job A → clicar
+    no job B no canvas → reabrir A: mudança persistiu; editar A → fechar o drawer → reabrir:
+    persistiu; criar job NOVO, digitar, NÃO salvar, trocar de job → o novo NÃO persistiu
+    sozinho (só no Save); trocar rápido A→B→A não mistura campos (frankenstein); aba
+    Condições: ligar setinha + editar grupo AND/OR + trocar de job → persistiu.
+- [ ] **RH-4 — A CATRACA (só depois de RH-1..3 verdes).** No `app/eslint.config.js`, voltar
+  as 4 regras pra `'error'` (`react-hooks/set-state-in-effect`, `react-hooks/refs`,
+  `react-hooks/immutability`, `react-refresh/only-export-components`), atualizando o
+  comentário do bloco (a justificativa de warn morre aqui). `npx eslint .` tem que sair
+  **0 erros / 0 warnings** (as exceções viraram disables anotados). O gate do CI
+  (`npm run lint`) passa a segurar qualquer violação nova. Atualizar esta seção
+  (Backlog→Entregue+changelog) e a mente.
+
+> **Protocolo de validação ao vivo (obrigatório em RH-2/RH-3; recomendado em RH-1):**
+> 1. Build: `cd app && npx tsc -b && npx vite build` — depois sirva o server COMPLETO
+>    (Design/sessions só existem nele): `cd server && go build -o /tmp/regente-rh.exe . &&
+>    /tmp/regente-rh.exe -workspace <clone> -git-source <bare local> -port 18xxx` com a SPA
+>    buildada @origin. **Porta ALTA** (8080/9090 podem ser o dev do usuário). Vite/preview
+>    pode subir IPv6-only — use 127.0.0.1 explícito.
+> 2. GOTCHAS de automação do preview: screenshot TRAVA — use read_page/javascript; aba
+>    hidden congela rAF (animação de câmera não anda) — clique/drag/wheel SINTÉTICOS via
+>    dispatchEvent e espere o flush; clique em nó do canvas via dispatchEvent no elemento.
+> 3. Roteiro mínimo por sessão: login → Monitoring com jobs (semear daily) → arrastar canvas
+>    e conferir que a câmera respeita o limite e NÃO pula ao chegar dado novo (tick) →
+>    abrir/trocar drawer de 2 instances → sidebar: buscar/filtrar (reset de páginas ok) →
+>    Design: abrir folder, arrastar job da palette (é DRAG — drop sintético via DragEvent),
+>    editar no drawer, trocar de job (autosave), Save em job novo → ViewPoint abre (chunk
+>    lazy carrega) → zero erro no console.
+> 4. `npx eslint .` no fim de cada lote: o número SÓ pode descer.
+
 ### 🏁 Fase Z — ÚLTIMO gate
 - [x] **Z (artefatos)** — Case study técnico + post LinkedIn — **ENTREGUES (2026-07-13):**
   [`docs/case-study.md`](case-study.md) (problema → apostas de arquitetura → semântica
