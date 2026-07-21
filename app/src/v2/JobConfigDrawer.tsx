@@ -147,7 +147,10 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   const editedIdRef = useRef(definition.id);
   const liveRef = useRef<{ def: JobDefinition; dirty: boolean; isNew: boolean } | null>(null);
   const autoSaveRef = useRef(handlers.onAutoSave);
-  autoSaveRef.current = handlers.onAutoSave;
+  // leitor é o flush (pós-commit: troca de job @reset effect e unmount) → efeito é
+  // equivalente ao write em render; declarado ANTES do efeito de reset p/ o ref já
+  // estar fresco quando o flush roda. Ver roadmap §RH.
+  useEffect(() => { autoSaveRef.current = handlers.onAutoSave; });
   const flushAutosave = useCallback((snap: { def: JobDefinition; dirty: boolean; isNew: boolean } | null) => {
     if (!snap || !snap.dirty || snap.isNew || !autoSaveRef.current) return;
     const d = snap.def;
@@ -168,6 +171,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     if (editedIdRef.current !== definition.id) flushAutosave(liveRef.current);
     editedIdRef.current = definition.id;
     dirtyRef.current = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset de formulário na troca de job (definition.id); key-remount perderia largura/scroll do drawer; invariante 4; ver roadmap §RH
     setTab("general");
     setLabel(definition.label);
     // Job NOVO: id nasce do Job Name (Opção A) — o `jobtype-<timestamp>` que o
@@ -233,6 +237,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   useEffect(() => {
     if (!isNew || agentTouched || agents.length === 0) return;
     const cap = String(jobType || "").toUpperCase();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-sugestão de agente em job novo; roda em resposta a dados assíncronos de agents (não é reset mecânico); ver roadmap §RH
     if (cap === "SSH") { setAgentId(""); return; } // agentless — roda no server
     const current = agents.find((a) => a.id === agentId);
     const currentServes = current?.capabilities?.some((c) => c.toUpperCase() === cap);
@@ -242,6 +247,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   }, [isNew, agentTouched, agents, jobType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset de githubUrl quando muda team/id/isNew (link do arquivo no GitHub); reset-on-dep-change; ver roadmap §RH
     if (isNew || !definition.team || !definition.id) { setGithubUrl(null); return; }
     let cancel = false;
     void getGitInfo().then((st) => { if (!cancel) setGithubUrl(definitionFileUrl(st, definition.team!, definition.id)); });
@@ -366,7 +372,9 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
 
   // Snapshot vivo do formulário pro autosave — só enquanto os states na tela
   // pertencem a ESTE `definition` (ver editedIdRef; o frame da troca é pulado).
+  // eslint-disable-next-line react-hooks/refs -- lê editedIdRef p/ pular o frame da troca de job (guard anti-frankenstein); snapshot de render pro autosave, invariante 4; mover pra efeito exige validação ao vivo do autosave; ver roadmap §RH
   if (editedIdRef.current === definition.id) {
+    // eslint-disable-next-line react-hooks/refs -- grava o snapshot vivo (liveRef) e lê dirtyRef no render; é o coração do autosave (invariante 4); refatorar exige validação ao vivo; ver roadmap §RH
     liveRef.current = { def: buildDef(), dirty: dirtyRef.current, isNew };
   }
 
