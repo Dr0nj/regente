@@ -372,11 +372,16 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
 
   // Snapshot vivo do formulário pro autosave — só enquanto os states na tela
   // pertencem a ESTE `definition` (ver editedIdRef; o frame da troca é pulado).
-  // eslint-disable-next-line react-hooks/refs -- lê editedIdRef p/ pular o frame da troca de job (guard anti-frankenstein); snapshot de render pro autosave, invariante 4; mover pra efeito exige validação ao vivo do autosave; ver roadmap §RH
-  if (editedIdRef.current === definition.id) {
-    // eslint-disable-next-line react-hooks/refs -- grava o snapshot vivo (liveRef) e lê dirtyRef no render; é o coração do autosave (invariante 4); refatorar exige validação ao vivo; ver roadmap §RH
-    liveRef.current = { def: buildDef(), dirty: dirtyRef.current, isNew };
-  }
+  // Snapshot vivo do formulário pro autosave — num useEffect SEM deps (roda a cada
+  // commit) declarado DEPOIS do efeito de reset (@168): o reset lê o liveRef escrito no
+  // COMMIT ANTERIOR (o snapshot do job anterior) antes deste sobrescrever; o guard
+  // editedIdRef mantém o snapshot coerente por job (invariante 4). Sem acessar refs no
+  // corpo do render. Validado ao vivo (bateria de autosave §RH). Ver roadmap §RH.
+  useEffect(() => {
+    if (editedIdRef.current === definition.id) {
+      liveRef.current = { def: buildDef(), dirty: dirtyRef.current, isNew };
+    }
+  });
 
   return (
     <aside style={{
