@@ -17,7 +17,7 @@
 > no §Entregue e some uma linha no §Changelog. Ao **abrir** um item novo: só adicione no §Backlog.
 > Sem barras de progresso nem porcentagens — de propósito (confundem mais do que ajudam).
 >
-> Documento vivo · revisão **2026-07-18**.
+> Documento vivo · revisão **2026-07-21**.
 > Estratégia de arquitetura em [`arquitetura-futuro.md`](arquitetura-futuro.md);
 > apresentação de produto no [`../README.md`](../README.md).
 
@@ -48,6 +48,7 @@
 **Trilhas com itens em ABERTO** (detalhe em [§🔜 Backlog](#-backlog-o-que-falta)):
 
 - **Fase V — self-hosting em VPS de caixa única (24/7)** — **V1–V5 entregues** (install single-origin 3-formas · bundle+one-liner · config guiada · hospedagem enterprise nginx+TLS · agente sandbox). **Resta só V6** (docker-compose, opcional — o alvo escolhido foi systemd). O deploy "1 caixa" 24/7 já está pronto de ponta a ponta.
+- **Trilha RH — higiene react-hooks (catraca)** — a auditoria (levas 1/2) rebaixou 4 regras react-hooks/react-refresh pra `warn`, deixando **38 warnings** visíveis. A trilha (RH-1..4) conserta o mecânico, **anota o deliberado** (`eslint-disable` + motivo) e **volta as 4 regras pra `error`** pra código novo nunca reintroduzir violação. Spec por site, executável por outro modelo, no §Backlog.
 - **Fase Z — divulgação** — **artefatos ENTREGUES 2026-07-13** (`docs/case-study.md` + `docs/linkedin-post.md`); resta só a **publicação manual no LinkedIn** (ação sua — revisar, escolher prints, postar).
 
 > ✅ **Validação em infra real — trilha FECHADA (2026-07-11):** os dois resíduos (secrets via provider · SSH
