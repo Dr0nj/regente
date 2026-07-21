@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 )
@@ -44,6 +45,11 @@ func (s *server) metrics(w http.ResponseWriter, r *http.Request) {
 			if rows.Scan(&status, &n) == nil {
 				fmt.Fprintf(w, "regente_instances{status=%q} %d\n", status, n)
 			}
+		}
+		// Stream de texto: linhas já saíram, não dá pra retratar — gauge parcial
+		// se autocorrige no próximo scrape; só registra o porquê.
+		if err := rows.Err(); err != nil {
+			log.Printf("[metrics] gauge por status incompleto: %v", err)
 		}
 	}
 

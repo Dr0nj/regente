@@ -107,72 +107,109 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > uso real. NÃO são compromisso de build — entram aqui pra não se perder e pra decidir com
 > calma se/quando valem. Cada uma vira item de trabalho de verdade só depois de um "vai".
 
-#### 🤖 AI_AGENT — JobType com prompts para LLM
+#### 🤖 AI_AGENT — jobs de IA com LLM LOCAL no host do agente (spec v2, 2026-07-21)
 
-- [ ] **AI-1 — JobType `AI_AGENT` (execução dirigida por prompt, isolada em sandbox).**
-  **Status:** planejado (prioridade média-alta **após** estabilizar o core). **Motivação:**
-  transformar o Regente em um scheduler **híbrido** (determinístico + inteligente), onde
-  parte dos jobs são descritos em **linguagem natural** e executados por agentes de IA,
-  mantendo toda a robustez e governança Control-M (imutabilidade do Monitoring, conditions
-  unificadas, carry-over, audit, approval gates, SLA etc.). Permite que analistas e usuários
-  de negócio criem automações complexas sem escrever código, enquanto a operação mantém
-  controle total, rastreabilidade e segurança. **Exemplo (health check de servidor):**
+- [ ] **AI-1 — JobType `AI_AGENT`: análise por LLM local, isolada, auditável — SEM tools.**
+
+  **Posicionamento (o porquê de mercado).** O público-alvo do Regente é o mundo
+  Control-M: bancos, seguradoras, utilities — ambientes **regulados** onde sysout,
+  logs e dados de host **não podem sair do perímetro** (LGPD/Bacen/auditoria). Todo
+  scheduler "com IA" do mercado manda esses dados pra uma API de nuvem; o Regente
+  faz o INVERSO: **a LLM roda no MESMO host do agente** (Ollama/llama.cpp/vLLM),
+  o dado nunca viaja, e o server só recebe o que já recebe de qualquer COMMAND —
+  o sysout final. *"Seus dados não saem da sua máquina"* é a frase de venda, e é
+  literal. Provider remoto (endpoint OpenAI-compatível ou Anthropic) fica como
+  OPÇÃO explícita pra quem pode e quer — nunca o default.
+
+  **Decisão de arquitetura — o job roda NO AGENTE, não no server:**
+  1. **Localidade do dado:** o agente já tem acesso legítimo ao host (é ele que roda
+     os COMMANDs); a LLM local analisa ali mesmo e devolve só o veredito.
+  2. **Localidade do modelo/GPU:** quem dimensiona o host do agente dimensiona a
+     inferência; o server (caixa pequena, HA) não vira refém de GPU.
+  3. **Zero superfície nova:** agente segue outbound-only (NAT-friendly);
+     `AI_AGENT` é só mais uma **capability** no roteamento que já existe (igual
+     COMMAND/SSH — inclusive pinagem por agente e por `environment`/ADV-2).
+
+  **Governança de graça (o que nenhum concorrente tem pronto):** o prompt é parte
+  da definition → **congela no `definition_snapshot` (M1)** — o prompt EXATO que
+  rodou é imutável por ordem, pra sempre, auditável; Confirm (approval gate),
+  conditions/On-Do/SLA/Explain/Blast Radius, RBAC por folder e audit trail já
+  funcionam sem uma linha nova, porque `AI_AGENT` é um jobType como outro qualquer.
+
+  **Isolamento de segurança (obrigatório, não opcional):**
+  - **Sandbox efêmero por execução** — reusa o sandbox V5 (`deploy/vps/`):
+    container `cap-drop=ALL`, usuário não-root, `no-new-privileges`, FS read-only
+    (+ /tmp efêmero), limites de CPU/RAM e `timeout` duro (Cancel normal mata).
+  - **Egress NEGADO por padrão:** a rede do sandbox só alcança o endpoint da LLM
+    (loopback do host). Provider remoto exige allowlist explícita na config do
+    AGENTE (decisão de quem opera o host, não de quem escreve o job).
+  - **Secrets (H3) nunca entram em prompt:** `%%SECRET` é RECUSADO no publish de
+    jobs `AI_AGENT` (gate ADV-1) — segredo em contexto de LLM é vazamento.
+  - **Postura anti prompt-injection:** logs/sysout/arquivos analisados são DADO,
+    nunca instrução — e na AI-1 isso é garantido por construção: **sem tools, a
+    LLM não tem como agir**; o pior caso de um prompt injetado é um relatório
+    errado, nunca um comando executado.
+  - **Output com contrato:** `outputSchema` (JSON Schema) validado no agente;
+    resposta inválida = **NOTOK** com motivo (nunca "OK no chute"); o campo
+    `status` do JSON deriva o resultado (`healthy`→OK etc.) e os demais campos
+    viram variáveis `%%SET` pros sucessores.
+  - **Determinismo operacional:** `temperature: 0` default; audit grava modelo +
+    hash do prompt renderizado + hash da resposta bruta (re-execução comparável).
+
+  **Exemplo (RCA automático de falha — o caso que vende):**
 
   ```yaml
-  id: HEALTH-CHECK-SRV-1234
-  label: Health Check Servidor Produção 1234
+  id: RCA-CARGA-NOTURNA
+  label: RCA automático da carga
   jobType: AI_AGENT
+  agent: agente-batch-01          # roda ONDE a LLM local está
+  provider: ollama                # default local; openai-compat/anthropic = opt-in
+  model: llama3.1:8b
+  endpoint: http://127.0.0.1:11434
+  temperature: 0
+  timeout: 5m
+  maxTokens: 4096
   prompt: |
-    Realize um health check completo no servidor Linux atual.
-
-    Verifique:
-    - Uso de CPU, memória e disco
-    - Processos críticos que não estão rodando
-    - Portas esperadas que estão fechadas
-    - Serviços essenciais (nginx, postgresql, redis, etc.)
-    - Últimos erros nos logs do sistema e aplicações
-    - Conexões de rede anormais
-
-    No final, gere um relatório claro com:
-    - Status geral (Healthy / Degraded / Critical)
-    - Principais problemas encontrados
-    - Recomendações de ação
-
-    Sempre retorne um JSON estruturado no output final.
-  model: claude-3-5-sonnet-20240620
-  temperature: 0.0
-  timeout: 10m
-  approvalRequired: true
-  outputSchema: json
-  sandbox: docker     # execução isolada em container
+    Analise o sysout e o exit code do job %%FAILED_JOB e o histórico das
+    últimas execuções. Classifique a causa-raiz (dado | infra | código |
+    dependência) e recomende a ação (rerun | esperar | acionar time X).
+  outputSchema:
+    status: [ok, attention, critical]
+    rootCause: string
+    recommendation: string
   ```
+  Ligação com o que já existe: uma ação On-Do `run-job` no NOTOK de qualquer job
+  dispara o RCA; o relatório aparece no sysout do drawer; `%%SET rootCause` fica
+  disponível pra condição/ação seguinte. **Shadow por natureza**: a AI-1 só
+  observa e escreve relatório — confiança primeiro, ação depois.
 
-  **Escopo inicial (Fase 1 - AI-1):**
-  - Novo jobType `AI_AGENT` no schema (`typeschema.go`).
-  - Campos principais: `prompt`, `model`, `temperature`, `maxTokens`, `approvalRequired`,
-    `toolsAllowed`, `outputSchema`, `sandbox`.
-  - Integração com o `regente-mcp` existente (tool interna `execute_ai_prompt`).
-  - **Execução isolada obrigatória:** cada job roda dentro de um container Docker efêmero
-    (sandbox) com privilégios mínimos, limitação de recursos e filesystem restrito.
-  - Parsing robusto do output (prioridade para JSON + fallback) → mapeia para `output`,
-    `exitCode` e variáveis `%%SET`.
-  - Approval gate + audit completo (prompt enviado + modelo + resposta bruta da LLM).
-  - Integração plena com conditions, On-Do, SLA, Explain, Blast Radius e Monitoring imutável.
+  **Escopo AI-1 (mínimo vendável, seguro por construção):**
+  - jobType `AI_AGENT` no `typeschema.go` (campos acima) + capability no agente.
+  - Runner no agente: renderiza o prompt (variáveis %%), chama o endpoint local,
+    valida o schema, devolve sysout+exitCode — dentro do sandbox, sem rede além
+    do endpoint. **SEM tools nesta fase** (superfície de ataque = zero).
+  - Casos prontos de fábrica: RCA de NOTOK (via On-Do) · health check/triagem ·
+    sumário do dia (enriquece o daily report).
 
-  **Fases futuras:**
-  - **AI-2:** multi-step agents + memória persistente entre execuções.
-  - **AI-3:** human-in-the-loop avançado + loops de feedback.
-  - **AI-4:** orquestração de múltiplos agentes dentro de um único job.
+  **Fases seguintes (cada uma só depois da anterior provar valor):**
+  - **AI-2 — tools em whitelist + Confirm:** contrato tipado por tool, cada
+    execução = linha de audit; qualquer tool de ESCRITA exige `confirm: true`
+    (o gate Confirm que já existe). É aqui que "recomendar rerun" vira "fazer
+    rerun com aprovação".
+  - **AI-3 — multi-step + memória entre execuções** (contexto do histórico da
+    definition, deduplicação de diagnóstico).
+  - **AI-4 — múltiplos agentes num job / orquestração de especialistas.**
 
-  **Dependências críticas:** condições unificadas estáveis, daily/carry-over maduro, MCP com
-  writes confiável, e controles de segurança fortes (secrets, sandbox, whitelist de tools).
+  **Dependências:** core estável (✔ hoje) · sandbox V5 (✔) · H3 secrets (✔) ·
+  gate ADV-1 no publish (✔). Falta só o runner e o schema — a fundação já existe.
 
-  **Riscos conhecidos e mitigação:**
-  - **Hallucination / comandos perigosos** → execução obrigatoriamente isolada em sandbox +
-    tools limitadas (whitelist) + approval humano em jobs sensíveis.
-  - **Custo** → suporte a modelos locais (Ollama) e modelos mais baratos para tarefas simples.
-  - **Segurança** → sandbox Docker com `cap-drop=ALL`, usuário sem privilégios e volumes
-    read-only.
+  **Riscos e mitigação:**
+  - **Alucinação →** AI-1 é análise-only (relatório errado ≠ ação errada);
+    `outputSchema` estrito; temperature 0; ação real só na AI-2 com Confirm.
+  - **Custo/hardware →** modelo local pequeno (3–8B) resolve RCA/triagem; quem
+    não tem GPU usa CPU (llama.cpp) ou opt-in de provider remoto.
+  - **Vazamento →** LLM local por default + egress negado + `%%SECRET` recusado
+    + prompt/resposta auditados. O caminho de vazar é o que NÃO existe.
 
 ---
 
