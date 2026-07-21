@@ -32,22 +32,20 @@ export default defineConfig([
         },
       ],
 
-      // ── react-hooks/react-refresh: WARN, não ERROR (decisão da auditoria 2026-07-21) ──
-      // Estas regras vieram no set "recommended" novo do plugin (era React
-      // Compiler) e sinalizam PADRÕES, não bugs. O app tem código LOAD-BEARING
-      // que elas acusam e que já mordeu regressão quando mexido:
-      //   - set-state-in-effect / refs → a sincronização de dados e a CÂMERA do
-      //     canvas (useCanvasCamera.apply() é o único caminho de escrita; mexer
-      //     ali divergia a trava — ver mente regente-canvas-camera-model).
-      //   - immutability → acumulador em map() no cálculo de offsets da sidebar
-      //     windowed (funciona; reescrever não paga).
-      //   - only-export-components → só afeta Fast Refresh (DX de dev), nunca prod.
-      // Ficam como WARN: visíveis pra quem for refatorar, mas NÃO bloqueiam o CI
-      // (o gate é erro-only). Correção real dessas = projeto próprio, não auditoria.
-      'react-hooks/set-state-in-effect': 'warn',
-      'react-hooks/refs': 'warn',
-      'react-hooks/immutability': 'warn',
-      'react-refresh/only-export-components': 'warn',
+      // ── react-hooks/react-refresh: ERROR (catraca RH-4, 2026-07-21) ──
+      // A trilha RH (roadmap §RH) passou o app por estas 4 regras site-a-site:
+      // consertou o mecânico (immutability da sidebar, refs de resizable/camera-mirror,
+      // A1/A2/A3 das cargas iniciais) e ANOTOU cada caso load-bearing deliberado com
+      // `eslint-disable-next-line <regra> -- <motivo>; ver roadmap §RH` (câmera do
+      // canvas, snapshot do autosave/invariante 4, resets on-dep-change do drawer M1,
+      // API pública que convive com componente no módulo). Com 0 violação restante,
+      // sobem pra ERROR: agora o gate do CI (`npm run lint`) BLOQUEIA qualquer
+      // violação nova — código novo não regride por copy-paste. Toda exceção futura
+      // tem que ser um disable ANOTADO com motivo, nunca um warn silencioso.
+      'react-hooks/set-state-in-effect': 'error',
+      'react-hooks/refs': 'error',
+      'react-hooks/immutability': 'error',
+      'react-refresh/only-export-components': 'error',
     },
   },
 ])

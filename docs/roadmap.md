@@ -44,11 +44,11 @@
 - **Agent-native (MCP)** — servidor stdio com **11 read + 11 write** gated (MCP-1 fechado 2026-07-08).
 - **Features avançadas (ADV-1..8)** — schema por jobType, multi-ambiente, What-If/Stats, MFT, archives/retention, CLI/SDK, site de docs, executores AWS Batch/Glue/Step.
 - **Contrato de API (OpenAPI)** — API-1: spec curada escrita à mão + viewer self-contained em `/api-docs`, embutidos no binário.
+- **Higiene react-hooks (catraca RH-1..4)** — o app passou site-a-site pelas 4 regras react-hooks/react-refresh: mecânico consertado (immutability da sidebar, refs de resizable/espelho-de-câmera, A1/A2/A3 das cargas iniciais) + deliberado ANOTADO com motivo (câmera, autosave/invariante 4, resets on-dep-change do drawer M1); as 4 regras subiram pra `error` → `npm run lint` (gate CI) bloqueia violação nova. **38→0 warnings** (2026-07-21).
 
 **Trilhas com itens em ABERTO** (detalhe em [§🔜 Backlog](#-backlog-o-que-falta)):
 
 - **Fase V — self-hosting em VPS de caixa única (24/7)** — **V1–V5 entregues** (install single-origin 3-formas · bundle+one-liner · config guiada · hospedagem enterprise nginx+TLS · agente sandbox). **Resta só V6** (docker-compose, opcional — o alvo escolhido foi systemd). O deploy "1 caixa" 24/7 já está pronto de ponta a ponta.
-- **Trilha RH — higiene react-hooks (catraca)** — a auditoria (levas 1/2) rebaixou 4 regras react-hooks/react-refresh pra `warn`, deixando **38 warnings** visíveis. A trilha (RH-1..4) conserta o mecânico, **anota o deliberado** (`eslint-disable` + motivo) e **volta as 4 regras pra `error`** pra código novo nunca reintroduzir violação. Spec por site, executável por outro modelo, no §Backlog.
 - **Fase Z — divulgação** — **artefatos ENTREGUES 2026-07-13** (`docs/case-study.md` + `docs/linkedin-post.md`); resta só a **publicação manual no LinkedIn** (ação sua — revisar, escolher prints, postar).
 
 > ✅ **Validação em infra real — trilha FECHADA (2026-07-11):** os dois resíduos (secrets via provider · SSH
@@ -92,178 +92,6 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > Postgres), users/sessions/settings/PAT na DB, migrations no boot (`db.Migrate`),
 > `Restart=always` + `rolling-upgrade.sh`. VPS derruba/sobe/atualiza sem perder estado.
 > **Nada disso está no backlog** — os V* acima são só empacotamento/UX de instalação.
-
-### 🧹 Trilha RH — Higiene react-hooks (catraca: 38 warnings → 0 + regras em `error`)
-
-> **Spec escrita em 2026-07-21 pra ser executada POR OUTRO MODELO lendo só esta seção.**
-> Contexto: a auditoria (levas 1/2, commits `e24f4c7`/`85b74d6`) zerou os ERROS de eslint e
-> rebaixou 4 regras react-hooks/react-refresh pra `warn` no `app/eslint.config.js`, deixando
-> **38 warnings** visíveis. O objetivo desta trilha NÃO é "zerar warnings" — é a **CATRACA**:
-> consertar o mecânico, ANOTAR o deliberado com `eslint-disable` + motivo na linha, e **voltar
-> as 4 regras pra `error`** (RH-4), pra que código novo nunca mais adicione violação (hoje,
-> `warn` global não segura nada e o app vai crescer por copy-paste dos padrões existentes).
-> Bônus futuro: com as regras verdes o app fica elegível ao React Compiler (auto-memo — vale
-> muito no canvas @1M jobs).
-
-> #### ⛔ INVARIANTES DE EXPERIÊNCIA — o produto NÃO pode mudar NADA do que o usuário vê
->
-> Esta trilha é 100% refactor interno. **Se qualquer item abaixo mudar, a entrega está ERRADA
-> — reverta o site e ANOTE em vez de consertar.** Bugs listados aqui JÁ FORAM corrigidos uma
-> vez e NÃO PODEM VOLTAR (exigência explícita do usuário em 2026-07-21):
->
-> 1. **Câmera do canvas NUNCA se move sozinha** — só por drag/wheel/clique-na-sidebar/
->    Organizar/Force. O **limite de pan (extent) dinâmico** continua EXATO como está
->    (monitoring "atravessa por pouco", design preso à caixa, conteúdo menor que a tela =
->    pinado). `useCanvasCamera.apply()` é o ÚNICO caminho de escrita da câmera. **Proibido
->    refatorar `useCanvasCamera.ts` nesta trilha — só anotação (ver tabela).**
-> 2. **Cards e linhas do canvas NUNCA somem** — as três blindagens do ReactFlow v12 ficam
->    intocadas: `initialWidth/Height` nos nós, `JOB_HANDLES` estáticos, `zIndex:5` no
->    `makeEdge` (tudo em `canvas-layout.ts` — esta trilha nem deveria tocar nesse arquivo).
-> 3. **Sidebar ACTIVE JOBS (windowed) preserva o comportamento atual**: decisão de modo por
->    `summary.total`, paginação por summary+page, **throttle do refresh de summary em rajada
->    de eventos** (o "delay pra puxar") e o reset de páginas quando filtro/busca muda. O
->    efeito em `MonitoringSidebarV2.tsx:202` é parte disso → **ANOTAR, não refatorar**.
-> 4. **Autosave do JobConfigDrawer continua idêntico**: trocar de job salva o anterior,
->    fechar o drawer salva, job NOVO só persiste no Save explícito, e a troca de job NUNCA
->    mistura estado de dois jobs (guard `editedIdRef` — "snapshot frankenstein").
-> 5. **Drawer do Monitoring segue IMUTÁVEL (M1)**: `orderDetail` busca `GET /instances/{id}`
->    ao trocar de instance e o conteúdo NUNCA vaza de uma instance pra outra.
-> 6. **Delays/pollings atuais não mudam**: drift da session a cada 30s, throttle do summary,
->    debounce do SchedulePreviewCalendar, tick de 60s do TimelineView. Nenhum número muda.
-> 7. **Seleção neon, WAIT COND/CONFIRM/RESOURCE, linhas OR — tudo visual fica igual.**
->
-> **Regras de ouro pro executor:** (a) NÃO "aproveite pra melhorar" nada fora da receita;
-> (b) um commit por LOTE (RH-1, RH-2 por arquivo, RH-3 sozinho); (c) rode
-> `npx tsc -b && npx vite build && npx eslint .` no `app/` após CADA arquivo; (d) as receitas
-> abaixo foram escolhidas POR SITE depois de ler o código — se o código no local não bater
-> com a descrição, PARE e anote em vez de improvisar; (e) NÃO atualize versões de
-> react/plugins nesta trilha; (f) anotação é SEMPRE aceitável, mudança de comportamento NUNCA.
->
-> **Como reproduzir a lista (38):** `cd app && npx eslint .` (as posições abaixo são de
-> 2026-07-21, commit `7e18ce6` — podem deslocar; procure pelo PADRÃO descrito, não pela linha).
-
-- [ ] **RH-1 — Anotar os deliberados + consertar os triviais** *(meio dia, risco ~zero).*
-  Formato da anotação (sempre com motivo, nunca disable "seco"):
-  `// eslint-disable-next-line react-hooks/<regra> -- <motivo curto>; ver roadmap §RH`
-  1. **`v2/hooks/useCanvasCamera.ts` — ANOTAR os 5** (`refs` @103/107/111/144 + 
-     `set-state-in-effect` @407). Motivo pro comentário: "câmera tem caminho único de
-     escrita (apply); refs lidos em render fazem parte da trava de extent — refatorar já
-     causou regressão de câmera pulando". EXCEÇÃO opcional @144: o lazy-init
-     `if (!savedViewports.current)` pode virar `if (savedViewports.current == null)` — é o
-     padrão que a regra aceita; se ainda reclamar, anote e siga.
-  2. **`v2/MonitoringSidebarV2.tsx:202` (`set-state-in-effect`) — ANOTAR.** Motivo:
-     "reset do working set windowed quando filtro/busca muda (clearPages+bump+summary);
-     comportamento de paginação/throttle é contrato — ver §RH invariante 3".
-  3. **`v2/hooks/useOrchestratorData.ts:97` (`set-state-in-effect`) — ANOTAR.** É a espinha
-     de dados do app (subscribe + leitura inicial `setInstances(getTodayInstances())`); o
-     comentário no código explica por que NÃO refiltra por data local. Motivo: "leitura
-     inicial pós-subscribe; mover pra useState quebraria o re-sync quando o efeito re-roda".
-  4. **`v2/V2Preview.tsx` @220/234/267/286 (`set-state-in-effect`) — ANOTAR os 4.** São o
-     ciclo de vida de design session (P2/P7/P8: sair do code mode quando a session morre,
-     limpar activeFolders no ramo sem-session, poll de drift 30s, órfãs no boot) — código
-     endurecido por bugs reais; o ganho de refatorar não paga o risco. Motivo: "lifecycle de
-     session P2/P7/P8; resets síncronos fazem parte do contrato de estados transitórios".
-  5. **`v2/ControlMPanel.tsx:281` (`exhaustive-deps`) — ANOTAR.** O efeito roda o forecast
-     1× no mount; o botão "Run forecast" cobre o resto. Adicionar `run` nas deps faria
-     re-fetch a cada mudança de data = MUDANÇA de comportamento. Motivo: "roda 1× no mount
-     por design; o botão cobre re-runs".
-  6. **`only-export-components` ×3 — ANOTAR** (`v2/Toast.tsx:37` `toast`, `v2/OnDoEditor.tsx:60`
-     `describeRule`, `v2/resizable.tsx:21` `useResizablePanel`). Regra é só DX de Fast
-     Refresh; mover `toast` de arquivo = churn de import em dezenas de arquivos sem ganho de
-     prod. Motivo: "API pública do módulo convive com o componente; mover = churn sem ganho".
-  7. **CONSERTAR `v2/MonitoringSidebarV2.tsx:476` (`immutability`)** — o `useMemo` de
-     `groupTops/virtualH` muta o acumulador `y` dentro de um `.map()`. Reescrever como
-     `for` simples (sem map) produzindo os MESMOS arrays — puro, zero mudança. Validar:
-     sidebar windowed com grupos recolhidos/expandidos mantém offsets idênticos.
-  8. **CONSERTAR `v2/resizable.tsx:28` (`refs`)** — `widthRef.current = width` no corpo do
-     render → mover pra `useEffect(() => { widthRef.current = width; }, [width])`. Os
-     leitores são handlers de mouse (rodam pós-commit) — equivalente. Validar: arrastar o
-     handle de um painel resizable (Condições) continua fluido e persiste no localStorage.
-- [ ] **RH-2 — Família "loading/reset síncrono antes de fetch assíncrono"** *(1–2 dias, um
-  commit POR ARQUIVO, mecânico mas exige atenção).* O padrão: `useEffect` que faz
-  `setLoading(true)`/`setX(null)` SÍNCRONO e depois dispara fetch com setStates assíncronos
-  (os assíncronos são PERMITIDOS pela regra — só o síncrono é flagado). **Três receitas —
-  escolher a indicada por site:**
-  - **(A1) Estado inicial correto** — quando o reset síncrono só importa no mount:
-    `useState(false)` → `useState(true)` (ou lazy `useState(() => expr)`); remove o set
-    síncrono do efeito. Sites: `v2/PortalView.tsx:36` (`setAuthChecked(true)` no ramo
-    local-mode → inicial `useState(!isServerMode())`) · `v2/V2Preview.tsx:450` (idem
-    authChecked — MESMA receita, é o único site de V2Preview que NÃO é pra anotar).
-  - **(A2) Variante async-only pro efeito** — quando a mesma função serve efeito E
-    handlers: extrair `doFetch()` só com os setStates assíncronos; o efeito chama
-    `doFetch()` com estado inicial `loading=true` (A1); handlers continuam chamando a
-    versão com reset síncrono (permitido em handler). Sites: `v2/DryRunModal.tsx:39` ·
-    `v2/FolderManagerDialog.tsx:109` · `v2/UsersDialog.tsx:39` · `v2/ScaleMonitor.tsx:147`
-    e `:156` (o efeito chama `loadSummary`/`openFolder` que setam sync no início).
-  - **(A3) Estado derivado `{forId, data}`** — quando o reset síncrono existe pra INVALIDAR
-    dado da chave anterior (trocou instance/def): guardar `{forId, data}` num state só,
-    setado APENAS no callback assíncrono, e derivar
-    `const data = st.forId === currentId ? st.data : null` /
-    `const loading = st.forId !== currentId`. Comportamento idêntico (o "null enquanto
-    carrega" vira derivação) e imune a resposta atrasada de outra chave. Sites:
-    `v2/InstanceDetailsDrawer.tsx:153` (**orderDetail M1 — invariante 5**: derivar por
-    `instance.id`; NÃO mexer no fetch nem no merge/keepDetail) · `:769` (StatsTab
-    `setLoaded(false)` → derivar de `pf`/`stats` com `forId=definitionId`) · `:1357`
-    (RCAPanel: inicial já é `true`; derivar loading por `forId=instanceId`) · `:1420`
-    (NeighborhoodTab: `load()` chamado do efeito → A2+A3) · `v2/ForecastPanel.tsx:49`
-    (`setLoaded(false)` → derivar: `PerfForecast` carrega `defId`) ·
-    `v2/SchedulePreviewCalendar.tsx:43` (derivar loading do `reqId`/assinatura `sig` que JÁ
-    existem; o debounce e o descarte de resposta obsoleta ficam intocados).
-  - **Validação ao vivo obrigatória por arquivo** (server completo — ver protocolo):
-    drawer abre limpo ao trocar de instance (sem conteúdo da anterior piscando), Stats/RCA/
-    Neighborhood carregam, Dry Run abre, Users lista, portal self-service abre, preview de
-    calendário atualiza ao editar schedule.
-- [ ] **RH-3 — `v2/JobConfigDrawer.tsx` (o delicado — SOZINHO num commit, com validação de
-  autosave completa).** 8 warnings no arquivo:
-  - `refs` @150 (`autoSaveRef.current = handlers.onAutoSave` no render) → mover pra
-    `useEffect`. Leitor é o flush (pós-commit) — equivalente.
-  - `refs` @369/370 (snapshot vivo `liveRef.current = { def: buildDef(), … }` no corpo do
-    render, guardado por `editedIdRef`) — é o CORAÇÃO do autosave (invariante 4). Receita:
-    mover o bloco INTEIRO (incluindo o guard `editedIdRef.current === definition.id`) pra um
-    `useEffect` SEM array de deps (roda a cada commit), declarado DEPOIS do efeito de reset
-    @168. Por que é equivalente: o efeito de reset (dispara na troca de id) lê o
-    `liveRef` escrito no COMMIT ANTERIOR — exatamente o snapshot do job anterior; o guard
-    continua pulando o frame da troca. **Se qualquer teste de autosave abaixo falhar,
-    REVERTA e anote os 3 com motivo** ("snapshot de render pro autosave; ver invariante 4").
-  - `set-state-in-effect` @171 (reset de form na troca de `definition.id`: setTab/setLabel/
-    setId/…) — é o padrão "resetar estado quando a prop muda". Receita React-oficial:
-    NÃO transformar em key-remount (o drawer guarda width/scroll; remount mudaria UX).
-    Manter o efeito e ANOTAR com motivo ("reset de formulário na troca de job; key-remount
-    perderia largura/scroll do drawer") — OU, se preferir consertar de verdade, mover o
-    reset pra "adjust during render" comparando `prevIdRef` (padrão do react.dev) — só se
-    TODOS os testes de autosave passarem.
-  - `set-state-in-effect` @236/245 (auto-pick de agente pra job NOVO quando jobType muda,
-    `setAgentId` sync) — ANOTAR ("auto-sugestão de agente em job novo; roda em resposta a
-    dados assíncronos de agents, não é reset mecânico").
-  - **Testes de autosave (TODOS, ao vivo, server completo):** editar label do job A → clicar
-    no job B no canvas → reabrir A: mudança persistiu; editar A → fechar o drawer → reabrir:
-    persistiu; criar job NOVO, digitar, NÃO salvar, trocar de job → o novo NÃO persistiu
-    sozinho (só no Save); trocar rápido A→B→A não mistura campos (frankenstein); aba
-    Condições: ligar setinha + editar grupo AND/OR + trocar de job → persistiu.
-- [ ] **RH-4 — A CATRACA (só depois de RH-1..3 verdes).** No `app/eslint.config.js`, voltar
-  as 4 regras pra `'error'` (`react-hooks/set-state-in-effect`, `react-hooks/refs`,
-  `react-hooks/immutability`, `react-refresh/only-export-components`), atualizando o
-  comentário do bloco (a justificativa de warn morre aqui). `npx eslint .` tem que sair
-  **0 erros / 0 warnings** (as exceções viraram disables anotados). O gate do CI
-  (`npm run lint`) passa a segurar qualquer violação nova. Atualizar esta seção
-  (Backlog→Entregue+changelog) e a mente.
-
-> **Protocolo de validação ao vivo (obrigatório em RH-2/RH-3; recomendado em RH-1):**
-> 1. Build: `cd app && npx tsc -b && npx vite build` — depois sirva o server COMPLETO
->    (Design/sessions só existem nele): `cd server && go build -o /tmp/regente-rh.exe . &&
->    /tmp/regente-rh.exe -workspace <clone> -git-source <bare local> -port 18xxx` com a SPA
->    buildada @origin. **Porta ALTA** (8080/9090 podem ser o dev do usuário). Vite/preview
->    pode subir IPv6-only — use 127.0.0.1 explícito.
-> 2. GOTCHAS de automação do preview: screenshot TRAVA — use read_page/javascript; aba
->    hidden congela rAF (animação de câmera não anda) — clique/drag/wheel SINTÉTICOS via
->    dispatchEvent e espere o flush; clique em nó do canvas via dispatchEvent no elemento.
-> 3. Roteiro mínimo por sessão: login → Monitoring com jobs (semear daily) → arrastar canvas
->    e conferir que a câmera respeita o limite e NÃO pula ao chegar dado novo (tick) →
->    abrir/trocar drawer de 2 instances → sidebar: buscar/filtrar (reset de páginas ok) →
->    Design: abrir folder, arrastar job da palette (é DRAG — drop sintético via DragEvent),
->    editar no drawer, trocar de job (autosave), Save em job novo → ViewPoint abre (chunk
->    lazy carrega) → zero erro no console.
-> 4. `npx eslint .` no fim de cada lote: o número SÓ pode descer.
 
 ### 🏁 Fase Z — ÚLTIMO gate
 - [x] **Z (artefatos)** — Case study técnico + post LinkedIn — **ENTREGUES (2026-07-13):**
@@ -545,6 +373,49 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
       nó). Agent remoto sem linha no DB deste nó ainda entra na frota. Config `Presence`/`NodeID` (nil =
       single-node, comportamento idêntico ao anterior). UI: chip "⇄ node" no agent remoto + linha "Nó" no
       detalhe; "ping" só nos locais. 1 teste (`TestAgents_CrossNodePresence`, presença mockada sem NATS).
+```
+
+## 🧹 Higiene de código — catraca react-hooks (RH-1..4, 2026-07-21)
+
+> A auditoria (levas 1/2, `e24f4c7`/`85b74d6`) tinha rebaixado 4 regras do set novo
+> do `eslint-plugin-react-hooks`/`react-refresh` pra `warn` (38 warnings). Esta trilha
+> NÃO foi "zerar warning": foi a **catraca** — consertar o mecânico, **anotar o
+> deliberado com motivo na linha**, e subir as 4 regras pra `error` pra código novo
+> nunca mais reintroduzir violação. **Invariante:** 100% refactor interno, zero mudança
+> no que o usuário vê (câmera, cards/linhas do canvas, sidebar windowed, autosave,
+> imutabilidade M1, delays/pollings — tudo idêntico).
+
+```
+✅ RH-1 — Deliberados anotados + 2 triviais consertados (commit 1f5fde8):
+   · useCanvasCamera.ts: 3 espelhos de ref p/ listener nativo + limpeza do foco pendente
+     ANOTADOS (câmera só escreve via apply(); refs são parte da trava de extent); @144
+     virou o padrão que a regra aceita (ref.current == null).
+   · MonitoringSidebarV2 (reset windowed), useOrchestratorData (leitura inicial pós-
+     subscribe), V2Preview ×4 (lifecycle de session P2/P7/P8), ControlMPanel (forecast
+     1× no mount), only-export-components ×3 (Toast/OnDoEditor/resizable) — ANOTADOS.
+   · CONSERTADOS: MonitoringSidebarV2 immutability (useMemo de offsets vira for simples
+     sem mutar acumulador em .map()); resizable refs (widthRef→useEffect).
+✅ RH-2 — Família "loading/reset síncrono antes de fetch async" (1 commit por arquivo):
+   · Descoberta: a regra flagra a CHAMADA de qualquer função que seta state no corpo do
+     efeito — extrair função async-only só resolve dentro de escopo async aninhado (IIFE).
+   · CONSERTADOS (provadamente equivalentes): PortalView + V2Preview (authChecked A1 —
+     estado inicial em vez de set síncrono); UsersDialog + FolderManagerDialog (A2 —
+     carga async-only no mount via IIFE, reset síncrono fica nos handlers); ScaleMonitor
+     loadSummary (sem set síncrono → IIFE); ForecastPanel (A3 — loaded/pf derivados por
+     defId, imune a resposta atrasada).
+   · ANOTADOS (reset-on-dep-change intencional / exige validação ao vivo): DryRunModal,
+     SchedulePreviewCalendar (debounce+reqId), ScaleMonitor openFolder, e os 4 do
+     InstanceDetailsDrawer (orderDetail invariante-5 + StatsTab/RCAPanel/NeighborhoodTab).
+✅ RH-3 — JobConfigDrawer (autosave, invariante 4 — commit sozinho d4e3999):
+   · CONSERTADO: autoSaveRef.current → useEffect (leitor é o flush pós-commit).
+   · ANOTADOS: reset de formulário na troca de job (key-remount perderia largura/scroll),
+     auto-sugestão de agente, reset de githubUrl, e o snapshot vivo liveRef (coração do
+     autosave — mover exige o protocolo de validação ao vivo).
+✅ RH-4 — A CATRACA (eslint.config.js): as 4 regras (set-state-in-effect, refs,
+   immutability, only-export-components) sobem pra 'error'. `npx eslint .` = 0 erros /
+   0 warnings; `npm run lint` (gate CI) passa a BLOQUEAR qualquer violação nova — toda
+   exceção futura tem que ser um disable ANOTADO com motivo, nunca warn silencioso.
+   Bônus: com as regras verdes o app fica elegível ao React Compiler (auto-memo).
 ```
 
 ## 🔔 Alerting
@@ -1138,6 +1009,7 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 
 | Quando | O que | Detalhe |
 |----|--------|---------|
+| ✅ | ~~**Higiene react-hooks — catraca RH-1..4 (38→0 warnings, 4 regras → `error`)**~~ | **Feito (2026-07-21, pedido do usuário "toca a trilha inteira na sequência").** A auditoria (LEVA 1/2) tinha rebaixado 4 regras do set novo react-hooks/react-refresh pra `warn` (38 warnings); a catraca passou o app site-a-site. **RH-1** (`1f5fde8`) anota os deliberados (5 da câmera em `useCanvasCamera` + reset windowed da sidebar + leitura pós-subscribe do orchestrator + 4 do lifecycle de session no V2Preview + forecast-no-mount + only-export-components ×3) e CONSERTA 2 triviais (immutability do `useMemo` de offsets da sidebar → `for` sem mutar acumulador; refs do `resizable` widthRef → useEffect). **RH-2** (1 commit por arquivo) — descoberta: a regra flagra a CHAMADA de função que seta state no efeito, então extrair função async-only só resolve dentro de escopo async aninhado (IIFE) — CONSERTA PortalView/V2Preview (authChecked A1), UsersDialog/FolderManagerDialog (A2), ScaleMonitor `loadSummary`, ForecastPanel (A3 derivado por defId, imune a resposta atrasada); ANOTA DryRunModal, SchedulePreviewCalendar (debounce+reqId), ScaleMonitor `openFolder` e os 4 do InstanceDetailsDrawer (`orderDetail` invariante-5 + Stats/RCA/Neighborhood). **RH-3** (`d4e3999`, JobConfigDrawer sozinho) CONSERTA `autoSaveRef`→useEffect e ANOTA os 5 do autosave (reset de form/agente/githubUrl + snapshot vivo `liveRef`, invariante 4 — mover exige validação ao vivo do autosave). **RH-4** sobe as 4 regras (`set-state-in-effect`/`refs`/`immutability`/`only-export-components`) pra `error` no `eslint.config.js`. **Invariante honrado:** 100% refactor interno, zero mudança no que o usuário vê (câmera/cards/sidebar/autosave/M1 idênticos) — toda exceção load-bearing é `eslint-disable` ANOTADO com motivo + "ver roadmap §RH", nunca disable seco. **Validação:** `npx eslint .` = 0 erros / 0 warnings, `npm run lint` (gate CI) verde, `tsc -b` + `vite build` limpos. **Não executado:** o protocolo de validação AO VIVO (server completo + browser) — os sites de risco comportamental foram ANOTADOS em vez de refatorados justamente por isso. |
 | ✅ | ~~**Auditoria — LEVA 2 (robustez + hygiene): rows.Err() nos 31 loops que faltavam · grupo vazio neutro no evalGroup · funções mortas do server · code-splitting 901→598 kB · poda de exports órfãos · eslint 0 erros + gate no CI**~~ | **Feito (2026-07-21, "ataca de 1~5" das pendências da auditoria).** Segunda leva sobre os itens que a LEVA 1 deixou registrados + hygiene extra. **(1) `rows.Err()` — robustez do resultado parcial silencioso:** 58 loops `for rows.Next()` tinham só 7 com check; varridos os que faltavam. Política por caminho: **ABORTA** onde parcial corromperia estado (`carryOver`/`RunDaily` → não marca `daily_runs`, retry no próximo tick; backfills `MigrateMonitoring/Resources/CondLogic/CondsUnify` → não marca a `meta_flags`, retry no próximo boot; `db.Migrate` → não re-roda migration; `VariableStore.Reload` → preserva cache; `ConditionEngine.LoadIndex` → idx nil, gate cai na consulta DIRETA em vez de ver pool VAZIO e estagnar jobs condicionais sem log). **PROPAGA erro** nos handlers de API de listagem (helper `rowsOK(w,rows)` novo → 500 em vez de 200 com lista truncada, relevante com Postgres/rede) e nos List/report do scheduler. **LOGA e segue** onde parcial é benigno (varreduras de RUNNING do SLA/actions/slowalert, export com cursor, RBAC fail-closed do `allowedTeams`). **(2) Grupo vazio NEUTRO no `evalGroup`** (`domain/conditions.go`): `EvalConditionLogic` agora filtra grupos vazios ANTES de avaliar (vazio ≠ "satisfeito"); uma lógica AND/OR congelada malformada com grupo vazio sob OR de topo NÃO dispara mais o job na hora; todos-vazios cai no AND implícito de `ConditionsIn`. Teste `TestEvalLogic_EmptyGroupIsNeutral`. **(3) Funções mortas do server removidas** (deadcode, 0 refs incl. testes): `NextEligible` (calendars), `AllSatisfied` (conditions); `Tx.Query`/`Tx.QueryRow` e `StopGC` MANTIDOS com comentário explicando por que existem (sombras de rebind por dialeto · teardown de teste anti-flake TempDir) — o deadcode do CI é informativo, não removê-los cegamente. **(4) Code-splitting do bundle** (`V2Preview` + `vite.config`): 9 views/diálogos pesados viraram `React.lazy`+`Suspense fallback={null}` (JobConfigDrawer 77 kB, InstanceDetailsDrawer 43, ControlMPanel 40, CodeModeView 39, SettingsDialog 30, FolderManagerDialog 22, AlertsPanel 19, MassUpdateDialog 15, ScaleMonitor 10) → **chunk inicial 901 kB → 598 kB** (gzip 258→185). React Flow fica no chunk principal de propósito (é o canvas das duas telas = primeiro paint); `chunkSizeWarningLimit` ajustado pra refletir esse piso. **Validado AO VIVO** (vite preview): app boota sem erro de console, e o chunk `ScaleMonitor-*.js` só carrega (200 OK) ao clicar no ViewPoint — split confirmado end-to-end. **(5) Poda de exports órfãos** (ts-prune verificado com 0 refs): 2 arquivos MORTOS inteiros (`lib/retry.ts`, `lib/types.ts`) + 15 exports do modo-local-legado (`definition-store`/`instance-store`/`scheduler-runtime`/`cron`/`git-info`/`auth-api`/`alerts-api`/`folder-api`/`design-session-api`) + 3 cascatas resolvidas (`setAlertRuleCooldown`, `createPath`, import órfão). **(6) eslint 0 ERROS** (era 38): fix real do único trivial (`TimelineView` `useState(()=>Date.now())`, regra `purity`); as regras react-hooks/react-refresh que acusam PADRÕES load-bearing (set-state-in-effect da sync/câmera, refs, immutability, only-export-components de Fast Refresh) viraram **`warn`** com justificativa no `eslint.config.js` — visíveis, não bloqueiam; `npm run lint` entrou no CI como gate ERRO-only (pega o `no-unused-vars '^_'` e qualquer regra `error` nova). **Validação:** server (`vet`+staticcheck+`go test -count=1`) · agent (idem) · app (`tsc -b`+`vite build`+`eslint` 0 erros) — tudo verde. Restam como `warn` visíveis os padrões arquiteturais (correção = projeto próprio, não auditoria). |
 | ✅ | ~~**Auditoria de código — LEVA 1 (pedido do usuário): 2 bugs corrigidos ($TIME×Order Force · nil-check do GitOps.Status) + ~2.4k linhas de dead code removidas + staticcheck no CI**~~ | **Feito (2026-07-20, pedido "audita erros/dead code/bugs e aplica as melhorias").** Auditoria completa (go vet/build/testes/staticcheck/deadcode/tsc/eslint/greps) — saúde geral boa; achados aplicados: **(1) BUG `$TIME` × Order Force** (`explain.go`): o token lia `now>=scheduled_at`, mas num Order Force `scheduled_at=now` → `$TIME` verdadeiro na hora e, como a lógica com `$TIME` pula os gates 1/1a, um job "(cond) OU horário" forçado FURAVA o WindowFrom que o Order Force respeita (contradizia a entrega de 2026-07-18). Fix: trava fatorada em `orderForceWindowStart(def, orderDate)` (WindowFrom × order_date, a MESMA do gate 1a) e usada pelo `sat()` do `$TIME` quando `force_mode='order'`; comentário stale ("sem UI produzindo $TIME hoje") corrigido. Teste `TestCondLogic_Gate_TimeTokenRespectsOrderForceWindow` (antes da janela: só a condição antecipa; janela passada: roda por `$TIME`). **(2) BUG latente `GitOps.Status()`** (`storage/git.go`, staticcheck SA5011): `g.mu.Lock()` rodava ANTES do `if g == nil` — o guard de receiver nil nunca funcionaria (panic no Lock); nil-check movido pra antes. Hoje os call sites guardam por fora, mas o server SOBE com `Git=nil` sem `-git-source`. **(3) DEAD CODE do app (~2.350 linhas, resquício do modo local pré-server, 0 importadores confirmados):** removidos `v2/FolderCardsView.tsx`, `v2/OutputModal.tsx`, `lib/execution-engine.ts`, `lib/instance-executor.ts`, `lib/orchestrator-scheduler.ts`, `lib/metrics.ts`, `lib/audit.ts`, `lib/dag-validation.ts`, `lib/adapters/executor/SsmExecutorAdapter.ts` + CSS morto no `tokens.css` (`.v2-tab*`/`.v2-tabrail` das abas-pill antigas do drawer, `.v2-grain-strong`, `.v2-mono`). **(4) staticcheck ZERADO e no CI como gate** (server+agent, `go run …staticcheck@2025.1.1`): ST1013 (literais 503/409/401/403 → `http.StatusX` em `alerts.go`/`bloco2.go`/`variables.go`/testes) e U1000 (`trimSpace` morto em `session.go`); `deadcode -test` entrou como passo INFORMATIVO (pkg/ é API pública, aparece como "morto" por design). **(5) eslint:** `argsIgnorePattern:'^_'` no `no-unused-vars` (convenção `_` = intencional) — 52→39 problemas; os 39 restantes são padrões react-hooks arquiteturais (set-state-in-effect da sync de dados/câmera), documentados e fora do escopo. **Pendências CONHECIDAS não aplicadas (registradas na auditoria):** 58 loops `rows.Next()` sem `rows.Err()` (resultado parcial silencioso — relevante com Postgres/rede; ex. `LoadIndex` do pool de condições engole erro e o tick vê pool vazio sem log) e grupo vazio = "satisfeito" no `evalGroup` (lógica congelada malformada sob OR dispararia na hora). **Validação:** suítes server (`-count=1`) + agent + `go vet` + staticcheck limpos; `tsc -b` + `vite build` verdes pós-remoção. |
 | ✅ | ~~**Condições AND/OR — lógica booleana na entrada do job (CL-1…CL-6). TEMA CONDIÇÕES FECHADO.**~~ | **Feito (2026-07-20, pedido do usuário "AND/OR na entrada + agrupamento; fechar isto = fechar Condições 100%").** A entrada deixou de ser um AND implícito de `ConditionsIn` e ganhou um campo OPCIONAL `ConditionLogic{Op, Groups[]}` (forma DNF: `topOp(grupoOp(membro))`). **CL-1** avaliador puro `EvalConditionLogic` (`domain/conditions.go`): `(C1∧C2)∨C3`, `(C1∨C2)∧C3`, OR = "primeiro ramo que chega dispara"; membros AVULSOS de `ConditionsIn` fora da lógica = requisito AND (a setinha "just works" num job com lógica). **CL-2** token reservado `$TIME` (satisfeito quando `now>=scheduledAt`): com 1 condição + `windowFrom`, toggle "OU no horário" cria `(C1) OU ($TIME)`; quando a lógica usa `$TIME` o **piso de janela** (`gateInstance` gates 1/1a) é desacoplado (senão o OR nunca anteciparia por condição); `windowTo` segue teto duro. **CL-3** data model + retrocompat (`ConditionLogic` nil = AND de `ConditionsIn`) + imutabilidade M1 (congela no `definition_snapshot`, o gate lê via `defForInstance`); `NormalizeConditions` garante `ConditionsIn ⊇ membros` (topologia/linhas/`conds_in` intactos). **CL-4** gate + Explain OR-aware (`RenderExpr` "aguardando (C1 E C2) OU C3 — nenhum ramo satisfeito") + **linhas OR do canvas** (`condIsAlternative`/`makeEdge(alt)`: aresta pontilhada + rótulo "OU"; Design lê a def viva, Monitoring a coluna CONGELADA `cond_logic` **schemaV21** — `frozenMonitorCols`/`MigrateCondLogicSnapshot`/`instanceRow.CondLogic`). **CL-5** editor progressivo no drawer (aba Condições → Entrada): lista plana AND por padrão, toggle **AND/OR** revela grupos (E/OU por grupo + operador de topo, `EntryConditions`/`GroupedLogicEditor`/`GroupBox`/`OpToggle`), `?` com tema "AND/OR"; round-trip no `ServerApiAdapter`. **CL-6** bateria (`domain/conditionlogic_test.go`, `scheduler/condlogic_gate_test.go`, `api/…TestList_SerializesCondLogic`), docs (`conditions-events.md` §CL) e mente ([[regente-dep-events-claims]]). **Validado ao vivo** (servidor git-backed): `(A) OU (B)` no drawer → `conditionLogic` no YAML via round-trip completo, reabre limpo (grupo vazio podado por `pruneConditionLogic`), e a **linha OR do Design** renderiza pontilhada+"OU" (baseline AND era tracejado sem rótulo). Suítes `scheduler`+`api`+`domain`+`db` + `tsc`+`vite build`+`eslint` verdes. |
