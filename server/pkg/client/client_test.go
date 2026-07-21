@@ -15,7 +15,7 @@ func fakeServer(t *testing.T) (*httptest.Server, *Client) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/instances/query", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer tok-1" {
-			http.Error(w, "no auth", 401)
+			http.Error(w, "no auth", http.StatusUnauthorized)
 			return
 		}
 		if ct := r.Header.Get("Content-Type"); ct != "application/json" {
@@ -114,7 +114,7 @@ func TestArchivesEDownload(t *testing.T) {
 
 func TestErroHTTPVieraMensagem(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "sem permissão nesta folder", 403)
+		http.Error(w, "sem permissão nesta folder", http.StatusForbidden)
 	}))
 	defer srv.Close()
 	c := New(srv.URL, "tok")

@@ -36,7 +36,7 @@ func (s *server) listAlertEvents(w http.ResponseWriter, r *http.Request) {
 func (s *server) ackAlertEvent(w http.ResponseWriter, r *http.Request) {
 	eng := s.cfg.Scheduler.Alerts()
 	if eng == nil {
-		http.Error(w, "alerting not configured", 503)
+		http.Error(w, "alerting not configured", http.StatusServiceUnavailable)
 		return
 	}
 	if err := eng.Acknowledge(chi.URLParam(r, "id")); err != nil {
@@ -50,7 +50,7 @@ func (s *server) ackAlertEvent(w http.ResponseWriter, r *http.Request) {
 func (s *server) ackAllAlertEvents(w http.ResponseWriter, r *http.Request) {
 	eng := s.cfg.Scheduler.Alerts()
 	if eng == nil {
-		http.Error(w, "alerting not configured", 503)
+		http.Error(w, "alerting not configured", http.StatusServiceUnavailable)
 		return
 	}
 	if err := eng.AcknowledgeAll(); err != nil {
@@ -98,7 +98,7 @@ func (s *server) listAlertRules(w http.ResponseWriter, r *http.Request) {
 func (s *server) toggleAlertRule(w http.ResponseWriter, r *http.Request) {
 	eng := s.cfg.Scheduler.Alerts()
 	if eng == nil {
-		http.Error(w, "alerting not configured", 503)
+		http.Error(w, "alerting not configured", http.StatusServiceUnavailable)
 		return
 	}
 	if err := eng.ToggleRule(chi.URLParam(r, "id")); err != nil {
@@ -113,7 +113,7 @@ func (s *server) toggleAlertRule(w http.ResponseWriter, r *http.Request) {
 func (s *server) setAlertRuleChannels(w http.ResponseWriter, r *http.Request) {
 	eng := s.cfg.Scheduler.Alerts()
 	if eng == nil {
-		http.Error(w, "alerting not configured", 503)
+		http.Error(w, "alerting not configured", http.StatusServiceUnavailable)
 		return
 	}
 	var body struct {
@@ -134,7 +134,7 @@ func (s *server) setAlertRuleChannels(w http.ResponseWriter, r *http.Request) {
 func (s *server) setAlertRuleCooldown(w http.ResponseWriter, r *http.Request) {
 	eng := s.cfg.Scheduler.Alerts()
 	if eng == nil {
-		http.Error(w, "alerting not configured", 503)
+		http.Error(w, "alerting not configured", http.StatusServiceUnavailable)
 		return
 	}
 	var body struct {

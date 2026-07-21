@@ -178,6 +178,57 @@ func TestCondLogic_Gate_TimeFallback(t *testing.T) {
 	}
 }
 
+// CL-2 × Order Force: num Order Force o scheduled_at é "now", então o $TIME não
+// pode ler dali (viraria verdadeiro na hora e "(C1) OU ($TIME)" forçado furaria o
+// WindowFrom, que o Order Force respeita). O token usa a MESMA trava do gate 1a
+// (WindowFrom × order_date): antes da janela só a condição antecipa; janela
+// passada dispara por $TIME.
+func TestCondLogic_Gate_TimeTokenRespectsOrderForceWindow(t *testing.T) {
+	s := newTestScheduler(t)
+	logic := &domain.ConditionLogic{Op: domain.CondOpOr, Groups: []domain.CondGroup{
+		{Op: domain.CondOpAnd, Members: []string{"C1"}},
+		{Op: domain.CondOpAnd, Members: []string{domain.CondTokenTime}},
+	}}
+	seedOrderForce := func(id string, def domain.JobDefinition, orderDate string) {
+		t.Helper()
+		snap, _ := json.Marshal(def)
+		if _, err := s.db.Exec(
+			`INSERT INTO instances(id, definition_id, order_date, status, scheduled_at, forced, force_mode, definition_snapshot) VALUES(?,?,?,?,?,1,?,?)`,
+			id, def.ID, orderDate, string(domain.StatusWaiting), time.Now(), ForceModeOrder, string(snap),
+		); err != nil {
+			t.Fatalf("seed order-force %s: %v", id, err)
+		}
+	}
+
+	// (a) WindowFrom no FUTURO: $TIME não pode estar satisfeito (mesmo com
+	// scheduled_at=now) → bloqueado pela expressão, não runnable.
+	future := time.Now().Add(90 * time.Minute)
+	futureDay := future.Format("2006-01-02") // dia da janela (robusto à virada de meia-noite)
+	def := logicDef("OF", logic, []string{"C1"})
+	def.Schedule.WindowFrom = future.Format("15:04")
+	seedOrderForce("of-t1", def, futureDay)
+	ex := explainOf(t, s, "of-t1")
+	if ex.Runnable || hasKind(ex.Blockers, GateCondition) == nil {
+		t.Fatalf("Order Force com (C1 OU $TIME) antes do WindowFrom deveria aguardar a expressão, veio runnable=%v blockers=%+v", ex.Runnable, ex.Blockers)
+	}
+
+	// A condição antecipa antes da janela (é o ponto do OR).
+	_ = s.conditions.Set("C1", futureDay, "test")
+	if ex = explainOf(t, s, "of-t1"); !ex.Runnable {
+		t.Fatalf("C1 no pool deveria antecipar o Order Force antes da janela: %+v", ex.Blockers)
+	}
+
+	// (b) WindowFrom no PASSADO: $TIME satisfeito → runnable sem condição.
+	past := time.Now().Add(-90 * time.Minute)
+	pastDay := past.Format("2006-01-02")
+	def2 := logicDef("OF2", logic, []string{"C1"})
+	def2.Schedule.WindowFrom = past.Format("15:04")
+	seedOrderForce("of-t2", def2, pastDay)
+	if ex = explainOf(t, s, "of-t2"); !ex.Runnable {
+		t.Fatalf("Order Force com WindowFrom passado deveria rodar por $TIME: %+v", ex.Blockers)
+	}
+}
+
 // Retrocompat: def SEM lógica (nil) segue no caminho clássico — um blocker por
 // condição faltante, com o nome da condição (não a expressão).
 func TestCondLogic_Gate_NilStaysPerCondBlockers(t *testing.T) {

@@ -25,7 +25,7 @@ func (s *server) putVariable(w http.ResponseWriter, r *http.Request) {
 	}
 	vs := s.cfg.Scheduler.Variables()
 	if vs == nil {
-		http.Error(w, "variables not configured", 503)
+		http.Error(w, "variables not configured", http.StatusServiceUnavailable)
 		return
 	}
 	name := urlName(r, "name")
@@ -58,7 +58,7 @@ func (s *server) deleteVariable(w http.ResponseWriter, r *http.Request) {
 	}
 	vs := s.cfg.Scheduler.Variables()
 	if vs == nil {
-		http.Error(w, "variables not configured", 503)
+		http.Error(w, "variables not configured", http.StatusServiceUnavailable)
 		return
 	}
 	name := urlName(r, "name")

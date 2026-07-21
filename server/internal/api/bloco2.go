@@ -35,7 +35,7 @@ func (s *server) listCalendars(w http.ResponseWriter, r *http.Request) {
 func (s *server) getCalendar(w http.ResponseWriter, r *http.Request) {
 	cs := s.cfg.Scheduler.Calendars()
 	if cs == nil {
-		http.Error(w, "calendars not configured", 503)
+		http.Error(w, "calendars not configured", http.StatusServiceUnavailable)
 		return
 	}
 	name := urlName(r, "name")
@@ -50,7 +50,7 @@ func (s *server) getCalendar(w http.ResponseWriter, r *http.Request) {
 func (s *server) saveCalendar(w http.ResponseWriter, r *http.Request) {
 	cs := s.cfg.Scheduler.Calendars()
 	if cs == nil {
-		http.Error(w, "calendars not configured", 503)
+		http.Error(w, "calendars not configured", http.StatusServiceUnavailable)
 		return
 	}
 	name := urlName(r, "name")
@@ -70,7 +70,7 @@ func (s *server) saveCalendar(w http.ResponseWriter, r *http.Request) {
 func (s *server) deleteCalendar(w http.ResponseWriter, r *http.Request) {
 	cs := s.cfg.Scheduler.Calendars()
 	if cs == nil {
-		http.Error(w, "calendars not configured", 503)
+		http.Error(w, "calendars not configured", http.StatusServiceUnavailable)
 		return
 	}
 	if err := cs.Delete(urlName(r, "name")); err != nil {
@@ -94,7 +94,7 @@ func (s *server) listResources(w http.ResponseWriter, r *http.Request) {
 func (s *server) setResourceCapacity(w http.ResponseWriter, r *http.Request) {
 	rt := s.cfg.Scheduler.Resources()
 	if rt == nil {
-		http.Error(w, "resources not configured", 503)
+		http.Error(w, "resources not configured", http.StatusServiceUnavailable)
 		return
 	}
 	name := urlName(r, "name")
@@ -113,12 +113,12 @@ func (s *server) setResourceCapacity(w http.ResponseWriter, r *http.Request) {
 func (s *server) deleteResource(w http.ResponseWriter, r *http.Request) {
 	rt := s.cfg.Scheduler.Resources()
 	if rt == nil {
-		http.Error(w, "resources not configured", 503)
+		http.Error(w, "resources not configured", http.StatusServiceUnavailable)
 		return
 	}
 	name := urlName(r, "name")
 	if err := rt.Delete(name); err != nil {
-		http.Error(w, err.Error(), 409)
+		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
 	w.WriteHeader(204)
@@ -147,7 +147,7 @@ func (s *server) listConditions(w http.ResponseWriter, r *http.Request) {
 func (s *server) setCondition(w http.ResponseWriter, r *http.Request) {
 	c := s.cfg.Scheduler.Conditions()
 	if c == nil {
-		http.Error(w, "conditions not configured", 503)
+		http.Error(w, "conditions not configured", http.StatusServiceUnavailable)
 		return
 	}
 	name := urlName(r, "name")
@@ -173,7 +173,7 @@ func (s *server) setCondition(w http.ResponseWriter, r *http.Request) {
 func (s *server) unsetCondition(w http.ResponseWriter, r *http.Request) {
 	c := s.cfg.Scheduler.Conditions()
 	if c == nil {
-		http.Error(w, "conditions not configured", 503)
+		http.Error(w, "conditions not configured", http.StatusServiceUnavailable)
 		return
 	}
 	name := urlName(r, "name")

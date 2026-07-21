@@ -594,9 +594,14 @@ type Status struct {
 }
 
 func (g *GitOps) Status() Status {
+	// nil-check ANTES do Lock: com receiver nil, g.mu.Lock() panicaria antes
+	// do guard (o server sobe com GitOps nil quando não há -git-source).
+	if g == nil {
+		return Status{Configured: false}
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if g == nil || g.source == "" {
+	if g.source == "" {
 		return Status{Configured: false}
 	}
 	short := g.lastSHA

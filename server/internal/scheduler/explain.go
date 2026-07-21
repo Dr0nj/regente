@@ -98,16 +98,12 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 		// 1a) Início da janela p/ Order Force: seu scheduled_at é "now" (ordem fora
 		// do agendamento), então o WindowFrom NÃO está embutido no scheduled_at —
 		// aplicamos a trava de início explicitamente só aqui, sem tocar no daily.
-		// Também pulado quando o $TIME está na lógica (o token cobre o início).
+		// Também pulado quando o $TIME está na lógica (o token cobre o início —
+		// e num Order Force o próprio $TIME usa esta trava, ver orderForceWindowStart).
 		if !timeInLogic && r.Forced && r.ForceMode == ForceModeOrder {
-			if hh, mm, okW := parseHHMM(def.Schedule.WindowFrom); okW {
-				if t, err := time.Parse("2006-01-02", r.OrderDate); err == nil {
-					windowStart := time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.Local)
-					if now.Before(windowStart) {
-						if add(Blocker{Kind: GateWindow, Detail: "janela de execução abre às " + def.Schedule.WindowFrom}) {
-							return out
-						}
-					}
+			if ws, ok := orderForceWindowStart(def, r.OrderDate); ok && now.Before(ws) {
+				if add(Blocker{Kind: GateWindow, Detail: "janela de execução abre às " + def.Schedule.WindowFrom}) {
+					return out
 				}
 			}
 		}
@@ -146,10 +142,18 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 	// caminho clássico, um blocker por condição faltante (inalterado).
 	odate := r.Odate()
 	if s.conditions != nil && def.ConditionLogic != nil && len(def.ConditionLogic.Groups) > 0 {
-		// $TIME = o "a partir de" (windowFrom, já embutido no scheduled_at do
-		// daily). NB: o gate de JANELA (1) segue sendo piso enquanto CL-2 não o
-		// desacopla — sem UI produzindo $TIME hoje, não há regressão viva.
+		// $TIME = o "a partir de" (windowFrom). No daily o WindowFrom já está
+		// embutido no scheduled_at (computeScheduledAt), então o token lê dali.
+		// Num ORDER FORCE o scheduled_at é "now" (ordem fora do agendamento) —
+		// ler dali tornaria o $TIME verdadeiro na hora e "(cond) OU horário"
+		// forçado furaria o WindowFrom, que o Order Force respeita. Usa a MESMA
+		// trava explícita do gate 1a (WindowFrom × order_date).
 		timeReady := !now.Before(r.ScheduledAt)
+		if r.Forced && r.ForceMode == ForceModeOrder {
+			if ws, ok := orderForceWindowStart(def, r.OrderDate); ok {
+				timeReady = !now.Before(ws)
+			}
+		}
 		sat := func(m string) bool {
 			if m == domain.CondTokenTime {
 				return timeReady
@@ -208,6 +212,24 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 	}
 
 	return out
+}
+
+// orderForceWindowStart — instante em que a janela (WindowFrom) abre no dia da
+// ordem. É a trava de início do ORDER FORCE, cujo scheduled_at é "now" e portanto
+// NÃO embute o WindowFrom como no daily. Compartilhada pelo gate 1a e pelo token
+// $TIME (CL-2) — os dois têm que enxergar o MESMO piso, senão "(cond) OU horário"
+// forçado fura a janela que o Order Force respeita. ok=false quando a def não tem
+// WindowFrom válido (sem janela = sem trava).
+func orderForceWindowStart(def domain.JobDefinition, orderDate string) (time.Time, bool) {
+	hh, mm, okW := parseHHMM(def.Schedule.WindowFrom)
+	if !okW {
+		return time.Time{}, false
+	}
+	t, err := time.Parse("2006-01-02", orderDate)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.Local), true
 }
 
 // Explain monta a explicação de uma instance: para WAITING, roda gateInstance em

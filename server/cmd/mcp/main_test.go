@@ -14,7 +14,7 @@ func mockRegente(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer t" {
-			http.Error(w, "unauth", 401)
+			http.Error(w, "unauth", http.StatusUnauthorized)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
