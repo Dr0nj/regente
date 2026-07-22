@@ -637,6 +637,11 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
    FinishInstance ignora o resultado que o agente ainda mande depois (não ressuscita o estado nem re-arma retry).
    Em paralelo, um job WAITING não tem mais Cancel e ganha Set OK direto (o SetOK do server já aceitava WAITING).
    Vale nas 3 superfícies de ação (drawer, menu de contexto do canvas, barra de ação em massa).
+   FIX (6dc7c76): o KILL derruba a ÁRVORE do processo, não só o shell — Setpgid + kill do process
+   group no Unix (o filho órfão não sobrevive segurando o pipe) + cmd.WaitDelay de backstop. Antes o
+   `sh -c "..."` deixava o comando filho vivo e o cmd.Wait() pendurava (job agent da CI Linux ficava
+   vermelho determinístico em TestRunCommand_CancelAbortsProcess; no Windows passava porque cmdlet roda
+   dentro do PowerShell).
 ```
 
 ## 🤖 Agent-native (MCP)
