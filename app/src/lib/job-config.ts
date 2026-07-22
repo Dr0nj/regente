@@ -4,7 +4,6 @@ import {
   Box,
   Paintbrush,
   Workflow,
-  Layers,
   Globe,
   Terminal,
   FileCode,
@@ -34,8 +33,7 @@ export type JobType =
   | "LAMBDA"
   | "BATCH"
   | "GLUE"
-  | "STEP_FUNCTION"
-  | "PARALLEL";
+  | "STEP_FUNCTION";
 
 export interface JobTypeConfig {
   label: string;
@@ -78,7 +76,6 @@ export const JOB_TYPES: Record<JobType, JobTypeConfig> = {
   BATCH:         make("Batch",         "Container / job em lote", Box),
   GLUE:          make("Glue",          "ETL pipeline",            Paintbrush),
   STEP_FUNCTION: make("Step Function", "State machine",           Workflow),
-  PARALLEL:      make("Parallel",      "Execução concorrente",    Layers),
   HTTP:          make("HTTP",          "Chamada REST",            Globe),
   FILE_WATCH:    make("File Watch",    "Espera arquivo chegar no agente", FileSearch),
   FILE_TRANSFER: make("File Transfer", "MFT: local ↔ SFTP ↔ S3 pelo agente", ArrowRightLeft),

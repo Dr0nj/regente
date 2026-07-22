@@ -155,16 +155,6 @@ params:
   stateMachineArn: arn:aws:states:sa-east-1:123:stateMachine/etl`,
   },
   {
-    tag: "PARALLEL",
-    kind: "jobType",
-    summary: "Execução concorrente de branches.",
-    detail: "params: `branches` (array NÃO-vazio; OBRIGATÓRIO) · `maxConcurrency`.",
-    example: `jobType: PARALLEL
-params:
-  branches: ["ramo-a", "ramo-b"]
-  maxConcurrency: 2`,
-  },
-  {
     tag: "WASM",
     kind: "jobType",
     summary: "Módulo WebAssembly WASI no agente (wazero — sandbox por construção).",

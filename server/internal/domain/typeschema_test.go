@@ -40,8 +40,6 @@ func TestTypeSchemaRequiredPerType(t *testing.T) {
 		{"BATCH", map[string]interface{}{"jobQueue": "q"}, false},
 		{"GLUE", map[string]interface{}{"jobName": "etl"}, true},
 		{"STEP_FUNCTION", map[string]interface{}{"stateMachineArn": "arn:x"}, true},
-		{"PARALLEL", map[string]interface{}{"branches": []interface{}{"a"}}, true},
-		{"PARALLEL", nil, false},
 		{"K8S", map[string]interface{}{"image": "alpine"}, true},
 		{"K8S", map[string]interface{}{"namespace": "ns"}, false},
 		{"GCP_RUN", map[string]interface{}{"project": "p", "region": "r", "job": "j"}, true},
@@ -154,10 +152,6 @@ func TestTypeSchemaKinds(t *testing.T) {
 }
 
 func TestTypeSchemaCrossField(t *testing.T) {
-	// PARALLEL: branches vazio erra
-	if err := vac("PARALLEL", map[string]interface{}{"branches": []interface{}{}}); err == nil {
-		t.Fatal("PARALLEL.branches vazio deveria falhar")
-	}
 	// WASM: exige wasmPath OU wasmUrl
 	if err := vac("WASM", map[string]interface{}{"args": "-v"}); err == nil {
 		t.Fatal("WASM sem path/url deveria falhar")
@@ -180,7 +174,7 @@ func TestTypeSchemaOpenWorld(t *testing.T) {
 
 func TestJobTypeCatalog(t *testing.T) {
 	cat := JobTypeCatalog()
-	if len(cat) < 15 {
+	if len(cat) < 14 {
 		t.Fatalf("catálogo deveria ter todos os tipos, veio %d", len(cat))
 	}
 	seen := map[string]bool{}

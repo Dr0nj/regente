@@ -230,18 +230,6 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
         </Section>
       );
 
-    case "PARALLEL":
-      return (
-        <Section label="Parallel">
-          <Row label="Branch jobs (JSON array)">
-            <TextArea mono rows={4} value={jsonStr(get("branches", []))} placeholder='["jobA","jobB"]' onChange={v => set("branches", parseJson(v) ?? [])} />
-          </Row>
-          <Row label="Max concurrency">
-            <Input mono value={String(num("maxConcurrency") || 0)} onChange={v => set("maxConcurrency", Number(v) || 0)} />
-          </Row>
-        </Section>
-      );
-
     default:
       return (
         <Section label="Action config (raw JSON)">

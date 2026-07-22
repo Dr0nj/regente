@@ -53,7 +53,7 @@ type FieldSpec struct {
 type JobTypeSchema struct {
 	Type      string      `json:"type"`
 	Aliases   []string    `json:"aliases,omitempty"`
-	Agentless bool        `json:"agentless,omitempty"` // roda no server (SSH) ou é gate interno (PARALLEL)
+	Agentless bool        `json:"agentless,omitempty"` // roda no server (SSH), não precisa de agente no alvo
 	Summary   string      `json:"summary"`
 	Fields    []FieldSpec `json:"fields"`
 	// Check — regra cross-field que o shape declarativo não expressa
@@ -196,19 +196,6 @@ var jobTypeSchemas = []JobTypeSchema{
 			{Name: "secretAccessKey", Kind: KindString, Desc: "default env AWS_SECRET_ACCESS_KEY"},
 			{Name: "sessionToken", Kind: KindString, Desc: "default env AWS_SESSION_TOKEN"},
 			{Name: "endpoint", Kind: KindString, Desc: "override da URL base (testes)"},
-		},
-	},
-	{
-		Type: "PARALLEL", Agentless: true, Summary: "Execução concorrente de branches.",
-		Fields: []FieldSpec{
-			{Name: "branches", Kind: KindArray, Required: true, Desc: "lista NÃO-vazia de ramos"},
-			{Name: "maxConcurrency", Kind: KindInt, Desc: "teto de concorrência"},
-		},
-		Check: func(cfg map[string]interface{}) error {
-			if br, ok := cfg["branches"].([]interface{}); ok && len(br) == 0 {
-				return fmt.Errorf("PARALLEL.branches must be non-empty array")
-			}
-			return nil
 		},
 	},
 	{

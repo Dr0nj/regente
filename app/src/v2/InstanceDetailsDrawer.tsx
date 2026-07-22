@@ -555,9 +555,6 @@ const ACTION_VERB: Record<string, string> = {
   BATCH: "Submits an AWS Batch job",
   GLUE: "Runs an AWS Glue job",
   STEP_FUNCTION: "Starts a Step Function execution",
-  WAIT: "Waits for a duration",
-  CHOICE: "Branches on a condition",
-  PARALLEL: "Runs branches in parallel",
 };
 
 const ACTION_FIELDS: Record<string, ActionField[]> = {
@@ -572,9 +569,6 @@ const ACTION_FIELDS: Record<string, ActionField[]> = {
   BATCH: [{ label: "Job queue", key: "jobQueue" }, { label: "Job definition", key: "jobDefinition" }, { label: "Command", key: "command", code: true }, { label: "Env", key: "env", json: true }],
   GLUE: [{ label: "Job name", key: "jobName" }, { label: "Arguments", key: "arguments", json: true }, { label: "Worker type", key: "workerType" }, { label: "# workers", key: "numberOfWorkers" }],
   STEP_FUNCTION: [{ label: "State machine ARN", key: "stateMachineArn" }, { label: "Input", key: "input", json: true }],
-  WAIT: [{ label: "Seconds", key: "seconds" }, { label: "Until", key: "until" }],
-  CHOICE: [{ label: "Expression", key: "expression", code: true }, { label: "Branches", key: "branches", json: true }],
-  PARALLEL: [{ label: "Branches", key: "branches", json: true }, { label: "Max concurrency", key: "maxConcurrency" }],
 };
 
 function hasVal(v: unknown): boolean {
