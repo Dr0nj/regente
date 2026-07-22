@@ -578,6 +578,13 @@ func runCommand(ctx context.Context, params map[string]interface{}, timeoutSec i
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(runCtx, shell, flagArg, cmdStr)
+	// Cancel/timeout deve derrubar a ÁRVORE inteira, não só o shell (senão o
+	// comando filho fica órfão segurando o pipe e cmd.Wait() pendura — bug da CI
+	// Linux em TestRunCommand_CancelAbortsProcess). Ver process_{unix,windows}.go.
+	configureCancel(cmd)
+	// Backstop: se algum descendente escapar do kill e ainda segurar o pipe,
+	// Wait não espera além disso — devolve falha e o Cancel volta na hora.
+	cmd.WaitDelay = 5 * time.Second
 	var buf bytes.Buffer
 	sw := &streamWriter{buf: &buf, emit: emit}
 	cmd.Stdout = sw
