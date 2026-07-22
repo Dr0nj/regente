@@ -4,9 +4,7 @@ import {
   Box,
   Paintbrush,
   Workflow,
-  GitBranch,
   Layers,
-  Clock,
   Globe,
   Terminal,
   FileCode,
@@ -37,9 +35,7 @@ export type JobType =
   | "BATCH"
   | "GLUE"
   | "STEP_FUNCTION"
-  | "CHOICE"
-  | "PARALLEL"
-  | "WAIT";
+  | "PARALLEL";
 
 export interface JobTypeConfig {
   label: string;
@@ -82,9 +78,7 @@ export const JOB_TYPES: Record<JobType, JobTypeConfig> = {
   BATCH:         make("Batch",         "Container / job em lote", Box),
   GLUE:          make("Glue",          "ETL pipeline",            Paintbrush),
   STEP_FUNCTION: make("Step Function", "State machine",           Workflow),
-  CHOICE:        make("Choice",        "Desvio condicional",      GitBranch),
   PARALLEL:      make("Parallel",      "Execução concorrente",    Layers),
-  WAIT:          make("Wait",          "Delay / timer",           Clock),
   HTTP:          make("HTTP",          "Chamada REST",            Globe),
   FILE_WATCH:    make("File Watch",    "Espera arquivo chegar no agente", FileSearch),
   FILE_TRANSFER: make("File Transfer", "MFT: local ↔ SFTP ↔ S3 pelo agente", ArrowRightLeft),

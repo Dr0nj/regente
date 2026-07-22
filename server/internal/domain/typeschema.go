@@ -53,7 +53,7 @@ type FieldSpec struct {
 type JobTypeSchema struct {
 	Type      string      `json:"type"`
 	Aliases   []string    `json:"aliases,omitempty"`
-	Agentless bool        `json:"agentless,omitempty"` // roda no server (SSH) ou é gate interno (WAIT/CHOICE/PARALLEL)
+	Agentless bool        `json:"agentless,omitempty"` // roda no server (SSH) ou é gate interno (PARALLEL)
 	Summary   string      `json:"summary"`
 	Fields    []FieldSpec `json:"fields"`
 	// Check — regra cross-field que o shape declarativo não expressa
@@ -196,28 +196,6 @@ var jobTypeSchemas = []JobTypeSchema{
 			{Name: "secretAccessKey", Kind: KindString, Desc: "default env AWS_SECRET_ACCESS_KEY"},
 			{Name: "sessionToken", Kind: KindString, Desc: "default env AWS_SESSION_TOKEN"},
 			{Name: "endpoint", Kind: KindString, Desc: "override da URL base (testes)"},
-		},
-	},
-	{
-		Type: "WAIT", Agentless: true, Summary: "Delay/timer (sem params = no-op imediato).",
-		Fields: []FieldSpec{
-			{Name: "seconds", Kind: KindInt, Desc: "espera N segundos"},
-			{Name: "until", Kind: KindString, Desc: `espera até "HH:MM"`},
-		},
-		Check: func(cfg map[string]interface{}) error {
-			_, hasSec := cfg["seconds"]
-			_, hasUntil := cfg["until"]
-			if !hasSec && !hasUntil {
-				return fmt.Errorf("WAIT requires seconds or until")
-			}
-			return nil
-		},
-	},
-	{
-		Type: "CHOICE", Agentless: true, Summary: "Desvio condicional.",
-		Fields: []FieldSpec{
-			{Name: "expression", Kind: KindString, Required: true, Desc: "expressão avaliada sobre o output"},
-			{Name: "branches", Kind: KindArray, Desc: "ramos possíveis"},
 		},
 	},
 	{

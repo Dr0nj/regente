@@ -40,8 +40,6 @@ func TestTypeSchemaRequiredPerType(t *testing.T) {
 		{"BATCH", map[string]interface{}{"jobQueue": "q"}, false},
 		{"GLUE", map[string]interface{}{"jobName": "etl"}, true},
 		{"STEP_FUNCTION", map[string]interface{}{"stateMachineArn": "arn:x"}, true},
-		{"CHOICE", map[string]interface{}{"expression": "output.total > 0"}, true},
-		{"CHOICE", nil, false},
 		{"PARALLEL", map[string]interface{}{"branches": []interface{}{"a"}}, true},
 		{"PARALLEL", nil, false},
 		{"K8S", map[string]interface{}{"image": "alpine"}, true},
@@ -156,16 +154,6 @@ func TestTypeSchemaKinds(t *testing.T) {
 }
 
 func TestTypeSchemaCrossField(t *testing.T) {
-	// WAIT: nil ok (noop) · vazio erra · com seconds ok
-	if err := vac("WAIT", nil); err != nil {
-		t.Fatalf("WAIT nil: %v", err)
-	}
-	if err := vac("WAIT", map[string]interface{}{}); err == nil {
-		t.Fatal("WAIT vazio deveria exigir seconds/until")
-	}
-	if err := vac("WAIT", map[string]interface{}{"seconds": 300}); err != nil {
-		t.Fatalf("WAIT.seconds: %v", err)
-	}
 	// PARALLEL: branches vazio erra
 	if err := vac("PARALLEL", map[string]interface{}{"branches": []interface{}{}}); err == nil {
 		t.Fatal("PARALLEL.branches vazio deveria falhar")

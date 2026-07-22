@@ -155,24 +155,6 @@ params:
   stateMachineArn: arn:aws:states:sa-east-1:123:stateMachine/etl`,
   },
   {
-    tag: "WAIT",
-    kind: "jobType",
-    summary: "Delay/timer.",
-    detail: "params: `seconds` OU `until` (\"HH:MM\"). Sem params = no-op imediato.",
-    example: `jobType: WAIT
-params:
-  seconds: 300`,
-  },
-  {
-    tag: "CHOICE",
-    kind: "jobType",
-    summary: "Desvio condicional.",
-    detail: "params: `expression` (OBRIGATÓRIA) · `branches` (array).",
-    example: `jobType: CHOICE
-params:
-  expression: "output.total > 0"`,
-  },
-  {
     tag: "PARALLEL",
     kind: "jobType",
     summary: "Execução concorrente de branches.",

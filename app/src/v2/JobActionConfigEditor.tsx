@@ -230,30 +230,6 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
         </Section>
       );
 
-    case "WAIT":
-      return (
-        <Section label="Wait">
-          <Row label="Seconds">
-            <Input mono value={String(num("seconds") || 0)} onChange={v => set("seconds", Number(v) || 0)} />
-          </Row>
-          <Row label="Until (ISO datetime, opcional)">
-            <Input mono value={str("until")} placeholder="2026-04-17T18:00:00Z" onChange={v => set("until", v)} />
-          </Row>
-        </Section>
-      );
-
-    case "CHOICE":
-      return (
-        <Section label="Choice (branching)">
-          <Row label="Expression (truthy = next branch)">
-            <Input mono value={str("expression")} onChange={v => set("expression", v)} placeholder="status === 'OK'" />
-          </Row>
-          <Row label="Branches (JSON)">
-            <TextArea mono rows={4} value={jsonStr(get("branches", []))} placeholder='[{"when":"...","next":"jobX"}]' onChange={v => set("branches", parseJson(v) ?? [])} />
-          </Row>
-        </Section>
-      );
-
     case "PARALLEL":
       return (
         <Section label="Parallel">
