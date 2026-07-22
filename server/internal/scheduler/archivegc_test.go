@@ -53,6 +53,7 @@ func TestArchiveGC_ArquivaEDeletaDiaVencido(t *testing.T) {
 	seedInstance(t, s, "i-2", "2020-01-01", "NOTOK")
 	seedInstance(t, s, "i-3", s.TodayDate(), "OK")
 	mustExec(t, s, `INSERT INTO instance_events(instance_id, kind, message) VALUES('i-1','job.finished','ok')`)
+	mustExec(t, s, `INSERT INTO instance_output(instance_id, attempt, chunk) VALUES('i-1',1,'sysout do dia vencido')`)
 	mustExec(t, s, `INSERT INTO conditions(name, scope_date) VALUES('c1','2020-01-01')`)
 	mustExec(t, s, `INSERT OR REPLACE INTO daily_runs(order_date, started_at) VALUES('2020-01-01', datetime('now'))`)
 
@@ -67,7 +68,7 @@ func TestArchiveGC_ArquivaEDeletaDiaVencido(t *testing.T) {
 	if n := countRows(t, s, "instances"); n != 1 {
 		t.Fatalf("esperava só a instance de hoje no banco, veio %d", n)
 	}
-	for tbl, want := range map[string]int{"instance_events": 0, "conditions": 0, "daily_runs": 0} {
+	for tbl, want := range map[string]int{"instance_events": 0, "instance_output": 0, "conditions": 0, "daily_runs": 0} {
 		if n := countRows(t, s, tbl); n != want {
 			t.Fatalf("%s do dia arquivado deveria sair junto; sobraram %d", tbl, n)
 		}

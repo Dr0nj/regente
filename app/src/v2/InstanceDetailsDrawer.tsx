@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JobInstance, JobDefinition, JobSchedule } from "@/lib/orchestrator-model";
 import { odateOf } from "@/lib/orchestrator-model";
 import {
   fetchInstanceEvents,
   type InstanceEvent,
+  fetchInstanceOutput,
+  type InstanceOutput,
   fetchInstanceExplain,
   type Explanation,
   type ExplainBlocker,
@@ -681,7 +683,150 @@ function commandOf(jobType: string, config: Record<string, unknown>): string {
   }
 }
 
-function OutputTab({ instance, jobType, actionConfig }: {
+// OL-3 — a aba Output. No server mode vira o LIVE-TAIL do sysout da execução
+// (instance_output, por tentativa); no local mode segue lendo o output final do
+// próprio snapshot da instance. O Output é o sysout da EXECUÇÃO; a aba Logs é o
+// jornal do AGENDAMENTO (paridade Control-M).
+function OutputTab(props: {
+  instance: JobInstance;
+  jobType: string;
+  actionConfig?: Record<string, unknown>;
+}) {
+  if (isServerMode()) return <ServerOutputTab {...props} />;
+  return <LocalOutputTab {...props} />;
+}
+
+// ServerOutputTab — live-tail do sysout por tentativa (OL-3). Poll de 3s enquanto
+// RUNNING (como o LogPanel), auto-scroll "grudado" no fim, e seletor de tentativa
+// quando houve retry (attempts>1) — mostrando o sysout de tentativas ANTERIORES
+// que a OL-1 passou a preservar. Mantém os blocos Command e Result.
+function ServerOutputTab({ instance, jobType, actionConfig }: {
+  instance: JobInstance;
+  jobType: string;
+  actionConfig?: Record<string, unknown>;
+}) {
+  const [data, setData] = useState<InstanceOutput | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  // null = seguir a tentativa CORRENTE (default, ao vivo); número = fixada no seletor.
+  const [pinned, setPinned] = useState<number | null>(null);
+  const preRef = useRef<HTMLPreElement | null>(null);
+  const stick = useRef(true); // grudado no fim? (desativa ao rolar pra cima)
+
+  const running = instance.status === "RUNNING";
+  const following = running && pinned == null;
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const load = () => {
+      fetchInstanceOutput(instance.id, pinned ?? undefined)
+        .then((d) => { if (!cancelled) { setData(d); setError(null); } })
+        .catch((e) => { if (!cancelled) setError(e?.message ?? String(e)); });
+    };
+    load();
+    if (running) timer = setInterval(load, 3000);
+    return () => { cancelled = true; if (timer) clearInterval(timer); };
+  }, [instance.id, running, pinned]);
+
+  // Auto-scroll pro fim enquanto segue a run ao vivo E o usuário não rolou pra cima.
+  useEffect(() => {
+    if (following && stick.current && preRef.current) {
+      preRef.current.scrollTop = preRef.current.scrollHeight;
+    }
+  }, [data?.text, following]);
+
+  const out = (instance.output ?? {}) as Record<string, unknown>;
+  const agentId = typeof out.agentId === "string" && out.agentId ? out.agentId : undefined;
+  const cmd = commandOf(jobType, actionConfig ?? {});
+  const attempts = data?.attempts ?? instance.attempts ?? 1;
+  const shownAttempt = data?.attempt ?? pinned ?? attempts;
+  const text = data?.text ?? "";
+  const finished = instance.completedAt != null || instance.status === "OK" || instance.status === "NOTOK";
+  const exit = data?.exitCode;
+
+  return (
+    <>
+      {cmd && (
+        <Section title="Command">
+          <Pre tone="var(--v2-text-secondary)" maxHeight={160}>{cmd}</Pre>
+        </Section>
+      )}
+      {attempts > 1 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, fontSize: 10.5, flexWrap: "wrap" }}>
+          <span style={{ color: "var(--v2-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 9 }}>Attempt</span>
+          {Array.from({ length: attempts }, (_, i) => i + 1).map((n) => {
+            const active = n === shownAttempt;
+            const isLatest = n === attempts;
+            return (
+              <button
+                key={n}
+                onClick={() => setPinned(isLatest && running ? null : n)}
+                style={{
+                  fontFamily: "var(--v2-font-mono)", fontSize: 10, padding: "1px 7px", cursor: "pointer",
+                  borderRadius: 2, border: `1px solid ${active ? "var(--v2-accent-brand)" : "var(--v2-border-subtle)"}`,
+                  background: active ? "var(--v2-accent-brand)" : "transparent",
+                  color: active ? "var(--v2-bg-canvas)" : "var(--v2-text-secondary)",
+                }}
+              >
+                {n}{isLatest ? "" : " ✕"}
+              </button>
+            );
+          })}
+          {pinned != null && running && (
+            <button
+              onClick={() => setPinned(null)}
+              style={{ fontSize: 9.5, color: "var(--v2-status-running)", background: "transparent", border: "none", cursor: "pointer" }}
+            >
+              ↻ follow live
+            </button>
+          )}
+        </div>
+      )}
+      <Section title={following ? "Output · live" : "Output"}>
+        {error ? (
+          <Pre tone="var(--v2-status-failed)">{error}</Pre>
+        ) : text ? (
+          <pre
+            ref={preRef}
+            onScroll={() => {
+              const el = preRef.current;
+              if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+            }}
+            style={{
+              margin: 0, padding: "6px 8px", background: "var(--v2-bg-canvas)",
+              border: "1px solid var(--v2-border-subtle)", borderRadius: 2,
+              fontFamily: "var(--v2-font-mono)", fontSize: 10, color: "var(--v2-text-secondary)",
+              whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 480, overflowY: "auto",
+            }}
+          >
+            {text}
+          </pre>
+        ) : (
+          <Muted>
+            {running
+              ? "No output yet — the job is still running."
+              : "The run finished without writing to stdout/stderr."}
+          </Muted>
+        )}
+      </Section>
+      <Section title="Result">
+        {exit != null && (
+          <Field
+            label="Exit code"
+            value={String(exit)}
+            mono
+            tone={exit === 0 ? "var(--v2-status-ok)" : "var(--v2-status-failed)"}
+          />
+        )}
+        {agentId && <Field label="Agent" value={agentId} mono />}
+        {instance.completedAt != null && <Field label="Completed" value={fmtTime(instance.completedAt)} />}
+        {finished && instance.durationMs != null && <Field label="Duration" value={fmtDuration(instance.durationMs)} />}
+      </Section>
+    </>
+  );
+}
+
+function LocalOutputTab({ instance, jobType, actionConfig }: {
   instance: JobInstance;
   jobType: string;
   actionConfig?: Record<string, unknown>;
@@ -1159,7 +1304,8 @@ const KIND_COLOR: Record<string, string> = {
   released:       "var(--v2-accent-brand)",
   rerun:          "var(--v2-accent-brand)",
   "set-ok":       "var(--v2-accent-brand)",
-  output:         "var(--v2-text-secondary)",
+  wait:           "var(--v2-status-waiting)", // OL-4 — espera edge-triggered
+  output:         "var(--v2-text-secondary)", // legado (pré-OL): sysout como evento
 };
 
 function fmtTS(ts: string): string {

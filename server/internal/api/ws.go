@@ -118,10 +118,12 @@ func (s *server) wsAgent(w http.ResponseWriter, r *http.Request) {
 			}
 			s.cfg.Scheduler.FinishInstance(ev.InstanceID, status, ev.ExitCode, ev.Output)
 		case "output":
-			// B4 — stream de stdout/stderr: persiste como instance_event (kind=output)
-			// e o LogPanel da UI mostra progressivamente (poll enquanto RUNNING).
+			// OL-1 — stream de stdout/stderr: APPENDa em instance_output (por
+			// tentativa, live-tail da aba Output), NÃO em instance_events. Assim o
+			// sysout sai da trilha de auditoria/feed. Chunk gravado verbatim (com
+			// as quebras de linha) — o concat reproduz o stream fielmente.
 			if ev.InstanceID != "" && ev.Chunk != "" {
-				s.cfg.Scheduler.EmitEvent(ev.InstanceID, "output", "agent", strings.TrimRight(ev.Chunk, "\r\n"))
+				s.cfg.Scheduler.AppendOutput(ev.InstanceID, ev.Chunk)
 			}
 		case "heartbeat":
 			s.cfg.Hub.Touch(agentID)

@@ -73,6 +73,13 @@ func (s *server) listEventLog(w http.ResponseWriter, r *http.Request) {
 		args = append(args, inst)
 	}
 
+	// OL-2 — o feed do dia é AUDITORIA/timeline de agendamento; o sysout legado
+	// (kind=output gravado antes da OL-1) não é auditoria de nada e vazava aqui
+	// cross-instance. Escondido por default; ?include=output traz o histórico.
+	if !includesOutput(r) {
+		clauses = append(clauses, "e.kind != 'output'")
+	}
+
 	// RBAC por CONJUNTO (mesma régua de listInstances): não-admin só vê folders legíveis.
 	allowed, restrict := s.allowedTeams(r, date)
 	if restrict {

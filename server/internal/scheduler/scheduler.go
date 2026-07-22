@@ -93,6 +93,21 @@ type Scheduler struct {
 	// Ligada por StartEventQueue() no modo internal; ver eventqueue.go.
 	eventCh chan eventRec
 
+	// OL-1 — orçamento de sysout POR INSTANCE (best-effort, in-memory). O append
+	// de output (ver output.go) soma os bytes por instance e, ao cruzar o cap
+	// (outputMaxBytes), grava UMA linha de aviso e descarta o resto até a instance
+	// finalizar/re-tentar (resetOutputBudget). Protege a tabela de scripts
+	// tagarelas — sysout não é auditoria; o Control-M também limita sysout. Reset
+	// no restart re-abre o orçamento (aceitável: é teto de proteção, não garantia).
+	outMu    sync.Mutex
+	outBytes map[string]int64
+	outTrunc map[string]bool // já avisou o truncamento? (evita repetir o aviso)
+
+	// OL-4 — última razão de espera gravada por instance (dedup edge-triggered do
+	// evento `wait`; ver maybeEmitWait). O tick roda a cada 2s: sem dedup, um job
+	// preso em WAIT COND inundaria a timeline. Emite só quando o motivo MUDA.
+	waitReason map[string]string
+
 	// E5 — throttle do check "daily fechou? manda o relatório" (1×/min no tick).
 	lastReportCheck time.Time
 
@@ -138,17 +153,20 @@ type Leader interface{ IsLeader() bool }
 
 func New(store *storage.FileStore, db *db.DB, bus Bus, tick time.Duration) *Scheduler {
 	s := &Scheduler{
-		store:     store,
-		db:        db,
-		hub:       bus,
-		tick:      tick,
-		running:   map[string]bool{},
-		noAgentAt: map[string]time.Time{},
-		settings:  Settings{DailyAt: "00:00", Timezone: "America/Sao_Paulo"},
-		quit:      make(chan struct{}),
-		nowFn:     time.Now,
-		slowFired: map[string]bool{},
-		slowAvg:   map[string]slowAvgEntry{},
+		store:      store,
+		db:         db,
+		hub:        bus,
+		tick:       tick,
+		running:    map[string]bool{},
+		noAgentAt:  map[string]time.Time{},
+		settings:   Settings{DailyAt: "00:00", Timezone: "America/Sao_Paulo"},
+		quit:       make(chan struct{}),
+		nowFn:      time.Now,
+		slowFired:  map[string]bool{},
+		slowAvg:    map[string]slowAvgEntry{},
+		outBytes:   map[string]int64{},
+		outTrunc:   map[string]bool{},
+		waitReason: map[string]string{},
 	}
 	// ARCH-3 — guard sempre presente (camada em-processo). A camada cross-processo
 	// no Postgres é opt-in via EnableTickLock (modo serverless).
@@ -197,6 +215,7 @@ func (s *Scheduler) Stop() {
 
 func (s *Scheduler) AttachCalendars(c *storage.CalendarStore) { s.calStore = c }
 func (s *Scheduler) AttachResources(r *ResourceTracker)       { s.resources = r }
+
 // AttachConditions pluga o pool de condições e liga o broadcast de mudanças:
 // o painel Condições do Monitoring e as linhas do grafo são um REFLEXO do
 // pool, então toda mudança (job OK, Set OK, ação On/Do, operador, migração)
@@ -640,6 +659,10 @@ func (s *Scheduler) autoDailyIfDue() {
 	// caller já é leader-gated). Síncrono de propósito: roda em lotes curtos e
 	// uma goroutine solta escreveria no DB depois do teardown (o flake do TempDir).
 	s.auditGC()
+	// OL-1 — retenção PRÓPRIA do sysout (output_retention_days), separada da de
+	// auditoria: sysout tagarelo não deve viver o mesmo tempo que a trilha de
+	// auditoria. Mesma janela/leader-gate/lotes curtos que o auditGC.
+	s.outputGC()
 	// ADV-5 — archives/retention de instances: mesmo racional e mesma janela.
 	s.archiveGC()
 }
@@ -761,7 +784,7 @@ type carriedInstance struct {
 // order_date) a enxergam no novo dia sem nenhuma mudança. O ODAT (origem) fica
 // preservado em carried_from — TODO escopo de data (eventos, conditions, UI)
 // usa ele, ver odate.go. BUG-12: a carregada NÃO bloqueia a ordem fresca de
-// `date` — o check de existência do RunDaily ignora carried_from≠'' e a daily
+// `date` — o check de existência do RunDaily ignora carried_from≠” e a daily
 // materializa a instance nova da mesma definition ao lado da carregada.
 //
 // Idempotente: instances já em `date` não estão na diária anterior, então re-rodar
@@ -979,7 +1002,7 @@ func (s *Scheduler) RunDaily(date string) int {
 		batch = append(batch, pendingInstance{
 			id: d.ID + "-" + date, defID: d.ID, team: d.Team,
 			scheduledAt: computeScheduledAt(d, date), snapshot: string(snap),
-			dryRun: d.DryRun,          // congela dryRun (ver pendingInstance).
+			dryRun: d.DryRun,             // congela dryRun (ver pendingInstance).
 			mcols:  frozenMonitorCols(d), // M1: congela o resto do que o Monitoring exibe.
 		})
 	}
@@ -1247,11 +1270,11 @@ func (s *Scheduler) tickOnce() {
 		// sozinho. Quem nunca ficar elegível morre na virada da daily
 		// (WAITING-nunca-rodou não carrega), como no Control-M.
 		if blockers := s.gateInstance(r, def, condIdx, now, true); len(blockers) > 0 {
-			// Sem agente: registra 1 evento com throttle (5min) pra visibilidade
-			// no histórico — o estado NÃO muda (segue WAITING, sem broadcast).
-			if blockers[0].Kind == GateAgent {
-				s.maybeEmitNoAgent(r.ID, def.JobType)
-			}
+			// OL-4 — timeline da ESPERA (edge-triggered): grava o motivo-bloqueador
+			// primário como evento `wait`, só quando ele MUDA (dedup por instance).
+			// O estado NÃO muda (segue WAITING, sem broadcast); é o "por que demorou"
+			// virando história consultável, não só o estado presente do Explain.
+			s.maybeEmitWait(r.ID, blockers[0])
 			continue
 		}
 		// Gates read-only passaram → reserva ATÔMICA do recurso (a única etapa com
@@ -1340,6 +1363,9 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 		s.mu.Unlock()
 		return
 	}
+	// OL-4 — saiu do WAITING: esquece o último motivo de espera pra que um WAIT
+	// futuro (retry, cyclic) volte a emitir a partir do zero.
+	s.clearWaitReason(id)
 	s.emitEvent(id, "started", "scheduler", "")
 	s.hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusRunning)})
 
@@ -1435,6 +1461,9 @@ func (s *Scheduler) FinishInstance(id string, status domain.InstanceStatus, exit
 		`UPDATE instances SET status=?, exit_code=?, output=?, finished_at=CURRENT_TIMESTAMP WHERE id=?`,
 		string(status), exitCode, output, id,
 	)
+	// OL-1 — a instance terminou: re-abre o orçamento de sysout (a próxima ordem
+	// desta def é outra instance; o id não se reusa, mas mantém o mapa enxuto).
+	s.resetOutputBudget(id)
 	// F15 — release resources holdings
 	if s.resources != nil {
 		s.resources.Release(id)
@@ -1640,6 +1669,9 @@ func (s *Scheduler) maybeRetry(id, output string) bool {
 		return false
 	}
 	next := attempts + 1
+	// OL-1 — cada tentativa estreia com o teto de sysout cheio: o cap é por
+	// tentativa na prática (a tabela instance_output separa por `attempt`).
+	s.resetOutputBudget(id)
 	// D-1 — retryDelayMin>0: a próxima tentativa é AGENDADA (scheduled_at futuro)
 	// em vez de re-dispatchada por goroutine. O tick despacha quando chegar a hora;
 	// como o agendamento vive no DB, sobrevive a restart do server e à virada da

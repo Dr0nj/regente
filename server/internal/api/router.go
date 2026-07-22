@@ -157,6 +157,7 @@ func NewRouter(cfg Config) http.Handler {
 		r.With(s.requireWriterMW).Post("/instances/{id}/force", s.forceRunInstance)  // Run Now: força ESTA instance (bypass gates, honra agent+Confirm)
 		r.With(s.requireWriterMW).Delete("/instances/{id}", s.deleteInstance)        // Delete: remove a ordem (SÓ em HOLD; RUNNING nunca)
 		r.Get("/instances/{id}/events", s.listInstanceEvents)
+		r.Get("/instances/{id}/output", s.getInstanceOutput) // OL-2: sysout da execução (por tentativa, live-tail)
 		r.Get("/instances/{id}/explain", s.explainInstance)   // diferencial: "por que não rodou?"
 		r.Get("/instances/{id}/blast-radius", s.blastRadius)  // diferencial: impacto de cancelar/segurar
 		r.Get("/instances/{id}/neighborhood", s.neighborhood) // diferencial: grafo local (up/downstream)

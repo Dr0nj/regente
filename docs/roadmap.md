@@ -45,12 +45,12 @@
 - **Features avançadas (ADV-1..8)** — schema por jobType, multi-ambiente, What-If/Stats, MFT, archives/retention, CLI/SDK, site de docs, executores AWS Batch/Glue/Step.
 - **Contrato de API (OpenAPI)** — API-1: spec curada escrita à mão + viewer self-contained em `/api-docs`, embutidos no binário.
 - **Higiene react-hooks (catraca RH-1..4)** — o app passou site-a-site pelas 4 regras react-hooks/react-refresh: mecânico consertado (immutability da sidebar, refs de resizable/espelho-de-câmera, A1/A2/A3 das cargas iniciais) + deliberado ANOTADO com motivo (câmera, autosave/invariante 4, resets on-dep-change do drawer M1); as 4 regras subiram pra `error` → `npm run lint` (gate CI) bloqueia violação nova. **38→0 warnings** (2026-07-21).
+- **Output × Logs (OL-1..OL-4)** — o **sysout da EXECUÇÃO** saiu da trilha de auditoria: tabela própria `instance_output` **por tentativa** (schemaV22), API `/instances/{id}/output` (live-tail), **aba Output ao vivo** com seletor de tentativa (retry deixa de perder o sysout da tentativa falha), e evento **`wait` edge-triggered** na timeline (a espera vira história consultável). O feed/export de auditoria deixam de vazar sysout. Paridade Control-M. Entregue 2026-07-22.
 
 **Trilhas com itens em ABERTO** (detalhe em [§🔜 Backlog](#-backlog-o-que-falta)):
 
 - **Fase V — self-hosting em VPS de caixa única (24/7)** — **V1–V5 entregues** (install single-origin 3-formas · bundle+one-liner · config guiada · hospedagem enterprise nginx+TLS · agente sandbox). **Resta só V6** (docker-compose, opcional — o alvo escolhido foi systemd). O deploy "1 caixa" 24/7 já está pronto de ponta a ponta.
 - **Fase Z — divulgação** — **artefatos ENTREGUES 2026-07-13** (`docs/case-study.md` + `docs/linkedin-post.md`); resta só a **publicação manual no LinkedIn** (ação sua — revisar, escolher prints, postar).
-- **Output × Logs (OL-1…OL-4)** — separar o **sysout da execução** (aba Output, ao vivo, por tentativa) do **jornal de agendamento** (aba Logs) — paridade Control-M. Aberto 2026-07-22 após teste ao vivo com job SCRIPT.
 
 > ✅ **Validação em infra real — trilha FECHADA (2026-07-11):** os dois resíduos (secrets via provider · SSH
 > agente como serviço) foram validados AO VIVO. Detalhe em [§🧪 Validação em infra real](#-validação-em-infra-real).
@@ -109,63 +109,6 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
   comentário + prints (Monitoring com grafo · ViewPoint @1M · Explain). Os 2 posts da
   company page (2026-07) NÃO fecham este item — página nova não tem alcance orgânico.
   Nenhum agente pode fazer isso por você.
-
-### 🧾 Output × Logs — sysout na aba certa (paridade Control-M)
-
-> **Problema (visto AO VIVO, 2026-07-22):** rodando um job SCRIPT de teste (~5 min de
-> stdout contínuo), TODO o sysout apareceu na aba **Logs** e a aba **Output** ficou em
-> "no output yet" até o fim da run. **Como está construído hoje:** o agente streama cada
-> chunk de stdout/stderr (B4, `streamWriter` em `agent/main.go`) e o server persiste o
-> chunk como **evento** `kind=output` na **MESMA tabela do jornal de agendamento**
-> (`instance_events`, via `EmitEvent` em `api/ws.go` e `api/agent_http.go`); o executor
-> SSH server-side faz igual (`scheduler/ssh.go`). A aba Logs (`LogPanel`) lê
-> `GET /instances/{id}/events` SEM filtro → ciclo de vida e sysout saem MISTURADOS; a
-> aba Output lê `instances.output`, gravada UMA única vez no `FinishInstance` → fica
-> vazia o RUNNING inteiro. O live-tail EXISTE, mas na aba errada.
->
-> **Modelo-alvo (o de Control-M):** **Output = sysout da EXECUÇÃO** — o que o processo
-> escreveu (stdout/stderr, printf, status), exit code, ao vivo enquanto roda, por
-> tentativa. **Log = jornal do AGENDAMENTO** — o que o SCHEDULER fez com o job: entrou
-> na daily (ordered), aguardou condição/recurso/agente/janela/Confirm, submitted,
-> started, retry, finished OK/NOTOK, ações de operador e On-Do.
->
-> **Por que NÃO é só cosmético (efeitos do modelo atual):**
-> 1. `instance_events` é trilha de AUDITORIA (E2: retenção `audit_retention_days`,
->    export SIEM/`/api/audit/export`, feed do dia `/api/events`) — sysout de script
->    tagarela infla a tabela e VAZA pro feed cross-instance e pro export de auditoria
->    (centenas de linhas que não são auditoria de nada).
-> 2. O sysout de tentativas ANTERIORES se perde: no retry (P15), `maybeRetry` descarta
->    o buffer da tentativa falha — `FinishInstance` só grava `instances.output` na
->    tentativa FINAL; o que sobra da tentativa 1 são os eventos `kind=output` soltos.
-> 3. O Log NÃO conta a história de espera: "ficou pendente de recurso/condição" só
->    existe no WhyNot (derivado, PRESENTE) — a linha do tempo não registra a transição,
->    então depois que rodou ninguém mais sabe POR QUE demorou.
-
-- [ ] **OL-1 — separar o armazenamento: sysout sai de `instance_events`.** Nova tabela
-  `instance_output(instance_id, attempt, seq, ts, chunk)` (schemaV22): os chunks do
-  agente (WS `output` / `POST /api/agent/output`) e do SSH passam a APPENDar ali — param
-  de virar evento. `FinishInstance` segue consolidando o texto final em
-  `instances.output` (compat com quem já lê), mas a verdade POR TENTATIVA é a tabela
-  nova — retry deixa de perder o sysout da tentativa falha. Retenção PRÓPRIA
-  (`output_retention_days` separado do de auditoria) + **cap de tamanho por instance**
-  com truncamento avisado (sysout não é auditoria; Control-M também limita sysout).
-  Protocolo do agente NÃO muda — muda só o destino do chunk no server.
-- [ ] **OL-2 — API de sysout: `GET /api/instances/{id}/output?attempt=N`** →
-  `{attempts, attempt, text, complete, exitCode}`: RUNNING serve o concat dos chunks
-  (live-tail); terminada, o consolidado. `GET /instances/{id}/events`, `/api/events` e
-  o export de auditoria passam a **EXCLUIR `kind=output` por default** (`?include=output`
-  mantém legível o histórico já gravado como evento — migração não destrutiva, sem
-  reescrever dado velho).
-- [ ] **OL-3 — UI: aba Output vira o live-tail.** Poll de 3s enquanto RUNNING (como o
-  `LogPanel` faz hoje), auto-scroll, seletor de tentativa quando `attempts>1`; mantém
-  os blocos Command/Result. Aba **Logs** mostra SÓ o jornal de agendamento (some o
-  `kind=output` da timeline).
-- [ ] **OL-4 — o Log passa a contar a ESPERA (edge-triggered, NUNCA por tick).** Evento
-  `wait` emitido QUANDO O MOTIVO-BLOQUEADOR MUDA (dedup pelo último estado gravado —
-  sem flood): "aguardando condição X" · "recurso Y 2/2 em uso" · "agente offline" ·
-  "fora da janela 22:00–04:00" · "aguardando Confirm". Timeline completa estilo
-  Control-M: `ordered → wait(condição) → wait(recurso) → submitted → started → retry →
-  finished` — o "por que demorou" vira HISTÓRIA consultável, não só estado presente.
 
 ### 🔮 Visão futura (avaliar PÓS-testes, não committado)
 
@@ -485,6 +428,50 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
    0 warnings; `npm run lint` (gate CI) passa a BLOQUEAR qualquer violação nova — toda
    exceção futura tem que ser um disable ANOTADO com motivo, nunca warn silencioso.
    Bônus: com as regras verdes o app fica elegível ao React Compiler (auto-memo).
+```
+
+## 🧾 Output × Logs — sysout na aba certa (OL-1..OL-4, 2026-07-22)
+
+> **Paridade Control-M:** **Output = sysout da EXECUÇÃO** (o que o processo escreveu,
+> ao vivo, por tentativa) · **Log = jornal do AGENDAMENTO** (o que o scheduler fez:
+> ordered → wait → submitted → started → retry → finished + ações de operador/On-Do).
+> Antes, o sysout virava evento `kind=output` na MESMA tabela da auditoria
+> (`instance_events`): vazava pro feed cross-instance e pro export SIEM, e o retry
+> perdia o sysout da tentativa falha. O gatilho foi um teste AO VIVO com job SCRIPT
+> (~5 min de stdout) que caiu TODO na aba Logs enquanto a aba Output ficou vazia.
+
+```
+✅ OL-1 — Armazenamento separado (schemaV22). Nova tabela `instance_output(id,
+   instance_id, attempt, ts, chunk)`: os chunks do agente (WS `output` /
+   `POST /api/agent/output`) e do SSH server-side passam a APPENDar ali (não viram mais
+   evento). `id` é o seq monotônico dentro da tentativa; `attempt` separa cada tentativa
+   → o retry (P15) deixa de perder o sysout da tentativa falha. `FinishInstance` segue
+   consolidando o texto final em `instances.output` (compat). Retenção PRÓPRIA
+   (`output_retention_days`, GC em lotes junto do auditGC) + CAP por instance
+   (`outputMaxBytes`, 5 MiB) com UMA linha de aviso e descarte do resto. Protocolo do
+   agente NÃO mudou — só o destino do chunk no server (`scheduler/output.go`). O sysout
+   morre junto com a ordem no delete e no archiveGC. Chunk gravado verbatim → o concat
+   reproduz o stream fielmente.
+✅ OL-2 — API do sysout: `GET /api/instances/{id}/output?attempt=N` →
+   `{attempts, attempt, text, complete, exitCode?}`. RUNNING serve o concat dos chunks
+   (live-tail); terminada, o consolidado; fallback pro `instances.output` em runs
+   ANTIGAS sem chunks (migração não destrutiva). `GET /instances/{id}/events`,
+   `/api/events` e o export SIEM passam a EXCLUIR `kind=output` por default
+   (`?include=output` mantém o histórico legado legível — `includesOutput`).
+✅ OL-3 — UI: a aba Output virou o LIVE-TAIL (`ServerOutputTab`). Poll de 3s enquanto
+   RUNNING, auto-scroll "grudado" no fim (solta ao rolar pra cima), seletor de tentativa
+   quando `attempts>1` (mostra o sysout de tentativas anteriores que a OL-1 preservou);
+   mantém os blocos Command e Result. Local mode segue lendo o snapshot (`LocalOutputTab`).
+   A aba Logs mostra SÓ o jornal de agendamento.
+✅ OL-4 — a timeline conta a ESPERA (`maybeEmitWait`, EDGE-TRIGGERED, nunca por tick).
+   No gate do tick, quando o motivo-bloqueador primário MUDA (dedup por instance em
+   `waitReason`), grava um evento `kind=wait` com o detail do Blocker: "aguardando
+   condição X", "recurso Y em uso", "agente offline", "fora da janela", "aguardando
+   Confirm". `startInstance` limpa o dedup ao sair do WAITING. O "por que demorou" vira
+   HISTÓRIA consultável, não só o estado presente do Explain. Cor `wait` no LogPanel.
+   Testes: append por tentativa/retry, cap+aviso, retenção, wait edge-triggered
+   (`scheduler/output_test.go`) + API per-attempt/fallback/exclusão-do-legado
+   (`api/instance_output_test.go`). CI verde (staticcheck · `npm run lint` · build).
 ```
 
 ## 🔔 Alerting
@@ -1078,6 +1065,7 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 
 | Quando | O que | Detalhe |
 |----|--------|---------|
+| ✅ | ~~**Output × Logs (OL-1..OL-4): sysout da execução sai da trilha de auditoria — tabela por tentativa + API live-tail + aba Output ao vivo + evento `wait` na timeline (paridade Control-M)**~~ | **Feito (2026-07-22, pedido do usuário "executa a trilha OL").** O gatilho foi um teste AO VIVO: um job SCRIPT com ~5 min de stdout jogou TODO o sysout na aba **Logs** e deixou a aba **Output** vazia — porque cada chunk virava evento `kind=output` na MESMA tabela do jornal de agendamento (`instance_events`), que também é a trilha de auditoria (vazava pro feed `/api/events` cross-instance e pro export SIEM), e o `instances.output` só era gravado UMA vez no fim (nada ao vivo; retry perdia o sysout da tentativa falha). **OL-1 (armazenamento):** nova tabela `instance_output(id, instance_id, attempt, ts, chunk)` **schemaV22** — os chunks do agente (WS `output`/`POST /api/agent/output`) e do SSH server-side passam a APPENDar ali via `INSERT…SELECT COALESCE(attempts,1)` (resolve a tentativa corrente sem round-trip extra), gravados VERBATIM (o concat reproduz o stream); `attempt` separa cada tentativa → **retry deixa de perder o sysout da falha**; `FinishInstance` segue consolidando o texto final em `instances.output` (compat). Retenção PRÓPRIA `output_retention_days` (GC em lotes junto do auditGC) + CAP por instance `outputMaxBytes`=5 MiB (in-memory best-effort, UMA linha de aviso e descarta o resto; reabre no retry/finish); sysout morre junto no delete e no archiveGC (`scheduler/output.go`). **OL-2 (API):** `GET /api/instances/{id}/output?attempt=N` → `{attempts, attempt, text, complete, exitCode?}` — RUNNING serve o concat (live-tail), terminada o consolidado, com fallback pro `instances.output` em runs antigas sem chunks; `/instances/{id}/events`, `/api/events` e o export SIEM passam a EXCLUIR `kind=output` por default (`?include=output` mantém o legado legível — migração não destrutiva). **OL-3 (UI):** a aba Output virou LIVE-TAIL (`ServerOutputTab`) — poll 3s enquanto RUNNING, auto-scroll grudado no fim (solta ao rolar pra cima), **seletor de tentativa** quando `attempts>1` (mostra o sysout preservado das tentativas anteriores); mantém Command/Result; local mode intacto (`LocalOutputTab`). **OL-4 (timeline da espera):** `maybeEmitWait` no gate do tick grava evento `kind=wait` EDGE-TRIGGERED — só quando o motivo-bloqueador primário MUDA (dedup por instance em `waitReason`, limpo no `startInstance`): "aguardando condição X", "recurso em uso", "agente offline", "fora da janela", "aguardando Confirm" → o "por que demorou" vira HISTÓRIA consultável, não só o estado presente do Explain. **Testes:** `scheduler/output_test.go` (append por tentativa/retry, cap+aviso, retenção, wait edge-triggered) + `api/instance_output_test.go` (per-attempt, fallback consolidado, exclusão do legado no events/feed) + archiveGC cobre `instance_output`. **CI verde:** server build/vet/**staticcheck**/test · agent · app `tsc -b`+`vite build`+`npm run lint`. |
 | ✅ | ~~**AND/OR: atalho "OR rodar no horário" sempre visível com 1 condição (CL-2 descobrível) + rótulos do operador E/OU → AND/OR**~~ | **Feito (2026-07-21, report do usuário "não achei como fazer OR de 1 condição com o horário; o e/ou só aparece na 2ª condição").** Auditoria primeiro: o CL-2 EXISTIA e estava ligado (atalho no modo simples + ＋ horário por grupo; server 100% testado), mas as duas portas só renderizavam com `windowFrom` preenchido — e a janela nasce VAZIA por padrão, então ficavam invisíveis sem nenhuma pista (o pill E/OU dentro do grupo só aparece com 2+ membros, por definição de operador — daí o "só aparece na 2ª condição"). Fix de descobribilidade (`JobConfigDrawer.tsx`): o atalho aparece **sempre** que há UMA condição — sem janela fica esmaecido e o clique **abre a aba Horário** (guard mantido: `$TIME` sem "A partir de" é satisfeito imediatamente e anularia a condição); o ＋ horário dos grupos idem; membro ⏱ órfão de janela (apagada depois) fica ÂMBAR com aviso "satisfeito imediatamente". Rename pedido: pills E/OU → **AND/OR**, separador entre grupos idem, rótulo das linhas OR do canvas "OU" → **"OR"** (`canvas-layout.ts`, Design+Monitoring), ajuda "?" e docs (spec `conditions-events.md` + README) alinhados. Server intocado (zero mudança de semântica do gate). |
 | ✅ | ~~**Fase Z — case study pronto pra ARTIGO no LinkedIn: revisão de conteúdo + versão EN**~~ | **Feito (2026-07-21, decisão do usuário "case study vai ser artigo no LinkedIn").** `docs/case-study.md` atualizado pro modelo VIVO: §3 trocou "carry-over com orçamento" (aposentado) → carry-over honesto por data de origem (ODAT) e "dependências como EVENTOS consumíveis/claims" (aposentados) → **condições explícitas num pool único com AND/OR real + `$TIME`**; lição 4 reescrita ("estado explícito", não latch/claim); **seção nova §9 AI_AGENT** (roadmap, spec pronta — LLM local no host do agente, prompt congelado no snapshot, fase 1 sem tools); **números recontados hoje**: ~44k Go (era 40,5k) · ~24k TS · **427 testes em 97 arquivos** (era 372/86) — TL;DR, §6, §11 e os 4 rascunhos de post atualizados juntos; **tabelas viraram listas** (§5/§11 — o editor de artigo do LinkedIn não renderiza tabela markdown, o doc agora cola direto). **`docs/case-study.en.md` NOVO** — tradução integral, também paste-ready (o post EN linka o artigo EN). Notas de publicação do `linkedin-post.md` e o item Z (publicação) do Backlog registram a decisão + ordem de publicação (artigos primeiro; post pessoal PT/EN com o artigo respectivo no 1º comentário). **Z (publicação) segue ABERTA** — falta publicar artigos + post do perfil pessoal. |
 | ✅ | ~~**Fase Z — revisão dos rascunhos LinkedIn: PT + EN + teaser AI_AGENT**~~ | **Feito (2026-07-21, pedido do usuário após os 2 posts da company page).** `docs/linkedin-post.md` reescrito: versões **principal e curta em PT e EN**; bullet novo "Próximo no roadmap: `AI_AGENT`" (LLM local no host do agente · prompt congelado no snapshot M1 · fase 1 análise-only sem tools) SEMPRE enquadrado como roadmap — regra de honestidade anotada no topo do próprio arquivo pra nenhuma adaptação vender como entregue. Texto atualizado pro modelo VIVO: "carry-over com orçamento" (aposentado) → carry-over honesto por ODAT; "dependências como eventos consumíveis" (modelo antigo) → condições explícitas com AND/OR real e consumo. Notas de publicação ganharam a regra **perfil pessoal × company page** (a versão principal é do PERFIL — página nova não tem alcance orgânico; a página reposta + série de mini-posts) e o 1º comentário com o case study. **Z (publicação) segue ABERTA** — falta o post pessoal + decidir o destino do case study (repo público × artigo × gist). |

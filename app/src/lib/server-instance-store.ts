@@ -480,6 +480,21 @@ export async function fetchInstanceEvents(id: string): Promise<InstanceEvent[]> 
   return api<InstanceEvent[]>(`/api/instances/${encodeURIComponent(id)}/events`);
 }
 
+/* ── Output (OL-2): sysout da EXECUÇÃO por tentativa, live-tail ── */
+
+export interface InstanceOutput {
+  attempts: number;   // total de tentativas da instance (selector 1..attempts)
+  attempt: number;    // tentativa desta resposta
+  text: string;       // concat dos chunks (live enquanto RUNNING) ou consolidado
+  complete: boolean;  // a tentativa não recebe mais chunks (terminou ou é anterior)
+  exitCode?: number;  // só na tentativa final terminada
+}
+
+export async function fetchInstanceOutput(id: string, attempt?: number): Promise<InstanceOutput> {
+  const q = attempt != null ? `?attempt=${attempt}` : "";
+  return api<InstanceOutput>(`/api/instances/${encodeURIComponent(id)}/output${q}`);
+}
+
 /* ── Explain ("por que esse job não rodou?") ── */
 
 export interface ExplainBlocker {

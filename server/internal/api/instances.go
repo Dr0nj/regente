@@ -618,6 +618,11 @@ func (s *server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// OL-1 — o sysout (instance_output) morre junto com a ordem, como os events.
+	if _, err := s.cfg.DB.Exec(`DELETE FROM instance_output WHERE instance_id=?`, id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	res, err := s.cfg.DB.Exec(`DELETE FROM instances WHERE id=? AND status=?`, id, string(domain.StatusHeld))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -988,9 +993,16 @@ func (s *server) rca(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) listInstanceEvents(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	// OL-2 — a aba Logs mostra o jornal de AGENDAMENTO; o sysout legado gravado
+	// como kind=output (antes da OL-1) fica de fora por default. ?include=output
+	// traz de volta pra runs históricas.
+	where := "instance_id=?"
+	if !includesOutput(r) {
+		where += " AND kind != 'output'"
+	}
 	rows, err := s.cfg.DB.Query(
 		`SELECT id, instance_id, ts, kind, COALESCE(actor,''), COALESCE(message,'')
-		 FROM instance_events WHERE instance_id=? ORDER BY id DESC`,
+		 FROM instance_events WHERE `+where+` ORDER BY id DESC`,
 		id,
 	)
 	if err != nil {

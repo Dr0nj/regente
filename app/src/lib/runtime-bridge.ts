@@ -77,6 +77,16 @@ export const fetchInstanceEvents = isServerMode()
   ? serverInstance.fetchInstanceEvents
   : async (_id: string): Promise<serverInstance.InstanceEvent[]> => [];
 
+// OL-2/OL-3 — sysout da execução por tentativa (live-tail). Server-only: no modo
+// local a instance já carrega o output final no próprio snapshot (a aba Output
+// usa esse caminho só no server mode — ver OutputTab).
+export type InstanceOutput = serverInstance.InstanceOutput;
+
+export const fetchInstanceOutput = isServerMode()
+  ? serverInstance.fetchInstanceOutput
+  : async (_id: string, _attempt?: number): Promise<serverInstance.InstanceOutput> =>
+      ({ attempts: 1, attempt: 1, text: "", complete: true });
+
 // UI-1 — sidebar windowed: puxa uma instance fora do espelho local pro cache
 // (dia > cap). No modo local o cache É completo: resolve do que já está lá.
 export const fetchInstanceById = isServerMode()

@@ -143,6 +143,12 @@ func (s *server) auditExport(w http.ResponseWriter, r *http.Request) {
 		clauses := []string{"id > ?"}
 		args := []any{afterID}
 		clauses, args = timeWhere(clauses, args)
+		// OL-2 — o export SIEM é AUDITORIA; sysout legado (kind=output gravado
+		// antes da OL-1) infla o export sem ser auditoria. Excluído por default;
+		// ?include=output mantém o histórico legível.
+		if !includesOutput(r) {
+			clauses = append(clauses, "kind != 'output'")
+		}
 		rows, err := s.cfg.DB.Query(
 			`SELECT id, ts, kind, COALESCE(actor,''), instance_id, COALESCE(message,'')
 			 FROM instance_events WHERE `+strings.Join(clauses, " AND ")+` ORDER BY id LIMIT ?`,

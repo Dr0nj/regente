@@ -13,7 +13,8 @@ import (
 
 // runSSH executa um job SSH no PRÓPRIO server (C1 — agentless): faz shell-out
 // pro cliente `ssh` do SO (OpenSSH), sem precisar de agente no alvo. Streama o
-// stdout/stderr como instance_events (kind=output), igual ao agente (B4).
+// stdout/stderr para instance_output (OL-1, por tentativa/live-tail), igual ao
+// agente — não para instance_events (que é o jornal de agendamento).
 //
 // Params (actionConfig):
 //   host (obrigatório), command (obrigatório), user, port, keyPath, strictHostKey.
@@ -44,7 +45,7 @@ func (s *Scheduler) runSSH(id string, def domain.JobDefinition) {
 	host := str("host")
 	command := str("command")
 	if host == "" || command == "" {
-		s.emitEvent(id, "output", "ssh", "missing 'host' or 'command' param")
+		s.appendOutput(id, "missing 'host' or 'command' param\n")
 		s.FinishInstance(id, domain.StatusNotOK, -1, "missing 'host' or 'command' param")
 		return
 	}
@@ -81,7 +82,7 @@ func (s *Scheduler) runSSH(id string, def domain.JobDefinition) {
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
 	if err := cmd.Start(); err != nil {
-		s.emitEvent(id, "output", "ssh", "ssh start: "+err.Error())
+		s.appendOutput(id, "ssh start: "+err.Error()+"\n")
 		s.FinishInstance(id, domain.StatusNotOK, -1, "ssh start: "+err.Error())
 		return
 	}
@@ -95,7 +96,7 @@ func (s *Scheduler) runSSH(id string, def domain.JobDefinition) {
 			line := sc.Text()
 			full.WriteString(line)
 			full.WriteString("\n")
-			s.emitEvent(id, "output", "ssh", line)
+			s.appendOutput(id, line+"\n")
 		}
 		done <- struct{}{}
 	}

@@ -502,6 +502,7 @@ var sqliteMigrations = []migration{
 	{version: 19, sql: schemaV19()},
 	{version: 20, sql: schemaV20()},
 	{version: 21, sql: schemaV21()},
+	{version: 22, sql: schemaV22(sqliteID, "DATETIME")},
 }
 
 var pgMigrations = []migration{
@@ -526,6 +527,32 @@ var pgMigrations = []migration{
 	{version: 19, sql: schemaV19()},
 	{version: 20, sql: schemaV20()},
 	{version: 21, sql: schemaV21()},
+	{version: 22, sql: schemaV22(pgID, "TIMESTAMPTZ")},
+}
+
+// schemaV22 — OL-1 (Output × Logs, 2026-07-22): o sysout da EXECUÇÃO sai da
+// trilha de auditoria (`instance_events`) para uma tabela própria, por TENTATIVA.
+// Cada chunk de stdout/stderr do agente (WS/HTTP) e do SSH server-side vira uma
+// linha aqui, em vez de um evento `kind=output`. Isso: (1) tira sysout tagarela
+// do feed cross-instance e do export SIEM (que são AUDITORIA, não saída de
+// script); (2) PRESERVA o sysout de tentativas anteriores no retry (a coluna
+// `attempt` separa cada tentativa — antes o buffer da tentativa falha se perdia);
+// (3) alimenta o live-tail por tentativa (aba Output). `instances.output` segue
+// consolidando o texto FINAL (compat com quem já lê). `id` é o seq monotônico de
+// ordenação dentro da tentativa. Retenção PRÓPRIA (`output_retention_days`, ver
+// scheduler/output.go), separada da de auditoria. CREATE ... IF NOT EXISTS =
+// idempotente nos dois dialetos.
+func schemaV22(idDef, ts string) string {
+	return `
+CREATE TABLE IF NOT EXISTS instance_output (
+	id          ` + idDef + `,
+	instance_id TEXT NOT NULL,
+	attempt     INTEGER NOT NULL DEFAULT 1,
+	ts          ` + ts + ` DEFAULT CURRENT_TIMESTAMP,
+	chunk       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_instance_output_inst ON instance_output(instance_id, attempt, id);
+`
 }
 
 // schemaV21 — lógica booleana de entrada (CL) CONGELADA na instance (2026-07-20).

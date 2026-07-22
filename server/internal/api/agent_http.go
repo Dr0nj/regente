@@ -165,7 +165,9 @@ func (s *server) agentOutput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ev.InstanceID != "" && ev.Chunk != "" {
-		s.cfg.Scheduler.EmitEvent(ev.InstanceID, "output", "agent", strings.TrimRight(ev.Chunk, "\r\n"))
+		// OL-1 — sysout da execução vai pra instance_output (por tentativa,
+		// live-tail), não pra instance_events. Chunk verbatim.
+		s.cfg.Scheduler.AppendOutput(ev.InstanceID, ev.Chunk)
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
