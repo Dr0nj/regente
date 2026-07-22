@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 	"os"
 	"strings"
@@ -56,7 +57,7 @@ func TestExecuteJob_RoutesWASM(t *testing.T) {
 	if err := os.WriteFile(path, echoWasm, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	code, out := executeJob("WASM", map[string]interface{}{"wasmPath": path}, 30, nil)
+	code, out := executeJob(context.Background(), "WASM", map[string]interface{}{"wasmPath": path}, 30, nil)
 	if code != 0 || !strings.Contains(out, "hello from wasm") {
 		t.Fatalf("executeJob WASM falhou: code=%d out=%q", code, out)
 	}

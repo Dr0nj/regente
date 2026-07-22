@@ -68,6 +68,12 @@ func TestSetLocalVar_SurvivesNotOKAndMerges(t *testing.T) {
 	}
 
 	// Rerun-like: novo término atualiza a MESMA var e adiciona outra (merge).
+	// Um rerun de verdade volta a instance pra WAITING→RUNNING antes de
+	// reexecutar; rearmamos o status aqui porque o guard idempotente do
+	// FinishInstance ignora um término repetido numa instance já terminal.
+	if _, err := s.db.Exec(`UPDATE instances SET status=? WHERE id=?`, string(domain.StatusRunning), id); err != nil {
+		t.Fatal(err)
+	}
 	s.FinishInstance(id, domain.StatusOK, 0, "%%SETLOCAL CURSOR=200\n%%SETLOCAL DONE=yes\n")
 	ctx = s.buildVarContext(def, id)
 	if got := InterpolateString("%%CURSOR-%%DONE", ctx); got != "200-yes" {

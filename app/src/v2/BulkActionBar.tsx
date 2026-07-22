@@ -72,11 +72,14 @@ function MonitoringBar({ selected, instances, handlers }: MonitoringProps) {
   // Delete só em HOLD (RUNNING nunca — não é segurável); os demais status
   // passam pelo Hold antes. Espelha o guard do server (409 fora de HOLD).
   const eligibleDelete = eligibleRelease;
+  // Cancel = MATAR: só RUNNING (kill do processo no agente → NOTOK sem retry).
+  // Ordem WAITING não se "cancela" em massa — se resolve com Set OK/Skip.
   const eligibleCancel = selectedInstances
-    .filter((i) => i.status === "WAITING" || i.status === "HOLD")
+    .filter((i) => i.status === "RUNNING")
     .map((i) => i.id);
+  // Set OK: flip de NOTOK/CANCELLED ou dar um WAITING como OK na hora.
   const eligibleSetOk = selectedInstances
-    .filter((i) => i.status === "NOTOK" || i.status === "CANCELLED")
+    .filter((i) => i.status === "NOTOK" || i.status === "CANCELLED" || i.status === "WAITING")
     .map((i) => i.id);
   const eligibleRerun = selectedInstances
     .filter((i) => i.status === "OK" || i.status === "NOTOK" || i.status === "CANCELLED")

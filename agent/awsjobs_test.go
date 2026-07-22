@@ -7,6 +7,7 @@ package main
 // do poll (N rounds não-terminais antes do terminal).
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -331,7 +332,7 @@ func TestExecuteJob_DispatchesAWSExtras(t *testing.T) {
 	// Sem params obrigatórios cada executor devolve -1 com mensagem própria —
 	// o que interessa aqui é o dispatch reconhecer os jobTypes (e aliases).
 	for _, jt := range []string{"BATCH", "AWS_BATCH", "GLUE", "AWS_GLUE", "STEP_FUNCTION", "STEP_FUNCTIONS"} {
-		if _, out := executeJob(jt, map[string]interface{}{}, 1, nil); strings.Contains(out, "unsupported") {
+		if _, out := executeJob(context.Background(), jt, map[string]interface{}{}, 1, nil); strings.Contains(out, "unsupported") {
 			t.Fatalf("jobType %s não roteado: %s", jt, out)
 		}
 	}

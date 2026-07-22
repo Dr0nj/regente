@@ -43,6 +43,44 @@ const agentVersion = "0.1.0"
 
 var processStarted = time.Now()
 
+// runRegistry rastreia as execuções EM ANDAMENTO por instanceId para que um
+// frame "cancel" (chega pelo MESMO canal do dispatch) consiga ABORTAR o processo
+// em execução: cada dispatch registra a cancelFunc do seu context.Context; o
+// cancel a invoca e o exec.CommandContext derruba o processo. O resultado que o
+// runner devolver vira falha, mas o servidor já finalizou a instance como NOTOK
+// (o resultado tardio é ignorado lá). Compartilhado pelos 3 transportes.
+type runRegistry struct {
+	mu     sync.Mutex
+	cancel map[string]context.CancelFunc
+}
+
+var running = &runRegistry{cancel: map[string]context.CancelFunc{}}
+
+func (r *runRegistry) add(id string, c context.CancelFunc) {
+	if id == "" {
+		return
+	}
+	r.mu.Lock()
+	r.cancel[id] = c
+	r.mu.Unlock()
+}
+
+func (r *runRegistry) remove(id string) {
+	r.mu.Lock()
+	delete(r.cancel, id)
+	r.mu.Unlock()
+}
+
+// kill aborta a execução da instance (no-op se já terminou/nunca existiu).
+func (r *runRegistry) kill(id string) {
+	r.mu.Lock()
+	c := r.cancel[id]
+	r.mu.Unlock()
+	if c != nil {
+		c()
+	}
+}
+
 func main() {
 	var (
 		server    = flag.String("server", "ws://localhost:8080/ws/agent", "regente-server WebSocket URL")
@@ -171,6 +209,11 @@ func runAgent(wsURL string) error {
 			_ = send(map[string]string{"event": "pong", "pingId": job.PingID})
 			continue
 		}
+		// Cancel: o operador mandou matar um job RUNNING — aborta o processo.
+		if job.Event == "cancel" {
+			running.kill(job.InstanceID)
+			continue
+		}
 		if job.Event != "dispatch" {
 			continue
 		}
@@ -184,7 +227,12 @@ func runAgent(wsURL string) error {
 					"chunk":      chunk,
 				})
 			}
-			code, out := executeJob(job.JobType, job.Params, job.Timeout, emit)
+			// context cancelável registrado por instanceId: o frame "cancel"
+			// (running.kill) aborta o processo via exec.CommandContext.
+			ctx, cancel := context.WithCancel(context.Background())
+			running.add(job.InstanceID, cancel)
+			defer func() { running.remove(job.InstanceID); cancel() }()
+			code, out := executeJob(ctx, job.JobType, job.Params, job.Timeout, emit)
 			if err := send(map[string]interface{}{
 				"event":      "result",
 				"instanceId": job.InstanceID,
@@ -251,15 +299,15 @@ func runAgentHTTP(base, token, id, caps, env string, stop <-chan os.Signal) {
 		}
 		raw, _ := io.ReadAll(res.Body)
 		res.Body.Close()
-		handleDispatch(raw, post)
+		handleFrame(raw, post)
 	}
 }
 
-// handleDispatch decodifica um frame de dispatch (JSON de 1 linha, o mesmo em
-// todos os transportes HTTP) e executa o job numa goroutine, devolvendo
-// output/result pelos POSTs. Não-dispatch/JSON inválido = ignora. Compartilhado
-// entre o long-poll e o SSE.
-func handleDispatch(raw []byte, post func(path string, v interface{})) {
+// handleFrame decodifica um frame (JSON de 1 linha, o mesmo em todos os
+// transportes HTTP) e o processa: "cancel" aborta um job em andamento;
+// "dispatch" executa o job numa goroutine, devolvendo output/result pelos POSTs.
+// Outros eventos / JSON inválido = ignora. Compartilhado entre long-poll e SSE.
+func handleFrame(raw []byte, post func(path string, v interface{})) {
 	var job struct {
 		Event      string                 `json:"event"`
 		InstanceID string                 `json:"instanceId"`
@@ -267,7 +315,15 @@ func handleDispatch(raw []byte, post func(path string, v interface{})) {
 		Params     map[string]interface{} `json:"params"`
 		Timeout    int                    `json:"timeout"`
 	}
-	if err := json.Unmarshal(raw, &job); err != nil || job.Event != "dispatch" {
+	if err := json.Unmarshal(raw, &job); err != nil {
+		return
+	}
+	// Cancel: o operador mandou matar um job RUNNING — aborta o processo.
+	if job.Event == "cancel" {
+		running.kill(job.InstanceID)
+		return
+	}
+	if job.Event != "dispatch" {
 		return
 	}
 	log.Printf("dispatch instance=%s jobType=%s", job.InstanceID, job.JobType)
@@ -275,7 +331,12 @@ func handleDispatch(raw []byte, post func(path string, v interface{})) {
 		emit := func(chunk string) {
 			post("/api/agent/output", map[string]interface{}{"instanceId": job.InstanceID, "chunk": chunk})
 		}
-		code, out := executeJob(job.JobType, job.Params, job.Timeout, emit)
+		// context cancelável registrado por instanceId: o frame "cancel"
+		// (running.kill) aborta o processo via exec.CommandContext.
+		ctx, cancel := context.WithCancel(context.Background())
+		running.add(job.InstanceID, cancel)
+		defer func() { running.remove(job.InstanceID); cancel() }()
+		code, out := executeJob(ctx, job.JobType, job.Params, job.Timeout, emit)
 		post("/api/agent/result", map[string]interface{}{"instanceId": job.InstanceID, "exitCode": code, "output": out})
 		log.Printf("instance=%s done exitCode=%d", job.InstanceID, code)
 	}()
@@ -358,7 +419,7 @@ func runAgentSSE(base, token, id, caps, env string, stop <-chan os.Signal) {
 			line := sc.Text()
 			if line == "" { // fim do evento
 				if data.Len() > 0 {
-					handleDispatch([]byte(data.String()), post)
+					handleFrame([]byte(data.String()), post)
 					data.Reset()
 				}
 				continue
@@ -389,12 +450,12 @@ func sleepOrStop(stop <-chan os.Signal, d time.Duration) bool {
 	}
 }
 
-func executeJob(jobType string, params map[string]interface{}, timeoutSec int, emit func(string)) (int, string) {
+func executeJob(ctx context.Context, jobType string, params map[string]interface{}, timeoutSec int, emit func(string)) (int, string) {
 	switch strings.ToUpper(jobType) {
 	case "COMMAND":
-		return runCommand(params, timeoutSec, emit)
+		return runCommand(ctx, params, timeoutSec, emit)
 	case "SCRIPT":
-		return runScript(params, timeoutSec, emit)
+		return runScript(ctx, params, timeoutSec, emit)
 	case "HTTP", "REST":
 		return runREST(params, timeoutSec)
 	case "FILE_WATCH", "FILEWATCH":
@@ -441,7 +502,7 @@ func (w *streamWriter) Write(p []byte) (int, error) {
 // Params: scriptPath (obrigatório), args (string, opcional), cwd (opcional).
 // Resolve o interpretador pela extensão: .ps1→powershell, .bat/.cmd→cmd,
 // .sh→sh; senão executa o próprio arquivo.
-func runScript(params map[string]interface{}, timeoutSec int, emit func(string)) (int, string) {
+func runScript(ctx context.Context, params map[string]interface{}, timeoutSec int, emit func(string)) (int, string) {
 	path, _ := params["scriptPath"].(string)
 	if path == "" {
 		return -1, "missing 'scriptPath' param"
@@ -467,7 +528,15 @@ func runScript(params map[string]interface{}, timeoutSec int, emit func(string))
 	if args != "" {
 		argv = append(argv, strings.Fields(args)...)
 	}
-	cmd := exec.Command(name, argv...)
+	if timeoutSec <= 0 {
+		timeoutSec = 300
+	}
+	// O context derruba o processo por TIMEOUT ou por KILL do operador (o frame
+	// "cancel" → running.kill cancela o ctx pai): exec.CommandContext mata o
+	// processo quando o ctx fecha.
+	runCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(runCtx, name, argv...)
 	var buf bytes.Buffer
 	sw := &streamWriter{buf: &buf, emit: emit}
 	cmd.Stdout = sw
@@ -475,15 +544,6 @@ func runScript(params map[string]interface{}, timeoutSec int, emit func(string))
 	if cwd, ok := params["cwd"].(string); ok && cwd != "" {
 		cmd.Dir = cwd
 	}
-	if timeoutSec <= 0 {
-		timeoutSec = 300
-	}
-	timer := time.AfterFunc(time.Duration(timeoutSec)*time.Second, func() {
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-	})
-	defer timer.Stop()
 	err := cmd.Run()
 	code := 0
 	if err != nil {
@@ -499,7 +559,7 @@ func runScript(params map[string]interface{}, timeoutSec int, emit func(string))
 
 // runCommand — executa um comando shell no OS do agent.
 // Params: command (string, obrigatório), cwd (string, opcional).
-func runCommand(params map[string]interface{}, timeoutSec int, emit func(string)) (int, string) {
+func runCommand(ctx context.Context, params map[string]interface{}, timeoutSec int, emit func(string)) (int, string) {
 	cmdStr, _ := params["command"].(string)
 	if cmdStr == "" {
 		return -1, "missing 'command' param"
@@ -510,7 +570,14 @@ func runCommand(params map[string]interface{}, timeoutSec int, emit func(string)
 	} else {
 		shell, flagArg = "sh", "-c"
 	}
-	cmd := exec.Command(shell, flagArg, cmdStr)
+	if timeoutSec <= 0 {
+		timeoutSec = 300
+	}
+	// context derruba o processo por TIMEOUT ou por KILL do operador (frame
+	// "cancel" → running.kill cancela o ctx pai).
+	runCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(runCtx, shell, flagArg, cmdStr)
 	var buf bytes.Buffer
 	sw := &streamWriter{buf: &buf, emit: emit}
 	cmd.Stdout = sw
@@ -518,15 +585,6 @@ func runCommand(params map[string]interface{}, timeoutSec int, emit func(string)
 	if cwd, ok := params["cwd"].(string); ok && cwd != "" {
 		cmd.Dir = cwd
 	}
-	if timeoutSec <= 0 {
-		timeoutSec = 300
-	}
-	timer := time.AfterFunc(time.Duration(timeoutSec)*time.Second, func() {
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-	})
-	defer timer.Stop()
 	err := cmd.Run()
 	code := 0
 	if err != nil {

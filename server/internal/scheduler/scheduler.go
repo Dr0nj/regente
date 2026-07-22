@@ -1442,6 +1442,16 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 
 // FinishInstance — chamado pelo ws handler quando o agent publica "result".
 func (s *Scheduler) FinishInstance(id string, status domain.InstanceStatus, exitCode int, output string) {
+	// Guard idempotente: um resultado TARDIO/duplicado para uma instance que já
+	// é TERMINAL é ignorado. É o que blinda o cancel de um job RUNNING — o
+	// operador mata o processo, a instance vira NOTOK na hora (finishKilled), e o
+	// resultado que o agente ainda mande depois NÃO re-escreve o status nem
+	// re-arma o retry. Vale também para o chaos que derruba um RUNNING. Sem isso
+	// o UPDATE terminal abaixo é incondicional e o resultado atrasado
+	// ressuscitaria o job.
+	if s.isInstanceTerminal(id) {
+		return
+	}
 	// CTM-1 — %%SETLOCAL: aplicado ANTES do retry (diferente do %%SET global,
 	// que é terminal-only): a próxima tentativa da MESMA instance já lê o estado.
 	s.applyLocalSetVarDirectives(id, output)
@@ -1759,6 +1769,104 @@ func (s *Scheduler) SetOK(id string) error {
 		"id": id, "status": string(domain.StatusOK), "setOk": true,
 	})
 	return nil
+}
+
+// isInstanceTerminal — a instance já chegou a um status terminal? Guard
+// idempotente do FinishInstance (resultado tardio/duplicado) e do cancel.
+func (s *Scheduler) isInstanceTerminal(id string) bool {
+	var st string
+	if err := s.db.QueryRow(`SELECT status FROM instances WHERE id=?`, id).Scan(&st); err != nil {
+		return false
+	}
+	switch st {
+	case string(domain.StatusOK), string(domain.StatusNotOK),
+		string(domain.StatusCancelled), string(domain.StatusSLABreach):
+		return true
+	}
+	return false
+}
+
+// Cancel — cancelamento pelo OPERADOR. A ação depende do status ATUAL:
+//
+//	RUNNING → o job está executando no agente. Manda o sinal "cancel" pelo MESMO
+//	          canal de dispatch (o agente aborta o processo em execução) e
+//	          finaliza a instance como NOTOK (exit -1) SEM retry — foi um kill
+//	          manual, não uma falha orgânica; alertas e On-Do (result NOTOK)
+//	          disparam. O resultado que o agente ainda mande é ignorado (guard
+//	          terminal do FinishInstance).
+//	WAITING/HELD → ordem que ainda não rodou: marca CANCELLED (nada a matar). É o
+//	          cancel "clássico", também usado pelo Skip e pelo bulk.
+//
+// Devolve o status resultante. Erro se a instance sumiu ou já é terminal.
+func (s *Scheduler) Cancel(id string) (domain.InstanceStatus, error) {
+	var status, agentID string
+	if err := s.db.QueryRow(`SELECT status, COALESCE(agent_id,'') FROM instances WHERE id=?`, id).Scan(&status, &agentID); err != nil {
+		return "", fmt.Errorf("instance %s not found", id)
+	}
+	switch status {
+	case string(domain.StatusRunning):
+		s.signalCancel(agentID, id)
+		s.finishKilled(id)
+		return domain.StatusNotOK, nil
+	case string(domain.StatusWaiting), string(domain.StatusHeld):
+		return s.cancelPending(id)
+	default:
+		return "", fmt.Errorf("instance %s is %s; só RUNNING/WAITING/HELD podem ser cancelados", id, status)
+	}
+}
+
+// signalCancel manda o frame de kill ao agente que roda a instance (best-effort:
+// mesmo canal do dispatch; agente offline → não entrega, e o finishKilled marca
+// terminal de qualquer forma). O agente casa pelo instanceId.
+func (s *Scheduler) signalCancel(agentID, id string) {
+	raw, _ := json.Marshal(map[string]string{"event": "cancel", "instanceId": id})
+	s.hub.Dispatch(agentID, "", "", raw)
+}
+
+// finishKilled finaliza como NOTOK um RUNNING que o operador mandou matar:
+// terminal SEM retry, libera recursos (F15), e dispara alertas + On-Do (result
+// NOTOK). O UPDATE é guardado por status=RUNNING para não competir com um
+// término real que tenha corrido junto.
+func (s *Scheduler) finishKilled(id string) {
+	const out = "(cancelled by operator — process killed)"
+	res, err := s.db.Exec(
+		`UPDATE instances SET status=?, exit_code=-1, output=?, finished_at=CURRENT_TIMESTAMP WHERE id=? AND status=?`,
+		string(domain.StatusNotOK), out, id, string(domain.StatusRunning))
+	if err != nil {
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return // já saiu de RUNNING (término real correu junto) — nada a fazer
+	}
+	if s.resources != nil {
+		s.resources.Release(id)
+	}
+	s.resetOutputBudget(id)
+	s.emitEvent(id, "cancelled", "operator", "killed while RUNNING — NOTOK sem retry")
+	s.hub.BroadcastWeb("instance.changed", map[string]interface{}{
+		"id": id, "status": string(domain.StatusNotOK), "exitCode": -1, "killed": true,
+	})
+	// Falha terminal aos olhos de alertas/On-Do (mas SEM retry — foi kill manual).
+	if s.alerts != nil {
+		s.alerts.Evaluate(s.buildAlertContext(id, domain.StatusNotOK))
+	}
+	if def, orderDate, _, ok := s.instanceContext(id); ok && len(def.Actions) > 0 {
+		s.applyActions(id, orderDate, def, actionEvent{kind: "result", status: domain.StatusNotOK})
+	}
+}
+
+// cancelPending marca CANCELLED uma ordem que ainda não rodou (WAITING/HELD).
+// Modelo único de condições: não toca o pool (um WAITING cancelado nunca aplicou
+// saídas; um HELD idem).
+func (s *Scheduler) cancelPending(id string) (domain.InstanceStatus, error) {
+	if _, err := s.db.Exec(
+		`UPDATE instances SET status=?, held_from_status='', finished_at=CURRENT_TIMESTAMP WHERE id=?`,
+		string(domain.StatusCancelled), id); err != nil {
+		return "", err
+	}
+	s.emitEvent(id, "cancelled", "operator", "manual cancel")
+	s.hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusCancelled)})
+	return domain.StatusCancelled, nil
 }
 
 // applyConditionsOut — aplica as SAÍDAS de condição de uma instance que

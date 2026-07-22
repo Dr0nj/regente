@@ -15,6 +15,7 @@
 package serveragent
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,6 +25,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Dr0nj/regente-server/internal/db"
@@ -33,6 +35,38 @@ import (
 
 // ID — nome fixo do agente embutido (visível na tela de Agentes e no pin do Design).
 const ID = "SERVER-AGENT"
+
+// runRegistry — mesmas semânticas do regente-agent: rastreia as execuções em
+// andamento por instanceId para que um frame "cancel" aborte o HTTP em voo
+// (ctx). O resultado tardio é ignorado pelo guard terminal do FinishInstance.
+type runRegistry struct {
+	mu     sync.Mutex
+	cancel map[string]context.CancelFunc
+}
+
+func (r *runRegistry) add(id string, c context.CancelFunc) {
+	if id == "" {
+		return
+	}
+	r.mu.Lock()
+	r.cancel[id] = c
+	r.mu.Unlock()
+}
+
+func (r *runRegistry) remove(id string) {
+	r.mu.Lock()
+	delete(r.cancel, id)
+	r.mu.Unlock()
+}
+
+func (r *runRegistry) kill(id string) {
+	r.mu.Lock()
+	c := r.cancel[id]
+	r.mu.Unlock()
+	if c != nil {
+		c()
+	}
+}
 
 // Finisher — devolve o resultado ao scheduler (mesmo papel do ws handler).
 type Finisher func(instanceID string, status domain.InstanceStatus, exitCode int, output string)
@@ -63,10 +97,19 @@ func Start(h *hub.Hub, database *db.DB, finish Finisher) *hub.Client {
 	}
 	h.Register(c)
 	upsertAgentRow(database, c)
+	reg := &runRegistry{cancel: map[string]context.CancelFunc{}}
 	go func() {
 		for raw := range c.Send {
 			var msg dispatchMsg
-			if err := json.Unmarshal(raw, &msg); err != nil || msg.Event != "dispatch" || msg.InstanceID == "" {
+			if err := json.Unmarshal(raw, &msg); err != nil || msg.InstanceID == "" {
+				continue
+			}
+			// Cancel: o operador mandou matar o job — aborta o HTTP em voo.
+			if msg.Event == "cancel" {
+				reg.kill(msg.InstanceID)
+				continue
+			}
+			if msg.Event != "dispatch" {
 				continue
 			}
 			go func(m dispatchMsg) {
@@ -77,7 +120,10 @@ func Start(h *hub.Hub, database *db.DB, finish Finisher) *hub.Client {
 					}
 				}()
 				h.Touch(ID)
-				code, out := runHTTP(m.Params, m.Timeout)
+				ctx, cancel := context.WithCancel(context.Background())
+				reg.add(m.InstanceID, cancel)
+				defer func() { reg.remove(m.InstanceID); cancel() }()
+				code, out := runHTTP(ctx, m.Params, m.Timeout)
 				st := domain.StatusOK
 				if code != 0 {
 					st = domain.StatusNotOK
@@ -120,7 +166,7 @@ func upsertAgentRow(database *db.DB, c *hub.Client) {
 // runHTTP — espelho fiel do runREST do regente-agent (method/url/headers/body/
 // expectStatus, inclusive o expectStatus escalar/CSV/lista do schema ADV-1),
 // para o job HTTP se comportar IGUAL rodando no agente externo ou no embutido.
-func runHTTP(params map[string]interface{}, timeoutSec int) (int, string) {
+func runHTTP(ctx context.Context, params map[string]interface{}, timeoutSec int) (int, string) {
 	method, _ := params["method"].(string)
 	if method == "" {
 		method = "GET"
@@ -137,7 +183,8 @@ func runHTTP(params map[string]interface{}, timeoutSec int) (int, string) {
 		timeoutSec = 60
 	}
 	client := &http.Client{Timeout: time.Duration(timeoutSec) * time.Second}
-	req, err := http.NewRequest(strings.ToUpper(method), urlStr, body)
+	// ctx cancelável: o frame "cancel" (reg.kill) aborta a requisição em voo.
+	req, err := http.NewRequestWithContext(ctx, strings.ToUpper(method), urlStr, body)
 	if err != nil {
 		return -1, err.Error()
 	}

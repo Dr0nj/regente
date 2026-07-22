@@ -91,7 +91,6 @@ import {
   instanceToMonitoring,
   buildMonitoringCanvas,
   buildDesignCanvas,
-  isWaitingOnConds,
   type AgentAvailability,
   type Canvas,
   type LayoutConfig,
@@ -1093,9 +1092,7 @@ function V2PreviewInner() {
       const items: ContextMenuItem[] = [];
 
       // Estados derivados do PRÓPRIO card (canvas-layout): mesma régua visual.
-      const nd = node.data as { waitEvent?: boolean };
       const confirmGate = !inst.confirmed && !!def?.confirm;
-      const waitEvent = !!nd.waitEvent;
 
       // BUG-5 — job parado no gate CONFIRM (card violeta): as ÚNICAS ações são
       // Confirm e Hold. Sem Run Now (a confirmação não é bypassável) e sem
@@ -1163,14 +1160,15 @@ function V2PreviewInner() {
           },
         });
       }
-      // BUG-3 — WAIT EVENT: sem Cancel (a espera se resolve, não se cancela);
-      // o Set OK abaixo conclui OK na hora, sem esperar o evento chegar.
-      if ((status === "WAITING" || status === "HOLD") && !waitEvent) {
+      // Cancel = MATAR um job RUNNING: kill do processo no agente + finaliza
+      // NOTOK sem retry. Só RUNNING — job WAITING se resolve com Set OK/Skip.
+      if (status === "RUNNING") {
         items.push({ label: "Cancel", tone: "danger", onClick: () => { void cancelInstance(inst.id); } });
       }
 
-      // Set OK: NOTOK/CANCELLED (flip clássico) ou WAITING em WAIT EVENT (BUG-3).
-      if (status === "NOTOK" || status === "CANCELLED" || (status === "WAITING" && waitEvent)) {
+      // Set OK: flip clássico de NOTOK/CANCELLED ou dar um WAITING como OK na hora
+      // (sem esperar horário/condição). Confirm gate já tratado acima (return).
+      if (status === "NOTOK" || status === "CANCELLED" || status === "WAITING") {
         items.push({ label: "Set OK", tone: "primary", onClick: () => { void bypassInstance(inst.id); } });
       }
 
@@ -1833,15 +1831,12 @@ function V2PreviewInner() {
             label: selectedInstance.label || selDef.label,
             jobType: selectedInstance.jobType || selDef.jobType,
           } : selectedInstance;
-          // WAIT COND (BUG-3) — mesma régua do card (pool de condições):
-          // decide as ações do drawer (Cancel some, Set OK aparece).
           return (
             <Suspense fallback={null}>
               <InstanceDetailsDrawer
                 instance={enriched}
                 definition={selDef}
                 allDefs={runnableDefs}
-                waitEvent={isWaitingOnConds(enriched, selDef, condPool)}
                 handlers={{
                   onHold: holdInstance,
                   onRelease: releaseInstance,

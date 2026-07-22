@@ -43,7 +43,9 @@ mas **este README reúne tudo** — é o compilado completo da plataforma.
 Dois mundos separados, estilo Control-M:
 
 - **Monitoring** — o que está rodando hoje. Resultado da *Daily*. Só consumo:
-  hold (qualquer status, com release restaurando o original) / release / cancel / set-ok / rerun / delete (em hold) / force order, audit por instance, SLA.
+  hold (qualquer status, com release restaurando o original) / release / **cancel = kill de um job RUNNING**
+  (aborta o processo no agente → NOTOK sem retry) / set-ok (inclusive dar um WAITING por OK na hora) / rerun /
+  delete (em hold) / force order, audit por instance, SLA.
   É um **snapshot imutável**: a folder de cada instância é congelada quando a daily
   foi schedulada — apagar ou mover o job no Design não reescreve a daily corrente.
 - **Design** — onde as definitions são editadas. Pelo botão **FOLDERS** você cria,

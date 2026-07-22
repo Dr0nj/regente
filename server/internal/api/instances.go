@@ -32,10 +32,10 @@ type instanceRow struct {
 	// vs "order" = "Order Force" (ordem NOVA colocada na mão pelo operador →
 	// selo 🖐 MANUAL no card). O front usa isto pra distinguir os dois: `forced`
 	// sozinho não diferencia, e um Run Now numa daily não deve ganhar tag.
-	ForceMode    string     `json:"forceMode,omitempty"`
-	CarriedFrom  string     `json:"carriedFrom,omitempty"` // ciclo de vida da daily: dia de origem se foi carregada da diária anterior.
-	Confirmed    bool       `json:"confirmed,omitempty"`   // Control-M Confirm: operador liberou (job confirm:true).
-	CycleRuns    int        `json:"cycleRuns,omitempty"`   // cyclic runtime: voltas OK completadas no dia.
+	ForceMode   string `json:"forceMode,omitempty"`
+	CarriedFrom string `json:"carriedFrom,omitempty"` // ciclo de vida da daily: dia de origem se foi carregada da diária anterior.
+	Confirmed   bool   `json:"confirmed,omitempty"`   // Control-M Confirm: operador liberou (job confirm:true).
+	CycleRuns   int    `json:"cycleRuns,omitempty"`   // cyclic runtime: voltas OK completadas no dia.
 	// DryRun CONGELADO na ordem (coluna dry_run, ver schemaV9). É a fonte da flag
 	// "job roda sem fazer nada" (selo 👻GHOST) no Monitoring — deliberadamente NÃO
 	// derivada da definition viva, senão ligar dryRun no Design reescreveria cards
@@ -123,7 +123,7 @@ func scanInstances(rows *sql.Rows) ([]instanceRow, error) {
 	return out, rows.Err()
 }
 
-// decodeConds — coluna conds_* ('' ou JSON array de strings) → slice ([] = nil,
+// decodeConds — coluna conds_* (” ou JSON array de strings) → slice ([] = nil,
 // o omitempty do JSON esconde). Conteúdo inválido é tratado como vazio.
 func decodeConds(raw string) []string {
 	if raw == "" {
@@ -136,7 +136,7 @@ func decodeConds(raw string) []string {
 	return list
 }
 
-// decodeResources — coluna resources ('' ou JSON {nome:qtd}) → mapa (nil quando
+// decodeResources — coluna resources (” ou JSON {nome:qtd}) → mapa (nil quando
 // vazio; o omitempty do JSON esconde). Conteúdo inválido é tratado como vazio.
 func decodeResources(raw string) map[string]int {
 	if raw == "" {
@@ -149,7 +149,7 @@ func decodeResources(raw string) map[string]int {
 	return m
 }
 
-// decodeCondLogic — coluna cond_logic ('' ou JSON do domain.ConditionLogic) →
+// decodeCondLogic — coluna cond_logic (” ou JSON do domain.ConditionLogic) →
 // *ConditionLogic (nil quando vazio/sem grupos; o omitempty esconde). Entrada das
 // linhas OR do grafo (CL-4). Conteúdo inválido é tratado como sem lógica.
 func decodeCondLogic(raw string) *domain.ConditionLogic {
@@ -552,7 +552,7 @@ func (s *server) holdInstance(w http.ResponseWriter, r *http.Request) {
 }
 
 // releaseSQL — Release/Resume restauram o status congelado pelo hold
-// (held_from_status, schemaV16); '' = hold legado (pré-migração), cai em
+// (held_from_status, schemaV16); ” = hold legado (pré-migração), cai em
 // WAITING como sempre foi. Compartilhado pelo release individual, bulk e
 // resume de folder — os três só divergem no WHERE (escopo).
 const releaseSQL = `UPDATE instances
@@ -637,23 +637,21 @@ func (s *server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"id": id, "status": "deleted"})
 }
 
+// cancelInstance — POST /instances/{id}/cancel. O que "cancelar" faz depende do
+// status (ver Scheduler.Cancel): RUNNING é MORTO (sinal de kill ao agente aborta
+// o processo) e finaliza NOTOK sem retry; WAITING/HELD viram CANCELLED. O Skip e
+// o bulk-cancel também caem aqui.
 func (s *server) cancelInstance(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
-	// Modelo único de condições: cancel NÃO toca o pool. Um WAITING cancelado
-	// nunca aplicou saídas (a condição de entrada segue lá pra um clone/rerun);
-	// um OK cancelado já consumiu (as OutRemove rodaram no término — história).
-	_, err := s.cfg.DB.Exec(`UPDATE instances SET status=?, held_from_status='', finished_at=CURRENT_TIMESTAMP WHERE id=?`,
-		string(domain.StatusCancelled), id)
+	status, err := s.cfg.Scheduler.Cancel(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	s.cfg.Scheduler.EmitEvent(id, "cancelled", "operator", "manual cancel")
-	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusCancelled)})
-	writeJSON(w, 200, map[string]string{"id": id, "status": string(domain.StatusCancelled)})
+	writeJSON(w, 200, map[string]string{"id": id, "status": string(status)})
 }
 
 // confirmInstance — Control-M "Confirm": libera um job definido com

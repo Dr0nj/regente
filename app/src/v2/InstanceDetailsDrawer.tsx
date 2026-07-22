@@ -129,7 +129,6 @@ export default function InstanceDetailsDrawer({
   definition,
   allDefs = [],
   handlers,
-  waitEvent = false,
 }: {
   instance: JobInstance;
   /** Definition de desenho correspondente (para Schedule/Dependencies/Description). */
@@ -137,9 +136,6 @@ export default function InstanceDetailsDrawer({
   /** Todas as defs do escopo — para calcular downstream (triggers) sem fetch. */
   allDefs?: JobDefinition[];
   handlers: InstanceActionHandlers;
-  /** WAIT EVENT (BUG-3): WAITING com dependência não satisfeita — mesma régua
-   *  do card (isWaitingOnDeps). Troca o Cancel por Set OK nas ações. */
-  waitEvent?: boolean;
 }) {
   const status = instance.status;
   const color = STATUS_COLOR[status];
@@ -222,15 +218,19 @@ export default function InstanceDetailsDrawer({
       },
       tone: "danger" as const, show: status === "HOLD",
       title: "Remove a ordem da tela e do dia (a definition no Design não é tocada)" },
-    // BUG-3 — WAIT EVENT não exibe Cancel (a espera se resolve — Set OK abaixo);
-    // BUG-5 — CONFIRM só exibe Hold/Confirm.
+    // Cancel = MATAR um job RUNNING: manda o kill ao agente (aborta o processo)
+    // e finaliza NOTOK sem retry. Um job WAITING não "cancela" — se resolve
+    // (Set OK/Skip); daí Cancel é exclusivo de RUNNING.
     { label: "Cancel",  onClick: () => handlers.onCancel(instance.id),  tone: "danger"  as const,
-      show: (status === "WAITING" || status === "HOLD") && !waitEvent && !waitConfirm },
+      show: status === "RUNNING",
+      title: "Mata o processo em execução no agente e finaliza o job com erro (NOTOK)" },
     { label: "Skip",    onClick: () => handlers.onSkip(instance.id),    tone: "neutral" as const,
       show: (status === "WAITING" || status === "HOLD") && !waitConfirm },
-    // BUG-3 — Set OK também em WAIT EVENT: conclui OK na hora, sem esperar o evento.
+    // Set OK direto na espera: um job WAITING pode ser dado como OK na hora (sem
+    // esperar horário/condição), além do flip clássico de NOTOK/CANCELLED. O gate
+    // CONFIRM (card violeta) é a exceção — lá só Hold/Confirm.
     { label: "Set OK", onClick: () => handlers.onBypass(instance.id), tone: "primary" as const,
-      show: status === "NOTOK" || status === "CANCELLED" || (status === "WAITING" && waitEvent && !waitConfirm) },
+      show: status === "NOTOK" || status === "CANCELLED" || (status === "WAITING" && !waitConfirm) },
     { label: "Rerun",   onClick: () => handlers.onRerun(instance.id),   tone: "primary" as const, show: status === "NOTOK" },
     { label: "💥 Chaos", onClick: chaosInject, tone: "danger" as const,
       show: isServerMode() && !waitConfirm && (status === "WAITING" || status === "RUNNING" || status === "HOLD") },
