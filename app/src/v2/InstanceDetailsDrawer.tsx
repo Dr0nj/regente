@@ -454,9 +454,15 @@ function GeneralTab({ instance, definition, jobType, actionConfig }: {
   // BUG-7 — em qual AGENTE o job executa: o executor REAL da instance (server
   // grava agent_id no dispatch) vence; sem execução ainda, mostra o pin da def
   // ou "auto" (o server escolhe por capability na hora do dispatch).
+  // O pin no Monitoring (imutável) vem do snapshot como instance.pinnedAgent —
+  // o server o expõe assim (e como snapshotDef.agentId), NÃO em
+  // actionConfig._agentId (esse é o local do modelo de Design/def viva). Ler só
+  // este último fazia todo job pinado aparecer como "auto" na aba General mesmo
+  // com o scheduler roteando pro agente certo (o log mostra o pin correto).
   const execAgent = (instance.output as { agentId?: string } | undefined)?.agentId;
-  const pinnedAgent = typeof definition?.actionConfig?._agentId === "string"
-    ? (definition.actionConfig._agentId as string) : "";
+  const pinnedAgent = instance.pinnedAgent
+    || (typeof definition?.actionConfig?._agentId === "string"
+      ? (definition.actionConfig._agentId as string) : "");
   const agentValue = execAgent || pinnedAgent || "auto";
   const agentHint = execAgent ? undefined
     : pinnedAgent ? "pinned — runs only on this agent"
