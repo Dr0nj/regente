@@ -1496,11 +1496,13 @@ func (s *Scheduler) FinishInstance(id string, status domain.InstanceStatus, exit
 	if s.alerts != nil && (status == domain.StatusOK || status == domain.StatusNotOK) {
 		s.alerts.Evaluate(s.buildAlertContext(id, status))
 	}
-	// Actions/On-Do — dimensão "result" (terminal): OK ou NOTOK com retries
-	// esgotados. Lê a def CONGELADA da instance (snapshot do momento da ordem).
+	// Actions/On-Do — dimensões terminais (retries esgotados neste ponto): "result"
+	// (OK|NOTOK) e "exit" (o código de saída em si — Control-M COMPSTAT). Lê a def
+	// CONGELADA da instance (snapshot do momento da ordem).
 	if status == domain.StatusOK || status == domain.StatusNotOK {
 		if def, orderDate, _, ok := s.instanceContext(id); ok && len(def.Actions) > 0 {
 			s.applyActions(id, orderDate, def, actionEvent{kind: "result", status: status})
+			s.applyActions(id, orderDate, def, actionEvent{kind: "exit", exitCode: exitCode})
 		}
 	}
 	// SET de variável em runtime (Control-M ctmvar): o job ATRIBUI variáveis
@@ -1852,6 +1854,8 @@ func (s *Scheduler) finishKilled(id string) {
 	}
 	if def, orderDate, _, ok := s.instanceContext(id); ok && len(def.Actions) > 0 {
 		s.applyActions(id, orderDate, def, actionEvent{kind: "result", status: domain.StatusNotOK})
+		// O kill grava exit_code=-1 — uma regra on:exit com "-1" pega o cancelamento.
+		s.applyActions(id, orderDate, def, actionEvent{kind: "exit", exitCode: -1})
 	}
 }
 

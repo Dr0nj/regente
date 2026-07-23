@@ -81,6 +81,14 @@ func TestActionMatches(t *testing.T) {
 			actionEvent{kind: "runtime", runMin: 29}, false},
 		{"case-insensitive On/Status", domain.ActionRule{On: "Result", Status: "notok"},
 			actionEvent{kind: "result", status: domain.StatusNotOK}, true},
+		{"exit na lista casa", domain.ActionRule{On: "exit", ExitCodes: "1,2,3"},
+			actionEvent{kind: "exit", exitCode: 2}, true},
+		{"exit fora da lista não casa", domain.ActionRule{On: "exit", ExitCodes: "1,2,3"},
+			actionEvent{kind: "exit", exitCode: 4}, false},
+		{"exit sem espec nunca casa", domain.ActionRule{On: "exit"},
+			actionEvent{kind: "exit", exitCode: 0}, false},
+		{"exit não casa com evento de outra dimensão", domain.ActionRule{On: "exit", ExitCodes: "1"},
+			actionEvent{kind: "result", status: domain.StatusNotOK}, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -88,6 +96,78 @@ func TestActionMatches(t *testing.T) {
 				t.Fatalf("actionMatches=%v, want %v", got, c.want)
 			}
 		})
+	}
+}
+
+// TestMatchExitSpec — a gramática da espec de exit codes (decisor puro).
+func TestMatchExitSpec(t *testing.T) {
+	cases := []struct {
+		spec string
+		code int
+		want bool
+	}{
+		{"1,2,3", 1, true}, {"1,2,3", 3, true}, {"1,2,3", 0, false}, {"1,2,3", 4, false},
+		{" 1 , 2 ", 2, true}, // espaços ao redor dos tokens
+		{"0", 0, true}, {"0", 1, false},
+		{"1-4", 1, true}, {"1-4", 4, true}, {"1-4", 5, false}, {"1-4", 0, false},
+		{"-1", -1, true}, {"-1", 1, false}, // KILL do Cancel
+		{"-3--1", -2, true}, {"-3--1", 0, false}, // faixa de negativos
+		{">0", 1, true}, {">0", 0, false},
+		{">=8", 8, true}, {">=8", 7, false},
+		{"<0", -1, true}, {"<0", 0, false},
+		{"<=2", 2, true}, {"<=2", 3, false},
+		{"!=0", 5, true}, {"!=0", 0, false},
+		{"1,>=10", 12, true}, {"1,>=10", 5, false}, // mistura de formas (OR)
+		{"", 0, false}, {"   ", 0, false}, // espec vazia é inerte
+		{"abc", 0, false}, {">x", 1, false}, {"1-x", 1, false}, // lixo não dispara
+	}
+	for _, c := range cases {
+		if got := matchExitSpec(c.spec, c.code); got != c.want {
+			t.Errorf("matchExitSpec(%q, %d)=%v, want %v", c.spec, c.code, got, c.want)
+		}
+	}
+}
+
+// TestAction_ExitCodeSetOK — o caso de uso do gatilho: exit 1/2/3 são "sucesso
+// com ressalva" do job, e a regra vira o NOTOK derivado do código em OK.
+func TestAction_ExitCodeSetOK(t *testing.T) {
+	s := schedWithEngines(t)
+	def := domain.JobDefinition{ID: "j", Label: "Job J", JobType: "COMMAND", Actions: []domain.ActionRule{
+		{On: "exit", ExitCodes: "1,2,3", Do: "set-ok"},
+	}}
+	now := time.Now()
+	seedAc(t, s, "j-warn", domain.StatusRunning, 1, &now, def)
+	s.FinishInstance("j-warn", domain.StatusNotOK, 2, "warning")
+	if got := instStatus(t, s, "j-warn"); got != string(domain.StatusOK) {
+		t.Fatalf("exit 2 na lista deveria virar OK, veio %s", got)
+	}
+
+	// Código fora da lista continua NOTOK.
+	seedAc(t, s, "j-fail", domain.StatusRunning, 1, &now, def)
+	s.FinishInstance("j-fail", domain.StatusNotOK, 9, "boom")
+	if got := instStatus(t, s, "j-fail"); got != string(domain.StatusNotOK) {
+		t.Fatalf("exit 9 fora da lista deveria seguir NOTOK, veio %s", got)
+	}
+}
+
+// TestAction_ExitCodeNotify — gatilho exit convive com o gatilho result na mesma
+// def (dimensões independentes: o mesmo término avalia as duas).
+func TestAction_ExitCodeNotify(t *testing.T) {
+	s := schedWithEngines(t)
+	def := domain.JobDefinition{ID: "j", Label: "Job J", JobType: "COMMAND", Actions: []domain.ActionRule{
+		{On: "result", Status: "NOTOK", Do: "notify", Severity: "warning"},
+		{On: "exit", ExitCodes: ">=8", Do: "notify", Severity: "critical", Message: "exit grave"},
+	}}
+	now := time.Now()
+	seedAc(t, s, "j-8", domain.StatusRunning, 1, &now, def)
+	s.FinishInstance("j-8", domain.StatusNotOK, 8, "boom")
+	if got := alertCount(t, s); got != 2 {
+		t.Fatalf("esperava 2 alertas (result + exit), veio %d", got)
+	}
+	// Idempotência: re-finish não dispara nenhuma das duas de novo.
+	s.FinishInstance("j-8", domain.StatusNotOK, 8, "boom")
+	if got := alertCount(t, s); got != 2 {
+		t.Fatalf("regras deveriam ser idempotentes (2), veio %d", got)
 	}
 }
 

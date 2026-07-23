@@ -99,6 +99,9 @@ export default function MassUpdateDialog({
   const [varVal, setVarVal] = useState("");
   const [actOn, setActOn] = useState("result");
   const [actStatus, setActStatus] = useState("NOTOK");
+  const [actExitCodes, setActExitCodes] = useState("");
+  const [actAttempt, setActAttempt] = useState("1");
+  const [actAfterMin, setActAfterMin] = useState("30");
   const [actDo, setActDo] = useState("notify");
   const [actMsg, setActMsg] = useState("");
   const [actSeverity, setActSeverity] = useState("warning");
@@ -140,7 +143,11 @@ export default function MassUpdateDialog({
           op,
           action: {
             on: actOn,
+            // Qualificador do gatilho: sem ele a regra nasce inerte (nunca casa).
             ...(actOn === "result" ? { status: actStatus } : {}),
+            ...(actOn === "exit" ? { exitCodes: actExitCodes } : {}),
+            ...(actOn === "attempt" ? { attempt: Number(actAttempt) || 1 } : {}),
+            ...(actOn === "runtime" ? { afterMin: Number(actAfterMin) || 1 } : {}),
             do: actDo,
             ...(actDo === "notify" ? { message: actMsg, severity: actSeverity } : {}),
             ...(actDo === "run-job" ? { targetJob: actTarget } : {}),
@@ -162,7 +169,8 @@ export default function MassUpdateDialog({
         return { op, key: varKey };
     }
   }, [op, opField, opValue, onlyIfEmpty, find, replace, upFrom, upCond, varKey, varVal,
-      actOn, actStatus, actDo, actMsg, actSeverity, actTarget, actCondition]);
+      actOn, actStatus, actExitCodes, actAttempt, actAfterMin, actDo, actMsg, actSeverity,
+      actTarget, actCondition]);
 
   const run = useCallback(async (apply: boolean) => {
     setBusy(true);
@@ -335,6 +343,7 @@ export default function MassUpdateDialog({
                   <Field label="On">
                     <select style={inputStyle} value={actOn} onChange={(e) => setActOn(e.target.value)}>
                       <option value="result">result</option>
+                      <option value="exit">exit</option>
                       <option value="attempt">attempt</option>
                       <option value="runtime">runtime</option>
                     </select>
@@ -345,6 +354,24 @@ export default function MassUpdateDialog({
                         <option value="NOTOK">NOTOK</option>
                         <option value="OK">OK</option>
                       </select>
+                    </Field>
+                  )}
+                  {actOn === "exit" && (
+                    <Field label="Exit codes" grow>
+                      <input style={{ ...inputStyle, width: "100%" }} placeholder="1,2,3 · 1-4 · >0"
+                        value={actExitCodes} onChange={(e) => setActExitCodes(e.target.value)} />
+                    </Field>
+                  )}
+                  {actOn === "attempt" && (
+                    <Field label="Tentativa nº">
+                      <input style={inputStyle} type="number" min={1} value={actAttempt}
+                        onChange={(e) => setActAttempt(e.target.value)} />
+                    </Field>
+                  )}
+                  {actOn === "runtime" && (
+                    <Field label="Após (min)">
+                      <input style={inputStyle} type="number" min={1} value={actAfterMin}
+                        onChange={(e) => setActAfterMin(e.target.value)} />
                     </Field>
                   )}
                   <Field label="Do">

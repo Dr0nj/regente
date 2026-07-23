@@ -6,6 +6,7 @@
  *
  *  Gatilho (on):
  *    result  → status terminal (OK|NOTOK), após esgotar retries
+ *    exit    → o exit code terminal casa com a espec ("1,2,3" · "1-4" · ">0")
  *    attempt → a N-ésima tentativa FALHOU
  *    runtime → RUNNING há mais que N minutos
  *  Ação (do):
@@ -22,6 +23,7 @@ import type { ActionRule, JobDefinition } from "@/lib/orchestrator-model";
 
 const ON_OPTS: Array<{ id: ActionRule["on"]; label: string }> = [
   { id: "result", label: "Terminar (OK/NOTOK)" },
+  { id: "exit", label: "Terminar com exit code X" },
   { id: "attempt", label: "Falhar na tentativa N" },
   { id: "runtime", label: "Rodar mais que N min" },
 ];
@@ -56,6 +58,23 @@ interface Props {
   selfId: string;
 }
 
+/** Tradução natural da espec de exit codes ("1,2,3" → "1, 2 ou 3"). */
+function describeExitSpec(spec?: string): string {
+  const toks = (spec ?? "").split(",").map((t) => t.trim()).filter(Boolean);
+  if (!toks.length) return "?";
+  const parts = toks.map((t) => {
+    const cmp = /^(>=|<=|!=|>|<)\s*(-?\d+)$/.exec(t);
+    if (cmp) {
+      const word = { ">=": "≥", "<=": "≤", "!=": "diferente de", ">": "maior que", "<": "menor que" }[cmp[1]]!;
+      return `${word} ${cmp[2]}`;
+    }
+    const range = /^(-?\d+)\s*-\s*(-?\d+)$/.exec(t);
+    if (range) return `entre ${range[1]} e ${range[2]}`;
+    return t;
+  });
+  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} ou ${parts[parts.length - 1]}`;
+}
+
 /** Tradução natural de uma regra (gatilho → ação). */
 // eslint-disable-next-line react-refresh/only-export-components -- helper público `describeRule` convive com o componente no mesmo módulo; mover = churn sem ganho; ver roadmap §RH
 export function describeRule(r: ActionRule, jobLabel: (id: string) => string): string {
@@ -63,6 +82,9 @@ export function describeRule(r: ActionRule, jobLabel: (id: string) => string): s
   switch (r.on) {
     case "result":
       when = `Quando o job terminar ${r.status === "OK" ? "OK" : "NOTOK"}`;
+      break;
+    case "exit":
+      when = `Quando o job terminar com exit code ${describeExitSpec(r.exitCodes)}`;
       break;
     case "attempt":
       when = `Quando a tentativa ${r.attempt || "?"} falhar`;
@@ -133,7 +155,8 @@ export default function OnDoEditor({ value, onChange, allDefs, selfId }: Props) 
 
       {rules.length === 0 && (
         <div style={{ fontSize: 11, color: "var(--v2-text-muted)", padding: "10px 0", lineHeight: 1.5 }}>
-          Nenhuma regra. Ex.: <i>quando terminar NOTOK, notificar no Slack</i>; ou{" "}
+          Nenhuma regra. Ex.: <i>quando terminar NOTOK, notificar no Slack</i>;{" "}
+          <i>quando terminar com exit code 1, 2 ou 3, marcar como OK</i>; ou{" "}
           <i>quando passar de 30 min rodando, abrir alerta crítico</i>.
         </div>
       )}
@@ -159,6 +182,22 @@ export default function OnDoEditor({ value, onChange, allDefs, selfId }: Props) 
                 <option value="OK">OK (sucesso)</option>
               </select>
             </Row>
+          )}
+          {r.on === "exit" && (
+            <>
+              <Row label="Exit codes">
+                <input value={r.exitCodes ?? ""} placeholder="ex.: 1,2,3" inputMode="text"
+                  onChange={(e) => update(i, { exitCodes: e.target.value })} style={inputStyle} />
+              </Row>
+              <Hint>
+                Lista separada por vírgula. Cada item é um valor (<code>3</code>), uma faixa
+                (<code>1-4</code>) ou uma comparação (<code>&gt;0</code>, <code>!=0</code>).
+                Casa se QUALQUER item casar; vazio nunca dispara.<br />
+                O status vem do código (<code>exit≠0 ⇒ NOTOK</code>) — para tratar códigos
+                como sucesso, combine com <b>Marcar como OK</b>. Cancelar um job RUNNING
+                grava <code>-1</code>.
+              </Hint>
+            </>
           )}
           {r.on === "attempt" && (
             <Row label="Tentativa nº">
@@ -238,7 +277,10 @@ export default function OnDoEditor({ value, onChange, allDefs, selfId }: Props) 
           )}
 
           {r.do === "set-ok" && (
-            <Hint>Flipa o próprio status NOTOK→OK. Use com <b>Quando terminar NOTOK</b>.</Hint>
+            <Hint>
+              Flipa o próprio status NOTOK→OK. Use com <b>Quando terminar NOTOK</b> ou, para
+              tolerar códigos específicos, com <b>Terminar com exit code X</b>.
+            </Hint>
           )}
 
           {/* Tradução natural */}

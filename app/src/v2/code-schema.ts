@@ -341,11 +341,23 @@ const ACTIONS_CHILDREN: GuideEntry[] = [
     summary: "O GATILHO da regra.",
     forms: [
       { form: '"result"', desc: "status TERMINAL do job (após esgotar retries) — qualifica com `status`" },
+      { form: '"exit"', desc: "exit code TERMINAL do job (Control-M COMPSTAT) — qualifica com `exitCodes`" },
       { form: '"attempt"', desc: "a N-ésima tentativa FALHOU (escada de rerun) — qualifica com `attempt`" },
       { form: '"runtime"', desc: "job RUNNING há mais de N minutos (shout) — qualifica com `afterMin`" },
     ],
   },
   { tag: "status", kind: 'string · on: "result"', summary: 'Qual resultado dispara: "OK" ou "NOTOK".' },
+  {
+    tag: "exitCodes",
+    kind: 'string · on: "exit"',
+    summary: "Códigos de saída que disparam, separados por vírgula (OR entre os itens).",
+    detail: "Cada item é um valor (`3`), uma faixa (`1-4`) ou uma comparação (`>0`, `>=8`, `<0`, `<=2`, `!=0`). Vazio NUNCA dispara. O status sai do código (`exit != 0` ⇒ NOTOK), então `on: exit` + `do: set-ok` é o \"trate estes códigos como sucesso\". O KILL de um RUNNING (Cancel) grava exit `-1`.",
+    forms: [
+      { form: '"1,2,3"', desc: "qualquer um dos três" },
+      { form: '"1-4"', desc: "faixa inclusiva" },
+      { form: '">0"', desc: "comparação" },
+    ],
+  },
   { tag: "attempt", kind: 'int · on: "attempt"', summary: "Número da tentativa (1-based) que, ao falhar, dispara." },
   { tag: "afterMin", kind: 'int · on: "runtime"', summary: "Minutos de RUNNING que disparam a regra." },
   {
@@ -624,6 +636,9 @@ params:
     status: OK
     do: set-condition
     condition: FIN-DONE
+  - on: exit
+    exitCodes: "1,2,3"
+    do: set-ok
   - on: attempt
     attempt: 2
     do: run-job

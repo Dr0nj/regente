@@ -212,6 +212,7 @@ export const COND_TIME_TOKEN = "$TIME";
  *
  * Estrutura PLANA: só os campos relevantes ao On/Do escolhido são usados.
  *  - on="result"  → status (OK|NOTOK) terminal do job, após esgotar retries.
+ *  - on="exit"    → exitCodes: o código de saída terminal casa com a espec (COMPSTAT).
  *  - on="attempt" → attempt (1-based): a N-ésima tentativa FALHOU.
  *  - on="runtime" → afterMin: o job está RUNNING há mais que N minutos.
  *
@@ -223,8 +224,10 @@ export const COND_TIME_TOKEN = "$TIME";
  */
 export interface ActionRule {
   /** Gatilho. */
-  on: "result" | "attempt" | "runtime";
+  on: "result" | "exit" | "attempt" | "runtime";
   status?: "OK" | "NOTOK"; // on==="result"
+  /** on==="exit": lista/faixa/comparação de exit codes — "1,2,3" · "1-4" · ">0" · "!=0". */
+  exitCodes?: string;
   attempt?: number; // on==="attempt" (1-based)
   afterMin?: number; // on==="runtime"
   /** Ação. */

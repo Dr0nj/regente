@@ -1,9 +1,13 @@
 // Package scheduler — Actions / On-Do (Control-M "On/Do").
 //
-// Motor de regras configuráveis POR JOB que reagem ao ciclo de execução, em três
+// Motor de regras configuráveis POR JOB que reagem ao ciclo de execução, em quatro
 // dimensões de gatilho (ver domain.ActionRule):
 //
 //	result   → status terminal do job (OK | NOTOK), após esgotar os retries.
+//	exit     → o CÓDIGO DE SAÍDA terminal casa com a espec (Control-M COMPSTAT):
+//	           lista/faixa/comparação ("1,2,3" · "1-4" · ">0" · "!=0"). Como o
+//	           status é derivado do código (exit!=0 ⇒ NOTOK), "exit 1,2,3 → set-ok"
+//	           é o "trate estes códigos como sucesso".
 //	attempt  → a N-ésima tentativa FALHOU (escada de rerun; cada tentativa falha).
 //	runtime  → o job está RUNNING há mais que N minutos (shout por duração).
 //
@@ -35,10 +39,11 @@ import (
 
 // actionEvent — ocorrência avaliada contra as regras On/Do de um job.
 type actionEvent struct {
-	kind    string                // "result" | "attempt" | "runtime" (== ActionRule.On)
-	status  domain.InstanceStatus // kind=="result"
-	attempt int                   // kind=="attempt": nº (1-based) da tentativa que falhou
-	runMin  int                   // kind=="runtime": minutos em RUNNING
+	kind     string                // "result" | "exit" | "attempt" | "runtime" (== ActionRule.On)
+	status   domain.InstanceStatus // kind=="result"
+	exitCode int                   // kind=="exit": código de saída terminal do job
+	attempt  int                   // kind=="attempt": nº (1-based) da tentativa que falhou
+	runMin   int                   // kind=="runtime": minutos em RUNNING
 }
 
 // actionMatches — DECISOR PURO (testável sem DB): a regra dispara para o evento?
@@ -50,10 +55,74 @@ func actionMatches(rule domain.ActionRule, ev actionEvent) bool {
 	switch ev.kind {
 	case "result":
 		return strings.EqualFold(strings.TrimSpace(rule.Status), string(ev.status))
+	case "exit":
+		return matchExitSpec(rule.ExitCodes, ev.exitCode)
 	case "attempt":
 		return rule.Attempt > 0 && rule.Attempt == ev.attempt
 	case "runtime":
 		return rule.AfterMin > 0 && ev.runMin >= rule.AfterMin
+	}
+	return false
+}
+
+// matchExitSpec — DECISOR PURO da dimensão "exit": o código casa com a espec?
+//
+// A espec é uma lista separada por vírgula (OR entre os tokens); cada token é:
+//
+//	"3"     valor exato (aceita negativo: "-1" é o exit do KILL do Cancel)
+//	"1-4"   faixa inclusiva
+//	">0" ">=8" "<0" "<=2" "!=0"   comparação
+//
+// Espec vazia (ou só com tokens inválidos) NUNCA casa — regra mal configurada é
+// inerte, nunca dispara "pra tudo" (mesmo contrato do Attempt==0/AfterMin==0).
+func matchExitSpec(spec string, code int) bool {
+	for _, tok := range strings.Split(spec, ",") {
+		if matchExitToken(strings.TrimSpace(tok), code) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchExitToken(tok string, code int) bool {
+	if tok == "" {
+		return false
+	}
+	for _, op := range []string{">=", "<=", "!=", ">", "<"} { // ">=" antes de ">"
+		if rest, ok := strings.CutPrefix(tok, op); ok {
+			n, err := strconv.Atoi(strings.TrimSpace(rest))
+			if err != nil {
+				return false
+			}
+			switch op {
+			case ">=":
+				return code >= n
+			case "<=":
+				return code <= n
+			case "!=":
+				return code != n
+			case ">":
+				return code > n
+			case "<":
+				return code < n
+			}
+		}
+	}
+	if n, err := strconv.Atoi(tok); err == nil { // valor exato (inclusive negativo)
+		return code == n
+	}
+	// Faixa "A-B": o separador é o '-' precedido por dígito — assim "-3--1"
+	// (faixa de negativos) parseia, e "-1" sozinho já saiu como valor exato acima.
+	for i := 1; i < len(tok); i++ {
+		if tok[i] != '-' || tok[i-1] < '0' || tok[i-1] > '9' {
+			continue
+		}
+		lo, errLo := strconv.Atoi(strings.TrimSpace(tok[:i]))
+		hi, errHi := strconv.Atoi(strings.TrimSpace(tok[i+1:]))
+		if errLo != nil || errHi != nil {
+			return false
+		}
+		return code >= lo && code <= hi
 	}
 	return false
 }
@@ -135,6 +204,8 @@ func defaultActionMessage(def domain.JobDefinition, rule domain.ActionRule) stri
 	switch strings.ToLower(rule.On) {
 	case "result":
 		return fmt.Sprintf("%s terminou %s", labelOf(def), strings.ToUpper(rule.Status))
+	case "exit":
+		return fmt.Sprintf("%s terminou com exit code em [%s]", labelOf(def), rule.ExitCodes)
 	case "attempt":
 		return fmt.Sprintf("%s falhou na tentativa %d", labelOf(def), rule.Attempt)
 	case "runtime":

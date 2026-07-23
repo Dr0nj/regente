@@ -199,9 +199,10 @@ type JobDefinition struct {
 // campos de gatilho (On + qualificador) e os de ação (Do + parâmetros) convivem;
 // só os relevantes ao On/Do escolhido são lidos. Cada regra dispara NO MÁXIMO uma
 // vez por instance (idempotência via tabela action_fires, chaveada pelo índice da
-// regra no array). Três dimensões de gatilho:
+// regra no array). Quatro dimensões de gatilho:
 //
 //	On=="result"  → Status (OK|NOTOK) terminal do job, após esgotar retries.
+//	On=="exit"    → ExitCodes: o código de saída terminal casa com a espec (Control-M COMPSTAT).
 //	On=="attempt" → Attempt (1-based): a N-ésima tentativa FALHOU (escada de rerun).
 //	On=="runtime" → AfterMin: o job está RUNNING há mais que N minutos (shout).
 //
@@ -213,10 +214,14 @@ type JobDefinition struct {
 //	"set-ok"        → flipa o PRÓPRIO job NOTOK→OK (só faz sentido com On result NOTOK).
 type ActionRule struct {
 	// Gatilho.
-	On       string `yaml:"on" json:"on"`                             // "result" | "attempt" | "runtime"
-	Status   string `yaml:"status,omitempty" json:"status,omitempty"` // On=="result": "OK" | "NOTOK"
-	Attempt  int    `yaml:"attempt,omitempty" json:"attempt,omitempty"`
-	AfterMin int    `yaml:"afterMin,omitempty" json:"afterMin,omitempty"`
+	On     string `yaml:"on" json:"on"`                             // "result" | "exit" | "attempt" | "runtime"
+	Status string `yaml:"status,omitempty" json:"status,omitempty"` // On=="result": "OK" | "NOTOK"
+	// ExitCodes — On=="exit": espec de códigos de saída aceitos, separados por
+	// vírgula. Cada token é um valor ("3"), uma faixa ("1-4") ou uma comparação
+	// (">0", ">=8", "<0", "<=2", "!=0"). Casa se QUALQUER token casar.
+	ExitCodes string `yaml:"exitCodes,omitempty" json:"exitCodes,omitempty"`
+	Attempt   int    `yaml:"attempt,omitempty" json:"attempt,omitempty"`
+	AfterMin  int    `yaml:"afterMin,omitempty" json:"afterMin,omitempty"`
 
 	// Ação.
 	Do        string   `yaml:"do" json:"do"`                                   // "notify" | "set-condition" | "run-job" | "set-ok"
