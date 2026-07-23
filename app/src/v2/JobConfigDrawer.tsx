@@ -90,7 +90,10 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   const initialTeam = definition.team ?? (availableFolders.length === 1 ? availableFolders[0] : "");
   const [team, setTeam] = useState(initialTeam);
   const [schedule, setSchedule] = useState(definition.schedule);
-  const [retries, setRetries] = useState(definition.retries ?? 2);
+  // Ausente = 0 (o Go serializa `retries` com omitempty, então retries=0 volta
+  // do server sem o campo — o fallback TEM que ser 0, senão o drawer ressuscita
+  // um 2 que ninguém pediu).
+  const [retries, setRetries] = useState(definition.retries ?? 0);
   const [timeout, setTimeoutS] = useState(definition.timeout ?? 300);
   const [dryRun, setDryRun] = useState(definition.dryRun ?? false);
   const [confirmReq, setConfirmReq] = useState(definition.confirm ?? false);
@@ -186,7 +189,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     setJobType(definition.jobType as JobType);
     setTeam(definition.team ?? (availableFolders.length === 1 ? availableFolders[0] : ""));
     setSchedule(definition.schedule);
-    setRetries(definition.retries ?? 2); setTimeoutS(definition.timeout ?? 300);
+    setRetries(definition.retries ?? 0); setTimeoutS(definition.timeout ?? 300);
     setDryRun(definition.dryRun ?? false); setConfirmReq(definition.confirm ?? false); setActionConfig(definition.actionConfig ?? {});
     setCalendars(definition.calendars ?? []); setActions(definition.actions ?? []);
     setConditionsIn(definition.conditionsIn ?? []); setConditionsOutAdd(definition.conditionsOutAdd ?? []); setConditionsOutRemove(definition.conditionsOutRemove ?? []);

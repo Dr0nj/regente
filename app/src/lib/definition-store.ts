@@ -35,7 +35,7 @@ export function nodeToDefinition(node: Node<JobNodeData>): JobDefinition {
     jobType: d.jobType,
     team: d.team,
     schedule,
-    retries: d.retries ?? 2,
+    retries: d.retries ?? 0,
     timeout: d.timeout ?? 300,
     actionConfig: d.httpConfig as unknown as Record<string, unknown>,
     variables: d.variables,

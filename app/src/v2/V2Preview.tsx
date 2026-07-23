@@ -761,7 +761,10 @@ function V2PreviewInner() {
       // drawer. Sem runAt e sem janela, o daily ordena o job pra rodar já (sem trava
       // de horário) — o padrão 06:00 antigo escondia esse passo e confundia testes.
       schedule: { enabled: true, frequency: "daily" },
-      retries: 2,
+      // Retry começa em 0 de propósito: job novo roda UMA vez: quem quer
+      // re-tentativa liga explicitamente no drawer. O default 2 antigo
+      // escondia re-execuções que o operador não pediu.
+      retries: 0,
       timeout: 300,
     };
     setEditingDef({ def: draft, isNew: true });
