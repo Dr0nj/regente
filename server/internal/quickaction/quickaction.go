@@ -32,8 +32,8 @@ import (
 var Allowed = map[string]bool{"rerun": true, "set-ok": true, "confirm": true, "hold": true, "release": true}
 
 var (
-	ErrBadToken = errors.New("token inválido")
-	ErrExpired  = errors.New("token expirado")
+	ErrBadToken = errors.New("invalid token")
+	ErrExpired  = errors.New("expired token")
 )
 
 // NewSecret — 32 bytes aleatórios em hex (gerado uma vez e persistido em settings).
@@ -48,10 +48,10 @@ func NewSecret() (string, error) {
 // Sign — token urlsafe: base64url(instanceId|action|expUnix) + "." + base64url(hmac).
 func Sign(secret, instanceID, action string, exp time.Time) (string, error) {
 	if !Allowed[action] {
-		return "", fmt.Errorf("ação %q não permitida em quick-action", action)
+		return "", fmt.Errorf("action %q not allowed as a quick-action", action)
 	}
 	if strings.ContainsAny(instanceID, "|") {
-		return "", errors.New("instanceId inválido")
+		return "", errors.New("invalid instanceId")
 	}
 	payload := fmt.Sprintf("%s|%s|%d", instanceID, action, exp.Unix())
 	mac := hmac.New(sha256.New, []byte(secret))

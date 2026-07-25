@@ -1020,8 +1020,8 @@ function EntryConditions({ conditionsIn, conditionLogic, windowFrom, onOpenSched
           known={known} listId="cond-known-in" crossRef={crossRef} headerExtra={advToggle} />
         {/* Atalho CL-2: sempre visível com UMA condição — o fallback temporal não
             pode ficar invisível (report: "não achei formas de fazer OR com o
-            horário"). Sem windowFrom o clique leva à aba Horário: $TIME sem "A
-            partir de" seria satisfeito imediatamente e anularia a condição. */}
+            horário"). Sem windowFrom o clique leva à aba Schedule: $TIME sem
+            "From" seria satisfeito imediatamente e anularia a condição. */}
         {conditionsIn.length === 1 && (windowFrom ? (
           <button onClick={enableTimeFallback}
             title={`Runs when the condition arrives OR at ${windowFrom} — whichever comes first`}

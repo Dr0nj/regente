@@ -144,7 +144,7 @@ func (m *SessionManager) Restore() error {
 		restored++
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("design_sessions iteração (restauradas %d): %w", restored, err)
+		return fmt.Errorf("design_sessions iteration (restored %d): %w", restored, err)
 	}
 	log.Printf("[design-restore] restored=%d dropped=%d", restored, dropped)
 	return nil

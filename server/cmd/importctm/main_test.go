@@ -153,9 +153,9 @@ func TestImport_MapeamentosGolden(t *testing.T) {
 	}
 	report := string(rep)
 	for _, want := range []string{
-		"**7 ok**", "**1 parciais**", "**1 pulados**",
-		"TASKTYPE \"Detached\" não suportado",
-		"SUB_APPLICATION=\"CORE\" ignorado",
+		"**7 ok**", "**1 partial**", "**1 skipped**",
+		"TASKTYPE \"Detached\" not supported",
+		"SUB_APPLICATION=\"CORE\" ignored",
 	} {
 		if !strings.Contains(report, want) {
 			t.Fatalf("relatório sem %q:\n%s", want, report)
@@ -172,7 +172,7 @@ func TestImport_DryRunNaoEscreve(t *testing.T) {
 	if len(entries) != 0 {
 		t.Fatalf("-dry-run não pode escrever nada; achou %d entradas em %s", len(entries), out)
 	}
-	if !strings.Contains(stdout, "dry-run: NADA foi escrito") || !strings.Contains(stdout, "pulados") {
+	if !strings.Contains(stdout, "dry-run: NOTHING was written") || !strings.Contains(stdout, "skipped") {
 		t.Fatalf("dry-run deveria imprimir o relatório no stdout, veio:\n%s", stdout)
 	}
 }
@@ -181,7 +181,7 @@ func TestImport_FolderFilter(t *testing.T) {
 	dir := t.TempDir()
 	var buf bytes.Buffer
 	err := run([]string{"-in", filepath.Join("testdata", "export.xml"), "-out", dir, "-folder-filter", "NAO-EXISTE"}, &buf)
-	if err == nil || !strings.Contains(err.Error(), "nenhuma FOLDER") {
+	if err == nil || !strings.Contains(err.Error(), "no FOLDER") {
 		t.Fatalf("filter sem match deveria dar erro claro, veio %v", err)
 	}
 	if err := run([]string{"-in", filepath.Join("testdata", "export.xml"), "-out", dir, "-folder-filter", "FIN"}, &buf); err != nil {

@@ -239,15 +239,15 @@ func (w *Workspace) Validate() []error {
 		for _, j := range f.jobs {
 			d := j.def
 			if strings.TrimSpace(d.ID) == "" {
-				errs = append(errs, fmt.Errorf("folder %s: job sem id", f.name))
+				errs = append(errs, fmt.Errorf("folder %s: job without an id", f.name))
 				continue
 			}
 			if ids[d.ID] {
-				errs = append(errs, fmt.Errorf("id duplicado: %s", d.ID))
+				errs = append(errs, fmt.Errorf("duplicate id: %s", d.ID))
 			}
 			ids[d.ID] = true
 			if strings.TrimSpace(d.Label) == "" {
-				errs = append(errs, fmt.Errorf("%s: label obrigatório", d.ID))
+				errs = append(errs, fmt.Errorf("%s: label is required", d.ID))
 			}
 		}
 	}
@@ -255,7 +255,7 @@ func (w *Workspace) Validate() []error {
 		for _, j := range f.jobs {
 			for _, u := range j.def.Upstream {
 				if !ids[u.From] {
-					errs = append(errs, fmt.Errorf("%s: upstream %q não existe neste workspace", j.def.ID, u.From))
+					errs = append(errs, fmt.Errorf("%s: upstream %q does not exist in this workspace", j.def.ID, u.From))
 				}
 			}
 		}
@@ -289,7 +289,7 @@ func (w *Workspace) WriteTo(dir string) error {
 		for i, e := range errs {
 			msgs[i] = e.Error()
 		}
-		return fmt.Errorf("workspace inválido:\n  %s", strings.Join(msgs, "\n  "))
+		return fmt.Errorf("invalid workspace:\n  %s", strings.Join(msgs, "\n  "))
 	}
 	for _, f := range w.sorted() {
 		fdir := filepath.Join(dir, f.name)

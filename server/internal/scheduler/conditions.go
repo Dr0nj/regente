@@ -205,9 +205,9 @@ func (c *ConditionEngine) MissingIdx(names []string, odate string, prevOf func(s
 		label := ""
 		switch {
 		case scope == "":
-			label = " (estática)"
+			label = " (static)"
 		case scope != odate:
-			label = " (diária " + scope + ")"
+			label = " (daily " + scope + ")"
 		}
 		out = append(out, MissingCond{Name: n, Base: base, Scope: scope, ScopeLabel: label})
 	}

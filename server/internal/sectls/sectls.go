@@ -41,7 +41,7 @@ func ServerTLS(certFile, keyFile, clientCAFile string) (*tls.Config, bool, error
 	}
 	pool := x509.NewCertPool()
 	if !pool.AppendCertsFromPEM(pem) {
-		return nil, false, fmt.Errorf("client CA: nenhum certificado PEM válido em %s", clientCAFile)
+		return nil, false, fmt.Errorf("client CA: no valid PEM certificate in %s", clientCAFile)
 	}
 	cfg.ClientCAs = pool
 	cfg.ClientAuth = tls.RequireAndVerifyClientCert

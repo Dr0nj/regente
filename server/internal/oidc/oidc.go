@@ -76,7 +76,7 @@ func (id Identity) Username() string {
 // Discover busca o /.well-known/openid-configuration do issuer.
 func Discover(ctx context.Context, cfg Config) (*Provider, error) {
 	if !cfg.Enabled() {
-		return nil, fmt.Errorf("oidc: configuração incompleta (issuer/client-id/redirect-url)")
+		return nil, fmt.Errorf("oidc: incomplete configuration (issuer/client-id/redirect-url)")
 	}
 	if len(cfg.Scopes) == 0 {
 		cfg.Scopes = []string{"openid", "email", "profile"}
@@ -145,7 +145,7 @@ func (p *Provider) Exchange(ctx context.Context, code string) (*Identity, error)
 		return nil, fmt.Errorf("oidc token decode: %w", err)
 	}
 	if tok.AccessToken == "" {
-		return nil, fmt.Errorf("oidc token: access_token vazio")
+		return nil, fmt.Errorf("oidc token: empty access_token")
 	}
 	return p.userinfo(ctx, tok.AccessToken)
 }
@@ -167,7 +167,7 @@ func (p *Provider) userinfo(ctx context.Context, accessToken string) (*Identity,
 		return nil, fmt.Errorf("oidc userinfo decode: %w", err)
 	}
 	if id.Username() == "" {
-		return nil, fmt.Errorf("oidc userinfo: sem identificador (sub/email/preferred_username)")
+		return nil, fmt.Errorf("oidc userinfo: no identifier (sub/email/preferred_username)")
 	}
 	return &id, nil
 }

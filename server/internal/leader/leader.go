@@ -95,7 +95,7 @@ func (p *PgAdvisory) tryAcquire(ctx context.Context) {
 
 	if p.leader && p.conn != nil {
 		if err := p.conn.PingContext(ctx); err != nil {
-			log.Printf("[leader] perdi a conexão do lock (%v) — abrindo mão da liderança", err)
+			log.Printf("[leader] lost the lock connection (%v) — giving up leadership", err)
 			_ = p.conn.Close()
 			p.conn = nil
 			p.leader = false
@@ -114,7 +114,7 @@ func (p *PgAdvisory) tryAcquire(ctx context.Context) {
 	}
 	p.conn = conn
 	p.leader = true
-	log.Printf("[leader] assumi a liderança (advisory lock %d)", p.key)
+	log.Printf("[leader] took leadership (advisory lock %d)", p.key)
 }
 
 func (p *PgAdvisory) release() {

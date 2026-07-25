@@ -123,7 +123,7 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 	// 1c) Confirmação do operador (Control-M "Wait for confirmation"): def com
 	// confirm:true não roda até o Confirm — nem forçada (checado também no tick).
 	if def.Confirm && !r.Confirmed {
-		if add(Blocker{Kind: GateConfirm, Detail: "aguardando confirmação do operador (job exige Confirm)"}) {
+		if add(Blocker{Kind: GateConfirm, Detail: "waiting for operator confirmation (the job requires Confirm)"}) {
 			return out
 		}
 	}

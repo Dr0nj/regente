@@ -110,7 +110,7 @@ func (s *Scheduler) runSSH(id string, def domain.JobDefinition) {
 	status := domain.StatusOK
 	if ctx.Err() == context.DeadlineExceeded {
 		code, status = -1, domain.StatusNotOK
-		full.WriteString(fmt.Sprintf("(timeout após %ds)\n", timeoutSec))
+		full.WriteString(fmt.Sprintf("(timed out after %ds)\n", timeoutSec))
 	} else if err != nil {
 		status = domain.StatusNotOK
 		if ee, ok := err.(*exec.ExitError); ok {

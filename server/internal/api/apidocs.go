@@ -112,7 +112,7 @@ func (s *server) apiDocsSpec(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(r.URL.Path, ".json") {
 		out, err := openAPIJSON()
 		if err != nil {
-			http.Error(w, "spec inválida: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "invalid spec: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")

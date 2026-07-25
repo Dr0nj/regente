@@ -68,7 +68,7 @@ func TestActionEForce(t *testing.T) {
 	if err := c.Action("i-1", "hold"); err != nil {
 		t.Fatalf("hold: %v", err)
 	}
-	if err := c.Action("i-1", "explodir"); err == nil || !strings.Contains(err.Error(), "inválida") {
+	if err := c.Action("i-1", "explodir"); err == nil || !strings.Contains(err.Error(), "invalid action") {
 		t.Fatalf("ação fora da lista curada deveria falhar no client: %v", err)
 	}
 	if err := c.ForceOrder("job-a"); err != nil {

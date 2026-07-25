@@ -109,7 +109,7 @@ var instanceActions = map[string]bool{
 // Action — POST /api/instances/{id}/{action}.
 func (c *Client) Action(instanceID, action string) error {
 	if !instanceActions[action] {
-		return fmt.Errorf("ação %q inválida (hold|release|cancel|rerun|set-ok|confirm)", action)
+		return fmt.Errorf("invalid action %q (hold|release|cancel|rerun|set-ok|confirm)", action)
 	}
 	return c.do(http.MethodPost, "/api/instances/"+url.PathEscape(instanceID)+"/"+action, nil, nil)
 }

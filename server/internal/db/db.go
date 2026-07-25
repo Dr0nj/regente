@@ -140,7 +140,7 @@ func Open(dialect Dialect, dsn string) (*DB, error) {
 		}
 		return &DB{DB: sdb, dialect: SQLite}, nil
 	default:
-		return nil, fmt.Errorf("dialeto não suportado %q", dialect)
+		return nil, fmt.Errorf("unsupported dialect %q", dialect)
 	}
 }
 

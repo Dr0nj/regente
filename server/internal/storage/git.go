@@ -188,7 +188,7 @@ func (g *GitOps) CleanupDBArtifacts(actor string) (changed bool, err error) {
 	}
 	if g.token == "" {
 		// commitou local; sem token não dá pra limpar o origin ainda.
-		return true, fmt.Errorf("commit local feito, mas push precisa de token (origin ainda poluído)")
+		return true, fmt.Errorf("local commit done, but the push needs a token (origin still polluted)")
 	}
 	if err := g.pushLocked(repo, g.branch); err != nil {
 		return true, fmt.Errorf("push cleanup: %w", err)
@@ -485,7 +485,7 @@ func (g *GitOps) EnsureClone() error {
 		if g.token == "" {
 			if tok := g.extractRemoteTokenLocked(repo); tok != "" {
 				g.token = tok
-				log.Printf("[git] PAT legado migrado do .git/config para memória (header-only)")
+				log.Printf("[git] legacy PAT migrated from .git/config to memory (header-only)")
 			}
 		}
 		if g.source != "" {

@@ -122,7 +122,7 @@ func TestOpenAPI_ServidoPublico(t *testing.T) {
 		t.Fatalf("json: status=%d ct=%q", resp.StatusCode, resp.Header.Get("Content-Type"))
 	}
 	// redirect /api-docs → /api-docs/ (client segue; tem que acabar no viewer)
-	if resp, body := get("/api-docs"); resp.StatusCode != 200 || !strings.Contains(body, "API de integração") {
+	if resp, body := get("/api-docs"); resp.StatusCode != 200 || !strings.Contains(body, "integration API") {
 		t.Fatalf("redirect: status=%d", resp.StatusCode)
 	}
 	// Zero CDN: o viewer não referencia host externo.

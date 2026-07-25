@@ -129,15 +129,15 @@ func (st *cpState) eval(now time.Time, r cpReading, tickStale, flapWindow time.D
 
 	// 1) Tick parado — só após ao menos um tick (idade >= 0).
 	if r.tickAge >= 0 && r.tickAge > tickStale {
-		out = append(out, sysAlert{"tick-stalled", "Scheduler tick parado", "critical",
-			fmt.Sprintf("O loop de scheduling não avança há %s (limite %s) — jobs podem não estar sendo promovidos.",
+		out = append(out, sysAlert{"tick-stalled", "Scheduler tick stalled", "critical",
+			fmt.Sprintf("The scheduling loop hasn't advanced for %s (limit %s) — jobs may not be getting promoted.",
 				r.tickAge.Round(time.Second), tickStale)})
 	}
 
 	// 2) DB inacessível.
 	if r.dbErr {
-		out = append(out, sysAlert{"db-unreachable", "DB inacessível", "critical",
-			"O state store (DB) não respondeu ao ping — o servidor não consegue ler/gravar estado."})
+		out = append(out, sysAlert{"db-unreachable", "DB unreachable", "critical",
+			"The state store (DB) did not answer the ping — the server cannot read or write state."})
 	}
 
 	// 3) Leader flapping — transições de liderança na janela.
@@ -155,14 +155,14 @@ func (st *cpState) eval(now time.Time, r cpReading, tickStale, flapWindow time.D
 	st.leaderFlips = kept
 	if len(st.leaderFlips) > flapMax {
 		out = append(out, sysAlert{"leader-flapping", "Leader flapping", "critical",
-			fmt.Sprintf("A liderança trocou %d vezes em %s — instabilidade de HA (rede/DB/advisory lock).",
+			fmt.Sprintf("Leadership changed %d times in %s — HA instability (network/DB/advisory lock).",
 				len(st.leaderFlips), flapWindow)})
 	}
 
 	// 4) Frota de agentes encolhendo.
 	if st.hasPrevAgents && r.agentsOnline < st.prevAgents {
-		out = append(out, sysAlert{"agents-drop", "Frota de agentes caiu", "warning",
-			fmt.Sprintf("Agentes online caíram de %d para %d — capacidade de execução reduzida.",
+		out = append(out, sysAlert{"agents-drop", "Agent fleet shrank", "warning",
+			fmt.Sprintf("Online agents dropped from %d to %d — reduced execution capacity.",
 				st.prevAgents, r.agentsOnline)})
 	}
 	st.prevAgents, st.hasPrevAgents = r.agentsOnline, true

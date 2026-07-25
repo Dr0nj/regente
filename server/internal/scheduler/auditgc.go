@@ -46,7 +46,7 @@ func (s *Scheduler) auditGC() {
 	}
 	for _, tbl := range []string{"instance_events", "audit_events"} {
 		if n := s.auditGCTable(tbl, days); n > 0 {
-			log.Printf("[scheduler] auditoria: retenção de %dd — %d linhas removidas de %s", days, n, tbl)
+			log.Printf("[scheduler] audit: %dd retention — %d row(s) removed from %s", days, n, tbl)
 		}
 	}
 }

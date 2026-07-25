@@ -18,7 +18,7 @@ import (
 // Exposto também como modo one-shot do binário: `regente-server -backup <dest>`.
 func OnlineBackup(d *DB, destPath string) error {
 	if destPath == "" {
-		return fmt.Errorf("backup: destino vazio")
+		return fmt.Errorf("backup: empty destination")
 	}
 	switch d.dialect {
 	case SQLite:
@@ -30,9 +30,9 @@ func OnlineBackup(d *DB, destPath string) error {
 		}
 		return nil
 	case Postgres:
-		return fmt.Errorf("backup in-process não suportado p/ postgres; use pg_dump " +
-			"(server/deploy/backup.sh) ou PITR gerenciado (docs/dr-backup.md)")
+		return fmt.Errorf("in-process backup is not supported for postgres; use pg_dump " +
+			"(server/deploy/backup.sh) or managed PITR (docs/dr-backup.md)")
 	default:
-		return fmt.Errorf("backup: dialeto %q não suportado", d.dialect)
+		return fmt.Errorf("backup: unsupported dialect %q", d.dialect)
 	}
 }

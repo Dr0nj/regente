@@ -28,7 +28,7 @@ func (s *server) audit(e audit.Event) {
 		`INSERT INTO audit_events(kind, actor, action, target, outcome, ip, detail) VALUES(?,?,?,?,?,?,?)`,
 		e.Type, e.Actor, e.Action, e.Target, e.Outcome, e.IP, e.Detail,
 	); err != nil {
-		writeLogf("[audit] persist em audit_events falhou: %v", err)
+		writeLogf("[audit] persisting to audit_events failed: %v", err)
 	}
 }
 

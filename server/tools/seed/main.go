@@ -15,9 +15,9 @@ import (
 )
 
 func main() {
-	dbPath := flag.String("db", "./demo.db", "caminho do SQLite")
-	n := flag.Int("n", 100000, "quantidade de instances")
-	folders := flag.Int("folders", 100, "quantidade de folders")
+	dbPath := flag.String("db", "./demo.db", "path to the SQLite file")
+	n := flag.Int("n", 100000, "number of instances")
+	folders := flag.Int("folders", 100, "number of folders")
 	date := flag.String("date", time.Now().Format("2006-01-02"), "order_date")
 	flag.Parse()
 

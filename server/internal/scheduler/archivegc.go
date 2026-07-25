@@ -77,7 +77,7 @@ func (s *Scheduler) archiveGC() {
 
 	rows, err := s.db.Query(`SELECT DISTINCT order_date FROM instances WHERE order_date < ? ORDER BY order_date LIMIT ?`, cutoff, archiveGCMaxDays)
 	if err != nil {
-		log.Printf("[scheduler] archive: listar dias: %v", err)
+		log.Printf("[scheduler] archive: listing days: %v", err)
 		return
 	}
 	var daysToGo []string
@@ -90,13 +90,13 @@ func (s *Scheduler) archiveGC() {
 	// Parcial é inofensivo aqui (archiveDay é idempotente e a próxima rodada
 	// pega os dias que faltaram) — só registra o porquê da rodada curta.
 	if err := rows.Err(); err != nil {
-		log.Printf("[scheduler] archive: listagem de dias incompleta: %v", err)
+		log.Printf("[scheduler] archive: incomplete day listing: %v", err)
 	}
 	rows.Close()
 
 	for _, day := range daysToGo {
 		if err := s.archiveDay(day); err != nil {
-			log.Printf("[scheduler] archive: dia %s: %v", day, err)
+			log.Printf("[scheduler] archive: day %s: %v", day, err)
 			return // para a rodada — a próxima re-tenta do mesmo ponto
 		}
 	}
@@ -108,7 +108,7 @@ func (s *Scheduler) archiveDay(day string) error {
 	var running int
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM instances WHERE order_date = ? AND status = 'RUNNING'`, day).Scan(&running)
 	if running > 0 {
-		return fmt.Errorf("%d instance(s) RUNNING — dia pulado", running)
+		return fmt.Errorf("%d instance(s) RUNNING — day skipped", running)
 	}
 
 	dir := s.archiveDir()

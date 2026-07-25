@@ -3,11 +3,11 @@
      renderiza /api-docs/openapi.json com JS vanilla, no espírito do resto do
      hosting (docsite ADV-7, qaHTML). Try-it embutido: single-origin, então o
      fetch bate direto na API com o Bearer que o usuário colar. -->
-<html lang="pt-BR">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Regente — API de integração</title>
+<title>Regente — integration API</title>
 <style>
   /* Paleta alinhada à identidade do Regente: dark verde-tingido + accent
      #11c76f, o MESMO do site de docs (cmd/docsite). Página standalone
@@ -88,15 +88,15 @@
 </head>
 <body>
 <header>
-  <div class="brand">REGENTE<small>API de integração</small></div>
+  <div class="brand">REGENTE<small>integration API</small></div>
   <div class="links"><a href="openapi.yaml">openapi.yaml</a> · <a href="openapi.json">openapi.json</a></div>
-  <input id="tok" type="password" placeholder="Bearer token (só pro Testar; fica no localStorage)" autocomplete="off">
+  <input id="tok" type="password" placeholder="Bearer token (only for Try it; kept in localStorage)" autocomplete="off">
 </header>
 <div class="layout">
   <nav id="nav"></nav>
-  <main id="main"><p style="color:var(--muted)">Carregando o contrato…</p></main>
+  <main id="main"><p style="color:var(--muted)">Loading the contract…</p></main>
 </div>
-<footer>Contrato curado da superfície de integração (API-1) — embutido no binário, self-contained, zero CDN.</footer>
+<footer>Curated contract of the integration surface (API-1) — embedded in the binary, self-contained, zero CDN.</footer>
 <script>
 "use strict";
 let spec = null;
@@ -213,7 +213,7 @@ function opCard(path, method, op){
   if (op.description) h += '<div class="desc">' + md(op.description) + "</div>";
 
   if (params.length) {
-    h += "<h4>Parâmetros</h4><table><tr><th>nome</th><th>em</th><th>tipo</th><th>descrição</th></tr>";
+    h += "<h4>Parameters</h4><table><tr><th>name</th><th>in</th><th>type</th><th>description</th></tr>";
     for (const p of params)
       h += "<tr><td><code>" + esc(p.name) + "</code>" + (p.required ? '<span class="req">*</span>' : "") +
         "</td><td>" + esc(p.in) + "</td><td><code>" + esc(typeStr(p.schema)) + "</code></td><td>" + esc(p.description || "") + "</td></tr>";
@@ -221,12 +221,12 @@ function opCard(path, method, op){
   }
 
   if (rb) {
-    h += "<h4>Corpo (application/json)</h4>";
+    h += "<h4>Body (application/json)</h4>";
     h += '<div class="schema"><ul>' + schemaTree(rb.schema) + "</ul></div>";
     if (rb.example !== undefined) h += "<pre>" + esc(JSON.stringify(rb.example, null, 2)) + "</pre>";
   }
 
-  h += "<h4>Respostas</h4>";
+  h += "<h4>Responses</h4>";
   for (const [code, r0] of Object.entries(op.responses || {})) {
     const r = deref(r0);
     const cls = code[0] === "2" ? "c2xx" : code[0] === "5" ? "c5xx" : "c4xx";
@@ -246,13 +246,13 @@ function opCard(path, method, op){
   h += "<h4>curl</h4><pre>" + esc(curl(method, path, op)) + "</pre>";
 
   // Try-it — single-origin: o fetch bate direto na API desta porta.
-  h += '<div class="try"><b style="font-size:13px">Testar</b>';
+  h += '<div class="try"><b style="font-size:13px">Try it</b>';
   for (const p of params)
     h += '<label>' + esc(p.name) + " (" + esc(p.in) + ')</label><input data-pname="' + esc(p.name) + '" data-pin="' + esc(p.in) + '">';
-  if (rb) h += "<label>corpo JSON</label><textarea data-body>" +
+  if (rb) h += "<label>JSON body</label><textarea data-body>" +
     esc(rb.example !== undefined ? JSON.stringify(rb.example, null, 2) : "{}") + "</textarea>";
   h += '<button data-method="' + method + '" data-path="' + esc(path) + '" data-public="' +
-    (Array.isArray(op.security) && op.security.length === 0 ? "1" : "") + '">Enviar</button>' +
+    (Array.isArray(op.security) && op.security.length === 0 ? "1" : "") + '">Send</button>' +
     '<div class="out"><div class="status"></div><pre></pre></div></div>';
 
   h += "</div></details>";
@@ -265,7 +265,7 @@ function render(){
   for (const t of spec.tags || []) byTag.set(t.name, { desc: t.description, ops: [] });
   for (const [path, methods] of Object.entries(spec.paths || {}))
     for (const [method, op] of Object.entries(methods)) {
-      const tag = (op.tags && op.tags[0]) || "Outros";
+      const tag = (op.tags && op.tags[0]) || "Other";
       if (!byTag.has(tag)) byTag.set(tag, { desc: "", ops: [] });
       byTag.get(tag).ops.push({ path, method, op });
     }
@@ -308,7 +308,7 @@ async function tryIt(ev){
   for (const inp of box.querySelectorAll("input[data-pname]")) {
     const v = inp.value.trim();
     if (inp.dataset.pin === "path") {
-      if (!v) { st.textContent = "falta o parâmetro de path: " + inp.dataset.pname; out.style.display = "block"; pre.textContent = ""; return; }
+      if (!v) { st.textContent = "missing path parameter: " + inp.dataset.pname; out.style.display = "block"; pre.textContent = ""; return; }
       path = path.replace("{" + inp.dataset.pname + "}", encodeURIComponent(v));
     } else if (v) qs.set(inp.dataset.pname, v);
   }
@@ -325,7 +325,7 @@ async function tryIt(ev){
     st.textContent = "HTTP " + resp.status + " · " + (resp.headers.get("content-type") || "");
     try { pre.textContent = JSON.stringify(JSON.parse(text), null, 2); }
     catch { pre.textContent = text; }
-  } catch (e) { st.textContent = "erro"; pre.textContent = String(e); }
+  } catch (e) { st.textContent = "error"; pre.textContent = String(e); }
 }
 </script>
 </body>

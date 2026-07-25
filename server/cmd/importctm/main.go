@@ -127,15 +127,15 @@ type jobResult struct {
 
 func run(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("importctm", flag.ContinueOnError)
-	in := fs.String("in", "", "XML de export do Control-M (DEFTABLE)")
-	out := fs.String("out", "./workspace", "diretório de saída do workspace Regente")
-	dryRun := fs.Bool("dry-run", false, "só analisa e imprime o relatório; NÃO escreve nada")
-	folderFilter := fs.String("folder-filter", "", "importa só a folder com este nome (FOLDER_NAME)")
+	in := fs.String("in", "", "Control-M export XML (DEFTABLE)")
+	out := fs.String("out", "./workspace", "output directory for the Regente workspace")
+	dryRun := fs.Bool("dry-run", false, "only analyze and print the report; writes NOTHING")
+	folderFilter := fs.String("folder-filter", "", "import only the folder with this name (FOLDER_NAME)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *in == "" {
-		return fmt.Errorf("faltou -in export.xml")
+		return fmt.Errorf("missing -in export.xml")
 	}
 	raw, err := os.ReadFile(*in)
 	if err != nil {
@@ -143,7 +143,7 @@ func run(args []string, stdout io.Writer) error {
 	}
 	var table defTable
 	if err := xml.Unmarshal(raw, &table); err != nil {
-		return fmt.Errorf("XML inválido (esperado DEFTABLE do ctm export): %w", err)
+		return fmt.Errorf("invalid XML (expected a DEFTABLE from the ctm export): %w", err)
 	}
 	folders := append(append([]ctmFolder{}, table.Folders...), table.Smart...)
 	if *folderFilter != "" {
@@ -155,7 +155,7 @@ func run(args []string, stdout io.Writer) error {
 		}
 		folders = kept
 		if len(folders) == 0 {
-			return fmt.Errorf("nenhuma FOLDER %q no export", *folderFilter)
+			return fmt.Errorf("no FOLDER %q in the export", *folderFilter)
 		}
 	}
 
@@ -198,7 +198,7 @@ func run(args []string, stdout io.Writer) error {
 	report := buildReport(*in, results, calendars)
 	if *dryRun {
 		fmt.Fprintln(stdout, report)
-		fmt.Fprintln(stdout, "-- dry-run: NADA foi escrito --")
+		fmt.Fprintln(stdout, "-- dry-run: NOTHING was written --")
 		return nil
 	}
 	for _, res := range results {
@@ -227,7 +227,7 @@ func run(args []string, stdout io.Writer) error {
 			BusinessDays: []string{"mon", "tue", "wed", "thu", "fri"},
 		}
 		buf, _ := yaml.Marshal(&cal)
-		buf = append(buf, []byte("# TODO-import: preencher holidays/exceções do calendar Control-M \""+orig+"\"\n")...)
+		buf = append(buf, []byte("# TODO-import: fill in holidays/exceptions from the Control-M calendar \""+orig+"\"\n")...)
 		dir := filepath.Join(*out, "calendars")
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
@@ -247,7 +247,7 @@ func run(args []string, stdout io.Writer) error {
 		return err
 	}
 	fmt.Fprintln(stdout, report)
-	fmt.Fprintf(stdout, "workspace gerado em %s — revise e commite no seu repo de workspace (o importador NUNCA faz push).\n", *out)
+	fmt.Fprintf(stdout, "workspace generated at %s — review it and commit to your workspace repo (the importer NEVER pushes).\n", *out)
 	return nil
 }
 
@@ -277,7 +277,7 @@ func mapJob(f ctmFolder, j ctmJob, ids map[string]string, emitters map[string][]
 		if cmd := strings.TrimSpace(j.CmdLine); cmd != "" {
 			def.Params["command"] = cmd
 		} else {
-			todo("CMDLINE vazio — defina params.command")
+			todo("empty CMDLINE — set params.command")
 		}
 	case "dummy":
 		// Dummy = não executa nada: COMMAND em dryRun (o 👻 do Regente).
@@ -289,11 +289,11 @@ func mapJob(f ctmFolder, j ctmJob, ids map[string]string, emitters map[string][]
 		if p := firstNonEmpty(strings.TrimSpace(j.FileName), strings.TrimSpace(j.FilePath)); p != "" {
 			def.Params["path"] = p
 		} else {
-			todo("FileWatcher sem FILE_NAME/FILE_PATH — defina params.path")
+			todo("FileWatcher without FILE_NAME/FILE_PATH — set params.path")
 		}
 	default:
 		res.Status = "skipped"
-		res.SkipReason = fmt.Sprintf("TASKTYPE %q não suportado no v1 (suportados: Job/Command/Dummy/FileWatcher)", j.TaskType)
+		res.SkipReason = fmt.Sprintf("TASKTYPE %q not supported in v1 (supported: Job/Command/Dummy/FileWatcher)", j.TaskType)
 		return res, def
 	}
 
@@ -301,12 +301,12 @@ func mapJob(f ctmFolder, j ctmJob, ids map[string]string, emitters map[string][]
 	if hm, ok := ctmTime(j.TimeFrom); ok {
 		def.Schedule.RunAt = hm
 	} else if strings.TrimSpace(j.TimeFrom) != "" {
-		todo("TIMEFROM %q não parseia como HHMM", j.TimeFrom)
+		todo("TIMEFROM %q does not parse as HHMM", j.TimeFrom)
 	}
 	if hm, ok := ctmTime(j.TimeTo); ok {
 		def.Schedule.WindowTo = hm
 	} else if strings.TrimSpace(j.TimeTo) != "" {
-		todo("TIMETO %q não parseia como HHMM", j.TimeTo)
+		todo("TIMETO %q does not parse as HHMM", j.TimeTo)
 	}
 
 	// DAYS/WEEKDAYS → frequency estruturada.
@@ -339,10 +339,10 @@ func mapJob(f ctmFolder, j ctmJob, ids map[string]string, emitters map[string][]
 		case "":
 			// CONFCAL sem shift: só confina ao calendar (include já cobre).
 		default:
-			todo("SHIFT %q não mapeado (v1: '>' → next-businessday, '<' → prev-businessday)", j.Shift)
+			todo("SHIFT %q not mapped (v1: '>' → next-businessday, '<' → prev-businessday)", j.Shift)
 		}
 	} else if strings.TrimSpace(j.Shift) != "" {
-		todo("SHIFT %q sem CONFCAL — revise o calendário de confirmação", j.Shift)
+		todo("SHIFT %q without CONFCAL — review the confirmation calendar", j.Shift)
 	}
 
 	// MAXRERUN → retries.
@@ -350,7 +350,7 @@ func mapJob(f ctmFolder, j ctmJob, ids map[string]string, emitters map[string][]
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
 			def.Retries = n
 		} else {
-			todo("MAXRERUN %q não numérico", v)
+			todo("MAXRERUN %q is not numeric", v)
 		}
 	}
 
@@ -360,7 +360,7 @@ func mapJob(f ctmFolder, j ctmJob, ids map[string]string, emitters map[string][]
 		if min, ok := ctmInterval(j.Interval); ok {
 			def.Schedule.IntervalMin = min
 		} else {
-			todo("INTERVAL %q não parseia (esperado NNNNN[M|H|D]) — defina schedule.intervalMin", j.Interval)
+			todo("INTERVAL %q does not parse (expected NNNNN[M|H|D]) — set schedule.intervalMin", j.Interval)
 		}
 	}
 
@@ -371,10 +371,10 @@ func mapJob(f ctmFolder, j ctmJob, ids map[string]string, emitters map[string][]
 			continue
 		}
 		if ic.ODate != "" && !strings.EqualFold(ic.ODate, "ODAT") {
-			todo("INCOND %q com ODATE=%q (escopo além do dia corrente) — revise", name, ic.ODate)
+			todo("INCOND %q with ODATE=%q (scope beyond the current day) — review it", name, ic.ODate)
 		}
 		if strings.EqualFold(ic.AndOr, "O") {
-			todo("INCOND %q com AND_OR=O (OR) — Regente trata conditionsIn como AND; revise", name)
+			todo("INCOND %q with AND_OR=O (OR) — Regente treats conditionsIn as AND; review it", name)
 		}
 		ems := emitters[name]
 		if len(ems) == 1 && ems[0] != def.ID {
@@ -399,7 +399,7 @@ func mapJob(f ctmFolder, j ctmJob, ids map[string]string, emitters map[string][]
 		case "-":
 			def.ConditionsOutRemove = append(def.ConditionsOutRemove, name)
 		default:
-			todo("OUTCOND %q com SIGN=%q não mapeado", name, oc.Sign)
+			todo("OUTCOND %q with SIGN=%q not mapped", name, oc.Sign)
 		}
 	}
 
@@ -409,14 +409,14 @@ func mapJob(f ctmFolder, j ctmJob, ids map[string]string, emitters map[string][]
 		case "OK", "NOTOK":
 			def.Actions = append(def.Actions, domain.ActionRule{
 				On: "result", Status: strings.ToUpper(strings.TrimSpace(sh.When)),
-				Do: "notify", Message: firstNonEmpty(sh.Message, "SHOUT do Control-M"),
+				Do: "notify", Message: firstNonEmpty(sh.Message, "Control-M SHOUT"),
 				Severity: shoutSeverity(sh.Urgency),
 			})
 			if d := strings.TrimSpace(sh.Dest); d != "" {
-				warn("SHOUT DEST=%q ignorado — os canais do notify são os sinks do alerting do Regente", d)
+				warn("SHOUT DEST=%q ignored — the notify channels are Regente's alerting sinks", d)
 			}
 		default:
-			todo("SHOUT WHEN=%q não mapeado (v1: OK/NOTOK)", sh.When)
+			todo("SHOUT WHEN=%q not mapped (v1: OK/NOTOK)", sh.When)
 		}
 	}
 
@@ -440,13 +440,13 @@ func mapJob(f ctmFolder, j ctmJob, ids map[string]string, emitters map[string][]
 		"MEMNAME": j.MemName, "MEMLIB": j.MemLib,
 	} {
 		if strings.TrimSpace(v) != "" {
-			warn("%s=%q ignorado (sem equivalente direto; agentes/capabilities cobrem NODEID/RUN_AS)", k, v)
+			warn("%s=%q ignored (no direct equivalent; agents/capabilities cover NODEID/RUN_AS)", k, v)
 		}
 	}
 
 	// Atributos que o modelo XML não conhece → TODO (nada se perde em silêncio).
 	for _, a := range j.Extra {
-		todo("atributo %s=%q não mapeado", a.Name.Local, a.Value)
+		todo("attribute %s=%q not mapped", a.Name.Local, a.Value)
 	}
 
 	if len(res.Todos) > 0 {
@@ -480,7 +480,7 @@ func mapRecurrence(j ctmJob, def *domain.JobDefinition, todo func(string, ...any
 			if name, ok := weekdayNames[tok]; ok {
 				dows = append(dows, name)
 			} else {
-				todo("WEEKDAYS token %q não mapeado", tok)
+				todo("WEEKDAYS token %q not mapped", tok)
 			}
 		}
 		if len(dows) > 0 {
@@ -498,7 +498,7 @@ func mapRecurrence(j ctmJob, def *domain.JobDefinition, todo func(string, ...any
 			if n, err := strconv.Atoi(tok); err == nil && n >= 1 && n <= 31 {
 				doms = append(doms, n)
 			} else {
-				todo("DAYS token %q não mapeado (v1: 1..31 e L)", tok)
+				todo("DAYS token %q not mapped (v1: 1..31 and L)", tok)
 			}
 		}
 		if len(doms) > 0 {
@@ -508,7 +508,7 @@ func mapRecurrence(j ctmJob, def *domain.JobDefinition, todo func(string, ...any
 	default:
 		// DAYS e WEEKDAYS juntos têm semântica AND/OR própria no Control-M.
 		def.Schedule.Frequency = "daily"
-		todo("DAYS=%q + WEEKDAYS=%q combinados (AND/OR do Control-M) — revise a recorrência", days, weekdays)
+		todo("DAYS=%q + WEEKDAYS=%q combined (Control-M AND/OR) — review the recurrence", days, weekdays)
 	}
 }
 
@@ -602,17 +602,17 @@ func buildReport(in string, results []jobResult, calendars map[string]string) st
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Import Control-M → Regente\n\n")
-	fmt.Fprintf(&b, "- Fonte: `%s`\n", in)
-	fmt.Fprintf(&b, "- Jobs: **%d ok** · **%d parciais** (com `# TODO-import`) · **%d pulados**\n", ok, partial, skipped)
+	fmt.Fprintf(&b, "- Source: `%s`\n", in)
+	fmt.Fprintf(&b, "- Jobs: **%d ok** · **%d partial** (with `# TODO-import`) · **%d skipped**\n", ok, partial, skipped)
 	if len(calendars) > 0 {
 		names := make([]string, 0, len(calendars))
 		for s := range calendars {
 			names = append(names, s)
 		}
 		sort.Strings(names)
-		fmt.Fprintf(&b, "- Calendars gerados (stubs — preencha os feriados): %s\n", strings.Join(names, ", "))
+		fmt.Fprintf(&b, "- Generated calendars (stubs — fill in the holidays): %s\n", strings.Join(names, ", "))
 	}
-	b.WriteString("\n## Por job\n\n| Folder | Job | id | Status | Pendências |\n|---|---|---|---|---|\n")
+	b.WriteString("\n## Per job\n\n| Folder | Job | id | Status | Pending |\n|---|---|---|---|---|\n")
 	for _, r := range results {
 		detail := ""
 		switch {
@@ -630,11 +630,11 @@ func buildReport(in string, results []jobResult, calendars map[string]string) st
 		}
 	}
 	if len(warns) > 0 {
-		b.WriteString("\n## Avisos (ignorados de propósito)\n\n")
+		b.WriteString("\n## Warnings (deliberately ignored)\n\n")
 		for _, w := range warns {
 			fmt.Fprintf(&b, "- %s\n", w)
 		}
 	}
-	b.WriteString("\n> Revise os `# TODO-import` nos YAMLs antes de commitar. O importador nunca faz push.\n")
+	b.WriteString("\n> Review the `# TODO-import` entries in the YAMLs before committing. The importer never pushes.\n")
 	return b.String()
 }
