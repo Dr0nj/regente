@@ -23,10 +23,10 @@ function matches(e: GuideEntry, q: string): boolean {
 function CopyExample({ example }: { example: string }) {
   return (
     <pre
-      title="Clique para copiar o exemplo"
+      title="Click to copy the example"
       onClick={() => {
         void navigator.clipboard?.writeText(example).then(
-          () => toast.info("Exemplo copiado"),
+          () => toast.info("Example copied"),
           () => {},
         );
       }}
@@ -185,7 +185,7 @@ export default function CodeGuidePanel() {
             lineHeight: 1.1,
           }}
         >
-          Guia do schema
+          Schema guide
         </div>
         <div
           style={{
@@ -197,12 +197,12 @@ export default function CodeGuidePanel() {
             fontFamily: "var(--v2-font-mono)",
           }}
         >
-          todas as tags do YAML
+          all YAML tags
         </div>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Filtrar por tag…"
+          placeholder="Filter by tag…"
           style={{
             width: "100%",
             boxSizing: "border-box",

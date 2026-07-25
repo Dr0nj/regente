@@ -42,7 +42,7 @@ export function PublishButton({ sessionId, newFolderCount, onPublished }: Props)
       <input
         value={message}
         onChange={(e) => setMessage(e.target.value)}
-        placeholder={willForcePR ? "PR title (opcional)" : "commit message (opcional)"}
+        placeholder={willForcePR ? "PR title (optional)" : "commit message (optional)"}
         disabled={busy}
         style={{
           padding: "4px 8px", background: "#111", border: "1px solid #333",
@@ -52,14 +52,14 @@ export function PublishButton({ sessionId, newFolderCount, onPublished }: Props)
       <button
         onClick={handle}
         disabled={busy}
-        title={willForcePR ? `Forçará PR (${newFolderCount} folders novos)` : "Commit + push direto pra main"}
+        title={willForcePR ? `Will force a PR (${newFolderCount} new folders)` : "Commit + push straight to main"}
         style={{
           background: willForcePR ? "#a64" : "#2a6", color: "#fff",
           border: "none", padding: "6px 14px", borderRadius: 4,
           cursor: busy ? "wait" : "pointer", fontSize: 13, fontWeight: 600,
         }}
       >
-        {busy ? "Publicando…" : willForcePR ? `Publish (PR)` : "Publish"}
+        {busy ? "Publishing…" : willForcePR ? `Publish (PR)` : "Publish"}
       </button>
       {error != null && <ErrorDialog error={error} onClose={() => setError(null)} />}
     </div>

@@ -221,8 +221,8 @@ function V2PreviewInner() {
   // P7 (2026-04-26): outra aba assumiu a mesma session → libera essa aba.
   useEffect(() =>
     onDesignSessionConflict((sid) => {
-      toast.error("Outra aba assumiu esta session", {
-        detail: `${sid.slice(0, 16)}… — esta aba foi desconectada para evitar perda de edições.`,
+      toast.error("Another tab took over this session", {
+        detail: `${sid.slice(0, 16)}… — this tab was disconnected to avoid losing edits.`,
       });
       setDesignSessionId(null);
       setDesignSessionNewFolders([]);
@@ -251,8 +251,8 @@ function V2PreviewInner() {
           // persistido pra não continuar apontando pra um draft que não existe.
           // O listener onDesignSessionChange re-roda este effect com null.
           setDesignSessionId(null);
-          toast.info("Sessão de design expirou no servidor", {
-            detail: "O working set foi liberado — abra as folders novamente.",
+          toast.info("Design session expired on the server", {
+            detail: "The working set was released — open the folders again.",
           });
           return;
         }
@@ -320,7 +320,7 @@ function V2PreviewInner() {
   }, []);
 
   const discardOrphanSession = useCallback(async (sid: string) => {
-    if (!window.confirm("Descartar esta sessão? As edições não publicadas dela serão perdidas.")) return;
+    if (!window.confirm("Discard this session? Its unpublished edits will be lost.")) return;
     await deleteDesignSession(sid).catch(() => {});
     setOrphanSessions((prev) => prev.filter((s) => s.id !== sid));
   }, []);
@@ -386,7 +386,7 @@ function V2PreviewInner() {
       // Phase 8 — alerta disparado no server: toast + atualiza o badge.
       if (ev.event === "alert.fired") {
         const p = (ev.payload ?? {}) as { ruleName?: string; message?: string; severity?: string };
-        const title = p.ruleName ?? "Alerta";
+        const title = p.ruleName ?? "Alert";
         if (p.severity === "critical" || p.severity === "warning") {
           toast.error(title, { detail: p.message });
         } else {
@@ -589,8 +589,8 @@ function V2PreviewInner() {
             .sort((a, b) => (a.lastTouch < b.lastTouch ? 1 : -1));
       if (dirtyMine.length > 0) {
         sid = dirtyMine[0].id;
-        toast.info("Retomando sessão não publicada", {
-          detail: `Suas edições anteriores (${dirtyMine[0].folders.join(", ") || "sem folders"}) continuam nela — publique ou descarte quando quiser.`,
+        toast.info("Resuming unpublished session", {
+          detail: `Your earlier edits (${dirtyMine[0].folders.join(", ") || "no folders"}) are still in it — publish or discard whenever you want.`,
         });
       } else {
         const sess = await createDesignSession([], []);
@@ -629,26 +629,26 @@ function V2PreviewInner() {
   // modal de FOLDERS (o commit precisa estar visível na própria tela de criação).
   const handlePublished = useCallback(async (res: PublishResult) => {
     if (res.mode === "noop") {
-      toast.info("Nada a publicar", { detail: "Working tree limpa — faça alguma edição antes." });
+      toast.info("Nothing to publish", { detail: "Working tree is clean — make an edit first." });
       return;
     }
     setDesignSessionId(null);
     setDesignSessionNewFolders([]);
     if (res.prUrl) {
-      toast.success(`Publicado como PR #${res.prNumber}`, { linkUrl: res.prUrl, linkLabel: `PR #${res.prNumber} no GitHub` });
+      toast.success(`Published as PR #${res.prNumber}`, { linkUrl: res.prUrl, linkLabel: `PR #${res.prNumber} on GitHub` });
     } else {
       const st = await getGitInfo();
-      toast.success("Publicado no GitHub", {
+      toast.success("Published to GitHub", {
         detail: `commit ${res.commitSha?.slice(0, 7)}`,
         linkUrl: commitUrl(st, res.commitSha) ?? undefined,
-        linkLabel: res.commitSha ? `ver commit ${res.commitSha.slice(0, 7)}` : undefined,
+        linkLabel: res.commitSha ? `view commit ${res.commitSha.slice(0, 7)}` : undefined,
       });
     }
     await reloadDefinitions();
   }, []);
 
   const handleDiscardSession = useCallback(async () => {
-    if (!window.confirm("Descartar a sessão? Todas as edições não publicadas serão perdidas.")) return;
+    if (!window.confirm("Discard the session? All unpublished edits will be lost.")) return;
     try {
       const sid = designSessionId;
       setDesignSessionId(null);
@@ -806,12 +806,12 @@ function V2PreviewInner() {
           conditionsOutRemove: has(consumer.conditionsOutRemove, name) ? consumer.conditionsOutRemove : [...(consumer.conditionsOutRemove ?? []), name],
         });
       }
-      toast.success(`Condição ${name} criada`, {
-        detail: `${producer.label} adiciona no OK · ${consumer.label} espera e deleta no OK`,
+      toast.success(`Condition ${name} created`, {
+        detail: `${producer.label} adds it on OK · ${consumer.label} waits for it and deletes it on OK`,
       });
     };
     void save().catch((e) => {
-      toast.error("Falha ao salvar a condição da ligação", { detail: e instanceof Error ? e.message : String(e) });
+      toast.error("Failed to save the link condition", { detail: e instanceof Error ? e.message : String(e) });
     });
   }, [defs]);
 
@@ -939,13 +939,13 @@ function V2PreviewInner() {
   }, []);
 
   const handleBulk = useCallback(
-    async (ids: string[], op: (id: string) => Promise<unknown> | unknown, label = "ação") => {
+    async (ids: string[], op: (id: string) => Promise<unknown> | unknown, label = "action") => {
       const results = await Promise.allSettled(ids.map((id) => Promise.resolve(op(id))));
       const failed = results.filter((r) => r.status === "rejected");
       if (failed.length > 0) {
         console.warn(`[bulk] ${failed.length}/${ids.length} failed`, failed);
-        toast.error(`Bulk ${label}: ${failed.length} de ${ids.length} falharam`, {
-          detail: "Detalhes no console do navegador.",
+        toast.error(`Bulk ${label}: ${failed.length} of ${ids.length} failed`, {
+          detail: "Details in the browser console.",
         });
       } else {
         toast.success(`Bulk ${label}: ${ids.length} instance${ids.length === 1 ? "" : "s"} ok`);
@@ -959,20 +959,20 @@ function V2PreviewInner() {
   const handleBulkMoveDefs = useCallback(
     async (ids: string[], targetFolder: string) => {
       if (!designSessionId) {
-        toast.error("Mover em lote requer uma session de design ativa");
+        toast.error("Bulk move requires an active design session");
         return;
       }
       try {
         const res = await bulkSessionDefinitions(designSessionId, "move-folder", ids, { targetFolder });
         if (res.failed > 0) {
           const firstErr = res.results.find((r) => !r.ok)?.error ?? "";
-          toast.error(`Move: ${res.failed} de ${res.total} falharam`, { detail: firstErr });
+          toast.error(`Move: ${res.failed} of ${res.total} failed`, { detail: firstErr });
         } else {
-          toast.success(`${res.ok} job${res.ok === 1 ? "" : "s"} movido${res.ok === 1 ? "" : "s"} para ${targetFolder}`);
+          toast.success(`${res.ok} job${res.ok === 1 ? "" : "s"} moved to ${targetFolder}`);
         }
         await reloadDefs();
       } catch (e) {
-        toast.error("Bulk move falhou", { detail: e instanceof Error ? e.message : String(e) });
+        toast.error("Bulk move failed", { detail: e instanceof Error ? e.message : String(e) });
       }
       clearSelection();
     },
@@ -1016,8 +1016,8 @@ function V2PreviewInner() {
     // Force só ordena o que está PUBLICADO (o server 404aria de qualquer jeito;
     // aqui a mensagem fica clara): job que só existe no draft → publique antes.
     if (publishedDefs && !publishedDefs.some((d) => d.id === def.id)) {
-      toast.error("Job ainda não publicado", {
-        detail: "Esse job existe só no draft da sessão de Design — publique antes de ordenar (Force).",
+      toast.error("Job not published yet", {
+        detail: "This job only exists in the Design session draft — publish it before ordering (Force).",
       });
       return;
     }
@@ -1030,7 +1030,7 @@ function V2PreviewInner() {
       }
     }).catch((err) => {
       console.error("[force] failed", err);
-      toast.error("Force Order falhou", { detail: err?.message ?? String(err) });
+      toast.error("Force Order failed", { detail: err?.message ?? String(err) });
     });
   }, [setPendingFocusId, publishedDefs]);
 
@@ -1046,7 +1046,7 @@ function V2PreviewInner() {
     setSelectedInstanceId(instanceId);
     Promise.resolve(forceRunInstance(instanceId)).catch((err) => {
       console.error("[run-now] failed", err);
-      toast.error("Run Now falhou", { detail: err?.message ?? String(err) });
+      toast.error("Run Now failed", { detail: err?.message ?? String(err) });
     });
   }, []);
 
@@ -1133,7 +1133,7 @@ function V2PreviewInner() {
         // ele (o server também barra com 409, mas o front nem deixa tentar).
         if (inst.holdScope === "folder") {
           items.push({
-            label: "Release (segurado pela folder)",
+            label: "Release (held by the folder)",
             disabled: true,
             onClick: () => {},
           });
@@ -1141,11 +1141,11 @@ function V2PreviewInner() {
           items.push({
             // Hold geral: o release restaura o status congelado (heldFrom) —
             // deixa isso explícito quando não é o WAITING clássico.
-            label: inst.heldFrom && inst.heldFrom !== "WAITING" ? `Release (volta a ${inst.heldFrom})` : "Release",
+            label: inst.heldFrom && inst.heldFrom !== "WAITING" ? `Release (back to ${inst.heldFrom})` : "Release",
             tone: "primary",
             onClick: () => {
               Promise.resolve(releaseInstance(inst.id)).catch((err) => {
-                toast.error("Release falhou", { detail: err instanceof Error ? err.message : String(err) });
+                toast.error("Release failed", { detail: err instanceof Error ? err.message : String(err) });
               });
             },
           });
@@ -1156,9 +1156,9 @@ function V2PreviewInner() {
           label: "Delete",
           tone: "danger",
           onClick: () => {
-            if (!window.confirm(`Delete "${inst.label}"?\n\nRemove a ordem da tela e do dia — a definition no Design não é tocada.`)) return;
+            if (!window.confirm(`Delete "${inst.label}"?\n\nRemoves the order from the board and from the day — the definition in Design is untouched.`)) return;
             Promise.resolve(deleteInstance(inst.id)).catch((err) => {
-              toast.error("Delete falhou", { detail: err instanceof Error ? err.message : String(err) });
+              toast.error("Delete failed", { detail: err instanceof Error ? err.message : String(err) });
             });
           },
         });
@@ -1315,10 +1315,10 @@ function V2PreviewInner() {
             disabled={!designSessionId || !hasActiveFolders}
             title={
               !designSessionId || !hasActiveFolders
-                ? "Abra uma folder primeiro — o modo código edita o working set da session"
+                ? "Open a folder first — code mode edits the session's working set"
                 : codeMode
-                  ? "Voltar ao canvas visual"
-                  : "Jobs as code — editar o working set como YAML (mesmo dialeto do Git)"
+                  ? "Back to the visual canvas"
+                  : "Jobs as code — edit the working set as YAML (same dialect as Git)"
             }
             style={!designSessionId || !hasActiveFolders ? { opacity: 0.35, cursor: "not-allowed" } : undefined}
             onClick={() => {
@@ -1335,7 +1335,7 @@ function V2PreviewInner() {
         {mode === "design" && isServerMode() && designSessionId && hasActiveFolders && (
           <button
             onClick={() => setShowMassUpdate(true)}
-            title="Find & Update — busca por critério/regex e atualização em massa com preview e undo"
+            title="Find & Update — search by criteria/regex and update in bulk with preview and undo"
             style={{
               padding: "5px 10px",
               background: "transparent",
@@ -1356,7 +1356,7 @@ function V2PreviewInner() {
           <>
             <button
               onClick={() => setScaleView((v) => !v)}
-              title="ViewPoint server-driven — paginado/virtualizado, aguenta 100k–1M jobs/dia"
+              title="Server-driven ViewPoint — paginated/virtualized, handles 100k–1M jobs/day"
               style={{
                 padding: "5px 10px",
                 background: scaleView ? "var(--v2-accent-deep)" : "transparent",
@@ -1374,7 +1374,7 @@ function V2PreviewInner() {
 
             <button
               onClick={() => { setShowResources((v) => !v); setShowConditions(false); }}
-              title="Recursos — o pool de quotas do ambiente: capacidade e uso de cada recurso (semáforo). Job sem unidade livre fica em WAIT RESOURCE. Quem consome se escolhe no Design (aba Condições → Recursos)."
+              title="Resources — the environment's quota pool: capacity and usage of each resource (semaphore). A job with no free unit sits in WAIT RESOURCE. Who consumes what is chosen in Design (Conditions tab → Resources)."
               style={{
                 padding: "5px 10px",
                 background: showResources ? "rgba(245,158,11,0.15)" : "transparent",
@@ -1387,12 +1387,12 @@ function V2PreviewInner() {
                 display: "flex", alignItems: "center", gap: 6,
               }}
             >
-              <Boxes size={11} /> Recursos
+              <Boxes size={11} /> Resources
             </button>
 
             <button
               onClick={() => { setShowConditions((v) => !v); setShowResources(false); }}
-              title="Condições — o pool do ambiente: toda condição adicionada (por job OK, Set OK, ação On/Do ou operador), com data. Deletar aqui trava quem depende dela; adicionar libera."
+              title="Conditions — the environment pool: every condition added (by a job ending OK, Set OK, an On/Do action or an operator), with its date. Deleting one here blocks whoever depends on it; adding one releases them."
               style={{
                 padding: "5px 10px",
                 background: showConditions ? "var(--v2-accent-deep)" : "transparent",
@@ -1405,12 +1405,12 @@ function V2PreviewInner() {
                 display: "flex", alignItems: "center", gap: 6,
               }}
             >
-              <ListChecks size={11} /> Condições
+              <ListChecks size={11} /> Conditions
             </button>
 
             <button
               onClick={() => organizeView(300)}
-              title="Organizar — re-enquadra o canvas no mesmo limite da entrada (os jobs já se alinham sozinhos: dependentes em fluxo, soltos em grade)"
+              title="Organize — reframes the canvas to the same bounds it opened with (jobs already lay themselves out: dependents in a flow, loose ones on a grid)"
               style={{
                 padding: "5px 10px",
                 background: "transparent",
@@ -1423,14 +1423,14 @@ function V2PreviewInner() {
                 display: "flex", alignItems: "center", gap: 6,
               }}
             >
-              <LayoutGrid size={11} /> Organizar
+              <LayoutGrid size={11} /> Organize
             </button>
 
             <div style={{ position: "relative" }}>
               <button
                 onClick={() => setForceMenuOpen((v) => !v)}
                 disabled={!hasDefs}
-                title={hasDefs ? "Force Order — criar instance agora (Run Now)" : "Crie definitions no Design primeiro"}
+                title={hasDefs ? "Force Order — create an instance now (Run Now)" : "Create definitions in Design first"}
                 style={{
                   padding: "5px 10px",
                   background: forceMenuOpen ? "var(--v2-accent-deep)" : "transparent",
@@ -1554,8 +1554,8 @@ function V2PreviewInner() {
                 }}
                 title={
                   sessionStatus.behind > 0
-                    ? `main avançou ${sessionStatus.behind} commit(s) desde o clone — publish vai precisar resolver drift`
-                    : `${sessionStatus.ahead} commit(s) à frente do main`
+                    ? `main moved ${sessionStatus.behind} commit(s) ahead since the clone — publish will have to resolve the drift`
+                    : `${sessionStatus.ahead} commit(s) ahead of main`
                 }
               >
                 {sessionStatus.ahead > 0 && `↑${sessionStatus.ahead}`}
@@ -1696,22 +1696,22 @@ function V2PreviewInner() {
             instances chegam async e o "Ambiente vazio" piscava antes do board. */}
         {mode === "monitoring" && !hasInstances && ready && (
           <EmptyState
-            title={hasDefs ? "Nenhuma instance hoje" : "Ambiente vazio"}
+            title={hasDefs ? "No instance today" : "Empty environment"}
             hint={hasDefs
-              ? "A daily materializa os jobs automaticamente no horário. Para rodar um job agora, use o Force."
-              : "Vá para Design mode e crie jobs arrastando tipos da palette."}
+              ? "The daily materializes jobs automatically at the scheduled time. To run a job right now, use Force."
+              : "Go to Design mode and create jobs by dragging types from the palette."}
           />
         )}
         {mode === "design" && !hasActiveFolders && (
           <EmptyState
-            title="Nenhuma folder aberta"
-            hint="Abra ou crie uma folder para começar a trabalhar. Sem folder ativa, não há onde colocar jobs."
+            title="No folder open"
+            hint="Open or create a folder to start working. With no active folder there is nowhere to put jobs."
           />
         )}
         {mode === "design" && hasActiveFolders && designDefsWithDraft.length === 0 && !codeMode && (
           <EmptyState
-            title="Nenhuma definition"
-            hint="Arraste um tipo da palette para o canvas — ou entre no modo CODE e crie os jobs como YAML."
+            title="No definition"
+            hint="Drag a type from the palette onto the canvas — or switch to CODE mode and write the jobs as YAML."
           />
         )}
 
@@ -1744,12 +1744,12 @@ function V2PreviewInner() {
                 <GitCommitHorizontal size={15} style={{ color: "var(--v2-accent-brand)", flexShrink: 0 }} />
                 <div style={{ fontSize: 11, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, color: "var(--v2-text-primary)" }}>
-                    Sessão com edições não publicadas
+                    Session with unpublished edits
                   </div>
                   <div style={{ color: "var(--v2-text-secondary)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {(s.folders.length > 0 ? s.folders.join(", ") : "sem folders abertas")}
-                    {" · última edição "}
-                    {new Date(s.lastTouch).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                    {(s.folders.length > 0 ? s.folders.join(", ") : "no folders open")}
+                    {" · last edit "}
+                    {new Date(s.lastTouch).toLocaleString("en-GB", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                   </div>
                 </div>
                 <div style={{ flex: 1 }} />
@@ -1761,7 +1761,7 @@ function V2PreviewInner() {
                     fontSize: 10, fontWeight: 700, fontFamily: "var(--v2-font-mono)",
                     letterSpacing: "0.06em", textTransform: "uppercase", flexShrink: 0,
                   }}
-                >Retomar</button>
+                >Resume</button>
                 <button
                   onClick={() => void discardOrphanSession(s.id)}
                   style={{
@@ -1770,7 +1770,7 @@ function V2PreviewInner() {
                     fontFamily: "var(--v2-font-mono)", letterSpacing: "0.06em",
                     textTransform: "uppercase", flexShrink: 0,
                   }}
-                >Descartar</button>
+                >Discard</button>
               </div>
             ))}
           </div>
@@ -1792,17 +1792,17 @@ function V2PreviewInner() {
               onPauseFolder={isServerMode() ? async (name) => {
                 try {
                   const n = await pauseFolder(name);
-                  toast.info(`Workflow ${name} pausado`, { detail: `${n} job(s) segurados — estado preservado` });
+                  toast.info(`Workflow ${name} paused`, { detail: `${n} job(s) held — state preserved` });
                 } catch (e) {
-                  toast.error("Pause falhou", { detail: e instanceof Error ? e.message : String(e) });
+                  toast.error("Pause failed", { detail: e instanceof Error ? e.message : String(e) });
                 }
               } : undefined}
               onResumeFolder={isServerMode() ? async (name) => {
                 try {
                   const n = await resumeFolder(name);
-                  toast.info(`Workflow ${name} retomado`, { detail: `${n} job(s) liberados` });
+                  toast.info(`Workflow ${name} resumed`, { detail: `${n} job(s) released` });
                 } catch (e) {
-                  toast.error("Resume falhou", { detail: e instanceof Error ? e.message : String(e) });
+                  toast.error("Resume failed", { detail: e instanceof Error ? e.message : String(e) });
                 }
               } : undefined}
             />
@@ -1846,7 +1846,7 @@ function V2PreviewInner() {
                   onDelete: (id) => {
                     Promise.resolve(deleteInstance(id))
                       .then(() => setSelectedInstanceId(null)) // a ordem sumiu — fecha o drawer
-                      .catch((err) => toast.error("Delete falhou", { detail: err instanceof Error ? err.message : String(err) }));
+                      .catch((err) => toast.error("Delete failed", { detail: err instanceof Error ? err.message : String(err) }));
                   },
                   onCancel: cancelInstance,
                   onSkip: skipInstance,
@@ -2030,10 +2030,10 @@ function V2PreviewInner() {
             </span>
             <span style={{ opacity: 0.7 }}> · </span>
             <span
-              title={dailyLate ? "materializou depois do horário configurado (+5min)" : "materializou no horário"}
+              title={dailyLate ? "materialized after the configured time (+5min)" : "materialized on time"}
               style={{ color: dailyLate ? "var(--v2-status-failed)" : "var(--v2-status-ok)", fontWeight: 600 }}
             >
-              {dailyLate ? "⏰ atrasada" : "em dia"}
+              {dailyLate ? "⏰ late" : "on time"}
             </span>
           </span>
         )}

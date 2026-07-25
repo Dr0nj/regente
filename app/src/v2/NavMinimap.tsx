@@ -29,7 +29,7 @@ export default function NavMinimap({ nodes, width, height, onNavigate }: {
   // Mostra APENAS os jobs (ignora lanes/containers e outros nós).
   const jobs = nodes.filter((n) => n.type === "jobV2");
   if (jobs.length === 0) {
-    return <div style={{ width, height, display: "grid", placeItems: "center", fontSize: 11, color: "var(--v2-text-muted)" }}>sem jobs</div>;
+    return <div style={{ width, height, display: "grid", placeItems: "center", fontSize: 11, color: "var(--v2-text-muted)" }}>no jobs</div>;
   }
   const MARGIN = 8; // respiro dentro da caixa do minimap
   const xs = jobs.map((n) => n.position.x);

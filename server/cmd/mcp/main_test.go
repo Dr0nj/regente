@@ -239,7 +239,7 @@ func TestMCP_WriteBlockedByDefault(t *testing.T) {
 	defer ts.Close()
 
 	text, isErr := contentOf(toolsCall(newM(ts, false), "rerun_job", map[string]interface{}{"instanceId": "x"}))
-	if !isErr || !strings.Contains(text, "escrita desabilitada") {
+	if !isErr || !strings.Contains(text, "writes disabled") {
 		t.Fatalf("rerun sem -allow-writes deveria falhar, veio isErr=%v text=%q", isErr, text)
 	}
 

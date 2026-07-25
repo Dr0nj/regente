@@ -32,7 +32,7 @@ func runFileWatch(params map[string]interface{}, timeoutSec int, emit func(strin
 	}
 	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
 
-	emit(fmt.Sprintf("[file-watch] aguardando %s (poll %s, estabilidade %s, timeout %ds)\n",
+	emit(fmt.Sprintf("[file-watch] waiting for %s (poll %s, stability %s, timeout %ds)\n",
 		path, interval, stable, timeoutSec))
 
 	var lastSize int64 = -1
@@ -41,33 +41,33 @@ func runFileWatch(params map[string]interface{}, timeoutSec int, emit func(strin
 	for {
 		if time.Now().After(deadline) {
 			if lastSize >= 0 {
-				return 1, fmt.Sprintf("timeout: %s existe mas o tamanho não estabilizou por %s (último: %d bytes)", path, stable, lastSize)
+				return 1, fmt.Sprintf("timeout: %s exists but its size did not stabilize for %s (last: %d bytes)", path, stable, lastSize)
 			}
-			return 1, fmt.Sprintf("timeout: arquivo %s não apareceu em %ds", path, timeoutSec)
+			return 1, fmt.Sprintf("timeout: file %s did not appear within %ds", path, timeoutSec)
 		}
 		st, err := os.Stat(path)
 		switch {
 		case err == nil && st.IsDir():
-			return 1, fmt.Sprintf("%s existe mas é um DIRETÓRIO (esperado arquivo)", path)
+			return 1, fmt.Sprintf("%s exists but is a DIRECTORY (a file was expected)", path)
 		case err == nil:
 			size := st.Size()
 			if stable <= 0 {
-				return 0, fmt.Sprintf("arquivo encontrado: %s (%d bytes)", path, size)
+				return 0, fmt.Sprintf("file found: %s (%d bytes)", path, size)
 			}
 			if size != lastSize {
 				// tamanho mudou (ou 1ª vez que vimos o arquivo) — re-arma a janela
 				if lastSize < 0 {
-					emit(fmt.Sprintf("[file-watch] %s apareceu (%d bytes) — aguardando estabilizar\n", path, size))
+					emit(fmt.Sprintf("[file-watch] %s appeared (%d bytes) — waiting for it to stabilize\n", path, size))
 				}
 				lastSize = size
 				stableSince = time.Now()
 			} else if time.Since(stableSince) >= stable {
-				return 0, fmt.Sprintf("arquivo encontrado e estável: %s (%d bytes, estável por %s)", path, size, stable)
+				return 0, fmt.Sprintf("file found and stable: %s (%d bytes, stable for %s)", path, size, stable)
 			}
 		default:
 			// ainda não existe — a cada ~10 polls emite um sinal de vida
 			if polls > 0 && polls%10 == 0 {
-				emit(fmt.Sprintf("[file-watch] ainda aguardando %s (%d polls)\n", path, polls))
+				emit(fmt.Sprintf("[file-watch] still waiting for %s (%d polls)\n", path, polls))
 			}
 			lastSize = -1
 		}

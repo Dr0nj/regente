@@ -44,17 +44,17 @@ const JOB_TYPES: Array<{
   /** true = sem executor real ainda — badge "stub" na palette. */
   stub?: boolean;
 }> = [
-  { id: "COMMAND",       label: "Command",       hint: "Comando shell no agente (Win/Linux)",  Icon: Terminal },
-  { id: "SCRIPT",        label: "Script",        hint: "Script .sh/.bat/.ps1 no agente",       Icon: FileCode },
-  { id: "SSH",           label: "SSH",           hint: "Comando remoto via SSH (sem agente)",  Icon: Network },
-  { id: "HTTP",          label: "HTTP",          hint: "Chamada REST com validação de status", Icon: Globe },
-  { id: "FILE_WATCH",    label: "File Watch",    hint: "Espera arquivo chegar no agente",      Icon: FileSearch },
-  { id: "FILE_TRANSFER", label: "File Transfer", hint: "MFT: local ↔ SFTP ↔ S3 pelo agente",   Icon: ArrowRightLeft },
-  { id: "DATABASE",      label: "Database",      hint: "SQL em Postgres/MySQL/SQLite pelo agente", Icon: Database },
-  { id: "LAMBDA",        label: "Lambda",        hint: "Função serverless AWS (fim do roadmap)", Icon: Zap, stub: true },
-  { id: "BATCH",         label: "Batch",         hint: "Container ECS/Batch (fim do roadmap)", Icon: Box, stub: true },
-  { id: "GLUE",          label: "Glue",          hint: "ETL pipeline (fim do roadmap)",        Icon: Database, stub: true },
-  { id: "STEP_FUNCTION", label: "Step Function", hint: "State machine (fim do roadmap)",       Icon: Workflow, stub: true },
+  { id: "COMMAND",       label: "Command",       hint: "Shell command on the agent (Win/Linux)", Icon: Terminal },
+  { id: "SCRIPT",        label: "Script",        hint: ".sh/.bat/.ps1 script on the agent",      Icon: FileCode },
+  { id: "SSH",           label: "SSH",           hint: "Remote command over SSH (agentless)",    Icon: Network },
+  { id: "HTTP",          label: "HTTP",          hint: "REST call with status validation",       Icon: Globe },
+  { id: "FILE_WATCH",    label: "File Watch",    hint: "Waits for a file on the agent",          Icon: FileSearch },
+  { id: "FILE_TRANSFER", label: "File Transfer", hint: "MFT: local ↔ SFTP ↔ S3 from the agent",  Icon: ArrowRightLeft },
+  { id: "DATABASE",      label: "Database",      hint: "SQL on Postgres/MySQL/SQLite from the agent", Icon: Database },
+  { id: "LAMBDA",        label: "Lambda",        hint: "AWS serverless function (end of roadmap)", Icon: Zap, stub: true },
+  { id: "BATCH",         label: "Batch",         hint: "ECS/Batch container (end of roadmap)",   Icon: Box, stub: true },
+  { id: "GLUE",          label: "Glue",          hint: "ETL pipeline (end of roadmap)",          Icon: Database, stub: true },
+  { id: "STEP_FUNCTION", label: "Step Function", hint: "State machine (end of roadmap)",         Icon: Workflow, stub: true },
 ];
 
 export default function DesignSidebarV2({
@@ -227,7 +227,7 @@ export default function DesignSidebarV2({
                       e.dataTransfer.setData("application/regente-jobtype", t.id);
                       e.dataTransfer.effectAllowed = "copy";
                     }}
-                    title={t.stub ? "Sem executor real ainda (roda em dry-run). AWS executors = P11 no roadmap." : `Arraste para o canvas para criar um job ${t.label}`}
+                    title={t.stub ? "No real executor yet (runs in dry-run). AWS executors = P11 on the roadmap." : `Drag onto the canvas to create a ${t.label} job`}
                     style={{
                       padding: "8px 12px",
                       cursor: "grab",
@@ -289,16 +289,16 @@ export default function DesignSidebarV2({
             <div style={{ padding: "4px 0" }}>
               {templates.length === 0 && (
                 <div style={{ padding: "12px 14px", fontSize: 11, color: "var(--v2-text-muted)", lineHeight: 1.5 }}>
-                  Nenhum template ainda. Abra um job e clique
+                  No template yet. Open a job and click
                   <br />
-                  <span style={{ fontFamily: "var(--v2-font-mono)" }}>☆ Template</span> para salvar a forma dele aqui.
+                  <span style={{ fontFamily: "var(--v2-font-mono)" }}>☆ Template</span> to save its shape here.
                 </div>
               )}
               {templates.map((tpl) => (
                 <div
                   key={tpl.name}
                   onClick={() => onUseTemplate?.({ ...tpl.definition, label: tpl.definition.label || tpl.name })}
-                  title={`Criar um job a partir de "${tpl.name}" (${tpl.definition.jobType})`}
+                  title={`Create a job from "${tpl.name}" (${tpl.definition.jobType})`}
                   style={{
                     padding: "8px 12px", cursor: "pointer",
                     borderBottom: "1px solid var(--v2-border-subtle)",
@@ -319,10 +319,10 @@ export default function DesignSidebarV2({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (!window.confirm(`Excluir o template "${tpl.name}"?`)) return;
+                      if (!window.confirm(`Delete the template "${tpl.name}"?`)) return;
                       void deleteTemplate(tpl.name).then(loadTemplates);
                     }}
-                    title="Excluir template"
+                    title="Delete template"
                     style={{ background: "transparent", border: "none", color: "var(--v2-text-muted)", cursor: "pointer", padding: 2, display: "inline-flex", flexShrink: 0 }}
                   >
                     <Trash2 size={12} />
@@ -336,7 +336,7 @@ export default function DesignSidebarV2({
             <div style={{ padding: "4px 0" }}>
               {folders.length === 0 && (
                 <div style={{ padding: "12px 14px", fontSize: 11, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>
-                  Nenhuma folder aberta nesta session.
+                  No folder open in this session.
                 </div>
               )}
               {folders.map((t) => (
@@ -380,9 +380,9 @@ export default function DesignSidebarV2({
 
           {tab === "variables" && (
             <div style={{ padding: "12px 14px", fontSize: 11, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)", lineHeight: 1.5 }}>
-              Variáveis globais são gerenciadas no Control-M Panel
+              Global variables are managed in the Control-M Panel
               <br />
-              <span style={{ opacity: 0.6 }}>(menu do usuário → Control-M → Variables)</span>
+              <span style={{ opacity: 0.6 }}>(user menu → Control-M → Variables)</span>
             </div>
           )}
         </div>
@@ -419,7 +419,7 @@ function JobRow({ label, onClick }: { label: string; onClick: () => void }) {
       onClick={onClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      title={`Ir para "${label}" no canvas`}
+      title={`Go to "${label}" on the canvas`}
       style={{
         width: "100%",
         display: "flex",

@@ -39,15 +39,15 @@ func cmdDev(args []string) error {
 		args = args[1:]
 	}
 	fs := flag.NewFlagSet("dev", flag.ExitOnError)
-	workspace := fs.String("workspace", "./workspace", "workspace local (contém definitions/)")
-	date := fs.String("date", time.Now().Format("2006-01-02"), "order_date da daily materializada no boot")
-	addr := fs.String("addr", ":8686", "endereço HTTP")
-	token := fs.String("token", "dev-token", "bearer token da API")
-	spaDir := fs.String("spa-dir", "", "servir o SPA buildado deste diretório (opcional)")
+	workspace := fs.String("workspace", "./workspace", "local workspace (contains definitions/)")
+	date := fs.String("date", time.Now().Format("2006-01-02"), "order_date of the daily materialized at boot")
+	addr := fs.String("addr", ":8686", "HTTP address")
+	token := fs.String("token", "dev-token", "API bearer token")
+	spaDir := fs.String("spa-dir", "", "serve the built SPA from this directory (optional)")
 	_ = fs.Parse(args)
 
 	if _, err := os.Stat(filepath.Join(*workspace, "definitions")); err != nil {
-		return fmt.Errorf("workspace %s sem definitions/ — aponte -workspace pro seu clone do regente-workspace", *workspace)
+		return fmt.Errorf("workspace %s has no definitions/ — point -workspace at your clone of regente-workspace", *workspace)
 	}
 
 	tmp, err := os.MkdirTemp("", "regente-dev-*")
@@ -86,10 +86,10 @@ func cmdDev(args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sched.ReloadDefs()
-	sched.MigrateConditionsUnify()      // unificação deps→condições: backfill one-time
-	sched.MigrateMonitoringSnapshot()   // M1: colunas congeladas do Monitoring (schemaV18)
-	sched.MigrateResourcesSnapshot()    // F15: recursos congelados (schemaV19)
-	sched.MigrateCondLogicSnapshot()    // CL: lógica AND/OR congelada (schemaV21) — linhas OR
+	sched.MigrateConditionsUnify()    // unificação deps→condições: backfill one-time
+	sched.MigrateMonitoringSnapshot() // M1: colunas congeladas do Monitoring (schemaV18)
+	sched.MigrateResourcesSnapshot()  // F15: recursos congelados (schemaV19)
+	sched.MigrateCondLogicSnapshot()  // CL: lógica AND/OR congelada (schemaV21) — linhas OR
 	created := sched.RunDaily(*date)
 	go sched.Run(ctx)
 
@@ -100,17 +100,17 @@ func cmdDev(args []string) error {
 	srv := &http.Server{Addr: *addr, Handler: router, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = srv.ListenAndServe() }()
 
-	fmt.Printf(`regente dev — ambiente LOCAL descartável
+	fmt.Printf(`regente dev — disposable LOCAL environment
   workspace : %s
-  daily     : %s (%d jobs materializados, demo-mode: mock-finish OK)
+  daily     : %s (%d jobs materialized, demo-mode: mock-finish OK)
   api       : http://localhost%s  (Authorization: Bearer %s)
-  estado    : %s (apagado ao sair)
+  state     : %s (deleted on exit)
 
-  experimente:
+  try:
     curl -s -H "Authorization: Bearer %s" http://localhost%s/api/instances | jq length
-    UI dev: VITE_REGENTE_SERVER_URL=http://localhost%s npm run dev (na pasta app/)
+    UI dev: VITE_REGENTE_SERVER_URL=http://localhost%s npm run dev (in the app/ folder)
 
-Ctrl-C encerra.
+Ctrl-C stops.
 `, *workspace, *date, created, *addr, *token, tmp, *token, *addr, *addr)
 
 	stop := make(chan os.Signal, 1)

@@ -125,8 +125,8 @@ export function useOrchestratorData() {
           // GitHub) → avisa o usuário que as caixinhas mudaram sozinhas.
           const payload = (ev.payload ?? {}) as { reason?: string; sha?: string };
           if (payload.reason === "git-webhook") {
-            toast.info("Workspace atualizado via GitHub", {
-              detail: payload.sha ? `main agora em ${payload.sha}` : "novo commit no main",
+            toast.info("Workspace updated via GitHub", {
+              detail: payload.sha ? `main now at ${payload.sha}` : "new commit on main",
             });
           }
         }

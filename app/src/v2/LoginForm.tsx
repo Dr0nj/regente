@@ -199,7 +199,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
         onLogin(res.user);
       }
     } catch (e: unknown) {
-      const m = e instanceof Error ? e.message : "login falhou";
+      const m = e instanceof Error ? e.message : "login failed";
       setErr(m);
     } finally {
       setBusy(false);
@@ -209,15 +209,15 @@ export function LoginForm({ onLogin }: LoginFormProps) {
   async function submitChange(e: React.FormEvent) {
     e.preventDefault();
     if (!forceChange) return;
-    if (next.length < 4) { setErr("senha muito curta (min 4)"); return; }
-    if (next !== next2) { setErr("senhas nao conferem"); return; }
+    if (next.length < 4) { setErr("password too short (min 4)"); return; }
+    if (next !== next2) { setErr("passwords do not match"); return; }
     setBusy(true);
     setErr(null);
     try {
       await changePassword(password, next);
       onLogin({ ...forceChange.user, mustChangePassword: false });
     } catch (e: unknown) {
-      const m = e instanceof Error ? e.message : "troca falhou";
+      const m = e instanceof Error ? e.message : "change failed";
       setErr(m);
     } finally {
       setBusy(false);
@@ -245,12 +245,12 @@ export function LoginForm({ onLogin }: LoginFormProps) {
             {/* Username */}
             <label style={{ display: "grid", gap: 2 }}>
               <div style={S.labelRow}>
-                <span>usuario</span>
+                <span>user</span>
                 <StatusDots />
               </div>
               <input
                 autoFocus
-                placeholder="Nome de usuário"
+                placeholder="Username"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
                 required
@@ -264,13 +264,13 @@ export function LoginForm({ onLogin }: LoginFormProps) {
             {/* Password */}
             <label style={{ display: "grid", gap: 2 }}>
               <div style={S.labelRow}>
-                <span>senha</span>
+                <span>password</span>
                 <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
                   <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#444" }} />
                   <span
                     style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
                     onClick={(e) => { e.preventDefault(); setShowPw(v => !v); }}
-                    title={showPw ? "ocultar senha" : "mostrar senha"}
+                    title={showPw ? "hide password" : "show password"}
                   >
                     <EyeOff />
                   </span>
@@ -278,7 +278,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
               </div>
               <input
                 type={showPw ? "text" : "password"}
-                placeholder="Senha criptografada"
+                placeholder="Encrypted password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required
@@ -298,28 +298,28 @@ export function LoginForm({ onLogin }: LoginFormProps) {
               onMouseEnter={() => setBtnHover(true)}
               onMouseLeave={() => setBtnHover(false)}
             >
-              {busy ? "entrando..." : "Entrar"}
+              {busy ? "signing in..." : "Sign in"}
             </button>
 
             <div style={S.footer}>
-              Default inicial: admin / admin (sera obrigado a trocar)
+              Initial default: admin / admin (you will be forced to change it)
             </div>
           </form>
         ) : (
           <form onSubmit={submitChange} style={{ display: "grid", gap: 14 }}>
             <div style={{ fontSize: 14, color: "#a3a3a3" }}>
-              Trocar senha obrigatória para <b style={{ color: "#f5f5f5" }}>{forceChange.user.username}</b>
+              Mandatory password change for <b style={{ color: "#f5f5f5" }}>{forceChange.user.username}</b>
             </div>
 
             <label style={{ display: "grid", gap: 2 }}>
               <div style={S.labelRow}>
-                <span>nova senha</span>
+                <span>new password</span>
                 <StatusDots />
               </div>
               <input
                 autoFocus
                 type="password"
-                placeholder="Digite a nova senha"
+                placeholder="Enter the new password"
                 value={next}
                 onChange={e => setNext(e.target.value)}
                 required
@@ -332,12 +332,12 @@ export function LoginForm({ onLogin }: LoginFormProps) {
 
             <label style={{ display: "grid", gap: 2 }}>
               <div style={S.labelRow}>
-                <span>repita</span>
+                <span>repeat</span>
                 <StatusDots green={false} />
               </div>
               <input
                 type="password"
-                placeholder="Repita a nova senha"
+                placeholder="Repeat the new password"
                 value={next2}
                 onChange={e => setNext2(e.target.value)}
                 required
@@ -357,7 +357,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
               onMouseEnter={() => setBtnHover(true)}
               onMouseLeave={() => setBtnHover(false)}
             >
-              {busy ? "salvando..." : "Salvar e entrar"}
+              {busy ? "saving..." : "Save and sign in"}
             </button>
           </form>
         )}

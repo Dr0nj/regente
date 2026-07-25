@@ -79,14 +79,14 @@ func (s *server) downloadArchive(w http.ResponseWriter, r *http.Request) {
 	}
 	name := chi.URLParam(r, "file")
 	if !archiveFileRe.MatchString(name) {
-		http.Error(w, "nome inválido (esperado instances-YYYY-MM-DD.ndjson)", http.StatusBadRequest)
+		http.Error(w, "invalid name (expected instances-YYYY-MM-DD.ndjson)", http.StatusBadRequest)
 		return
 	}
 	path := filepath.Join(s.apiArchiveDir(), name)
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			http.Error(w, "archive não encontrado", http.StatusNotFound)
+			http.Error(w, "archive not found", http.StatusNotFound)
 			return
 		}
 		writeJSON(w, 500, map[string]string{"error": err.Error()})

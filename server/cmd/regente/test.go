@@ -47,11 +47,11 @@ type testReport struct {
 
 func cmdTest(args []string) error {
 	fs := flag.NewFlagSet("test", flag.ExitOnError)
-	date := fs.String("date", time.Now().Format("2006-01-02"), "data da daily simulada (YYYY-MM-DD)")
-	jsonOut := fs.Bool("json", false, "saída JSON (CI)")
+	date := fs.String("date", time.Now().Format("2006-01-02"), "date of the simulated daily (YYYY-MM-DD)")
+	jsonOut := fs.Bool("json", false, "JSON output (CI)")
 	_ = fs.Parse(reorderArgs(args, "json"))
 	if fs.NArg() < 1 {
-		return errors.New("uso: regente test <job.yaml | workspace-dir> [-date YYYY-MM-DD] [-json]")
+		return errors.New("usage: regente test <job.yaml | workspace-dir> [-date YYYY-MM-DD] [-json]")
 	}
 	target := fs.Arg(0)
 
@@ -77,12 +77,12 @@ func cmdTest(args []string) error {
 	for _, d := range defs {
 		for _, u := range d.Upstream {
 			if !byID[u.From] {
-				rep.Errors = append(rep.Errors, fmt.Sprintf("%s: upstream %q não existe", d.ID, u.From))
+				rep.Errors = append(rep.Errors, fmt.Sprintf("%s: upstream %q does not exist", d.ID, u.From))
 			}
 		}
 	}
 	for _, cyc := range findCycles(defs) {
-		rep.Errors = append(rep.Errors, "ciclo de dependências: "+strings.Join(cyc, " → "))
+		rep.Errors = append(rep.Errors, "dependency cycle: "+strings.Join(cyc, " → "))
 	}
 
 	// 4. policy as code (se o workspace tiver policies.yaml).
@@ -104,7 +104,7 @@ func cmdTest(args []string) error {
 	if len(rep.Errors) == 0 {
 		sim, err := simulate(wsRoot, *date)
 		if err != nil {
-			rep.Errors = append(rep.Errors, "simulação: "+err.Error())
+			rep.Errors = append(rep.Errors, "simulation: "+err.Error())
 		} else {
 			rep.Simulation = sim
 			for _, j := range sim.Jobs {
@@ -141,7 +141,7 @@ func loadTarget(target string, rep *testReport) ([]domain.JobDefinition, string,
 	if st.IsDir() {
 		root := target
 		if _, err := os.Stat(filepath.Join(target, "definitions")); err != nil {
-			return nil, "", fmt.Errorf("%s não parece um workspace (sem definitions/)", target)
+			return nil, "", fmt.Errorf("%s does not look like a workspace (no definitions/)", target)
 		}
 		defs := strictLoadWorkspace(root, rep)
 		return defs, root, nil
@@ -308,11 +308,11 @@ func findCycles(defs []domain.JobDefinition) [][]string {
 }
 
 func printReport(rep testReport) {
-	fmt.Printf("regente test — %s (daily simulada: %s)\n", rep.Target, rep.Date)
+	fmt.Printf("regente test — %s (simulated daily: %s)\n", rep.Target, rep.Date)
 	fmt.Printf("  jobs: %d\n", rep.Jobs)
 	if rep.Simulation != nil {
 		c := rep.Simulation.Counts
-		fmt.Printf("  simulação: %d RUN · %d WAIT · %d BLOCKED · %d fora do calendário\n",
+		fmt.Printf("  simulation: %d RUN · %d WAIT · %d BLOCKED · %d out of the calendar\n",
 			c.Run, c.Wait, c.Blocked, c.NotScheduled)
 	}
 	for _, w := range rep.Warnings {
@@ -324,6 +324,6 @@ func printReport(rep testReport) {
 	if rep.Passed {
 		fmt.Println("PASS")
 	} else {
-		fmt.Printf("FAIL (%d erro(s))\n", len(rep.Errors))
+		fmt.Printf("FAIL (%d error(s))\n", len(rep.Errors))
 	}
 }

@@ -74,7 +74,7 @@ export function GitStatusBadge({ canSync }: { canSync: boolean }) {
           href={status.sha ? `${status.webUrl}/commit/${status.sha}` : status.webUrl}
           target="_blank"
           rel="noreferrer"
-          title="Abrir no GitHub"
+          title="Open on GitHub"
           style={{ color: "#f5f5f5", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}
         >
           {status.branch}@{status.shortSha || "?"}

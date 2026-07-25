@@ -32,8 +32,8 @@ function relativeOf(iso?: string): string {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return "—";
   const diff = Date.now() - t;
-  if (diff < 45000) return "agora";
-  return "há " + fmtDuration(diff);
+  if (diff < 45000) return "just now";
+  return fmtDuration(diff) + " ago";
 }
 
 export default function AgentsManager() {
@@ -50,7 +50,7 @@ export default function AgentsManager() {
     setPings((p) => ({ ...p, [id]: "pending" }));
     pingAgent(id)
       .then((r) => setPings((p) => ({ ...p, [id]: r })))
-      .catch(() => setPings((p) => ({ ...p, [id]: { id, online: false, ok: false, error: "erro" } })));
+      .catch(() => setPings((p) => ({ ...p, [id]: { id, online: false, ok: false, error: "error" } })));
   }, []);
 
   const reload = useCallback(() => {
@@ -85,7 +85,7 @@ export default function AgentsManager() {
       {/* Frota */}
       <fieldset style={{ border: "1px solid var(--v2-border-medium)", borderRadius: 6, padding: "12px 14px" }}>
         <legend style={{ fontSize: 11, fontWeight: 600, color: "var(--v2-text-secondary)", padding: "0 4px" }}>
-          Frota — {online} de {agents.length} online
+          Fleet — {online} of {agents.length} online
         </legend>
 
         {agents.some((a) => a.local) && (
@@ -95,19 +95,19 @@ export default function AgentsManager() {
               style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", textTransform: "uppercase", letterSpacing: "0.05em",
                 background: "transparent", border: "1px solid var(--v2-accent-brand)", color: "var(--v2-accent-brand)",
                 borderRadius: 3, padding: "3px 10px", cursor: "pointer" }}
-            >ping todos</button>
+            >ping all</button>
           </div>
         )}
 
         {agents.length === 0 ? (
-          <div style={{ fontSize: 11, color: "var(--v2-text-muted)" }}>Nenhum agente registrado ainda.</div>
+          <div style={{ fontSize: 11, color: "var(--v2-text-muted)" }}>No agent registered yet.</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {agents.map((a) => (
               <div
                 key={a.id}
                 onClick={() => setDetail(a)}
-                title="Ver detalhes"
+                title="View details"
                 style={{
                   display: "flex", alignItems: "center", gap: 10,
                   padding: "7px 10px", background: "var(--v2-bg-elevated)",
@@ -122,19 +122,19 @@ export default function AgentsManager() {
                 </span>
                 {a.os && <span style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", border: "1px solid var(--v2-border-subtle)", borderRadius: 3, padding: "1px 5px" }}>{a.os}{a.arch ? `/${a.arch}` : ""}</span>}
                 {a.environment && (
-                  <span title={`Ambiente/site do agente (flag -env) — jobs com environment "${a.environment}" roteiam pra cá`}
+                  <span title={`Agent environment/site (-env flag) — jobs with environment "${a.environment}" route here`}
                     style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-status-running)", border: "1px solid var(--v2-status-running)", borderRadius: 3, padding: "1px 5px", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                     ◉ {a.environment}
                   </span>
                 )}
                 {a.online && a.node && !a.local && (
-                  <span title={`Conectado em outro nó do cluster (${a.node})`}
+                  <span title={`Connected to another cluster node (${a.node})`}
                     style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-accent-brand)", border: "1px solid var(--v2-accent-brand)", borderRadius: 3, padding: "1px 5px", whiteSpace: "nowrap" }}>
                     ⇄ {a.node}
                   </span>
                 )}
                 <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginLeft: "auto", whiteSpace: "nowrap" }}>
-                  {a.online ? `up ${uptimeOf(a.startedAt)}` : `visto ${relativeOf(a.lastSeen)}`}
+                  {a.online ? `up ${uptimeOf(a.startedAt)}` : `seen ${relativeOf(a.lastSeen)}`}
                 </span>
                 <PingChip state={pings[a.id]} />
                 {a.local && (
@@ -157,28 +157,28 @@ export default function AgentsManager() {
       {/* Tokens */}
       <fieldset style={{ border: "1px solid var(--v2-border-medium)", borderRadius: 6, padding: "12px 14px" }}>
         <legend style={{ fontSize: 11, fontWeight: 600, color: "var(--v2-text-secondary)", padding: "0 4px" }}>
-          Tokens de agente
+          Agent tokens
         </legend>
-        <label style={{ fontSize: 12, display: "block", marginBottom: 6 }}>Novo token</label>
+        <label style={{ fontSize: 12, display: "block", marginBottom: 6 }}>New token</label>
         <div style={{ display: "flex", gap: 6 }}>
           <input
             value={newLabel}
             onChange={(e) => setNewLabel(e.target.value)}
-            placeholder="label (ex: laptop-thiago, ec2-prod)"
+            placeholder="label (e.g. laptop-ops, ec2-prod)"
             style={{ flex: 1, padding: "6px 10px", fontSize: 13, background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)", borderRadius: 4, color: "var(--v2-text-primary)", outline: "none", boxSizing: "border-box" }}
           />
           <button onClick={handleCreate} disabled={busy}
             style={{ padding: "6px 14px", fontSize: 12, borderRadius: 4, whiteSpace: "nowrap", background: "var(--v2-accent-brand)", border: "none", color: "#000", fontWeight: 600, cursor: busy ? "wait" : "pointer", opacity: busy ? 0.6 : 1 }}>
-            Criar token
+            Create token
           </button>
         </div>
 
         {justCreated && (
           <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 4, fontSize: 11, lineHeight: 1.5, background: "rgba(34,197,94,.08)", border: "1px solid rgba(34,197,94,.3)", color: "var(--v2-text-primary)" }}>
-            <div style={{ color: "var(--v2-status-ok)", fontWeight: 600, marginBottom: 4 }}>Token criado — copie agora (não volta a aparecer):</div>
+            <div style={{ color: "var(--v2-status-ok)", fontWeight: 600, marginBottom: 4 }}>Token created — copy it now (it will not be shown again):</div>
             <code style={{ fontFamily: "var(--v2-font-mono)", fontSize: 11, wordBreak: "break-all", userSelect: "all" }}>{justCreated}</code>
             <div style={{ color: "var(--v2-text-muted)", marginTop: 6 }}>
-              Use: <code style={{ fontFamily: "var(--v2-font-mono)" }}>regente-agent -token {justCreated.slice(0, 12)}… -id &lt;nome&gt;</code>
+              Use: <code style={{ fontFamily: "var(--v2-font-mono)" }}>regente-agent -token {justCreated.slice(0, 12)}… -id &lt;name&gt;</code>
             </div>
           </div>
         )}
@@ -189,10 +189,10 @@ export default function AgentsManager() {
               <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, padding: "5px 8px", background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-subtle)", borderRadius: 3 }}>
                 <span style={{ flex: 1, color: "var(--v2-text-primary)" }}>{t.label || "—"}</span>
                 <span style={{ fontFamily: "var(--v2-font-mono)", fontSize: 10, color: "var(--v2-text-muted)" }}>{t.tokenPrefix}</span>
-                <span style={{ fontSize: 9, color: "var(--v2-text-muted)" }} title="último uso">{t.lastUsedAt ? "usado" : "nunca usado"}</span>
+                <span style={{ fontSize: 9, color: "var(--v2-text-muted)" }} title="last use">{t.lastUsedAt ? "used" : "never used"}</span>
                 <button onClick={() => handleRevoke(t.id)} disabled={busy}
                   style={{ background: "transparent", border: "1px solid rgba(239,68,68,.4)", color: "var(--v2-status-failed)", borderRadius: 3, fontSize: 10, padding: "2px 8px", cursor: "pointer" }}>
-                  revogar
+                  revoke
                 </button>
               </div>
             ))}
@@ -216,22 +216,22 @@ function AgentDetailModal({ agent, onClose }: { agent: AgentInfo; onClose: () =>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "var(--v2-font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.id}</div>
             <div style={{ fontSize: 10, color: a.online ? "var(--v2-status-ok)" : "var(--v2-text-muted)", letterSpacing: "0.06em", textTransform: "uppercase", marginTop: 1 }}>
-              {a.online ? (a.local ? "online" : `online · nó ${a.node}`) : "offline"}
+              {a.online ? (a.local ? "online" : `online · node ${a.node}`) : "offline"}
             </div>
           </div>
           <button onClick={onClose} aria-label="close" style={{ background: "transparent", border: "none", color: "var(--v2-text-muted)", cursor: "pointer", fontSize: 16, padding: 4 }}>×</button>
         </div>
         <div style={{ padding: "10px 16px" }}>
-          {a.online && a.node && <Row label="Nó" value={a.local ? `${a.node} (este nó)` : a.node} />}
-          {a.environment && <Row label="Ambiente" value={a.environment} />}
-          <Row label="Sistema" value={a.os ? `${a.os}${a.arch ? ` / ${a.arch}` : ""}` : "—"} />
+          {a.online && a.node && <Row label="Node" value={a.local ? `${a.node} (this node)` : a.node} />}
+          {a.environment && <Row label="Environment" value={a.environment} />}
+          <Row label="System" value={a.os ? `${a.os}${a.arch ? ` / ${a.arch}` : ""}` : "—"} />
           <Row label="Host" value={a.host || "—"} />
-          <Row label="Versão" value={a.version || "—"} />
+          <Row label="Version" value={a.version || "—"} />
           <Row label="Capabilities" value={a.capabilities.length ? a.capabilities.join(" · ") : "—"} />
           <Row label="Uptime" value={a.online ? uptimeOf(a.startedAt) : "—"} />
-          <Row label="Conectado" value={a.online ? `há ${uptimeOf(a.connectedAt)}` : "—"} />
-          <Row label="Visto pela 1ª vez" value={relativeOf(a.firstSeen)} />
-          <Row label="Último sinal" value={relativeOf(a.lastSeen)} />
+          <Row label="Connected" value={a.online ? `for ${uptimeOf(a.connectedAt)}` : "—"} />
+          <Row label="First seen" value={relativeOf(a.firstSeen)} />
+          <Row label="Last signal" value={relativeOf(a.lastSeen)} />
         </div>
       </div>
     </div>
@@ -247,7 +247,7 @@ function PingChip({ state }: { state?: "pending" | PingResult }) {
     else { text = "offline"; color = "var(--v2-text-muted)"; }
   }
   return (
-    <span title="último ping" style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color, border: `1px solid ${color}`, borderRadius: 3, padding: "1px 5px", whiteSpace: "nowrap" }}>
+    <span title="last ping" style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color, border: `1px solid ${color}`, borderRadius: 3, padding: "1px 5px", whiteSpace: "nowrap" }}>
       {text}
     </span>
   );

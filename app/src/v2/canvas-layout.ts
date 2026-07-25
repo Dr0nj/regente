@@ -150,14 +150,14 @@ function fmtHm(ms: number): string {
 
 /** Resumo curto do schedule estruturado para exibir no node do canvas. */
 function scheduleSummary(s: JobDefinition["schedule"]): string {
-  const wd: Record<string, string> = { mon: "seg", tue: "ter", wed: "qua", thu: "qui", fri: "sex", sat: "sáb", sun: "dom" };
+  const wd: Record<string, string> = { mon: "mon", tue: "tue", wed: "wed", thu: "thu", fri: "fri", sat: "sat", sun: "sun" };
   let base = "";
   switch (s.frequency ?? "daily") {
-    case "weekly": base = (s.daysOfWeek ?? []).map((d) => wd[d] ?? d).join(",") || "semanal"; break;
-    case "monthly": base = "dia " + ((s.daysOfMonth ?? []).map((d) => d === -1 ? "últ" : d).join(",") || "?"); break;
-    case "businessday": base = (s.nthBusinessDays ?? []).map((d) => d === -1 ? "últ útil" : `${d}º út`).join(",") || "dia útil"; break;
-    case "advanced": base = s.advancedRule ?? "regra"; break;
-    default: base = "diário";
+    case "weekly": base = (s.daysOfWeek ?? []).map((d) => wd[d] ?? d).join(",") || "weekly"; break;
+    case "monthly": base = "day " + ((s.daysOfMonth ?? []).map((d) => d === -1 ? "last" : d).join(",") || "?"); break;
+    case "businessday": base = (s.nthBusinessDays ?? []).map((d) => d === -1 ? "last bd" : `${d} bd`).join(",") || "business day"; break;
+    case "advanced": base = s.advancedRule ?? "rule"; break;
+    default: base = "daily";
   }
   return s.runAt ? `${base} ${s.runAt}` : base;
 }

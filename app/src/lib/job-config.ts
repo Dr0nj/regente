@@ -69,17 +69,17 @@ function make(
 }
 
 export const JOB_TYPES: Record<JobType, JobTypeConfig> = {
-  COMMAND:       make("Command",       "Comando no agente (shell)", Terminal),
-  SCRIPT:        make("Script",        "Script .sh/.bat/.ps1 no agente", FileCode),
-  SSH:           make("SSH",           "Comando remoto via SSH (agentless)", Network),
-  LAMBDA:        make("Lambda",        "Função serverless",       Zap),
-  BATCH:         make("Batch",         "Container / job em lote", Box),
+  COMMAND:       make("Command",       "Command on the agent (shell)", Terminal),
+  SCRIPT:        make("Script",        ".sh/.bat/.ps1 script on the agent", FileCode),
+  SSH:           make("SSH",           "Remote command over SSH (agentless)", Network),
+  LAMBDA:        make("Lambda",        "Serverless function",     Zap),
+  BATCH:         make("Batch",         "Container / batch job",   Box),
   GLUE:          make("Glue",          "ETL pipeline",            Paintbrush),
   STEP_FUNCTION: make("Step Function", "State machine",           Workflow),
-  HTTP:          make("HTTP",          "Chamada REST",            Globe),
-  FILE_WATCH:    make("File Watch",    "Espera arquivo chegar no agente", FileSearch),
-  FILE_TRANSFER: make("File Transfer", "MFT: local ↔ SFTP ↔ S3 pelo agente", ArrowRightLeft),
-  DATABASE:      make("Database",      "SQL em Postgres/MySQL/SQLite pelo agente", Database),
+  HTTP:          make("HTTP",          "REST call",               Globe),
+  FILE_WATCH:    make("File Watch",    "Waits for a file on the agent", FileSearch),
+  FILE_TRANSFER: make("File Transfer", "MFT: local ↔ SFTP ↔ S3 from the agent", ArrowRightLeft),
+  DATABASE:      make("Database",      "SQL on Postgres/MySQL/SQLite from the agent", Database),
 };
 
 /* ── Status ──────────────────────────────────────────────── */

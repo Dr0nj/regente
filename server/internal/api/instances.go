@@ -267,7 +267,7 @@ func (s *server) allowedTeams(r *http.Request, date string) (teams []string, res
 			}
 		}
 		if err := rows.Err(); err != nil {
-			log.Printf("[api] allowedTeams: iteração incompleta (RBAC fail-closed): %v", err)
+			log.Printf("[api] allowedTeams: incomplete iteration (RBAC fail-closed): %v", err)
 		}
 		rows.Close()
 	} else {
@@ -534,7 +534,7 @@ func (s *server) holdInstance(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if status == string(domain.StatusRunning) {
-			http.Error(w, "job RUNNING não pode ser segurado — cancele ou aguarde terminar", http.StatusConflict)
+			http.Error(w, "a RUNNING job cannot be held — cancel it or wait for it to finish", http.StatusConflict)
 			return
 		}
 		// Já estava HELD: no-op idempotente (ecoa o estado atual).
@@ -581,7 +581,7 @@ func (s *server) releaseInstance(w http.ResponseWriter, r *http.Request) {
 		var status, scope string
 		_ = s.cfg.DB.QueryRow(`SELECT status, COALESCE(hold_scope,'') FROM instances WHERE id=?`, id).Scan(&status, &scope)
 		if status == string(domain.StatusHeld) && scope == "folder" {
-			http.Error(w, "job segurado por uma pausa de folder — libere pela folder (Release folder), não individualmente", http.StatusConflict)
+			http.Error(w, "job held by a folder pause — release it through the folder (Release folder), not individually", http.StatusConflict)
 			return
 		}
 	}
@@ -611,7 +611,7 @@ func (s *server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if status != string(domain.StatusHeld) {
-		http.Error(w, "delete exige o job em HOLD (segure primeiro; RUNNING não é deletável)", http.StatusConflict)
+		http.Error(w, "delete requires the job to be on HOLD (hold it first; RUNNING is not deletable)", http.StatusConflict)
 		return
 	}
 	if _, err := s.cfg.DB.Exec(`DELETE FROM instance_events WHERE instance_id=?`, id); err != nil {
@@ -629,7 +629,7 @@ func (s *server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		http.Error(w, "instance mudou de estado durante o delete — recarregue", http.StatusConflict)
+		http.Error(w, "the instance changed state during the delete — reload", http.StatusConflict)
 		return
 	}
 	go s.cfg.Scheduler.Tick()
@@ -803,7 +803,7 @@ func (s *server) dryRunDaily(w http.ResponseWriter, r *http.Request) {
 	}
 	dr, err := s.cfg.Scheduler.DryRun(date)
 	if err != nil {
-		http.Error(w, "data inválida (use YYYY-MM-DD)", http.StatusBadRequest)
+		http.Error(w, "invalid date (use YYYY-MM-DD)", http.StatusBadRequest)
 		return
 	}
 	writeJSON(w, 200, dr)
@@ -823,7 +823,7 @@ func (s *server) diffDaily(w http.ResponseWriter, r *http.Request) {
 		from = s.cfg.Scheduler.PrevDailyDate(to)
 	}
 	if from == "" {
-		http.Error(w, "sem diária anterior para comparar (passe ?from=YYYY-MM-DD)", http.StatusBadRequest)
+		http.Error(w, "no previous daily to compare against (pass ?from=YYYY-MM-DD)", http.StatusBadRequest)
 		return
 	}
 	diff, err := s.cfg.Scheduler.DiffDaily(from, to, q.Get("folder"))
@@ -915,7 +915,7 @@ func (s *server) forceRunInstance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "instance not found or not in WAITING/HELD", http.StatusBadRequest)
 		return
 	}
-	s.cfg.Scheduler.EmitEvent(id, "force-ordered", "operator", "run now — bypass de janela/deps/conditions/recursos")
+	s.cfg.Scheduler.EmitEvent(id, "force-ordered", "operator", "run now — bypasses window/deps/conditions/resources")
 	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]interface{}{"id": id, "status": string(domain.StatusWaiting), "forced": true})
 	// Cutuca o tick (leader-gated) pra despachar já, sem esperar o ciclo de 2s.
 	go s.cfg.Scheduler.Tick()
@@ -939,7 +939,7 @@ func (s *server) explainInstance(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	ex, err := s.cfg.Scheduler.Explain(id)
 	if err != nil {
-		http.Error(w, "instance não encontrada", http.StatusNotFound)
+		http.Error(w, "instance not found", http.StatusNotFound)
 		return
 	}
 	writeJSON(w, 200, ex)
@@ -952,7 +952,7 @@ func (s *server) blastRadius(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	br, err := s.cfg.Scheduler.BlastRadius(id)
 	if err != nil {
-		http.Error(w, "instance não encontrada", http.StatusNotFound)
+		http.Error(w, "instance not found", http.StatusNotFound)
 		return
 	}
 	writeJSON(w, 200, br)
@@ -971,7 +971,7 @@ func (s *server) neighborhood(w http.ResponseWriter, r *http.Request) {
 	}
 	nb, err := s.cfg.Scheduler.Neighborhood(id, radius)
 	if err != nil {
-		http.Error(w, "instance não encontrada", http.StatusNotFound)
+		http.Error(w, "instance not found", http.StatusNotFound)
 		return
 	}
 	writeJSON(w, 200, nb)
@@ -983,7 +983,7 @@ func (s *server) rca(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	res, err := s.cfg.Scheduler.RCA(id)
 	if err != nil {
-		http.Error(w, "instance não encontrada", http.StatusNotFound)
+		http.Error(w, "instance not found", http.StatusNotFound)
 		return
 	}
 	writeJSON(w, 200, res)

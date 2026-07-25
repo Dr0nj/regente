@@ -22,17 +22,17 @@ import { Plus, Trash2, Zap } from "lucide-react";
 import type { ActionRule, JobDefinition } from "@/lib/orchestrator-model";
 
 const ON_OPTS: Array<{ id: ActionRule["on"]; label: string }> = [
-  { id: "result", label: "Terminar (OK/NOTOK)" },
-  { id: "exit", label: "Terminar com exit code X" },
-  { id: "attempt", label: "Falhar na tentativa N" },
-  { id: "runtime", label: "Rodar mais que N min" },
+  { id: "result", label: "Ends (OK/NOTOK)" },
+  { id: "exit", label: "Ends with exit code X" },
+  { id: "attempt", label: "Attempt N fails" },
+  { id: "runtime", label: "Runs longer than N min" },
 ];
 
 const DO_OPTS: Array<{ id: ActionRule["do"]; label: string }> = [
-  { id: "notify", label: "Notificar" },
-  { id: "set-condition", label: "Setar condition" },
-  { id: "run-job", label: "Rodar outro job" },
-  { id: "set-ok", label: "Marcar como OK (auto-heal)" },
+  { id: "notify", label: "Notify" },
+  { id: "set-condition", label: "Set condition" },
+  { id: "run-job", label: "Run another job" },
+  { id: "set-ok", label: "Mark as OK (auto-heal)" },
 ];
 
 const SEVERITIES: Array<{ id: NonNullable<ActionRule["severity"]>; label: string }> = [
@@ -45,7 +45,7 @@ const CHANNELS: Array<{ id: string; label: string }> = [
   { id: "toast", label: "in-app" },
   { id: "slack", label: "Slack" },
   { id: "webhook", label: "Webhook" },
-  { id: "email", label: "E-mail" },
+  { id: "email", label: "Email" },
   { id: "pagerduty", label: "PagerDuty" },
 ];
 
@@ -65,14 +65,14 @@ function describeExitSpec(spec?: string): string {
   const parts = toks.map((t) => {
     const cmp = /^(>=|<=|!=|>|<)\s*(-?\d+)$/.exec(t);
     if (cmp) {
-      const word = { ">=": "≥", "<=": "≤", "!=": "diferente de", ">": "maior que", "<": "menor que" }[cmp[1]]!;
+      const word = { ">=": "≥", "<=": "≤", "!=": "other than", ">": "greater than", "<": "less than" }[cmp[1]]!;
       return `${word} ${cmp[2]}`;
     }
     const range = /^(-?\d+)\s*-\s*(-?\d+)$/.exec(t);
-    if (range) return `entre ${range[1]} e ${range[2]}`;
+    if (range) return `between ${range[1]} and ${range[2]}`;
     return t;
   });
-  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} ou ${parts[parts.length - 1]}`;
+  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} or ${parts[parts.length - 1]}`;
 }
 
 /** Tradução natural de uma regra (gatilho → ação). */
@@ -81,33 +81,33 @@ export function describeRule(r: ActionRule, jobLabel: (id: string) => string): s
   let when: string;
   switch (r.on) {
     case "result":
-      when = `Quando o job terminar ${r.status === "OK" ? "OK" : "NOTOK"}`;
+      when = `When the job ends ${r.status === "OK" ? "OK" : "NOTOK"}`;
       break;
     case "exit":
-      when = `Quando o job terminar com exit code ${describeExitSpec(r.exitCodes)}`;
+      when = `When the job ends with exit code ${describeExitSpec(r.exitCodes)}`;
       break;
     case "attempt":
-      when = `Quando a tentativa ${r.attempt || "?"} falhar`;
+      when = `When attempt ${r.attempt || "?"} fails`;
       break;
     case "runtime":
-      when = `Quando o job passar de ${r.afterMin || "?"} min rodando`;
+      when = `When the job runs longer than ${r.afterMin || "?"} min`;
       break;
     default:
-      when = "Quando";
+      when = "When";
   }
   let then: string;
   switch (r.do) {
     case "notify":
-      then = `notifica${r.channels?.length ? " via " + r.channels.join("/") : ""}${r.severity ? ` (${r.severity})` : ""}`;
+      then = `notify${r.channels?.length ? " through " + r.channels.join("/") : ""}${r.severity ? ` (${r.severity})` : ""}`;
       break;
     case "set-condition":
-      then = `seta a condition "${r.condition || "?"}"`;
+      then = `set the condition "${r.condition || "?"}"`;
       break;
     case "run-job":
-      then = `roda o job "${r.targetJob ? jobLabel(r.targetJob) : "?"}"`;
+      then = `run the job "${r.targetJob ? jobLabel(r.targetJob) : "?"}"`;
       break;
     case "set-ok":
-      then = "marca este job como OK (auto-heal)";
+      then = "mark this job as OK (auto-heal)";
       break;
     default:
       then = "…";
@@ -149,15 +149,15 @@ export default function OnDoEditor({ value, onChange, allDefs, selfId }: Props) 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <Hint>
-        Regras <b>On/Do</b>: reações automáticas ao ciclo do job. Cada regra dispara no
-        máximo uma vez por execução.
+        <b>On/Do</b> rules: automatic reactions to the job lifecycle. Each rule fires at
+        most once per run.
       </Hint>
 
       {rules.length === 0 && (
         <div style={{ fontSize: 11, color: "var(--v2-text-muted)", padding: "10px 0", lineHeight: 1.5 }}>
-          Nenhuma regra. Ex.: <i>quando terminar NOTOK, notificar no Slack</i>;{" "}
-          <i>quando terminar com exit code 1, 2 ou 3, marcar como OK</i>; ou{" "}
-          <i>quando passar de 30 min rodando, abrir alerta crítico</i>.
+          No rule yet. E.g.: <i>when it ends NOTOK, notify on Slack</i>;{" "}
+          <i>when it ends with exit code 1, 2 or 3, mark as OK</i>; or{" "}
+          <i>when it runs longer than 30 min, raise a critical alert</i>.
         </div>
       )}
 
@@ -165,12 +165,12 @@ export default function OnDoEditor({ value, onChange, allDefs, selfId }: Props) 
         <div key={i} style={card}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
             <Zap size={12} style={{ color: "var(--v2-accent-brand)" }} />
-            <span style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--v2-text-muted)" }}>Regra {i + 1}</span>
-            <button onClick={() => remove(i)} title="Remover regra" style={{ ...iconBtn, marginLeft: "auto" }}><Trash2 size={12} /></button>
+            <span style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--v2-text-muted)" }}>Rule {i + 1}</span>
+            <button onClick={() => remove(i)} title="Remove rule" style={{ ...iconBtn, marginLeft: "auto" }}><Trash2 size={12} /></button>
           </div>
 
           {/* ── ON (gatilho) ── */}
-          <Row label="Quando">
+          <Row label="When">
             <select value={r.on} onChange={(e) => update(i, { on: e.target.value as ActionRule["on"] })} style={selectStyle}>
               {ON_OPTS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
             </select>
@@ -178,40 +178,40 @@ export default function OnDoEditor({ value, onChange, allDefs, selfId }: Props) 
           {r.on === "result" && (
             <Row label="Status">
               <select value={r.status ?? "NOTOK"} onChange={(e) => update(i, { status: e.target.value as ActionRule["status"] })} style={selectStyle}>
-                <option value="NOTOK">NOTOK (falhou)</option>
-                <option value="OK">OK (sucesso)</option>
+                <option value="NOTOK">NOTOK (failed)</option>
+                <option value="OK">OK (success)</option>
               </select>
             </Row>
           )}
           {r.on === "exit" && (
             <>
               <Row label="Exit codes">
-                <input value={r.exitCodes ?? ""} placeholder="ex.: 1,2,3" inputMode="text"
+                <input value={r.exitCodes ?? ""} placeholder="e.g. 1,2,3" inputMode="text"
                   onChange={(e) => update(i, { exitCodes: e.target.value })} style={inputStyle} />
               </Row>
               <Hint>
-                Lista separada por vírgula. Cada item é um valor (<code>3</code>), uma faixa
-                (<code>1-4</code>) ou uma comparação (<code>&gt;0</code>, <code>!=0</code>).
-                Casa se QUALQUER item casar; vazio nunca dispara.<br />
-                O status vem do código (<code>exit≠0 ⇒ NOTOK</code>) — para tratar códigos
-                como sucesso, combine com <b>Marcar como OK</b>. Cancelar um job RUNNING
-                grava <code>-1</code>.
+                Comma-separated list. Each item is a value (<code>3</code>), a range
+                (<code>1-4</code>) or a comparison (<code>&gt;0</code>, <code>!=0</code>).
+                It matches if ANY item matches; empty never fires.<br />
+                The status comes from the code (<code>exit≠0 ⇒ NOTOK</code>) — to treat codes
+                as success, pair it with <b>Mark as OK</b>. Cancelling a RUNNING job
+                records <code>-1</code>.
               </Hint>
             </>
           )}
           {r.on === "attempt" && (
-            <Row label="Tentativa nº">
+            <Row label="Attempt #">
               <input type="number" min={1} value={r.attempt ?? 1} onChange={(e) => update(i, { attempt: Number(e.target.value) || 1 })} style={inputStyle} />
             </Row>
           )}
           {r.on === "runtime" && (
-            <Row label="Após (min)">
+            <Row label="After (min)">
               <input type="number" min={1} value={r.afterMin ?? 30} onChange={(e) => update(i, { afterMin: Number(e.target.value) || 1 })} style={inputStyle} />
             </Row>
           )}
 
           {/* ── DO (ação) ── */}
-          <Row label="Fazer">
+          <Row label="Do">
             <select value={r.do} onChange={(e) => update(i, { do: e.target.value as ActionRule["do"] })} style={selectStyle}>
               {DO_OPTS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
             </select>
@@ -219,16 +219,16 @@ export default function OnDoEditor({ value, onChange, allDefs, selfId }: Props) 
 
           {r.do === "notify" && (
             <>
-              <Row label="Severidade">
+              <Row label="Severity">
                 <select value={r.severity ?? "warning"} onChange={(e) => update(i, { severity: e.target.value as ActionRule["severity"] })} style={selectStyle}>
                   {SEVERITIES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
                 </select>
               </Row>
-              <Row label="Mensagem">
-                <input value={r.message ?? ""} placeholder="(padrão automático)" onChange={(e) => update(i, { message: e.target.value })} style={inputStyle} />
+              <Row label="Message">
+                <input value={r.message ?? ""} placeholder="(automatic default)" onChange={(e) => update(i, { message: e.target.value })} style={inputStyle} />
               </Row>
               <div>
-                <div style={fieldLabel}>Canais</div>
+                <div style={fieldLabel}>Channels</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                   {CHANNELS.map((c) => {
                     const on = (r.channels ?? []).includes(c.id);
@@ -243,7 +243,7 @@ export default function OnDoEditor({ value, onChange, allDefs, selfId }: Props) 
                   })}
                 </div>
                 <div style={{ fontSize: 9.5, color: "var(--v2-text-muted)", marginTop: 4 }}>
-                  Vazio = todos os canais configurados em Alertas.
+                  Empty = every channel configured in Alerts.
                 </div>
               </div>
             </>
@@ -252,23 +252,23 @@ export default function OnDoEditor({ value, onChange, allDefs, selfId }: Props) 
           {r.do === "set-condition" && (
             <>
               <Row label="Condition">
-                <input value={r.condition ?? ""} placeholder="ex.: BILLING_DONE" list="ondo-known-conditions"
+                <input value={r.condition ?? ""} placeholder="e.g. BILLING_DONE" list="ondo-known-conditions"
                   onChange={(e) => update(i, { condition: e.target.value })} style={inputStyle} />
               </Row>
               <datalist id="ondo-known-conditions">
                 {knownConditions.map((k) => <option key={k} value={k} />)}
               </datalist>
               <Hint>
-                Para outro job ESPERAR por ela: no job de destino, aba <b>Dependências → Conditions
-                → Entrada</b>, com o MESMO nome. O vínculo é pelo nome exato.
+                For another job to WAIT on it: on the target job, tab <b>Conditions → In</b>,
+                using the SAME name. The link is made by the exact name.
               </Hint>
             </>
           )}
 
           {r.do === "run-job" && (
-            <Row label="Job alvo">
+            <Row label="Target job">
               <select value={r.targetJob ?? ""} onChange={(e) => update(i, { targetJob: e.target.value })} style={selectStyle}>
-                <option value="">— selecione —</option>
+                <option value="">— select —</option>
                 {allDefs.filter((d) => d.id !== selfId).map((d) => (
                   <option key={d.id} value={d.id}>{d.label} ({d.id})</option>
                 ))}
@@ -278,8 +278,8 @@ export default function OnDoEditor({ value, onChange, allDefs, selfId }: Props) 
 
           {r.do === "set-ok" && (
             <Hint>
-              Flipa o próprio status NOTOK→OK. Use com <b>Quando terminar NOTOK</b> ou, para
-              tolerar códigos específicos, com <b>Terminar com exit code X</b>.
+              Flips this job's own status from NOTOK to OK. Use it with <b>Ends NOTOK</b> or,
+              to tolerate specific codes, with <b>Ends with exit code X</b>.
             </Hint>
           )}
 
@@ -291,7 +291,7 @@ export default function OnDoEditor({ value, onChange, allDefs, selfId }: Props) 
       ))}
 
       <button onClick={add} style={{ ...chipBtn, alignSelf: "flex-start", borderColor: "var(--v2-accent-brand)", color: "var(--v2-accent-brand)", padding: "5px 10px" }}>
-        <Plus size={12} /> Adicionar regra
+        <Plus size={12} /> Add rule
       </button>
     </div>
   );

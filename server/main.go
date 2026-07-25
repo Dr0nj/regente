@@ -49,37 +49,37 @@ import (
 func main() {
 	var (
 		addr      = flag.String("addr", envOr("REGENTE_ADDR", ":8080"), "HTTP listen address")
-		spaDir    = flag.String("spa-dir", envOr("REGENTE_SPA_DIR", ""), "Hosting single-origin: serve o SPA buildado deste diretório (UI+API+WS na mesma porta). Vazio = só API")
-		docsDir   = flag.String("docs-dir", envOr("REGENTE_DOCS_DIR", ""), "ADV-7: serve o site de docs (cmd/docsite) em /docs na mesma porta. Vazio = sem docs")
+		spaDir    = flag.String("spa-dir", envOr("REGENTE_SPA_DIR", ""), "Single-origin hosting: serve the built SPA from this directory (UI+API+WS on the same port). Empty = API only")
+		docsDir   = flag.String("docs-dir", envOr("REGENTE_DOCS_DIR", ""), "ADV-7: serve the docs site (cmd/docsite) at /docs on the same port. Empty = no docs")
 		workspace = flag.String("workspace", envOr("REGENTE_WORKSPACE", "./workspace"), "Path to regente workspace (contains definitions/)")
-		dbPath    = flag.String("db", envOr("REGENTE_DB", "./regente.db"), "DB DSN: caminho do arquivo SQLite, ou connection string Postgres quando -db-driver=postgres")
+		dbPath    = flag.String("db", envOr("REGENTE_DB", "./regente.db"), "DB DSN: path to the SQLite file, or a Postgres connection string when -db-driver=postgres")
 		dbDriver  = flag.String("db-driver", envOr("REGENTE_DB_DRIVER", "sqlite"), "State store backend: sqlite | postgres")
-		backupTo  = flag.String("backup", "", "R6/DR: grava um backup online do state store neste caminho e sai (SQLite: VACUUM INTO; Postgres: use pg_dump — ver docs/dr-backup.md)")
+		backupTo  = flag.String("backup", "", "R6/DR: writes an online backup of the state store to this path and exits (SQLite: VACUUM INTO; Postgres: use pg_dump — see docs/dr-backup.md)")
 		// Segurança — TLS/mTLS opcional (vazio = HTTP plano, comportamento atual).
-		tlsCert      = flag.String("tls-cert", envOr("REGENTE_TLS_CERT", ""), "Segurança: cert TLS do servidor (vazio = HTTP plano)")
-		tlsKey       = flag.String("tls-key", envOr("REGENTE_TLS_KEY", ""), "Segurança: chave TLS do servidor")
-		tlsClientCA  = flag.String("tls-client-ca", envOr("REGENTE_TLS_CLIENT_CA", ""), "Segurança: CA p/ exigir+verificar cert de cliente (liga mTLS)")
-		auditSIEMURL = flag.String("audit-siem-url", envOr("REGENTE_AUDIT_SIEM_URL", ""), "Segurança: endpoint HTTP de SIEM p/ POST dos eventos de auditoria (vazio = só JSON em stderr)")
-		secretsFile  = flag.String("secrets-file", envOr("REGENTE_SECRETS_FILE", ""), "H3: arquivo JSON de segredos {\"github_token\":...}; env REGENTE_SECRET_<KEY> tem prioridade")
-		tickMs       = flag.Int("tick-ms", 2000, "Scheduler tick interval (ms) — usado no modo internal")
+		tlsCert      = flag.String("tls-cert", envOr("REGENTE_TLS_CERT", ""), "Security: server TLS cert (empty = plain HTTP)")
+		tlsKey       = flag.String("tls-key", envOr("REGENTE_TLS_KEY", ""), "Security: server TLS key")
+		tlsClientCA  = flag.String("tls-client-ca", envOr("REGENTE_TLS_CLIENT_CA", ""), "Security: CA to require+verify a client cert (enables mTLS)")
+		auditSIEMURL = flag.String("audit-siem-url", envOr("REGENTE_AUDIT_SIEM_URL", ""), "Security: SIEM HTTP endpoint to POST audit events to (empty = JSON to stderr only)")
+		secretsFile  = flag.String("secrets-file", envOr("REGENTE_SECRETS_FILE", ""), "H3: JSON secrets file {\"github_token\":...}; the REGENTE_SECRET_<KEY> env takes priority")
+		tickMs       = flag.Int("tick-ms", 2000, "Scheduler tick interval (ms) — used in internal mode")
 		// Fase 1/2 (serverless) — papel do processo + origem do tick. Ver docs/arquitetura-futuro.md.
 		role          = flag.String("role", envOr("REGENTE_ROLE", "all"), "Process role: all | api | scheduler")
 		schedulerMode = flag.String("scheduler", envOr("REGENTE_SCHEDULER", "internal"), "Scheduler trigger: internal (goroutine ticker) | external (cron via POST /api/scheduler/tick)")
 		// R5 — bus distribuído (opt-in). hub (default) = comportamento local de sempre.
-		busMode = flag.String("bus", envOr("REGENTE_BUS", "hub"), "Transporte do hub: hub (local) | nats (distribuído)")
-		natsURL = flag.String("nats-url", envOr("REGENTE_NATS_URL", "nats://localhost:4222"), "URL do NATS (quando -bus=nats)")
-		nodeID  = flag.String("node-id", envOr("REGENTE_NODE_ID", defaultNodeID()), "ID único deste nó no cluster (presence/routing R5)")
+		busMode = flag.String("bus", envOr("REGENTE_BUS", "hub"), "Hub transport: hub (local) | nats (distributed)")
+		natsURL = flag.String("nats-url", envOr("REGENTE_NATS_URL", "nats://localhost:4222"), "NATS URL (when -bus=nats)")
+		nodeID  = flag.String("node-id", envOr("REGENTE_NODE_ID", defaultNodeID()), "Unique id of this node in the cluster (presence/routing R5)")
 		// I1 — observabilidade: tracing OTLP opt-in (vazio = off, no-op).
 		// R7 — auto-SLO do control plane (auto-monitoramento: tick parado/DB/leader flapping/agentes).
-		selfmon          = flag.Bool("selfmon", true, "R7: auto-SLO do control plane (alerta tick parado/DB/leader flapping/frota de agentes). -selfmon=false desliga")
-		selfmonInterval  = flag.Int("selfmon-interval-sec", 30, "R7: cadência do auto-monitoramento (s)")
-		selfmonTickStale = flag.Int("selfmon-tick-stale-sec", 90, "R7: idade do último tick acima da qual alerta (s)")
-		otelEndpoint     = flag.String("otel-endpoint", envOr("OTEL_EXPORTER_OTLP_ENDPOINT", ""), "Endpoint OTLP/HTTP p/ tracing distribuído (vazio = off)")
-		otelService      = flag.String("otel-service", envOr("OTEL_SERVICE_NAME", "regente-server"), "service.name nos traces")
+		selfmon          = flag.Bool("selfmon", true, "R7: control-plane auto-SLO (alerts on stalled tick/DB/leader flapping/agent fleet). -selfmon=false turns it off")
+		selfmonInterval  = flag.Int("selfmon-interval-sec", 30, "R7: auto-monitoring cadence (s)")
+		selfmonTickStale = flag.Int("selfmon-tick-stale-sec", 90, "R7: last-tick age above which it alerts (s)")
+		otelEndpoint     = flag.String("otel-endpoint", envOr("OTEL_EXPORTER_OTLP_ENDPOINT", ""), "OTLP/HTTP endpoint for distributed tracing (empty = off)")
+		otelService      = flag.String("otel-service", envOr("OTEL_SERVICE_NAME", "regente-server"), "service.name in the traces")
 		gitEnable        = flag.Bool("git-commit", false, "Commit saves via git (workspace must be a git repo)")
 		apiToken         = flag.String("api-token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token for API + WS")
-		demoMode         = flag.Bool("demo-mode", envOr("REGENTE_DEMO_MODE", "") == "1", "Demo/playground: sem agente online, jobs são mock-finalizados OK. Default OFF (produção): sem agente = instance fica WAITING e re-tenta quando um agente conectar")
-		serverAgent      = flag.Bool("server-agent", envOr("REGENTE_SERVER_AGENT", "1") != "0", "Registra o SERVER-AGENT embutido (executa jobs HTTP/REST no próprio server, sem agente externo). Desligue com -server-agent=false / REGENTE_SERVER_AGENT=0")
+		demoMode         = flag.Bool("demo-mode", envOr("REGENTE_DEMO_MODE", "") == "1", "Demo/playground: with no agent online, jobs are mock-finalized OK. Default OFF (production): with no agent, the instance stays WAITING and retries when an agent connects")
+		serverAgent      = flag.Bool("server-agent", envOr("REGENTE_SERVER_AGENT", "1") != "0", "Registers the built-in SERVER-AGENT (runs HTTP/REST jobs on the server itself, no external agent). Turn it off with -server-agent=false / REGENTE_SERVER_AGENT=0")
 
 		// F13 GitOps — defaults apontam pro regente-workspace (padrão, não configuração)
 		gitSource    = flag.String("git-source", envOr("REGENTE_GIT_SOURCE", "https://github.com/Dr0nj/regente-workspace.git"), "Git remote URL for workspace source-of-truth")
@@ -87,8 +87,8 @@ func main() {
 		gitPollSec   = flag.Int("git-poll-interval", 30, "Git polling interval in seconds (0 = disabled)")
 		gitWriteMode = flag.String("git-write-mode", envOr("REGENTE_GIT_WRITE_MODE", "direct"), "Write mode: direct | pr-required")
 
-		driftReconcileSec  = flag.Int("drift-reconcile-sec", intEnvOr("REGENTE_DRIFT_RECONCILE_SEC", 0), "Enterprise: cadência (s) do reconciler de drift GitOps; alerta (e opcionalmente reconcilia) quando runtime≠Git. 0 = off")
-		driftReconcileMode = flag.String("drift-reconcile-mode", envOr("REGENTE_DRIFT_RECONCILE_MODE", "alert"), "Reconciler de drift: alert (só alerta pelos canais do R7) | sync (fetch+reset+reload automático)")
+		driftReconcileSec  = flag.Int("drift-reconcile-sec", intEnvOr("REGENTE_DRIFT_RECONCILE_SEC", 0), "Enterprise: cadence (s) of the GitOps drift reconciler; alerts (and optionally reconciles) when runtime≠Git. 0 = off")
+		driftReconcileMode = flag.String("drift-reconcile-mode", envOr("REGENTE_DRIFT_RECONCILE_MODE", "alert"), "Drift reconciler: alert (only alerts through the R7 channels) | sync (automatic fetch+reset+reload)")
 		ghToken            = flag.String("github-token", envOr("GITHUB_TOKEN", ""), "GitHub PAT for push/PR")
 		ghRepo             = flag.String("github-repo", envOr("REGENTE_GIT_REPO", "Dr0nj/regente-workspace"), "GitHub repo as 'owner/name'")
 		ghWebhookSec       = flag.String("github-webhook-secret", envOr("REGENTE_WEBHOOK_SECRET", ""), "Shared secret for GitHub webhook HMAC validation")
@@ -99,12 +99,12 @@ func main() {
 
 		// H1 (2026-06-14) — SSO/OIDC. auth-mode=oidc ativa o flow; default local (admin/senha).
 		authMode         = flag.String("auth-mode", envOr("REGENTE_AUTH_MODE", "local"), "Auth mode: local | oidc")
-		oidcIssuer       = flag.String("oidc-issuer", envOr("REGENTE_OIDC_ISSUER", ""), "OIDC issuer URL (ex.: https://idp/realms/regente)")
+		oidcIssuer       = flag.String("oidc-issuer", envOr("REGENTE_OIDC_ISSUER", ""), "OIDC issuer URL (e.g. https://idp/realms/regente)")
 		oidcClientID     = flag.String("oidc-client-id", envOr("REGENTE_OIDC_CLIENT_ID", ""), "OIDC client id")
 		oidcClientSecret = flag.String("oidc-client-secret", envOr("REGENTE_OIDC_CLIENT_SECRET", ""), "OIDC client secret")
-		oidcRedirectURL  = flag.String("oidc-redirect-url", envOr("REGENTE_OIDC_REDIRECT_URL", ""), "OIDC redirect URL (ex.: http://localhost:8080/api/auth/oidc/callback)")
-		oidcDefaultRole  = flag.String("oidc-default-role", envOr("REGENTE_OIDC_DEFAULT_ROLE", "viewer"), "Role no 1º login federado: viewer|operator|admin")
-		appURL           = flag.String("app-url", envOr("REGENTE_APP_URL", ""), "URL do SPA p/ redirect pós-login OIDC (ex.: http://localhost:5173)")
+		oidcRedirectURL  = flag.String("oidc-redirect-url", envOr("REGENTE_OIDC_REDIRECT_URL", ""), "OIDC redirect URL (e.g. http://localhost:8080/api/auth/oidc/callback)")
+		oidcDefaultRole  = flag.String("oidc-default-role", envOr("REGENTE_OIDC_DEFAULT_ROLE", "viewer"), "Role on the 1st federated login: viewer|operator|admin")
+		appURL           = flag.String("app-url", envOr("REGENTE_APP_URL", ""), "SPA URL for the post-OIDC-login redirect (e.g. http://localhost:5173)")
 	)
 	flag.Parse()
 
@@ -133,7 +133,7 @@ func main() {
 	// I1 — tracing OTLP (opt-in). Sem endpoint, no-op (zero overhead).
 	otelShutdown, otelErr := telemetry.Init(context.Background(), *otelEndpoint, *otelService)
 	if otelErr != nil {
-		log.Printf("[otel] init falhou (%v) — tracing desligado", otelErr)
+		log.Printf("[otel] init failed (%v) — tracing off", otelErr)
 	} else if *otelEndpoint != "" {
 		log.Printf("[otel] tracing OTLP -> %s (service=%s)", *otelEndpoint, *otelService)
 	}
@@ -163,7 +163,7 @@ func main() {
 		var saved string
 		if err := database.QueryRow(`SELECT value FROM settings WHERE key='github_token'`).Scan(&saved); err == nil && saved != "" {
 			effectiveToken = saved
-			log.Printf("[git] PAT carregado de settings (token via UI)")
+			log.Printf("[git] PAT loaded from settings (token via UI)")
 		}
 	}
 	// P13 — webhook secret: flag/env > secrets provider > settings.
@@ -178,7 +178,7 @@ func main() {
 		var saved string
 		if err := database.QueryRow(`SELECT value FROM settings WHERE key='webhook_secret'`).Scan(&saved); err == nil && saved != "" {
 			effectiveWebhookSecret = saved
-			log.Printf("[github] webhook secret carregado de settings")
+			log.Printf("[github] webhook secret loaded from settings")
 		}
 	}
 
@@ -272,23 +272,23 @@ func main() {
 	if strings.EqualFold(*busMode, "nats") {
 		tr, err := bus.DialNATS(*natsURL)
 		if err != nil {
-			log.Fatalf("[bus] conexão NATS falhou: %v", err)
+			log.Fatalf("[bus] NATS connection failed: %v", err)
 		}
 		dbus := bus.NewDistributed(*nodeID, h, tr)
 		if err := dbus.Start(); err != nil {
-			log.Fatalf("[bus] start distribuído: %v", err)
+			log.Fatalf("[bus] distributed start: %v", err)
 		}
 		theBus = dbus
 		remotePresence = dbus
-		log.Printf("[bus] distribuído via NATS url=%s node=%s", *natsURL, *nodeID)
+		log.Printf("[bus] distributed via NATS url=%s node=%s", *natsURL, *nodeID)
 	} else {
-		log.Printf("[bus] local (hub por-processo)")
+		log.Printf("[bus] local (per-process hub)")
 	}
 
 	sched := scheduler.New(store, database, theBus, time.Duration(*tickMs)*time.Millisecond)
 	sched.DemoMode = *demoMode
 	if *demoMode {
-		log.Printf("[scheduler] DEMO MODE — sem agente online, jobs são mock-finalizados OK (não use em produção)")
+		log.Printf("[scheduler] DEMO MODE — no agent online, jobs are mock-finalized OK (do not use in production)")
 	}
 
 	// SERVER-AGENT — o agente padrão EMBUTIDO: todo server executa jobs HTTP/REST
@@ -309,9 +309,9 @@ func main() {
 	// Sem GitOps atachado, daily cai pro modo legado (lê só do disco local).
 	if gitOps != nil {
 		sched.AttachGit(gitOps)
-		log.Printf("[scheduler] daily-source=git (Opção B — fetch+reset antes de cada daily)")
+		log.Printf("[scheduler] daily-source=git (Option B — fetch+reset before each daily)")
 	} else {
-		log.Printf("[scheduler] daily-source=local (sem GitOps)")
+		log.Printf("[scheduler] daily-source=local (no GitOps)")
 	}
 
 	// === Bloco 2 — Control-M parity engines ===
@@ -322,7 +322,7 @@ func main() {
 	// painel Recursos (tabela `resources`) — sem isto, restart zerava as quotas do
 	// ambiente. Antes do RebuildResourcesFromRunning (que só reconstrói o USO).
 	if err := resTracker.LoadFromDB(database); err != nil {
-		log.Printf("[quotas] load do registry falhou: %v", err)
+		log.Printf("[quotas] registry load failed: %v", err)
 	}
 	sched.AttachResources(resTracker)
 	sched.AttachConditions(scheduler.NewConditionEngine(database))
@@ -373,9 +373,9 @@ func main() {
 	// failover, reconstrói o uso a partir das instances RUNNING (estado durável)
 	// para não furar a capacidade ao retomar o dispatch.
 	if n, err := sched.RebuildResourcesFromRunning(); err != nil {
-		log.Printf("[quotas] rebuild do tracker falhou: %v", err)
+		log.Printf("[quotas] tracker rebuild failed: %v", err)
 	} else if n > 0 {
-		log.Printf("[quotas] tracker reconstruído: %d instances RUNNING re-registradas", n)
+		log.Printf("[quotas] tracker rebuilt: %d RUNNING instances re-registered", n)
 	}
 
 	// Unificação de dependências → pool de condições (2026-07-17): backfill
@@ -412,8 +412,8 @@ func main() {
 			},
 			sched.IsLeader,
 			func(remoteSHA, detail string) {
-				alertEngine.FireSystem("git-drift", "Workspace em drift com o Git", "warning",
-					"Runtime divergiu do repositório (remoto "+remoteSHA+"). "+detail, int64(*driftReconcileSec)*1000)
+				alertEngine.FireSystem("git-drift", "Workspace drifted from Git", "warning",
+					"Runtime diverged from the repository (remote "+remoteSHA+"). "+detail, int64(*driftReconcileSec)*1000)
 			},
 			*driftReconcileMode,
 			time.Duration(*driftReconcileSec)*time.Second,
@@ -429,7 +429,7 @@ func main() {
 	runsScheduler := *role == "all" || *role == "scheduler"
 	switch {
 	case !runsScheduler:
-		log.Printf("[scheduler] role=%s — este nó NÃO roda scheduling (só serve API)", *role)
+		log.Printf("[scheduler] role=%s — this node does NOT run scheduling (serves the API only)", *role)
 	case *schedulerMode == "external":
 		// Sem ticker interno: defs carregadas no boot; cron externo bate em
 		// POST /api/scheduler/tick para dirigir daily+dispatch (scale-to-zero).
@@ -439,7 +439,7 @@ func main() {
 		// advisory lock POR-TICK (Postgres) pra serializar ticks sobrepostos. É
 		// higiene (o claim atômico já garante corretude); no-op fora do Postgres.
 		sched.EnableTickLock()
-		log.Printf("[scheduler] mode=external — sem ticker interno; dirija via POST /api/scheduler/tick (+/scheduler/daily)")
+		log.Printf("[scheduler] mode=external — no internal ticker; drive it via POST /api/scheduler/tick (+/scheduler/daily)")
 	default:
 		// E4 — fila assíncrona de eventos: só no modo daemon (internal). No modo
 		// external/serverless fica desligada de propósito — o processo pode ser
@@ -447,7 +447,7 @@ func main() {
 		// lá o write síncrono é o correto.
 		sched.StartEventQueue()
 		go sched.Run(ctx)
-		log.Printf("[scheduler] mode=internal — ticker a cada %s", time.Duration(*tickMs)*time.Millisecond)
+		log.Printf("[scheduler] mode=internal — ticker every %s", time.Duration(*tickMs)*time.Millisecond)
 	}
 
 	// F13.1 — polling opcional
@@ -473,13 +473,13 @@ func main() {
 		}
 		p, err := oidc.Discover(ctx, cfg)
 		if err != nil {
-			log.Printf("[auth] OIDC desabilitado (discovery falhou): %v — usando login local", err)
+			log.Printf("[auth] OIDC disabled (discovery failed): %v — using local login", err)
 		} else {
 			oidcProvider = p
-			log.Printf("[auth] SSO/OIDC ativo: issuer=%s client=%s", *oidcIssuer, *oidcClientID)
+			log.Printf("[auth] SSO/OIDC active: issuer=%s client=%s", *oidcIssuer, *oidcClientID)
 		}
 	} else {
-		log.Printf("[auth] mode=local (admin/senha)")
+		log.Printf("[auth] mode=local (admin/password)")
 	}
 
 	// Segurança — sink de auditoria p/ SIEM (sempre JSON em stderr; POST se -audit-siem-url).

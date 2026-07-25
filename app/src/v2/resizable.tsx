@@ -84,7 +84,7 @@ export function ResizeHandle({
       onDoubleClick={onReset}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      title="Arraste para redimensionar · duplo-clique para resetar"
+      title="Drag to resize · double-click to reset"
       style={{
         position: "absolute",
         top: 0,

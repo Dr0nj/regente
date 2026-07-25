@@ -151,7 +151,7 @@ func (s *Scheduler) evaluateSlowRunning(now time.Time) {
 	if errIter != nil {
 		// `alive` incompleto podaria slowFired de runs AINDA vivas → alerta de
 		// lentidão re-disparado em duplicata. Aborta o ciclo; o próximo tick refaz.
-		log.Printf("[alerts] slow scan: iteração incompleta (ciclo pulado): %v", errIter)
+		log.Printf("[alerts] slow scan: incomplete iteration (cycle skipped): %v", errIter)
 		return
 	}
 

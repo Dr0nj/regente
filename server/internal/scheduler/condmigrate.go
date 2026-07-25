@@ -27,7 +27,7 @@ func (s *Scheduler) MigrateConditionsUnify() {
 	}
 	var n int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM meta_flags WHERE name=?`, condsUnifyFlag).Scan(&n); err != nil {
-		log.Printf("[conditions] backfill: meta_flags indisponível: %v", err)
+		log.Printf("[conditions] backfill: meta_flags unavailable: %v", err)
 		return
 	}
 	if n > 0 {
@@ -43,7 +43,7 @@ func (s *Scheduler) MigrateConditionsUnify() {
 		 WHERE status IN ('WAITING','HELD') AND definition_snapshot LIKE '%"upstream"%'`,
 	)
 	if err != nil {
-		log.Printf("[conditions] backfill: query (flag não marcada, retry no próximo boot): %v", err)
+		log.Printf("[conditions] backfill: query (flag not set, retry on next boot): %v", err)
 		return
 	}
 	{
@@ -58,7 +58,7 @@ func (s *Scheduler) MigrateConditionsUnify() {
 		errIter := rows.Err()
 		rows.Close()
 		if errIter != nil {
-			log.Printf("[conditions] backfill: iteração (flag não marcada, retry no próximo boot): %v", errIter)
+			log.Printf("[conditions] backfill: iteration (flag not set, retry on next boot): %v", errIter)
 			return
 		}
 		for _, c := range consumers {
@@ -104,11 +104,11 @@ func (s *Scheduler) MigrateConditionsUnify() {
 		}
 	}
 	if _, err := s.db.Exec(`INSERT INTO meta_flags(name) VALUES(?)`, condsUnifyFlag); err != nil {
-		log.Printf("[conditions] backfill: falha ao marcar flag: %v", err)
+		log.Printf("[conditions] backfill: failed to set flag: %v", err)
 		return
 	}
 	if seeded > 0 {
-		log.Printf("[conditions] unificação: %d condição(ões) semeada(s) no pool a partir de pais já OK", seeded)
+		log.Printf("[conditions] unification: %d condition(s) seeded into the pool from already-OK parents", seeded)
 	}
 }
 

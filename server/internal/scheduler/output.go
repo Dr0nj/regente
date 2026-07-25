@@ -61,7 +61,7 @@ func (s *Scheduler) appendOutput(instanceID, chunk string) {
 		// O chunk que cruzou é substituído por UMA linha de aviso (não trunca no
 		// meio de uma linha); os próximos são descartados até resetOutputBudget.
 		s.insertOutput(instanceID, fmt.Sprintf(
-			"\n[output truncado — cap de %d bytes por instance atingido; o restante não é gravado]\n", outputMaxBytes))
+			"\n[output truncated — %d-byte per-instance cap reached; the rest is not recorded]\n", outputMaxBytes))
 		return
 	}
 	s.insertOutput(instanceID, chunk)
@@ -131,7 +131,7 @@ func (s *Scheduler) outputRetentionDays() int {
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil || n < 0 {
-		log.Printf("[scheduler] settings output_retention_days %q inválido (esperado inteiro ≥ 0) — retenção de output desligada", v)
+		log.Printf("[scheduler] settings output_retention_days %q invalid (expected integer ≥ 0) — output retention disabled", v)
 		return 0
 	}
 	return n
@@ -168,6 +168,6 @@ func (s *Scheduler) outputGC() {
 		}
 	}
 	if total > 0 {
-		log.Printf("[scheduler] output: retenção de %dd — %d linhas removidas de instance_output", days, total)
+		log.Printf("[scheduler] output: %dd retention — %d rows removed from instance_output", days, total)
 	}
 }

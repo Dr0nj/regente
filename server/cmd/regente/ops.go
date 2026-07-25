@@ -14,26 +14,26 @@ import (
 	"github.com/Dr0nj/regente-server/pkg/client"
 )
 
-const opsUsage = `regente ops — opera um server Regente vivo (via SDK pkg/client)
+const opsUsage = `regente ops — operate a live Regente server (via the pkg/client SDK)
 
-Uso:
+Usage:
   regente ops instances [-date D] [-status S,S] [-folder F,F] [-search X] [-late] [-group status|folder|definition] [-limit N] [-json]
   regente ops action <hold|release|cancel|rerun|set-ok|confirm> <instanceId>
   regente ops force <definitionId>
   regente ops ingest -source SRC -id ID [-condition C[,C]] [-force-job DEF] [-date D]
   regente ops daily [-date D] [-report] [-json]
   regente ops archives [list]
-  regente ops archives get <arquivo> [-o saida.ndjson]
+  regente ops archives get <file> [-o out.ndjson]
   regente ops jobtypes [-json]
 
-Conexão (todas as formas):
-  -server URL   (default env REGENTE_SERVER, senão http://localhost:8080)
+Connection (all commands):
+  -server URL   (default env REGENTE_SERVER, otherwise http://localhost:8080)
   -token  TOK   (default env REGENTE_TOKEN)
 `
 
 // opsConn adiciona as flags de conexão comuns e resolve o client.
 func opsConn(fs *flag.FlagSet) func() *client.Client {
-	server := fs.String("server", "", "URL do server (env REGENTE_SERVER)")
+	server := fs.String("server", "", "server URL (env REGENTE_SERVER)")
 	token := fs.String("token", "", "bearer token (env REGENTE_TOKEN)")
 	return func() *client.Client {
 		base := *server
@@ -54,7 +54,7 @@ func opsConn(fs *flag.FlagSet) func() *client.Client {
 func cmdOps(args []string) error {
 	if len(args) == 0 {
 		fmt.Print(opsUsage)
-		return fmt.Errorf("subcomando obrigatório")
+		return fmt.Errorf("subcommand required")
 	}
 	sub, rest := args[0], args[1:]
 	switch sub {
@@ -99,16 +99,16 @@ func opsInstances(args []string) error {
 	fs := flag.NewFlagSet("ops instances", flag.ContinueOnError)
 	conn := opsConn(fs)
 	var (
-		date   = fs.String("date", "", "dia (YYYY-MM-DD; default hoje)")
-		from   = fs.String("from", "", "início do range (YYYY-MM-DD)")
-		to     = fs.String("to", "", "fim do range (YYYY-MM-DD)")
-		status = fs.String("status", "", "filtro IN por status (CSV: NOTOK,WAITING)")
-		folder = fs.String("folder", "", "filtro IN por folder (CSV)")
-		search = fs.String("search", "", "LIKE em id/definition_id")
-		late   = fs.Bool("late", false, "só WAITING atrasadas (scheduled_at no passado)")
-		group  = fs.String("group", "", "agrega: status|folder|definition")
-		limit  = fs.Int("limit", 0, "teto de linhas (default 500, máx 5000)")
-		asJSON = fs.Bool("json", false, "saída JSON (CI-friendly)")
+		date   = fs.String("date", "", "day (YYYY-MM-DD; default today)")
+		from   = fs.String("from", "", "range start (YYYY-MM-DD)")
+		to     = fs.String("to", "", "range end (YYYY-MM-DD)")
+		status = fs.String("status", "", "IN filter by status (CSV: NOTOK,WAITING)")
+		folder = fs.String("folder", "", "IN filter by folder (CSV)")
+		search = fs.String("search", "", "LIKE on id/definition_id")
+		late   = fs.Bool("late", false, "only late WAITING (scheduled_at in the past)")
+		group  = fs.String("group", "", "aggregate: status|folder|definition")
+		limit  = fs.Int("limit", 0, "row cap (default 500, max 5000)")
+		asJSON = fs.Bool("json", false, "JSON output (CI-friendly)")
 	)
 	if err := fs.Parse(reorderArgs(args, "late", "json")); err != nil {
 		return err
@@ -148,7 +148,7 @@ func opsInstances(args []string) error {
 	}
 	fmt.Printf("%d instance(s)", len(res.Items))
 	if res.NextCursor != "" {
-		fmt.Printf(" (mais páginas: -limit maior ou cursor %s)", res.NextCursor)
+		fmt.Printf(" (more pages: larger -limit or cursor %s)", res.NextCursor)
 	}
 	fmt.Println()
 	return nil
@@ -192,17 +192,17 @@ func opsIngest(args []string) error {
 	fs := flag.NewFlagSet("ops ingest", flag.ContinueOnError)
 	conn := opsConn(fs)
 	var (
-		source   = fs.String("source", "", "sistema emissor (obrigatório)")
-		id       = fs.String("id", "", "id do evento NO emissor (obrigatório — é a chave de idempotência)")
-		cond     = fs.String("condition", "", "condition(s) a setar (CSV)")
-		forceJob = fs.String("force-job", "", "definition a forçar quando o evento chega")
-		date     = fs.String("date", "", "scope date (default hoje)")
+		source   = fs.String("source", "", "emitting system (required)")
+		id       = fs.String("id", "", "event id IN the emitter (required — it is the idempotency key)")
+		cond     = fs.String("condition", "", "condition(s) to set (CSV)")
+		forceJob = fs.String("force-job", "", "definition to force when the event arrives")
+		date     = fs.String("date", "", "scope date (default today)")
 	)
 	if err := fs.Parse(reorderArgs(args)); err != nil {
 		return err
 	}
 	if *source == "" || *id == "" {
-		return fmt.Errorf("-source e -id são obrigatórios")
+		return fmt.Errorf("-source and -id are required")
 	}
 	res, err := conn().Ingest(client.IngestEvent{
 		ID: *id, Source: *source, Conditions: csv(*cond), ForceJob: *forceJob, Date: *date,
@@ -210,7 +210,7 @@ func opsIngest(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("evento %s/%s: %s\n", res.Source, res.ID, res.Applied)
+	fmt.Printf("event %s/%s: %s\n", res.Source, res.ID, res.Applied)
 	return nil
 }
 
@@ -218,9 +218,9 @@ func opsDaily(args []string) error {
 	fs := flag.NewFlagSet("ops daily", flag.ContinueOnError)
 	conn := opsConn(fs)
 	var (
-		date   = fs.String("date", "", "dia do relatório (YYYY-MM-DD)")
-		report = fs.Bool("report", false, "relatório E5 em vez do status")
-		asJSON = fs.Bool("json", false, "saída JSON")
+		date   = fs.String("date", "", "report day (YYYY-MM-DD)")
+		report = fs.Bool("report", false, "E5 report instead of the status")
+		asJSON = fs.Bool("json", false, "JSON output")
 	)
 	if err := fs.Parse(reorderArgs(args, "report", "json")); err != nil {
 		return err
@@ -240,24 +240,24 @@ func opsDaily(args []string) error {
 	if *asJSON {
 		return printJSON(st)
 	}
-	fmt.Printf("diária de negócio:  %s\n", st.OrderDate)
-	fmt.Printf("daily configurada:  %s (%s)\n", st.DailyAt, orDefault(st.Timezone, "relógio local do server"))
-	fmt.Printf("última daily:       %s às %s\n", st.LastRunDate, st.LastRunAt)
-	fmt.Printf("agora no server:    %s\n", st.ServerNow)
+	fmt.Printf("business daily:     %s\n", st.OrderDate)
+	fmt.Printf("configured daily:   %s (%s)\n", st.DailyAt, orDefault(st.Timezone, "server local clock"))
+	fmt.Printf("last daily:         %s at %s\n", st.LastRunDate, st.LastRunAt)
+	fmt.Printf("now on the server:  %s\n", st.ServerNow)
 	return nil
 }
 
 func opsArchives(args []string) error {
 	fs := flag.NewFlagSet("ops archives", flag.ContinueOnError)
 	conn := opsConn(fs)
-	out := fs.String("o", "", "arquivo de saída (default stdout)")
+	out := fs.String("o", "", "output file (default stdout)")
 	if err := fs.Parse(reorderArgs(args)); err != nil {
 		return err
 	}
 	rest := fs.Args()
 	if len(rest) >= 1 && rest[0] == "get" {
 		if len(rest) != 2 {
-			return fmt.Errorf("uso: regente ops archives get <arquivo> [-o saida]")
+			return fmt.Errorf("usage: regente ops archives get <file> [-o out]")
 		}
 		var w *os.File = os.Stdout
 		if *out != "" {
@@ -272,7 +272,7 @@ func opsArchives(args []string) error {
 			return err
 		}
 		if *out != "" {
-			fmt.Printf("archive salvo em %s\n", *out)
+			fmt.Printf("archive saved to %s\n", *out)
 		}
 		return nil
 	}
@@ -281,11 +281,11 @@ func opsArchives(args []string) error {
 		return err
 	}
 	if len(list) == 0 {
-		fmt.Println("nenhum archive (retenção desligada ou nada vencido ainda)")
+		fmt.Println("no archive (retention disabled or nothing expired yet)")
 		return nil
 	}
 	w := tabwriter.NewWriter(os.Stdout, 2, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "DIA\tARQUIVO\tBYTES\tMODIFICADO")
+	fmt.Fprintln(w, "DAY\tFILE\tBYTES\tMODIFIED")
 	for _, a := range list {
 		fmt.Fprintf(w, "%s\t%s\t%d\t%s\n", a.Day, a.File, a.SizeBytes, a.ModifiedAt)
 	}
@@ -295,7 +295,7 @@ func opsArchives(args []string) error {
 func opsJobTypes(args []string) error {
 	fs := flag.NewFlagSet("ops jobtypes", flag.ContinueOnError)
 	conn := opsConn(fs)
-	asJSON := fs.Bool("json", false, "saída JSON completa (schema por tipo)")
+	asJSON := fs.Bool("json", false, "full JSON output (schema per type)")
 	if err := fs.Parse(reorderArgs(args, "json")); err != nil {
 		return err
 	}

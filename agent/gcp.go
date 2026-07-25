@@ -77,11 +77,11 @@ func runCloudRunJob(params map[string]interface{}, timeoutSec int, emit func(str
 	var op cloudRunOp
 	_ = json.Unmarshal(out, &op)
 	if emit != nil {
-		emit(fmt.Sprintf("cloud run job %s: execução disparada (op=%s)\n", job, op.Name))
+		emit(fmt.Sprintf("cloud run job %s: execution fired (op=%s)\n", job, op.Name))
 	}
 	if op.Name == "" {
 		// Sem operação retornada → aceito (fire-and-forget).
-		return 0, fmt.Sprintf("cloud run job %s disparado", job)
+		return 0, fmt.Sprintf("cloud run job %s fired", job)
 	}
 
 	// Poll a Operation até done/timeout.
@@ -95,7 +95,7 @@ func runCloudRunJob(params map[string]interface{}, timeoutSec int, emit func(str
 			return 0, fmt.Sprintf("cloud run job %s succeeded", job)
 		}
 		if time.Now().After(deadline) {
-			return -1, fmt.Sprintf("cloud run job %s timeout após %ds", job, timeoutSec)
+			return -1, fmt.Sprintf("cloud run job %s timed out after %ds", job, timeoutSec)
 		}
 		time.Sleep(500 * time.Millisecond)
 		if sc, sb, e := do(http.MethodGet, opURL, nil); e == nil && sc >= 200 && sc < 300 {

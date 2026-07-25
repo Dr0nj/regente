@@ -15,12 +15,12 @@ import { runWhatIf, type WhatIfChange, type WhatIfReport, type WhatIfRow } from 
 
 const STATE_LABEL: Record<WhatIfRow["state"], { label: string; color: string }> = {
   unchanged:        { label: "—",            color: "var(--v2-text-muted)" },
-  delayed:          { label: "ATRASA",       color: "var(--v2-status-waiting)" },
-  earlier:          { label: "ADIANTA",      color: "var(--v2-status-ok)" },
-  blocked:          { label: "BLOQUEIA",     color: "var(--v2-status-failed)" },
-  skipped:          { label: "NÃO RODA",     color: "var(--v2-text-muted)" },
-  fails:            { label: "FALHA",        color: "var(--v2-status-failed)" },
-  "starts-running": { label: "PASSA A RODAR", color: "var(--v2-status-running)" },
+  delayed:          { label: "DELAYS",       color: "var(--v2-status-waiting)" },
+  earlier:          { label: "EARLIER",      color: "var(--v2-status-ok)" },
+  blocked:          { label: "BLOCKS",       color: "var(--v2-status-failed)" },
+  skipped:          { label: "SKIPPED",      color: "var(--v2-text-muted)" },
+  fails:            { label: "FAILS",        color: "var(--v2-status-failed)" },
+  "starts-running": { label: "STARTS RUNNING", color: "var(--v2-status-running)" },
   "not-run":        { label: "—",            color: "var(--v2-text-muted)" },
 };
 
@@ -103,10 +103,10 @@ export default function WhatIfPanel({
         borderBottom: "1px solid var(--v2-border-subtle)",
       }}>
         <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-          What-If — simulação de cenário
+          What-If — scenario simulation
         </span>
         <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>
-          read-only · durações reais (p50 do histórico) · nada é materializado
+          read-only · real durations (historical p50) · nothing is materialized
         </span>
       </div>
 
@@ -115,29 +115,29 @@ export default function WhatIfPanel({
         display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", flexWrap: "wrap",
         borderBottom: "1px solid var(--v2-border-subtle)", background: "var(--v2-bg-canvas)",
       }}>
-        <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>E se</span>
+        <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>What if</span>
         <select value={defId} onChange={(e) => setDefId(e.target.value)} style={{ ...inputStyle, maxWidth: 260 }}>
           {sortedDefs.map((d) => (
             <option key={d.id} value={d.id}>{d.team} / {d.label}</option>
           ))}
         </select>
         <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
-          atrasar
+          delay by
           <input value={delayMin} onChange={(e) => setDelayMin(e.target.value.replace(/\D/g, ""))} placeholder="0" style={{ ...inputStyle, width: 52 }} />
           min
         </label>
         <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
-          durar
+          run for
           <input value={durationMin} onChange={(e) => setDurationMin(e.target.value.replace(/\D/g, ""))} placeholder="p50" style={{ ...inputStyle, width: 52 }} />
           min
         </label>
         <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, cursor: "pointer" }}>
           <input type="checkbox" checked={fail} onChange={(e) => { setFail(e.target.checked); if (e.target.checked) setSkip(false); }} />
-          falhar
+          fail
         </label>
         <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, cursor: "pointer" }}>
           <input type="checkbox" checked={skip} onChange={(e) => { setSkip(e.target.checked); if (e.target.checked) setFail(false); }} />
-          não rodar
+          skip
         </label>
         <button
           onClick={() => { const c = stageChange(); void run(c ?? undefined); }}
@@ -149,19 +149,19 @@ export default function WhatIfPanel({
             cursor: running ? "wait" : "pointer", opacity: running ? 0.6 : 1,
           }}
         >
-          {running ? "simulando…" : "Simular"}
+          {running ? "simulating…" : "Simulate"}
         </button>
         {changes.length > 0 && (
           <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>
-            cenário: {changes.map((c) => {
-              const bits = [c.delayMin ? `+${c.delayMin}min` : "", c.durationMs ? `dur ${Math.round(c.durationMs / 60_000)}min` : "", c.fail ? "FALHA" : "", c.skip ? "SKIP" : ""].filter(Boolean).join(" ");
+            scenario: {changes.map((c) => {
+              const bits = [c.delayMin ? `+${c.delayMin}min` : "", c.durationMs ? `dur ${Math.round(c.durationMs / 60_000)}min` : "", c.fail ? "FAIL" : "", c.skip ? "SKIP" : ""].filter(Boolean).join(" ");
               return `${c.defId} (${bits})`;
             }).join(" · ")}
-            <button onClick={() => { setChanges([]); setReport(null); }} style={{ marginLeft: 6, background: "transparent", border: "none", color: "var(--v2-text-muted)", cursor: "pointer", fontSize: 10, textDecoration: "underline" }}>limpar</button>
+            <button onClick={() => { setChanges([]); setReport(null); }} style={{ marginLeft: 6, background: "transparent", border: "none", color: "var(--v2-text-muted)", cursor: "pointer", fontSize: 10, textDecoration: "underline" }}>clear</button>
           </span>
         )}
         {ranEmpty && (
-          <span style={{ fontSize: 10, color: "var(--v2-status-waiting)" }}>defina pelo menos uma mudança (atraso, duração, falhar ou não rodar)</span>
+          <span style={{ fontSize: 10, color: "var(--v2-status-waiting)" }}>set at least one change (delay, duration, fail or skip)</span>
         )}
       </div>
 
@@ -169,26 +169,26 @@ export default function WhatIfPanel({
       <div style={{ flex: 1, overflow: "auto", padding: "10px 14px" }}>
         {!report && !running && (
           <div style={{ fontSize: 11, color: "var(--v2-text-muted)", padding: 20, textAlign: "center" }}>
-            Monte um cenário e clique em Simular — o impacto rio abaixo aparece aqui
-            (quem atrasa, quem bloqueia, que SLA passa a estourar).
+            Build a scenario and click Simulate — the downstream impact shows up here
+            (who is delayed, who is blocked, which SLA starts breaching).
           </div>
         )}
         {report && (
           <>
             <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 10, fontSize: 10, fontFamily: "var(--v2-font-mono)" }}>
-              <span>impactados <b style={{ color: report.summary.impacted > 0 ? "var(--v2-status-waiting)" : "var(--v2-text-primary)" }}>{report.summary.impacted}</b> de {report.summary.total}</span>
-              <span>bloqueados <b style={{ color: report.summary.blocked > 0 ? "var(--v2-status-failed)" : "var(--v2-text-primary)" }}>{report.summary.blocked}</b></span>
-              <span>SLAs novos estourados <b style={{ color: report.summary.newSlaBreaches > 0 ? "var(--v2-status-failed)" : "var(--v2-text-primary)" }}>{report.summary.newSlaBreaches}</b></span>
-              <span>fim da diária {fmtDelta(report.summary.makespanScenMs - report.summary.makespanBaseMs)}</span>
+              <span>impacted <b style={{ color: report.summary.impacted > 0 ? "var(--v2-status-waiting)" : "var(--v2-text-primary)" }}>{report.summary.impacted}</b> of {report.summary.total}</span>
+              <span>blocked <b style={{ color: report.summary.blocked > 0 ? "var(--v2-status-failed)" : "var(--v2-text-primary)" }}>{report.summary.blocked}</b></span>
+              <span>new SLA breaches <b style={{ color: report.summary.newSlaBreaches > 0 ? "var(--v2-status-failed)" : "var(--v2-text-primary)" }}>{report.summary.newSlaBreaches}</b></span>
+              <span>daily end {fmtDelta(report.summary.makespanScenMs - report.summary.makespanBaseMs)}</span>
             </div>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
               <thead>
                 <tr style={{ textAlign: "left", fontSize: 9, fontFamily: "var(--v2-font-mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--v2-text-muted)" }}>
                   <th style={{ padding: "4px 8px" }}>Job</th>
                   <th style={{ padding: "4px 8px" }}>Baseline</th>
-                  <th style={{ padding: "4px 8px" }}>Cenário</th>
-                  <th style={{ padding: "4px 8px" }}>Δ fim</th>
-                  <th style={{ padding: "4px 8px" }}>Efeito</th>
+                  <th style={{ padding: "4px 8px" }}>Scenario</th>
+                  <th style={{ padding: "4px 8px" }}>Δ end</th>
+                  <th style={{ padding: "4px 8px" }}>Effect</th>
                   <th style={{ padding: "4px 8px" }}>SLA</th>
                 </tr>
               </thead>
@@ -200,13 +200,13 @@ export default function WhatIfPanel({
                       <td style={{ padding: "5px 8px" }}>
                         <span style={{ color: "var(--v2-text-muted)", fontSize: 10 }}>{r.team} / </span>
                         <span style={{ fontWeight: r.changeInjected ? 700 : 500 }}>{r.label}</span>
-                        {r.changeInjected && <span title="job mutado no cenário" style={{ marginLeft: 5, fontSize: 9, color: "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)" }}>◈ cenário</span>}
+                        {r.changeInjected && <span title="job mutated in the scenario" style={{ marginLeft: 5, fontSize: 9, color: "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)" }}>◈ scenario</span>}
                       </td>
                       <td style={{ padding: "5px 8px", fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-secondary)" }}>
-                        {r.baseRuns ? `${fmtHM(r.baseStart)}–${fmtHM(r.baseEnd)}` : "não roda"}
+                        {r.baseRuns ? `${fmtHM(r.baseStart)}–${fmtHM(r.baseEnd)}` : "does not run"}
                       </td>
                       <td style={{ padding: "5px 8px", fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-secondary)" }}>
-                        {r.scenRuns ? `${fmtHM(r.scenStart)}–${fmtHM(r.scenEnd)}${r.scenStatus === "NOTOK" ? " ✗" : ""}` : "não roda"}
+                        {r.scenRuns ? `${fmtHM(r.scenStart)}–${fmtHM(r.scenEnd)}${r.scenStatus === "NOTOK" ? " ✗" : ""}` : "does not run"}
                       </td>
                       <td style={{ padding: "5px 8px", fontFamily: "var(--v2-font-mono)", color: r.deltaMs > 0 ? "var(--v2-status-waiting)" : "var(--v2-text-secondary)" }}>
                         {r.baseRuns && r.scenRuns ? fmtDelta(r.deltaMs) : "—"}
@@ -215,16 +215,16 @@ export default function WhatIfPanel({
                         <span style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", fontWeight: 700, color: st.color, border: `1px solid ${st.color}`, borderRadius: 3, padding: "1px 6px" }}>{st.label}</span>
                       </td>
                       <td style={{ padding: "5px 8px", fontSize: 10, fontFamily: "var(--v2-font-mono)" }}>
-                        {r.slaBreachScen && !r.slaBreachBase && <span style={{ color: "var(--v2-status-failed)", fontWeight: 700 }}>ESTOURA</span>}
-                        {r.slaBreachScen && r.slaBreachBase && <span style={{ color: "var(--v2-text-muted)" }}>já estourava</span>}
-                        {!r.slaBreachScen && r.slaBreachBase && <span style={{ color: "var(--v2-status-ok)" }}>salva</span>}
+                        {r.slaBreachScen && !r.slaBreachBase && <span style={{ color: "var(--v2-status-failed)", fontWeight: 700 }}>BREACHES</span>}
+                        {r.slaBreachScen && r.slaBreachBase && <span style={{ color: "var(--v2-text-muted)" }}>already breached</span>}
+                        {!r.slaBreachScen && r.slaBreachBase && <span style={{ color: "var(--v2-status-ok)" }}>saved</span>}
                       </td>
                     </tr>
                   );
                 })}
                 {impacted.length === 0 && (
                   <tr><td colSpan={6} style={{ padding: 16, textAlign: "center", color: "var(--v2-text-muted)", fontSize: 11 }}>
-                    Nenhum job impactado por este cenário.
+                    No job impacted by this scenario.
                   </td></tr>
                 )}
               </tbody>

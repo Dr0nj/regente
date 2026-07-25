@@ -104,14 +104,14 @@ func (s *Scheduler) DryRun(date string) (DryRun, error) {
 	// 1ª passada: classificação DIRETA dos agendados.
 	cls := make(map[string]*dryCls, len(scheduled))
 	for id, d := range scheduled {
-		c := &dryCls{def: d, outcome: DryRunRun, reason: "elegível — sem dependências pendentes"}
+		c := &dryCls{def: d, outcome: DryRunRun, reason: "eligible — no pending dependencies"}
 		for _, u := range d.Upstream {
 			if u.Condition == domain.CondAlways {
 				continue // always é satisfeita de qualquer jeito → não bloqueia nem espera
 			}
 			if _, ok := scheduled[u.From]; !ok {
 				c.outcome = DryRunBlocked
-				c.reason = "depende de '" + u.From + "', que não roda nesta data"
+				c.reason = "depends on '" + u.From + "', which does not run on this date"
 				break
 			}
 			c.waitsOn = append(c.waitsOn, u.From)
@@ -120,14 +120,14 @@ func (s *Scheduler) DryRun(date string) (DryRun, error) {
 			for _, cond := range d.ConditionsIn {
 				if !condSatisfiable(cond) {
 					c.outcome = DryRunBlocked
-					c.reason = "espera a condition '" + cond + "', que nenhum job ativo seta nesta data"
+					c.reason = "waits for the condition '" + cond + "', which no active job sets on this date"
 					break
 				}
 			}
 		}
 		if c.outcome != DryRunBlocked && len(c.waitsOn) > 0 {
 			c.outcome = DryRunWait
-			c.reason = "roda depois de: " + strings.Join(c.waitsOn, ", ")
+			c.reason = "runs after: " + strings.Join(c.waitsOn, ", ")
 		}
 		cls[id] = c
 	}
@@ -152,7 +152,7 @@ func (s *Scheduler) DryRun(date string) (DryRun, error) {
 		for _, y := range succ[cur] {
 			if cls[y].outcome != DryRunBlocked {
 				cls[y].outcome = DryRunBlocked
-				cls[y].reason = "depende de '" + cur + "', que nunca roda nesta data"
+				cls[y].reason = "depends on '" + cur + "', which never runs on this date"
 				queue = append(queue, y)
 			}
 		}
@@ -181,7 +181,7 @@ func (s *Scheduler) DryRun(date string) (DryRun, error) {
 			add(DryRunJob{DefID: d.ID, Label: d.Label, Team: d.Team, Outcome: c.outcome, Reason: c.reason, DependsOn: c.waitsOn})
 		} else {
 			add(DryRunJob{DefID: d.ID, Label: d.Label, Team: d.Team, Outcome: DryRunNotScheduled,
-				Reason: "fora do calendário/frequência nesta data"})
+				Reason: "outside the calendar/frequency on this date"})
 		}
 	}
 	return dr, nil

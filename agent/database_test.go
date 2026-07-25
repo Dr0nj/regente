@@ -62,7 +62,7 @@ func TestDatabase_MaxRowsTruncates(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("select: code=%d out=%s", code, out)
 	}
-	if !strings.Contains(out, "truncado em 3 linhas") {
+	if !strings.Contains(out, "truncated at 3 rows") {
 		t.Fatalf("esperava aviso de truncamento, veio:\n%s", out)
 	}
 }

@@ -91,7 +91,7 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 		// o scheduled_at JÁ é o WindowFrom (computeScheduledAt), então este teste
 		// basta e o carry-over segue intocado. Pulado quando o $TIME está na lógica.
 		if !timeInLogic && now.Before(r.ScheduledAt) {
-			if add(Blocker{Kind: GateWindow, Detail: "ainda não chegou o horário agendado (" + r.ScheduledAt.Format("15:04") + ")"}) {
+			if add(Blocker{Kind: GateWindow, Detail: "the scheduled time has not arrived yet (" + r.ScheduledAt.Format("15:04") + ")"}) {
 				return out
 			}
 		}
@@ -102,7 +102,7 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 		// e num Order Force o próprio $TIME usa esta trava, ver orderForceWindowStart).
 		if !timeInLogic && r.Forced && r.ForceMode == ForceModeOrder {
 			if ws, ok := orderForceWindowStart(def, r.OrderDate); ok && now.Before(ws) {
-				if add(Blocker{Kind: GateWindow, Detail: "janela de execução abre às " + def.Schedule.WindowFrom}) {
+				if add(Blocker{Kind: GateWindow, Detail: "the execution window opens at " + def.Schedule.WindowFrom}) {
 					return out
 				}
 			}
@@ -113,7 +113,7 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 			if t, err := time.Parse("2006-01-02", r.OrderDate); err == nil {
 				windowEnd := time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.Local)
 				if now.After(windowEnd) {
-					if add(Blocker{Kind: GateWindowClosed, Detail: "janela de execução fechou às " + def.Schedule.WindowTo}) {
+					if add(Blocker{Kind: GateWindowClosed, Detail: "the execution window closed at " + def.Schedule.WindowTo}) {
 						return out
 					}
 				}
@@ -163,14 +163,14 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 		}
 		if ev := domain.EvalConditionLogic(def.ConditionLogic, def.ConditionsIn, sat); !ev.Satisfied {
 			if add(Blocker{Kind: GateCondition,
-				Detail: "aguardando " + ev.RenderExpr() + " — nenhum ramo satisfeito no pool"}) {
+				Detail: "waiting for " + ev.RenderExpr() + " — no branch satisfied in the pool"}) {
 				return out
 			}
 		}
 	} else if len(def.ConditionsIn) > 0 && s.conditions != nil {
 		for _, m := range s.conditions.MissingIdx(def.ConditionsIn, odate, s.prevDaily, condIdx) {
 			if add(Blocker{Kind: GateCondition, Condition: m.Name,
-				Detail: "falta a condição '" + m.Name + "'" + m.ScopeLabel + " no pool (quem a cria precisa terminar OK — ou adicione no painel Condições)"}) {
+				Detail: "the condition '" + m.Name + "'" + m.ScopeLabel + " is missing from the pool (whoever creates it must end OK — or add it in the Conditions panel)"}) {
 				return out
 			}
 		}
@@ -182,16 +182,16 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 	//    spam de log/evento). Quando um agente conecta, o ws handler cutuca um
 	//    Tick e o job dispara NA HORA. SSH é agentless; DemoMode dispensa (mock).
 	if !s.agentAvailable(def) {
-		detail := "nenhum agente online com a capability " + def.JobType
+		detail := "no agent online with the " + def.JobType + " capability"
 		if def.Environment != "" {
 			// ADV-2 — roteamento por ambiente: o motivo precisa dizer o env, senão
 			// o operador vê agentes online e não entende o WAIT_AGENT.
-			detail += " no ambiente '" + def.Environment + "'"
+			detail += " in the '" + def.Environment + "' environment"
 		}
 		if def.AgentID != "" {
-			detail = "agente '" + def.AgentID + "' offline"
+			detail = "agent '" + def.AgentID + "' is offline"
 			if def.Environment != "" && s.hub.GetAgent(def.AgentID) != nil {
-				detail = "agente '" + def.AgentID + "' está noutro ambiente (job exige '" + def.Environment + "')"
+				detail = "agent '" + def.AgentID + "' is in another environment (the job requires '" + def.Environment + "')"
 			}
 		}
 		if add(Blocker{Kind: GateAgent, Detail: detail}) {
@@ -204,7 +204,7 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 		for _, sf := range s.resources.Shortfalls(def.Resources) {
 			if add(Blocker{
 				Kind: GateResource, Resource: sf.Name, Want: sf.Want, Used: sf.Used, Capacity: sf.Capacity,
-				Detail: fmt.Sprintf("recurso '%s' indisponível (quer %d; uso %d/%d)", sf.Name, sf.Want, sf.Used, sf.Capacity),
+				Detail: fmt.Sprintf("resource '%s' unavailable (wants %d; used %d/%d)", sf.Name, sf.Want, sf.Used, sf.Capacity),
 			}) {
 				return out
 			}
@@ -253,22 +253,22 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 	// Estados não-WAITING: não há gating a avaliar; descreve a situação.
 	switch r.Status {
 	case string(domain.StatusRunning):
-		ex.Summary = "Em execução."
+		ex.Summary = "Running."
 		if r.StartedAt.Valid {
-			ex.Summary = "Em execução desde " + r.StartedAt.Time.Format("15:04:05") + "."
+			ex.Summary = "Running since " + r.StartedAt.Time.Format("15:04:05") + "."
 		}
 		return ex, nil
 	case string(domain.StatusOK):
-		ex.Summary = "Concluído com sucesso (OK)."
+		ex.Summary = "Completed successfully (OK)."
 		return ex, nil
 	case string(domain.StatusNotOK):
-		ex.Summary = "Terminou com falha (NOTOK) — rerun ou Set OK pra tratar."
+		ex.Summary = "Ended with a failure (NOTOK) — rerun or Set OK to handle it."
 		return ex, nil
 	case string(domain.StatusCancelled):
-		ex.Summary = "Cancelado (dependência impossível ou cancelado por operador)."
+		ex.Summary = "Cancelled (impossible dependency or cancelled by an operator)."
 		return ex, nil
 	case string(domain.StatusHeld):
-		ex.Summary = "Em HOLD — segurado por operador; não roda até liberar."
+		ex.Summary = "On HOLD — held by an operator; does not run until released."
 		return ex, nil
 	}
 
@@ -282,7 +282,7 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 
 	def, ok := defForInstance(r, defs)
 	if !ok {
-		ex.Summary = "Sem definição carregada — não é materializável (def removida/desabilitada?)."
+		ex.Summary = "No definition loaded — not materializable (def removed/disabled?)."
 		return ex, nil
 	}
 	// "Run Now" (forced sem force_mode) bypassa todos os gates menos Confirm e
@@ -290,12 +290,12 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 	// só a janela é bypassada (r.Forced, dentro do gateInstance).
 	if r.Forced && r.ForceMode != ForceModeOrder {
 		if def.Confirm && !r.Confirmed {
-			ex.Blockers = []Blocker{{Kind: GateConfirm, Detail: "aguardando confirmação do operador (job exige Confirm)"}}
-			ex.Summary = "Force aguardando Confirm — a confirmação não é bypassada (Control-M)."
+			ex.Blockers = []Blocker{{Kind: GateConfirm, Detail: "waiting for operator confirmation (the job requires Confirm)"}}
+			ex.Summary = "Force waiting on Confirm — the confirmation is not bypassed (Control-M)."
 			return ex, nil
 		}
 		ex.Runnable = true
-		ex.Summary = "Run Now — despacho imediato (bypassa janela, condições e recursos)."
+		ex.Summary = "Run Now — immediate dispatch (bypasses window, conditions and resources)."
 		return ex, nil
 	}
 
@@ -309,7 +309,7 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 	ex.Blockers = blockers
 	if len(blockers) == 0 {
 		ex.Runnable = true
-		ex.Summary = "Pronto pra rodar — todos os gates satisfeitos; despacho imediato."
+		ex.Summary = "Ready to run — all gates satisfied; immediate dispatch."
 	} else {
 		ex.Summary = summarizeBlockers(blockers)
 	}
@@ -318,11 +318,11 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 
 func summarizeBlockers(bs []Blocker) string {
 	if len(bs) == 1 {
-		return "Não roda: " + bs[0].Detail + "."
+		return "Does not run: " + bs[0].Detail + "."
 	}
 	parts := make([]string, 0, len(bs))
 	for _, b := range bs {
 		parts = append(parts, b.Detail)
 	}
-	return "Não roda — bloqueado por: " + strings.Join(parts, "; ") + "."
+	return "Does not run — blocked by: " + strings.Join(parts, "; ") + "."
 }

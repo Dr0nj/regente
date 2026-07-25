@@ -105,7 +105,7 @@ const monitorSnapshotFlag = "monitoring-snapshot-v18"
 func (s *Scheduler) MigrateMonitoringSnapshot() {
 	var n int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM meta_flags WHERE name=?`, monitorSnapshotFlag).Scan(&n); err != nil {
-		log.Printf("[monitoring] backfill v18: meta_flags indisponível: %v", err)
+		log.Printf("[monitoring] backfill v18: meta_flags unavailable: %v", err)
 		return
 	}
 	if n > 0 {
@@ -127,7 +127,7 @@ func (s *Scheduler) MigrateMonitoringSnapshot() {
 		`SELECT id, definition_id, status, COALESCE(definition_snapshot,'') FROM instances WHERE COALESCE(label,'')=''`,
 	)
 	if err != nil {
-		log.Printf("[monitoring] backfill v18: query (flag não marcada, retry no próximo boot): %v", err)
+		log.Printf("[monitoring] backfill v18: query (flag not set, retry on next boot): %v", err)
 		return
 	}
 	for rows.Next() {
@@ -139,7 +139,7 @@ func (s *Scheduler) MigrateMonitoringSnapshot() {
 	errIter := rows.Err()
 	rows.Close()
 	if errIter != nil {
-		log.Printf("[monitoring] backfill v18: iteração (flag não marcada, retry no próximo boot): %v", errIter)
+		log.Printf("[monitoring] backfill v18: iteration (flag not set, retry on next boot): %v", errIter)
 		return
 	}
 
@@ -181,11 +181,11 @@ func (s *Scheduler) MigrateMonitoringSnapshot() {
 	}
 
 	if _, err := s.db.Exec(`INSERT INTO meta_flags(name) VALUES(?)`, monitorSnapshotFlag); err != nil {
-		log.Printf("[monitoring] backfill v18: falha ao marcar flag: %v", err)
+		log.Printf("[monitoring] backfill v18: failed to set flag: %v", err)
 		return
 	}
 	if filled > 0 {
-		log.Printf("[monitoring] backfill v18: %d instance(s) com colunas congeladas (%d snapshot(s) com união produtor congelada)", filled, frozen)
+		log.Printf("[monitoring] backfill v18: %d instance(s) with frozen columns (%d snapshot(s) with frozen producer union)", filled, frozen)
 	}
 }
 
@@ -200,7 +200,7 @@ const resourcesSnapshotFlag = "monitoring-resources-v19"
 func (s *Scheduler) MigrateResourcesSnapshot() {
 	var n int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM meta_flags WHERE name=?`, resourcesSnapshotFlag).Scan(&n); err != nil {
-		log.Printf("[monitoring] backfill v19: meta_flags indisponível: %v", err)
+		log.Printf("[monitoring] backfill v19: meta_flags unavailable: %v", err)
 		return
 	}
 	if n > 0 {
@@ -215,7 +215,7 @@ func (s *Scheduler) MigrateResourcesSnapshot() {
 		`SELECT id, definition_snapshot FROM instances WHERE COALESCE(resources,'')='' AND COALESCE(definition_snapshot,'')<>''`,
 	)
 	if err != nil {
-		log.Printf("[monitoring] backfill v19: query (flag não marcada, retry no próximo boot): %v", err)
+		log.Printf("[monitoring] backfill v19: query (flag not set, retry on next boot): %v", err)
 		return
 	}
 	for rows.Next() {
@@ -227,7 +227,7 @@ func (s *Scheduler) MigrateResourcesSnapshot() {
 	errIter := rows.Err()
 	rows.Close()
 	if errIter != nil {
-		log.Printf("[monitoring] backfill v19: iteração (flag não marcada, retry no próximo boot): %v", errIter)
+		log.Printf("[monitoring] backfill v19: iteration (flag not set, retry on next boot): %v", errIter)
 		return
 	}
 
@@ -245,11 +245,11 @@ func (s *Scheduler) MigrateResourcesSnapshot() {
 	}
 
 	if _, err := s.db.Exec(`INSERT INTO meta_flags(name) VALUES(?)`, resourcesSnapshotFlag); err != nil {
-		log.Printf("[monitoring] backfill v19: falha ao marcar flag: %v", err)
+		log.Printf("[monitoring] backfill v19: failed to set flag: %v", err)
 		return
 	}
 	if filled > 0 {
-		log.Printf("[monitoring] backfill v19: %d instance(s) com recursos congelados", filled)
+		log.Printf("[monitoring] backfill v19: %d instance(s) with frozen resources", filled)
 	}
 }
 
@@ -263,7 +263,7 @@ const condLogicSnapshotFlag = "monitoring-condlogic-v21"
 func (s *Scheduler) MigrateCondLogicSnapshot() {
 	var n int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM meta_flags WHERE name=?`, condLogicSnapshotFlag).Scan(&n); err != nil {
-		log.Printf("[monitoring] backfill v21: meta_flags indisponível: %v", err)
+		log.Printf("[monitoring] backfill v21: meta_flags unavailable: %v", err)
 		return
 	}
 	if n > 0 {
@@ -277,7 +277,7 @@ func (s *Scheduler) MigrateCondLogicSnapshot() {
 		`SELECT id, definition_snapshot FROM instances WHERE COALESCE(cond_logic,'')='' AND COALESCE(definition_snapshot,'')<>''`,
 	)
 	if err != nil {
-		log.Printf("[monitoring] backfill v21: query (flag não marcada, retry no próximo boot): %v", err)
+		log.Printf("[monitoring] backfill v21: query (flag not set, retry on next boot): %v", err)
 		return
 	}
 	for rows.Next() {
@@ -289,7 +289,7 @@ func (s *Scheduler) MigrateCondLogicSnapshot() {
 	errIter := rows.Err()
 	rows.Close()
 	if errIter != nil {
-		log.Printf("[monitoring] backfill v21: iteração (flag não marcada, retry no próximo boot): %v", errIter)
+		log.Printf("[monitoring] backfill v21: iteration (flag not set, retry on next boot): %v", errIter)
 		return
 	}
 
@@ -307,10 +307,10 @@ func (s *Scheduler) MigrateCondLogicSnapshot() {
 	}
 
 	if _, err := s.db.Exec(`INSERT INTO meta_flags(name) VALUES(?)`, condLogicSnapshotFlag); err != nil {
-		log.Printf("[monitoring] backfill v21: falha ao marcar flag: %v", err)
+		log.Printf("[monitoring] backfill v21: failed to set flag: %v", err)
 		return
 	}
 	if filled > 0 {
-		log.Printf("[monitoring] backfill v21: %d instance(s) com lógica AND/OR congelada", filled)
+		log.Printf("[monitoring] backfill v21: %d instance(s) with frozen AND/OR logic", filled)
 	}
 }

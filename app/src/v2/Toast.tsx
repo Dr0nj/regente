@@ -128,7 +128,7 @@ export function ToastHost() {
                 background: "transparent", border: "none", cursor: "pointer",
                 color: "var(--v2-text-muted)", padding: 0, flexShrink: 0,
               }}
-              title="Fechar"
+              title="Close"
             >
               <X size={13} />
             </button>

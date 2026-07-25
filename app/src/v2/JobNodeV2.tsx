@@ -96,8 +96,8 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
       {data.held && (
         <div
           title={data.folderHeld
-            ? "Em HOLD pela pausa da folder — só libera pelo Retomar da folder inteira, não individualmente"
-            : "Em HOLD — segurado manualmente por um operador; não roda até um Release"}
+            ? "On HOLD by the folder pause — only released by the whole folder's Resume, not individually"
+            : "On HOLD — held manually by an operator; does not run until a Release"}
           style={{
             position: "absolute",
             top: 3,
@@ -152,7 +152,7 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
             <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
               {data.manualOrder && (
                 <span
-                  title="Colocado na mão — Order Force (Design): ordem nova fora do agendamento, respeitando os gates de runtime (janela/condições/agente/recursos). Run Now não marca nada."
+                  title="Placed by hand — Order Force (Design): a new order outside the schedule, honoring the runtime gates (window/conditions/agent/resources). Run Now marks nothing."
                   style={{
                     fontSize: "var(--v2-text-xs)",
                     fontFamily: "var(--v2-font-mono)",
@@ -171,7 +171,7 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
               )}
               {data.dryRun && (
                 <span
-                  title="Dry run — o job entra na daily e 'roda', mas NÃO executa nada (log only)"
+                  title="Dry run — the job enters the daily and 'runs', but does NOT execute anything (log only)"
                   style={{
                     fontSize: "var(--v2-text-xs)",
                     fontFamily: "var(--v2-font-mono)",

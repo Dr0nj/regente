@@ -123,28 +123,28 @@ func (p *Policy) Validate(defs []domain.JobDefinition) []Violation {
 		}
 		r := p.Rules
 		if r.RequireSLA && (d.SLA == nil || (d.SLA.ExpectedDurationMin <= 0 && d.SLA.DeadlineHM == "")) {
-			add(d, "requireSLA", "job sem SLA (expectedDurationMin ou deadlineHM)")
+			add(d, "requireSLA", "job without an SLA (expectedDurationMin or deadlineHM)")
 		}
 		if r.RequireRetries > 0 && d.Retries < r.RequireRetries {
-			add(d, "requireRetries", fmt.Sprintf("retries=%d abaixo do mínimo %d", d.Retries, r.RequireRetries))
+			add(d, "requireRetries", fmt.Sprintf("retries=%d below the minimum %d", d.Retries, r.RequireRetries))
 		}
 		if r.RequireDescription && strings.TrimSpace(d.Schedule.Description) == "" {
-			add(d, "requireDescription", "job sem description (dono/propósito)")
+			add(d, "requireDescription", "job without a description (owner/purpose)")
 		}
 		if r.RequireCalendar && d.Calendar == "" && len(d.Calendars) == 0 {
-			add(d, "requireCalendar", "job sem calendar")
+			add(d, "requireCalendar", "job without a calendar")
 		}
 		if p.idRe != nil && !p.idRe.MatchString(d.ID) {
-			add(d, "idPattern", fmt.Sprintf("id %q não casa com %q", d.ID, r.IDPattern))
+			add(d, "idPattern", fmt.Sprintf("id %q does not match %q", d.ID, r.IDPattern))
 		}
 		if len(r.AllowedJobTypes) > 0 && !containsFold(r.AllowedJobTypes, d.JobType) {
-			add(d, "allowedJobTypes", fmt.Sprintf("jobType %q fora da lista permitida %v", d.JobType, r.AllowedJobTypes))
+			add(d, "allowedJobTypes", fmt.Sprintf("jobType %q outside the allowed list %v", d.JobType, r.AllowedJobTypes))
 		}
 		if r.MaxRetries > 0 && d.Retries > r.MaxRetries {
-			add(d, "maxRetries", fmt.Sprintf("retries=%d acima do teto %d", d.Retries, r.MaxRetries))
+			add(d, "maxRetries", fmt.Sprintf("retries=%d above the cap %d", d.Retries, r.MaxRetries))
 		}
 		if r.ForbidDryRun && d.DryRun {
-			add(d, "forbidDryRun", "dryRun proibido pela política")
+			add(d, "forbidDryRun", "dryRun forbidden by the policy")
 		}
 	}
 	return out

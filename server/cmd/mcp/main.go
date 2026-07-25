@@ -62,7 +62,7 @@ type mcpServer struct {
 func main() {
 	url := flag.String("url", envOr("REGENTE_URL", "http://localhost:8080"), "URL base do regente-server")
 	token := flag.String("token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token da API")
-	allowWrites := flag.Bool("allow-writes", false, "Expõe as tools de escrita (hold/release/cancel/confirm/rerun/set-ok, force_order, pause/resume_folder, bulk_action, ingest_event); o cliente MCP ainda pede aprovação por chamada")
+	allowWrites := flag.Bool("allow-writes", false, "Exposes the write tools (hold/release/cancel/confirm/rerun/set-ok, force_order, pause/resume_folder, bulk_action, ingest_event); the MCP client still asks for per-call approval")
 	flag.Parse()
 
 	m := &mcpServer{
@@ -140,7 +140,7 @@ func (m *mcpServer) callTool(req rpcReq) rpcResp {
 	if err != nil {
 		// Erro de tool: conteúdo com isError (convenção MCP), não erro de protocolo.
 		return m.ok(req.ID, map[string]interface{}{
-			"content": []map[string]interface{}{{"type": "text", "text": "erro: " + err.Error()}},
+			"content": []map[string]interface{}{{"type": "text", "text": "error: " + err.Error()}},
 			"isError": true,
 		})
 	}
@@ -155,7 +155,7 @@ func (m *mcpServer) dispatch(name string, args map[string]interface{}) (string, 
 	requireID := func() (string, error) {
 		id := str("instanceId")
 		if id == "" {
-			return "", fmt.Errorf("instanceId é obrigatório")
+			return "", fmt.Errorf("instanceId is required")
 		}
 		return id, nil
 	}
@@ -163,7 +163,7 @@ func (m *mcpServer) dispatch(name string, args map[string]interface{}) (string, 
 	// gate — nega tools de escrita quando o servidor subiu sem -allow-writes.
 	gate := func() error {
 		if !m.allowWrites {
-			return fmt.Errorf("escrita desabilitada (suba o regente-mcp com -allow-writes)")
+			return fmt.Errorf("writes disabled (start regente-mcp with -allow-writes)")
 		}
 		return nil
 	}
@@ -230,7 +230,7 @@ func (m *mcpServer) dispatch(name string, args map[string]interface{}) (string, 
 	case "query":
 		q := str("q")
 		if q == "" {
-			return "", fmt.Errorf("q (pergunta) é obrigatório")
+			return "", fmt.Errorf("q (question) is required")
 		}
 		return m.postJSON("/api/query", map[string]string{"q": q})
 	case "diff_daily":
@@ -257,7 +257,7 @@ func (m *mcpServer) dispatch(name string, args map[string]interface{}) (string, 
 		}
 		defID := str("definitionId")
 		if defID == "" {
-			return "", fmt.Errorf("definitionId é obrigatório")
+			return "", fmt.Errorf("definitionId is required")
 		}
 		return m.post("/api/definitions/" + url.PathEscape(defID) + "/force")
 	// ── Pausa/resume de WORKFLOW (folder inteira, estado preservado) ──
@@ -267,7 +267,7 @@ func (m *mcpServer) dispatch(name string, args map[string]interface{}) (string, 
 		}
 		folder := str("folder")
 		if folder == "" {
-			return "", fmt.Errorf("folder é obrigatório")
+			return "", fmt.Errorf("folder is required")
 		}
 		verb := "pause"
 		if name == "resume_folder" {
@@ -282,7 +282,7 @@ func (m *mcpServer) dispatch(name string, args map[string]interface{}) (string, 
 		action := str("action")
 		ids := strSlice(args, "ids")
 		if action == "" || len(ids) == 0 {
-			return "", fmt.Errorf("action e ids[] são obrigatórios")
+			return "", fmt.Errorf("action and ids[] are required")
 		}
 		return m.postJSON("/api/bulk/instances", map[string]interface{}{"action": action, "ids": ids})
 	// ── Ingestão de evento externo (seta conditions e/ou force-ordena, idempotente) ──
@@ -296,7 +296,7 @@ func (m *mcpServer) dispatch(name string, args map[string]interface{}) (string, 
 		}
 		forceJob := str("forceJob")
 		if len(conditions) == 0 && forceJob == "" {
-			return "", fmt.Errorf("passe conditions[] e/ou forceJob")
+			return "", fmt.Errorf("pass conditions[] and/or forceJob")
 		}
 		body := map[string]interface{}{}
 		if len(conditions) > 0 {
@@ -312,7 +312,7 @@ func (m *mcpServer) dispatch(name string, args map[string]interface{}) (string, 
 		}
 		return m.postJSON("/api/events/ingest", body)
 	default:
-		return "", fmt.Errorf("tool desconhecida: %q", name)
+		return "", fmt.Errorf("unknown tool: %q", name)
 	}
 }
 
@@ -334,86 +334,86 @@ func (m *mcpServer) tools() []map[string]interface{} {
 	out := []map[string]interface{}{
 		{
 			"name":        "daily_summary",
-			"description": "Resumo da daily de uma data (default hoje): total e contagem por status e por folder. Use pra ter o panorama do dia.",
-			"inputSchema": schema(map[string]interface{}{"date": strProp("YYYY-MM-DD (default hoje)")}),
+			"description": "Daily summary for a date (default today): total and counts by status and by folder. Use it to get the overview of the day.",
+			"inputSchema": schema(map[string]interface{}{"date": strProp("YYYY-MM-DD (default today)")}),
 			"annotations": readOnly,
 		},
 		{
 			"name":        "forecast",
-			"description": "Previsão de agendamento (dry-run SEM materializar) pelo MESMO gating da daily: quem seria ordenado numa data, em que onda topológica (deps) e o pico de recursos. Com days>1 prevê a JANELA à frente (≥1 semana), um relatório por dia.",
+			"description": "Schedule forecast (dry-run WITHOUT materializing) using the SAME gating as the daily: who would be ordered on a date, in which topological wave (deps) and the resource peak. With days>1 it forecasts the WINDOW ahead (≥1 week), one report per day.",
 			"inputSchema": schema(map[string]interface{}{
-				"date": strProp("YYYY-MM-DD (default hoje; início da janela quando days>1)"),
-				"days": map[string]interface{}{"type": "integer", "description": "quantos dias prever a partir de date (default 1; >1 usa /forecast/range)"},
+				"date": strProp("YYYY-MM-DD (default today; window start when days>1)"),
+				"days": map[string]interface{}{"type": "integer", "description": "how many days to forecast from date (default 1; >1 uses /forecast/range)"},
 			}),
 			"annotations": readOnly,
 		},
 		{
 			"name":        "list_instances",
-			"description": "Lista instances do dia com filtros (folder, status, busca por id). Use pra ENCONTRAR o instanceId de um job antes de explain_job/blast_radius.",
+			"description": "Lists the day's instances with filters (folder, status, id search). Use it to FIND a job's instanceId before explain_job/blast_radius.",
 			"inputSchema": schema(map[string]interface{}{
-				"date": strProp("YYYY-MM-DD (default hoje)"), "folder": strProp("folder/team exato"),
-				"status": strProp("WAITING|RUNNING|OK|NOTOK|HELD|CANCELLED (lista separada por vírgula)"),
-				"q":      strProp("busca em id/definition_id"),
-				"limit":  map[string]interface{}{"type": "integer", "description": "máx de linhas (default 200)"},
+				"date": strProp("YYYY-MM-DD (default today)"), "folder": strProp("exact folder/team"),
+				"status": strProp("WAITING|RUNNING|OK|NOTOK|HELD|CANCELLED (comma-separated list)"),
+				"q":      strProp("search in id/definition_id"),
+				"limit":  map[string]interface{}{"type": "integer", "description": "row cap (default 200)"},
 			}),
 			"annotations": readOnly,
 		},
 		{
 			"name":        "explain_job",
-			"description": "Por que um job (não) rodou: gating estruturado por instância — janela, dependências, conditions e recursos que faltam. Mata a pergunta nº1 de quem opera.",
-			"inputSchema": schema(map[string]interface{}{"instanceId": strProp("id da instance (ex.: job-2026-06-24)")}, "instanceId"),
+			"description": "Why a job did (not) run: structured per-instance gating — window, dependencies, conditions and missing resources. Kills the #1 question operators ask.",
+			"inputSchema": schema(map[string]interface{}{"instanceId": strProp("the instance id (e.g. job-2026-06-24)")}, "instanceId"),
 			"annotations": readOnly,
 		},
 		{
 			"name":        "blast_radius",
-			"description": "Impacto de CANCELAR/segurar um job agora: jobs downstream que deixam de rodar em cascata, SLAs em risco e folders afetadas.",
-			"inputSchema": schema(map[string]interface{}{"instanceId": strProp("id da instance")}, "instanceId"),
+			"description": "Impact of CANCELLING/holding a job now: downstream jobs that stop running in cascade, SLAs at risk and affected folders.",
+			"inputSchema": schema(map[string]interface{}{"instanceId": strProp("the instance id")}, "instanceId"),
 			"annotations": readOnly,
 		},
 		{
 			"name":        "diff_daily",
-			"description": "O que mudou entre duas diárias (default hoje vs a anterior): jobs adicionados/removidos/alterados com diff por-campo (schedule, deps, recursos).",
+			"description": "What changed between two dailies (default today vs the previous one): jobs added/removed/changed with a per-field diff (schedule, deps, resources).",
 			"inputSchema": schema(map[string]interface{}{
-				"from": strProp("YYYY-MM-DD (default: diária anterior)"), "to": strProp("YYYY-MM-DD (default hoje)"), "folder": strProp("escopa a uma folder/team"),
+				"from": strProp("YYYY-MM-DD (default: previous daily)"), "to": strProp("YYYY-MM-DD (default today)"), "folder": strProp("scope to a folder/team"),
 			}),
 			"annotations": readOnly,
 		},
 		{
 			"name":        "dry_run",
-			"description": "Simula a daily de uma data futura SEM materializar: quem roda, quem espera (depois de quem) e quem nunca dispara (e por quê).",
-			"inputSchema": schema(map[string]interface{}{"date": strProp("YYYY-MM-DD (default amanhã)")}),
+			"description": "Simulates the daily for a future date WITHOUT materializing: who runs, who waits (after whom) and who never fires (and why).",
+			"inputSchema": schema(map[string]interface{}{"date": strProp("YYYY-MM-DD (default tomorrow)")}),
 			"annotations": readOnly,
 		},
 		{
 			"name":        "job_neighborhood",
-			"description": "Grafo LOCAL de um job: ancestrais (de quem depende) e descendentes (quem depende dele) até `radius` saltos, com o status de cada um no dia. Contexto de vizinhança antes de agir.",
+			"description": "LOCAL graph of a job: ancestors (what it depends on) and descendants (what depends on it) up to `radius` hops, with each one's status for the day. Neighborhood context before acting.",
 			"inputSchema": schema(map[string]interface{}{
-				"instanceId": strProp("id da instance"),
-				"radius":     map[string]interface{}{"type": "integer", "description": "saltos em cada direção (default 1, máx 4)"},
+				"instanceId": strProp("the instance id"),
+				"radius":     map[string]interface{}{"type": "integer", "description": "hops in each direction (default 1, max 4)"},
 			}, "instanceId"),
 			"annotations": readOnly,
 		},
 		{
 			"name":        "root_cause",
-			"description": "Causa raiz de uma falha/bloqueio: sobe a cadeia de upstreams falhos e aponta o job que falhou por conta própria e derrubou o resto. Responde 'por que esse cluster inteiro travou?'.",
-			"inputSchema": schema(map[string]interface{}{"instanceId": strProp("id da instance")}, "instanceId"),
+			"description": "Root cause of a failure/block: walks up the chain of failed upstreams and points at the job that failed on its own and took down the rest. Answers 'why did this whole cluster stall?'.",
+			"inputSchema": schema(map[string]interface{}{"instanceId": strProp("the instance id")}, "instanceId"),
 			"annotations": readOnly,
 		},
 		{
 			"name":        "event_log",
-			"description": "Feed de eventos do dia (cross-instance): ordered/started/finished/retry/cyclic/set-ok/held/…, filtrável por kind, actor, folder ou instance. Timeline operacional / auditoria.",
+			"description": "Feed of the day's events (cross-instance): ordered/started/finished/retry/cyclic/set-ok/held/…, filterable by kind, actor, folder or instance. Operational timeline / audit.",
 			"inputSchema": schema(map[string]interface{}{
-				"date": strProp("YYYY-MM-DD (default hoje)"), "kind": strProp("lista separada por vírgula"),
-				"actor": strProp("scheduler|operator|agent (LIKE)"), "folder": strProp("folder/team exato"),
-				"instance": strProp("instance_id exato"),
-				"limit":    map[string]interface{}{"type": "integer", "description": "máx de linhas (default 200)"},
+				"date": strProp("YYYY-MM-DD (default today)"), "kind": strProp("comma-separated list"),
+				"actor": strProp("scheduler|operator|agent (LIKE)"), "folder": strProp("exact folder/team"),
+				"instance": strProp("exact instance_id"),
+				"limit":    map[string]interface{}{"type": "integer", "description": "row cap (default 200)"},
 			}),
 			"annotations": readOnly,
 		},
 		{
 			"name":        "query",
-			"description": "Pergunta em linguagem natural sobre o dia (PT/EN) → resposta determinística. Ex.: 'o que falhou hoje na folder PIX', 'quantos rodando', 'resumo do dia'. Devolve a interpretação junto (sem chute).",
-			"inputSchema": schema(map[string]interface{}{"q": strProp("a pergunta em texto")}, "q"),
+			"description": "Natural-language question about the day (PT/EN) → deterministic answer. E.g. 'what failed today in folder PIX', 'how many running', 'summary of the day'. Returns its interpretation alongside (no guessing).",
+			"inputSchema": schema(map[string]interface{}{"q": strProp("the question as text")}, "q"),
 			"annotations": readOnly,
 		},
 	}
@@ -422,55 +422,55 @@ func (m *mcpServer) tools() []map[string]interface{} {
 			return map[string]interface{}{
 				"name":        action,
 				"description": desc,
-				"inputSchema": schema(map[string]interface{}{"instanceId": strProp("id da instance (ache com list_instances)")}, "instanceId"),
+				"inputSchema": schema(map[string]interface{}{"instanceId": strProp("the instance id (find it with list_instances)")}, "instanceId"),
 				"annotations": destructive,
 			}
 		}
 		out = append(out,
-			instTool("hold_job", "Segura um job (Control-M Hold, qualquer status exceto RUNNING) — vira HELD; o status original fica congelado e o release o restaura. AÇÃO DESTRUTIVA — confirme com o operador antes."),
-			instTool("release_job", "Libera um job em HOLD de volta pro status ORIGINAL congelado pelo hold (Control-M Release; holds legados caem em WAITING). AÇÃO DESTRUTIVA — confirme com o operador antes."),
-			instTool("cancel_job", "Cancela um job do dia (vira CANCELLED, terminal). AÇÃO DESTRUTIVA — confirme com o operador antes."),
-			instTool("confirm_job", "Confirma um job que espera no gate WAIT_CONFIRM (Control-M Confirm; def com confirm:true). AÇÃO DESTRUTIVA — confirme com o operador antes."),
-			instTool("rerun_job", "Re-executa um job (volta pra WAITING). AÇÃO DESTRUTIVA — confirme com o operador antes."),
-			instTool("set_ok", "Marca um job NOTOK/CANCELLED como OK (Set OK), destravando sucessores. AÇÃO DESTRUTIVA — confirme com o operador antes."),
+			instTool("hold_job", "Holds a job (Control-M Hold, any status except RUNNING) — becomes HELD; the original status is frozen and release restores it. DESTRUCTIVE ACTION — confirm with the operator first."),
+			instTool("release_job", "Releases a HELD job back to the ORIGINAL status frozen by the hold (Control-M Release; legacy holds fall back to WAITING). DESTRUCTIVE ACTION — confirm with the operator first."),
+			instTool("cancel_job", "Cancels a job for the day (becomes CANCELLED, terminal). DESTRUCTIVE ACTION — confirm with the operator first."),
+			instTool("confirm_job", "Confirms a job waiting at the WAIT_CONFIRM gate (Control-M Confirm; def with confirm:true). DESTRUCTIVE ACTION — confirm with the operator first."),
+			instTool("rerun_job", "Reruns a job (back to WAITING). DESTRUCTIVE ACTION — confirm with the operator first."),
+			instTool("set_ok", "Marks a NOTOK/CANCELLED job as OK (Set OK), unblocking successors. DESTRUCTIVE ACTION — confirm with the operator first."),
 			map[string]interface{}{
 				"name":        "force_order",
-				"description": "Force Order: ordena e roda uma DEFINITION AGORA, fora do schedule e ignorando deps (Control-M Order/Force). Devolve o instanceId criado. AÇÃO DESTRUTIVA — confirme com o operador antes.",
-				"inputSchema": schema(map[string]interface{}{"definitionId": strProp("id da DEFINITION (não da instance) — ex.: etl-vendas")}, "definitionId"),
+				"description": "Force Order: orders and runs a DEFINITION NOW, outside the schedule and ignoring deps (Control-M Order/Force). Returns the created instanceId. DESTRUCTIVE ACTION — confirm with the operator first.",
+				"inputSchema": schema(map[string]interface{}{"definitionId": strProp("the DEFINITION id (not the instance) — e.g. etl-sales")}, "definitionId"),
 				"annotations": destructive,
 			},
 			map[string]interface{}{
 				"name":        "pause_folder",
-				"description": "Pausa um workflow inteiro: TODOS os jobs da folder no dia (qualquer status exceto RUNNING, carry-over incluso) viram HELD, estado preservado (status original congelado; attempts/cycle/scheduled_at intactos). AÇÃO DESTRUTIVA — confirme com o operador antes.",
-				"inputSchema": schema(map[string]interface{}{"folder": strProp("folder/team exato"), "date": strProp("YYYY-MM-DD (default hoje)")}, "folder"),
+				"description": "Pauses a whole workflow: ALL of the folder's jobs for the day (any status except RUNNING, carry-over included) become HELD, state preserved (original status frozen; attempts/cycle/scheduled_at intact). DESTRUCTIVE ACTION — confirm with the operator first.",
+				"inputSchema": schema(map[string]interface{}{"folder": strProp("exact folder/team"), "date": strProp("YYYY-MM-DD (default today)")}, "folder"),
 				"annotations": destructive,
 			},
 			map[string]interface{}{
 				"name":        "resume_folder",
-				"description": "Retoma um workflow pausado: todos os segurados pela pausa da folder no dia voltam pro status ORIGINAL (Control-M Release folder). AÇÃO DESTRUTIVA — confirme com o operador antes.",
-				"inputSchema": schema(map[string]interface{}{"folder": strProp("folder/team exato"), "date": strProp("YYYY-MM-DD (default hoje)")}, "folder"),
+				"description": "Resumes a paused workflow: everything held by the folder pause for the day goes back to the ORIGINAL status (Control-M Release folder). DESTRUCTIVE ACTION — confirm with the operator first.",
+				"inputSchema": schema(map[string]interface{}{"folder": strProp("exact folder/team"), "date": strProp("YYYY-MM-DD (default today)")}, "folder"),
 				"annotations": destructive,
 			},
 			map[string]interface{}{
 				"name":        "bulk_action",
-				"description": "Aplica uma ação a VÁRIAS instâncias de uma vez (transacional POR ITEM no server — falha parcial reportada item a item, não aborta o lote). Máx 500 ids.",
+				"description": "Applies an action to SEVERAL instances at once (transactional PER ITEM on the server — a partial failure is reported item by item, it does not abort the batch). Max 500 ids.",
 				"inputSchema": schema(map[string]interface{}{
-					"action": strProp("hold|release|cancel|rerun|set-ok|confirm|delete (delete exige o job em HOLD)"),
-					"ids":    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "ids das instances (máx 500)"},
+					"action": strProp("hold|release|cancel|rerun|set-ok|confirm|delete (delete requires the job on HOLD)"),
+					"ids":    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "instance ids (max 500)"},
 				}, "action", "ids"),
 				"annotations": destructive,
 			},
 			map[string]interface{}{
 				"name":        "ingest_event",
-				"description": "Ingere um evento EXTERNO que destrava jobs sem polling: seta conditions (escopo do dia) e/ou força um job. Idempotente pelo `id` do emissor (retry responde duplicate sem re-aplicar). Passe conditions[] e/ou forceJob.",
+				"description": "Ingests an EXTERNAL event that unblocks jobs without polling: sets conditions (day scope) and/or forces a job. Idempotent by the emitter's `id` (a retry answers duplicate without re-applying). Pass conditions[] and/or forceJob.",
 				"inputSchema": schema(map[string]interface{}{
-					"conditions": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "conditions a setar (ex.: ARQ_VENDAS_OK)"},
-					"condition":  strProp("uma condition única (atalho de conditions[])"),
-					"forceJob":   strProp("id da definition a force-ordenar"),
-					"id":         strProp("chave de dedupe do emissor (opcional; sem ela cada chamada aplica)"),
-					"source":     strProp("origem do evento (ex.: sap, cdc) — só forense"),
-					"kind":       strProp("tipo do evento (ex.: file-arrived) — só forense"),
-					"date":       strProp("YYYY-MM-DD (default hoje, tz de negócio)"),
+					"conditions": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "conditions to set (e.g. SALES_FILE_OK)"},
+					"condition":  strProp("a single condition (shortcut for conditions[])"),
+					"forceJob":   strProp("the definition id to force-order"),
+					"id":         strProp("the emitter's dedupe key (optional; without it every call applies)"),
+					"source":     strProp("event source (e.g. sap, cdc) — forensic only"),
+					"kind":       strProp("event type (e.g. file-arrived) — forensic only"),
+					"date":       strProp("YYYY-MM-DD (default today, business tz)"),
 				}),
 				"annotations": destructive,
 			},

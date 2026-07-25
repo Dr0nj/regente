@@ -87,7 +87,7 @@ func (s *Scheduler) IsDailyLate(date string, startedAt time.Time) bool {
 // BuildDailyReport agrega o estado da diária `date` (YYYY-MM-DD).
 func (s *Scheduler) BuildDailyReport(date string) (*DailyReport, error) {
 	if _, err := time.Parse("2006-01-02", date); err != nil {
-		return nil, fmt.Errorf("data inválida %q (use YYYY-MM-DD)", date)
+		return nil, fmt.Errorf("invalid date %q (use YYYY-MM-DD)", date)
 	}
 	rep := &DailyReport{
 		Date:     date,
@@ -285,18 +285,18 @@ func (s *Scheduler) sendDailyReport(rep *DailyReport, channelsCSV string) {
 			chans = append(chans, t)
 		}
 	}
-	severity, verdict := "info", "fechada"
+	severity, verdict := "info", "closed"
 	if rep.Counts.NotOK > 0 {
-		severity, verdict = "warning", fmt.Sprintf("fechada com %d falha(s)", rep.Counts.NotOK)
+		severity, verdict = "warning", fmt.Sprintf("closed with %d failure(s)", rep.Counts.NotOK)
 	}
 	if !rep.Closed {
-		verdict = "parcial (ainda há jobs abertos)"
+		verdict = "partial (jobs still open)"
 	}
 	late := ""
 	if rep.LateStart {
-		late = " · INÍCIO ATRASADO"
+		late = " · LATE START"
 	}
-	msg := fmt.Sprintf("Daily %s %s: %d ordenadas · %d OK · %d NOTOK · %d aguardando · %d rodando · %d canceladas · %d carregadas%s",
+	msg := fmt.Sprintf("Daily %s %s: %d ordered · %d OK · %d NOTOK · %d waiting · %d running · %d cancelled · %d carried%s",
 		rep.Date, verdict, rep.Counts.Ordered, rep.Counts.OK, rep.Counts.NotOK,
 		rep.Counts.Waiting, rep.Counts.Running, rep.Counts.Cancelled, rep.Counts.Carried, late)
 	if len(rep.Failures) > 0 {
@@ -308,10 +308,10 @@ func (s *Scheduler) sendDailyReport(rep *DailyReport, channelsCSV string) {
 			}
 			names = append(names, f.DefID)
 		}
-		msg += " · falhas: " + strings.Join(names, ", ")
+		msg += " · failures: " + strings.Join(names, ", ")
 	}
-	log.Printf("[scheduler] daily report %s enviado (%s): %s", rep.Date, channelsCSV, msg)
+	log.Printf("[scheduler] daily report %s sent (%s): %s", rep.Date, channelsCSV, msg)
 	if s.alerts != nil {
-		s.alerts.FireAction("daily-report", "Daily "+rep.Date, "Relatório da daily", severity, msg, chans)
+		s.alerts.FireAction("daily-report", "Daily "+rep.Date, "Daily report", severity, msg, chans)
 	}
 }

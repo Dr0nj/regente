@@ -148,8 +148,8 @@ func TestEvalLogic_LooseMembersAreRequired(t *testing.T) {
 	}
 	// RenderExpr mostra o avulso ANDado com parênteses no OR de topo.
 	got := EvalConditionLogic(logic, in, satOf()).RenderExpr()
-	if got != "(C1 OU C2) E C3" {
-		t.Fatalf("RenderExpr com avulso: quero \"(C1 OU C2) E C3\", veio %q", got)
+	if got != "(C1 OR C2) AND C3" {
+		t.Fatalf("RenderExpr com avulso: quero \"(C1 OR C2) AND C3\", veio %q", got)
 	}
 }
 
@@ -173,15 +173,15 @@ func TestEvalLogic_RenderExpr(t *testing.T) {
 		{Op: CondOpAnd, Members: []string{"C3"}},
 	}}
 	got := EvalConditionLogic(logic, nil, satOf()).RenderExpr()
-	if got != "(C1 E C2) OU C3" {
-		t.Fatalf("RenderExpr: quero \"(C1 E C2) OU C3\", veio %q", got)
+	if got != "(C1 AND C2) OR C3" {
+		t.Fatalf("RenderExpr: quero \"(C1 AND C2) OR C3\", veio %q", got)
 	}
 	orAnd := &ConditionLogic{Op: CondOpAnd, Groups: []CondGroup{
 		{Op: CondOpOr, Members: []string{"C1", "C2"}},
 		{Op: CondOpAnd, Members: []string{"C3"}},
 	}}
-	if got := EvalConditionLogic(orAnd, nil, satOf()).RenderExpr(); got != "(C1 OU C2) E C3" {
-		t.Fatalf("RenderExpr: quero \"(C1 OU C2) E C3\", veio %q", got)
+	if got := EvalConditionLogic(orAnd, nil, satOf()).RenderExpr(); got != "(C1 OR C2) AND C3" {
+		t.Fatalf("RenderExpr: quero \"(C1 OR C2) AND C3\", veio %q", got)
 	}
 }
 

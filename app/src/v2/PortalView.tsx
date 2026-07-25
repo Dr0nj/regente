@@ -17,12 +17,12 @@ import "./tokens.css";
    ────────────────────────────────────────────────────────────── */
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
-  OK: { label: "concluído", color: "var(--v2-status-ok)" },
-  NOTOK: { label: "falhou", color: "var(--v2-status-failed)" },
-  RUNNING: { label: "rodando…", color: "var(--v2-status-running)" },
-  WAITING: { label: "na fila", color: "var(--v2-status-waiting)" },
-  HELD: { label: "pausado", color: "var(--v2-text-secondary)" },
-  CANCELLED: { label: "cancelado", color: "var(--v2-text-muted)" },
+  OK: { label: "done", color: "var(--v2-status-ok)" },
+  NOTOK: { label: "failed", color: "var(--v2-status-failed)" },
+  RUNNING: { label: "running…", color: "var(--v2-status-running)" },
+  WAITING: { label: "queued", color: "var(--v2-status-waiting)" },
+  HELD: { label: "paused", color: "var(--v2-text-secondary)" },
+  CANCELLED: { label: "cancelled", color: "var(--v2-text-muted)" },
 };
 
 export default function PortalView() {
@@ -55,10 +55,10 @@ export default function PortalView() {
     setFiring((prev) => new Set(prev).add(job.id));
     try {
       await runSelfServiceJob(job.id);
-      toast.success(`"${job.label}" disparado`);
+      toast.success(`"${job.label}" fired`);
       refresh();
     } catch (e) {
-      toast.error("Falha ao disparar", { detail: e instanceof Error ? e.message : String(e) });
+      toast.error("Failed to fire", { detail: e instanceof Error ? e.message : String(e) });
     } finally {
       setFiring((prev) => { const next = new Set(prev); next.delete(job.id); return next; });
     }
@@ -81,7 +81,7 @@ export default function PortalView() {
           <img className="app-logo" src="/logo-r.png" alt="" style={{ height: 28, width: "auto" }} />
           <h1 style={{ fontSize: 18, fontWeight: 600, letterSpacing: "-0.01em" }}>Portal self-service</h1>
           <span style={{ fontSize: 11, color: "var(--v2-text-muted, #64748b)" }}>
-            {me ? `@${me.username}` : "modo local"}
+            {me ? `@${me.username}` : "local mode"}
           </span>
           <a href="/" style={{ marginLeft: "auto", fontSize: 11, color: "var(--v2-text-secondary, #94a3b8)" }}>
             ← console
@@ -89,15 +89,15 @@ export default function PortalView() {
         </header>
 
         {!loaded ? (
-          <p style={{ color: "var(--v2-text-muted, #64748b)", fontSize: 13 }}>carregando…</p>
+          <p style={{ color: "var(--v2-text-muted, #64748b)", fontSize: 13 }}>loading…</p>
         ) : jobs.length === 0 ? (
           <div style={{
             border: "1px dashed var(--v2-border-medium, #334155)", borderRadius: 12,
             padding: 32, textAlign: "center", color: "var(--v2-text-muted, #64748b)", fontSize: 13,
           }}>
-            Nenhum job exposto ao portal ainda.<br />
-            Peça ao time de engenharia para marcar <code style={{ fontFamily: "monospace" }}>selfService: true</code> nos
-            jobs que o negócio pode disparar.
+            No job exposed to the portal yet.<br />
+            Ask the engineering team to mark <code style={{ fontFamily: "monospace" }}>selfService: true</code> on the
+            jobs the business can fire.
           </div>
         ) : (
           <div style={{ display: "grid", gap: 10 }}>
@@ -138,7 +138,7 @@ export default function PortalView() {
                       cursor: busy ? "default" : "pointer", minWidth: 96,
                     }}
                   >
-                    {job.running ? "rodando…" : firing.has(job.id) ? "…" : "▶ Rodar"}
+                    {job.running ? "running…" : firing.has(job.id) ? "…" : "▶ Run"}
                   </button>
                 </div>
               );

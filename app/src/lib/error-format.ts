@@ -52,68 +52,68 @@ export function classifyError(e: unknown): ClassifiedError {
   const body = a.body && typeof a.body === "object" ? (a.body as { error?: string }) : null;
   if (body?.error === "schema") {
     return {
-      title: "Job(s) com configuração incompleta",
+      title: "Job(s) with incomplete configuration",
       detail,
       status,
       hint:
-        "Um ou mais jobs estão sem os campos obrigatórios do tipo (ex.: COMMAND precisa de 'command', HTTP de 'url', DATABASE de driver/dsn/sql).\n" +
-        "Abra cada job listado abaixo, preencha a seção 'Job action config' e publique de novo.",
+        "One or more jobs are missing the required fields of their type (e.g. COMMAND needs 'command', HTTP needs 'url', DATABASE needs driver/dsn/sql).\n" +
+        "Open each job listed below, fill in the 'Job action config' section and publish again.",
     };
   }
   if (body?.error === "policy") {
     return {
-      title: "Publicação bloqueada por política",
+      title: "Publish blocked by policy",
       detail,
       status,
-      hint: "O working set viola regras do policies.yaml (enforcement=error). Ajuste os jobs listados ou a política antes de publicar.",
+      hint: "The working set violates rules in policies.yaml (enforcement=error). Fix the listed jobs or the policy before publishing.",
     };
   }
 
   if (lower.includes("github token") || lower.includes("github_token")) {
     return {
-      title: "Token do GitHub não configurado",
+      title: "GitHub token not configured",
       detail,
       status,
       hint:
-        "O servidor precisa de um Personal Access Token para abrir PR ou push.\n" +
-        "1. Gere em https://github.com/settings/tokens/new (escopo: repo).\n" +
-        "2. Defina GITHUB_TOKEN no ambiente onde o regente-server roda.\n" +
-        "3. Reinicie o server.",
+        "The server needs a Personal Access Token to open a PR or push.\n" +
+        "1. Generate one at https://github.com/settings/tokens/new (scope: repo).\n" +
+        "2. Set GITHUB_TOKEN in the environment where regente-server runs.\n" +
+        "3. Restart the server.",
     };
   }
   if (lower.startsWith("actionconfig:") || lower.includes("required") && lower.includes("actionconfig")) {
     return {
-      title: "Configuração do job inválida",
+      title: "Invalid job configuration",
       detail,
       status,
-      hint: "Preencha os campos obrigatórios da seção 'Job action config' antes de salvar.",
+      hint: "Fill in the required fields of the 'Job action config' section before saving.",
     };
   }
   if (lower.includes("label required")) {
-    return { title: "Label obrigatório", detail, status, hint: "Defina um nome legível para o job." };
+    return { title: "Label is required", detail, status, hint: "Set a readable name for the job." };
   }
   if (lower.includes("id required")) {
-    return { title: "ID obrigatório", detail, status, hint: "Defina um identificador único." };
+    return { title: "ID is required", detail, status, hint: "Set a unique identifier." };
   }
   if (lower.includes("team") && lower.includes("required")) {
-    return { title: "Folder obrigatória", detail, status, hint: "Selecione uma folder ativa antes de salvar." };
+    return { title: "Folder is required", detail, status, hint: "Select an active folder before saving." };
   }
   if (lower.includes("commit") || lower.includes("push")) {
     return {
-      title: "Falha ao publicar no Git",
+      title: "Failed to publish to Git",
       detail,
       status,
-      hint: "Verifique conectividade, credenciais do repositório e se há conflitos no remote.",
+      hint: "Check connectivity, the repository credentials and whether there are conflicts on the remote.",
     };
   }
-  if (status === 401) return { title: "Não autenticado", detail, status, hint: "Faça login novamente." };
-  if (status === 403) return { title: "Sem permissão", detail, status, hint: "Você não tem acesso a esta operação." };
-  if (status === 404) return { title: "Não encontrado", detail, status };
+  if (status === 401) return { title: "Not authenticated", detail, status, hint: "Sign in again." };
+  if (status === 403) return { title: "No permission", detail, status, hint: "You do not have access to this operation." };
+  if (status === 404) return { title: "Not found", detail, status };
   if (status === 502 || status === 503 || status === 504) {
-    return { title: `Erro no servidor (${status})`, detail, status, hint: "O servidor falhou ao processar. Veja a mensagem técnica abaixo." };
+    return { title: `Server error (${status})`, detail, status, hint: "The server failed to process the request. See the technical message below." };
   }
   if (status && status >= 500) {
-    return { title: `Erro interno (${status})`, detail, status };
+    return { title: `Internal error (${status})`, detail, status };
   }
-  return { title: status ? `Erro ${status}` : "Erro", detail, status };
+  return { title: status ? `Error ${status}` : "Error", detail, status };
 }

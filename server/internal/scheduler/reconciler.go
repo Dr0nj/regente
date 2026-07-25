@@ -58,7 +58,7 @@ func (r *DriftReconciler) runOnce() string {
 	}
 	drifted, sha, err := r.checkDrift()
 	if err != nil {
-		r.logf("[reconciler] drift check falhou (transiente): %v", err)
+		r.logf("[reconciler] drift check failed (transient): %v", err)
 		return "check-error"
 	}
 	if !drifted {
@@ -66,18 +66,18 @@ func (r *DriftReconciler) runOnce() string {
 	}
 	if r.mode == "sync" {
 		if err := r.reconcile(); err != nil {
-			r.logf("[reconciler] reconcile p/ %s falhou: %v", short(sha), err)
+			r.logf("[reconciler] reconcile to %s failed: %v", short(sha), err)
 			if r.onDrift != nil { // não conseguiu reconciliar → alerta como fallback
-				r.onDrift(sha, "reconcile automático falhou: "+err.Error())
+				r.onDrift(sha, "automatic reconcile failed: "+err.Error())
 			}
 			return "reconcile-error"
 		}
-		r.logf("[reconciler] drift reconciliado → workspace sincronizado em %s", short(sha))
+		r.logf("[reconciler] drift reconciled → workspace synced at %s", short(sha))
 		return "reconciled"
 	}
 	// modo "alert" — não toca no workspace, só avisa o operador.
 	if r.onDrift != nil {
-		r.onDrift(sha, "runtime atrás do Git (remoto em "+short(sha)+")")
+		r.onDrift(sha, "runtime behind Git (remote at "+short(sha)+")")
 	}
 	return "alerted"
 }

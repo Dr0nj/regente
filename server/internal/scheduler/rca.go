@@ -24,8 +24,8 @@ type RCACause struct {
 	DefID  string `json:"defId"`
 	Label  string `json:"label,omitempty"`
 	Team   string `json:"team,omitempty"`
-	Status string `json:"status"`          // NOTOK | CANCELLED
-	Depth  int    `json:"depth"`           // saltos do alvo até esta raiz (0 = o próprio alvo)
+	Status string `json:"status"` // NOTOK | CANCELLED
+	Depth  int    `json:"depth"`  // saltos do alvo até esta raiz (0 = o próprio alvo)
 	Reason string `json:"reason,omitempty"`
 }
 
@@ -35,7 +35,7 @@ type RCA struct {
 	Status     string     `json:"status"`
 	OrderDate  string     `json:"orderDate"`
 	Summary    string     `json:"summary"`
-	Roots      []RCACause `json:"roots"`          // causa(s) raiz da falha/bloqueio
+	Roots      []RCACause `json:"roots"`           // causa(s) raiz da falha/bloqueio
 	Chain      []string   `json:"chain,omitempty"` // um caminho do alvo até uma raiz (defIDs)
 }
 
@@ -91,11 +91,11 @@ func (s *Scheduler) RCA(instanceID string) (RCA, error) {
 	if !targetFailed && !targetBlockedByFail {
 		switch status {
 		case string(domain.StatusOK):
-			rca.Summary = "Job concluiu com sucesso — sem causa raiz a rastrear."
+			rca.Summary = "Job completed successfully — no root cause to trace."
 		case string(domain.StatusRunning):
-			rca.Summary = "Job em execução — sem falha até agora."
+			rca.Summary = "Job running — no failure so far."
 		default:
-			rca.Summary = "Job não está falho nem bloqueado por um upstream falho — sem causa raiz de falha a rastrear."
+			rca.Summary = "Job is neither failed nor blocked by a failed upstream — no failure root cause to trace."
 		}
 		return rca, nil
 	}
@@ -136,9 +136,9 @@ func (s *Scheduler) RCA(instanceID string) (RCA, error) {
 		if !hasFP {
 			// Raiz: falhou sem nenhum ancestral falho.
 			d := defs[cur.id]
-			reason := "falhou por conta própria (nenhum upstream falho)"
+			reason := "failed on its own (no failed upstream)"
 			if curStatus == string(domain.StatusCancelled) {
-				reason = "cancelado sem upstream falho (dependência impossível ou cancelamento manual)"
+				reason = "cancelled with no failed upstream (impossible dependency or manual cancellation)"
 			}
 			roots[cur.id] = RCACause{
 				DefID: cur.id, Label: d.Label, Team: d.Team, Status: curStatus, Depth: cur.depth, Reason: reason,
@@ -169,7 +169,7 @@ func (s *Scheduler) RCA(instanceID string) (RCA, error) {
 	}
 
 	if len(rca.Roots) == 0 {
-		rca.Summary = "Falha detectada, mas sem causa raiz distinta encontrada (ciclo ou dados incompletos)."
+		rca.Summary = "Failure detected, but no distinct root cause found (cycle or incomplete data)."
 		return rca, nil
 	}
 
@@ -197,11 +197,11 @@ func (s *Scheduler) RCA(instanceID string) (RCA, error) {
 		names = append(names, label)
 	}
 	if targetFailed && len(rca.Roots) == 1 && rca.Roots[0].DefID == defID {
-		rca.Summary = "Este job é a própria causa raiz: " + rca.Roots[0].Reason + "."
+		rca.Summary = "This job is the root cause itself: " + rca.Roots[0].Reason + "."
 	} else if len(rca.Roots) == 1 {
-		rca.Summary = fmt.Sprintf("Causa raiz: '%s' (%s), a %d salto(s) upstream.", names[0], rca.Roots[0].Status, rca.Roots[0].Depth)
+		rca.Summary = fmt.Sprintf("Root cause: '%s' (%s), %d hop(s) upstream.", names[0], rca.Roots[0].Status, rca.Roots[0].Depth)
 	} else {
-		rca.Summary = fmt.Sprintf("%d causas raiz: %s.", len(rca.Roots), strings.Join(names, ", "))
+		rca.Summary = fmt.Sprintf("%d root causes: %s.", len(rca.Roots), strings.Join(names, ", "))
 	}
 	return rca, nil
 }

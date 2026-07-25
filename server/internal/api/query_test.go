@@ -30,9 +30,9 @@ func TestParseQueryIntent(t *testing.T) {
 		{"quantos falharam", "count", "NOTOK", "", ""},
 		{"quantos jobs na pasta BATCH", "count", "", "BATCH", ""},
 		{"por que o job carga_diaria não rodou?", "explain", "", "", "carga_diaria"},
-		{"por que carga não rodou", "explain", "", "", "carga"},          // job de palavra única, antes do verbo
-		{"why did extract fail", "explain", "", "", "extract"},           // EN: <job> fail
-		{"por que não rodou", "unknown", "", "", ""},                     // sem job → não chuta
+		{"por que carga não rodou", "explain", "", "", "carga"}, // job de palavra única, antes do verbo
+		{"why did extract fail", "explain", "", "", "extract"},  // EN: <job> fail
+		{"por que não rodou", "unknown", "", "", ""},            // sem job → não chuta
 		{"me diz um negócio aleatório", "unknown", "", "", ""},
 	}
 	for _, c := range cases {
@@ -118,7 +118,7 @@ func TestRunQuery_EndToEnd(t *testing.T) {
 
 	// pergunta sem sentido → unknown com sugestão.
 	a = answer(post("qual a capital da frança"))
-	if !strings.Contains(a["text"].(string), "Não entendi") {
+	if !strings.Contains(a["text"].(string), "didn't understand") {
 		t.Errorf("pergunta fora de escopo deveria cair no fallback, veio %+v", a)
 	}
 }

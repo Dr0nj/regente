@@ -80,11 +80,11 @@ func runFileTransfer(params map[string]interface{}, timeoutSec int, emit func(st
 		return -1, "src: " + err.Error()
 	}
 	if len(files) == 0 {
-		return 1, fmt.Sprintf("origem sem arquivos: %s", src)
+		return 1, fmt.Sprintf("source has no files: %s", src)
 	}
 	dstIsDir := wantsDir(dstFS, dstPath)
 	if len(files) > 1 && !dstIsDir {
-		return 1, fmt.Sprintf("origem casou %d arquivos mas o destino não é diretório/prefixo (termine com /): %s", len(files), dst)
+		return 1, fmt.Sprintf("source matched %d files but the destination is not a directory/prefix (end with /): %s", len(files), dst)
 	}
 
 	checksum := boolParam(params, "checksum", false)
@@ -92,7 +92,7 @@ func runFileTransfer(params map[string]interface{}, timeoutSec int, emit func(st
 	overwrite := boolParam(params, "overwrite", true)
 	mkdirs := boolParam(params, "mkdirs", true)
 
-	emit(fmt.Sprintf("[mft] %s → %s (%d arquivo(s), checksum=%v, deleteSource=%v)\n",
+	emit(fmt.Sprintf("[mft] %s → %s (%d file(s), checksum=%v, deleteSource=%v)\n",
 		src, dst, len(files), checksum, del))
 
 	var report strings.Builder
@@ -108,7 +108,7 @@ func runFileTransfer(params map[string]interface{}, timeoutSec int, emit func(st
 				return 1, report.String() + "destino: " + err.Error()
 			}
 			if ok {
-				return 1, report.String() + fmt.Sprintf("destino já existe: %s (overwrite=false)", target)
+				return 1, report.String() + fmt.Sprintf("destination already exists: %s (overwrite=false)", target)
 			}
 		}
 		if mkdirs {
@@ -118,30 +118,30 @@ func runFileTransfer(params map[string]interface{}, timeoutSec int, emit func(st
 		}
 		n, sum, err := copyOneFile(srcFS, f, dstFS, target, deadline)
 		if err != nil {
-			return 1, report.String() + fmt.Sprintf("falha em %s → %s: %s", f, target, err.Error())
+			return 1, report.String() + fmt.Sprintf("failed on %s → %s: %s", f, target, err.Error())
 		}
 		totalBytes += n
 		line := fmt.Sprintf("  %s → %s (%s)", f, target, humanBytes(n))
 		if checksum {
 			ok, got, err := verifyChecksum(dstFS, target, sum)
 			if err != nil {
-				return 1, report.String() + line + "\nverificação: " + err.Error()
+				return 1, report.String() + line + "\nverification: " + err.Error()
 			}
 			if !ok {
-				return 1, report.String() + line + fmt.Sprintf("\nchecksum DIVERGENTE em %s: origem %s… ≠ destino %s…", target, sum[:12], got[:12])
+				return 1, report.String() + line + fmt.Sprintf("\nchecksum MISMATCH on %s: source %s… ≠ destination %s…", target, sum[:12], got[:12])
 			}
 			line += " sha256✓"
 		}
 		if del {
 			if err := srcFS.remove(f); err != nil {
-				return 1, report.String() + line + "\ntransferido, mas falhou ao remover a origem: " + err.Error()
+				return 1, report.String() + line + "\ntransferred, but failed to remove the source: " + err.Error()
 			}
-			line += " origem removida"
+			line += " source removed"
 		}
 		emit(line + "\n")
 		report.WriteString(line + "\n")
 	}
-	return 0, fmt.Sprintf("[mft] OK: %d arquivo(s), %s\n%s", len(files), humanBytes(totalBytes), report.String())
+	return 0, fmt.Sprintf("[mft] OK: %d file(s), %s\n%s", len(files), humanBytes(totalBytes), report.String())
 }
 
 // copyOneFile transfere um arquivo hasheando a origem em trânsito (SHA-256
@@ -183,7 +183,7 @@ type deadlineReader struct {
 
 func (d *deadlineReader) Read(p []byte) (int, error) {
 	if time.Now().After(d.deadline) {
-		return 0, fmt.Errorf("timeout do job durante a transferência")
+		return 0, fmt.Errorf("job timeout during the transfer")
 	}
 	return d.r.Read(p)
 }
@@ -258,7 +258,7 @@ func openEndpoint(raw string, params map[string]interface{}, deadline time.Time)
 			return nil, "", err
 		}
 		if u.Path == "" {
-			return nil, "", fmt.Errorf("sftp: URL sem caminho: %s", raw)
+			return nil, "", fmt.Errorf("sftp: URL without a path: %s", raw)
 		}
 		fs, err := dialSFTP(u, params, deadline)
 		if err != nil {
@@ -374,7 +374,7 @@ type sftpFS struct {
 func dialSFTP(u *url.URL, params map[string]interface{}, deadline time.Time) (*sftpFS, error) {
 	user := u.User.Username()
 	if user == "" {
-		return nil, fmt.Errorf("sftp: URL sem usuário (sftp://user@host/...)")
+		return nil, fmt.Errorf("sftp: URL without a user (sftp://user@host/...)")
 	}
 	pw, hasPW := u.User.Password()
 	if !hasPW {
@@ -396,14 +396,14 @@ func dialSFTP(u *url.URL, params map[string]interface{}, deadline time.Time) (*s
 		auth = append(auth, ssh.Password(pw))
 	}
 	if len(auth) == 0 {
-		return nil, fmt.Errorf("sftp: sem credencial (senha na URL, param password ou keyPath)")
+		return nil, fmt.Errorf("sftp: no credential (password in the URL, password param or keyPath)")
 	}
 	hk := ssh.InsecureIgnoreHostKey()
 	if fp, _ := params["hostKeyFingerprint"].(string); fp != "" {
 		want := fp
 		hk = func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 			if got := ssh.FingerprintSHA256(key); got != want {
-				return fmt.Errorf("host key de %s não bate: %s (esperado %s)", hostname, got, want)
+				return fmt.Errorf("host key of %s does not match: %s (expected %s)", hostname, got, want)
 			}
 			return nil
 		}
@@ -529,7 +529,7 @@ type s3FS struct {
 
 func newS3FS(u *url.URL, params map[string]interface{}, deadline time.Time) (*s3FS, error) {
 	if u.Host == "" {
-		return nil, fmt.Errorf("s3: URL sem bucket (s3://bucket/chave)")
+		return nil, fmt.Errorf("s3: URL without a bucket (s3://bucket/key)")
 	}
 	region := strFromParamsOrEnv(params, "region", "AWS_REGION")
 	ak := strFromParamsOrEnv(params, "accessKeyId", "AWS_ACCESS_KEY_ID")
@@ -579,7 +579,7 @@ func (s *s3FS) kind() string { return "s3" }
 
 func (s *s3FS) expand(pattern string) ([]string, error) {
 	if strings.ContainsAny(pattern, "*?[") {
-		return nil, fmt.Errorf("glob não suportado em origem s3:// (use a chave exata)")
+		return nil, fmt.Errorf("glob not supported on an s3:// source (use the exact key)")
 	}
 	ok, err := s.exists(pattern)
 	if err != nil {

@@ -133,7 +133,7 @@ func (s *server) putSettings(w http.ResponseWriter, r *http.Request) {
 // Valores citados: "" vira aspas vazias no diff, não some.
 func settingChange(k, from, to string) string {
 	if secretSettingKeys[k] {
-		return k + ": (alterado)"
+		return k + ": (changed)"
 	}
 	return k + `: "` + from + `" → "` + to + `"`
 }

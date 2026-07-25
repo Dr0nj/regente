@@ -549,7 +549,7 @@ export default function MonitoringSidebarV2({
             >▾</span>
             {paused && (
               <span
-                title={`Folder em HOLD — pausada (${g.name}). Os jobs segurados por ela só liberam pelo ▶ Retomar da folder inteira, não individualmente.`}
+                title={`Folder on HOLD — paused (${g.name}). Jobs held by it are only released by the whole folder's ▶ Resume, not individually.`}
                 style={{ display: "inline-flex", flexShrink: 0 }}
               >
                 <Lock size={11} strokeWidth={2.5} color={HOLD_FOLDER_COLOR} />
@@ -570,8 +570,8 @@ export default function MonitoringSidebarV2({
               <span style={{ display: "inline-flex", gap: 2 }} onClick={(e) => e.stopPropagation()}>
                 <button
                   title={paused
-                    ? `Folder ${g.name} já está pausada — pausar de novo segura também o que entrou depois (jobs novos/carry-over)`
-                    : `Pausar folder: segura TODOS os jobs de ${g.name} em hold — qualquer status (menos RUNNING), carry-over incluso; cada um congela o status atual e o Retomar restaura`}
+                    ? `Folder ${g.name} is already paused — pausing again also holds what came in afterwards (new/carry-over jobs)`
+                    : `Pause folder: holds ALL jobs of ${g.name} — any status (except RUNNING), carry-over included; each one freezes its current status and Resume restores it`}
                   onClick={() => onPauseFolder(g.name)}
                   style={paused
                     ? { ...folderActionBtn, color: HOLD_FOLDER_COLOR, borderColor: HOLD_FOLDER_COLOR, background: "rgba(245,158,11,0.12)" }
@@ -579,8 +579,8 @@ export default function MonitoringSidebarV2({
                 >⏸</button>
                 <button
                   title={paused
-                    ? `Retomar folder: libera TODOS os jobs segurados pela pausa de ${g.name}, cada um de volta ao status que tinha`
-                    : `Retomar folder: libera os jobs segurados pela pausa de ${g.name} (cada um volta ao status que tinha)`}
+                    ? `Resume folder: releases ALL jobs held by the pause of ${g.name}, each back to the status it had`
+                    : `Resume folder: releases the jobs held by the pause of ${g.name} (each back to the status it had)`}
                   onClick={() => onResumeFolder(g.name)}
                   style={paused
                     ? { ...folderActionBtn, color: "var(--v2-status-ok)", borderColor: "var(--v2-status-ok)" }
@@ -613,7 +613,7 @@ export default function MonitoringSidebarV2({
           visibleRows.push(
             <div
               key={`sub-${g.name}-${localRow.date}`}
-              title={`Jobs carregados da diária de ${localRow.date} (carry-over) ainda ativos hoje`}
+              title={`Jobs carried over from the ${localRow.date} daily (carry-over) still active today`}
               style={{
                 position: "absolute", top, left: 0, right: 0, height: ROW_H,
                 padding: "0 12px 0 22px",
@@ -693,8 +693,8 @@ export default function MonitoringSidebarV2({
             {j.holdScope && (
               <span
                 title={j.holdScope === "folder"
-                  ? `Em HOLD pela pausa da folder ${j.team} — só libera pelo ▶ Retomar da folder inteira`
-                  : "Em HOLD individual — botão direito no card → Release"}
+                  ? `On HOLD by the pause of folder ${j.team} — only released by the whole folder's ▶ Resume`
+                  : "On individual HOLD — right-click the card → Release"}
                 style={{ display: "inline-flex", flexShrink: 0, marginLeft: -2 }}
               >
                 <Lock
@@ -718,7 +718,7 @@ export default function MonitoringSidebarV2({
                 por data já comunica. */}
             {!g.rows && j.carriedFrom && (
               <span
-                title={`Carregado da diária de ${j.carriedFrom} (carry-over)`}
+                title={`Carried over from the ${j.carriedFrom} daily (carry-over)`}
                 style={{
                   fontFamily: "var(--v2-font-mono)", fontSize: 8.5,
                   color: "var(--v2-accent-brand)",
@@ -789,7 +789,7 @@ export default function MonitoringSidebarV2({
           ACTIVE JOBS
         </span>
         <span
-          title={windowed ? "visão atual / total real do dia (summary)" : "filtrados / carregados"}
+          title={windowed ? "current view / real day total (summary)" : "filtered / loaded"}
           style={{
             marginLeft: "auto",
             fontSize: 10,
@@ -801,7 +801,7 @@ export default function MonitoringSidebarV2({
             whiteSpace: "nowrap",
           }}
         >
-          {windowed ? `${fmtInt(viewTotal)} de ${fmtInt(dayTotal)}` : `${viewTotal}/${dayTotal}`}
+          {windowed ? `${fmtInt(viewTotal)} of ${fmtInt(dayTotal)}` : `${viewTotal}/${dayTotal}`}
         </span>
       </div>
 
@@ -817,12 +817,12 @@ export default function MonitoringSidebarV2({
           }}
         >
           <span style={{ flex: 1 }}>
-            lista: dia inteiro · grafo: primeiros {fmtInt(cap)}
+            list: whole day · graph: first {fmtInt(cap)}
           </span>
           {onOpenViewPoint && (
             <button
               onClick={onOpenViewPoint}
-              title="Abrir o ViewPoint (dashboard server-driven do dia inteiro)"
+              title="Open the ViewPoint (server-driven dashboard for the whole day)"
               style={{
                 background: "transparent",
                 border: "1px solid var(--v2-border-subtle)",
@@ -841,7 +841,7 @@ export default function MonitoringSidebarV2({
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={windowed ? "Filtrar por id/nome (no server)…" : "Filtrar por nome ou team…"}
+          placeholder={windowed ? "Filter by id/name (on the server)…" : "Filter by name or team…"}
           style={{
             width: "100%",
             background: "var(--v2-bg-canvas)",

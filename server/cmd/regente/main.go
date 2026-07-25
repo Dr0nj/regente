@@ -15,15 +15,15 @@ import (
 	"strings"
 )
 
-const usage = `regente — DevEx do orquestrador Regente
+const usage = `regente — DevEx for the Regente orchestrator
 
-Uso:
-  regente test <job.yaml | workspace-dir> [flags]   valida + simula (CI-friendly)
-  regente dev  [daily] [flags]                      sobe um Regente local descartável
-  regente promote -from <branch> -to <branch>       promove jobs entre ambientes (Git)
-  regente ops  <subcomando> [flags]                 opera um server vivo (query/ações/daily/archives)
+Usage:
+  regente test <job.yaml | workspace-dir> [flags]   validate + simulate (CI-friendly)
+  regente dev  [daily] [flags]                      bring up a disposable local Regente
+  regente promote -from <branch> -to <branch>       promote jobs between environments (Git)
+  regente ops  <subcommand> [flags]                 operate a live server (query/actions/daily/archives)
 
-Detalhes por comando: regente <comando> -h
+Per-command details: regente <command> -h
 `
 
 func main() {
@@ -45,11 +45,11 @@ func main() {
 		fmt.Print(usage)
 		return
 	default:
-		fmt.Fprintf(os.Stderr, "comando desconhecido %q\n\n%s", os.Args[1], usage)
+		fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", os.Args[1], usage)
 		os.Exit(2)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "erro:", err)
+		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }

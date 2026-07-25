@@ -234,7 +234,7 @@ func (s *server) allowedTeamsRange(r *http.Request, q structuredQuery) ([]string
 			}
 		}
 		if err := rows.Err(); err != nil {
-			log.Printf("[api] allowedTeamsRange: iteração incompleta (RBAC fail-closed): %v", err)
+			log.Printf("[api] allowedTeamsRange: incomplete iteration (RBAC fail-closed): %v", err)
 		}
 		rows.Close()
 	} else {

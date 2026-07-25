@@ -87,8 +87,8 @@ func main() {
 		token     = flag.String("token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token")
 		agentID   = flag.String("id", hostnameOr("agent-local"), "Agent ID (unique)")
 		caps      = flag.String("caps", "COMMAND,SCRIPT,HTTP,REST,WASM,DATABASE,FILE_WATCH,FILE_TRANSFER,MFT", "Comma-separated capabilities advertised")
-		agentEnv  = flag.String("env", envOr("REGENTE_AGENT_ENV", ""), "Ambiente/site deste agente (ADV-2; ex.: prod, dc-sp). Vazio = generalista; job com environment só roteia pra agente do mesmo env")
-		transport = flag.String("transport", envOr("REGENTE_AGENT_TRANSPORT", "ws"), "Transporte: ws (WebSocket) | http (long-poll) | sse (Server-Sent Events, push imediato) — os dois últimos serverless-friendly")
+		agentEnv  = flag.String("env", envOr("REGENTE_AGENT_ENV", ""), "This agent's environment/site (ADV-2; e.g. prod, dc-sp). Empty = generalist; a job with an environment only routes to an agent in the same env")
+		transport = flag.String("transport", envOr("REGENTE_AGENT_TRANSPORT", "ws"), "Transport: ws (WebSocket) | http (long-poll) | sse (Server-Sent Events, immediate push) — the last two are serverless-friendly")
 	)
 	flag.Parse()
 

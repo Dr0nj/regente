@@ -327,7 +327,7 @@ func (s *server) publishDesignSession(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusUnprocessableEntity)
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"error":   "schema",
-				"message": fmt.Sprintf("%d job(s) com params inválidos/incompletos pro tipo", len(schemaErrs)),
+				"message": fmt.Sprintf("%d job(s) with invalid/incomplete params for their type", len(schemaErrs)),
 				"jobs":    schemaErrs,
 			})
 			return

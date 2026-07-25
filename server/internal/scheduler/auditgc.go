@@ -32,7 +32,7 @@ func (s *Scheduler) retentionDays() int {
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil || n < 0 {
-		log.Printf("[scheduler] settings audit_retention_days %q inválido (esperado inteiro ≥ 0) — retenção desligada", v)
+		log.Printf("[scheduler] settings audit_retention_days %q invalid (expected integer ≥ 0) — retention disabled", v)
 		return 0
 	}
 	return n

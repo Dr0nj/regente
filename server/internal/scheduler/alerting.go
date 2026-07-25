@@ -356,7 +356,7 @@ func (e *AlertEngine) route(r AlertRule, ctx AlertContext, msg, id string, tsMs 
 		for _, l := range qa {
 			parts = append(parts, fmt.Sprintf("<%s|%s>", l.URL, l.Label))
 		}
-		slackMsg = msg + "\nAções rápidas: " + strings.Join(parts, " · ")
+		slackMsg = msg + "\nQuick actions: " + strings.Join(parts, " · ")
 	}
 	if channelWanted(r.Channels, "slack") {
 		if slack := e.setting("alert_slack_webhook"); slack != "" {

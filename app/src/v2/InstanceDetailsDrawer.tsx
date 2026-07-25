@@ -197,7 +197,7 @@ export default function InstanceDetailsDrawer({
     // agente) e o próprio HOLD; o Release restaura o status original (heldFrom).
     { label: "Hold",    onClick: () => handlers.onHold(instance.id),    tone: "neutral" as const,
       show: status !== "RUNNING" && status !== "HOLD",
-      title: "Segura o job congelando o status atual — o Release restaura exatamente o que era" },
+      title: "Holds the job, freezing its current status — Release restores exactly what it was" },
     // Job segurado por uma PAUSA DE FOLDER (schemaV14) não pode ser liberado
     // individualmente — só o Retomar da folder destrava. Botão desabilitado
     // apontando o caminho certo (o server também barra com 409).
@@ -205,25 +205,25 @@ export default function InstanceDetailsDrawer({
       onClick: () => handlers.onRelease(instance.id), tone: "primary" as const, show: status === "HOLD",
       disabled: instance.holdScope === "folder",
       title: instance.holdScope === "folder"
-        ? "Segurado pela pausa da folder — libere pela folder (▶ Retomar na sidebar), não individualmente"
+        ? "Held by the folder pause — release it through the folder (▶ Resume in the sidebar), not individually"
         : (instance.heldFrom && instance.heldFrom !== "WAITING"
-          ? `Libera o job de volta ao status original (${instance.heldFrom})`
+          ? `Releases the job back to its original status (${instance.heldFrom})`
           : undefined) },
     // Delete (Control-M "Delete job"): SÓ em HOLD — RUNNING nunca é deletável
     // (não é segurável); os demais status passam pelo Hold primeiro.
     { label: "Delete",
       onClick: () => {
-        if (!window.confirm(`Delete "${instance.label}"?\n\nRemove a ordem da tela e do dia — a definition no Design não é tocada.`)) return;
+        if (!window.confirm(`Delete "${instance.label}"?\n\nRemoves the order from the board and from the day — the definition in Design is untouched.`)) return;
         handlers.onDelete(instance.id);
       },
       tone: "danger" as const, show: status === "HOLD",
-      title: "Remove a ordem da tela e do dia (a definition no Design não é tocada)" },
+      title: "Removes the order from the board and from the day (the definition in Design is untouched)" },
     // Cancel = MATAR um job RUNNING: manda o kill ao agente (aborta o processo)
     // e finaliza NOTOK sem retry. Um job WAITING não "cancela" — se resolve
     // (Set OK/Skip); daí Cancel é exclusivo de RUNNING.
     { label: "Cancel",  onClick: () => handlers.onCancel(instance.id),  tone: "danger"  as const,
       show: status === "RUNNING",
-      title: "Mata o processo em execução no agente e finaliza o job com erro (NOTOK)" },
+      title: "Kills the running process on the agent and ends the job with an error (NOTOK)" },
     { label: "Skip",    onClick: () => handlers.onSkip(instance.id),    tone: "neutral" as const,
       show: (status === "WAITING" || status === "HOLD") && !waitConfirm },
     // Set OK direto na espera: um job WAITING pode ser dado como OK na hora (sem
@@ -524,14 +524,14 @@ function GeneralTab({ instance, definition, jobType, actionConfig }: {
           label="Order date"
           value={odateOf(instance)}
           mono
-          hint={instance.carriedFrom ? "origem da ordem (ODAT) — preservada pelo carry-over" : undefined}
+          hint={instance.carriedFrom ? "order origin (ODAT) — preserved by carry-over" : undefined}
         />
         {instance.carriedFrom && (
           <Field
             label="Active day"
             value={instance.orderDate}
             mono
-            hint="dia ativo atual — a instance atravessou a(s) virada(s) da daily"
+            hint="current active day — the instance crossed the daily rollover(s)"
           />
         )}
         <Field label="Manual"     value={instance.manualOrder ? "yes (Order Force)" : "no"} />

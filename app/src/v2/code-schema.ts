@@ -7,6 +7,8 @@
  * `scheduler/calendars.go` (advancedRule) e os executores do agente.
  * Se um campo novo entrar no modelo Go, ELE ENTRA AQUI — a guia do editor
  * promete cobrir TODAS as tags, sem exceção.
+ *
+ * Texto voltado ao usuário: INGLÊS (a UI inteira é em inglês).
  */
 
 export interface GuideForm {
@@ -38,8 +40,8 @@ const JOB_TYPE_CHILDREN: GuideEntry[] = [
   {
     tag: "COMMAND",
     kind: "jobType",
-    summary: "Comando shell no agente (Windows executa via powershell).",
-    detail: "params: `command` (o comando; essencial) · `cwd` (diretório de trabalho). O agente precisa anunciar a capability COMMAND.",
+    summary: "Shell command on the agent (Windows runs it through powershell).",
+    detail: "params: `command` (the command itself; essential) · `cwd` (working directory). The agent must advertise the COMMAND capability.",
     example: `jobType: COMMAND
 params:
   command: "echo ODATE=%%ODATE"
@@ -48,8 +50,8 @@ params:
   {
     tag: "SCRIPT",
     kind: "jobType",
-    summary: "Script .sh/.bat/.ps1 no host do agente.",
-    detail: "params: `scriptPath` (caminho do script) · `args` (argumentos) · `cwd`.",
+    summary: "A .sh/.bat/.ps1 script on the agent host.",
+    detail: "params: `scriptPath` (path to the script) · `args` (arguments) · `cwd`.",
     example: `jobType: SCRIPT
 params:
   scriptPath: /opt/jobs/backup.sh
@@ -58,8 +60,8 @@ params:
   {
     tag: "SSH",
     kind: "jobType",
-    summary: "Comando remoto via SSH — AGENTLESS (não exige agente com a capability).",
-    detail: "params: `host` · `user` · `port` · `command` · `keyPath` (chave privada).",
+    summary: "Remote command over SSH — AGENTLESS (no agent capability required).",
+    detail: "params: `host` · `user` · `port` · `command` · `keyPath` (private key).",
     example: `jobType: SSH
 params:
   host: 10.0.0.7
@@ -69,20 +71,20 @@ params:
   {
     tag: "HTTP",
     kind: "jobType · alias REST",
-    summary: "Chamada REST.",
-    detail: "params: `url` (OBRIGATÓRIO) · `method` GET|POST|PUT|PATCH|DELETE · `headers` (mapa) · `body` · `expectStatus` — aceita `200`, `[200, 204]` ou `\"200,204\"`; status fora deles = NOTOK.",
+    summary: "REST call.",
+    detail: "params: `url` (REQUIRED) · `method` GET|POST|PUT|PATCH|DELETE · `headers` (map) · `body` · `expectStatus` — accepts `200`, `[200, 204]` or `\"200,204\"`; any status outside them = NOTOK.",
     example: `jobType: HTTP
 params:
   method: POST
-  url: https://api.interna/reconcile
+  url: https://api.internal/reconcile
   headers: { Authorization: "Bearer \${var.TOKEN}" }
   expectStatus: 200`,
   },
   {
     tag: "DATABASE",
     kind: "jobType · alias DB",
-    summary: "SQL em Postgres/MySQL/SQLite pelo agente (drivers pure-Go).",
-    detail: "params OBRIGATÓRIOS: `driver` (postgres|mysql|sqlite — aceita aliases pg/pgx/postgresql/mariadb/sqlite3) · `dsn` · `sql`. Opcional: `maxRows` (linhas renderizadas de um SELECT). SELECT mostra linhas; DML mostra rows-affected.",
+    summary: "SQL against Postgres/MySQL/SQLite from the agent (pure-Go drivers).",
+    detail: "REQUIRED params: `driver` (postgres|mysql|sqlite — aliases pg/pgx/postgresql/mariadb/sqlite3 accepted) · `dsn` · `sql`. Optional: `maxRows` (rows rendered from a SELECT). SELECT prints rows; DML prints rows-affected.",
     example: `jobType: DATABASE
 params:
   driver: postgres
@@ -92,8 +94,8 @@ params:
   {
     tag: "FILE_WATCH",
     kind: "jobType · alias FILEWATCH",
-    summary: "Espera um arquivo chegar no host do agente.",
-    detail: "params: `path` (OBRIGATÓRIO — caminho no host do agente) · `intervalSec` (poll, default 5) · `stableSec` (tamanho estável por N s antes de OK). O `timeout` do job encerra a espera com NOTOK.",
+    summary: "Waits for a file to land on the agent host.",
+    detail: "params: `path` (REQUIRED — path on the agent host) · `intervalSec` (poll, default 5) · `stableSec` (size must stay stable for N s before OK). The job `timeout` ends the wait with NOTOK.",
     example: `jobType: FILE_WATCH
 timeout: 3600
 params:
@@ -103,21 +105,21 @@ params:
   {
     tag: "FILE_TRANSFER",
     kind: "jobType · alias MFT",
-    summary: "MFT nativo: transfere arquivos entre local, SFTP e S3 pelo agente.",
-    detail: "params OBRIGATÓRIOS: `src` · `dst` — caminho local, `sftp://user:pass@host:22/caminho` ou `s3://bucket/chave`; glob (`*.csv`) na origem local/sftp; destino com `/` final = diretório/prefixo (obrigatório com glob). Opcionais: `checksum` (relê o destino e compara SHA-256) · `deleteSource` (move) · `overwrite` (false = falha se o destino existe) · `mkdirs` (default true) · sftp: `keyPath`/`password`/`hostKeyFingerprint` (pin SHA256) · S3: `region`/`accessKeyId`/`secretAccessKey`/`sessionToken` (default envs AWS_* do agente) e `s3Endpoint` (MinIO/testes). Escrita atômica (.part+rename): um FILE_WATCH do outro lado nunca vê arquivo parcial.",
+    summary: "Native MFT: transfers files between local, SFTP and S3 from the agent.",
+    detail: "REQUIRED params: `src` · `dst` — a local path, `sftp://user:pass@host:22/path` or `s3://bucket/key`; glob (`*.csv`) allowed on local/sftp sources; a destination ending in `/` is a directory/prefix (required with glob). Optional: `checksum` (re-reads the destination and compares SHA-256) · `deleteSource` (move) · `overwrite` (false = fail if the destination exists) · `mkdirs` (default true) · sftp: `keyPath`/`password`/`hostKeyFingerprint` (SHA256 pin) · S3: `region`/`accessKeyId`/`secretAccessKey`/`sessionToken` (defaults to the agent's AWS_* envs) and `s3Endpoint` (MinIO/tests). Atomic write (.part+rename): a FILE_WATCH on the other side never sees a partial file.",
     example: `jobType: FILE_TRANSFER
 timeout: 1800
 params:
-  src: /data/out/fech_%%ODATE_*.csv
-  dst: sftp://svc@mainframe:22/entrada/
+  src: /data/out/close_%%ODATE_*.csv
+  dst: sftp://svc@mainframe:22/inbound/
   checksum: true
   deleteSource: true`,
   },
   {
     tag: "LAMBDA",
     kind: "jobType · alias AWS_LAMBDA",
-    summary: "Invoca uma função AWS Lambda (SigV4 pelo agente, sem SDK).",
-    detail: "params: `function` (OBRIGATÓRIO — `functionName` aceito como alias) · `region` (default env AWS_REGION do agente) · `payload` (JSON string ou objeto) · `accessKeyId`/`secretAccessKey`/`sessionToken` (default envs AWS_*) · `endpoint` (testes) · `invocationType` (reservado; a invocação atual é síncrona).",
+    summary: "Invokes an AWS Lambda function (SigV4 from the agent, no SDK).",
+    detail: "params: `function` (REQUIRED — `functionName` accepted as an alias) · `region` (defaults to the agent's AWS_REGION env) · `payload` (JSON string or object) · `accessKeyId`/`secretAccessKey`/`sessionToken` (default to the AWS_* envs) · `endpoint` (tests) · `invocationType` (reserved; the current invocation is synchronous).",
     example: `jobType: LAMBDA
 params:
   function: fin-reconcile
@@ -126,30 +128,30 @@ params:
   {
     tag: "BATCH",
     kind: "jobType · alias AWS_BATCH",
-    summary: "Job em container/lote (AWS Batch) — SubmitJob + poll pelo agente (SigV4, sem SDK).",
-    detail: "params OBRIGATÓRIOS: `jobQueue` · `jobDefinition`. Opcionais: `jobName` · `command` (split por espaços) · `env` (mapa) · `parameters` (mapa) · `region` (default env AWS_REGION do agente) · `accessKeyId`/`secretAccessKey`/`sessionToken` (default envs AWS_*) · `endpoint` (testes). O agente acompanha até SUCCEEDED/FAILED; no timeout do job manda TerminateJob.",
+    summary: "Container/batch job (AWS Batch) — SubmitJob + polling from the agent (SigV4, no SDK).",
+    detail: "REQUIRED params: `jobQueue` · `jobDefinition`. Optional: `jobName` · `command` (split on spaces) · `env` (map) · `parameters` (map) · `region` (defaults to the agent's AWS_REGION env) · `accessKeyId`/`secretAccessKey`/`sessionToken` (default to the AWS_* envs) · `endpoint` (tests). The agent follows it until SUCCEEDED/FAILED; on job timeout it sends TerminateJob.",
     example: `jobType: BATCH
 timeout: 3600
 params:
   jobQueue: fin-fargate
-  jobDefinition: validador-bacen
-  env: { DATA_REF: "%%ODATE" }`,
+  jobDefinition: bacen-validator
+  env: { REF_DATE: "%%ODATE" }`,
   },
   {
     tag: "GLUE",
     kind: "jobType · alias AWS_GLUE",
-    summary: "Job de ETL (AWS Glue) — StartJobRun + poll pelo agente (SigV4, sem SDK).",
-    detail: "params: `jobName` (OBRIGATÓRIO) · `arguments` (mapa) · `workerType` · `numberOfWorkers` · `region` (default env AWS_REGION do agente) · `accessKeyId`/`secretAccessKey`/`sessionToken` (default envs AWS_*) · `endpoint` (testes). O agente acompanha até SUCCEEDED/FAILED/TIMEOUT/STOPPED; no timeout do job manda BatchStopJobRun.",
+    summary: "ETL job (AWS Glue) — StartJobRun + polling from the agent (SigV4, no SDK).",
+    detail: "params: `jobName` (REQUIRED) · `arguments` (map) · `workerType` · `numberOfWorkers` · `region` (defaults to the agent's AWS_REGION env) · `accessKeyId`/`secretAccessKey`/`sessionToken` (default to the AWS_* envs) · `endpoint` (tests). The agent follows it until SUCCEEDED/FAILED/TIMEOUT/STOPPED; on job timeout it sends BatchStopJobRun.",
     example: `jobType: GLUE
 params:
   jobName: cadoc-3040
-  arguments: { "--DATA_REF": "%%ODATE" }`,
+  arguments: { "--REF_DATE": "%%ODATE" }`,
   },
   {
     tag: "STEP_FUNCTION",
     kind: "jobType · alias STEP_FUNCTIONS",
-    summary: "Dispara uma state machine (AWS Step Functions) — StartExecution + poll pelo agente (SigV4, sem SDK).",
-    detail: "params: `stateMachineArn` (OBRIGATÓRIO) · `input` (JSON string ou objeto) · `name` (default: AWS gera) · `region` (default env AWS_REGION do agente) · `accessKeyId`/`secretAccessKey`/`sessionToken` (default envs AWS_*) · `endpoint` (testes). O agente acompanha até SUCCEEDED/FAILED/TIMED_OUT/ABORTED; no timeout do job manda StopExecution.",
+    summary: "Fires a state machine (AWS Step Functions) — StartExecution + polling from the agent (SigV4, no SDK).",
+    detail: "params: `stateMachineArn` (REQUIRED) · `input` (JSON string or object) · `name` (default: AWS generates one) · `region` (defaults to the agent's AWS_REGION env) · `accessKeyId`/`secretAccessKey`/`sessionToken` (default to the AWS_* envs) · `endpoint` (tests). The agent follows it until SUCCEEDED/FAILED/TIMED_OUT/ABORTED; on job timeout it sends StopExecution.",
     example: `jobType: STEP_FUNCTION
 params:
   stateMachineArn: arn:aws:states:sa-east-1:123:stateMachine/etl`,
@@ -157,28 +159,28 @@ params:
   {
     tag: "WASM",
     kind: "jobType",
-    summary: "Módulo WebAssembly WASI no agente (wazero — sandbox por construção).",
-    detail: "params: `wasmPath` OU `wasmUrl` (um dos dois é OBRIGATÓRIO) · `args` (string) · `stdin` (string). O módulo deve ser um command WASI (exporta _start).",
+    summary: "WASI WebAssembly module on the agent (wazero — sandboxed by construction).",
+    detail: "params: `wasmPath` OR `wasmUrl` (one of the two is REQUIRED) · `args` (string) · `stdin` (string). The module must be a WASI command (exports _start).",
     example: `jobType: WASM
 params:
-  wasmUrl: https://repo.interna/mod.wasm
+  wasmUrl: https://repo.internal/mod.wasm
   args: "--full"`,
   },
   {
     tag: "K8S",
     kind: "jobType · alias K8S_JOB",
-    summary: "Job Kubernetes pelo agente (API server direto, sem kubectl).",
-    detail: "params: `image` (OBRIGATÓRIO) · `command` · `namespace` (default default) · `name` · `apiServer`/`token` (vazios = in-cluster) · `insecureTLS` (bool).",
+    summary: "Kubernetes Job from the agent (talks to the API server directly, no kubectl).",
+    detail: "params: `image` (REQUIRED) · `command` · `namespace` (default default) · `name` · `apiServer`/`token` (empty = in-cluster) · `insecureTLS` (bool).",
     example: `jobType: K8S
 params:
   image: alpine:3
-  command: "echo oi"`,
+  command: "echo hi"`,
   },
   {
     tag: "GCP_RUN",
     kind: "jobType · alias CLOUD_RUN_JOB",
-    summary: "Dispara um Cloud Run Job (Run Admin API v2) pelo agente.",
-    detail: "params OBRIGATÓRIOS: `project` · `region` · `job`. Opcionais: `token` (default env GOOGLE_OAUTH_TOKEN ou metadata server) · `endpoint` (testes).",
+    summary: "Fires a Cloud Run Job (Run Admin API v2) from the agent.",
+    detail: "REQUIRED params: `project` · `region` · `job`. Optional: `token` (defaults to the GOOGLE_OAUTH_TOKEN env or the metadata server) · `endpoint` (tests).",
     example: `jobType: GCP_RUN
 params:
   project: fin-prod
@@ -186,10 +188,10 @@ params:
   job: reconcile`,
   },
   {
-    tag: "— schema por tipo (ADV-1)",
-    kind: "validação",
-    summary: "Cada jobType conhecido tem schema DEDICADO no server (GET /api/jobtypes).",
-    detail: "O lint/validação checa os params CONTRA o schema do tipo: campo desconhecido (typo tipo `comand:`) e tipo de valor errado = erro NA HORA; params OBRIGATÓRIOS (command/url/…) são cobrados no PUBLISH (rascunho incompleto pode ser salvo). Um jobType DESCONHECIDO pelo server é aceito com params livres — mas só roda se algum agente anunciar a capability correspondente; senão fica em WAIT AGENT.",
+    tag: "— per-type schema (ADV-1)",
+    kind: "validation",
+    summary: "Every known jobType has a DEDICATED schema on the server (GET /api/jobtypes).",
+    detail: "Lint/validation checks params AGAINST the type schema: an unknown field (a typo such as `comand:`) or a wrong value type is an error RIGHT AWAY; REQUIRED params (command/url/…) are enforced at PUBLISH (an incomplete draft can still be saved). A jobType the server does not know is accepted with free-form params — but it only runs if some agent advertises the matching capability; otherwise it sits in WAIT AGENT.",
   },
 ];
 
@@ -198,35 +200,35 @@ params:
 const SCHEDULE_CHILDREN: GuideEntry[] = [
   {
     tag: "enabled",
-    kind: "bool · obrigatório",
-    summary: "false = o job NÃO entra na daily (aparece INACTIVE no Design).",
+    kind: "bool · required",
+    summary: "false = the job does NOT enter the daily (shows as INACTIVE in Design).",
     forms: [
-      { form: "true", desc: "agendado — a daily materializa a instance nos dias elegíveis" },
-      { form: "false", desc: "desligado — só roda por Force Order" },
+      { form: "true", desc: "scheduled — the daily materializes the instance on eligible days" },
+      { form: "false", desc: "off — only runs through Force Order" },
     ],
   },
   {
     tag: "description",
     kind: "string",
-    summary: "Texto livre exibido na UI (aba General do drawer).",
+    summary: "Free text shown in the UI (General tab of the drawer).",
   },
   {
     tag: "frequency",
     kind: "string",
-    summary: "EM QUAIS DIAS o job roda (avaliado pela daily).",
+    summary: "WHICH DAYS the job runs on (evaluated by the daily).",
     forms: [
-      { form: '"" | "daily"', desc: "todo dia (default)" },
-      { form: '"weekly"', desc: "nos dias de `daysOfWeek`" },
-      { form: '"monthly"', desc: "nos dias de `daysOfMonth`" },
-      { form: '"businessday"', desc: "no N-ésimo dia ÚTIL do mês (`nthBusinessDays`)" },
-      { form: '"advanced"', desc: "regra nomeada em `advancedRule`" },
+      { form: '"" | "daily"', desc: "every day (default)" },
+      { form: '"weekly"', desc: "on the days listed in `daysOfWeek`" },
+      { form: '"monthly"', desc: "on the days listed in `daysOfMonth`" },
+      { form: '"businessday"', desc: "on the Nth BUSINESS day of the month (`nthBusinessDays`)" },
+      { form: '"advanced"', desc: "named rule in `advancedRule`" },
     ],
   },
   {
     tag: "daysOfWeek",
-    kind: "lista de string · frequency weekly",
-    summary: "Dias da semana em que roda.",
-    forms: [{ form: '"mon" "tue" "wed" "thu" "fri" "sat" "sun"', desc: "qualquer combinação" }],
+    kind: "list of string · frequency weekly",
+    summary: "Days of the week it runs on.",
+    forms: [{ form: '"mon" "tue" "wed" "thu" "fri" "sat" "sun"', desc: "any combination" }],
     example: `schedule:
   enabled: true
   frequency: weekly
@@ -234,11 +236,11 @@ const SCHEDULE_CHILDREN: GuideEntry[] = [
   },
   {
     tag: "daysOfMonth",
-    kind: "lista de int · frequency monthly",
-    summary: "Dias do mês em que roda.",
+    kind: "list of int · frequency monthly",
+    summary: "Days of the month it runs on.",
     forms: [
-      { form: "1..31", desc: "dia fixo do mês" },
-      { form: "-1", desc: "ÚLTIMO dia do mês" },
+      { form: "1..31", desc: "fixed day of the month" },
+      { form: "-1", desc: "LAST day of the month" },
     ],
     example: `schedule:
   enabled: true
@@ -247,11 +249,11 @@ const SCHEDULE_CHILDREN: GuideEntry[] = [
   },
   {
     tag: "nthBusinessDays",
-    kind: "lista de int · frequency businessday",
-    summary: "N-ésimo dia ÚTIL do mês (feriados via calendar do job).",
+    kind: "list of int · frequency businessday",
+    summary: "Nth BUSINESS day of the month (holidays come from the job's calendar).",
     forms: [
-      { form: "5", desc: "5º dia útil do mês" },
-      { form: "-1", desc: "ÚLTIMO dia útil do mês" },
+      { form: "5", desc: "5th business day of the month" },
+      { form: "-1", desc: "LAST business day of the month" },
     ],
     example: `schedule:
   enabled: true
@@ -260,44 +262,44 @@ const SCHEDULE_CHILDREN: GuideEntry[] = [
   },
   {
     tag: "monthsOfYear",
-    kind: "lista de int (1..12)",
-    summary: "Filtra MESES em qualquer frequency (vazio = todos).",
+    kind: "list of int (1..12)",
+    summary: "Filters MONTHS on any frequency (empty = all of them).",
     example: `schedule:
   enabled: true
   frequency: monthly
   daysOfMonth: [-1]
-  monthsOfYear: [3, 6, 9, 12]   # só fim de trimestre`,
+  monthsOfYear: [3, 6, 9, 12]   # quarter-end only`,
   },
   {
     tag: "advancedRule",
     kind: "string · frequency advanced",
-    summary: "Regras nomeadas de dia útil (cientes do calendar).",
+    summary: "Named business-day rules (calendar-aware).",
     forms: [
-      { form: '"first-businessday"', desc: "1º dia útil do mês" },
-      { form: '"last-businessday"', desc: "último dia útil do mês" },
-      { form: '"first-businessday-not-monday"', desc: "1º dia útil que NÃO é segunda" },
-      { form: '"penultimate-businessday"', desc: "penúltimo dia útil do mês" },
+      { form: '"first-businessday"', desc: "1st business day of the month" },
+      { form: '"last-businessday"', desc: "last business day of the month" },
+      { form: '"first-businessday-not-monday"', desc: "1st business day that is NOT a Monday" },
+      { form: '"penultimate-businessday"', desc: "second-to-last business day of the month" },
     ],
   },
   {
     tag: "shift",
     kind: "string",
-    summary: "O que fazer quando o dia NOMINAL cai em dia não-elegível (feriado/exclude; sem calendar, fim de semana). Control-M \"roll\".",
+    summary: "What to do when the NOMINAL day is not eligible (holiday/exclude; with no calendar, the weekend). Control-M \"roll\".",
     forms: [
-      { form: '"" | "none"', desc: "não roda naquele ciclo (clássico)" },
-      { form: '"next-businessday"', desc: "rola pro PRÓXIMO dia elegível" },
-      { form: '"prev-businessday"', desc: "ANTECIPA pro dia elegível anterior" },
+      { form: '"" | "none"', desc: "skips that cycle (classic)" },
+      { form: '"next-businessday"', desc: "rolls to the NEXT eligible day" },
+      { form: '"prev-businessday"', desc: "PULLS IT FORWARD to the previous eligible day" },
     ],
   },
   {
     tag: "runAt",
     kind: 'string "HH:MM"',
-    summary: "Hora em que a instance fica ELEGÍVEL depois da daily (antes disso: WAIT).",
+    summary: "Time at which the instance becomes ELIGIBLE after the daily (before that: WAIT).",
   },
   {
     tag: "windowFrom / windowTo",
     kind: 'string "HH:MM"',
-    summary: "Janela de execução permitida. Depois de windowTo, WAITING vira gate WINDOW_CLOSED (não submete mais hoje).",
+    summary: "Allowed execution window. Past windowTo, a WAITING instance moves to the WINDOW_CLOSED gate (no more submissions today).",
     example: `schedule:
   enabled: true
   windowFrom: "22:00"
@@ -305,9 +307,9 @@ const SCHEDULE_CHILDREN: GuideEntry[] = [
   },
   {
     tag: "cyclic + intervalMin",
-    kind: "bool + int (minutos)",
-    summary: "Job repetitivo: ao terminar OK, a MESMA instance re-arma para +intervalMin.",
-    detail: "NOTOK não cicla (espera operador). O ciclo respeita windowTo e morre na virada da daily. `cycleRuns` conta as voltas na instance.",
+    kind: "bool + int (minutes)",
+    summary: "Repeating job: once it ends OK, the SAME instance re-arms for +intervalMin.",
+    detail: "NOTOK does not cycle (it waits for an operator). The cycle respects windowTo and dies at the daily rollover. `cycleRuns` counts the laps on the instance.",
     example: `schedule:
   enabled: true
   cyclic: true
@@ -317,18 +319,18 @@ const SCHEDULE_CHILDREN: GuideEntry[] = [
   {
     tag: "cyclicMaxRuns",
     kind: "int",
-    summary: "Teto de voltas do ciclo (0 = sem teto — vale a janela/virada).",
+    summary: "Cap on cycle laps (0 = no cap — the window/rollover decides).",
   },
   {
     tag: "keepActive",
-    kind: "int (diárias)",
-    summary: "Carry-over: quantas diárias EXTRA o job sobrevive sem terminar OK.",
-    detail: "0 = default (NOTOK não-tratado persiste +1 diária; WAITING que nunca rodou NÃO persiste). >0 = sobrevive N diárias. RUNNING e HELD persistem sempre. Combina com `confirm`/`retryDelayMin` para workflows human-in-the-loop de dias.",
+    kind: "int (dailies)",
+    summary: "Carry-over: how many EXTRA dailies the job survives without ending OK.",
+    detail: "0 = default (an untreated NOTOK survives +1 daily; a WAITING that never ran does NOT survive). >0 = survives N dailies. RUNNING and HELD always survive. Pairs with `confirm`/`retryDelayMin` for human-in-the-loop workflows that span days.",
   },
   {
     tag: "cronExpression",
-    kind: "string · LEGADO",
-    summary: "Cron de 5 campos. Só é a fonte quando `frequency` está vazio. Prefira frequency estruturada.",
+    kind: "string · LEGACY",
+    summary: "5-field cron. Only used as the source when `frequency` is empty. Prefer the structured frequency.",
   },
 ];
 
@@ -337,66 +339,66 @@ const SCHEDULE_CHILDREN: GuideEntry[] = [
 const ACTIONS_CHILDREN: GuideEntry[] = [
   {
     tag: "on",
-    kind: "string · obrigatório na regra",
-    summary: "O GATILHO da regra.",
+    kind: "string · required on the rule",
+    summary: "The rule TRIGGER.",
     forms: [
-      { form: '"result"', desc: "status TERMINAL do job (após esgotar retries) — qualifica com `status`" },
-      { form: '"exit"', desc: "exit code TERMINAL do job (Control-M COMPSTAT) — qualifica com `exitCodes`" },
-      { form: '"attempt"', desc: "a N-ésima tentativa FALHOU (escada de rerun) — qualifica com `attempt`" },
-      { form: '"runtime"', desc: "job RUNNING há mais de N minutos (shout) — qualifica com `afterMin`" },
+      { form: '"result"', desc: "the job's TERMINAL status (after retries are exhausted) — qualify it with `status`" },
+      { form: '"exit"', desc: "the job's TERMINAL exit code (Control-M COMPSTAT) — qualify it with `exitCodes`" },
+      { form: '"attempt"', desc: "the Nth attempt FAILED (rerun ladder) — qualify it with `attempt`" },
+      { form: '"runtime"', desc: "job RUNNING for more than N minutes (shout) — qualify it with `afterMin`" },
     ],
   },
-  { tag: "status", kind: 'string · on: "result"', summary: 'Qual resultado dispara: "OK" ou "NOTOK".' },
+  { tag: "status", kind: 'string · on: "result"', summary: 'Which result fires it: "OK" or "NOTOK".' },
   {
     tag: "exitCodes",
     kind: 'string · on: "exit"',
-    summary: "Códigos de saída que disparam, separados por vírgula (OR entre os itens).",
-    detail: "Cada item é um valor (`3`), uma faixa (`1-4`) ou uma comparação (`>0`, `>=8`, `<0`, `<=2`, `!=0`). Vazio NUNCA dispara. O status sai do código (`exit != 0` ⇒ NOTOK), então `on: exit` + `do: set-ok` é o \"trate estes códigos como sucesso\". O KILL de um RUNNING (Cancel) grava exit `-1`.",
+    summary: "Exit codes that fire the rule, comma-separated (OR between the items).",
+    detail: "Each item is a value (`3`), a range (`1-4`) or a comparison (`>0`, `>=8`, `<0`, `<=2`, `!=0`). Empty NEVER fires. The status comes from the code (`exit != 0` ⇒ NOTOK), so `on: exit` + `do: set-ok` is the \"treat these codes as success\" rule. Killing a RUNNING job (Cancel) records exit `-1`.",
     forms: [
-      { form: '"1,2,3"', desc: "qualquer um dos três" },
-      { form: '"1-4"', desc: "faixa inclusiva" },
-      { form: '">0"', desc: "comparação" },
+      { form: '"1,2,3"', desc: "any of the three" },
+      { form: '"1-4"', desc: "inclusive range" },
+      { form: '">0"', desc: "comparison" },
     ],
   },
-  { tag: "attempt", kind: 'int · on: "attempt"', summary: "Número da tentativa (1-based) que, ao falhar, dispara." },
-  { tag: "afterMin", kind: 'int · on: "runtime"', summary: "Minutos de RUNNING que disparam a regra." },
+  { tag: "attempt", kind: 'int · on: "attempt"', summary: "Attempt number (1-based) whose failure fires the rule." },
+  { tag: "afterMin", kind: 'int · on: "runtime"', summary: "Minutes of RUNNING that fire the rule." },
   {
     tag: "do",
-    kind: "string · obrigatório na regra",
-    summary: "A AÇÃO disparada (cada regra dispara NO MÁXIMO 1× por instance).",
+    kind: "string · required on the rule",
+    summary: "The ACTION fired (each rule fires AT MOST once per instance).",
     forms: [
-      { form: '"notify"', desc: "alerta nos canais (usa message/severity/channels)" },
-      { form: '"set-condition"', desc: "seta a condition global do order_date (destrava sucessores) — usa `condition`" },
-      { form: '"run-job"', desc: "Force Order de `targetJob` (roda outro job, ignorando deps)" },
-      { form: '"set-ok"', desc: "flipa o PRÓPRIO job NOTOK→OK (só faz sentido com on result NOTOK)" },
+      { form: '"notify"', desc: "alert on the channels (uses message/severity/channels)" },
+      { form: '"set-condition"', desc: "sets the global condition for the order_date (unblocks successors) — uses `condition`" },
+      { form: '"run-job"', desc: "Force Order on `targetJob` (runs another job, ignoring its deps)" },
+      { form: '"set-ok"', desc: "flips THIS job from NOTOK to OK (only makes sense with on result NOTOK)" },
     ],
   },
-  { tag: "message", kind: "string · do notify", summary: "Texto do alerta (interpola %%VARS)." },
+  { tag: "message", kind: "string · do notify", summary: "Alert text (interpolates %%VARS)." },
   {
     tag: "severity",
     kind: "string · do notify",
-    summary: "Severidade do alerta.",
-    forms: [{ form: '"info" | "warning" | "critical"', desc: "critical/warning viram toast de erro na UI" }],
+    summary: "Alert severity.",
+    forms: [{ form: '"info" | "warning" | "critical"', desc: "critical/warning become error toasts in the UI" }],
   },
   {
     tag: "channels",
-    kind: "lista de string · do notify",
-    summary: "Canais de saída; VAZIO = todos os configurados em Settings.",
-    forms: [{ form: '"slack" "webhook" "email" "pagerduty"', desc: "qualquer combinação" }],
+    kind: "list of string · do notify",
+    summary: "Output channels; EMPTY = every channel configured in Settings.",
+    forms: [{ form: '"slack" "webhook" "email" "pagerduty"', desc: "any combination" }],
   },
-  { tag: "condition", kind: "string · do set-condition", summary: "Nome da condition global a setar." },
-  { tag: "targetJob", kind: "string · do run-job", summary: "id da definition a forçar." },
+  { tag: "condition", kind: "string · do set-condition", summary: "Name of the global condition to set." },
+  { tag: "targetJob", kind: "string · do run-job", summary: "id of the definition to force." },
 ];
 
 /* ── A GUIA (toda tag top-level do YAML) ── */
 
 export const YAML_GUIDE: GuideEntry[] = [
   {
-    tag: "— o documento",
-    kind: "regras gerais",
-    summary: "Como o editor entende o YAML (dialeto EXATO dos arquivos do workspace Git).",
+    tag: "— the document",
+    kind: "general rules",
+    summary: "How the editor reads the YAML (the EXACT dialect of the Git workspace files).",
     detail:
-      "Vários jobs num só texto: separe com `---` (multi-doc), UM job por documento. O comentário `# definitions/<folder>/<id>.yaml` que o servidor gera é informativo. O parse é ESTRITO: campo desconhecido/typo (ex.: `retires:`) = erro na validação, nada é ignorado em silêncio. Job presente no working set e AUSENTE do texto = marcado para DELETE (o Aplicar pede confirmação listando os ids). `team` pode ser omitido quando há UMA folder aberta (vira o default do escopo).",
+      "Several jobs in one text: separate them with `---` (multi-doc), ONE job per document. The `# definitions/<folder>/<id>.yaml` comment the server generates is informational. Parsing is STRICT: an unknown field/typo (e.g. `retires:`) is a validation error, nothing is silently ignored. A job present in the working set and MISSING from the text is marked for DELETE (Apply asks for confirmation and lists the ids). `team` can be omitted when a SINGLE folder is open (it becomes the scope default).",
     example: `# definitions/fin/extract.yaml
 id: extract
 label: Extract FIN
@@ -420,37 +422,37 @@ params:
   },
   {
     tag: "id",
-    kind: "string · OBRIGATÓRIO",
-    summary: "Identificador ÚNICO do job no workspace — vira o arquivo definitions/<team>/<id>.yaml.",
+    kind: "string · REQUIRED",
+    summary: "UNIQUE identifier of the job in the workspace — becomes the file definitions/<team>/<id>.yaml.",
     detail:
-      "Formas aceitáveis: slug estável, minúsculo, sem espaço (letras/números/traço — ex.: `extract-fin`, `cadoc-3040`). É a referência usada em `upstream.from`, `actions.targetJob` e na API. Renomear id = o plano vira CRIAR o novo + DELETAR o antigo (o histórico da instance não migra).",
+      "Accepted form: a stable, lowercase slug with no spaces (letters/digits/dashes — e.g. `extract-fin`, `cadoc-3040`). It is the reference used in `upstream.from`, `actions.targetJob` and in the API. Renaming the id turns the plan into CREATE the new one + DELETE the old one (instance history does not migrate).",
     example: `id: extract-fin`,
   },
   {
     tag: "label",
-    kind: "string · OBRIGATÓRIO",
-    summary: "Nome de exibição nos cards, listas e drawers.",
-    example: `label: Extract FIN (diário)`,
+    kind: "string · REQUIRED",
+    summary: "Display name on cards, lists and drawers.",
+    example: `label: Extract FIN (daily)`,
   },
   {
     tag: "team",
-    kind: "string · OBRIGATÓRIO (inferível)",
-    summary: "A folder do job (o subdiretório de definitions/).",
-    detail: "No modo código com UMA folder aberta pode ser omitido (assume a folder do escopo). Com várias folders abertas, é obrigatório em cada doc. Mover de folder = Save na nova + Delete na antiga (o plano mostra).",
+    kind: "string · REQUIRED (inferable)",
+    summary: "The job's folder (the subdirectory under definitions/).",
+    detail: "In code mode with a SINGLE folder open it can be omitted (the scope folder is assumed). With several folders open it is required in every doc. Moving between folders = Save in the new one + Delete in the old one (the plan shows it).",
     example: `team: fin`,
   },
   {
     tag: "jobType",
-    kind: "string · OBRIGATÓRIO",
-    summary: "O QUE o job executa. Expanda para ver todos os tipos JÁ IMPLEMENTADOS e os params de cada um.",
-    detail: "O agente que vai executar precisa anunciar a capability do tipo (exceto SSH, que é agentless). Sem agente capaz online, a instance fica no gate WAIT AGENT (card azul claro) — nem é reivindicada.",
+    kind: "string · REQUIRED",
+    summary: "WHAT the job runs. Expand to see every type ALREADY IMPLEMENTED and the params of each one.",
+    detail: "The agent that will run it must advertise the type's capability (except SSH, which is agentless). With no capable agent online, the instance sits at the WAIT AGENT gate (light blue card) — it is not even claimed.",
     children: JOB_TYPE_CHILDREN,
   },
   {
     tag: "schedule",
-    kind: "objeto · OBRIGATÓRIO",
-    summary: "QUANDO o job roda: em quais dias (frequency/calendars) e a que horas (runAt/janela/ciclo).",
-    detail: "A elegibilidade final = frequency + monthsOfYear + shift + calendars (include/exclude). O painel Forecast e o Dry Run usam EXATAMENTE a mesma decisão da daily (IsScheduledOn).",
+    kind: "object · REQUIRED",
+    summary: "WHEN the job runs: which days (frequency/calendars) and at what time (runAt/window/cycle).",
+    detail: "Final eligibility = frequency + monthsOfYear + shift + calendars (include/exclude). The Forecast panel and the Dry Run use EXACTLY the same decision as the daily (IsScheduledOn).",
     children: SCHEDULE_CHILDREN,
     example: `schedule:
   enabled: true
@@ -461,150 +463,150 @@ params:
   },
   {
     tag: "params",
-    kind: "mapa · por jobType",
-    summary: "Parâmetros específicos do jobType (no YAML é `params:`; na API JSON o mesmo campo chama `actionConfig`).",
-    detail: "Os campos e obrigatórios de cada tipo estão dentro de `jobType` (expanda lá). Extra: `_agentId` pina o job num agente específico — com o pin, só aquele agente executa (offline = WAIT AGENT). Strings de params são interpoláveis com %%VARS/${var.} (ver `variables`).",
+    kind: "map · per jobType",
+    summary: "jobType-specific parameters (in YAML it is `params:`; in the JSON API the same field is called `actionConfig`).",
+    detail: "The fields and requirements of each type live inside `jobType` (expand it there). Extra: `_agentId` pins the job to a specific agent — with the pin, only that agent runs it (offline = WAIT AGENT). Param strings are interpolable with %%VARS/${var.} (see `variables`).",
     example: `params:
-  command: "gera-cadoc --data %%ODATE"
-  _agentId: agente-fin-01`,
+  command: "make-cadoc --date %%ODATE"
+  _agentId: fin-agent-01`,
   },
   {
     tag: "upstream",
-    kind: "lista de {from, condition, dateRef} — LEGADO (açúcar de leitura)",
-    summary: "Forma LEGADA de dependência: ao carregar, vira CONDIÇÕES explícitas (modelo único) — A-TO-B no conditionsOutAdd do pai e no conditionsIn + conditionsOutRemove do filho.",
-    detail: "Desde a unificação (2026-07-17) toda dependência é uma CONDIÇÃO num pool global (painel Condições do Monitoring). `upstream:` segue aceito no YAML como atalho: a expansão é automática e idempotente, e o campo nunca é persistido de volta (vira só visão de topologia). Prefira declarar as condições diretamente. `dateRef` vira o sufixo @prev/@stat da condição de ENTRADA, relativo ao ODAT (origem) deste job.",
+    kind: "list of {from, condition, dateRef} — LEGACY (reading sugar)",
+    summary: "LEGACY dependency form: on load it becomes explicit CONDITIONS (single model) — A-TO-B in the parent's conditionsOutAdd and in the child's conditionsIn + conditionsOutRemove.",
+    detail: "Since the unification (2026-07-17) every dependency is a CONDITION in a global pool (Conditions panel in Monitoring). `upstream:` is still accepted in YAML as a shortcut: the expansion is automatic and idempotent, and the field is never persisted back (it is only a topology view). Prefer declaring conditions directly. `dateRef` becomes the @prev/@stat suffix of the INBOUND condition, relative to this job's ODAT (origin).",
     forms: [
-      { form: "condition omitida / \"\"", desc: "= on-success (default seguro)" },
-      { form: '"on-success"', desc: "roda se o pai terminou OK" },
-      { form: '"on-failure"', desc: "roda se o pai terminou NOTOK (jobs de contingência)" },
-      { form: '"on-complete"', desc: "roda quando o pai TERMINA (OK ou NOTOK)" },
-      { form: '"always"', desc: "como on-complete" },
-      { form: "dateRef omitido / \"odat\"", desc: "pai da MESMA diária de origem (default)" },
-      { form: 'dateRef: "prev"', desc: "pai da diária ANTERIOR (fechamento D-1)" },
-      { form: 'dateRef: "stat"', desc: "estática: qualquer término livre, sem olhar data" },
+      { form: "condition omitted / \"\"", desc: "= on-success (safe default)" },
+      { form: '"on-success"', desc: "runs if the parent ended OK" },
+      { form: '"on-failure"', desc: "runs if the parent ended NOTOK (contingency jobs)" },
+      { form: '"on-complete"', desc: "runs when the parent ENDS (OK or NOTOK)" },
+      { form: '"always"', desc: "same as on-complete" },
+      { form: "dateRef omitted / \"odat\"", desc: "parent from the SAME origin daily (default)" },
+      { form: 'dateRef: "prev"', desc: "parent from the PREVIOUS daily (D-1 close)" },
+      { form: 'dateRef: "stat"', desc: "static: any free completion, ignoring the date" },
     ],
     example: `upstream:
   - from: extract-fin
-  - from: valida-fin
+  - from: validate-fin
     condition: on-failure
-  - from: fechamento
+  - from: close
     dateRef: prev`,
   },
   {
     tag: "retries",
     kind: "int",
-    summary: "Tentativas EXTRAS após uma falha (0 = roda 1 vez só).",
+    summary: "EXTRA attempts after a failure (0 = runs exactly once).",
     example: `retries: 2`,
   },
   {
     tag: "retryDelayMin",
-    kind: "int (minutos)",
-    summary: "Espaçamento entre tentativas de retry.",
-    detail: "0 = backoff curto clássico (segundos). >0 = a próxima tentativa é AGENDADA via scheduled_at — DURÁVEL: sobrevive a restart do server e à virada da daily (um retry de dias atravessa diárias). Combine com confirm/keepActive para aprovações humanas + retry após dias.",
+    kind: "int (minutes)",
+    summary: "Spacing between retry attempts.",
+    detail: "0 = classic short backoff (seconds). >0 = the next attempt is SCHEDULED through scheduled_at — DURABLE: it survives a server restart and the daily rollover (a multi-day retry crosses dailies). Combine it with confirm/keepActive for human approvals + a retry days later.",
     example: `retries: 3
-retryDelayMin: 60   # re-tenta a cada 1h`,
+retryDelayMin: 60   # retry every 1h`,
   },
   {
     tag: "timeout",
-    kind: "int (segundos)",
-    summary: "Tempo máximo de execução; estourou = NOTOK (e encerra FILE_WATCH/WAIT).",
+    kind: "int (seconds)",
+    summary: "Maximum run time; exceeded = NOTOK (and it ends FILE_WATCH/WAIT).",
     example: `timeout: 1800`,
   },
   {
     tag: "dryRun",
     kind: "bool",
-    summary: "Job 👻GHOST: entra na daily e \"roda\" sem executar nada (log only).",
-    detail: "O selo no Monitoring vem CONGELADO na instance (snapshot da ordem) — mudar dryRun no Design só afeta a PRÓXIMA ordem.",
+    summary: "👻GHOST job: enters the daily and \"runs\" without executing anything (log only).",
+    detail: "The badge in Monitoring comes FROZEN on the instance (order snapshot) — changing dryRun in Design only affects the NEXT order.",
   },
   {
     tag: "confirm",
     kind: "bool",
-    summary: "Control-M \"Wait for confirmation\": a instance NÃO roda até um operador confirmar.",
-    detail: "Gate WAIT_CONFIRM (card violeta ✋CONFIRM). Nem Force Order bypassa; rerun exige confirmar de novo. Confirmação: botão no card/drawer ou POST /instances/{id}/confirm.",
+    summary: "Control-M \"Wait for confirmation\": the instance does NOT run until an operator confirms it.",
+    detail: "WAIT_CONFIRM gate (purple ✋CONFIRM card). Not even Force Order bypasses it; a rerun requires confirming again. Confirmation: the button on the card/drawer or POST /instances/{id}/confirm.",
   },
   {
     tag: "selfService",
     kind: "bool",
-    summary: "Expõe o job no portal /portal para usuários de negócio dispararem sem acesso ao Design/Monitoring.",
+    summary: "Exposes the job on the /portal page so business users can fire it without access to Design/Monitoring.",
   },
   {
     tag: "environment",
     kind: "string",
-    summary: "Ambiente/site do job — ROTEIA a execução (ADV-2).",
-    detail: "Job com environment só despacha pra agente do MESMO env (flag `-env` do agente) ou pra agente SEM label (generalista). Sem agente casando, fica em WAIT AGENT com o motivo no Explain. Vale cross-nó (presença R5). Case-insensitive.",
-    forms: [{ form: '"dev" | "staging" | "prod" | "dc-sp"…', desc: "texto livre; case-insensitive" }],
+    summary: "Job environment/site — ROUTES the execution (ADV-2).",
+    detail: "A job with an environment only dispatches to an agent in the SAME env (the agent's `-env` flag) or to an agent with NO label (a generalist). With no matching agent it sits in WAIT AGENT with the reason in Explain. Works cross-node (R5 presence). Case-insensitive.",
+    forms: [{ form: '"dev" | "staging" | "prod" | "dc-sp"…', desc: "free text; case-insensitive" }],
     example: `environment: prod`,
   },
   {
     tag: "agentId",
     kind: "string",
-    summary: "Pin de agente no MODELO (campo do YAML). A UI usa `params._agentId` para o mesmo fim — prefira o pin em params, que é o que o gate WAIT AGENT lê.",
+    summary: "Agent pin on the MODEL (YAML field). The UI uses `params._agentId` for the same purpose — prefer the pin in params, which is what the WAIT AGENT gate reads.",
   },
   {
     tag: "calendars",
-    kind: "lista de {name, mode}",
-    summary: "Vincula calendars nomeados (workspace calendars/*.yaml) ao job.",
-    detail: "include = só roda em dias elegíveis do calendar · exclude = NÃO roda nos dias elegíveis (negação). Vários calendars compõem. O campo `calendar` (string, sem lista) é o LEGADO e vale como include.",
+    kind: "list of {name, mode}",
+    summary: "Binds named calendars (workspace calendars/*.yaml) to the job.",
+    detail: "include = only runs on days the calendar marks eligible · exclude = does NOT run on the calendar's eligible days (negation). Several calendars compose. The `calendar` field (a plain string, no list) is LEGACY and counts as include.",
     forms: [
-      { form: "mode: include", desc: "restringe aos dias do calendar (feriados fora, etc.)" },
-      { form: "mode: exclude", desc: "bloqueia os dias do calendar" },
+      { form: "mode: include", desc: "restricts to the calendar's days (holidays out, etc.)" },
+      { form: "mode: exclude", desc: "blocks the calendar's days" },
     ],
     example: `calendars:
-  - { name: uteis-br, mode: include }
+  - { name: business-days-br, mode: include }
   - { name: freeze-eoy, mode: exclude }`,
   },
   {
     tag: "resources",
-    kind: "mapa nome → quantidade",
-    summary: "Recursos quantitativos consumidos (Control-M resources): sem unidades livres, o job espera.",
-    detail: "Gate WAIT_RESOURCE com FILA; pedido multi-recurso é ALL-OR-NOTHING (não reserva parcial). Capacidade de cada recurso é gerida na UI (recurso desconhecido nasce com capacidade 1 = lock exclusivo).",
+    kind: "map name → quantity",
+    summary: "Quantitative resources consumed (Control-M resources): with no free units, the job waits.",
+    detail: "WAIT_RESOURCE gate with a QUEUE; a multi-resource request is ALL-OR-NOTHING (no partial reservation). Each resource's capacity is managed in the UI (an unknown resource is born with capacity 1 = exclusive lock).",
     example: `resources:
   db-fin: 1
-  slots-etl: 2`,
+  etl-slots: 2`,
   },
   {
     tag: "conditionsIn",
-    kind: "lista de string",
-    summary: "Conditions GLOBAIS exigidas: o job só fica pronto quando TODAS existem no escopo resolvido (default = diária de ORIGEM do job, o ODAT).",
-    detail: "Gate de RUNTIME (WAIT_CONDITION) — a daily ainda materializa a instance. Quem seta: `conditionsOutAdd` de outro job, ação On/Do set-condition, POST /events/ingest (evento externo) ou a UI. A DATA vai no sufixo do nome: sem sufixo/`@odat` = diária de origem; `@prev` = diária anterior; `@stat` = estática (só a permanente satisfaz).",
-    example: `conditionsIn: [ARQUIVO-CHEGOU, FECHAMENTO@prev, AMBIENTE-OK@stat]`,
+    kind: "list of string",
+    summary: "GLOBAL conditions required: the job is only ready once ALL of them exist in the resolved scope (default = the job's ORIGIN daily, the ODAT).",
+    detail: "RUNTIME gate (WAIT_CONDITION) — the daily still materializes the instance. Who sets them: another job's `conditionsOutAdd`, an On/Do set-condition action, POST /events/ingest (external event) or the UI. The DATE goes in the name suffix: no suffix/`@odat` = origin daily; `@prev` = previous daily; `@stat` = static (only the permanent one satisfies it).",
+    example: `conditionsIn: [FILE-ARRIVED, CLOSE@prev, ENVIRONMENT-OK@stat]`,
   },
   {
     tag: "conditionsOutAdd",
-    kind: "lista de string",
-    summary: "Conditions CRIADAS quando este job termina OK (destrava quem as exige via conditionsIn).",
-    detail: "Criadas no escopo da diária de ORIGEM (ODAT) do produtor — um job carregado pela virada cria a condition do SEU dia, não do dia corrente. Sufixos: `@stat` cria permanente; `@prev` cria na diária anterior.",
-    example: `conditionsOutAdd: [EXTRACT-DONE, AMBIENTE-OK@stat]`,
+    kind: "list of string",
+    summary: "Conditions CREATED when this job ends OK (unblocks whoever requires them through conditionsIn).",
+    detail: "Created in the scope of the producer's ORIGIN daily (ODAT) — a job carried over by the rollover creates the condition for ITS day, not for the current one. Suffixes: `@stat` creates a permanent one; `@prev` creates it in the previous daily.",
+    example: `conditionsOutAdd: [EXTRACT-DONE, ENVIRONMENT-OK@stat]`,
   },
   {
     tag: "conditionsOutRemove",
-    kind: "lista de string",
-    summary: "Conditions APAGADAS quando este job termina OK (nega/limpa condição do dia). Mesmos sufixos de data do conditionsOutAdd.",
+    kind: "list of string",
+    summary: "Conditions DELETED when this job ends OK (negates/clears the day's condition). Same date suffixes as conditionsOutAdd.",
   },
   {
     tag: "variables",
-    kind: "mapa NOME → valor",
-    summary: "Variáveis do job (escopo definition), interpoláveis nos params via %%NOME ou ${var.NOME}.",
+    kind: "map NAME → value",
+    summary: "Job variables (definition scope), interpolable in params through %%NAME or ${var.NAME}.",
     detail:
-      "Precedência na interpolação: Runtime > Local (da instance) > Definition (estas) > Global. " +
-      "TOKENS NATIVOS de runtime (sempre disponíveis, MAIÚSCULOS): %%ODATE (YYYYMMDD da ordem — correto em rerun/carry), %%ORDERDATE, %%RUNDATE, %%TIME, %%JOBNAME, %%JOBLABEL, %%FOLDER, %%INSTANCEID. " +
-      "TOKENS DE DATA cientes do calendar do job: %%EOM/%%BOM (último/primeiro dia do mês), %%EOY/%%BOY (do ano), %%NEXTBD/%%PREVBD (próximo/anterior dia útil), %%FIRSTBD/%%LASTBD (1º/último dia útil do mês). " +
-      "OFFSETS compõem com qualquer token: ±N = dias corridos, ±NB = dias ÚTEIS (ex.: %%ODATE+2B, %%EOM-1, %%LASTBD-1B). " +
-      "EM RUNTIME o job pode gravar variáveis imprimindo no output: `%%SET NOME=VALOR` (GLOBAL, terminal-only) e `%%SETLOCAL NOME=VALOR` (LOCAL da instance, aplicado a cada término de tentativa ANTES do retry — passa estado entre tentativas; nunca vaza pra outro job). Nome de %%var = letra + letras/números/underscore; nomes com ponto só via ${var.}.",
+      "Interpolation precedence: Runtime > Local (from the instance) > Definition (these) > Global. " +
+      "NATIVE runtime TOKENS (always available, UPPERCASE): %%ODATE (order YYYYMMDD — correct on rerun/carry-over), %%ORDERDATE, %%RUNDATE, %%TIME, %%JOBNAME, %%JOBLABEL, %%FOLDER, %%INSTANCEID. " +
+      "DATE TOKENS aware of the job's calendar: %%EOM/%%BOM (last/first day of the month), %%EOY/%%BOY (of the year), %%NEXTBD/%%PREVBD (next/previous business day), %%FIRSTBD/%%LASTBD (1st/last business day of the month). " +
+      "OFFSETS compose with any token: ±N = calendar days, ±NB = BUSINESS days (e.g. %%ODATE+2B, %%EOM-1, %%LASTBD-1B). " +
+      "AT RUNTIME the job can write variables by printing to its output: `%%SET NAME=VALUE` (GLOBAL, terminal-only) and `%%SETLOCAL NAME=VALUE` (LOCAL to the instance, applied at the end of every attempt BEFORE the retry — carries state between attempts; never leaks to another job). A %%var name is a letter followed by letters/digits/underscore; names with a dot only work through ${var.}.",
     example: `variables:
-  REGIAO: sudeste
+  REGION: southeast
 params:
-  command: "processa --dt %%ODATE-1B --reg %%REGIAO"`,
+  command: "process --dt %%ODATE-1B --reg %%REGION"`,
   },
   {
     tag: "sla",
-    kind: "objeto",
-    summary: "SLA do job: duração esperada e/ou deadline — breach gera alerta (e aba SLA no drawer).",
+    kind: "object",
+    summary: "Job SLA: expected duration and/or deadline — a breach raises an alert (and the SLA tab in the drawer).",
     forms: [
-      { form: "expectedDurationMin: N", desc: "alerta se rodar além de N minutos" },
-      { form: 'deadlineHM: "HH:MM"', desc: "alerta se não terminar OK até a hora" },
-      { form: 'severity: "warning" | "critical"', desc: "severidade do breach" },
-      { form: "webhookUrl: https://…", desc: "canal extra do alerta de SLA" },
+      { form: "expectedDurationMin: N", desc: "alerts if it runs longer than N minutes" },
+      { form: 'deadlineHM: "HH:MM"', desc: "alerts if it has not ended OK by that time" },
+      { form: 'severity: "warning" | "critical"', desc: "breach severity" },
+      { form: "webhookUrl: https://…", desc: "extra channel for the SLA alert" },
     ],
     example: `sla:
   expectedDurationMin: 30
@@ -613,17 +615,17 @@ params:
   },
   {
     tag: "subWorkflow",
-    kind: "objeto {folder, variables}",
-    summary: "Este job espera OUTRA folder inteira terminar OK (sub-workflow como dependência).",
+    kind: "object {folder, variables}",
+    summary: "This job waits for ANOTHER whole folder to end OK (sub-workflow as a dependency).",
     example: `subWorkflow:
-  folder: pre-processamento
-  variables: { MODO: full }`,
+  folder: pre-processing
+  variables: { MODE: full }`,
   },
   {
     tag: "actions",
-    kind: "lista de regras On/Do",
-    summary: "Automação Control-M \"On/Do\": On <gatilho> Do <ação>. Expanda para todos os gatilhos e ações.",
-    detail: "Estrutura PLANA por regra: os campos de gatilho (on + qualificador) e de ação (do + parâmetros) convivem; só os relevantes são lidos. Cada regra dispara no máximo 1× por instance.",
+    kind: "list of On/Do rules",
+    summary: "Control-M \"On/Do\" automation: On <trigger> Do <action>. Expand for every trigger and action.",
+    detail: "FLAT structure per rule: trigger fields (on + qualifier) and action fields (do + parameters) live side by side; only the relevant ones are read. Each rule fires at most once per instance.",
     children: ACTIONS_CHILDREN,
     example: `actions:
   - on: result
@@ -631,7 +633,7 @@ params:
     do: notify
     severity: critical
     channels: [slack, pagerduty]
-    message: "%%JOBNAME falhou no %%ODATE"
+    message: "%%JOBNAME failed on %%ODATE"
   - on: result
     status: OK
     do: set-condition

@@ -72,14 +72,14 @@ func (s *server) auditExport(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	if f := q.Get("format"); f != "" && f != "jsonl" {
-		http.Error(w, "format não suportado (use jsonl)", http.StatusBadRequest)
+		http.Error(w, "format not supported (use jsonl)", http.StatusBadRequest)
 		return
 	}
 	limit := exportMaxLines
 	if v := q.Get("limit"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n <= 0 {
-			http.Error(w, "limit inválido", http.StatusBadRequest)
+			http.Error(w, "invalid limit", http.StatusBadRequest)
 			return
 		}
 		if n < limit {
@@ -90,7 +90,7 @@ func (s *server) auditExport(w http.ResponseWriter, r *http.Request) {
 	if v := q.Get("from"); v != "" {
 		t, ok := parseExportTime(v)
 		if !ok {
-			http.Error(w, "from inválido (use YYYY-MM-DD ou RFC3339)", http.StatusBadRequest)
+			http.Error(w, "invalid from (use YYYY-MM-DD or RFC3339)", http.StatusBadRequest)
 			return
 		}
 		from = t
@@ -98,7 +98,7 @@ func (s *server) auditExport(w http.ResponseWriter, r *http.Request) {
 	if v := q.Get("to"); v != "" {
 		t, ok := parseExportTime(v)
 		if !ok {
-			http.Error(w, "to inválido (use YYYY-MM-DD ou RFC3339)", http.StatusBadRequest)
+			http.Error(w, "invalid to (use YYYY-MM-DD or RFC3339)", http.StatusBadRequest)
 			return
 		}
 		to = t
@@ -110,7 +110,7 @@ func (s *server) auditExport(w http.ResponseWriter, r *http.Request) {
 		parts := strings.SplitN(cur, ":", 2)
 		id, err := strconv.ParseInt(parts[len(parts)-1], 10, 64)
 		if err != nil || (len(parts) == 2 && parts[0] != "i" && parts[0] != "a") {
-			http.Error(w, "after_id inválido (use o cursor da última linha, ex. i:123)", http.StatusBadRequest)
+			http.Error(w, "invalid after_id (use the last line's cursor, e.g. i:123)", http.StatusBadRequest)
 			return
 		}
 		afterID = id
@@ -173,7 +173,7 @@ func (s *server) auditExport(w http.ResponseWriter, r *http.Request) {
 		// Stream truncado é SEGURO (cada linha carrega o cursor; o cliente
 		// retoma dali) — mas o motivo precisa aparecer no log.
 		if err := rows.Err(); err != nil {
-			log.Printf("[export] instance_events: iteração incompleta (cliente retoma pelo cursor): %v", err)
+			log.Printf("[export] instance_events: incomplete iteration (client resumes from the cursor): %v", err)
 		}
 		rows.Close()
 		if written >= limit {
@@ -212,6 +212,6 @@ func (s *server) auditExport(w http.ResponseWriter, r *http.Request) {
 		written++
 	}
 	if err := rows.Err(); err != nil {
-		log.Printf("[export] audit_events: iteração incompleta (cliente retoma pelo cursor): %v", err)
+		log.Printf("[export] audit_events: incomplete iteration (client resumes from the cursor): %v", err)
 	}
 }

@@ -126,7 +126,7 @@ func (s *server) canWriteInstanceQuiet(r *http.Request, instanceID string) error
 	}
 	if !can {
 		if folder == "" {
-			return fmt.Errorf("no write access (instance sem folder)")
+			return fmt.Errorf("no write access (instance without a folder)")
 		}
 		return fmt.Errorf("no write access to folder %s", folder)
 	}
@@ -149,7 +149,7 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 			return "", err
 		}
 		if n, _ := res.RowsAffected(); n == 0 {
-			return "", fmt.Errorf("not holdable (RUNNING ou já em HOLD)")
+			return "", fmt.Errorf("not holdable (RUNNING or already on HOLD)")
 		}
 		var heldFrom string
 		_ = s.cfg.DB.QueryRow(`SELECT COALESCE(held_from_status,'') FROM instances WHERE id=?`, id).Scan(&heldFrom)
@@ -166,7 +166,7 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 			return "", err
 		}
 		if n, _ := res.RowsAffected(); n == 0 {
-			return "", fmt.Errorf("not in HELD individual (release skipped — pausa de folder libera pela folder)")
+			return "", fmt.Errorf("not on individual HELD (release skipped — a folder pause releases through the folder)")
 		}
 		status := string(domain.StatusWaiting)
 		_ = s.cfg.DB.QueryRow(`SELECT status FROM instances WHERE id=?`, id).Scan(&status)
@@ -196,7 +196,7 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 			return "", fmt.Errorf("instance not found")
 		}
 		if status != string(domain.StatusHeld) {
-			return "", fmt.Errorf("delete exige HOLD (status atual: %s)", status)
+			return "", fmt.Errorf("delete requires HOLD (current status: %s)", status)
 		}
 		if _, err := s.cfg.DB.Exec(`DELETE FROM instance_events WHERE instance_id=?`, id); err != nil {
 			return "", err
@@ -206,7 +206,7 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 			return "", err
 		}
 		if n, _ := res.RowsAffected(); n == 0 {
-			return "", fmt.Errorf("instance mudou de estado durante o delete")
+			return "", fmt.Errorf("the instance changed state during the delete")
 		}
 		s.cfg.Hub.BroadcastWeb("instance.deleted", map[string]string{"id": id})
 		return "deleted", nil

@@ -36,7 +36,7 @@ export function UsersDialog({ meId, onClose }: UsersDialogProps) {
     try {
       const list = await listUsers();
       setUsers(list);
-    } catch (e: unknown) { setErr(e instanceof Error ? e.message : "load falhou"); }
+    } catch (e: unknown) { setErr(e instanceof Error ? e.message : "load failed"); }
     finally { setLoading(false); }
   }
   async function reload() {
@@ -50,30 +50,30 @@ export function UsersDialog({ meId, onClose }: UsersDialogProps) {
 
   async function doCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!newU.trim() || newP.length < 4) { setErr("usuario obrig + senha min 4"); return; }
+    if (!newU.trim() || newP.length < 4) { setErr("username required + password min 4"); return; }
     setCreating(true); setErr(null);
     try {
       await createUser(newU.trim(), newP, newR);
       setNewU(""); setNewP(""); setNewR("viewer");
       await reload();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "create falhou");
+      setErr(e instanceof Error ? e.message : "create failed");
     } finally { setCreating(false); }
   }
 
   async function doRole(u: AuthUser, role: Role) {
     if (u.id === meId && role !== "admin") {
-      if (!confirm("Tirar admin de voce mesmo?")) return;
+      if (!confirm("Remove admin from yourself?")) return;
     }
     try { await updateUserRole(u.id, role); await reload(); }
-    catch (e: unknown) { setErr(e instanceof Error ? e.message : "role falhou"); }
+    catch (e: unknown) { setErr(e instanceof Error ? e.message : "role failed"); }
   }
 
   async function doDelete(u: AuthUser) {
-    if (u.id === meId) { alert("nao pode deletar voce mesmo"); return; }
-    if (!confirm(`Deletar ${u.username}?`)) return;
+    if (u.id === meId) { alert("you cannot delete yourself"); return; }
+    if (!confirm(`Delete ${u.username}?`)) return;
     try { await deleteUser(u.id); await reload(); }
-    catch (e: unknown) { setErr(e instanceof Error ? e.message : "delete falhou"); }
+    catch (e: unknown) { setErr(e instanceof Error ? e.message : "delete failed"); }
   }
 
   return (
@@ -83,15 +83,15 @@ export function UsersDialog({ meId, onClose }: UsersDialogProps) {
     }}>
       <div className="v2-grain-card v2-neon-card" style={{ width: 720, maxHeight: "85vh", padding: 20, display: "grid", gap: 12, overflow: "auto" }}>
         <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 style={{ margin: 0, fontSize: 16 }}>Usuários</h3>
-          <button onClick={onClose} className="v2-dialog-x" aria-label="Fechar">✕</button>
+          <h3 style={{ margin: 0, fontSize: 16 }}>Users</h3>
+          <button onClick={onClose} className="v2-dialog-x" aria-label="Close">✕</button>
         </header>
 
         <form onSubmit={doCreate} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 120px auto", gap: 6, alignItems: "end" }}>
-          <label style={lbl}><span>novo usuario</span>
+          <label style={lbl}><span>new user</span>
             <input value={newU} onChange={e => setNewU(e.target.value)} disabled={creating} />
           </label>
-          <label style={lbl}><span>senha inicial</span>
+          <label style={lbl}><span>initial password</span>
             <input type="password" value={newP} onChange={e => setNewP(e.target.value)} disabled={creating} />
           </label>
           <label style={lbl}><span>role</span>
@@ -99,27 +99,27 @@ export function UsersDialog({ meId, onClose }: UsersDialogProps) {
               {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </label>
-          <button type="submit" className="v2-btn v2-btn-primary" disabled={creating}>{creating ? "..." : "Criar"}</button>
+          <button type="submit" className="v2-btn v2-btn-primary" disabled={creating}>{creating ? "..." : "Create"}</button>
         </form>
 
         {err && <div style={{ color: "salmon", fontSize: 12 }}>{err}</div>}
 
-        {loading ? <div>Carregando...</div> : (
+        {loading ? <div>Loading...</div> : (
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ textAlign: "left", borderBottom: "1px solid #333" }}>
                 <th style={th}>id</th>
-                <th style={th}>usuario</th>
+                <th style={th}>user</th>
                 <th style={th}>role</th>
-                <th style={th}>criado</th>
-                <th style={th}>acoes</th>
+                <th style={th}>created</th>
+                <th style={th}>actions</th>
               </tr>
             </thead>
             <tbody>
               {users.map(u => (
                 <tr key={u.id} style={{ borderBottom: "1px solid #222" }}>
                   <td style={td}>{u.id}</td>
-                  <td style={td}>{u.username}{u.id === meId && <span style={{ opacity: 0.6 }}> (voce)</span>}{u.mustChangePassword && <span style={{ color: "orange", marginLeft: 6 }}>[trocar]</span>}</td>
+                  <td style={td}>{u.username}{u.id === meId && <span style={{ opacity: 0.6 }}> (you)</span>}{u.mustChangePassword && <span style={{ color: "orange", marginLeft: 6 }}>[must change]</span>}</td>
                   <td style={td}>
                     <select value={u.role} onChange={e => doRole(u, e.target.value as Role)}>
                       {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
@@ -154,20 +154,20 @@ function ResetPasswordPrompt({ user, onClose }: { user: AuthUser; onClose: () =>
     if (pw.length < 4) { setErr("min 4"); return; }
     setBusy(true); setErr(null);
     try { await resetUserPassword(user.id, pw); setDone(true); setTimeout(onClose, 1000); }
-    catch (e: unknown) { setErr(e instanceof Error ? e.message : "falhou"); }
+    catch (e: unknown) { setErr(e instanceof Error ? e.message : "failed"); }
     finally { setBusy(false); }
   }
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "grid", placeItems: "center", zIndex: 9100 }}>
       <div className="v2-grain-card v2-neon-card" style={{ width: 320, padding: 18, display: "grid", gap: 10 }}>
-        <h4 style={{ margin: 0, fontSize: 14 }}>Reset senha — {user.username}</h4>
+        <h4 style={{ margin: 0, fontSize: 14 }}>Reset password — {user.username}</h4>
         {done ? <div style={{ color: "lightgreen" }}>OK</div> : (
           <form onSubmit={go} style={{ display: "grid", gap: 8 }}>
-            <input autoFocus type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="nova senha" disabled={busy} />
+            <input autoFocus type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="new password" disabled={busy} />
             {err && <div style={{ color: "salmon", fontSize: 12 }}>{err}</div>}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-              <button type="button" className="v2-btn" onClick={onClose} disabled={busy}>Cancelar</button>
-              <button type="submit" className="v2-btn v2-btn-primary" disabled={busy}>{busy ? "..." : "Definir"}</button>
+              <button type="button" className="v2-btn" onClick={onClose} disabled={busy}>Cancel</button>
+              <button type="submit" className="v2-btn v2-btn-primary" disabled={busy}>{busy ? "..." : "Set"}</button>
             </div>
           </form>
         )}
@@ -199,7 +199,7 @@ function AclEditor({ user, onClose }: { user: AuthUser; onClose: () => void }) {
         for (const a of ac) m.set(a.folder, a.perms);
         setAcls(m);
       } catch (e: unknown) {
-        setErr(e instanceof Error ? e.message : "load falhou");
+        setErr(e instanceof Error ? e.message : "load failed");
       } finally {
         setLoading(false);
       }
@@ -221,7 +221,7 @@ function AclEditor({ user, onClose }: { user: AuthUser; onClose: () => void }) {
       await replaceUserACLs(user.id, list);
       onClose();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "save falhou");
+      setErr(e instanceof Error ? e.message : "save failed");
     } finally {
       setSaving(false);
     }
@@ -234,22 +234,22 @@ function AclEditor({ user, onClose }: { user: AuthUser; onClose: () => void }) {
       <div className="v2-grain-card v2-neon-card" style={{ width: 540, maxHeight: "85vh", padding: 18, display: "grid", gap: 10, overflow: "auto" }}>
         <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h4 style={{ margin: 0, fontSize: 14 }}>ACLs — {user.username} <span style={{ opacity: 0.6, fontWeight: 400 }}>({user.role})</span></h4>
-          <button onClick={onClose} disabled={saving} className="v2-dialog-x" aria-label="Fechar">✕</button>
+          <button onClick={onClose} disabled={saving} className="v2-dialog-x" aria-label="Close">✕</button>
         </header>
         <div style={{ fontSize: 11, opacity: 0.75, lineHeight: 1.5 }}>
           {restricted
-            ? "Modo restrito: user só vê / edita folders explicitamente marcadas abaixo."
-            : "Modo permissivo: sem ACLs ⇒ user lê todas as folders (operator também escreve em todas). Marcar pelo menos uma folder ativa modo restrito."}
+            ? "Restricted mode: the user only sees / edits the folders explicitly checked below."
+            : "Permissive mode: with no ACL ⇒ the user reads every folder (an operator also writes to all of them). Checking at least one folder turns on restricted mode."}
         </div>
         {err && <div style={{ color: "salmon", fontSize: 12 }}>{err}</div>}
 
-        {loading ? <div>Carregando...</div> : (
+        {loading ? <div>Loading...</div> : (
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{ textAlign: "left", borderBottom: "1px solid #333" }}>
                 <th style={th}>folder</th>
                 <th style={th}>jobs</th>
-                <th style={th}>permissão</th>
+                <th style={th}>permission</th>
               </tr>
             </thead>
             <tbody>
@@ -267,14 +267,14 @@ function AclEditor({ user, onClose }: { user: AuthUser; onClose: () => void }) {
                   </tr>
                 );
               })}
-              {folders.length === 0 && <tr><td colSpan={3} style={{ ...td, opacity: 0.6 }}>Nenhuma folder.</td></tr>}
+              {folders.length === 0 && <tr><td colSpan={3} style={{ ...td, opacity: 0.6 }}>No folder.</td></tr>}
             </tbody>
           </table>
         )}
 
         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-          <button onClick={onClose} disabled={saving} className="v2-btn">Cancelar</button>
-          <button onClick={save} disabled={saving || loading} className="v2-btn v2-btn-primary">{saving ? "..." : "Salvar"}</button>
+          <button onClick={onClose} disabled={saving} className="v2-btn">Cancel</button>
+          <button onClick={save} disabled={saving || loading} className="v2-btn v2-btn-primary">{saving ? "..." : "Save"}</button>
         </div>
       </div>
     </div>

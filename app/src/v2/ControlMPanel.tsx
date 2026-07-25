@@ -55,7 +55,7 @@ export function ControlMPanel({ onClose }: { onClose: () => void }) {
           padding: "12px 16px", borderBottom: "1px solid var(--v2-border-medium)",
         }}>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Control Panel</h2>
-          <button onClick={onClose} className="v2-dialog-x" aria-label="Fechar">✕</button>
+          <button onClick={onClose} className="v2-dialog-x" aria-label="Close">✕</button>
         </header>
         <div style={{ display: "flex", gap: 6, padding: "8px 16px", borderBottom: "1px solid var(--v2-border-medium)" }}>
           {TABS.map(t => (
@@ -149,10 +149,10 @@ function CalendarEditor({ cal, onSave, onCancel }: { cal: Calendar; onSave: (c: 
   };
 
   const first = new Date(view.y, view.m, 1);
-  const startPad = (first.getDay() + 6) % 7; // semana começa na segunda
+  const startPad = (first.getDay() + 6) % 7; // week starts on Monday
   const daysInMonth = new Date(view.y, view.m + 1, 0).getDate();
   const cells: Array<number | null> = [...Array(startPad).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
-  const monthLabel = first.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const monthLabel = first.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
   const colorFor = (st: string) => st === "exclude" ? { bg: "rgba(239,68,68,0.14)", fg: "var(--v2-status-failed)", br: "rgba(239,68,68,0.5)" }
     : st === "include" ? { bg: "var(--v2-accent-deep)", fg: "var(--v2-accent-brand)", br: "var(--v2-accent-dark)" }
     : st === "holiday" ? { bg: "rgba(245,158,11,0.14)", fg: "var(--v2-status-hold)", br: "rgba(245,158,11,0.45)" }
@@ -162,10 +162,10 @@ function CalendarEditor({ cal, onSave, onCancel }: { cal: Calendar; onSave: (c: 
     <div style={{ marginTop: 16, padding: 12, border: "1px solid var(--v2-border-strong)", borderRadius: 6 }}>
       <div style={{ marginBottom: 10 }}>
         <label style={lbl}>Name: </label>
-        <input value={c.name} onChange={e => setC({ ...c, name: e.target.value })} style={inp} placeholder="ex: dias-uteis-br" />
+        <input value={c.name} onChange={e => setC({ ...c, name: e.target.value })} style={inp} placeholder="e.g. business-days-br" />
       </div>
       <div style={{ marginBottom: 10 }}>
-        <label style={lbl}>Dias úteis (semana): </label>
+        <label style={lbl}>Business days (week): </label>
         {days.map(d => (
           <label key={d} style={{ marginRight: 8, fontSize: 12 }}>
             <input type="checkbox" checked={(c.businessDays || []).includes(d)} onChange={e => {
@@ -183,7 +183,7 @@ function CalendarEditor({ cal, onSave, onCancel }: { cal: Calendar; onSave: (c: 
         <button onClick={() => setView((v) => v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 })} style={btnSm}>›</button>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
-        {["S","T","Q","Q","S","S","D"].map((d, i) => <div key={i} style={{ textAlign: "center", fontSize: 9, color: "var(--v2-text-muted)", fontFamily: "monospace" }}>{d}</div>)}
+        {["M","T","W","T","F","S","S"].map((d, i) => <div key={i} style={{ textAlign: "center", fontSize: 9, color: "var(--v2-text-muted)", fontFamily: "monospace" }}>{d}</div>)}
         {cells.map((day, i) => {
           if (day === null) return <div key={`p${i}`} />;
           const iso = `${view.y}-${String(view.m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -192,7 +192,7 @@ function CalendarEditor({ cal, onSave, onCancel }: { cal: Calendar; onSave: (c: 
           const st = stateOf(iso);
           const col = colorFor(st);
           return (
-            <button key={iso} onClick={() => cycle(iso)} title={`${iso}${st ? ` — ${st}` : ""} (clique para alternar)`}
+            <button key={iso} onClick={() => cycle(iso)} title={`${iso}${st ? ` — ${st}` : ""} (click to cycle)`}
               style={{
                 padding: "6px 0", fontSize: 11, cursor: "pointer", borderRadius: 3, fontFamily: "monospace",
                 background: st ? col.bg : (isBiz ? "var(--v2-bg-hover)" : "transparent"),
@@ -202,10 +202,10 @@ function CalendarEditor({ cal, onSave, onCancel }: { cal: Calendar; onSave: (c: 
         })}
       </div>
       <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 10, color: "var(--v2-text-muted)" }}>
-        <span><span style={{ color: "var(--v2-status-hold)" }}>■</span> feriado</span>
-        <span><span style={{ color: "var(--v2-accent-brand)" }}>■</span> incluir</span>
-        <span><span style={{ color: "var(--v2-status-failed)" }}>■</span> excluir</span>
-        <span style={{ marginLeft: "auto" }}>clique cicla os estados</span>
+        <span><span style={{ color: "var(--v2-status-hold)" }}>■</span> holiday</span>
+        <span><span style={{ color: "var(--v2-accent-brand)" }}>■</span> include</span>
+        <span><span style={{ color: "var(--v2-status-failed)" }}>■</span> exclude</span>
+        <span style={{ marginLeft: "auto" }}>click cycles the states</span>
       </div>
 
       <div style={{ marginTop: 12 }}>

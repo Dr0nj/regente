@@ -21,7 +21,7 @@ export default function DailyDiffModal() {
   useEffect(() => {
     let cancelled = false;
     fetchDailyDiff()
-      .then((d) => { if (!cancelled) { setDiff(d); setError(d ? null : "Diff indisponível no modo local."); } })
+      .then((d) => { if (!cancelled) { setDiff(d); setError(d ? null : "Diff unavailable in local mode."); } })
       .catch((e) => { if (!cancelled) setError(e?.message ?? String(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -42,11 +42,11 @@ export default function DailyDiffModal() {
         {/* header */}
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--v2-border-subtle)", display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>Diff de Daily</div>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>Daily Diff</div>
             <div style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", marginTop: 2 }}>
-              {diff ? `${diff.dateA} → ${diff.dateB}` : "comparando…"}
+              {diff ? `${diff.dateA} → ${diff.dateB}` : "comparing…"}
               {diff?.folder ? ` · folder ${diff.folder}` : ""}
-              {diff?.sameCommit ? " · mesmo commit (defs idênticas)" : diff?.commitB ? ` · commit ${diff.commitB.slice(0, 7)}` : ""}
+              {diff?.sameCommit ? " · same commit (identical defs)" : diff?.commitB ? ` · commit ${diff.commitB.slice(0, 7)}` : ""}
             </div>
           </div>
         </div>
@@ -54,31 +54,31 @@ export default function DailyDiffModal() {
         {/* counts */}
         {c && (
           <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--v2-border-subtle)", fontFamily: "var(--v2-font-mono)" }}>
-            <Count label="adicionados" n={c.added} color="var(--v2-status-ok)" />
-            <Count label="removidos" n={c.removed} color="var(--v2-status-failed)" />
-            <Count label="alterados" n={c.changed} color="var(--v2-status-waiting)" />
-            <Count label="iguais" n={c.unchanged} color="var(--v2-text-muted)" />
+            <Count label="added" n={c.added} color="var(--v2-status-ok)" />
+            <Count label="removed" n={c.removed} color="var(--v2-status-failed)" />
+            <Count label="changed" n={c.changed} color="var(--v2-status-waiting)" />
+            <Count label="same" n={c.unchanged} color="var(--v2-text-muted)" />
           </div>
         )}
 
         {/* body */}
         <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px" }}>
-          {loading && <Muted>avaliando o diff…</Muted>}
+          {loading && <Muted>evaluating the diff…</Muted>}
           {error && <div style={{ color: "var(--v2-status-failed)", fontSize: 11, fontFamily: "var(--v2-font-mono)" }}>{error}</div>}
           {diff && !loading && (
             <>
-              {c && c.added + c.removed + c.changed === 0 && <Muted>Nenhuma diferença — as duas diárias têm as mesmas definições.</Muted>}
+              {c && c.added + c.removed + c.changed === 0 && <Muted>No difference — both dailies have the same definitions.</Muted>}
 
-              <DefList title="＋ Adicionados" color="var(--v2-status-ok)" items={diff.added.map((d) => ({ defId: d.defId, label: d.label, team: d.team }))} />
-              <DefList title="－ Removidos" color="var(--v2-status-failed)" items={diff.removed.map((d) => ({ defId: d.defId, label: d.label, team: d.team }))} />
+              <DefList title="＋ Added" color="var(--v2-status-ok)" items={diff.added.map((d) => ({ defId: d.defId, label: d.label, team: d.team }))} />
+              <DefList title="－ Removed" color="var(--v2-status-failed)" items={diff.removed.map((d) => ({ defId: d.defId, label: d.label, team: d.team }))} />
 
               {diff.changed.length > 0 && (
-                <Section title="✎ Alterados" color="var(--v2-status-waiting)">
+                <Section title="✎ Changed" color="var(--v2-status-waiting)">
                   {diff.changed.map((ch) => <ChangedRow key={ch.defId} ch={ch} />)}
                 </Section>
               )}
 
-              {diff.truncated && <Muted>… lista truncada (contadores acima são exatos).</Muted>}
+              {diff.truncated && <Muted>… list truncated (the counters above are exact).</Muted>}
             </>
           )}
         </div>

@@ -107,7 +107,7 @@ func TestFileTransfer_MultiExigeDiretorio(t *testing.T) {
 		"src": filepath.Join(srcDir, "*.txt"),
 		"dst": filepath.Join(t.TempDir(), "arquivo-unico.txt"),
 	}, 30, func(string) {})
-	if code != 1 || !strings.Contains(out, "diretório") {
+	if code != 1 || !strings.Contains(out, "directory") {
 		t.Fatalf("esperava exit 1 exigindo diretório, veio %d (%s)", code, out)
 	}
 }
@@ -126,7 +126,7 @@ func TestFileTransfer_OrigemInexistente(t *testing.T) {
 		"src": filepath.Join(t.TempDir(), "nao-existe.dat"),
 		"dst": filepath.Join(t.TempDir(), "x.dat"),
 	}, 5, func(string) {})
-	if code != 1 || !strings.Contains(out, "origem sem arquivos") {
+	if code != 1 || !strings.Contains(out, "source has no files") {
 		t.Fatalf("esperava exit 1 origem sem arquivos, veio %d (%s)", code, out)
 	}
 }

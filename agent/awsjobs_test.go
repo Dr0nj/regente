@@ -138,7 +138,7 @@ func TestRunBatchJob_TimeoutTerminates(t *testing.T) {
 	params["jobQueue"] = "q"
 	params["jobDefinition"] = "jd"
 	code, out := runBatchJob(params, 1, nil)
-	if code != -1 || !strings.Contains(out, "timeout") {
+	if code != -1 || !strings.Contains(out, "timed out") {
 		t.Fatalf("esperava timeout -1, veio %d — %s", code, out)
 	}
 	if !terminated.Load() {
@@ -314,7 +314,7 @@ func TestRunStepFunctionJob_TimeoutStops(t *testing.T) {
 	params := awsCreds(srv.URL)
 	params["stateMachineArn"] = "arn:sm"
 	code, out := runStepFunctionJob(params, 1, nil)
-	if code != -1 || !strings.Contains(out, "timeout") {
+	if code != -1 || !strings.Contains(out, "timed out") {
 		t.Fatalf("esperava timeout -1, veio %d — %s", code, out)
 	}
 	if !stopped.Load() {

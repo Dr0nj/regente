@@ -19,14 +19,14 @@ func TestTypeSchemaRequiredPerType(t *testing.T) {
 		wantOK bool
 	}{
 		{"COMMAND", map[string]interface{}{"command": "echo oi"}, true},
-		{"COMMAND", map[string]interface{}{}, false},                      // command required
-		{"COMMAND", map[string]interface{}{"command": "   "}, false},      // vazio não conta
+		{"COMMAND", map[string]interface{}{}, false},                 // command required
+		{"COMMAND", map[string]interface{}{"command": "   "}, false}, // vazio não conta
 		{"SCRIPT", map[string]interface{}{"scriptPath": "/x.sh"}, true},
-		{"SCRIPT", map[string]interface{}{"args": "--full"}, false},       // falta scriptPath
+		{"SCRIPT", map[string]interface{}{"args": "--full"}, false}, // falta scriptPath
 		{"SSH", map[string]interface{}{"host": "h", "command": "ls"}, true},
-		{"SSH", map[string]interface{}{"host": "h"}, false},               // falta command
+		{"SSH", map[string]interface{}{"host": "h"}, false}, // falta command
 		{"HTTP", map[string]interface{}{"url": "http://x"}, true},
-		{"HTTP", nil, false},                                              // url required
+		{"HTTP", nil, false}, // url required
 		{"DATABASE", map[string]interface{}{"driver": "postgres", "dsn": "d", "sql": "select 1"}, true},
 		{"DATABASE", map[string]interface{}{"driver": "postgres", "dsn": "d"}, false},
 		{"FILE_WATCH", map[string]interface{}{"path": "/data/in/a.txt"}, true},

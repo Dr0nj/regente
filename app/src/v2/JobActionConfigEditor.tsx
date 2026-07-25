@@ -22,11 +22,11 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
   switch (jobType) {
     case "COMMAND":
       return (
-        <Section label="Comando no agente">
-          <Row label="Comando (sh -c no Linux / powershell no Windows)">
+        <Section label="Command on the agent">
+          <Row label="Command (sh -c on Linux / powershell on Windows)">
             <TextArea mono rows={3} value={str("command")} placeholder="echo hello && python /app/run.py --date {DATE}" onChange={v => set("command", v)} />
           </Row>
-          <Row label="Working dir (cwd, opcional)">
+          <Row label="Working dir (cwd, optional)">
             <Input mono value={str("cwd")} placeholder="/opt/app   ou   C:\\app" onChange={v => set("cwd", v)} />
           </Row>
         </Section>
@@ -34,14 +34,14 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
 
     case "SCRIPT":
       return (
-        <Section label="Script no agente">
-          <Row label="Caminho do script (.sh / .bat / .ps1 no agente)">
-            <Input mono value={str("scriptPath")} placeholder="/opt/jobs/load.sh   ou   C:\\jobs\\load.ps1" onChange={v => set("scriptPath", v)} />
+        <Section label="Script on the agent">
+          <Row label="Script path (.sh / .bat / .ps1 on the agent)">
+            <Input mono value={str("scriptPath")} placeholder="/opt/jobs/load.sh   or   C:\\jobs\\load.ps1" onChange={v => set("scriptPath", v)} />
           </Row>
-          <Row label="Argumentos (opcional)">
+          <Row label="Arguments (optional)">
             <Input mono value={str("args")} placeholder="--date {DATE} --full" onChange={v => set("args", v)} />
           </Row>
-          <Row label="Working dir (cwd, opcional)">
+          <Row label="Working dir (cwd, optional)">
             <Input mono value={str("cwd")} placeholder="/opt/jobs" onChange={v => set("cwd", v)} />
           </Row>
         </Section>
@@ -49,20 +49,20 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
 
     case "SSH":
       return (
-        <Section label="SSH remoto (agentless)">
+        <Section label="Remote SSH (agentless)">
           <Row label="Host">
             <Input mono value={str("host")} placeholder="10.0.0.5 / ec2-...compute.amazonaws.com" onChange={v => set("host", v)} />
           </Row>
-          <Row label="Usuário">
+          <Row label="User">
             <Input mono value={str("user")} placeholder="ubuntu / ec2-user" onChange={v => set("user", v)} />
           </Row>
-          <Row label="Porta (default 22)">
+          <Row label="Port (default 22)">
             <Input mono value={str("port")} placeholder="22" onChange={v => set("port", v)} />
           </Row>
-          <Row label="Comando">
+          <Row label="Command">
             <TextArea mono rows={3} value={str("command")} placeholder="systemctl restart app && echo ok" onChange={v => set("command", v)} />
           </Row>
-          <Row label="Chave privada (keyPath, opcional)">
+          <Row label="Private key (keyPath, optional)">
             <Input mono value={str("keyPath")} placeholder="/home/user/.ssh/id_rsa" onChange={v => set("keyPath", v)} />
           </Row>
         </Section>
@@ -70,14 +70,14 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
 
     case "FILE_WATCH":
       return (
-        <Section label="File Watch (espera arquivo no host do agente)">
-          <Row label="Caminho do arquivo (no host do agente)">
-            <Input mono value={str("path")} placeholder="/data/in/carga.csv   ou   C:\\entrada\\arquivo.dat" onChange={v => set("path", v)} />
+        <Section label="File Watch (waits for a file on the agent host)">
+          <Row label="File path (on the agent host)">
+            <Input mono value={str("path")} placeholder="/data/in/load.csv   or   C:\\inbound\\file.dat" onChange={v => set("path", v)} />
           </Row>
-          <Row label="Intervalo do poll em segundos (default 5)">
+          <Row label="Poll interval in seconds (default 5)">
             <Input mono value={num("intervalSec") ? String(num("intervalSec")) : ""} placeholder="5" onChange={v => set("intervalSec", Number(v) || 0)} />
           </Row>
-          <Row label="Estabilidade em segundos (0 = basta existir; >0 = tamanho parado por N s)">
+          <Row label="Stability in seconds (0 = just has to exist; >0 = size unchanged for N s)">
             <Input mono value={num("stableSec") ? String(num("stableSec")) : ""} placeholder="0" onChange={v => set("stableSec", Number(v) || 0)} />
           </Row>
         </Section>
@@ -85,23 +85,23 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
 
     case "FILE_TRANSFER":
       return (
-        <Section label="File Transfer (MFT pelo agente)">
-          <Row label="Origem (local, sftp://user:pass@host/caminho ou s3://bucket/chave; glob em local/sftp)">
-            <Input mono value={str("src")} placeholder="/data/out/fech_*.csv   ou   s3://bucket/entrada/carga.csv" onChange={v => set("src", v)} />
+        <Section label="File Transfer (MFT from the agent)">
+          <Row label="Source (local, sftp://user:pass@host/path or s3://bucket/key; glob on local/sftp)">
+            <Input mono value={str("src")} placeholder="/data/out/close_*.csv   or   s3://bucket/inbound/load.csv" onChange={v => set("src", v)} />
           </Row>
-          <Row label="Destino (termine com / para diretório/prefixo)">
-            <Input mono value={str("dst")} placeholder="sftp://svc@10.0.0.5:22/entrada/" onChange={v => set("dst", v)} />
+          <Row label="Destination (end with / for a directory/prefix)">
+            <Input mono value={str("dst")} placeholder="sftp://svc@10.0.0.5:22/inbound/" onChange={v => set("dst", v)} />
           </Row>
-          <Row label="Verificação SHA-256 (relê o destino)">
+          <Row label="SHA-256 verification (re-reads the destination)">
             <BoolSelect value={get("checksum", false)} onChange={v => set("checksum", v)} />
           </Row>
-          <Row label="Remover origem após transferir (move)">
+          <Row label="Remove the source after transferring (move)">
             <BoolSelect value={get("deleteSource", false)} onChange={v => set("deleteSource", v)} />
           </Row>
-          <Row label="Sobrescrever destino existente">
+          <Row label="Overwrite an existing destination">
             <BoolSelect value={get("overwrite", true)} onChange={v => set("overwrite", v)} />
           </Row>
-          <Row label="Chave privada sftp (keyPath, opcional)">
+          <Row label="sftp private key (keyPath, optional)">
             <Input mono value={str("keyPath")} placeholder="/home/agent/.ssh/id_rsa" onChange={v => set("keyPath", v)} />
           </Row>
         </Section>
@@ -109,19 +109,19 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
 
     case "DATABASE":
       return (
-        <Section label="Database (SQL pelo agente)">
+        <Section label="Database (SQL from the agent)">
           <Row label="Driver">
             <select value={str("driver") || "postgres"} onChange={e => set("driver", e.target.value)} style={selectStyle}>
               {["postgres", "mysql", "sqlite"].map(d => <option key={d} value={d}>{d}</option>)}
             </select>
           </Row>
-          <Row label="DSN / conexão">
+          <Row label="DSN / connection">
             <Input mono value={str("dsn")} placeholder="postgres://user:pw@host:5432/db?sslmode=disable" onChange={v => set("dsn", v)} />
           </Row>
-          <Row label="SQL (SELECT renderiza linhas; DML mostra rows affected)">
-            <TextArea mono rows={5} value={str("sql")} placeholder="SELECT count(*) FROM cargas WHERE dt = '%%ORDERDATE'" onChange={v => set("sql", v)} />
+          <Row label="SQL (SELECT renders rows; DML shows rows affected)">
+            <TextArea mono rows={5} value={str("sql")} placeholder="SELECT count(*) FROM loads WHERE dt = '%%ORDERDATE'" onChange={v => set("sql", v)} />
           </Row>
-          <Row label="Máx. de linhas no output (SELECT, default 100)">
+          <Row label="Max. rows in the output (SELECT, default 100)">
             <Input mono value={num("maxRows") ? String(num("maxRows")) : ""} placeholder="100" onChange={v => set("maxRows", Number(v) || 0)} />
           </Row>
         </Section>
@@ -180,13 +180,13 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
           <Row label="Job definition">
             <Input mono value={str("jobDefinition")} onChange={v => set("jobDefinition", v)} />
           </Row>
-          <Row label="Command (espacos = args)">
+          <Row label="Command (spaces = args)">
             <Input mono value={str("command")} onChange={v => set("command", v)} placeholder="python /app/run.py --date {DATE}" />
           </Row>
           <Row label="Environment (JSON)">
             <TextArea mono rows={3} value={jsonStr(get("env", {}))} onChange={v => set("env", parseJson(v) ?? {})} />
           </Row>
-          <Row label="Region (default env do agente)">
+          <Row label="Region (defaults to the agent's env)">
             <Input mono value={str("region")} placeholder="sa-east-1" onChange={v => set("region", v)} />
           </Row>
         </Section>
@@ -209,7 +209,7 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
           <Row label="# workers">
             <Input mono value={String(num("numberOfWorkers") || 2)} onChange={v => set("numberOfWorkers", Number(v) || 0)} />
           </Row>
-          <Row label="Region (default env do agente)">
+          <Row label="Region (defaults to the agent's env)">
             <Input mono value={str("region")} placeholder="sa-east-1" onChange={v => set("region", v)} />
           </Row>
         </Section>
@@ -224,7 +224,7 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
           <Row label="Input (JSON)">
             <TextArea mono rows={5} value={jsonStr(get("input", {}))} onChange={v => set("input", parseJson(v) ?? {})} />
           </Row>
-          <Row label="Region (default env do agente)">
+          <Row label="Region (defaults to the agent's env)">
             <Input mono value={str("region")} placeholder="sa-east-1" onChange={v => set("region", v)} />
           </Row>
         </Section>
@@ -265,8 +265,8 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 function BoolSelect({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (
     <select value={value ? "true" : "false"} onChange={e => onChange(e.target.value === "true")} style={selectStyle}>
-      <option value="false">não</option>
-      <option value="true">sim</option>
+      <option value="false">no</option>
+      <option value="true">yes</option>
     </select>
   );
 }

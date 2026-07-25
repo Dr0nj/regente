@@ -80,7 +80,7 @@ export function CanvasContextMenu({ x, y, items, onClose }: CanvasContextMenuPro
             fontStyle: "italic",
           }}
         >
-          Nenhuma ação disponível
+          No action available
         </div>
       )}
       {items.map((it, idx) => (

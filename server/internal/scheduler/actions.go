@@ -187,7 +187,7 @@ func (s *Scheduler) execAction(instanceID, orderDate string, def domain.JobDefin
 		}
 		newID, err := s.ForceOrder(rule.TargetJob)
 		if err != nil {
-			s.emitEvent(instanceID, "action", "actions", "run-job FALHOU ("+rule.TargetJob+"): "+err.Error())
+			s.emitEvent(instanceID, "action", "actions", "run-job FAILED ("+rule.TargetJob+"): "+err.Error())
 			return
 		}
 		s.emitEvent(instanceID, "action", "actions", "run-job: "+rule.TargetJob+" → "+newID)
@@ -203,15 +203,15 @@ func (s *Scheduler) execAction(instanceID, orderDate string, def domain.JobDefin
 func defaultActionMessage(def domain.JobDefinition, rule domain.ActionRule) string {
 	switch strings.ToLower(rule.On) {
 	case "result":
-		return fmt.Sprintf("%s terminou %s", labelOf(def), strings.ToUpper(rule.Status))
+		return fmt.Sprintf("%s ended %s", labelOf(def), strings.ToUpper(rule.Status))
 	case "exit":
-		return fmt.Sprintf("%s terminou com exit code em [%s]", labelOf(def), rule.ExitCodes)
+		return fmt.Sprintf("%s ended with an exit code in [%s]", labelOf(def), rule.ExitCodes)
 	case "attempt":
-		return fmt.Sprintf("%s falhou na tentativa %d", labelOf(def), rule.Attempt)
+		return fmt.Sprintf("%s failed on attempt %d", labelOf(def), rule.Attempt)
 	case "runtime":
-		return fmt.Sprintf("%s rodando há mais de %dmin", labelOf(def), rule.AfterMin)
+		return fmt.Sprintf("%s running for more than %dmin", labelOf(def), rule.AfterMin)
 	}
-	return labelOf(def) + ": ação disparada"
+	return labelOf(def) + ": action fired"
 }
 
 // labelOf — rótulo amigável do job (Label, ou ID se vazio).

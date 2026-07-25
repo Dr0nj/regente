@@ -180,10 +180,10 @@ func runBatchJob(params map[string]interface{}, timeoutSec int, emit func(string
 	}
 	_ = json.Unmarshal(out, &sub)
 	if sub.JobID == "" {
-		return -1, "batch SubmitJob: resposta sem jobId: " + trunc(out, 400)
+		return -1, "batch SubmitJob: response without a jobId: " + trunc(out, 400)
 	}
 	if emit != nil {
-		emit(fmt.Sprintf("batch job %s submetido (id=%s, queue=%s)\n", name, sub.JobID, queue))
+		emit(fmt.Sprintf("batch job %s submitted (id=%s, queue=%s)\n", name, sub.JobID, queue))
 	}
 
 	deadline := time.Now().Add(time.Duration(max(timeoutSec, 1)) * time.Second)
@@ -193,7 +193,7 @@ func runBatchJob(params map[string]interface{}, timeoutSec int, emit func(string
 			// best-effort: não deixa o job órfão consumindo a fila.
 			tb, _ := json.Marshal(map[string]string{"jobId": sub.JobID, "reason": "regente: job timeout"})
 			_, _, _ = conn.awsPost("/v1/terminatejob", "", "application/json", tb)
-			return -1, fmt.Sprintf("batch job %s timeout após %ds (último status %s; TerminateJob enviado)", sub.JobID, timeoutSec, last)
+			return -1, fmt.Sprintf("batch job %s timed out after %ds (last status %s; TerminateJob sent)", sub.JobID, timeoutSec, last)
 		}
 		db, _ := json.Marshal(map[string][]string{"jobs": {sub.JobID}})
 		sc, out, err := conn.awsPost("/v1/describejobs", "", "application/json", db)
@@ -284,7 +284,7 @@ func runGlueJob(params map[string]interface{}, timeoutSec int, emit func(string)
 	}
 	_ = json.Unmarshal(out, &run)
 	if run.JobRunID == "" {
-		return -1, "glue StartJobRun: resposta sem JobRunId: " + trunc(out, 400)
+		return -1, "glue StartJobRun: response without a JobRunId: " + trunc(out, 400)
 	}
 	if emit != nil {
 		emit(fmt.Sprintf("glue job %s: run %s disparado\n", jobName, run.JobRunID))
@@ -296,7 +296,7 @@ func runGlueJob(params map[string]interface{}, timeoutSec int, emit func(string)
 		if time.Now().After(deadline) {
 			tb, _ := json.Marshal(map[string]interface{}{"JobName": jobName, "JobRunIds": []string{run.JobRunID}})
 			_, _, _ = conn.awsPost("/", "AWSGlue.BatchStopJobRun", ct, tb)
-			return -1, fmt.Sprintf("glue run %s timeout após %ds (último status %s; BatchStopJobRun enviado)", run.JobRunID, timeoutSec, last)
+			return -1, fmt.Sprintf("glue run %s timed out after %ds (last status %s; BatchStopJobRun sent)", run.JobRunID, timeoutSec, last)
 		}
 		gb, _ := json.Marshal(map[string]string{"JobName": jobName, "RunId": run.JobRunID})
 		sc, out, err := conn.awsPost("/", "AWSGlue.GetJobRun", ct, gb)
@@ -365,7 +365,7 @@ func runStepFunctionJob(params map[string]interface{}, timeoutSec int, emit func
 	}
 	_ = json.Unmarshal(out, &exec)
 	if exec.ExecutionArn == "" {
-		return -1, "step function StartExecution: resposta sem executionArn: " + trunc(out, 400)
+		return -1, "step function StartExecution: response without an executionArn: " + trunc(out, 400)
 	}
 	if emit != nil {
 		emit(fmt.Sprintf("step function: execution %s iniciada\n", exec.ExecutionArn))
@@ -378,7 +378,7 @@ func runStepFunctionJob(params map[string]interface{}, timeoutSec int, emit func
 				"executionArn": exec.ExecutionArn, "error": "Regente.Timeout", "cause": "job timeout",
 			})
 			_, _, _ = conn.awsPost("/", "AWSStepFunctions.StopExecution", ct, tb)
-			return -1, fmt.Sprintf("step function %s timeout após %ds (StopExecution enviado)", exec.ExecutionArn, timeoutSec)
+			return -1, fmt.Sprintf("step function %s timed out after %ds (StopExecution sent)", exec.ExecutionArn, timeoutSec)
 		}
 		db, _ := json.Marshal(map[string]string{"executionArn": exec.ExecutionArn})
 		sc, out, err := conn.awsPost("/", "AWSStepFunctions.DescribeExecution", ct, db)

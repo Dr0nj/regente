@@ -16,8 +16,8 @@ import type { JobSchedule, CalendarRef } from "@/lib/orchestrator-model";
 import { schedulePreview } from "@/lib/bloco2-api";
 import { isServerMode } from "@/lib/server-client";
 
-const MONTH_NAMES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-const WD_HEAD = ["Se", "Te", "Qu", "Qu", "Se", "Sá", "Do"]; // semana começa na Segunda (como o Control-M)
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const WD_HEAD = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]; // week starts on Monday (like Control-M)
 
 interface Props {
   schedule: JobSchedule;
@@ -68,19 +68,19 @@ export default function SchedulePreviewCalendar({ schedule, calendars }: Props) 
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <div style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--v2-text-muted)" }}>
-          Preview do calendário
+          Calendar preview
         </div>
         <div style={{ flex: 1 }} />
         {server && (
           <span style={{ fontSize: 10, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>
-            {loading ? "…" : `${total} dia${total === 1 ? "" : "s"} em ${year}`}
+            {loading ? "…" : `${total} day${total === 1 ? "" : "s"} in ${year}`}
           </span>
         )}
       </div>
 
       {/* Seletor de ano (as "abas") */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, marginBottom: 10 }}>
-        <YearBtn onClick={() => setYear((y) => y - 1)} title="Ano anterior"><ChevronLeft size={13} /></YearBtn>
+        <YearBtn onClick={() => setYear((y) => y - 1)} title="Previous year"><ChevronLeft size={13} /></YearBtn>
         {[year - 1, year, year + 1].map((y) => (
           <button key={y} onClick={() => setYear(y)} style={{
             padding: "3px 12px", fontSize: 12, cursor: "pointer", borderRadius: 4,
@@ -90,26 +90,26 @@ export default function SchedulePreviewCalendar({ schedule, calendars }: Props) 
             color: y === year ? "var(--v2-accent-brand)" : "var(--v2-text-secondary)",
           }}>{y}</button>
         ))}
-        <YearBtn onClick={() => setYear((y) => y + 1)} title="Próximo ano"><ChevronRight size={13} /></YearBtn>
+        <YearBtn onClick={() => setYear((y) => y + 1)} title="Next year"><ChevronRight size={13} /></YearBtn>
       </div>
 
       {/* Legenda */}
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10, fontSize: 10, color: "var(--v2-text-muted)" }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-          <span style={{ width: 12, height: 12, borderRadius: 3, background: "var(--v2-accent-brand)", display: "inline-block" }} /> roda
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: "var(--v2-accent-brand)", display: "inline-block" }} /> runs
         </span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-          <span style={{ width: 12, height: 12, borderRadius: 3, background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-subtle)", display: "inline-block" }} /> não roda
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-subtle)", display: "inline-block" }} /> does not run
         </span>
       </div>
 
       {!server ? (
         <div style={{ fontSize: 11, color: "var(--v2-text-muted)", lineHeight: 1.5, background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-subtle)", borderRadius: 4, padding: "10px 12px" }}>
-          O calendário exato é calculado pelo servidor (mesma regra da daily). Disponível no modo server/GitOps.
+          The exact calendar is computed by the server (same rule as the daily). Available in server/GitOps mode.
         </div>
       ) : err ? (
         <div style={{ fontSize: 11, color: "var(--v2-status-failed)", lineHeight: 1.5, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.3)", borderRadius: 4, padding: "8px 10px", fontFamily: "var(--v2-font-mono)", wordBreak: "break-word" }}>
-          Falha ao calcular o preview: {err}
+          Failed to compute the preview: {err}
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
@@ -144,7 +144,7 @@ function MiniMonth({ year, monthIdx, name, runDays }: { year: number; monthIdx: 
           const key = `${year}-${pad(monthIdx + 1)}-${pad(d)}`;
           const runs = runDays.has(key);
           return (
-            <div key={key} title={runs ? `${key} — roda` : `${key} — não roda`} style={{
+            <div key={key} title={runs ? `${key} — runs` : `${key} — does not run`} style={{
               fontSize: 9.5, textAlign: "center", padding: "2px 0", borderRadius: 3,
               fontFamily: "var(--v2-font-mono)",
               background: runs ? "var(--v2-accent-brand)" : "transparent",

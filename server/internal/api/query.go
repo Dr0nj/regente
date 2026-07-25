@@ -192,20 +192,20 @@ func (s *server) runQuery(w http.ResponseWriter, r *http.Request) {
 	case "explain":
 		id := s.resolveJobRef(intent.JobRef, date, allowed, restrict)
 		if id == "" {
-			resp["answer"] = map[string]any{"text": "Não achei um job '" + intent.JobRef + "' ordenado hoje. Confira o nome/ID."}
+			resp["answer"] = map[string]any{"text": "Couldn't find a job '" + intent.JobRef + "' ordered today. Check the name/ID."}
 			break
 		}
 		ex, err := s.cfg.Scheduler.Explain(id)
 		if err != nil {
-			resp["answer"] = map[string]any{"text": "Não consegui explicar '" + id + "'."}
+			resp["answer"] = map[string]any{"text": "Couldn't explain '" + id + "'."}
 			break
 		}
 		resp["answer"] = map[string]any{"text": ex.Summary, "explain": ex, "instanceId": id}
 
 	default:
 		resp["answer"] = map[string]any{
-			"text": "Não entendi a pergunta. Tente: \"resumo do dia\", \"o que falhou hoje\", " +
-				"\"jobs bloqueados na folder X\", \"quantos rodando\" ou \"por que o job Y não rodou\".",
+			"text": "I didn't understand the question. Try: \"summary of the day\", \"what failed today\", " +
+				"\"blocked jobs in folder X\", \"how many running\" or \"why didn't job Y run\".",
 		}
 	}
 
@@ -226,7 +226,7 @@ func (s *server) countByStatus(where string, args []any) (map[string]int, int) {
 			}
 		}
 		if err := rows.Err(); err != nil {
-			log.Printf("[api] countByStatus: iteração incompleta (contagem parcial): %v", err)
+			log.Printf("[api] countByStatus: incomplete iteration (partial count): %v", err)
 		}
 		rows.Close()
 	}
@@ -283,12 +283,12 @@ func instanceStatusRank(s string) int {
 }
 
 func summaryText(date string, total int, byStatus map[string]int, folder string) string {
-	scope := "hoje"
+	scope := "today"
 	if folder != "" {
-		scope = "hoje na folder " + folder
+		scope = "today in folder " + folder
 	}
 	if total == 0 {
-		return "Nenhum job ordenado " + scope + "."
+		return "No job ordered " + scope + "."
 	}
 	parts := []string{}
 	for _, st := range []string{"RUNNING", "WAITING", "OK", "NOTOK", "HELD", "CANCELLED"} {
@@ -304,9 +304,9 @@ func countText(n int, intent QueryIntent) string {
 	if intent.Status != "" {
 		what = intent.Status
 	}
-	where := "hoje"
+	where := "today"
 	if intent.Folder != "" {
-		where = "na folder " + intent.Folder
+		where = "in folder " + intent.Folder
 	}
 	return fmt.Sprintf("%d %s %s.", n, what, where)
 }
@@ -319,9 +319,9 @@ func listText(items []instanceRow, intent QueryIntent) string {
 		}
 		scope := ""
 		if intent.Folder != "" {
-			scope = " na folder " + intent.Folder
+			scope = " in folder " + intent.Folder
 		}
-		return "Nenhum " + what + scope + " hoje."
+		return "No " + what + scope + " today."
 	}
 	ids := make([]string, 0, len(items))
 	for i, it := range items {

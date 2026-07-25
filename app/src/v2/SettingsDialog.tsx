@@ -30,7 +30,7 @@ export function SettingsDialog({ onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [theme, setTheme] = useState<ThemeId>(getThemeId());
-  const [tab, setTab] = useState<"geral" | "temas" | "agentes">("geral");
+  const [tab, setTab] = useState<"general" | "themes" | "agents">("general");
   const [minimap, setMinimap] = useState<boolean>(() => typeof window !== "undefined" && window.localStorage.getItem("regente:minimap") === "1");
   const lsInt = (k: string, def: number) => {
     const v = typeof window !== "undefined" ? parseInt(window.localStorage.getItem(k) ?? "", 10) : NaN;
@@ -106,7 +106,7 @@ export function SettingsDialog({ onClose }: Props) {
     try {
       const st = await setGitToken(tokenInput.trim());
       setGit(st); setTokenInput(""); invalidateGitInfo();
-      setTokenMsg({ kind: "ok", text: "Token salvo e validado. Push/PR habilitados." });
+      setTokenMsg({ kind: "ok", text: "Token saved and validated. Push/PR enabled." });
     } catch (e) {
       setTokenMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -119,7 +119,7 @@ export function SettingsDialog({ onClose }: Props) {
     try {
       const st = await clearGitToken();
       setGit(st); invalidateGitInfo();
-      setTokenMsg({ kind: "ok", text: "Token removido. Modo read-only." });
+      setTokenMsg({ kind: "ok", text: "Token removed. Read-only mode." });
     } catch (e) {
       setTokenMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -132,7 +132,7 @@ export function SettingsDialog({ onClose }: Props) {
     try {
       const st = await setWebhookSecret(webhookInput.trim());
       setGit(st); setWebhookInput("");
-      setTokenMsg({ kind: "ok", text: webhookInput.trim() ? "Webhook secret salvo. Configure o mesmo no GitHub." : "Webhook secret removido." });
+      setTokenMsg({ kind: "ok", text: webhookInput.trim() ? "Webhook secret saved. Configure the same one on GitHub." : "Webhook secret removed." });
     } catch (e) {
       setTokenMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -146,7 +146,7 @@ export function SettingsDialog({ onClose }: Props) {
       const r = await cleanupGitDB();
       setTokenMsg({
         kind: "ok",
-        text: r.changed ? "DB removida do repositório (origin limpo)." : "Repositório já estava limpo.",
+        text: r.changed ? "DB removed from the repository (origin is clean)." : "The repository was already clean.",
       });
     } catch (e) {
       setTokenMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
@@ -171,17 +171,17 @@ export function SettingsDialog({ onClose }: Props) {
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Configurações</h2>
-          <button onClick={onClose} className="v2-dialog-x" aria-label="Fechar">✕</button>
+          <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Settings</h2>
+          <button onClick={onClose} className="v2-dialog-x" aria-label="Close">✕</button>
         </div>
 
         {!loaded ? (
-          <span style={{ fontSize: 12, color: "var(--v2-text-muted)" }}>Carregando...</span>
+          <span style={{ fontSize: 12, color: "var(--v2-text-muted)" }}>Loading...</span>
         ) : (
           <>
             {/* Sub-abas: Geral | Temas */}
             <div style={{ display: "flex", gap: 4, padding: 4, background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-subtle)", borderRadius: 10 }}>
-              {([["geral", "Geral"], ["agentes", "Agentes"], ["temas", "Temas"]] as const).map(([id, label]) => (
+              {([["general", "General"], ["agents", "Agents"], ["themes", "Themes"]] as const).map(([id, label]) => (
                 <button
                   key={id}
                   onClick={() => setTab(id)}
@@ -196,13 +196,13 @@ export function SettingsDialog({ onClose }: Props) {
               ))}
             </div>
 
-            {tab === "temas" && (
+            {tab === "themes" && (
             <fieldset style={{ border: "1px solid var(--v2-border-medium)", borderRadius: 6, padding: "12px 14px" }}>
               <legend style={{ fontSize: 11, fontWeight: 600, color: "var(--v2-text-secondary)", padding: "0 4px" }}>
-                Tema
+                Theme
               </legend>
               <div style={{ fontSize: 10, color: "var(--v2-text-muted)", marginBottom: 10 }}>
-                Escolha a aparência. Aplica na hora e fica salvo neste navegador.
+                Pick the look. It applies right away and is saved in this browser.
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 {THEMES.map((t) => {
@@ -232,12 +232,12 @@ export function SettingsDialog({ onClose }: Props) {
             </fieldset>
             )}
 
-            {tab === "geral" && (
+            {tab === "general" && (
             <>
             {/* Visualização — protótipos opt-in */}
             <fieldset style={{ border: "1px solid var(--v2-border-medium)", borderRadius: 6, padding: "12px 14px" }}>
               <legend style={{ fontSize: 11, fontWeight: 600, color: "var(--v2-text-secondary)", padding: "0 4px" }}>
-                Visualização
+                Visualization
               </legend>
               <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, cursor: "pointer" }}>
                 <input
@@ -250,50 +250,50 @@ export function SettingsDialog({ onClose }: Props) {
                     window.dispatchEvent(new Event("regente:minimap-changed"));
                   }}
                 />
-                Minimap de navegação
+                Navigation minimap
               </label>
               <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 6, display: "block", lineHeight: 1.5 }}>
-                Protótipo. Mostra um mapa do ambiente no canto inferior do Monitoring — clique/arraste para
-                navegar em ambientes grandes (estilo Control-M). Redimensionável; desligado por padrão.
+                Prototype. Shows a map of the environment in the bottom corner of Monitoring — click/drag to
+                navigate large environments (Control-M style). Resizable; off by default.
               </span>
 
               <div style={{ marginTop: 12, borderTop: "1px solid var(--v2-border-subtle)", paddingTop: 10 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Layout de jobs soltos (grade)</div>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Loose job layout (grid)</div>
                 <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
                   <label style={{ fontSize: 11, color: "var(--v2-text-secondary)" }}>
-                    Colunas
+                    Columns
                     <input type="number" min={1} max={40} value={layoutCols}
                       onChange={(e) => { const v = Math.max(1, Math.min(40, Number(e.target.value) || 10)); setLayoutCols(v); writeLayout(v, layoutMaxRows); }}
                       style={{ display: "block", marginTop: 4, width: 70, padding: "5px 8px", fontSize: 13, background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)", borderRadius: 4, color: "var(--v2-text-primary)", outline: "none", boxSizing: "border-box" }} />
                   </label>
                   <label style={{ fontSize: 11, color: "var(--v2-text-secondary)" }}>
-                    Máx. linhas (antes de alargar)
+                    Max. rows (before widening)
                     <input type="number" min={1} max={200} value={layoutMaxRows}
                       onChange={(e) => { const v = Math.max(1, Math.min(200, Number(e.target.value) || 30)); setLayoutMaxRows(v); writeLayout(layoutCols, v); }}
                       style={{ display: "block", marginTop: 4, width: 90, padding: "5px 8px", fontSize: 13, background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)", borderRadius: 4, color: "var(--v2-text-primary)", outline: "none", boxSizing: "border-box" }} />
                   </label>
                 </div>
                 <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 6, display: "block", lineHeight: 1.5 }}>
-                  Jobs SEM dependência viram uma grade de N colunas; ao passar de "máx. linhas" a grade alarga
-                  (cria colunas) em vez de crescer pra baixo. Aplica por folder, na hora. Dependentes seguem o
-                  fluxo top-down (não muda). Cada folder pode ter override próprio (tela Folders → ícone de grade),
-                  salvo no workspace.
+                  Jobs with NO dependency become a grid of N columns; past "max. rows" the grid widens
+                  (adds columns) instead of growing downwards. Applies per folder, right away. Dependents keep the
+                  top-down flow (unchanged). Each folder can have its own override (Folders screen → grid icon),
+                  saved in the workspace.
                 </span>
               </div>
 
               {/* UI-1 — cap do grafo do Monitoring (o quanto o ReactFlow desenha). */}
               <div style={{ marginTop: 12, borderTop: "1px solid var(--v2-border-subtle)", paddingTop: 10 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Cap do grafo (Monitoring)</div>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Graph cap (Monitoring)</div>
                 <label style={{ fontSize: 11, color: "var(--v2-text-secondary)" }}>
-                  Máx. de jobs desenhados no canvas
+                  Max. jobs drawn on the canvas
                   <input type="number" min={500} max={5000} step={100} value={legacyCapVal}
                     onChange={(e) => { const v = Math.max(500, Math.min(5000, Number(e.target.value) || 2000)); setLegacyCapVal(v); writeLegacyCap(v); }}
                     style={{ display: "block", marginTop: 4, width: 90, padding: "5px 8px", fontSize: 13, background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)", borderRadius: 4, color: "var(--v2-text-primary)", outline: "none", boxSizing: "border-box" }} />
                 </label>
                 <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 6, display: "block", lineHeight: 1.5 }}>
-                  O grafo (ReactFlow) não virtualiza — este cap evita travar em dias gigantes. A lista
-                  ACTIVE JOBS mostra o dia INTEIRO independente do cap (virtualizada, server-driven acima
-                  dele) e o ViewPoint cobre o drill-down a 100k–1M. Subir o cap custa render do grafo.
+                  The graph (ReactFlow) does not virtualize — this cap keeps huge days from freezing the UI. The
+                  ACTIVE JOBS list shows the WHOLE day regardless of the cap (virtualized, server-driven above
+                  it) and the ViewPoint covers drill-down at 100k–1M. Raising the cap costs graph render time.
                 </span>
               </div>
             </fieldset>
@@ -301,15 +301,15 @@ export function SettingsDialog({ onClose }: Props) {
             {/* F20 — Environment Label */}
             <fieldset style={{ border: "1px solid var(--v2-border-medium)", borderRadius: 6, padding: "12px 14px" }}>
               <legend style={{ fontSize: 11, fontWeight: 600, color: "var(--v2-text-secondary)", padding: "0 4px" }}>
-                Ambiente
+                Environment
               </legend>
               <label style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
-                Label do ambiente (aparece no header quando preenchido)
+                Environment label (shows in the header when filled in)
               </label>
               <input
                 value={envLabel}
                 onChange={(e) => setEnvLabel(e.target.value)}
-                placeholder="ex: QA, Production, Staging"
+                placeholder="e.g. QA, Production, Staging"
                 style={{
                   width: "100%", padding: "6px 10px", fontSize: 13,
                   background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)",
@@ -318,14 +318,14 @@ export function SettingsDialog({ onClose }: Props) {
                 }}
               />
               <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 4, display: "block" }}>
-                Deixe vazio para ocultar a tag. Ex: "QA", "Production", "DEV".
+                Leave it empty to hide the tag. E.g. "QA", "Production", "DEV".
               </span>
 
               <div style={{ marginTop: 12, borderTop: "1px solid var(--v2-border-subtle)", paddingTop: 10 }}>
                 <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
                   <div>
                     <label style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
-                      Horário da daily (New Day)
+                      Daily time (New Day)
                     </label>
                     <input
                       type="time"
@@ -341,13 +341,13 @@ export function SettingsDialog({ onClose }: Props) {
                   </div>
                   <div style={{ flex: 1, minWidth: 180 }}>
                     <label style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
-                      Timezone da daily
+                      Daily timezone
                     </label>
                     <input
                       list="regente-tz-suggestions"
                       value={dailyTz}
                       onChange={(e) => setDailyTz(e.target.value)}
-                      placeholder="relógio local do server"
+                      placeholder="server local clock"
                       spellCheck={false}
                       style={{
                         width: "100%", padding: "6px 10px", fontSize: 13, fontFamily: "var(--v2-font-mono)",
@@ -363,11 +363,11 @@ export function SettingsDialog({ onClose }: Props) {
                   </div>
                 </div>
                 <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 4, display: "block", lineHeight: 1.5 }}>
-                  O servidor materializa a diária neste horário, no relógio de NEGÓCIO da timezone
-                  (nome IANA, ex. <code>America/Sao_Paulo</code>; vazio = relógio local do server —
-                  nome inválido cai no local e loga). O <code>order_date</code> é o dia nessa timezone:
-                  server em UTC com negócio em SP cruza a meia-noite às 03:00Z. Aplica sem restart;
-                  se a daily de hoje já rodou, vale a partir de amanhã.
+                  The server materializes the daily at this time, on the BUSINESS clock of the timezone
+                  (IANA name, e.g. <code>America/Sao_Paulo</code>; empty = the server's local clock —
+                  an invalid name falls back to local and is logged). The <code>order_date</code> is the day in that
+                  timezone: a server on UTC with business hours in SP crosses midnight at 03:00Z. Applies with no
+                  restart; if today's daily already ran, it takes effect tomorrow.
                 </span>
               </div>
 
@@ -376,12 +376,12 @@ export function SettingsDialog({ onClose }: Props) {
                 <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
                   <div>
                     <label style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
-                      Retenção de instances (dias)
+                      Instance retention (days)
                     </label>
                     <input
                       type="number" min={0} value={retentionDays}
                       onChange={(e) => setRetentionDays(e.target.value)}
-                      placeholder="infinito"
+                      placeholder="unlimited"
                       style={{
                         width: 110, padding: "6px 10px", fontSize: 13,
                         background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)",
@@ -391,7 +391,7 @@ export function SettingsDialog({ onClose }: Props) {
                   </div>
                   <div style={{ flex: 1, minWidth: 180 }}>
                     <label style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
-                      Diretório de archives
+                      Archive directory
                     </label>
                     <input
                       value={archiveDir}
@@ -407,9 +407,9 @@ export function SettingsDialog({ onClose }: Props) {
                   </div>
                 </div>
                 <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 4, display: "block", lineHeight: 1.5 }}>
-                  Dailies mais velhas que a retenção são ARQUIVADAS (NDJSON por dia, com status/output/snapshot)
-                  no diretório acima e removidas do banco, logo após a daily — vazio/0 = guarda para sempre.
-                  Download em <code>GET /api/archive</code> (admin). A retenção de eventos de auditoria é à parte
+                  Dailies older than the retention are ARCHIVED (one NDJSON per day, with status/output/snapshot)
+                  into the directory above and removed from the database, right after the daily — empty/0 = keep
+                  forever. Download at <code>GET /api/archive</code> (admin). Audit event retention is separate
                   (<code>audit_retention_days</code>).
                 </span>
               </div>
@@ -426,25 +426,25 @@ export function SettingsDialog({ onClose }: Props) {
                 {git?.authMode === "token" || git?.hasToken ? (
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--v2-status-ok)", fontWeight: 600 }}>
                     <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--v2-status-ok)" }} />
-                    Token ativo — push/PR habilitados
+                    Token active — push/PR enabled
                   </span>
                 ) : (
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--v2-status-waiting)", fontWeight: 600 }}>
                     <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--v2-status-waiting)" }} />
-                    Sem token — read-only
+                    No token — read-only
                   </span>
                 )}
               </div>
 
               <label style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
-                Personal Access Token (fine-grained ou classic com escopo <code>repo</code>)
+                Personal Access Token (fine-grained or classic with the <code>repo</code> scope)
               </label>
               <div style={{ display: "flex", gap: 6 }}>
                 <input
                   type="password"
                   value={tokenInput}
                   onChange={(e) => setTokenInput(e.target.value)}
-                  placeholder={git?.hasToken ? "•••••• (substituir)" : "ghp_… / github_pat_…"}
+                  placeholder={git?.hasToken ? "•••••• (replace)" : "ghp_… / github_pat_…"}
                   autoComplete="off"
                   style={{
                     flex: 1, padding: "6px 10px", fontSize: 13, fontFamily: "var(--v2-font-mono)",
@@ -462,12 +462,12 @@ export function SettingsDialog({ onClose }: Props) {
                     opacity: tokenBusy || !tokenInput.trim() ? 0.5 : 1,
                   }}
                 >
-                  {tokenBusy ? "…" : "Salvar token"}
+                  {tokenBusy ? "…" : "Save token"}
                 </button>
               </div>
               <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 4, display: "block", lineHeight: 1.5 }}>
-                Guardado server-side (SQLite), fora do <code>.git/config</code>. Sobrevive a restart.
-                Nunca é devolvido pela API nem exibido depois de salvo.
+                Stored server-side (SQLite), outside <code>.git/config</code>. It survives restarts.
+                It is never returned by the API nor shown again after being saved.
               </span>
 
               <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
@@ -481,13 +481,13 @@ export function SettingsDialog({ onClose }: Props) {
                       color: "var(--v2-status-failed)", cursor: "pointer",
                     }}
                   >
-                    Remover token
+                    Remove token
                   </button>
                 )}
                 <button
                   onClick={handleCleanupDB}
                   disabled={cleanBusy || !git?.hasToken}
-                  title={git?.hasToken ? "Remove a SQLite DB que runs antigas commitaram no repo (resolve o bug do WAL)" : "Precisa de token para limpar o origin"}
+                  title={git?.hasToken ? "Removes the SQLite DB that old runs committed into the repo (fixes the WAL bug)" : "A token is required to clean the origin"}
                   style={{
                     padding: "5px 12px", fontSize: 11, borderRadius: 4,
                     background: "transparent", border: "1px solid var(--v2-border-medium)",
@@ -495,7 +495,7 @@ export function SettingsDialog({ onClose }: Props) {
                     opacity: cleanBusy || !git?.hasToken ? 0.5 : 1,
                   }}
                 >
-                  {cleanBusy ? "Limpando…" : "Limpar DB do repositório"}
+                  {cleanBusy ? "Cleaning…" : "Clean DB from the repository"}
                 </button>
               </div>
 
@@ -504,7 +504,7 @@ export function SettingsDialog({ onClose }: Props) {
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, fontSize: 12 }}>
                   <span style={{ color: "var(--v2-text-muted)" }}>Webhook:</span>
                   <span style={{ color: git?.webhookConfigured ? "var(--v2-status-ok)" : "var(--v2-text-muted)", fontWeight: 600 }}>
-                    {git?.webhookConfigured ? "secret configurado (HMAC ativo)" : "sem secret (validação inativa)"}
+                    {git?.webhookConfigured ? "secret configured (HMAC active)" : "no secret (validation off)"}
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
@@ -512,7 +512,7 @@ export function SettingsDialog({ onClose }: Props) {
                     type="password"
                     value={webhookInput}
                     onChange={(e) => setWebhookInput(e.target.value)}
-                    placeholder={git?.webhookConfigured ? "•••••• (substituir / vazio remove)" : "secret do webhook do GitHub"}
+                    placeholder={git?.webhookConfigured ? "•••••• (replace / empty removes)" : "GitHub webhook secret"}
                     autoComplete="off"
                     style={{
                       flex: 1, padding: "6px 10px", fontSize: 13, fontFamily: "var(--v2-font-mono)",
@@ -529,12 +529,12 @@ export function SettingsDialog({ onClose }: Props) {
                       color: "var(--v2-text-secondary)", cursor: tokenBusy ? "wait" : "pointer",
                     }}
                   >
-                    Salvar webhook
+                    Save webhook
                   </button>
                 </div>
                 <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 4, display: "block", lineHeight: 1.5 }}>
-                  No GitHub: repo → Settings → Webhooks → payload <code>/api/git/webhook</code>, content-type JSON,
-                  secret igual a este. Mudanças no main voltam pra UI na hora.
+                  On GitHub: repo → Settings → Webhooks → payload <code>/api/git/webhook</code>, content-type JSON,
+                  the same secret as this one. Changes on main come back to the UI right away.
                 </span>
               </div>
 
@@ -554,12 +554,12 @@ export function SettingsDialog({ onClose }: Props) {
             </>
             )}
 
-            {tab === "agentes" && <AgentsManager />}
+            {tab === "agents" && <AgentsManager />}
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button onClick={onClose} className="v2-btn">Cancelar</button>
+              <button onClick={onClose} className="v2-btn">Cancel</button>
               <button onClick={handleSave} disabled={saving} className="v2-btn v2-btn-primary">
-                {saving ? "Salvando..." : "Salvar"}
+                {saving ? "Saving..." : "Save"}
               </button>
             </div>
           </>

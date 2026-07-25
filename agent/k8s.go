@@ -47,7 +47,7 @@ func runK8sJob(params map[string]interface{}, timeoutSec int, emit func(string))
 	if apiServer == "" {
 		host := os.Getenv("KUBERNETES_SERVICE_HOST")
 		if host == "" {
-			return -1, "sem 'apiServer' e sem KUBERNETES_SERVICE_HOST (rodando fora de cluster)"
+			return -1, "no 'apiServer' and no KUBERNETES_SERVICE_HOST (running outside a cluster)"
 		}
 		port := os.Getenv("KUBERNETES_SERVICE_PORT")
 		if port == "" {
@@ -120,12 +120,12 @@ func runK8sJob(params map[string]interface{}, timeoutSec int, emit func(string))
 	jobsURL := fmt.Sprintf("%s/apis/batch/v1/namespaces/%s/jobs", base, ns)
 
 	if code, out, err := do(http.MethodPost, jobsURL, body); err != nil {
-		return -1, "criar Job: " + err.Error()
+		return -1, "create Job: " + err.Error()
 	} else if code < 200 || code >= 300 {
-		return -1, fmt.Sprintf("criar Job HTTP %d: %s", code, k8sTrunc(out, 400))
+		return -1, fmt.Sprintf("create Job HTTP %d: %s", code, k8sTrunc(out, 400))
 	}
 	if emit != nil {
-		emit(fmt.Sprintf("k8s Job %s/%s criado\n", ns, name))
+		emit(fmt.Sprintf("k8s Job %s/%s created\n", ns, name))
 	}
 
 	// Poll até succeeded/failed/timeout.
@@ -150,7 +150,7 @@ func runK8sJob(params map[string]interface{}, timeoutSec int, emit func(string))
 			}
 		}
 		if time.Now().After(deadline) {
-			return -1, fmt.Sprintf("k8s Job %s/%s timeout após %ds", ns, name, timeoutSec)
+			return -1, fmt.Sprintf("k8s Job %s/%s timed out after %ds", ns, name, timeoutSec)
 		}
 		time.Sleep(500 * time.Millisecond)
 	}

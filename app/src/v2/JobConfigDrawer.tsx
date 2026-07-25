@@ -39,11 +39,11 @@ export interface JobConfigHandlers {
 const JOB_TYPES: JobType[] = ["COMMAND", "SCRIPT", "SSH", "HTTP", "FILE_WATCH", "FILE_TRANSFER", "DATABASE", "LAMBDA", "BATCH", "GLUE", "STEP_FUNCTION"];
 type Tab = "general" | "schedule" | "action" | "ondo" | "deps";
 const TABS: Array<{ id: Tab; label: string }> = [
-  { id: "general", label: "Geral" },
+  { id: "general", label: "General" },
   { id: "schedule", label: "Schedule" },
   { id: "action", label: "Action" },
   { id: "ondo", label: "On/Do" },
-  { id: "deps", label: "Condições" },
+  { id: "deps", label: "Conditions" },
 ];
 
 interface Props {
@@ -159,7 +159,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
     const d = snap.def;
     if (!d.id.trim() || !d.label.trim() || !(d.team ?? "").trim()) return; // incompleta — não persiste sozinho
     Promise.resolve(autoSaveRef.current(d)).catch((e: unknown) => {
-      toast.error(`Autosave de ${d.id} falhou`, { detail: e instanceof Error ? e.message : String(e) });
+      toast.error(`Autosave of ${d.id} failed`, { detail: e instanceof Error ? e.message : String(e) });
     });
   }, []);
   /** Envolve um setter marcando o formulário como sujo (candidato a autosave). */
@@ -299,16 +299,16 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   }
 
   async function handleSave() {
-    if (!label.trim()) { setValidationErr("label obrigatório"); setTab("general"); return; }
-    if (!team.trim()) { setValidationErr("folder obrigatória"); setTab("general"); return; }
-    if (!id.trim()) { setValidationErr("id obrigatório"); setTab("general"); return; }
+    if (!label.trim()) { setValidationErr("label is required"); setTab("general"); return; }
+    if (!team.trim()) { setValidationErr("folder is required"); setTab("general"); return; }
+    if (!id.trim()) { setValidationErr("id is required"); setTab("general"); return; }
     // Job novo: normaliza o id final (slug) e barra colisão ANTES do save —
     // o save do server é upsert, então id repetido SOBRESCREVERIA o job antigo.
     const finalId = isNew ? slugifyJobName(id) : id.trim();
     if (isNew) {
-      if (!finalId) { setValidationErr("id inválido — use letras e números"); setTab("general"); return; }
+      if (!finalId) { setValidationErr("invalid id — use letters and digits"); setTab("general"); return; }
       if (allDefs.some((d) => d.id === finalId)) {
-        setValidationErr(`id "${finalId}" já existe — escolha outro`); setTab("general"); return;
+        setValidationErr(`id "${finalId}" already exists — pick another one`); setTab("general"); return;
       }
       if (finalId !== id) setId(finalId);
     }
@@ -326,19 +326,19 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
   // D-13 — salva a FORMA deste job como template reutilizável (o server
   // descarta id/team/upstream: identidade e vínculos não viajam no molde).
   async function handleSaveTemplate() {
-    const name = window.prompt("Nome do template:", id.trim() || label.trim());
+    const name = window.prompt("Template name:", id.trim() || label.trim());
     if (!name?.trim()) return;
     try {
       await saveTemplate(name.trim(), label.trim(), buildDef());
-      toast.success(`Template "${name.trim()}" salvo`, { detail: "disponível na aba Templates da palette" });
+      toast.success(`Template "${name.trim()}" saved`, { detail: "available in the Templates tab of the palette" });
     } catch (e) {
-      toast.error("Falha ao salvar template", { detail: e instanceof Error ? e.message : String(e) });
+      toast.error("Failed to save template", { detail: e instanceof Error ? e.message : String(e) });
     }
   }
 
   async function handleDelete() {
     if (isNew) { handlers.onClose(); return; }
-    if (!confirm(`Delete definition "${definition.label}"? Vai remover o YAML do repo.`)) return;
+    if (!confirm(`Delete definition "${definition.label}"? This removes the YAML from the repo.`)) return;
     // Deletou → NUNCA autosave no unmount (recriaria o job apagado).
     dirtyRef.current = false;
     if (liveRef.current) liveRef.current.dirty = false;
@@ -400,7 +400,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
         <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--v2-accent-brand)" }} />
         <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.04em" }}>{isNew ? "NEW JOB" : "EDIT JOB"}</span>
         {githubUrl && (
-          <a href={githubUrl} target="_blank" rel="noreferrer" title="Ver o YAML no GitHub"
+          <a href={githubUrl} target="_blank" rel="noreferrer" title="View the YAML on GitHub"
             style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-secondary)", textDecoration: "none", padding: "2px 7px", border: "1px solid var(--v2-border-medium)", borderRadius: 3, marginLeft: 6 }}>
             <ExternalLink size={10} /> GitHub
           </a>
@@ -440,8 +440,8 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
                 setId(uniqueJobId(v, taken));
               }
             }} /></Field>
-            <Field label={isNew ? "ID (único — vira o nome do YAML e das condições X-TO-Y)" : "ID (imutável — nome do YAML e das condições X-TO-Y)"}>
-              <Input value={id} mono disabled={!isNew} placeholder="derivado do Job Name"
+            <Field label={isNew ? "ID (unique — becomes the YAML file name and the X-TO-Y condition names)" : "ID (immutable — YAML file name and X-TO-Y condition names)"}>
+              <Input value={id} mono disabled={!isNew} placeholder="derived from Job Name"
                 onChange={(v) => {
                   dirtyRef.current = true; setIdTouched(true);
                   // Sanitização leve ao digitar (minúsculo, sem acento, sem chars
@@ -461,14 +461,14 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
                 {availableFolders.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </Field>
-            <Field label="Agente (onde roda)">
+            <Field label="Agent (where it runs)">
               <select value={agentId} onChange={(e) => { dirtyRef.current = true; setAgentTouched(true); setAgentId(e.target.value); }} style={selectStyle}>
-                <option value="">Automático (por capability)</option>
+                <option value="">Automatic (by capability)</option>
                 {agents.map((a) => (
                   // BUG-8 — o SERVER-AGENT embutido não ganha sufixo de restrição
                   // depois do nome; agentes externos seguem mostrando as caps.
                   <option key={a.id} value={a.id}>
-                    {a.id === "SERVER-AGENT" ? a.id : `${a.id} — ${a.capabilities.join("/") || "sem caps"}`}
+                    {a.id === "SERVER-AGENT" ? a.id : `${a.id} — ${a.capabilities.join("/") || "no caps"}`}
                   </option>
                 ))}
                 {agentId && !agents.some((a) => a.id === agentId) && (
@@ -477,13 +477,13 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
               </select>
               <div style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 4, lineHeight: 1.4 }}>
                 {agents.length === 0
-                  ? "Nenhum agente online. Rode o regente-agent na máquina alvo (jobs HTTP rodam no SERVER-AGENT embutido)."
-                  : "Pinado = roda SÓ nesse agente (se ele cair, o job espera em WAIT AGENT — nunca migra). Vazio = o server escolhe qualquer agente com a capability."}
+                  ? "No agent online. Run regente-agent on the target machine (HTTP jobs run on the built-in SERVER-AGENT)."
+                  : "Pinned = runs ONLY on that agent (if it goes down, the job waits in WAIT AGENT — it never migrates). Empty = the server picks any agent with the capability."}
               </div>
             </Field>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)" }}>
               <input type="checkbox" checked={schedule.enabled} onChange={(e) => { dirtyRef.current = true; setSchedule({ ...schedule, enabled: e.target.checked }); }} />
-              Schedule habilitado
+              Schedule enabled
             </label>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <Field label="Retries"><Input value={String(retries)} onChange={(v) => { dirtyRef.current = true; setRetries(Number(v) || 0); }} mono /></Field>
@@ -491,11 +491,11 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
             </div>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)" }}>
               <input type="checkbox" checked={dryRun} onChange={(e) => { dirtyRef.current = true; setDryRun(e.target.checked); }} />
-              Dry run (log only, não executa)
+              Dry run (log only, runs nothing)
             </label>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)" }}>
               <input type="checkbox" checked={confirmReq} onChange={(e) => { dirtyRef.current = true; setConfirmReq(e.target.checked); }} />
-              Exigir confirmação (Control-M Confirm — só roda após o operador confirmar)
+              Require confirmation (Control-M Confirm — only runs after an operator confirms)
             </label>
           </>
         )}
@@ -559,7 +559,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
         <button onClick={handleDelete} disabled={saving} style={{ ...btnStyle, borderColor: "rgba(239,68,68,.4)", color: "var(--v2-status-failed)" }}>{isNew ? "Cancel" : "Delete"}</button>
         <div style={{ flex: 1 }} />
         {isServerMode() && (
-          <button onClick={handleSaveTemplate} disabled={saving} title="Salvar a forma deste job como template reutilizável (D-13)"
+          <button onClick={handleSaveTemplate} disabled={saving} title="Save this job's shape as a reusable template (D-13)"
             style={btnStyle}>☆ Template</button>
         )}
         <button onClick={handleSave} disabled={saving} style={{ ...btnStyle, borderColor: "var(--v2-accent-brand)", color: "var(--v2-accent-brand)", fontWeight: 600 }}>{saving ? "…" : "Save"}</button>
@@ -621,11 +621,11 @@ function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, cond
       <div style={{ display: "flex", flexDirection: "column", gap: 14, position: "relative" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--v2-text-muted)" }}>
-          Modelo único — pool de condições
+          Single model — condition pool
         </span>
         <button
           onClick={() => setShowHelp((v) => !v)}
-          title="Como funcionam as condições"
+          title="How conditions work"
           style={{
             marginLeft: "auto", width: 20, height: 20, borderRadius: "50%",
             display: "inline-flex", alignItems: "center", justifyContent: "center",
@@ -647,52 +647,52 @@ function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, cond
         }}>
           <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
             <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--v2-accent-brand)" }}>
-              Como funciona
+              How it works
             </span>
-            <button onClick={() => setShowHelp(false)} title="Fechar" style={{ ...iconBtn, marginLeft: "auto" }}><X size={12} /></button>
+            <button onClick={() => setShowHelp(false)} title="Close" style={{ ...iconBtn, marginLeft: "auto" }}><X size={12} /></button>
           </div>
           <div style={{ fontSize: 10.5, color: "var(--v2-text-secondary)", lineHeight: 1.5, display: "flex", flexDirection: "column", gap: 10, maxHeight: 340, overflowY: "auto" }}>
-            <HelpTopic title="Modelo — pool único">
-              <b>Toda dependência é uma condição num pool único do ambiente</b> (botão
-              “Condições” no Monitoring). Ligar A→B pela <b>setinha</b> do canvas cria a
-              condição <code>A-TO-B</code> automaticamente: saída＋ no pai, entrada +
-              saída− aqui. Fazendo <b>à mão</b>, é o mesmo lugar: o mesmo nome na saída＋
-              do pai e na <b>entrada E na saída−</b> deste job.
+            <HelpTopic title="Model — a single pool">
+              <b>Every dependency is a condition in a single environment-wide pool</b> (the
+              “Conditions” button in Monitoring). Linking A→B with the canvas <b>arrow</b>
+              creates the <code>A-TO-B</code> condition automatically: out＋ on the parent,
+              in + out− here. Doing it <b>by hand</b> lands in the same place: the same name
+              in the parent's out＋ and in <b>this job's in AND out−</b>.
             </HelpTopic>
-            <HelpTopic title="Entrada — depende de">
-              O job fica em <b>WAIT COND</b> até <b>TODAS</b> as condições de entrada
-              existirem no pool. <b>Set OK + rerun</b> volta a esperar se a saída− já
-              apagou a condição.
+            <HelpTopic title="In — depends on">
+              The job sits in <b>WAIT COND</b> until <b>ALL</b> inbound conditions exist in
+              the pool. <b>Set OK + rerun</b> goes back to waiting if out− already deleted
+              the condition.
             </HelpTopic>
-            <HelpTopic title="AND/OR — lógica de entrada">
-              Por padrão a entrada é um <b>AND</b> (todas exigidas). Clique em
-              <b> AND/OR</b> ao lado de “Entrada” para agrupar: cada <b>grupo</b> tem
-              seu operador (<b>AND</b>/<b>OR</b>) e os grupos se combinam por um operador
-              de <b>topo</b>. Ex.: <code>(C1 AND C2) OR C3</code> roda pelo primeiro ramo
-              que fechar. Uma condição adicionada pela <b>setinha</b> num job com lógica
-              vira <b>requisito AND</b> (obrigatória).
+            <HelpTopic title="AND/OR — inbound logic">
+              By default the inbound side is an <b>AND</b> (all required). Click
+              <b> AND/OR</b> next to “In” to group them: each <b>group</b> has its own
+              operator (<b>AND</b>/<b>OR</b>) and the groups combine through a <b>top</b>
+              operator. E.g. <code>(C1 AND C2) OR C3</code> runs on whichever branch closes
+              first. A condition added by the <b>arrow</b> on a job with logic becomes an
+              <b> AND requirement</b> (mandatory).
             </HelpTopic>
-            <HelpTopic title="OR horário — fallback temporal">
-              Com <b>uma</b> condição aparece o atalho <b>OR rodar no horário</b>: o job
-              roda quando a condição chega <b>OU</b> quando o horário é atingido — o que
-              vier primeiro. O horário deixa de ser um piso e vira o membro
-              <b> ⏱ horário</b> da expressão. Precisa do <b>“a partir de”</b> (aba
-              Horário) — sem ele o atalho leva você até lá. Nos <b>grupos</b>, o botão
-              <b> ＋ horário</b> adiciona o mesmo membro. O <b>“até”</b> (windowTo)
-              segue como teto duro sempre.
+            <HelpTopic title="OR time — temporal fallback">
+              With <b>one</b> condition the <b>OR run at the scheduled time</b> shortcut
+              shows up: the job runs when the condition arrives <b>OR</b> when the time is
+              reached — whichever comes first. The time stops being a floor and becomes the
+              <b> ⏱ time</b> member of the expression. It needs the <b>“from”</b> time
+              (Schedule tab) — without it, the shortcut takes you there. Inside <b>groups</b>,
+              the <b>＋ time</b> button adds the same member. The <b>“to”</b> time (windowTo)
+              always stays a hard ceiling.
             </HelpTopic>
-            <HelpTopic title="Saída ＋ — adiciona ao terminar OK">
-              Ao terminar OK (ou Set OK), o job <b>ADICIONA</b> estas condições ao pool
-              — é o que libera quem depende delas.
+            <HelpTopic title="Out ＋ — added when it ends OK">
+              When it ends OK (or on Set OK), the job <b>ADDS</b> these conditions to the
+              pool — that is what releases whoever depends on them.
             </HelpTopic>
-            <HelpTopic title="Saída − — deleta ao terminar OK (consumo)">
-              Ao terminar OK (ou Set OK), o job <b>APAGA</b> estas condições do pool — é
-              o <b>consumo</b> da entrada. Sem a saída−, a condição sobrevive ao OK e o
-              rerun roda direto.
+            <HelpTopic title="Out − — deleted when it ends OK (consumption)">
+              When it ends OK (or on Set OK), the job <b>DELETES</b> these conditions from
+              the pool — that is the <b>consumption</b> of its inbound side. Without out−,
+              the condition survives the OK and a rerun goes straight through.
             </HelpTopic>
-            <HelpTopic title="Datas — o seletor de cada linha">
-              <b>Odate</b> (default) = diária de origem do job · <b>Prev</b> = diária
-              anterior · <b>Stat</b> = estática, sem data.
+            <HelpTopic title="Dates — the selector on each row">
+              <b>Odate</b> (default) = the job's origin daily · <b>Prev</b> = previous
+              daily · <b>Stat</b> = static, no date.
             </HelpTopic>
           </div>
         </div>
@@ -706,40 +706,40 @@ function DepsTab({ self, triggers, allDefs, conditionsIn, conditionsOutAdd, cond
         onChangeConditionsIn={onChangeConditionsIn}
         onChangeConditionLogic={onChangeConditionLogic}
         known={knownConditions}
-        crossRef={(n) => { const p = producersOf(n); return p.length ? `criada por: ${p.join(", ")}` : "ninguém cria esta condição no escopo (operador/painel Condições?)"; }}
+        crossRef={(n) => { const p = producersOf(n); return p.length ? `created by: ${p.join(", ")}` : "nobody in this scope creates this condition (operator/Conditions panel?)"; }}
       />
       <CondChipsEditor
-        title="Saída ＋ — adiciona ao terminar OK"
+        title="Out ＋ — added when it ends OK"
         value={conditionsOutAdd}
         onChange={onChangeConditionsOutAdd}
         known={knownConditions}
         listId="cond-known-add"
-        crossRef={(n) => { const c = consumersOf(n); return c.length ? `consumida por: ${c.join(", ")}` : "nenhum job espera por esta condição ainda"; }}
+        crossRef={(n) => { const c = consumersOf(n); return c.length ? `consumed by: ${c.join(", ")}` : "no job waits for this condition yet"; }}
       />
       <CondChipsEditor
-        title="Saída − — deleta ao terminar OK (consumo)"
+        title="Out − — deleted when it ends OK (consumption)"
         value={conditionsOutRemove}
         onChange={onChangeConditionsOutRemove}
         known={knownConditions}
         listId="cond-known-rm"
-        crossRef={(n) => { const c = consumersOf(n); return c.length ? `trava de volta: ${c.join(", ")}` : undefined; }}
+        crossRef={(n) => { const c = consumersOf(n); return c.length ? `blocks again: ${c.join(", ")}` : undefined; }}
       />
 
       {/* Vista dos dois lados (leitura, derivada por name-matching) */}
       <div style={{ borderTop: "1px solid var(--v2-border-subtle)", paddingTop: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--v2-text-muted)", marginBottom: 6 }}>
-          <ArrowLeft size={11} /> Depende de
+          <ArrowLeft size={11} /> Depends on
         </div>
-        {dependsOn.length === 0 && <Hint>Nenhum job cria as condições de entrada deste (ou não há entrada).</Hint>}
+        {dependsOn.length === 0 && <Hint>No job creates this one's inbound conditions (or there are none).</Hint>}
         {dependsOn.map((l) => (
           <div key={l} style={depRow}>
             <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}>{l}</span>
           </div>
         ))}
         <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--v2-text-muted)", margin: "10px 0 6px" }}>
-          <ArrowRight size={11} /> Dispara
+          <ArrowRight size={11} /> Triggers
         </div>
-        {triggers.length === 0 && <Hint>Nenhum job espera pelas condições que este cria.</Hint>}
+        {triggers.length === 0 && <Hint>No job waits for the conditions this one creates.</Hint>}
         {triggers.map((d) => (
           <div key={d.id} style={depRow}>
             <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}>{d.label}</span>
@@ -792,30 +792,30 @@ function ResourcesEditor({ resources, onChange, available }: {
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ width: 6, height: 6, borderRadius: "50%", background: RES_ACCENT }} />
         <span style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: RES_ACCENT, fontWeight: 700 }}>
-          Recursos / Quotas
+          Resources / Quotas
         </span>
-        <button onClick={() => setShowHelp((v) => !v)} title="Como funcionam os recursos" style={{ ...addToggleStyle(showHelp, RES_ACCENT), marginLeft: "auto" }}>
+        <button onClick={() => setShowHelp((v) => !v)} title="How resources work" style={{ ...addToggleStyle(showHelp, RES_ACCENT), marginLeft: "auto" }}>
           <HelpCircle size={13} />
         </button>
-        <button onClick={() => setAdding((v) => !v)} title={adding ? "Fechar" : "Adicionar recurso"} style={addToggleStyle(adding, RES_ACCENT)}>
+        <button onClick={() => setAdding((v) => !v)} title={adding ? "Close" : "Add resource"} style={addToggleStyle(adding, RES_ACCENT)}>
           {adding ? <X size={12} /> : <Plus size={12} />}
         </button>
       </div>
       {showHelp && (
         <div style={{ position: "absolute", top: 30, left: 8, right: 8, zIndex: 10, background: "var(--v2-bg-elevated)", border: `1px solid ${RES_ACCENT}`, borderRadius: 8, boxShadow: "0 10px 30px rgba(0,0,0,0.45)", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center" }}>
-            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: RES_ACCENT }}>Como funcionam os recursos</span>
-            <button onClick={() => setShowHelp(false)} title="Fechar" style={{ ...iconBtn, marginLeft: "auto" }}><X size={12} /></button>
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: RES_ACCENT }}>How resources work</span>
+            <button onClick={() => setShowHelp(false)} title="Close" style={{ ...iconBtn, marginLeft: "auto" }}><X size={12} /></button>
           </div>
           <div style={{ fontSize: 10.5, color: "var(--v2-text-secondary)", lineHeight: 1.5 }}>
-            Recurso é um <b>semáforo de concorrência</b> (quota), não pré-requisito lógico.
-            Sem unidade livre no pool, o job espera em <b style={{ color: RES_ACCENT }}>WAIT RESOURCE</b> (fila).
-            Vários recursos num job = <b>tudo-ou-nada</b> (só começa se couber em todos de uma vez).
+            A resource is a <b>concurrency semaphore</b> (quota), not a logical prerequisite.
+            With no free unit in the pool, the job waits in <b style={{ color: RES_ACCENT }}>WAIT RESOURCE</b> (queue).
+            Several resources on one job = <b>all-or-nothing</b> (it only starts if it fits in all of them at once).
           </div>
           <div style={{ fontSize: 10.5, color: "var(--v2-text-secondary)", lineHeight: 1.5 }}>
-            Aqui só se ESCOLHE quais o job consome e quanto. A <b>capacidade</b> de cada recurso é
-            gerida no Monitoring (painel <b>Recursos</b>) e sobrevive a restart. Recurso novo nasce com
-            capacidade 1 (lock exclusivo) até ajustar lá.
+            Here you only CHOOSE which ones the job consumes and how much. Each resource's <b>capacity</b> is
+            managed in Monitoring (the <b>Resources</b> panel) and survives a restart. A new resource is born with
+            capacity 1 (exclusive lock) until you adjust it there.
           </div>
         </div>
       )}
@@ -825,11 +825,11 @@ function ResourcesEditor({ resources, onChange, available }: {
           <div key={name} style={{ ...depRow, borderColor: `${RES_ACCENT}44` }}>
             <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}>{name}</span>
             <span style={{ fontSize: 9, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>
-              {cap ? `cap ${cap.capacity} · uso ${cap.used}` : "novo · cap 1 ao criar"}
+              {cap ? `cap ${cap.capacity} · used ${cap.used}` : "new · cap 1 on create"}
             </span>
-            <input type="number" min={1} value={qty} title="quantidade consumida por este job"
+            <input type="number" min={1} value={qty} title="quantity consumed by this job"
               onChange={(e) => setQty(name, parseInt(e.target.value, 10))} style={numInput} />
-            <button onClick={() => remove(name)} style={iconBtn} title="Remover recurso"><Trash2 size={12} /></button>
+            <button onClick={() => remove(name)} style={iconBtn} title="Remove resource"><Trash2 size={12} /></button>
           </div>
         );
       })}
@@ -839,7 +839,7 @@ function ResourcesEditor({ resources, onChange, available }: {
             autoFocus
             value={draftName}
             list="job-known-resources"
-            placeholder="recurso… (ex.: SAP)"
+            placeholder="resource… (e.g. SAP)"
             onChange={(e) => setDraftName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } else if (e.key === "Escape") { setDraftName(""); setAdding(false); } }}
             onFocus={(e) => { e.currentTarget.style.borderColor = RES_ACCENT; }}
@@ -849,10 +849,10 @@ function ResourcesEditor({ resources, onChange, available }: {
           <datalist id="job-known-resources">
             {suggestions.map((r) => <option key={r.name} value={r.name}>{`cap ${r.capacity}`}</option>)}
           </datalist>
-          <input type="number" min={1} value={draftQty} title="quantidade"
+          <input type="number" min={1} value={draftQty} title="quantity"
             onChange={(e) => setDraftQty(e.target.value.replace(/\D/g, ""))}
             style={{ ...numInput, background: "var(--v2-bg-elevated)", border: "1px dashed var(--v2-border-medium)" }} />
-          <button onClick={add} disabled={!draftName.trim()} title="Adicionar" style={{ ...btnStyle, borderColor: draftName.trim() ? RES_ACCENT : "var(--v2-border-medium)", color: draftName.trim() ? RES_ACCENT : "var(--v2-text-muted)" }}>＋</button>
+          <button onClick={add} disabled={!draftName.trim()} title="Add" style={{ ...btnStyle, borderColor: draftName.trim() ? RES_ACCENT : "var(--v2-border-medium)", color: draftName.trim() ? RES_ACCENT : "var(--v2-text-muted)" }}>＋</button>
         </div>
       )}
     </div>
@@ -901,7 +901,7 @@ function CondChipsEditor({ title, value, onChange, known, listId, crossRef, head
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: value.length ? 4 : 0 }}>
         <span style={{ fontSize: 10, fontWeight: 600, color: "var(--v2-text-secondary)" }}>{title}</span>
-        <button onClick={() => setAdding((v) => !v)} title={adding ? "Fechar" : "Adicionar condição"} style={addToggleStyle(adding)}>
+        <button onClick={() => setAdding((v) => !v)} title={adding ? "Close" : "Add condition"} style={addToggleStyle(adding)}>
           {adding ? <X size={12} /> : <Plus size={12} />}
         </button>
         {headerExtra}
@@ -917,7 +917,7 @@ function CondChipsEditor({ title, value, onChange, known, listId, crossRef, head
                   diária de origem (default) · Prev = anterior · Stat = permanente. */}
               <select
                 value={dateRef}
-                title="Qual diária esta condition referencia (relativa à data de origem do job); Stat = permanente, sem data"
+                title="Which daily this condition refers to (relative to the job's origin date); Stat = permanent, no date"
                 onChange={(e) => setRef(n, e.target.value as DepDateRef)}
                 style={{ ...selectStyle, width: 72, padding: "2px 4px", fontSize: 9 }}
               >
@@ -925,7 +925,7 @@ function CondChipsEditor({ title, value, onChange, known, listId, crossRef, head
                 <option value="prev">Prev</option>
                 <option value="stat">Stat</option>
               </select>
-              <button onClick={() => onChange(value.filter((v) => v !== n))} style={iconBtn} title="Remover"><Trash2 size={12} /></button>
+              <button onClick={() => onChange(value.filter((v) => v !== n))} style={iconBtn} title="Remove"><Trash2 size={12} /></button>
             </div>
             {ref && <div style={{ fontSize: 9.5, color: "var(--v2-text-muted)" }}>{ref}</div>}
           </div>
@@ -939,7 +939,7 @@ function CondChipsEditor({ title, value, onChange, known, listId, crossRef, head
             autoFocus
             value={draft}
             list={listId}
-            placeholder="nova condição… (ex.: ARQUIVO-CHEGOU)"
+            placeholder="new condition… (e.g. FILE-ARRIVED)"
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } else if (e.key === "Escape") { setDraft(""); setAdding(false); } }}
             onFocus={(e) => { e.currentTarget.style.borderColor = "var(--v2-accent-brand)"; }}
@@ -949,7 +949,7 @@ function CondChipsEditor({ title, value, onChange, known, listId, crossRef, head
           <datalist id={listId}>
             {suggestions.map((k) => <option key={k} value={k} />)}
           </datalist>
-          <button onClick={add} disabled={!draft.trim()} title="Adicionar" style={{ ...btnStyle, borderColor: draft.trim() ? "var(--v2-accent-brand)" : "var(--v2-border-medium)", color: draft.trim() ? "var(--v2-accent-brand)" : "var(--v2-text-muted)" }}>＋</button>
+          <button onClick={add} disabled={!draft.trim()} title="Add" style={{ ...btnStyle, borderColor: draft.trim() ? "var(--v2-accent-brand)" : "var(--v2-border-medium)", color: draft.trim() ? "var(--v2-accent-brand)" : "var(--v2-text-muted)" }}>＋</button>
         </div>
       )}
     </div>
@@ -1005,7 +1005,7 @@ function EntryConditions({ conditionsIn, conditionLogic, windowFrom, onOpenSched
   });
   const advToggle = (
     <button onClick={advanced ? disable : enable}
-      title={advanced ? "Voltar para lista simples (E)" : "Agrupar com lógica AND/OR"}
+      title={advanced ? "Back to the simple list (AND)" : "Group with AND/OR logic"}
       style={{ marginLeft: "auto", fontSize: 8.5, letterSpacing: "0.06em", fontWeight: 700, padding: "2px 7px", borderRadius: 10, cursor: "pointer",
         background: advanced ? "var(--v2-accent-deep)" : "transparent",
         border: `1px solid ${advanced ? AND_OR_ACCENT : "var(--v2-border-medium)"}`,
@@ -1016,7 +1016,7 @@ function EntryConditions({ conditionsIn, conditionLogic, windowFrom, onOpenSched
   if (!advanced) {
     return (
       <div>
-        <CondChipsEditor title="Entrada — depende de" value={conditionsIn} onChange={onChangeConditionsIn}
+        <CondChipsEditor title="In — depends on" value={conditionsIn} onChange={onChangeConditionsIn}
           known={known} listId="cond-known-in" crossRef={crossRef} headerExtra={advToggle} />
         {/* Atalho CL-2: sempre visível com UMA condição — o fallback temporal não
             pode ficar invisível (report: "não achei formas de fazer OR com o
@@ -1024,19 +1024,19 @@ function EntryConditions({ conditionsIn, conditionLogic, windowFrom, onOpenSched
             partir de" seria satisfeito imediatamente e anularia a condição. */}
         {conditionsIn.length === 1 && (windowFrom ? (
           <button onClick={enableTimeFallback}
-            title={`Roda quando a condição chega OU às ${windowFrom} — o que vier primeiro`}
+            title={`Runs when the condition arrives OR at ${windowFrom} — whichever comes first`}
             style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left",
               background: "transparent", border: "1px dashed var(--v2-border-medium)", borderRadius: 4, padding: "5px 8px",
               color: "var(--v2-text-muted)", cursor: "pointer", fontSize: 10 }}>
-            <Plus size={11} /> <span><b>OR</b> rodar no horário (a partir de <b>{windowFrom}</b>) — o que vier primeiro</span>
+            <Plus size={11} /> <span><b>OR</b> run at the scheduled time (from <b>{windowFrom}</b>) — whichever comes first</span>
           </button>
         ) : (
           <button onClick={onOpenSchedule}
-            title={'O fallback "condição OR horário" precisa do início de janela — clique para definir o "A partir de" na aba Horário'}
+            title={'The "condition OR time" fallback needs a window start — click to set "From" in the Schedule tab'}
             style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left",
               background: "transparent", border: "1px dashed var(--v2-border-subtle)", borderRadius: 4, padding: "5px 8px",
               color: "var(--v2-text-muted)", opacity: 0.75, cursor: "pointer", fontSize: 10 }}>
-            <Plus size={11} /> <span><b>OR</b> rodar no horário — precisa do <b>“A partir de”</b> (clique para abrir a aba Horário)</span>
+            <Plus size={11} /> <span><b>OR</b> run at the scheduled time — needs <b>“From”</b> (click to open the Schedule tab)</span>
           </button>
         ))}
       </div>
@@ -1091,9 +1091,9 @@ function GroupedLogicEditor({ logic, onChange, onDisable, known, crossRef, windo
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-        <span style={{ fontSize: 10, fontWeight: 600, color: "var(--v2-text-secondary)" }}>Entrada — lógica AND/OR</span>
-        {logic.groups.length > 1 && <OpToggle value={logic.op} onChange={(op) => onChange({ ...logic, op })} title="Operador ENTRE os grupos" />}
-        <button onClick={onDisable} title="Voltar para lista simples (AND)"
+        <span style={{ fontSize: 10, fontWeight: 600, color: "var(--v2-text-secondary)" }}>In — AND/OR logic</span>
+        {logic.groups.length > 1 && <OpToggle value={logic.op} onChange={(op) => onChange({ ...logic, op })} title="Operator BETWEEN the groups" />}
+        <button onClick={onDisable} title="Back to the simple list (AND)"
           style={{ marginLeft: "auto", fontSize: 8.5, letterSpacing: "0.06em", fontWeight: 700, padding: "2px 7px", borderRadius: 10, cursor: "pointer",
             background: "var(--v2-accent-deep)", border: `1px solid ${AND_OR_ACCENT}`, color: AND_OR_ACCENT }}>
           AND/OR
@@ -1114,7 +1114,7 @@ function GroupedLogicEditor({ logic, onChange, onDisable, known, crossRef, windo
           </div>
         ))}
       </div>
-      <button onClick={addGroup} style={{ ...btnStyle, marginTop: 8, borderColor: AND_OR_ACCENT, color: AND_OR_ACCENT }}>＋ grupo</button>
+      <button onClick={addGroup} style={{ ...btnStyle, marginTop: 8, borderColor: AND_OR_ACCENT, color: AND_OR_ACCENT }}>＋ group</button>
     </div>
   );
 }
@@ -1142,28 +1142,28 @@ function GroupBox({ index, group, canRemove, windowFrom, onOpenSchedule, onSetOp
   return (
     <div style={{ border: "1px solid var(--v2-border-subtle)", borderRadius: 6, padding: "8px 10px", background: "var(--v2-bg-canvas)", display: "flex", flexDirection: "column", gap: 6 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--v2-text-muted)", fontWeight: 700 }}>Grupo {index + 1}</span>
-        {group.members.length > 1 && <OpToggle value={group.op} onChange={onSetOp} title="Operador DENTRO do grupo" />}
+        <span style={{ fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--v2-text-muted)", fontWeight: 700 }}>Group {index + 1}</span>
+        {group.members.length > 1 && <OpToggle value={group.op} onChange={onSetOp} title="Operator INSIDE the group" />}
         {/* CL-2 — adicionar o token de horário ($TIME) ao grupo. Sempre visível
             (descobribilidade); sem windowFrom o clique abre a aba Horário, pois
             $TIME sem "A partir de" é satisfeito imediatamente. */}
         {!hasTime && (
           <button onClick={() => (windowFrom ? onAddMember(COND_TIME_TOKEN) : onOpenSchedule())}
             title={windowFrom
-              ? `Adicionar o horário (a partir de ${windowFrom}) como membro`
-              : 'Precisa do "A partir de" — clique para abrir a aba Horário'}
+              ? `Add the scheduled time (from ${windowFrom}) as a member`
+              : 'Needs "From" — click to open the Schedule tab'}
             style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.04em", padding: "2px 6px", borderRadius: 8, cursor: "pointer",
               background: "transparent", border: `1px ${windowFrom ? "solid" : "dashed"} var(--v2-border-medium)`,
               color: "var(--v2-text-muted)", opacity: windowFrom ? 1 : 0.65 }}>
-            ＋ horário
+            ＋ time
           </button>
         )}
-        <button onClick={() => setAdding((v) => !v)} title={adding ? "Fechar" : "Adicionar condição ao grupo"} style={{ ...addToggleStyle(adding), marginLeft: !hasTime ? 0 : "auto" }}>
+        <button onClick={() => setAdding((v) => !v)} title={adding ? "Close" : "Add condition to the group"} style={{ ...addToggleStyle(adding), marginLeft: !hasTime ? 0 : "auto" }}>
           {adding ? <X size={12} /> : <Plus size={12} />}
         </button>
-        {canRemove && <button onClick={onRemove} title="Remover grupo" style={iconBtn}><Trash2 size={12} /></button>}
+        {canRemove && <button onClick={onRemove} title="Remove group" style={iconBtn}><Trash2 size={12} /></button>}
       </div>
-      {group.members.length === 0 && !adding && <Hint>Grupo vazio — clique no ＋ para adicionar.</Hint>}
+      {group.members.length === 0 && !adding && <Hint>Empty group — click ＋ to add.</Hint>}
       {group.members.map((n) => {
         // Token de horário ($TIME): membro especial, sem seletor de data. Sem
         // windowFrom (apagado depois) o token é satisfeito imediatamente — a
@@ -1173,9 +1173,9 @@ function GroupBox({ index, group, canRemove, windowFrom, onOpenSchedule, onSetOp
           return (
             <div key={n} style={{ ...depRow, marginBottom: 0, borderColor: noWindow ? "#f59e0b" : `${AND_OR_ACCENT}` }}>
               <span style={{ flex: 1, fontSize: 12, color: noWindow ? "#f59e0b" : AND_OR_ACCENT, fontWeight: 600 }}>
-                ⏱ horário{noWindow ? " — sem “A partir de”: satisfeito imediatamente" : ` (a partir de ${windowFrom})`}
+                ⏱ time{noWindow ? " — no “From”: satisfied immediately" : ` (from ${windowFrom})`}
               </span>
-              <button onClick={() => onRemoveMember(n)} style={iconBtn} title="Remover"><Trash2 size={12} /></button>
+              <button onClick={() => onRemoveMember(n)} style={iconBtn} title="Remove"><Trash2 size={12} /></button>
             </div>
           );
         }
@@ -1185,12 +1185,12 @@ function GroupBox({ index, group, canRemove, windowFrom, onOpenSchedule, onSetOp
           <div key={n} style={{ ...depRow, flexDirection: "column", alignItems: "stretch", gap: 2, marginBottom: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}>{base}</span>
-              <select value={ref} onChange={(e) => onSetMemberRef(n, e.target.value as DepDateRef)} title="Diária referenciada (Stat = permanente)" style={{ ...selectStyle, width: 72, padding: "2px 4px", fontSize: 9 }}>
+              <select value={ref} onChange={(e) => onSetMemberRef(n, e.target.value as DepDateRef)} title="Referenced daily (Stat = permanent)" style={{ ...selectStyle, width: 72, padding: "2px 4px", fontSize: 9 }}>
                 <option value="odat">Odate</option>
                 <option value="prev">Prev</option>
                 <option value="stat">Stat</option>
               </select>
-              <button onClick={() => onRemoveMember(n)} style={iconBtn} title="Remover"><Trash2 size={12} /></button>
+              <button onClick={() => onRemoveMember(n)} style={iconBtn} title="Remove"><Trash2 size={12} /></button>
             </div>
             {xref && <div style={{ fontSize: 9.5, color: "var(--v2-text-muted)" }}>{xref}</div>}
           </div>
@@ -1198,7 +1198,7 @@ function GroupBox({ index, group, canRemove, windowFrom, onOpenSchedule, onSetOp
       })}
       {adding && (
         <div style={{ display: "flex", gap: 6 }}>
-          <input autoFocus value={draft} list={listId} placeholder="condição… (ex.: ARQUIVO-CHEGOU)"
+          <input autoFocus value={draft} list={listId} placeholder="condition… (e.g. FILE-ARRIVED)"
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } else if (e.key === "Escape") { setDraft(""); setAdding(false); } }}
             style={{ flex: 1, background: "var(--v2-bg-elevated)", border: "1px dashed var(--v2-border-medium)", color: "var(--v2-text-primary)", padding: "5px 8px", fontSize: 11, fontFamily: "var(--v2-font-mono)", borderRadius: 3, outline: "none", boxSizing: "border-box" }} />

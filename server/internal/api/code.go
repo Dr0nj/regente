@@ -31,9 +31,9 @@ import (
 
 // codeHeader — preâmbulo comentado do documento gerado (guia rápido pro dev).
 const codeHeader = `# Regente — jobs as code (YAML)
-# Um documento por job, separados por "---". Mesmo formato dos arquivos do
-# workspace Git (definitions/<team>/<id>.yaml). Job removido daqui = deletado
-# ao aplicar (com confirmação). Campos principais:
+# One document per job, separated by "---". Same format as the Git workspace
+# files (definitions/<team>/<id>.yaml). A job removed from here is deleted when
+# you apply (with confirmation). Main fields:
 #   id, label, team, jobType, schedule{enabled,runAt,frequency,...},
 #   retries, timeout, params{...}, upstream[{from,condition}], actions[...]
 `
@@ -55,7 +55,7 @@ func sessionCodeScope(sess sessionFolders, requested []string) (map[string]bool,
 			continue
 		}
 		if !all[f] {
-			return nil, fmt.Errorf("folder %q fora do escopo da session", f)
+			return nil, fmt.Errorf("folder %q outside the session scope", f)
 		}
 		scope[f] = true
 	}
@@ -172,16 +172,16 @@ func parseCodeDocs(code string, scope map[string]bool) ([]domain.JobDefinition, 
 			def.Team = soleFolder
 		}
 		if def.ID == "" {
-			errs = append(errs, fmt.Sprintf("doc #%d: id obrigatório", docN))
+			errs = append(errs, fmt.Sprintf("doc #%d: id is required", docN))
 			continue
 		}
 		if seen[def.ID] {
-			errs = append(errs, fmt.Sprintf("doc #%d: id duplicado %q", docN, def.ID))
+			errs = append(errs, fmt.Sprintf("doc #%d: duplicate id %q", docN, def.ID))
 			continue
 		}
 		seen[def.ID] = true
 		if !scope[def.Team] {
-			errs = append(errs, fmt.Sprintf("%s: team %q fora do escopo do documento", def.ID, def.Team))
+			errs = append(errs, fmt.Sprintf("%s: team %q outside the document scope", def.ID, def.Team))
 			continue
 		}
 		// Draft (o apply escreve na SESSION): obrigatórios ficam pro publish.
@@ -281,7 +281,7 @@ func (s *server) applySessionCode(w http.ResponseWriter, r *http.Request) {
 			return ""
 		}
 		if can, _ := auth.CanWriteFolder(s.cfg.DB, u, team); !can {
-			return "sem permissão de escrita na folder " + team
+			return "no write permission on folder " + team
 		}
 		return ""
 	}
@@ -313,7 +313,7 @@ func (s *server) applySessionCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(plan.Deletes) > 0 && !req.AllowDelete {
-		errs = append(errs, fmt.Sprintf("%d job(s) ausentes no código seriam DELETADOS (%s) — confirme a remoção",
+		errs = append(errs, fmt.Sprintf("%d job(s) missing from the code would be DELETED (%s) — confirm the removal",
 			len(plan.Deletes), strings.Join(plan.Deletes, ", ")))
 		respond(false, nil)
 		return
@@ -346,7 +346,7 @@ func (s *server) applySessionCode(w http.ResponseWriter, r *http.Request) {
 		// Job movido de folder no código: remove o arquivo da folder antiga.
 		if existed && old.Team != def.Team {
 			if err := sess.Store.Delete(old.Team, old.ID); err != nil {
-				results = append(results, bulkItemResult{ID: id, Error: "salvo em " + def.Team + " mas falhou remover de " + old.Team + ": " + err.Error()})
+				results = append(results, bulkItemResult{ID: id, Error: "saved in " + def.Team + " but failed to remove from " + old.Team + ": " + err.Error()})
 				continue
 			}
 		}

@@ -70,14 +70,14 @@ export default function ForecastPanel({ defId, isRunning }: { defId: string; isR
     <div style={{ padding: "10px 0", borderTop: "1px solid var(--v2-border-subtle)", marginTop: 10 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "var(--v2-text-secondary)", textTransform: "uppercase" }}>
-          Forecast · {pf.samples.length} execuções
+          Forecast · {pf.samples.length} runs
         </span>
         {pf.slower && (
           <span style={{
             fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-status-failed)",
             border: "1px solid var(--v2-status-failed)", borderRadius: 3, padding: "1px 5px",
           }}>
-            ▲ ficando mais lento
+            ▲ getting slower
           </span>
         )}
       </div>
@@ -85,7 +85,7 @@ export default function ForecastPanel({ defId, isRunning }: { defId: string; isR
       <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
         {stat("p50", fmtMs(pf.p50Ms))}
         {stat("p90", fmtMs(pf.p90Ms))}
-        {stat("próxima ~", fmtMs(pf.nextMs), pf.slower ? "var(--v2-status-failed)" : undefined)}
+        {stat("next ~", fmtMs(pf.nextMs), pf.slower ? "var(--v2-status-failed)" : undefined)}
         {isRunning && pf.etaMs != null && stat("ETA", fmtMs(pf.etaMs), "var(--v2-status-running)")}
       </div>
     </div>

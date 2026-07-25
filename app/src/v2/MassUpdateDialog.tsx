@@ -16,11 +16,11 @@ import { toast } from "./Toast";
 
 const FIELD_OPTIONS = [
   { v: "label", t: "Label" },
-  { v: "description", t: "Descrição" },
+  { v: "description", t: "Description" },
   { v: "schedule.runAt", t: "Run At (HH:MM)" },
-  { v: "schedule.windowFrom", t: "Janela de (HH:MM)" },
-  { v: "schedule.windowTo", t: "Janela até (HH:MM)" },
-  { v: "schedule.enabled", t: "Habilitado (true/false)" },
+  { v: "schedule.windowFrom", t: "Window from (HH:MM)" },
+  { v: "schedule.windowTo", t: "Window to (HH:MM)" },
+  { v: "schedule.enabled", t: "Enabled (true/false)" },
   { v: "retries", t: "Retries (int)" },
   { v: "timeout", t: "Timeout s (int)" },
   { v: "agentId", t: "Agent ID" },
@@ -34,7 +34,7 @@ const CRIT_FIELDS = [
   { v: "id", t: "ID" },
   { v: "label", t: "Label" },
   { v: "jobType", t: "Job Type" },
-  { v: "description", t: "Descrição" },
+  { v: "description", t: "Description" },
   { v: "schedule.runAt", t: "Run At" },
   { v: "agentId", t: "Agent ID" },
   { v: "calendar", t: "Calendar" },
@@ -182,18 +182,18 @@ export default function MassUpdateDialog({
         const okCount = res.items.filter((i) => i.ok).length;
         const failCount = res.items.filter((i) => !i.ok).length;
         if (failCount > 0) {
-          toast.error(`Mass update: ${failCount} de ${okCount + failCount} falharam`, {
+          toast.error(`Mass update: ${failCount} of ${okCount + failCount} failed`, {
             detail: res.items.find((i) => i.error)?.error,
           });
         } else if (okCount === 0) {
-          toast.info("Nenhum job precisou mudar", { detail: `${res.matched} casaram o critério, todos já estavam como pedido.` });
+          toast.info("No job needed changing", { detail: `${res.matched} matched the criteria and were already as requested.` });
         } else {
-          toast.success(`Mass update aplicado em ${okCount} job(s)`, { detail: "Desfazer disponível no diálogo." });
+          toast.success(`Mass update applied to ${okCount} job(s)`, { detail: "Undo is available in the dialog." });
         }
         await onChanged();
       }
     } catch (e) {
-      toast.error(apply ? "Mass update falhou" : "Preview falhou", { detail: e instanceof Error ? e.message : String(e) });
+      toast.error(apply ? "Mass update failed" : "Preview failed", { detail: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(false);
     }
@@ -205,10 +205,10 @@ export default function MassUpdateDialog({
       const res = await massUpdateUndo(sessionId);
       setUndoDepth(res.undoDepth);
       setPreview(null);
-      toast.success(`Desfeito: ${res.label} (${res.ok} job(s) restaurados)`);
+      toast.success(`Undone: ${res.label} (${res.ok} job(s) restored)`);
       await onChanged();
     } catch (e) {
-      toast.error("Undo falhou", { detail: e instanceof Error ? e.message : String(e) });
+      toast.error("Undo failed", { detail: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(false);
     }
@@ -229,15 +229,15 @@ export default function MassUpdateDialog({
           borderBottom: "1px solid var(--v2-border-subtle)",
         }}>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--v2-text-primary)" }}>Find &amp; Update — atualização em massa</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--v2-text-primary)" }}>Find &amp; Update — bulk update</div>
             <div style={{ fontSize: 10, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>
-              critério → preview → aplicar (por item) → desfazer
+              criteria → preview → apply (per item) → undo
             </div>
           </div>
           <div style={{ flex: 1 }} />
           {undoDepth > 0 && (
             <button className="v2-btn" disabled={busy} onClick={() => void undo()} style={{ marginRight: 8, color: "#f5b50a", borderColor: "#5a4a1a" }}>
-              ↩ Desfazer última ({undoDepth})
+              ↩ Undo last ({undoDepth})
             </button>
           )}
           <button className="v2-dialog-x" onClick={onClose}>✕</button>
@@ -246,35 +246,35 @@ export default function MassUpdateDialog({
         <div style={{ padding: "12px 16px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
           {/* ── Critério ── */}
           <div>
-            <div style={{ ...labelStyle, color: "var(--v2-accent-brand)" }}>1 · Quais jobs (critério)</div>
+            <div style={{ ...labelStyle, color: "var(--v2-accent-brand)" }}>1 · Which jobs (criteria)</div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
               {(presetIds?.length ?? 0) > 0 && (
                 <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)" }}>
                   <input type="checkbox" checked={useSelection} onChange={(e) => setUseSelection(e.target.checked)} />
-                  só a seleção do canvas ({presetIds!.length})
+                  canvas selection only ({presetIds!.length})
                 </label>
               )}
               <Field label="Folder">
                 <select style={inputStyle} value={critFolder} onChange={(e) => setCritFolder(e.target.value)}>
-                  <option value="">todas abertas</option>
+                  <option value="">all open ones</option>
                   {folders.map((f) => <option key={f} value={f}>{f}</option>)}
                 </select>
               </Field>
               <Field label="Job Type">
                 <select style={inputStyle} value={critJobType} onChange={(e) => setCritJobType(e.target.value)}>
-                  <option value="">qualquer</option>
+                  <option value="">any</option>
                   {jobTypes.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </Field>
-              <Field label="Campo p/ regex">
+              <Field label="Field for regex">
                 <select style={inputStyle} value={critField} onChange={(e) => setCritField(e.target.value)}>
                   {CRIT_FIELDS.map((f) => <option key={f.v} value={f.v}>{f.t}</option>)}
                 </select>
               </Field>
-              <Field label="Regex (vazio = ignora)" grow>
+              <Field label="Regex (empty = ignored)" grow>
                 <input style={{ ...inputStyle, width: "100%" }} placeholder="^etl-.*-prod$" value={critRegex} onChange={(e) => setCritRegex(e.target.value)} />
               </Field>
-              <Field label="Campo VAZIO">
+              <Field label="EMPTY field">
                 <select style={inputStyle} value={critEmpty} onChange={(e) => setCritEmpty(e.target.value)}>
                   <option value="">—</option>
                   {CRIT_FIELDS.map((f) => <option key={f.v} value={f.v}>{f.t}</option>)}
@@ -285,54 +285,54 @@ export default function MassUpdateDialog({
 
           {/* ── Operação ── */}
           <div>
-            <div style={{ ...labelStyle, color: "var(--v2-accent-brand)" }}>2 · O que fazer (operação)</div>
+            <div style={{ ...labelStyle, color: "var(--v2-accent-brand)" }}>2 · What to do (operation)</div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-              <Field label="Operação">
+              <Field label="Operation">
                 <select style={inputStyle} value={op} onChange={(e) => { setOp(e.target.value as MassOperation["op"]); setPreview(null); }}>
-                  <option value="set-field">Setar campo</option>
+                  <option value="set-field">Set field</option>
                   <option value="find-replace">Find &amp; Replace (regex)</option>
-                  <option value="add-action">Adicionar action (On/Do)</option>
-                  <option value="remove-action">Remover actions (por Do)</option>
-                  <option value="add-upstream">Adicionar dependência</option>
-                  <option value="remove-upstream">Remover dependência</option>
-                  <option value="set-variable">Setar variável do job</option>
-                  <option value="remove-variable">Remover variável do job</option>
-                  <option value="add-condition-in">Adicionar condition IN</option>
-                  <option value="remove-condition-in">Remover condition IN</option>
+                  <option value="add-action">Add action (On/Do)</option>
+                  <option value="remove-action">Remove actions (by Do)</option>
+                  <option value="add-upstream">Add dependency</option>
+                  <option value="remove-upstream">Remove dependency</option>
+                  <option value="set-variable">Set job variable</option>
+                  <option value="remove-variable">Remove job variable</option>
+                  <option value="add-condition-in">Add condition IN</option>
+                  <option value="remove-condition-in">Remove condition IN</option>
                 </select>
               </Field>
 
               {op === "set-field" && (
                 <>
-                  <Field label="Campo">
+                  <Field label="Field">
                     <select style={inputStyle} value={opField} onChange={(e) => setOpField(e.target.value)}>
                       {FIELD_OPTIONS.map((f) => <option key={f.v} value={f.v}>{f.t}</option>)}
                     </select>
                   </Field>
-                  <Field label="Valor" grow>
+                  <Field label="Value" grow>
                     <input style={{ ...inputStyle, width: "100%" }} value={opValue} onChange={(e) => setOpValue(e.target.value)} />
                   </Field>
                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)" }}>
                     <input type="checkbox" checked={onlyIfEmpty} onChange={(e) => setOnlyIfEmpty(e.target.checked)} />
-                    só se vazio
+                    only if empty
                   </label>
                 </>
               )}
 
               {op === "find-replace" && (
                 <>
-                  <Field label="Campo">
+                  <Field label="Field">
                     <select style={inputStyle} value={opField} onChange={(e) => setOpField(e.target.value)}>
                       {FIELD_OPTIONS.filter((f) => !["retries", "timeout", "schedule.enabled", "dryRun", "confirm"].includes(f.v)).map((f) => (
                         <option key={f.v} value={f.v}>{f.t}</option>
                       ))}
-                      <option value="params">Params (todos os valores string)</option>
+                      <option value="params">Params (every string value)</option>
                     </select>
                   </Field>
                   <Field label="Find (regex)" grow>
                     <input style={{ ...inputStyle, width: "100%" }} placeholder="legacy-host" value={find} onChange={(e) => setFind(e.target.value)} />
                   </Field>
-                  <Field label="Replace ($1 p/ grupos)" grow>
+                  <Field label="Replace ($1 for groups)" grow>
                     <input style={{ ...inputStyle, width: "100%" }} placeholder="new-host" value={replace} onChange={(e) => setReplace(e.target.value)} />
                   </Field>
                 </>
@@ -363,13 +363,13 @@ export default function MassUpdateDialog({
                     </Field>
                   )}
                   {actOn === "attempt" && (
-                    <Field label="Tentativa nº">
+                    <Field label="Attempt #">
                       <input style={inputStyle} type="number" min={1} value={actAttempt}
                         onChange={(e) => setActAttempt(e.target.value)} />
                     </Field>
                   )}
                   {actOn === "runtime" && (
-                    <Field label="Após (min)">
+                    <Field label="After (min)">
                       <input style={inputStyle} type="number" min={1} value={actAfterMin}
                         onChange={(e) => setActAfterMin(e.target.value)} />
                     </Field>
@@ -384,10 +384,10 @@ export default function MassUpdateDialog({
                   </Field>
                   {actDo === "notify" && (
                     <>
-                      <Field label="Mensagem" grow>
+                      <Field label="Message" grow>
                         <input style={{ ...inputStyle, width: "100%" }} value={actMsg} onChange={(e) => setActMsg(e.target.value)} />
                       </Field>
-                      <Field label="Severidade">
+                      <Field label="Severity">
                         <select style={inputStyle} value={actSeverity} onChange={(e) => setActSeverity(e.target.value)}>
                           <option value="info">info</option>
                           <option value="warning">warning</option>
@@ -410,7 +410,7 @@ export default function MassUpdateDialog({
               )}
 
               {op === "remove-action" && (
-                <Field label="Do (das actions a remover)">
+                <Field label="Do (of the actions to remove)">
                   <select style={inputStyle} value={actDo} onChange={(e) => setActDo(e.target.value)}>
                     <option value="notify">notify</option>
                     <option value="set-condition">set-condition</option>
@@ -422,14 +422,14 @@ export default function MassUpdateDialog({
 
               {(op === "add-upstream" || op === "remove-upstream") && (
                 <>
-                  <Field label="Upstream (job pai)" grow>
+                  <Field label="Upstream (parent job)" grow>
                     <select style={{ ...inputStyle, width: "100%" }} value={upFrom} onChange={(e) => setUpFrom(e.target.value)}>
-                      <option value="">— escolha —</option>
+                      <option value="">— pick one —</option>
                       {defs.map((d) => <option key={d.id} value={d.id}>{d.label} ({d.id})</option>)}
                     </select>
                   </Field>
                   {op === "add-upstream" && (
-                    <Field label="Condição">
+                    <Field label="Condition">
                       <select style={inputStyle} value={upCond} onChange={(e) => setUpCond(e.target.value)}>
                         <option value="on-success">on-success</option>
                         <option value="on-failure">on-failure</option>
@@ -442,11 +442,11 @@ export default function MassUpdateDialog({
 
               {(op === "set-variable" || op === "remove-variable" || op === "add-condition-in" || op === "remove-condition-in") && (
                 <>
-                  <Field label={op.includes("condition") ? "Condition" : "Variável"} grow>
-                    <input style={{ ...inputStyle, width: "100%" }} placeholder={op.includes("condition") ? "carga-fin-ok" : "ENV"} value={varKey} onChange={(e) => setVarKey(e.target.value)} />
+                  <Field label={op.includes("condition") ? "Condition" : "Variable"} grow>
+                    <input style={{ ...inputStyle, width: "100%" }} placeholder={op.includes("condition") ? "fin-load-ok" : "ENV"} value={varKey} onChange={(e) => setVarKey(e.target.value)} />
                   </Field>
                   {op === "set-variable" && (
-                    <Field label="Valor" grow>
+                    <Field label="Value" grow>
                       <input style={{ ...inputStyle, width: "100%" }} value={varVal} onChange={(e) => setVarVal(e.target.value)} />
                     </Field>
                   )}
@@ -459,11 +459,11 @@ export default function MassUpdateDialog({
           {preview && (
             <div>
               <div style={{ ...labelStyle, color: "var(--v2-accent-brand)" }}>
-                3 · {preview.applied ? "Resultado" : "Preview"} — {preview.matched} casaram o critério, {preview.items.length} mudariam
+                3 · {preview.applied ? "Result" : "Preview"} — {preview.matched} matched the criteria, {preview.items.length} would change
               </div>
               {preview.items.length === 0 ? (
                 <div style={{ fontSize: 11, color: "var(--v2-text-muted)", padding: "8px 0" }}>
-                  Nenhuma mudança: ou nada casou o critério, ou todos já estão como pedido.
+                  No change: either nothing matched the criteria, or everything is already as requested.
                 </div>
               ) : (
                 <div style={{ border: "1px solid var(--v2-border-subtle)", borderRadius: 4, maxHeight: 240, overflowY: "auto" }}>
@@ -505,17 +505,17 @@ export default function MassUpdateDialog({
           borderTop: "1px solid var(--v2-border-subtle)", alignItems: "center",
         }}>
           <span style={{ fontSize: 10, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>
-            transacional por item · undo por session (até 10 níveis, até publicar)
+            transactional per item · undo per session (up to 10 levels, until you publish)
           </span>
           <div style={{ flex: 1 }} />
           <button className="v2-btn" disabled={busy} onClick={() => void run(false)}>Preview</button>
           <button
             className="v2-btn v2-btn-primary"
             disabled={busy || !preview || preview.applied || preview.items.filter((i) => !i.error).length === 0}
-            title={!preview ? "Rode o Preview primeiro" : undefined}
+            title={!preview ? "Run the Preview first" : undefined}
             onClick={() => void run(true)}
           >
-            Aplicar {preview && !preview.applied ? `em ${preview.items.filter((i) => !i.error).length}` : ""}
+            Apply {preview && !preview.applied ? `to ${preview.items.filter((i) => !i.error).length}` : ""}
           </button>
         </div>
       </div>

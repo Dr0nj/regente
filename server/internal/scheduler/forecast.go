@@ -166,26 +166,26 @@ func (m mapCalLookup) Get(name string) (*domain.Calendar, error) { return m[name
 func scheduleReason(d domain.JobDefinition, date time.Time) string {
 	s := d.Schedule
 	if len(s.MonthsOfYear) > 0 && !containsInt(s.MonthsOfYear, int(date.Month())) {
-		return "mês fora de monthsOfYear"
+		return "month outside monthsOfYear"
 	}
 	switch s.Frequency {
 	case "weekly":
 		if len(s.DaysOfWeek) == 0 {
-			return "weekly sem daysOfWeek (schedule incompleto)"
+			return "weekly without daysOfWeek (incomplete schedule)"
 		}
-		return "weekday fora de daysOfWeek"
+		return "weekday outside daysOfWeek"
 	case "monthly":
 		if len(s.DaysOfMonth) == 0 {
-			return "monthly sem daysOfMonth (schedule incompleto)"
+			return "monthly without daysOfMonth (incomplete schedule)"
 		}
-		return "dia-do-mês fora de daysOfMonth"
+		return "day-of-month outside daysOfMonth"
 	case "businessday":
-		return "não é o N-ésimo dia útil configurado"
+		return "not the configured Nth business day"
 	case "advanced":
-		return "não casa a regra avançada '" + s.AdvancedRule + "'"
+		return "does not match the advanced rule '" + s.AdvancedRule + "'"
 	}
 	// Frequência casou: sobrou o calendar (include/exclude) ou o shift barrando.
-	return "calendar/shift exclui esta data"
+	return "calendar/shift excludes this date"
 }
 
 // ForecastRange roda o Forecast por `days` dias a partir de `from` (inclusive) —

@@ -94,7 +94,7 @@ export default function CodeModeView({
         setResult(null);
       })
       .catch((e: unknown) => {
-        if (!cancel) toast.error("Falha ao carregar o código", { detail: e instanceof Error ? e.message : String(e) });
+        if (!cancel) toast.error("Failed to load the code", { detail: e instanceof Error ? e.message : String(e) });
       })
       .finally(() => { if (!cancel) setLoading(false); });
     return () => { cancel = true; };
@@ -109,7 +109,7 @@ export default function CodeModeView({
       setCode(res.code);
       setDirty(false);
     } catch (e) {
-      toast.error("Falha ao carregar o código", { detail: e instanceof Error ? e.message : String(e) });
+      toast.error("Failed to load the code", { detail: e instanceof Error ? e.message : String(e) });
     } finally {
       setLoading(false);
     }
@@ -144,7 +144,7 @@ export default function CodeModeView({
       const res = await applySessionCode(sessionId, code, { folders, apply: false });
       setResult(res);
     } catch (e) {
-      toast.error("Validação falhou", { detail: e instanceof Error ? e.message : String(e) });
+      toast.error("Validation failed", { detail: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(false);
     }
@@ -156,10 +156,10 @@ export default function CodeModeView({
       // 1ª passada: valida + detecta deletes.
       let res = await applySessionCode(sessionId, code, { folders, apply: true });
       if (!res.applied && (res.errors?.length ?? 0) > 0 && (res.plan?.deletes?.length ?? 0) > 0) {
-        const soDeleteGate = !res.errors!.some((e) => !e.includes("DELETADOS"));
+        const soDeleteGate = !res.errors!.some((e) => !e.includes("DELETED"));
         if (soDeleteGate) {
           const okDel = window.confirm(
-            `${res.plan.deletes.length} job(s) ausentes no código serão DELETADOS:\n\n${res.plan.deletes.join(", ")}\n\nConfirma a remoção?`,
+            `${res.plan.deletes.length} job(s) missing from the code will be DELETED:\n\n${res.plan.deletes.join(", ")}\n\nConfirm the removal?`,
           );
           if (!okDel) { setResult(res); return; }
           res = await applySessionCode(sessionId, code, { folders, apply: true, allowDelete: true });
@@ -168,15 +168,15 @@ export default function CodeModeView({
       setResult(res);
       if (res.applied) {
         const c = res.plan;
-        toast.success("Código aplicado ao working set", {
-          detail: `${c.creates.length} criados · ${c.updates.length} atualizados · ${c.deletes.length} deletados · ${c.unchanged} intactos`,
+        toast.success("Code applied to the working set", {
+          detail: `${c.creates.length} created · ${c.updates.length} updated · ${c.deletes.length} deleted · ${c.unchanged} unchanged`,
         });
         setDirty(false);
         await onApplied();
         await load(); // re-serializa: normaliza o YAML como o server o vê
       }
     } catch (e) {
-      toast.error("Aplicação falhou", { detail: e instanceof Error ? e.message : String(e) });
+      toast.error("Apply failed", { detail: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(false);
     }
@@ -277,35 +277,35 @@ export default function CodeModeView({
           fontFamily: "var(--v2-font-mono)", fontSize: 9, letterSpacing: "0.16em",
           textTransform: "uppercase", color: "var(--v2-text-muted)",
         }}>
-          {folders.join(" · ") || "sem folders"} — YAML multi-doc · dialeto do workspace Git
+          {folders.join(" · ") || "no folders"} — multi-doc YAML · Git workspace dialect
         </span>
         <div style={{ flex: 1 }} />
         {dirty && (
           <span style={{ fontFamily: "var(--v2-font-mono)", fontSize: 10, color: "var(--v2-status-waiting)" }}>
-            ● não aplicado
+            ● not applied
           </span>
         )}
         <button className="code-btn" disabled={busy || loading} onClick={() => void runValidate()}>
-          Validar
+          Validate
         </button>
         <button className="code-btn code-btn-solid" disabled={busy || loading || !dirty} onClick={() => void runApply()}>
-          Aplicar
+          Apply
         </button>
         <button
           className="code-btn"
           disabled={busy || loading}
           onClick={() => {
-            if (dirty && !window.confirm("Descartar as edições de código não aplicadas?")) return;
+            if (dirty && !window.confirm("Discard the unapplied code edits?")) return;
             void load();
           }}
         >
-          Recarregar
+          Reload
         </button>
         <button className="code-btn" onClick={() => {
-          if (dirty && !window.confirm("Sair do modo código? Edições não aplicadas serão perdidas.")) return;
+          if (dirty && !window.confirm("Leave code mode? Unapplied edits will be lost.")) return;
           onExit();
         }}>
-          ⏏ Sair
+          ⏏ Exit
         </button>
         {/* fio de luxo sob o header (mesmo gesto do FolderManager) */}
         <div style={{
@@ -364,7 +364,7 @@ export default function CodeModeView({
               fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", fontSize: 12, letterSpacing: "0.18em",
               textTransform: "uppercase",
             }}>
-              carregando o código…
+              loading the code…
             </div>
           )}
         </div>
@@ -377,25 +377,25 @@ export default function CodeModeView({
         padding: "7px 16px", fontFamily: "var(--v2-font-mono)", fontSize: 11,
       }}>
         <div style={{ color: "var(--v2-text-secondary)" }}>
-          {linting && <span style={{ color: "var(--v2-text-muted)", marginRight: 12 }}>validando…</span>}
+          {linting && <span style={{ color: "var(--v2-text-muted)", marginRight: 12 }}>validating…</span>}
           {result ? (
             <>
-              {result.parsed} job(s) no documento ·{" "}
-              {planBadge("＋criar", result.plan?.creates ?? [], "var(--v2-status-ok)")}
-              {planBadge("~atualizar", result.plan?.updates ?? [], "var(--v2-status-running)")}
-              {planBadge("−deletar", result.plan?.deletes ?? [], "var(--v2-status-failed)")}
-              <span style={{ color: "var(--v2-text-muted)" }}>{result.plan?.unchanged ?? 0} sem mudança</span>
+              {result.parsed} job(s) in the document ·{" "}
+              {planBadge("＋create", result.plan?.creates ?? [], "var(--v2-status-ok)")}
+              {planBadge("~update", result.plan?.updates ?? [], "var(--v2-status-running)")}
+              {planBadge("−delete", result.plan?.deletes ?? [], "var(--v2-status-failed)")}
+              <span style={{ color: "var(--v2-text-muted)" }}>{result.plan?.unchanged ?? 0} unchanged</span>
               {result.applied && (
-                <span style={{ color: "var(--v2-accent-brand)", marginLeft: 12, fontWeight: 700 }}>✓ aplicado</span>
+                <span style={{ color: "var(--v2-accent-brand)", marginLeft: 12, fontWeight: 700 }}>✓ applied</span>
               )}
               {!result.applied && errors.length === 0 && (
-                <span style={{ color: "var(--v2-status-ok)", marginLeft: 12 }}>✓ válido — nada aplicado ainda</span>
+                <span style={{ color: "var(--v2-status-ok)", marginLeft: 12 }}>✓ valid — nothing applied yet</span>
               )}
             </>
           ) : (
             !linting && (
               <span style={{ color: "var(--v2-text-muted)" }}>
-                edite à vontade — o código é validado sozinho a cada pausa (parse estrito + plano)
+                edit freely — the code is validated automatically on every pause (strict parse + plan)
               </span>
             )
           )}

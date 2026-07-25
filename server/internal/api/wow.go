@@ -212,7 +212,7 @@ func (s *server) selfServiceRun(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	s.cfg.Scheduler.EmitEvent(instID, "self-service", actorFromCtx(r), "disparado pelo portal self-service")
+	s.cfg.Scheduler.EmitEvent(instID, "self-service", actorFromCtx(r), "fired from the self-service portal")
 	writeJSON(w, 200, map[string]any{"instanceId": instID})
 }
 
@@ -227,16 +227,16 @@ func (s *server) quickActionPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err != nil {
 		w.WriteHeader(qaErrStatus(err))
-		fmt.Fprint(w, qaHTML("Link inválido", "<p class=err>"+html.EscapeString(qaErrMsg(err))+"</p>", ""))
+		fmt.Fprint(w, qaHTML("Invalid link", "<p class=err>"+html.EscapeString(qaErrMsg(err))+"</p>", ""))
 		return
 	}
 	var status string
 	_ = s.cfg.DB.QueryRow(`SELECT status FROM instances WHERE id=?`, instID).Scan(&status)
 	body := fmt.Sprintf(
-		"<p>Confirmar <b>%s</b> em</p><p class=job>%s</p><p class=meta>status atual: %s</p>",
+		"<p>Confirm <b>%s</b> on</p><p class=job>%s</p><p class=meta>current status: %s</p>",
 		html.EscapeString(action), html.EscapeString(instID), html.EscapeString(status))
-	form := `<form method="POST"><button type="submit">Confirmar ` + html.EscapeString(action) + `</button></form>`
-	fmt.Fprint(w, qaHTML("Regente — ação rápida", body, form))
+	form := `<form method="POST"><button type="submit">Confirm ` + html.EscapeString(action) + `</button></form>`
+	fmt.Fprint(w, qaHTML("Regente — quick action", body, form))
 }
 
 // quickActionExec — POST /qa/{token}: verifica e EXECUTA (mesma semântica dos
@@ -247,13 +247,13 @@ func (s *server) quickActionExec(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err != nil {
 		w.WriteHeader(qaErrStatus(err))
-		fmt.Fprint(w, qaHTML("Link inválido", "<p class=err>"+html.EscapeString(qaErrMsg(err))+"</p>", ""))
+		fmt.Fprint(w, qaHTML("Invalid link", "<p class=err>"+html.EscapeString(qaErrMsg(err))+"</p>", ""))
 		return
 	}
 	status, aerr := s.applyInstanceAction("quick-action", instID, action)
 	if aerr != nil {
 		w.WriteHeader(http.StatusConflict)
-		fmt.Fprint(w, qaHTML("Não aplicado", fmt.Sprintf(
+		fmt.Fprint(w, qaHTML("Not applied", fmt.Sprintf(
 			"<p class=err>%s</p><p class=meta>%s</p>",
 			html.EscapeString(aerr.Error()), html.EscapeString(instID)), ""))
 		return
@@ -261,8 +261,8 @@ func (s *server) quickActionExec(w http.ResponseWriter, r *http.Request) {
 	if action == "confirm" || action == "release" || action == "rerun" {
 		go s.cfg.Scheduler.Tick()
 	}
-	fmt.Fprint(w, qaHTML("Feito ✓", fmt.Sprintf(
-		"<p class=ok>%s aplicado</p><p class=job>%s</p><p class=meta>novo status: %s</p>",
+	fmt.Fprint(w, qaHTML("Done ✓", fmt.Sprintf(
+		"<p class=ok>%s applied</p><p class=job>%s</p><p class=meta>new status: %s</p>",
 		html.EscapeString(action), html.EscapeString(instID), html.EscapeString(status)), ""))
 }
 
@@ -284,9 +284,9 @@ func qaErrStatus(err error) int {
 
 func qaErrMsg(err error) string {
 	if errors.Is(err, quickaction.ErrExpired) {
-		return "Este link expirou. Use a UI do Regente ou aguarde o próximo alerta."
+		return "This link has expired. Use the Regente UI or wait for the next alert."
 	}
-	return "Link inválido."
+	return "Invalid link."
 }
 
 // qaHTML — página mínima mobile-first, self-contained (sem asset externo).

@@ -76,7 +76,7 @@ func (s *server) pingAgent(w http.ResponseWriter, r *http.Request) {
 	raw, _ := json.Marshal(map[string]string{"event": "ping", "pingId": pingID})
 	sent := time.Now()
 	if outcome, _ := s.cfg.Hub.Dispatch(id, "", "", raw); outcome != hub.DispatchSent {
-		writeJSON(w, 200, pingResult{ID: id, Online: true, Error: "não foi possível enviar (buffer cheio?)"})
+		writeJSON(w, 200, pingResult{ID: id, Online: true, Error: "could not send (buffer full?)"})
 		return
 	}
 	select {

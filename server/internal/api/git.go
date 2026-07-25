@@ -100,7 +100,7 @@ func (s *server) setWebhookSecret(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.cfg.DB.Exec(
 		`INSERT INTO settings(key,value) VALUES('webhook_secret',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, secret,
 	); err != nil {
-		writeJSON(w, 500, map[string]string{"error": "persist falhou: " + err.Error()})
+		writeJSON(w, 500, map[string]string{"error": "persist failed: " + err.Error()})
 		return
 	}
 	s.gitStatus(w, r)
@@ -134,20 +134,20 @@ func (s *server) setGitToken(w http.ResponseWriter, r *http.Request) {
 	}
 	tok := strings.TrimSpace(body.Token)
 	if tok == "" {
-		writeJSON(w, 400, map[string]string{"error": "token vazio"})
+		writeJSON(w, 400, map[string]string{"error": "empty token"})
 		return
 	}
 	s.applyToken(tok)
 	if _, err := s.cfg.DB.Exec(
 		`INSERT INTO settings(key,value) VALUES('github_token',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, tok,
 	); err != nil {
-		writeJSON(w, 500, map[string]string{"error": "persist falhou: " + err.Error()})
+		writeJSON(w, 500, map[string]string{"error": "persist failed: " + err.Error()})
 		return
 	}
 	// Revalida: fetch+reset com o novo header de auth (também reescreve remote limpo).
 	if s.cfg.Git != nil {
 		if err := s.cfg.Git.EnsureClone(); err != nil {
-			writeJSON(w, 502, map[string]string{"error": "token salvo, mas validação do clone falhou: " + err.Error()})
+			writeJSON(w, 502, map[string]string{"error": "token saved, but clone validation failed: " + err.Error()})
 			return
 		}
 	}

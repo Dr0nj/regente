@@ -124,21 +124,21 @@ func setField(d *domain.JobDefinition, field string, value any) error {
 	asString := func() (string, error) {
 		s, ok := value.(string)
 		if !ok {
-			return "", fmt.Errorf("campo %s espera string", field)
+			return "", fmt.Errorf("field %s expects a string", field)
 		}
 		return s, nil
 	}
 	asInt := func() (int, error) {
 		n, ok := value.(float64) // JSON number
 		if !ok || n != float64(int(n)) {
-			return 0, fmt.Errorf("campo %s espera inteiro", field)
+			return 0, fmt.Errorf("field %s expects an integer", field)
 		}
 		return int(n), nil
 	}
 	asBool := func() (bool, error) {
 		b, ok := value.(bool)
 		if !ok {
-			return false, fmt.Errorf("campo %s espera booleano", field)
+			return false, fmt.Errorf("field %s expects a boolean", field)
 		}
 		return b, nil
 	}
@@ -173,7 +173,7 @@ func setField(d *domain.JobDefinition, field string, value any) error {
 	case "confirm":
 		d.Confirm, err = asBool()
 	default:
-		return fmt.Errorf("campo não endereçável: %s", field)
+		return fmt.Errorf("field is not addressable: %s", field)
 	}
 	return err
 }
@@ -250,7 +250,7 @@ func replaceInField(d *domain.JobDefinition, field string, re *regexp.Regexp, re
 	}
 	cur, ok := getStringField(d, field)
 	if !ok {
-		return false, fmt.Errorf("campo não endereçável para find-replace: %s", field)
+		return false, fmt.Errorf("field is not addressable for find-replace: %s", field)
 	}
 	next := re.ReplaceAllString(cur, repl)
 	if next == cur {
@@ -259,7 +259,7 @@ func replaceInField(d *domain.JobDefinition, field string, re *regexp.Regexp, re
 	// find-replace não reescreve chaves de identidade.
 	nf := normalizeField(field)
 	if nf == "id" || nf == "team" {
-		return false, fmt.Errorf("find-replace em %s não é permitido (use rename/move)", nf)
+		return false, fmt.Errorf("find-replace on %s is not allowed (use rename/move)", nf)
 	}
 	return true, setField(d, field, next)
 }
@@ -284,7 +284,7 @@ func (c massCriteria) selectDefs(defs []domain.JobDefinition) ([]domain.JobDefin
 		var err error
 		re, err = regexp.Compile(c.Regex)
 		if err != nil {
-			return nil, fmt.Errorf("regex inválido: %v", err)
+			return nil, fmt.Errorf("invalid regex: %v", err)
 		}
 	}
 	idSet := map[string]bool{}
@@ -371,7 +371,7 @@ func applyOperation(d *domain.JobDefinition, op massOperation) ([]massChange, er
 		}
 		if op.OnlyIfEmpty {
 			if cur, ok := getStringField(d, op.Field); !ok {
-				return nil, fmt.Errorf("onlyIfEmpty só se aplica a campos string")
+				return nil, fmt.Errorf("onlyIfEmpty only applies to string fields")
 			} else if strings.TrimSpace(cur) != "" {
 				return nil, nil // já preenchido — pula
 			}
@@ -392,7 +392,7 @@ func applyOperation(d *domain.JobDefinition, op massOperation) ([]massChange, er
 		}
 		re, err := regexp.Compile(op.Find)
 		if err != nil {
-			return nil, fmt.Errorf("find inválido: %v", err)
+			return nil, fmt.Errorf("invalid find: %v", err)
 		}
 		before, _ := getStringField(d, op.Field)
 		changed, err := replaceInField(d, op.Field, re, op.Replace)
@@ -552,7 +552,7 @@ func applyOperation(d *domain.JobDefinition, op massOperation) ([]massChange, er
 		d.ConditionsIn = kept
 		return []massChange{{Field: "conditionsIn", Before: op.Key, After: ""}}, nil
 	}
-	return nil, fmt.Errorf("operação desconhecida: %s", op.Op)
+	return nil, fmt.Errorf("unknown operation: %s", op.Op)
 }
 
 // ── Handlers ────────────────────────────────────────────────────────────────
@@ -608,7 +608,7 @@ func (s *server) massUpdateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(selected) > 500 {
-		http.Error(w, fmt.Sprintf("critério casa %d jobs (max 500) — restrinja a seleção", len(selected)), http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("criteria match %d jobs (max 500) — narrow the selection", len(selected)), http.StatusBadRequest)
 		return
 	}
 
@@ -640,7 +640,7 @@ func (s *server) massUpdateSession(w http.ResponseWriter, r *http.Request) {
 		item.Changes = changes
 		if u != nil {
 			if can, _ := auth.CanWriteFolder(s.cfg.DB, u, mod.Team); !can {
-				item.Error = "sem permissão de escrita na folder " + mod.Team
+				item.Error = "no write permission on folder " + mod.Team
 				items = append(items, item)
 				continue
 			}
@@ -692,7 +692,7 @@ func (s *server) massUpdateUndo(w http.ResponseWriter, r *http.Request) {
 	}
 	entry, found := massUndo.pop(sess.ID)
 	if !found {
-		http.Error(w, "nada para desfazer nesta session", http.StatusNotFound)
+		http.Error(w, "nothing to undo in this session", http.StatusNotFound)
 		return
 	}
 	u, _ := auth.FromContext(r.Context())
@@ -700,7 +700,7 @@ func (s *server) massUpdateUndo(w http.ResponseWriter, r *http.Request) {
 	for _, def := range entry.Before {
 		if u != nil {
 			if can, _ := auth.CanWriteFolder(s.cfg.DB, u, def.Team); !can {
-				results = append(results, bulkItemResult{ID: def.ID, Error: "sem permissão de escrita na folder " + def.Team})
+				results = append(results, bulkItemResult{ID: def.ID, Error: "no write permission on folder " + def.Team})
 				continue
 			}
 		}

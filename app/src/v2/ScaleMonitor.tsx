@@ -49,7 +49,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 function fmtInt(n: number): string {
-  return n.toLocaleString("pt-BR");
+  return n.toLocaleString("en-GB");
 }
 
 // Dashboards prontos — presets fixos da UI sobre o MESMO shape do /summary (que já
@@ -57,11 +57,11 @@ function fmtInt(n: number): string {
 // que reescopa o total, a lista de folders (só as que têm jobs nesse estado) e os
 // jobs da folder aberta. Zero backend novo: é o /summary com um filtro.
 const PRESETS: { key: string; label: string; status: string }[] = [
-  { key: "RUNNING", label: "Rodando", status: "RUNNING" },
-  { key: "WAITING", label: "Aguardando", status: "WAITING" },
-  { key: "OK", label: "Concluídos", status: "OK" },
-  { key: "NOTOK", label: "Falhas", status: "NOTOK" },
-  { key: "HELD", label: "Em espera", status: "HELD" },
+  { key: "RUNNING", label: "Running", status: "RUNNING" },
+  { key: "WAITING", label: "Waiting", status: "WAITING" },
+  { key: "OK", label: "Completed", status: "OK" },
+  { key: "NOTOK", label: "Failures", status: "NOTOK" },
+  { key: "HELD", label: "Held", status: "HELD" },
 ];
 
 export default function ScaleMonitor({ onClose }: { onClose?: () => void }) {
@@ -202,7 +202,7 @@ export default function ScaleMonitor({ onClose }: { onClose?: () => void }) {
           <span style={{ fontSize: 26, fontWeight: 700, color: "var(--v2-text-primary)", lineHeight: 1.1 }}>
             {activeView ? fmtInt(activeView.total) : "…"}
             <span style={{ fontSize: 12, fontWeight: 500, color: "var(--v2-text-muted)", marginLeft: 6 }}>
-              {presetKey ? `de ${summary ? fmtInt(summary.total) : "…"} no dia` : "jobs no dia"}
+              {presetKey ? `of ${summary ? fmtInt(summary.total) : "…"} today` : "jobs today"}
             </span>
           </span>
         </div>
@@ -210,7 +210,7 @@ export default function ScaleMonitor({ onClose }: { onClose?: () => void }) {
         <div style={{ display: "flex", gap: 8, marginLeft: 8, flexWrap: "wrap", alignItems: "center" }}>
           <PresetChip
             active={!presetKey}
-            label="Visão geral"
+            label="Overview"
             onClick={() => setPresetKey("")}
           />
           {PRESETS.map((p) => {
@@ -300,7 +300,7 @@ export default function ScaleMonitor({ onClose }: { onClose?: () => void }) {
           <div style={{ flex: 1, overflowY: "auto" }}>
             {folders.length === 0 && presetKey && (
               <div style={{ padding: "12px 14px", fontSize: 11, color: "var(--v2-text-muted)", lineHeight: 1.5 }}>
-                Nenhuma folder com jobs em <strong style={{ color: "var(--v2-text-secondary)" }}>{PRESETS.find((p) => p.key === presetKey)?.label}</strong>.
+                No folder with jobs in <strong style={{ color: "var(--v2-text-secondary)" }}>{PRESETS.find((p) => p.key === presetKey)?.label}</strong>.
               </div>
             )}
             {folders.map((f) => (
@@ -355,7 +355,7 @@ export default function ScaleMonitor({ onClose }: { onClose?: () => void }) {
                 {loadMs !== null && <span style={{ color: "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)" }}>· 1ª página em {loadMs}ms</span>}
               </>
             ) : (
-              <span style={{ color: "var(--v2-text-muted)" }}>Escolha uma folder à esquerda para carregar os jobs (só o working set vem do servidor).</span>
+              <span style={{ color: "var(--v2-text-muted)" }}>Pick a folder on the left to load the jobs (only the working set comes from the server).</span>
             )}
           </div>
           <VirtualJobList items={items} hasMore={!!cursor} loading={loading} onReachEnd={loadMore} />
@@ -457,7 +457,7 @@ function VirtualJobList({
                 {j.definitionId}
                 {j.carriedFrom && (
                   <span
-                    title={`Carregado da diária de ${j.carriedFrom} (carry-over)`}
+                    title={`Carried over from the ${j.carriedFrom} daily (carry-over)`}
                     style={{ marginLeft: 7, fontSize: 9, color: "var(--v2-status-waiting)", fontFamily: "var(--v2-font-mono)" }}
                   >
                     ↩ {j.carriedFrom}
@@ -465,7 +465,7 @@ function VirtualJobList({
                 )}
               </span>
               <span style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", flexShrink: 0 }}>
-                {j.scheduledAt ? new Date(j.scheduledAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : ""}
+                {j.scheduledAt ? new Date(j.scheduledAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : ""}
               </span>
             </div>
           );
@@ -473,7 +473,7 @@ function VirtualJobList({
       </div>
       {loading && (
         <div style={{ position: "sticky", bottom: 0, padding: "6px 14px", fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", background: "var(--v2-bg-surface)", borderTop: "1px solid var(--v2-border-subtle)" }}>
-          carregando…
+          loading…
         </div>
       )}
     </div>

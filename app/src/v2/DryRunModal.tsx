@@ -14,10 +14,10 @@ function tomorrow(): string {
 }
 
 const OUTCOME: Record<DryRunJob["outcome"], { label: string; color: string }> = {
-  RUN:           { label: "RODA", color: "var(--v2-status-ok)" },
-  WAIT:          { label: "ESPERA", color: "var(--v2-status-waiting)" },
-  BLOCKED:       { label: "NUNCA", color: "var(--v2-status-failed)" },
-  NOT_SCHEDULED: { label: "FORA", color: "var(--v2-text-muted)" },
+  RUN:           { label: "RUNS", color: "var(--v2-status-ok)" },
+  WAIT:          { label: "WAITS", color: "var(--v2-status-waiting)" },
+  BLOCKED:       { label: "NEVER", color: "var(--v2-status-failed)" },
+  NOT_SCHEDULED: { label: "OUT", color: "var(--v2-text-muted)" },
 };
 const ORDER: DryRunJob["outcome"][] = ["BLOCKED", "WAIT", "RUN", "NOT_SCHEDULED"];
 
@@ -31,7 +31,7 @@ export default function DryRunModal() {
     setLoading(true);
     setError(null);
     fetchDryRun(d)
-      .then((r) => { setDr(r); if (!r) setError("Dry Run indisponível no modo local."); })
+      .then((r) => { setDr(r); if (!r) setError("Dry Run unavailable in local mode."); })
       .catch((e) => setError(e?.message ?? String(e)))
       .finally(() => setLoading(false));
   }, []);
@@ -50,9 +50,9 @@ export default function DryRunModal() {
         {/* header */}
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--v2-border-subtle)", display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>Dry Run — simular daily</div>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>Dry Run — simulate the daily</div>
             <div style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", marginTop: 2 }}>
-              quem roda · quem espera · quem nunca dispara — sem materializar
+              who runs · who waits · who never fires — without materializing
             </div>
           </div>
           <input
@@ -66,18 +66,18 @@ export default function DryRunModal() {
         {/* counts */}
         {c && (
           <div style={{ display: "flex", borderBottom: "1px solid var(--v2-border-subtle)", fontFamily: "var(--v2-font-mono)" }}>
-            <Count label="roda" n={c.run} color="var(--v2-status-ok)" />
-            <Count label="espera" n={c.wait} color="var(--v2-status-waiting)" />
-            <Count label="nunca" n={c.blocked} color="var(--v2-status-failed)" />
-            <Count label="fora da daily" n={c.notScheduled} color="var(--v2-text-muted)" />
+            <Count label="runs" n={c.run} color="var(--v2-status-ok)" />
+            <Count label="waits" n={c.wait} color="var(--v2-status-waiting)" />
+            <Count label="never" n={c.blocked} color="var(--v2-status-failed)" />
+            <Count label="out of the daily" n={c.notScheduled} color="var(--v2-text-muted)" />
           </div>
         )}
 
         {/* body */}
         <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px" }}>
-          {loading && <Muted>simulando {date}…</Muted>}
+          {loading && <Muted>simulating {date}…</Muted>}
           {error && <div style={{ color: "var(--v2-status-failed)", fontSize: 11, fontFamily: "var(--v2-font-mono)" }}>{error}</div>}
-          {!loading && dr && dr.jobs.length === 0 && <Muted>Nenhum job habilitado pra simular.</Muted>}
+          {!loading && dr && dr.jobs.length === 0 && <Muted>No job enabled to simulate.</Muted>}
           {!loading && grouped.map((g) => (
             <div key={g.o} style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 10, fontFamily: "var(--v2-font-mono)", color: OUTCOME[g.o].color, letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 700, marginBottom: 6 }}>
@@ -97,7 +97,7 @@ export default function DryRunModal() {
               ))}
             </div>
           ))}
-          {dr?.truncated && <Muted>… lista truncada (contadores acima são exatos).</Muted>}
+          {dr?.truncated && <Muted>… list truncated (the counters above are exact).</Muted>}
         </div>
       </div>
   );

@@ -77,7 +77,7 @@ func TestCondLogic_Gate_AndOrThird(t *testing.T) {
 	if b == nil {
 		t.Fatalf("Explain deveria ter WAIT_CONDITION, veio %+v", ex.Blockers)
 	}
-	if !strings.Contains(b.Detail, "(C1 E C2) OU C3") {
+	if !strings.Contains(b.Detail, "(C1 AND C2) OR C3") {
 		t.Fatalf("Explain deveria mostrar a expressão, veio %q", b.Detail)
 	}
 

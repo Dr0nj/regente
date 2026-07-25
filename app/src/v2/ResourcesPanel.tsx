@@ -50,25 +50,25 @@ export default function ResourcesPanel({ onClose }: { onClose: () => void }) {
     try {
       await setResourceCapacity(name, cap);
       setDraftName(""); setDraftCap("1");
-      toast.success(`Recurso ${name} definido`, { detail: `capacidade ${cap}${cap === 1 ? " (lock exclusivo)" : ""}` });
+      toast.success(`Resource ${name} set`, { detail: `capacity ${cap}${cap === 1 ? " (exclusive lock)" : ""}` });
       await reload();
     } catch (e) {
-      toast.error("Falha ao definir recurso", { detail: e instanceof Error ? e.message : String(e) });
+      toast.error("Failed to set resource", { detail: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(false);
     }
   };
 
   const remove = async (r: ResourceState) => {
-    if (r.used > 0) { toast.error(`"${r.name}" em uso (${r.used})`, { detail: "libere o uso antes de deletar" }); return; }
-    if (!confirm(`Deletar o recurso "${r.name}"?`)) return;
+    if (r.used > 0) { toast.error(`"${r.name}" in use (${r.used})`, { detail: "release the usage before deleting" }); return; }
+    if (!confirm(`Delete the resource "${r.name}"?`)) return;
     setBusy(true);
     try {
       await deleteResource(r.name);
-      toast.success(`Recurso ${r.name} deletado`);
+      toast.success(`Resource ${r.name} deleted`);
       await reload();
     } catch (e) {
-      toast.error("Falha ao deletar recurso", { detail: e instanceof Error ? e.message : String(e) });
+      toast.error("Failed to delete resource", { detail: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(false);
     }
@@ -91,12 +91,12 @@ export default function ResourcesPanel({ onClose }: { onClose: () => void }) {
       {/* Header */}
       <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--v2-border-subtle)", display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ width: 6, height: 6, borderRadius: "50%", background: RES_ACCENT }} />
-        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.04em" }}>RECURSOS DO AMBIENTE</span>
+        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.04em" }}>ENVIRONMENT RESOURCES</span>
         <span style={{ fontSize: 10, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>{items.length}</span>
-        <button onClick={() => setAdding((v) => !v)} title={adding ? "Fechar" : "Adicionar recurso"}
+        <button onClick={() => setAdding((v) => !v)} title={adding ? "Close" : "Add resource"}
           style={{ marginLeft: "auto", ...addToggleStyle(adding, RES_ACCENT) }}>{adding ? <X size={12} /> : <Plus size={12} />}</button>
-        <button onClick={() => void reload()} title="Recarregar" style={iconBtn}><RefreshCw size={12} /></button>
-        <button onClick={onClose} title="Fechar" style={iconBtn}><X size={14} /></button>
+        <button onClick={() => void reload()} title="Reload" style={iconBtn}><RefreshCw size={12} /></button>
+        <button onClick={onClose} title="Close" style={iconBtn}><X size={14} /></button>
       </div>
 
       {/* Add / set capacity — escondido até clicar no ＋ do cabeçalho (workspace limpo). */}
@@ -107,7 +107,7 @@ export default function ResourcesPanel({ onClose }: { onClose: () => void }) {
           <input
             autoFocus
             value={draftName}
-            placeholder="recurso… (ex.: SAP)"
+            placeholder="resource… (e.g. SAP)"
             onChange={(e) => setDraftName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submit(); } else if (e.key === "Escape") { setDraftName(""); setAdding(false); } }}
             onFocus={(e) => { e.currentTarget.style.borderColor = RES_ACCENT; }}
@@ -117,31 +117,31 @@ export default function ResourcesPanel({ onClose }: { onClose: () => void }) {
           <input
             type="number" min={0} value={draftCap}
             onChange={(e) => setDraftCap(e.target.value.replace(/\D/g, ""))}
-            title="capacidade (execuções simultâneas)"
+            title="capacity (concurrent runs)"
             style={{ ...inputStyle, width: 64, flex: "none", background: "var(--v2-bg-elevated)", border: "1px dashed var(--v2-border-medium)" }}
           />
-          <button onClick={() => void submit()} disabled={busy || !draftName.trim()} title="Definir capacidade"
+          <button onClick={() => void submit()} disabled={busy || !draftName.trim()} title="Set capacity"
             style={{ ...btnStyle, borderColor: draftName.trim() ? RES_ACCENT : "var(--v2-border-medium)", color: draftName.trim() ? RES_ACCENT : "var(--v2-text-muted)" }}>
             Set
           </button>
         </div>
         <div style={{ fontSize: 9.5, color: "var(--v2-text-muted)", lineHeight: 1.4 }}>
-          Capacidade = quantos jobs com o recurso rodam ao mesmo tempo. Escolha QUAIS jobs consomem no Design (aba Condições → Recursos).
+          Capacity = how many jobs holding the resource run at the same time. Choose WHICH jobs consume it in Design (Conditions tab → Resources).
         </div>
       </div>
       )}
 
       {/* Filtro */}
       <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--v2-border-subtle)" }}>
-        <input value={filter} placeholder="filtrar por nome…" onChange={(e) => setFilter(e.target.value)} style={inputStyle} />
+        <input value={filter} placeholder="filter by name…" onChange={(e) => setFilter(e.target.value)} style={inputStyle} />
       </div>
 
       {/* Lista */}
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
         {visible.length === 0 && (
           <div style={{ fontSize: 11, color: "var(--v2-text-muted)", padding: "16px 4px", textAlign: "center", lineHeight: 1.5 }}>
-            Nenhum recurso no pool{filter ? " com esse filtro" : ""}.<br />
-            Crie um acima (ou ao configurar um job — recurso desconhecido nasce com capacidade 1).
+            No resource in the pool{filter ? " matching that filter" : ""}.<br />
+            Create one above (or while configuring a job — an unknown resource is born with capacity 1).
           </div>
         )}
         {visible.map((r) => {
@@ -154,17 +154,17 @@ export default function ResourcesPanel({ onClose }: { onClose: () => void }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontFamily: "var(--v2-font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</div>
                 <div style={{ fontSize: 9.5, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>
-                  cap {r.capacity} · uso {r.used} · <span style={{ color: free <= 0 ? "var(--v2-status-failed)" : "var(--v2-status-ok)" }}>livre {free}</span>
+                  cap {r.capacity} · used {r.used} · <span style={{ color: free <= 0 ? "var(--v2-status-failed)" : "var(--v2-status-ok)" }}>free {free}</span>
                 </div>
               </div>
               <input
                 type="number" min={0} value={r.capacity}
                 onChange={(e) => { const cap = Math.max(0, parseInt(e.target.value, 10) || 0); setItems((prev) => prev.map((x) => x.name === r.name ? { ...x, capacity: cap } : x)); }}
-                onBlur={(e) => { const cap = Math.max(0, parseInt(e.target.value, 10) || 0); void setResourceCapacity(r.name, cap).then(reload).catch((err) => toast.error("Falha ao ajustar capacidade", { detail: err instanceof Error ? err.message : String(err) })); }}
-                title="ajustar capacidade (salva ao sair do campo)"
+                onBlur={(e) => { const cap = Math.max(0, parseInt(e.target.value, 10) || 0); void setResourceCapacity(r.name, cap).then(reload).catch((err) => toast.error("Failed to adjust capacity", { detail: err instanceof Error ? err.message : String(err) })); }}
+                title="adjust capacity (saves when the field loses focus)"
                 style={{ ...inputStyle, width: 56, flex: "none" }}
               />
-              <button onClick={() => void remove(r)} disabled={busy || r.used > 0} title={r.used > 0 ? "em uso; libere antes" : "Deletar recurso"}
+              <button onClick={() => void remove(r)} disabled={busy || r.used > 0} title={r.used > 0 ? "in use; release it first" : "Delete resource"}
                 style={{ ...iconBtn, opacity: r.used > 0 ? 0.4 : 1, cursor: r.used > 0 ? "not-allowed" : "pointer" }}>
                 <Trash2 size={12} />
               </button>

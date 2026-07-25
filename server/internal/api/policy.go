@@ -64,7 +64,7 @@ func checkSessionPolicy(store *storage.FileStore) ([]policy.Violation, bool, err
 // policyViolationsSummary — mensagem compacta pra erro HTTP (lista capada).
 func policyViolationsSummary(vs []policy.Violation) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("policy: %d violação(ões)", len(vs)))
+	b.WriteString(fmt.Sprintf("policy: %d violation(s)", len(vs)))
 	for i, v := range vs {
 		if i >= 10 {
 			b.WriteString(fmt.Sprintf("; … (+%d)", len(vs)-10))

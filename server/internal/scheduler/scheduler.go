@@ -562,7 +562,7 @@ func (s *Scheduler) DailyAt() string {
 			return v
 		}
 		if v != "" {
-			log.Printf("[scheduler] settings daily_at %q inválido (esperado HH:MM) — usando %s", v, s.settings.DailyAt)
+			log.Printf("[scheduler] settings daily_at %q invalid (expected HH:MM) — using %s", v, s.settings.DailyAt)
 		}
 	}
 	return s.settings.DailyAt
@@ -590,7 +590,7 @@ func (s *Scheduler) DailyTimezone() (string, *time.Location) {
 	if err != nil {
 		// Cacheia o fallback pelo MESMO nome: sem isso o tick de 2s logaria isto
 		// centenas de vezes por minuto. Corrigir o setting muda o nome → recarrega.
-		log.Printf("[scheduler] settings daily_timezone %q inválido (%v) — usando o relógio local do server", name, err)
+		log.Printf("[scheduler] settings daily_timezone %q invalid (%v) — using the server local clock", name, err)
 		loc = time.Local
 	}
 	s.tzName, s.tzLoc = name, loc
@@ -801,7 +801,7 @@ func (s *Scheduler) carryOver(date string) (int, error) {
 	if err := s.db.QueryRow(
 		`SELECT COALESCE(MAX(order_date),'') FROM instances WHERE order_date < ?`, date,
 	).Scan(&prev); err != nil {
-		return 0, fmt.Errorf("diária anterior: %w", err)
+		return 0, fmt.Errorf("previous daily: %w", err)
 	}
 	if prev == "" {
 		return 0, nil // primeira daily do ambiente: nada a carregar
@@ -869,7 +869,7 @@ func (s *Scheduler) carryOver(date string) (int, error) {
 	if errIter != nil {
 		// Iteração incompleta = plano incompleto. Não aplicar NADA (metade
 		// avançada e metade estranhada na diária velha é pior que adiar).
-		return 0, fmt.Errorf("iteração: %w", errIter)
+		return 0, fmt.Errorf("iteration: %w", errIter)
 	}
 
 	if len(plan) == 0 {
@@ -878,7 +878,7 @@ func (s *Scheduler) carryOver(date string) (int, error) {
 	if err := s.applyCarry(date, plan); err != nil {
 		return 0, fmt.Errorf("apply: %w", err)
 	}
-	log.Printf("[scheduler] carry-over %s: %d instances trazidas da diária %s", date, len(plan), prev)
+	log.Printf("[scheduler] carry-over %s: %d instances brought from the %s daily", date, len(plan), prev)
 	return len(plan), nil
 }
 
@@ -910,7 +910,7 @@ func (s *Scheduler) applyCarry(date string, plan []carriedInstance) error {
 			continue
 		}
 		_, _ = evt.Exec(c.id, "carried", "scheduler",
-			fmt.Sprintf("carry-over para %s (%s, ODAT %s)", date, c.reason, c.from))
+			fmt.Sprintf("carry-over to %s (%s, ODAT %s)", date, c.reason, c.from))
 	}
 	return tx.Commit()
 }
@@ -943,7 +943,7 @@ func (s *Scheduler) RunDaily(date string) int {
 	// estranharia instances na diária velha, invisíveis pro board).
 	carried, err := s.carryOver(date)
 	if err != nil {
-		log.Printf("[scheduler] daily %s ABORTADA (carry-over: %v) — retry no próximo tick", date, err)
+		log.Printf("[scheduler] daily %s ABORTED (carry-over: %v) — retry on the next tick", date, err)
 		return 0
 	}
 
@@ -961,14 +961,14 @@ func (s *Scheduler) RunDaily(date string) int {
 	existing := make(map[string]struct{})
 	rows, err := s.db.Query("SELECT definition_id FROM instances WHERE order_date=? AND COALESCE(carried_from,'')=''", date)
 	if err != nil {
-		log.Printf("[scheduler] daily %s ABORTADA (existência: %v) — retry no próximo tick", date, err)
+		log.Printf("[scheduler] daily %s ABORTED (existence: %v) — retry on the next tick", date, err)
 		return 0
 	}
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			rows.Close()
-			log.Printf("[scheduler] daily %s ABORTADA (existência/scan: %v) — retry no próximo tick", date, err)
+			log.Printf("[scheduler] daily %s ABORTED (existence/scan: %v) — retry on the next tick", date, err)
 			return 0
 		}
 		existing[id] = struct{}{}
@@ -976,7 +976,7 @@ func (s *Scheduler) RunDaily(date string) int {
 	errIter := rows.Err()
 	rows.Close()
 	if errIter != nil {
-		log.Printf("[scheduler] daily %s ABORTADA (existência/iteração: %v) — retry no próximo tick", date, errIter)
+		log.Printf("[scheduler] daily %s ABORTED (existence/iteration: %v) — retry on the next tick", date, errIter)
 		return 0
 	}
 
@@ -1186,7 +1186,7 @@ func (s *Scheduler) tickOnce() {
 	// Iteração incompleta = tick parcial (instances de fora ficam pro próximo
 	// tick — benigno, mas tem que aparecer no log pra não virar mistério).
 	if err := rows.Err(); err != nil {
-		log.Printf("[scheduler] tick: leitura das instances incompleta (%d lidas): %v", len(insts), err)
+		log.Printf("[scheduler] tick: incomplete instance read (%d read): %v", len(insts), err)
 	}
 	rows.Close()
 
@@ -1207,7 +1207,7 @@ func (s *Scheduler) tickOnce() {
 	if s.conditions != nil {
 		var err error
 		if condIdx, err = s.conditions.LoadIndex(); err != nil {
-			log.Printf("[conditions] load do pool falhou (tick segue com consulta direta): %v", err)
+			log.Printf("[conditions] pool load failed (tick continues with a direct query): %v", err)
 			condIdx = nil
 		}
 	}
@@ -1327,8 +1327,8 @@ func (s *Scheduler) maybeEmitNoAgent(id, jobType string) {
 	s.noAgentAt[id] = now
 	s.mu.Unlock()
 	s.emitEvent(id, "submitted", "scheduler",
-		"no agent online for capability "+jobType+" — waiting (re-tenta a cada tick)")
-	log.Printf("[scheduler] %s: sem agente online p/ %s — instance segue WAITING", id, jobType)
+		"no agent online for capability "+jobType+" — waiting (retried on every tick)")
+	log.Printf("[scheduler] %s: no agent online for %s — instance stays WAITING", id, jobType)
 }
 
 func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
@@ -1538,7 +1538,7 @@ func (s *Scheduler) maybeCycle(id string) {
 	done := runs + 1 // voltas OK completadas, incluindo a que acabou de terminar
 	if def.Schedule.CyclicMaxRuns > 0 && done >= def.Schedule.CyclicMaxRuns {
 		s.emitEvent(id, "cyclic-done", "scheduler",
-			fmt.Sprintf("ciclo encerrado: %d voltas (máx %d)", done, def.Schedule.CyclicMaxRuns))
+			fmt.Sprintf("cycle ended: %d laps (max %d)", done, def.Schedule.CyclicMaxRuns))
 		return
 	}
 	next := time.Now().Add(time.Duration(def.Schedule.IntervalMin) * time.Minute)
@@ -1547,7 +1547,7 @@ func (s *Scheduler) maybeCycle(id string) {
 			windowEnd := time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.Local)
 			if next.After(windowEnd) {
 				s.emitEvent(id, "cyclic-done", "scheduler",
-					fmt.Sprintf("ciclo encerrado: janela até %s fechou (%d voltas)", def.Schedule.WindowTo, done))
+					fmt.Sprintf("cycle ended: window to %s closed (%d laps)", def.Schedule.WindowTo, done))
 				return
 			}
 		}
@@ -1566,7 +1566,7 @@ func (s *Scheduler) maybeCycle(id string) {
 		return
 	}
 	s.emitEvent(id, "cyclic", "scheduler",
-		fmt.Sprintf("volta %d OK — próxima às %s (intervalo %dmin)", done, next.Format("15:04:05"), def.Schedule.IntervalMin))
+		fmt.Sprintf("lap %d OK — next at %s (interval %dmin)", done, next.Format("15:04:05"), def.Schedule.IntervalMin))
 	s.hub.BroadcastWeb("instance.changed", map[string]interface{}{
 		"id": id, "status": string(domain.StatusWaiting), "cyclic": true,
 	})
@@ -1632,7 +1632,7 @@ func (s *Scheduler) buildAlertContext(id string, status domain.InstanceStatus) A
 			}
 		}
 		if err := rows.Err(); err != nil {
-			log.Printf("[scheduler] alert context %s: histórico incompleto: %v", defID, err)
+			log.Printf("[scheduler] alert context %s: incomplete history: %v", defID, err)
 		}
 		// success rate sobre a janela das últimas 10.
 		window := hist
@@ -1697,7 +1697,7 @@ func (s *Scheduler) maybeRetry(id, output string) bool {
 			next, string(domain.StatusWaiting), nextAt, id,
 		)
 		s.emitEvent(id, "retry", "scheduler",
-			fmt.Sprintf("falhou — retry %d/%d agendado para %s (retryDelayMin=%d)",
+			fmt.Sprintf("failed — retry %d/%d scheduled for %s (retryDelayMin=%d)",
 				next, maxAttempts, nextAt.Format("2006-01-02 15:04"), def.RetryDelayMin))
 		s.hub.BroadcastWeb("instance.changed", map[string]interface{}{"id": id, "status": string(domain.StatusWaiting)})
 		return true
@@ -1706,7 +1706,7 @@ func (s *Scheduler) maybeRetry(id, output string) bool {
 		`UPDATE instances SET attempts=?, status=?, exit_code=NULL, finished_at=NULL WHERE id=?`,
 		next, string(domain.StatusWaiting), id,
 	)
-	s.emitEvent(id, "retry", "scheduler", fmt.Sprintf("falhou — retry %d/%d", next, maxAttempts))
+	s.emitEvent(id, "retry", "scheduler", fmt.Sprintf("failed — retry %d/%d", next, maxAttempts))
 	s.hub.BroadcastWeb("instance.changed", map[string]interface{}{"id": id, "status": string(domain.StatusWaiting)})
 	// backoff curto antes de re-dispatchar (running[id] já foi liberado).
 	// Goroutine rastreada + sleep abortável (ver Stop/sleepOrStop): sem isso o
@@ -1813,7 +1813,7 @@ func (s *Scheduler) Cancel(id string) (domain.InstanceStatus, error) {
 	case string(domain.StatusWaiting), string(domain.StatusHeld):
 		return s.cancelPending(id)
 	default:
-		return "", fmt.Errorf("instance %s is %s; só RUNNING/WAITING/HELD podem ser cancelados", id, status)
+		return "", fmt.Errorf("instance %s is %s; only RUNNING/WAITING/HELD can be cancelled", id, status)
 	}
 }
 
@@ -1844,7 +1844,7 @@ func (s *Scheduler) finishKilled(id string) {
 		s.resources.Release(id)
 	}
 	s.resetOutputBudget(id)
-	s.emitEvent(id, "cancelled", "operator", "killed while RUNNING — NOTOK sem retry")
+	s.emitEvent(id, "cancelled", "operator", "killed while RUNNING — NOTOK, no retry")
 	s.hub.BroadcastWeb("instance.changed", map[string]interface{}{
 		"id": id, "status": string(domain.StatusNotOK), "exitCode": -1, "killed": true,
 	})
@@ -1985,7 +1985,7 @@ func (s *Scheduler) ForceOrder(defID string) (string, error) {
 		ScheduledAt: now, Forced: true, ForceMode: ForceModeOrder, Snapshot: string(snap),
 	}
 	if blockers := s.gateInstance(r, *def, nil, now, true); len(blockers) > 0 {
-		s.emitEvent(id, "submitted", "operator", "force aguardando gate: "+blockers[0].Detail)
+		s.emitEvent(id, "submitted", "operator", "force waiting on gate: "+blockers[0].Detail)
 		return id, nil
 	}
 	if len(def.Resources) > 0 && s.resources != nil {

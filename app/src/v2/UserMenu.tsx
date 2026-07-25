@@ -81,7 +81,7 @@ export function UserMenu({
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       {onOpenAlerts && (
-        <IconButton title={unreadAlerts > 0 ? `${unreadAlerts} alerta(s) não reconhecido(s)` : "Alertas"} onClick={onOpenAlerts} active={alertsActive} danger={unreadAlerts > 0}>
+        <IconButton title={unreadAlerts > 0 ? `${unreadAlerts} unacknowledged alert(s)` : "Alerts"} onClick={onOpenAlerts} active={alertsActive} danger={unreadAlerts > 0}>
           <Bell size={16} />
           {unreadAlerts > 0 && (
             <span style={{
@@ -96,11 +96,11 @@ export function UserMenu({
         </IconButton>
       )}
 
-      <IconButton title="Configurações e conta" onClick={() => setOpen((v) => !v)} active={open}>
+      <IconButton title="Settings and account" onClick={() => setOpen((v) => !v)} active={open}>
         <Settings size={16} />
       </IconButton>
 
-      <IconButton title={isFull ? "Sair de tela cheia" : "Tela cheia"} onClick={toggleFullscreen} active={isFull}>
+      <IconButton title={isFull ? "Exit fullscreen" : "Fullscreen"} onClick={toggleFullscreen} active={isFull}>
         <Monitor size={16} />
       </IconButton>
 
@@ -108,7 +108,7 @@ export function UserMenu({
         <button
           onClick={() => setOpen((v) => !v)}
           title={`${me.username} · ${me.role}`}
-          aria-label="Conta"
+          aria-label="Account"
           style={{
             display: "inline-flex", alignItems: "center", gap: 6,
             background: "transparent", border: "none", cursor: "pointer", padding: 0,
@@ -151,11 +151,11 @@ export function UserMenu({
               </div>
 
               <button onClick={() => { setOpen(false); setShowChange(true); }} style={menuBtn}>
-                <KeyRound size={14} /> Trocar senha
+                <KeyRound size={14} /> Change password
               </button>
               {me.role === "admin" && (
                 <button onClick={() => { setOpen(false); onOpenUsers(); }} style={menuBtn}>
-                  <Users size={14} /> Gerenciar usuários
+                  <Users size={14} /> Manage users
                 </button>
               )}
               {onOpenControlM && (
@@ -165,7 +165,7 @@ export function UserMenu({
               )}
               {onOpenSettings && me.role === "admin" && (
                 <button onClick={() => { setOpen(false); onOpenSettings(); }} style={menuBtn}>
-                  <Settings size={14} /> Configurações
+                  <Settings size={14} /> Settings
                 </button>
               )}
               <hr style={{ border: 0, borderTop: "1px solid var(--v2-border-medium)", margin: "4px 0" }} />
@@ -173,7 +173,7 @@ export function UserMenu({
                 onClick={async () => { setOpen(false); await logout(); onLogout(); }}
                 style={{ ...menuBtn, color: "salmon" }}
               >
-                <LogOut size={14} /> Sair
+                <LogOut size={14} /> Sign out
               </button>
             </div>
           </>
@@ -201,15 +201,15 @@ function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (next.length < 4) { setErr("min 4 caracteres"); return; }
-    if (next !== next2) { setErr("nao confere"); return; }
+    if (next.length < 4) { setErr("min 4 characters"); return; }
+    if (next !== next2) { setErr("does not match"); return; }
     setBusy(true); setErr(null);
     try {
       await changePassword(current, next);
       setDone(true);
       setTimeout(onClose, 1200);
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "falhou");
+      setErr(e instanceof Error ? e.message : "failed");
     } finally {
       setBusy(false);
     }
@@ -222,26 +222,26 @@ function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
     }}>
       <div className="v2-neon-card" style={{ width: 340, padding: 20, display: "grid", gap: 10, background: "var(--v2-bg-elevated)", borderRadius: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 style={{ margin: 0, fontSize: 15 }}>Trocar senha</h3>
-          <button onClick={onClose} className="v2-dialog-x" aria-label="Fechar">✕</button>
+          <h3 style={{ margin: 0, fontSize: 15 }}>Change password</h3>
+          <button onClick={onClose} className="v2-dialog-x" aria-label="Close">✕</button>
         </div>
         {done ? (
-          <div style={{ color: "lightgreen", fontSize: 13 }}>Senha trocada.</div>
+          <div style={{ color: "lightgreen", fontSize: 13 }}>Password changed.</div>
         ) : (
           <form onSubmit={submit} style={{ display: "grid", gap: 8 }}>
-            <label style={lbl}><span>senha atual</span>
+            <label style={lbl}><span>current password</span>
               <input type="password" value={current} onChange={e => setCurrent(e.target.value)} required disabled={busy} />
             </label>
-            <label style={lbl}><span>nova senha</span>
+            <label style={lbl}><span>new password</span>
               <input type="password" value={next} onChange={e => setNext(e.target.value)} required disabled={busy} />
             </label>
-            <label style={lbl}><span>repita</span>
+            <label style={lbl}><span>repeat</span>
               <input type="password" value={next2} onChange={e => setNext2(e.target.value)} required disabled={busy} />
             </label>
             {err && <div style={{ color: "salmon", fontSize: 12 }}>{err}</div>}
             <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-              <button type="button" className="v2-btn" onClick={onClose} disabled={busy}>Cancelar</button>
-              <button type="submit" className="v2-btn v2-btn-primary" disabled={busy}>{busy ? "..." : "Salvar"}</button>
+              <button type="button" className="v2-btn" onClick={onClose} disabled={busy}>Cancel</button>
+              <button type="submit" className="v2-btn v2-btn-primary" disabled={busy}>{busy ? "..." : "Save"}</button>
             </div>
           </form>
         )}

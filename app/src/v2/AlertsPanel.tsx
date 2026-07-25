@@ -38,20 +38,20 @@ const SEVERITY_LABEL: Record<AlertSeverity, string> = {
 
 // Ciclo de vida do alerta — como foi tratado pela ação do operador no job.
 const RESOLUTION_INFO: Record<string, { label: string; title: string; color: string; icon: ReactNode }> = {
-  ack: { label: "reconhecido", title: "Reconhecido manualmente", color: "var(--v2-status-ok)", icon: <Check size={12} /> },
-  rerun: { label: "tratado · rerun", title: "Job re-executado pelo operador", color: "var(--v2-status-running)", icon: <RotateCcw size={11} /> },
-  set_ok: { label: "tratado · set ok", title: "Marcado como OK pelo operador", color: "var(--v2-status-ok)", icon: <Check size={12} /> },
+  ack: { label: "acknowledged", title: "Acknowledged manually", color: "var(--v2-status-ok)", icon: <Check size={12} /> },
+  rerun: { label: "handled · rerun", title: "Job rerun by the operator", color: "var(--v2-status-running)", icon: <RotateCcw size={11} /> },
+  set_ok: { label: "handled · set ok", title: "Marked as OK by the operator", color: "var(--v2-status-ok)", icon: <Check size={12} /> },
 };
 
 function relativeTime(ts: number): string {
   const diff = Date.now() - ts;
   const s = Math.floor(diff / 1000);
-  if (s < 60) return `${s}s atrás`;
+  if (s < 60) return `${s}s ago`;
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}min atrás`;
+  if (m < 60) return `${m}min ago`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h atrás`;
-  return new Date(ts).toLocaleString("pt-BR");
+  if (h < 24) return `${h}h ago`;
+  return new Date(ts).toLocaleString("en-GB");
 }
 
 export function AlertsPanel({ onClose, onChange, isAdmin = false }: { onClose: () => void; onChange?: () => void; isAdmin?: boolean }) {
@@ -88,12 +88,12 @@ export function AlertsPanel({ onClose, onChange, isAdmin = false }: { onClose: (
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, fontSize: 14 }}>
             <Bell size={16} style={{ color: "var(--v2-accent-brand)" }} />
-            Alertas
+            Alerts
           </div>
           <button
             onClick={onClose}
             style={{ background: "transparent", color: "var(--v2-text-muted)", border: "none", cursor: "pointer", display: "flex" }}
-            title="Fechar"
+            title="Close"
           >
             <X size={18} />
           </button>
@@ -113,7 +113,7 @@ export function AlertsPanel({ onClose, onChange, isAdmin = false }: { onClose: (
                 textTransform: "uppercase", fontWeight: 600,
               }}
             >
-              {t === "events" ? "Eventos" : "Regras"}
+              {t === "events" ? "Events" : "Rules"}
             </button>
           ))}
         </div>
@@ -158,12 +158,12 @@ function EventsView({ onChange }: { onChange?: () => void }) {
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        <FilterChip label="Não reconhecidos" active={onlyUnack} onClick={() => setOnlyUnack((v) => !v)} />
+        <FilterChip label="Unacknowledged" active={onlyUnack} onClick={() => setOnlyUnack((v) => !v)} />
         <div style={{ display: "flex", gap: 4 }}>
           {(["all", "critical", "warning", "info"] as const).map((s) => (
             <FilterChip
               key={s}
-              label={s === "all" ? "Todas" : SEVERITY_LABEL[s]}
+              label={s === "all" ? "All" : SEVERITY_LABEL[s]}
               active={severity === s}
               dot={s === "all" ? undefined : SEVERITY_COLOR[s]}
               onClick={() => setSeverity(s)}
@@ -184,7 +184,7 @@ function EventsView({ onChange }: { onChange?: () => void }) {
             fontSize: 11, fontFamily: "var(--v2-font-mono)",
           }}
         >
-          <CheckCheck size={13} /> Reconhecer todos
+          <CheckCheck size={13} /> Acknowledge all
           {unackCount > 0 && (
             <span style={{
               background: "var(--v2-status-failed)", color: "#fff", borderRadius: 8,
@@ -195,13 +195,13 @@ function EventsView({ onChange }: { onChange?: () => void }) {
       </div>
 
       {loading ? (
-        <EmptyHint title="Carregando…" hint="Buscando alertas." />
+        <EmptyHint title="Loading…" hint="Fetching alerts." />
       ) : filtered.length === 0 ? (
         <EmptyHint
-          title="Nenhum alerta"
+          title="No alert"
           hint={events.length === 0
-            ? "Nenhum alerta foi disparado ainda. Eles aparecem aqui quando uma regra é satisfeita após a execução de um job."
-            : "Nenhum alerta corresponde aos filtros selecionados."}
+            ? "No alert has fired yet. They show up here when a rule is satisfied after a job runs."
+            : "No alert matches the selected filters."}
         />
       ) : (
         <div style={{ display: "grid", gap: 6 }}>
@@ -242,7 +242,7 @@ function EventsView({ onChange }: { onChange?: () => void }) {
                   return (
                     <button
                       onClick={() => handleAck(e.id)}
-                      title="Reconhecer manualmente"
+                      title="Acknowledge manually"
                       style={{
                         display: "flex", alignItems: "center", gap: 4, flexShrink: 0,
                         padding: "3px 8px", borderRadius: 4,
@@ -281,12 +281,12 @@ function EventsView({ onChange }: { onChange?: () => void }) {
 function conditionSummary(rule: AlertRule): string {
   const c = rule.condition;
   switch (c.type) {
-    case "failure": return "Quando o workflow falha";
-    case "duration_exceeded": return `Quando a duração excede ${(c.thresholdMs / 1000).toFixed(0)}s`;
-    case "slow_vs_average": return `Quando a duração passa da média histórica do job em ${(c.percentOver > 0 ? c.percentOver : 50).toFixed(0)}% (1ª execução não alerta; dispara já durante a run)`;
-    case "retry_exceeded": return `Quando há mais de ${c.maxRetries} retries`;
-    case "success_rate_below": return `Quando a taxa de sucesso cai abaixo de ${(c.rate * 100).toFixed(0)}%`;
-    case "consecutive_failures": return `Quando há ${c.count} falhas consecutivas`;
+    case "failure": return "When the workflow fails";
+    case "duration_exceeded": return `When the duration exceeds ${(c.thresholdMs / 1000).toFixed(0)}s`;
+    case "slow_vs_average": return `When the duration goes ${(c.percentOver > 0 ? c.percentOver : 50).toFixed(0)}% over the job's historical average (the 1st run never alerts; it fires during the run)`;
+    case "retry_exceeded": return `When there are more than ${c.maxRetries} retries`;
+    case "success_rate_below": return `When the success rate drops below ${(c.rate * 100).toFixed(0)}%`;
+    case "consecutive_failures": return `When there are ${c.count} consecutive failures`;
     default: return "—";
   }
 }
@@ -304,7 +304,7 @@ function RulesView({ isAdmin }: { isAdmin: boolean }) {
     <div style={{ display: "grid", gap: 6 }}>
       <ChannelsConfig isAdmin={isAdmin} />
       {rules.length === 0 && (
-        <EmptyHint title="Nenhuma regra" hint="As regras padrão serão criadas automaticamente." />
+        <EmptyHint title="No rule" hint="The default rules will be created automatically." />
       )}
       {rules.map((r) => (
         <div
@@ -327,7 +327,7 @@ function RulesView({ isAdmin }: { isAdmin: boolean }) {
                 fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)",
                 padding: "1px 5px", border: "1px solid var(--v2-border-subtle)", borderRadius: 2,
               }}>
-                {r.workflowPattern === "*" ? "todos os jobs" : r.workflowPattern}
+                {r.workflowPattern === "*" ? "all jobs" : r.workflowPattern}
               </span>
             </div>
             <div style={{ fontSize: 11, color: "var(--v2-text-secondary)", marginTop: 2 }}>
@@ -372,7 +372,7 @@ function RuleChannelChips({ rule, isAdmin, onChanged }: { rule: AlertRule; isAdm
               key={ch}
               onClick={() => toggle(ch)}
               disabled={!isAdmin || fixed || busy}
-              title={fixed ? "Sempre ativo (aparece na UI)" : isAdmin ? "Alternar canal de routing" : "Somente admin"}
+              title={fixed ? "Always on (shows up in the UI)" : isAdmin ? "Toggle routing channel" : "Admin only"}
               style={{
                 fontSize: 9, fontFamily: "var(--v2-font-mono)", padding: "2px 7px", borderRadius: 8,
                 cursor: !isAdmin || fixed ? "default" : "pointer",
@@ -393,7 +393,7 @@ function RuleChannelChips({ rule, isAdmin, onChanged }: { rule: AlertRule; isAdm
       </div>
       {isServerMode() && (
         <div style={{ fontSize: 9, color: "var(--v2-text-muted)", marginTop: 3 }}>
-          {externalSelected ? "→ roteia só para os canais marcados" : "→ roteia para todos os sinks configurados"}
+          {externalSelected ? "→ routes only to the selected channels" : "→ routes to every configured sink"}
         </div>
       )}
     </div>
@@ -439,12 +439,12 @@ function ChannelsConfig({ isAdmin }: { isAdmin: boolean }) {
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
         <Send size={13} style={{ color: "var(--v2-accent-brand)" }} />
-        <span style={{ fontSize: 12, fontWeight: 600 }}>Canais de notificação</span>
-        {saved && <span style={{ fontSize: 10, color: "var(--v2-status-ok)", fontFamily: "var(--v2-font-mono)" }}>✓ salvo</span>}
+        <span style={{ fontSize: 12, fontWeight: 600 }}>Notification channels</span>
+        {saved && <span style={{ fontSize: 10, color: "var(--v2-status-ok)", fontFamily: "var(--v2-font-mono)" }}>✓ saved</span>}
       </div>
       <div style={{ fontSize: 10, color: "var(--v2-text-muted)", marginBottom: 10, lineHeight: 1.4 }}>
-        Configure os destinos abaixo; cada regra escolhe para quais roteia (nos chips de cada regra).
-        Regra sem canal externo marcado → roteia para todos os configurados.
+        Configure the destinations below; each rule picks which ones it routes to (through the chips on the rule).
+        A rule with no external channel selected → routes to every configured one.
       </div>
       <ChannelRow
         label="Slack"
@@ -458,8 +458,8 @@ function ChannelsConfig({ isAdmin }: { isAdmin: boolean }) {
         onClear={() => save({ alert_slack_webhook: "" })}
       />
       <ChannelRow
-        label="Webhook genérico"
-        placeholder="https://exemplo.com/alertas (JSON)"
+        label="Generic webhook"
+        placeholder="https://example.com/alerts (JSON)"
         configured={hookSet}
         value={hook}
         onChange={setHook}
@@ -483,7 +483,7 @@ function ChannelsConfig({ isAdmin }: { isAdmin: boolean }) {
       <SmtpConfig key={smtpKey} settings={settings} isAdmin={isAdmin} busy={busy} onSave={save} />
       {!isAdmin && (
         <div style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 6 }}>
-          Apenas admins podem alterar os canais.
+          Only admins can change the channels.
         </div>
       )}
     </div>
@@ -531,27 +531,27 @@ function SmtpConfig({ settings, isAdmin, busy, onSave }: {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8, paddingTop: 8, borderTop: "1px dashed var(--v2-border-subtle)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 11, color: "var(--v2-text-secondary)", width: 120, flexShrink: 0 }}>E-mail (SMTP)</span>
+        <span style={{ fontSize: 11, color: "var(--v2-text-secondary)", width: 120, flexShrink: 0 }}>Email (SMTP)</span>
         <span style={{
           fontSize: 9, fontFamily: "var(--v2-font-mono)", padding: "1px 6px", borderRadius: 8,
           background: configured ? "var(--v2-accent-deep)" : "transparent",
           color: configured ? "var(--v2-status-ok)" : "var(--v2-text-muted)",
           border: "1px solid " + (configured ? "var(--v2-accent-brand)" : "var(--v2-border-medium)"),
-        }}>{configured ? "configurado" : "—"}</span>
+        }}>{configured ? "configured" : "—"}</span>
       </div>
       {isAdmin && (
         <>
           <div style={{ display: "flex", gap: 6 }}>
-            <input style={{ ...inputStyle, flex: 2 }} placeholder="host (smtp.exemplo.com)" value={host} disabled={busy} onChange={(e) => setHost(e.target.value)} />
-            <input style={{ ...inputStyle, width: 70 }} placeholder="porta" value={port} disabled={busy} onChange={(e) => setPort(e.target.value)} />
+            <input style={{ ...inputStyle, flex: 2 }} placeholder="host (smtp.example.com)" value={host} disabled={busy} onChange={(e) => setHost(e.target.value)} />
+            <input style={{ ...inputStyle, width: 70 }} placeholder="port" value={port} disabled={busy} onChange={(e) => setPort(e.target.value)} />
           </div>
           <div style={{ display: "flex", gap: 6 }}>
-            <input style={{ ...inputStyle, flex: 1 }} placeholder="from (alertas@…)" value={from} disabled={busy} onChange={(e) => setFrom(e.target.value)} />
+            <input style={{ ...inputStyle, flex: 1 }} placeholder="from (alerts@…)" value={from} disabled={busy} onChange={(e) => setFrom(e.target.value)} />
             <input style={{ ...inputStyle, flex: 1 }} placeholder="to (a@x.com, b@y.com)" value={to} disabled={busy} onChange={(e) => setTo(e.target.value)} />
           </div>
           <div style={{ display: "flex", gap: 6 }}>
-            <input style={{ ...inputStyle, flex: 1 }} placeholder="usuário (opcional)" value={user} disabled={busy} onChange={(e) => setUser(e.target.value)} />
-            <input style={{ ...inputStyle, flex: 1 }} type="password" placeholder={passSet ? "senha (••• salva)" : "senha (opcional)"} value={pass} disabled={busy} onChange={(e) => setPass(e.target.value)} />
+            <input style={{ ...inputStyle, flex: 1 }} placeholder="username (optional)" value={user} disabled={busy} onChange={(e) => setUser(e.target.value)} />
+            <input style={{ ...inputStyle, flex: 1 }} type="password" placeholder={passSet ? "password (••• saved)" : "password (optional)"} value={pass} disabled={busy} onChange={(e) => setPass(e.target.value)} />
           </div>
           <div style={{ display: "flex", gap: 6 }}>
             <button
@@ -564,13 +564,13 @@ function SmtpConfig({ settings, isAdmin, busy, onSave }: {
                 border: "1px solid " + (host && to ? "var(--v2-accent-brand)" : "var(--v2-border-medium)"),
                 cursor: host && to && !busy ? "pointer" : "not-allowed", fontWeight: 600,
               }}
-            >Salvar SMTP</button>
+            >Save SMTP</button>
             {configured && (
               <button
                 onClick={clear}
                 disabled={busy}
                 style={{ padding: "4px 8px", borderRadius: 4, fontSize: 10, background: "transparent", color: "var(--v2-status-failed)", border: "1px solid var(--v2-border-medium)", cursor: "pointer" }}
-              >limpar</button>
+              >clear</button>
             )}
           </div>
         </>
@@ -592,7 +592,7 @@ function ChannelRow({ label, placeholder, configured, value, onChange, isAdmin, 
         background: configured ? "var(--v2-accent-deep)" : "transparent",
         color: configured ? "var(--v2-status-ok)" : "var(--v2-text-muted)",
         border: "1px solid " + (configured ? "var(--v2-accent-brand)" : "var(--v2-border-medium)"),
-      }}>{configured ? "configurado" : "—"}</span>
+      }}>{configured ? "configured" : "—"}</span>
       {isAdmin && (
         <>
           <input
@@ -617,18 +617,18 @@ function ChannelRow({ label, placeholder, configured, value, onChange, isAdmin, 
               border: "1px solid " + (value ? "var(--v2-accent-brand)" : "var(--v2-border-medium)"),
               cursor: value && !busy ? "pointer" : "not-allowed", fontWeight: 600,
             }}
-          >Salvar</button>
+          >Save</button>
           {configured && (
             <button
               onClick={onClear}
               disabled={busy}
-              title="Remover destino"
+              title="Remove destination"
               style={{
                 padding: "4px 8px", borderRadius: 4, fontSize: 10, flexShrink: 0,
                 background: "transparent", color: "var(--v2-status-failed)",
                 border: "1px solid var(--v2-border-medium)", cursor: "pointer",
               }}
-            >limpar</button>
+            >clear</button>
           )}
         </>
       )}
@@ -661,7 +661,7 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      title={on ? "Desabilitar regra" : "Habilitar regra"}
+      title={on ? "Disable rule" : "Enable rule"}
       style={{
         position: "relative", width: 36, height: 20, borderRadius: 10, flexShrink: 0,
         background: on ? "var(--v2-accent-brand)" : "var(--v2-border-medium)",

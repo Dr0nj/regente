@@ -226,7 +226,7 @@ export default function FolderManagerDialog({
 
   const handleDelete = useCallback(async () => {
     if (!confirmDelete) return;
-    if (delJobsTotal > 0 && confirmDelete.typed.trim().toUpperCase() !== "EXCLUIR") return;
+    if (delJobsTotal > 0 && confirmDelete.typed.trim().toUpperCase() !== "DELETE") return;
     setBusy("delete-bulk");
     try {
       for (const n of confirmDelete.names) {
@@ -334,11 +334,11 @@ export default function FolderManagerDialog({
               <button
                 onClick={selectAll}
                 style={luxBtn(false)}
-              >Selecionar tudo</button>
+              >Select all</button>
               <button
                 onClick={() => { setCreating(true); setNewName(""); }}
                 style={luxBtn(true, acc)}
-              ><Plus size={12} style={{ marginRight: 4, verticalAlign: "-2px" }} />Nova pasta</button>
+              ><Plus size={12} style={{ marginRight: 4, verticalAlign: "-2px" }} />New folder</button>
               <button
                 onClick={onClose}
                 aria-label="Close"
@@ -368,8 +368,8 @@ export default function FolderManagerDialog({
           {([
             ["Total", String(folders.length), false],
             ["Active Jobs", String(totalJobs), true],
-            ["Abertas no Design", String(activeFolders.size), false],
-            ["Arquivadas", String(archivedCount), false],
+            ["Open in Design", String(activeFolders.size), false],
+            ["Archived", String(archivedCount), false],
           ] as const).map(([label, value, gold], i) => (
             <div key={label} style={{
               textAlign: "center",
@@ -392,12 +392,12 @@ export default function FolderManagerDialog({
           {!isServerMode() && (
             <Empty>Folder management requires server mode.<br />Set <code style={{ color: acc }}>VITE_REGENTE_SERVER_URL</code> and reload.</Empty>
           )}
-          {isServerMode() && loading && <Empty>Carregando…</Empty>}
+          {isServerMode() && loading && <Empty>Loading…</Empty>}
           {isServerMode() && err && (
             <div style={{ padding: 12, background: "rgba(120,20,20,.25)", border: "1px solid #7f1d1d", color: "#fca5a5", borderRadius: 4, fontSize: 11, marginBottom: 12 }}>{err}</div>
           )}
           {isServerMode() && !loading && !err && folders.length === 0 && !creating && (
-            <Empty>Nenhuma folder ainda. Clique em <strong style={{ color: acc }}>+ Nova pasta</strong>.</Empty>
+            <Empty>No folder yet. Click <strong style={{ color: acc }}>+ New folder</strong>.</Empty>
           )}
 
           <div style={{
@@ -411,12 +411,12 @@ export default function FolderManagerDialog({
                 ...cardBase(acc), borderStyle: "dashed", borderColor: acc,
                 animation: "fmdCardIn .35s ease-out", justifyContent: "center", gap: 10,
               }}>
-                <div style={{ fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>Nova folder</div>
+                <div style={{ fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)" }}>New folder</div>
                 <input
                   autoFocus value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") void handleCreate(); if (e.key === "Escape") setCreating(false); }}
-                  placeholder="nome (ou existente p/ abrir)"
+                  placeholder="name (or an existing one to open)"
                   disabled={!!busy}
                   style={{
                     width: "100%", boxSizing: "border-box", padding: "8px 10px",
@@ -427,9 +427,9 @@ export default function FolderManagerDialog({
                 />
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={() => void handleCreate()} disabled={!newName.trim() || !!busy} style={{ ...luxBtn(true, acc), flex: 1, justifyContent: "center" }}>
-                    {existingNames.has(newName.trim()) ? "Abrir" : "Criar"}
+                    {existingNames.has(newName.trim()) ? "Open" : "Create"}
                   </button>
-                  <button onClick={() => setCreating(false)} style={{ ...luxBtn(false), flex: 1, justifyContent: "center" }}>Cancelar</button>
+                  <button onClick={() => setCreating(false)} style={{ ...luxBtn(false), flex: 1, justifyContent: "center" }}>Cancel</button>
                 </div>
               </div>
             )}
@@ -469,17 +469,17 @@ export default function FolderManagerDialog({
                     </div>
                     <div className="fmd-hoveract" style={{ display: "flex", gap: 6, alignItems: "center" }} onClick={(e) => e.stopPropagation()}>
                       <button
-                        title={isVisible ? "Visível no monitor — ocultar" : "Oculto no monitor — mostrar"}
+                        title={isVisible ? "Visible in the monitor — hide" : "Hidden in the monitor — show"}
                         onClick={() => toggleVisible(f.name)}
                         className="fmd-iconbtn"
                         style={iconBtn()}
                       >{isVisible ? <Eye size={13} /> : <EyeOff size={13} />}</button>
                       {!f.archived && (
-                        <button title="Renomear" onClick={() => setRenaming({ from: f.name, to: f.name })} className="fmd-iconbtn" style={iconBtn()}><Pencil size={12} /></button>
+                        <button title="Rename" onClick={() => setRenaming({ from: f.name, to: f.name })} className="fmd-iconbtn" style={iconBtn()}><Pencil size={12} /></button>
                       )}
                       {!f.archived && (
                         <button
-                          title="Grade da folder (override de colunas/linhas do canvas — salvo no workspace)"
+                          title="Folder grid (canvas column/row override — saved in the workspace)"
                           onClick={() => setLayoutEdit({
                             name: f.name,
                             columns: f.layout?.columns ? String(f.layout.columns) : "",
@@ -518,7 +518,7 @@ export default function FolderManagerDialog({
                   {layoutEdit?.name === f.name ? (
                     <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
                       <div style={{ display: "flex", gap: 6 }}>
-                        {([["columns", "colunas"], ["maxRows", "máx. linhas"]] as const).map(([field, ph]) => (
+                        {([["columns", "columns"], ["maxRows", "max. rows"]] as const).map(([field, ph]) => (
                           <input
                             key={field}
                             type="number"
@@ -539,12 +539,12 @@ export default function FolderManagerDialog({
                         ))}
                       </div>
                       <div style={{ fontSize: 9, color: "var(--v2-text-muted)", lineHeight: 1.4 }}>
-                        Grade dos jobs soltos DESTA folder. Vazio = herda o global (Settings). Vai pro
-                        <code style={{ color: acc }}> .regente-folder.yaml</code> do workspace.
+                        Grid for the loose jobs of THIS folder. Empty = inherits the global one (Settings). Goes to the
+                        workspace's <code style={{ color: acc }}> .regente-folder.yaml</code>.
                       </div>
                       <div style={{ display: "flex", gap: 6 }}>
-                        <button onClick={() => void handleSaveLayout()} style={{ ...luxBtn(true, acc), flex: 1, justifyContent: "center", padding: "4px 8px" }}>Salvar</button>
-                        <button onClick={() => setLayoutEdit(null)} style={{ ...luxBtn(false), flex: 1, justifyContent: "center", padding: "4px 8px" }}>Cancelar</button>
+                        <button onClick={() => void handleSaveLayout()} style={{ ...luxBtn(true, acc), flex: 1, justifyContent: "center", padding: "4px 8px" }}>Save</button>
+                        <button onClick={() => setLayoutEdit(null)} style={{ ...luxBtn(false), flex: 1, justifyContent: "center", padding: "4px 8px" }}>Cancel</button>
                       </div>
                     </div>
                   ) : (
@@ -562,7 +562,7 @@ export default function FolderManagerDialog({
                     )}
                     {f.layout && (f.layout.columns || f.layout.maxRows) && (
                       <span
-                        title="Grade com override próprio (.regente-folder.yaml) — colunas × máx. linhas; · = herda o global"
+                        title="Grid with its own override (.regente-folder.yaml) — columns × max. rows; · = inherits the global one"
                         style={{ fontSize: 8, letterSpacing: "0.08em", color: acc, border: `1px solid color-mix(in srgb, ${acc} 40%, transparent)`, padding: "1px 4px", borderRadius: 2, fontFamily: "var(--v2-font-mono)" }}
                       >
                         ⊞ {f.layout.columns ?? "·"}×{f.layout.maxRows ?? "·"}
@@ -598,12 +598,12 @@ export default function FolderManagerDialog({
           }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <span style={{ fontSize: 11, color: acc, fontWeight: 600, fontFamily: "var(--v2-font-mono)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                Alterações não publicadas
+                Unpublished changes
               </span>
               <span style={{ fontSize: 10, color: "var(--v2-text-muted)" }}>
                 {newFolderCount > 0
-                  ? `${newFolderCount} folder(s) nova(s) — Publish abre um PR`
-                  : "Edições na sessão — Publish faz commit + push"}
+                  ? `${newFolderCount} new folder(s) — Publish opens a PR`
+                  : "Edits in the session — Publish does commit + push"}
               </span>
             </div>
             <div style={{ flex: 1 }} />
@@ -612,7 +612,7 @@ export default function FolderManagerDialog({
               newFolderCount={newFolderCount}
               onPublished={(res) => { onPublished(res); void refresh(); }}
             />
-            <button onClick={onDiscardSession} style={{ ...luxBtn(false), borderColor: "#7f1d1d", color: "#f87171" }}>Descartar</button>
+            <button onClick={onDiscardSession} style={{ ...luxBtn(false), borderColor: "#7f1d1d", color: "#f87171" }}>Discard</button>
           </div>
         )}
 
@@ -627,15 +627,15 @@ export default function FolderManagerDialog({
             animation: "fmdBarIn .3s cubic-bezier(.4,0,.2,1)",
           }}>
             <span style={{ color: acc, fontSize: 12, fontWeight: 500 }}>
-              {selected.size} {selected.size === 1 ? "selecionada" : "selecionadas"}
+              {selected.size} selected
             </span>
             <Sep />
-            {selectedHasClosed && <BarBtn primary onClick={() => void openSelected()} disabled={!!busy} icon={<FolderOpen size={14} />}>{inDesignMode ? "Abrir" : "Abrir no Design"}</BarBtn>}
-            {selectedHasOpen && <BarBtn onClick={closeSelected} disabled={!!busy} icon={<X size={12} />}>Fechar</BarBtn>}
-            <BarBtn onClick={() => void archiveSelected()} disabled={!!busy} icon={<Archive size={12} />}>Arquivar</BarBtn>
-            <BarBtn onClick={() => setConfirmDelete({ names: [...selected], typed: "" })} disabled={!!busy} danger icon={<Trash2 size={12} />}>Excluir</BarBtn>
+            {selectedHasClosed && <BarBtn primary onClick={() => void openSelected()} disabled={!!busy} icon={<FolderOpen size={14} />}>{inDesignMode ? "Open" : "Open in Design"}</BarBtn>}
+            {selectedHasOpen && <BarBtn onClick={closeSelected} disabled={!!busy} icon={<X size={12} />}>Close</BarBtn>}
+            <BarBtn onClick={() => void archiveSelected()} disabled={!!busy} icon={<Archive size={12} />}>Archive</BarBtn>
+            <BarBtn onClick={() => setConfirmDelete({ names: [...selected], typed: "" })} disabled={!!busy} danger icon={<Trash2 size={12} />}>Delete</BarBtn>
             <Sep />
-            <BarBtn onClick={clearSelection} muted>Cancelar</BarBtn>
+            <BarBtn onClick={clearSelection} muted>Cancel</BarBtn>
           </div>
         )}
       </div>
@@ -648,33 +648,33 @@ export default function FolderManagerDialog({
         >
           <div onClick={(e) => e.stopPropagation()} style={{ width: "min(440px, 92vw)", padding: 22, background: "var(--v2-bg-surface)", border: "1px solid #7f1d1d", borderRadius: 6 }}>
             <div style={{ fontFamily: "var(--v2-font-serif)", fontSize: 18, color: "#fca5a5", marginBottom: 10 }}>
-              Excluir {confirmDelete.names.length} {confirmDelete.names.length === 1 ? "folder" : "folders"}?
+              Delete {confirmDelete.names.length} {confirmDelete.names.length === 1 ? "folder" : "folders"}?
             </div>
             {delJobsTotal > 0 ? (
               <>
                 <div style={{ fontSize: 11, color: "var(--v2-text-secondary)", marginBottom: 10, lineHeight: 1.5 }}>
-                  Contêm <strong style={{ color: "var(--v2-text-primary)" }}>{delJobsTotal} jobs</strong> no total. Digite <strong>EXCLUIR</strong> para confirmar.
+                  They hold <strong style={{ color: "var(--v2-text-primary)" }}>{delJobsTotal} jobs</strong> in total. Type <strong>DELETE</strong> to confirm.
                 </div>
                 <input
                   autoFocus value={confirmDelete.typed}
                   onChange={(e) => setConfirmDelete({ ...confirmDelete, typed: e.target.value })}
                   onKeyDown={(e) => { if (e.key === "Enter") void handleDelete(); }}
-                  placeholder="EXCLUIR"
+                  placeholder="DELETE"
                   style={{ width: "100%", boxSizing: "border-box", padding: "7px 10px", marginBottom: 12, background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)", color: "var(--v2-text-primary)", borderRadius: 3, fontSize: 12, fontFamily: "var(--v2-font-mono)" }}
                 />
               </>
             ) : (
               <div style={{ fontSize: 11, color: "var(--v2-text-secondary)", marginBottom: 12 }}>
-                {confirmDelete.names.length === 1 ? "A folder está vazia." : "Folders vazias."} Esta ação não pode ser desfeita.
+                {confirmDelete.names.length === 1 ? "The folder is empty." : "Empty folders."} This action cannot be undone.
               </div>
             )}
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button onClick={() => setConfirmDelete(null)} style={luxBtn(false)}>Cancelar</button>
+              <button onClick={() => setConfirmDelete(null)} style={luxBtn(false)}>Cancel</button>
               <button
                 onClick={() => void handleDelete()}
-                disabled={delJobsTotal > 0 && confirmDelete.typed.trim().toUpperCase() !== "EXCLUIR"}
+                disabled={delJobsTotal > 0 && confirmDelete.typed.trim().toUpperCase() !== "DELETE"}
                 style={{ padding: "6px 16px", background: "#7f1d1d", border: "1px solid #991b1b", color: "#fee2e2", borderRadius: 4, fontSize: 10, fontFamily: "var(--v2-font-mono)", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700, cursor: "pointer" }}
-              >Excluir</button>
+              >Delete</button>
             </div>
           </div>
         </div>

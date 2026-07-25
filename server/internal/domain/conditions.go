@@ -416,16 +416,16 @@ func EvalConditionLogic(logic *ConditionLogic, flatIn []string, sat func(member 
 	return res
 }
 
-// RenderExpr — expressão legível em português ("(C1 E C2) OU C3"), pro Explain e
+// RenderExpr — expressão legível em inglês ("(C1 AND C2) OR C3"), pro Explain e
 // o summary do blocker. Grupos com >1 membro ganham parênteses; grupos avulsos
-// (Required) são ANDados no fim ("… E AVULSO"); vazio devolve "".
+// (Required) são ANDados no fim ("… AND LOOSE"); vazio devolve "".
 func (e CondLogicEval) RenderExpr() string {
 	if len(e.Groups) == 0 {
 		return ""
 	}
-	sep := " E "
+	sep := " AND "
 	if e.Op == CondOpOr {
-		sep = " OU "
+		sep = " OR "
 	}
 	var logicParts, reqParts []string
 	for _, g := range e.Groups {
@@ -445,16 +445,16 @@ func (e CondLogicEval) RenderExpr() string {
 		all = append(all, logicStr)
 	}
 	all = append(all, reqParts...)
-	return strings.Join(all, " E ")
+	return strings.Join(all, " AND ")
 }
 
 func (g CondGroupEval) render() string {
 	if len(g.Members) == 0 {
 		return ""
 	}
-	sep := " E "
+	sep := " AND "
 	if g.Op == CondOpOr {
-		sep = " OU "
+		sep = " OR "
 	}
 	parts := make([]string, len(g.Members))
 	for i, m := range g.Members {
@@ -467,10 +467,10 @@ func (g CondGroupEval) render() string {
 	return s
 }
 
-// renderMember — o token `$TIME` vira "horário" nas mensagens (Explain/summary).
+// renderMember — o token `$TIME` vira "time" nas mensagens (Explain/summary).
 func renderMember(m string) string {
 	if m == CondTokenTime {
-		return "horário"
+		return "time"
 	}
 	return m
 }

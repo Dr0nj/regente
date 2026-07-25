@@ -37,7 +37,7 @@ export function ErrorDialog({ error, onClose }: Props) {
         <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--v2-border-subtle, #2a2a2a)", display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 24, height: 24, borderRadius: "50%", background: "rgba(239,68,68,0.18)", color: "var(--v2-status-failed, #ef4444)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 14 }}>!</div>
           <div style={{ fontSize: 14, fontWeight: 600, color: "var(--v2-text-primary, #eee)", flex: 1 }}>{c.title}</div>
-          <button onClick={onClose} title="Fechar" style={{ background: "transparent", border: "none", color: "var(--v2-text-secondary, #888)", cursor: "pointer", fontSize: 18, padding: 0, width: 22, height: 22 }}>×</button>
+          <button onClick={onClose} title="Close" style={{ background: "transparent", border: "none", color: "var(--v2-text-secondary, #888)", cursor: "pointer", fontSize: 18, padding: 0, width: 22, height: 22 }}>×</button>
         </div>
 
         <div style={{ padding: "14px 18px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -52,7 +52,7 @@ export function ErrorDialog({ error, onClose }: Props) {
               onClick={() => setShowRaw((v) => !v)}
               style={{ background: "transparent", border: "1px solid var(--v2-border-subtle, #333)", color: "var(--v2-text-secondary, #888)", padding: "3px 8px", borderRadius: 3, fontSize: 10, cursor: "pointer", letterSpacing: "0.06em", textTransform: "uppercase" }}
             >
-              {showRaw ? "▾ Ocultar detalhe técnico" : "▸ Detalhe técnico"}
+              {showRaw ? "▾ Hide technical detail" : "▸ Technical detail"}
             </button>
             {showRaw && (
               <pre style={{ marginTop: 8, padding: 10, background: "var(--v2-bg-canvas, #0d0d0d)", border: "1px solid var(--v2-border-subtle, #2a2a2a)", borderRadius: 3, fontSize: 11, color: "var(--v2-text-secondary, #aaa)", fontFamily: "var(--v2-font-mono, monospace)", whiteSpace: "pre-wrap", wordBreak: "break-word", margin: "8px 0 0" }}>

@@ -38,20 +38,20 @@ import (
 
 func cmdPromote(args []string) error {
 	fs := flag.NewFlagSet("promote", flag.ExitOnError)
-	repoURL := fs.String("repo", envOr("REGENTE_GIT_SOURCE", ""), "repo do workspace (URL https ou caminho local)")
-	from := fs.String("from", "", "branch de ORIGEM (ex.: dev)")
-	to := fs.String("to", "", "branch de DESTINO (ex.: staging, main)")
-	folders := fs.String("folders", "", "promoção parcial: folders separadas por vírgula (vazio = workspace inteiro)")
-	message := fs.String("message", "", "mensagem do commit (default gerada)")
-	token := fs.String("token", os.Getenv("GITHUB_TOKEN"), "PAT p/ https (env GITHUB_TOKEN)")
-	dryRun := fs.Bool("dry-run", false, "mostra o que mudaria, sem commit/push")
+	repoURL := fs.String("repo", envOr("REGENTE_GIT_SOURCE", ""), "workspace repo (https URL or local path)")
+	from := fs.String("from", "", "SOURCE branch (e.g. dev)")
+	to := fs.String("to", "", "TARGET branch (e.g. staging, main)")
+	folders := fs.String("folders", "", "partial promotion: comma-separated folders (empty = whole workspace)")
+	message := fs.String("message", "", "commit message (default generated)")
+	token := fs.String("token", os.Getenv("GITHUB_TOKEN"), "PAT for https (env GITHUB_TOKEN)")
+	dryRun := fs.Bool("dry-run", false, "show what would change, without commit/push")
 	_ = fs.Parse(reorderArgs(args, "dry-run"))
 
 	if *repoURL == "" || *from == "" || *to == "" {
-		return errors.New("uso: regente promote -repo <url|path> -from <branch> -to <branch> [-folders a,b] [-dry-run]")
+		return errors.New("usage: regente promote -repo <url|path> -from <branch> -to <branch> [-folders a,b] [-dry-run]")
 	}
 	if *from == *to {
-		return errors.New("-from e -to são o mesmo branch")
+		return errors.New("-from and -to are the same branch")
 	}
 
 	var auth transport.AuthMethod
@@ -81,7 +81,7 @@ func cmdPromote(args []string) error {
 	}
 	fromRef, err := repo.Reference(plumbing.NewRemoteReferenceName("origin", *from), true)
 	if err != nil {
-		return fmt.Errorf("branch de origem %q não existe no remoto", *from)
+		return fmt.Errorf("source branch %q does not exist on the remote", *from)
 	}
 	fromCommit, err := repo.CommitObject(fromRef.Hash())
 	if err != nil {
@@ -105,7 +105,7 @@ func cmdPromote(args []string) error {
 		return err
 	}
 	if len(desired) == 0 {
-		return fmt.Errorf("nada promovível em %s sob %v (folders erradas?)", *from, prefixes)
+		return fmt.Errorf("nothing promotable in %s under %v (wrong folders?)", *from, prefixes)
 	}
 
 	// 2. substitui os paths no worktree destino: apaga o que a origem não tem,
@@ -161,20 +161,20 @@ func cmdPromote(args []string) error {
 		}
 	}
 	sort.Strings(changes)
-	scope := "workspace inteiro"
+	scope := "whole workspace"
 	if *folders != "" {
 		scope = "folders " + *folders
 	}
-	fmt.Printf("promote %s → %s (%s): %d mudança(s)\n", *from, *to, scope, len(changes))
+	fmt.Printf("promote %s → %s (%s): %d change(s)\n", *from, *to, scope, len(changes))
 	for _, c := range changes {
 		fmt.Println("  " + c)
 	}
 	if len(changes) == 0 {
-		fmt.Println("nada a promover — ambientes já idênticos nos paths.")
+		fmt.Println("nothing to promote — the environments are already identical on the paths.")
 		return nil
 	}
 	if *dryRun {
-		fmt.Println("dry-run: nenhum commit/push feito.")
+		fmt.Println("dry-run: no commit/push done.")
 		return nil
 	}
 

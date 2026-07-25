@@ -146,7 +146,7 @@ func runDatabase(params map[string]interface{}, timeoutSec int, emit func(string
 		return -1, "rows: " + err.Error()
 	}
 	if truncated {
-		out(fmt.Sprintf("… truncado em %d linhas (maxRows)\n", maxRows))
+		out(fmt.Sprintf("… truncated at %d rows (maxRows)\n", maxRows))
 	}
 	out(fmt.Sprintf("(%d row(s))\n", count))
 	return 0, buf.String()

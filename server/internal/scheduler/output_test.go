@@ -88,7 +88,7 @@ func TestAppendOutput_CapAvisaETrunca(t *testing.T) {
 	if strings.Contains(got, "abcdefghij") || strings.Contains(got, "MAIS") {
 		t.Fatalf("conteúdo além do teto não deveria ser gravado: %q", got)
 	}
-	if !strings.Contains(got, "truncado") {
+	if !strings.Contains(got, "truncated") {
 		t.Fatalf("faltou a linha de aviso de truncamento: %q", got)
 	}
 
