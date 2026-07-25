@@ -36,6 +36,10 @@ mas **este README reúne tudo** — é o compilado completo da plataforma.
 > A fonte da verdade dos jobs (YAMLs das *definitions*) mora num repositório **separado**
 > de workspace GitOps — este repo é só o **código** da plataforma.
 
+> 🌐 **Idioma:** o **produto fala inglês** — UI, mensagens do server, CLI, output do agente,
+> o contrato OpenAPI e os scripts de instalação. Os **docs deste repo e os comentários de
+> código seguem em pt-BR** (leitura de quem desenvolve, não de quem opera).
+
 ---
 
 ## 🧭 Conceito
