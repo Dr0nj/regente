@@ -30,7 +30,7 @@ DATA_DIR=/var/lib/regente
 ENV_FILE=/etc/regente/server.env
 
 BIN_SRC="$HERE/../regente-server"
-[ -x "$BIN_SRC" ] || { echo "binário não encontrado em $BIN_SRC — rode: (cd .. && CGO_ENABLED=0 go build -o regente-server .)"; exit 1; }
+[ -x "$BIN_SRC" ] || { echo "binary not found at $BIN_SRC — run: (cd .. && CGO_ENABLED=0 go build -o regente-server .)"; exit 1; }
 
 install -m 0755 "$BIN_SRC" /usr/local/bin/regente-server
 install -d -o "$RUN_USER" -g "$RUN_USER" "$DATA_DIR"
@@ -39,7 +39,7 @@ install -d -o "$RUN_USER" -g "$RUN_USER" "$DATA_DIR"
 mkdir -p /etc/regente
 if [ ! -f "$ENV_FILE" ]; then
   install -m 0640 "$HERE/server.env.example" "$ENV_FILE"
-  echo "criado $ENV_FILE (a partir do exemplo) — EDITE antes de expor em produção."
+  echo "created $ENV_FILE (from the example) — EDIT it before exposing this in production."
 fi
 
 # --- V1: UI single-origin (opt-out via WITH_UI=0) --------------------------
@@ -48,7 +48,7 @@ SPA_DST="$DATA_DIR/app"
 SPA_INSTALLED=0
 case "$WITH_UI" in
   0|no|false|NO|FALSE)
-    echo "WITH_UI=$WITH_UI — instalando SÓ a API (UI não será servida)."
+    echo "WITH_UI=$WITH_UI — installing the API ONLY (the UI will not be served)."
     # Garante API-only: comenta REGENTE_SPA_DIR se estiver ativo.
     sed -i -E 's|^([[:space:]]*)(REGENTE_SPA_DIR=.*)$|\1# \2|' "$ENV_FILE" || true
     ;;
@@ -59,17 +59,17 @@ case "$WITH_UI" in
       cp -r "$SPA_SRC/." "$SPA_DST/"
       chown -R "$RUN_USER:$RUN_USER" "$SPA_DST"
       SPA_INSTALLED=1
-      echo "UI instalada em $SPA_DST (single-origin: UI+API+WS na mesma porta)."
+      echo "UI installed at $SPA_DST (single-origin: UI+API+WS on the same port)."
       # REGENTE_SPA_DIR aponta pra UI (idempotente: descomenta/atualiza ou anexa).
       if grep -qE '^[[:space:]]*#?[[:space:]]*REGENTE_SPA_DIR=' "$ENV_FILE"; then
         sed -i -E "s|^[[:space:]]*#?[[:space:]]*REGENTE_SPA_DIR=.*|REGENTE_SPA_DIR=$SPA_DST|" "$ENV_FILE"
       else
-        printf '\n# V1 — UI single-origin (setado pelo install)\nREGENTE_SPA_DIR=%s\n' "$SPA_DST" >> "$ENV_FILE"
+        printf '\n# V1 — single-origin UI (set by the installer)\nREGENTE_SPA_DIR=%s\n' "$SPA_DST" >> "$ENV_FILE"
       fi
     else
-      echo "AVISO: SPA buildada não encontrada em $SPA_SRC — instalando SÓ a API."
-      echo "       Pra servir a UI junto: (cd app && VITE_REGENTE_SERVER_URL=@origin npm ci && npm run build) e reinstale,"
-      echo "       ou use o one-liner de release (install.sh), que já traz a UI empacotada."
+      echo "WARNING: no built SPA found at $SPA_SRC — installing the API ONLY."
+      echo "         To serve the UI too: (cd app && VITE_REGENTE_SERVER_URL=@origin npm ci && npm run build), then reinstall,"
+      echo "         or use the release one-liner (install.sh), which already ships the UI bundled."
     fi
     ;;
 esac
@@ -88,16 +88,16 @@ systemctl enable --now regente-server
 ADDR="$(grep -E '^REGENTE_ADDR=' "$ENV_FILE" | tail -1 | cut -d= -f2-)"
 ADDR="${ADDR:-:8080}"
 echo ""
-echo "OK — regente-server instalado e iniciado (Restart=always) como usuário '$RUN_USER'."
+echo "OK — regente-server installed and started (Restart=always) as user '$RUN_USER'."
 if [ "$SPA_INSTALLED" = "1" ]; then
-  echo "UI:      http://<este-host>${ADDR}   (login inicial: admin / admin — troca obrigatória na 1ª vez)"
+  echo "UI:      http://<this-host>${ADDR}   (initial login: admin / admin — you must change it on first use)"
 fi
 if [ -x /usr/local/bin/regente-configure ]; then
-  echo "Config:  sudo regente-configure   (guiado: token forte, GitHub PAT/repo, domínio)"
-  echo "         ou edite à mão: sudo \$EDITOR $ENV_FILE"
+  echo "Config:  sudo regente-configure   (guided: strong token, GitHub PAT/repo, domain)"
+  echo "         or edit it by hand: sudo \$EDITOR $ENV_FILE"
 else
-  echo "Config:  sudo \$EDITOR $ENV_FILE   (REGENTE_TOKEN forte, GitOps, HTTPS…)"
+  echo "Config:  sudo \$EDITOR $ENV_FILE   (strong REGENTE_TOKEN, GitOps, HTTPS…)"
 fi
 echo "         sudo systemctl restart regente-server"
 echo "Logs:    journalctl -u regente-server -f"
-echo "HTTPS/domínio (link público estilo empresa): ver deploy/vps/."
+echo "HTTPS/domain (a company-style public link): see deploy/vps/."

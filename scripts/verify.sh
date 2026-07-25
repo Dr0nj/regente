@@ -20,4 +20,4 @@ echo "▶ app — build (tsc -b && vite build)"
 # rode antes: ( cd app && rm -rf node_modules package-lock.json && npm install )
 ( cd app && npm run build )
 
-echo "✅ verify OK — tudo verde como a CI vai ficar."
+echo "✅ verify OK — all green, same as the CI will be."

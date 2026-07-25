@@ -33,7 +33,7 @@ case "$DRIVER" in
     echo "[backup] sqlite -> $DEST"
     ;;
   *)
-    echo "driver desconhecido: $DRIVER (use sqlite|postgres)" >&2
+    echo "unknown driver: $DRIVER (use sqlite|postgres)" >&2
     exit 1
     ;;
 esac
@@ -41,4 +41,4 @@ esac
 # Retenção: mantém os últimos N, apaga o resto.
 KEEP="${REGENTE_BACKUP_KEEP:-14}"
 ls -1t "$OUT"/regente-* 2>/dev/null | tail -n +"$((KEEP + 1))" | xargs -r rm -f
-echo "[backup] OK (retenção: últimos $KEEP em $OUT)"
+echo "[backup] OK (retention: last $KEEP in $OUT)"

@@ -8,11 +8,11 @@
 # Depois suba o servidor e confira GET /readyz (deve voltar 200 com db.ok=true).
 set -eu
 
-SRC="${1:?uso: restore.sh <arquivo-de-backup>}"
+SRC="${1:?usage: restore.sh <backup-file>}"
 DRIVER="${REGENTE_DB_DRIVER:-sqlite}"
 DB="${REGENTE_DB:-./regente.db}"
 
-[ -e "$SRC" ] || { echo "backup não encontrado: $SRC" >&2; exit 1; }
+[ -e "$SRC" ] || { echo "backup not found: $SRC" >&2; exit 1; }
 
 case "$DRIVER" in
   postgres|postgresql|pg)
@@ -23,12 +23,12 @@ case "$DRIVER" in
   sqlite|sqlite3|"")
     # Substitui o arquivo do state store pelo snapshot.
     cp "$SRC" "$DB"
-    echo "[restore] sqlite <- $SRC (copiado p/ $DB)"
+    echo "[restore] sqlite <- $SRC (copied to $DB)"
     ;;
   *)
-    echo "driver desconhecido: $DRIVER (use sqlite|postgres)" >&2
+    echo "unknown driver: $DRIVER (use sqlite|postgres)" >&2
     exit 1
     ;;
 esac
 
-echo "[restore] concluído — suba o servidor e valide GET /readyz"
+echo "[restore] done — start the server and check GET /readyz"

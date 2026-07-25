@@ -9,9 +9,9 @@
 set -euo pipefail
 
 ENV_FILE=/etc/regente/server.env
-[ "$(id -u)" = 0 ]  || { echo "rode como root (sudo)"; exit 1; }
-[ -t 0 ]            || { echo "precisa de terminal interativo — rode 'sudo regente-configure' direto (não via pipe)."; exit 1; }
-[ -f "$ENV_FILE" ]  || { echo "$ENV_FILE não existe — rode o install primeiro (install-linux.sh)."; exit 1; }
+[ "$(id -u)" = 0 ]  || { echo "run as root (sudo)"; exit 1; }
+[ -t 0 ]            || { echo "an interactive terminal is required — run 'sudo regente-configure' directly (not through a pipe)."; exit 1; }
+[ -f "$ENV_FILE" ]  || { echo "$ENV_FILE does not exist — run the installer first (install-linux.sh)."; exit 1; }
 
 gen_token() {
   if command -v openssl >/dev/null 2>&1; then openssl rand -hex 24
@@ -28,44 +28,44 @@ set_env() {  # set_env KEY VALUE  (upsert idempotente; descomenta se preciso)
   fi
 }
 
-echo "== Configuração guiada do Regente — Enter mantém o valor sugerido/atual =="
+echo "== Regente guided setup — Enter keeps the suggested/current value =="
 echo ""
 
 # 1) Token de API — admin-equivalente (bypassa login). NUNCA deixe dev-token/change-me.
 cur_tok="$(current REGENTE_TOKEN)"
 sug_tok="$cur_tok"
 case "$sug_tok" in ''|dev-token|change-me) sug_tok="$(gen_token)";; esac
-read -rp "REGENTE_TOKEN (token de API forte) [$sug_tok]: " tok
+read -rp "REGENTE_TOKEN (strong API token) [$sug_tok]: " tok
 tok="${tok:-$sug_tok}"
 set_env REGENTE_TOKEN "$tok"
 
 # 2) GitHub — repo do workspace (GitOps) + PAT via secrets provider (fora da DB em claro).
 cur_repo="$(current REGENTE_GIT_REPO)"
-read -rp "Repo do workspace GitOps (owner/name) [${cur_repo:-Dr0nj/regente-workspace}]: " repo
+read -rp "GitOps workspace repo (owner/name) [${cur_repo:-Dr0nj/regente-workspace}]: " repo
 repo="${repo:-${cur_repo:-Dr0nj/regente-workspace}}"
 if [ -n "$repo" ]; then
   set_env REGENTE_GIT_REPO "$repo"
   set_env REGENTE_GIT_SOURCE "https://github.com/${repo}.git"
 fi
-read -rsp "GitHub PAT (push/PR + clone privado; Enter = manter/omitir): " pat; echo
+read -rsp "GitHub PAT (push/PR + private clone; Enter = keep/skip): " pat; echo
 if [ -n "$pat" ]; then
   set_env REGENTE_SECRET_GITHUB_TOKEN "$pat"
-  echo "  PAT gravado via secrets provider (REGENTE_SECRET_GITHUB_TOKEN) — não vai pra DB em claro."
+  echo "  PAT stored through the secrets provider (REGENTE_SECRET_GITHUB_TOKEN) — it never reaches the DB in plaintext."
 fi
 
 # 3) Domínio público — informativo (usado no passo do nginx/TLS em deploy/vps/).
-read -rp "Domínio público (ex.: regente.suaempresa.com) [opcional]: " dom
+read -rp "Public domain (e.g. regente.yourcompany.com) [optional]: " dom
 
 echo ""
-echo "Config escrita em $ENV_FILE (perms $(stat -c %a "$ENV_FILE" 2>/dev/null || echo 0640))."
-read -rp "Reiniciar o regente-server agora? [S/n]: " r
-case "${r:-S}" in
-  [Nn]*) echo "ok — reinicie depois:  sudo systemctl restart regente-server" ;;
-  *)     systemctl restart regente-server && echo "regente-server reiniciado." ;;
+echo "Config written to $ENV_FILE (perms $(stat -c %a "$ENV_FILE" 2>/dev/null || echo 0640))."
+read -rp "Restart regente-server now? [Y/n]: " r
+case "${r:-Y}" in
+  [Nn]*) echo "ok — restart it later:  sudo systemctl restart regente-server" ;;
+  *)     systemctl restart regente-server && echo "regente-server restarted." ;;
 esac
 if [ -n "$dom" ]; then
   echo ""
-  echo "Domínio '$dom': siga deploy/vps/ pra HTTPS —"
-  echo "  sudo DOMAIN=$dom EMAIL=voce@dominio.com ./deploy/vps/enable-tls.sh"
+  echo "Domain '$dom': follow deploy/vps/ for HTTPS —"
+  echo "  sudo DOMAIN=$dom EMAIL=you@yourdomain.com ./deploy/vps/enable-tls.sh"
 fi
-echo "Pronto."
+echo "Done."

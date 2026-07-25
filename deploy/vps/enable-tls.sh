@@ -13,15 +13,15 @@
 #   - portas 80 e 443 abertas no firewall/security group
 set -euo pipefail
 
-DOMAIN="${DOMAIN:?defina DOMAIN=seu.dominio.com}"
-EMAIL="${EMAIL:?defina EMAIL=voce@dominio.com para avisos de expiracao do certificado}"
-[ "$(id -u)" = 0 ] || { echo "rode como root (sudo)"; exit 1; }
-command -v nginx   >/dev/null || { echo "instale o nginx primeiro:  apt install -y nginx"; exit 1; }
-command -v certbot >/dev/null || { echo "instale o certbot:  apt install -y certbot python3-certbot-nginx"; exit 1; }
+DOMAIN="${DOMAIN:?set DOMAIN=your.domain.com}"
+EMAIL="${EMAIL:?set EMAIL=you@yourdomain.com for certificate expiry notices}"
+[ "$(id -u)" = 0 ] || { echo "run as root (sudo)"; exit 1; }
+command -v nginx   >/dev/null || { echo "install nginx first:  apt install -y nginx"; exit 1; }
+command -v certbot >/dev/null || { echo "install certbot:  apt install -y certbot python3-certbot-nginx"; exit 1; }
 
 nginx -t
 certbot --nginx -d "$DOMAIN" --email "$EMAIL" --agree-tos --non-interactive --redirect
 echo ""
-echo "HTTPS ativo em https://$DOMAIN — renovação automática (certbot.timer)."
-echo "Confirme:  curl -sSI https://$DOMAIN | head -1     (deve responder 200/302)"
-echo "Aponte os agentes p/ wss://$DOMAIN/ws/agent (ou o transporte SSE/long-poll)."
+echo "HTTPS is live at https://$DOMAIN — renewal is automatic (certbot.timer)."
+echo "Check it:  curl -sSI https://$DOMAIN | head -1     (should answer 200/302)"
+echo "Point your agents at wss://$DOMAIN/ws/agent (or the SSE/long-poll transport)."

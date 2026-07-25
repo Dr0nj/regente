@@ -22,7 +22,7 @@ param(
 $ErrorActionPreference = "Stop"
 $src = Join-Path $PSScriptRoot "..\regente-server.exe"
 if (-not (Test-Path $src)) {
-  throw "binário não encontrado em $src — rode: (cd ..; go build -o regente-server.exe .)"
+  throw "binary not found at $src — run: (cd ..; go build -o regente-server.exe .)"
 }
 
 $dstDir = "C:\Program Files\Regente"
@@ -46,4 +46,4 @@ Register-ScheduledTask -TaskName "RegenteServer" -Action $action -Trigger $trigg
   -Principal $principal -Settings $settings -Force | Out-Null
 
 Start-ScheduledTask -TaskName "RegenteServer"
-Write-Host "OK — RegenteServer registrado e iniciado (reinicia sozinho). Ver: Get-ScheduledTask RegenteServer"
+Write-Host "OK — RegenteServer registered and started (it restarts itself). Check it: Get-ScheduledTask RegenteServer"

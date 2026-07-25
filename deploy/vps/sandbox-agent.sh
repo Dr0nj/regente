@@ -19,8 +19,8 @@
 #   IMAGE=        regente-agent:sandbox           (tag da imagem buildada)
 set -euo pipefail
 
-[ "$(id -u)" = 0 ] || { echo "rode como root (sudo)"; exit 1; }
-command -v docker >/dev/null 2>&1 || { echo "Docker não encontrado — instale antes (https://docs.docker.com/engine/install/)."; exit 1; }
+[ "$(id -u)" = 0 ] || { echo "run as root (sudo)"; exit 1; }
+command -v docker >/dev/null 2>&1 || { echo "Docker not found — install it first (https://docs.docker.com/engine/install/)."; exit 1; }
 DOCKER="$(command -v docker)"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -31,19 +31,19 @@ AGENT_ID="${AGENT_ID:-sandbox-$(hostname)}"
 AGENT_CAPS="${AGENT_CAPS:-COMMAND,SCRIPT,HTTP}"
 IMAGE="${IMAGE:-regente-agent:sandbox}"
 
-[ -n "$AGENT_TOKEN" ] || { echo "defina AGENT_TOKEN=... (Settings → Agentes → Criar token, ou o REGENTE_TOKEN)"; exit 1; }
+[ -n "$AGENT_TOKEN" ] || { echo "set AGENT_TOKEN=... (Settings → Agents → Create token, or the REGENTE_TOKEN)"; exit 1; }
 
 # Build da imagem do agente (mesma da demo Windows; context = agent/, Go dentro do Docker).
 DOCKERFILE="$REPO_ROOT/deploy/demo/Dockerfile.agent"
 if [ -f "$DOCKERFILE" ] && [ -d "$REPO_ROOT/agent" ]; then
-  echo "== buildando a imagem do agente ($IMAGE)..."
+  echo "== building the agent image ($IMAGE)..."
   "$DOCKER" build -f "$DOCKERFILE" -t "$IMAGE" "$REPO_ROOT/agent"
 elif "$DOCKER" image inspect "$IMAGE" >/dev/null 2>&1; then
-  echo "== usando imagem já disponível: $IMAGE (código-fonte não encontrado p/ rebuild)."
+  echo "== using the image already available: $IMAGE (no source found to rebuild from)."
 else
-  echo "código-fonte do agente não encontrado e imagem '$IMAGE' ausente."
-  echo "clone o repo (git clone https://github.com/Dr0nj/regente.git) e re-rode daqui,"
-  echo "ou disponibilize a imagem '$IMAGE' (docker pull/tag) antes."
+  echo "the agent source was not found and the image '$IMAGE' is missing."
+  echo "clone the repo (git clone https://github.com/Dr0nj/regente.git) and run this again from there,"
+  echo "or make the image '$IMAGE' available first (docker pull/tag)."
   exit 1
 fi
 
@@ -67,11 +67,11 @@ systemctl daemon-reload
 systemctl enable --now regente-agent-sandbox
 
 echo ""
-echo "OK — agente sandbox no ar (container 'regente-sandbox', isolado, supervisionado por systemd)."
-echo "Frota:   veja o agente '$AGENT_ID' em Settings → Agentes (online)."
-echo "Logs:    journalctl -u regente-agent-sandbox -f    |    docker logs -f regente-sandbox"
-echo "Derruba: sudo systemctl stop regente-agent-sandbox"
+echo "OK — sandbox agent is up (container 'regente-sandbox', isolated, supervised by systemd)."
+echo "Fleet: look for agent '$AGENT_ID' under Settings → Agents (online)."
+echo "Logs:  journalctl -u regente-agent-sandbox -f    |    docker logs -f regente-sandbox"
+echo "Stop:  sudo systemctl stop regente-agent-sandbox"
 echo ""
-echo "Segurança: jobs dos amigos rodam DENTRO do container (cap-drop ALL, no-new-privileges,"
-echo "           limites CPU/RAM/PID, sem mounts do host). Rede LIGADA (jobs HTTP funcionam);"
-echo "           pra cortar, adicione --network none ao ExecStart do unit e reinicie."
+echo "Security: guest jobs run INSIDE the container (cap-drop ALL, no-new-privileges,"
+echo "          CPU/RAM/PID limits, no host mounts). Networking is ON (HTTP jobs work);"
+echo "          to cut it off, add --network none to the unit's ExecStart and restart."

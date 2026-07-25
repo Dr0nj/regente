@@ -18,16 +18,16 @@ set -euo pipefail
 
 REPO="${REGENTE_REPO:-Dr0nj/regente}"
 VERSION="${REGENTE_VERSION:-latest}"
-[ "$(id -u)" = 0 ] || { echo "rode como root:  sudo bash $0"; exit 1; }
-command -v curl >/dev/null || { echo "'curl' é necessário"; exit 1; }
+[ "$(id -u)" = 0 ] || { echo "run as root:  sudo bash $0"; exit 1; }
+command -v curl >/dev/null || { echo "'curl' is required"; exit 1; }
 
 # OS/arch → nome do asset (bate com o release.yml: regente-agent_<os>_<arch>[.ext]).
 OS="$(uname -s)"; MACH="$(uname -m)"
-case "$MACH" in x86_64|amd64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; *) echo "arquitetura não suportada: $MACH"; exit 1 ;; esac
+case "$MACH" in x86_64|amd64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; *) echo "unsupported architecture: $MACH"; exit 1 ;; esac
 case "$OS" in
   Linux)  GOOS=linux ;;
   Darwin) GOOS=darwin ;;
-  *) echo "SO não suportado: $OS — no Windows use install-agent-windows.ps1"; exit 1 ;;
+  *) echo "unsupported OS: $OS — on Windows use install-agent-windows.ps1"; exit 1 ;;
 esac
 ASSET="regente-agent_${GOOS}_${ARCH}"
 if [ "$VERSION" = latest ]; then URL="https://github.com/$REPO/releases/latest/download/$ASSET"
@@ -39,22 +39,22 @@ ID="${ID:-$(hostname)}"; CAPS="${CAPS:-COMMAND,SCRIPT,HTTP}"
 RUN_USER="${RUN_USER:-${SUDO_USER:-root}}"
 if [ -z "$SERVER" ] || [ -z "$TOKEN" ]; then
   if [ -t 0 ]; then
-    [ -n "$SERVER" ] || read -rp  "URL do servidor (ex.: wss://regente.suaempresa.com/ws/agent): " SERVER
-    [ -n "$TOKEN" ]  || { read -rsp "Token do agente (Settings → Agentes → Criar token): " TOKEN; echo; }
-    read -rp "ID do agente [$ID]: " _id; ID="${_id:-$ID}"
+    [ -n "$SERVER" ] || read -rp  "Server URL (e.g. wss://regente.yourcompany.com/ws/agent): " SERVER
+    [ -n "$TOKEN" ]  || { read -rsp "Agent token (Settings → Agents → Create token): " TOKEN; echo; }
+    read -rp "Agent ID [$ID]: " _id; ID="${_id:-$ID}"
     read -rp "Capabilities [$CAPS]: " _caps; CAPS="${_caps:-$CAPS}"
   else
-    echo "faltou SERVER e/ou TOKEN. Rode interativo (baixe e 'sudo bash install-agent.sh')"
-    echo "ou passe por env:  sudo SERVER=wss://.../ws/agent TOKEN=rgta_xxx bash install-agent.sh"
+    echo "SERVER and/or TOKEN missing. Run it interactively (download it and 'sudo bash install-agent.sh')"
+    echo "or pass them through env:  sudo SERVER=wss://.../ws/agent TOKEN=rgta_xxx bash install-agent.sh"
     exit 1
   fi
 fi
-[ -n "$SERVER" ] && [ -n "$TOKEN" ] || { echo "SERVER/TOKEN vazios"; exit 1; }
+[ -n "$SERVER" ] && [ -n "$TOKEN" ] || { echo "SERVER/TOKEN are empty"; exit 1; }
 
 # Download do binário.
 BIN=/usr/local/bin/regente-agent
 TMP="$(mktemp 2>/dev/null || mktemp -t regente-agent)"; trap 'rm -f "$TMP"' EXIT
-echo "== baixando $ASSET ($VERSION)..."
+echo "== downloading $ASSET ($VERSION)..."
 curl -fSL "$URL" -o "$TMP"
 install -m 0755 "$TMP" "$BIN"
 
@@ -62,7 +62,7 @@ if [ "$GOOS" = linux ]; then
   UNIT=/etc/systemd/system/regente-agent.service
   cat > "$UNIT" <<EOF
 [Unit]
-Description=Regente Agent (executor local)
+Description=Regente Agent (local executor)
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=0
@@ -80,9 +80,9 @@ EOF
   systemctl daemon-reload
   systemctl enable --now regente-agent
   echo ""
-  echo "OK — regente-agent no ar (systemd, Restart=always, roda no boot como '$RUN_USER')."
-  echo "Logs:    journalctl -u regente-agent -f"
-  echo "Derruba: sudo systemctl stop regente-agent"
+  echo "OK — regente-agent is up (systemd, Restart=always, starts at boot as '$RUN_USER')."
+  echo "Logs:  journalctl -u regente-agent -f"
+  echo "Stop:  sudo systemctl stop regente-agent"
 else
   PLIST=/Library/LaunchDaemons/com.regente.agent.plist
   cat > "$PLIST" <<EOF
@@ -111,8 +111,8 @@ EOF
   launchctl bootout system "$PLIST" 2>/dev/null || true
   launchctl bootstrap system "$PLIST" 2>/dev/null || launchctl load -w "$PLIST"
   echo ""
-  echo "OK — regente-agent no ar (launchd, KeepAlive, roda no boot)."
-  echo "Logs:    tail -f /var/log/regente-agent.log"
-  echo "Derruba: sudo launchctl bootout system $PLIST"
+  echo "OK — regente-agent is up (launchd, KeepAlive, starts at boot)."
+  echo "Logs:  tail -f /var/log/regente-agent.log"
+  echo "Stop:  sudo launchctl bootout system $PLIST"
 fi
-echo "Confira o agente '$ID' online em Settings → Agentes."
+echo "Check that agent '$ID' shows up online under Settings → Agents."

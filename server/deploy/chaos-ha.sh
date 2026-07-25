@@ -10,39 +10,39 @@
 set -eu
 
 BIN="${REGENTE_BIN:-./regente-server}"
-DSN="${REGENTE_PG_DSN:?defina REGENTE_PG_DSN (postgres://...)}"
+DSN="${REGENTE_PG_DSN:?set REGENTE_PG_DSN (postgres://...)}"
 PA="${PORT_A:-9080}"
 PB="${PORT_B:-9081}"
 WS="$(mktemp -d)"
 mkdir -p "$WS/a/definitions" "$WS/b/definitions"
 
-leader_of() { # $1 = porta → imprime "leader"/"follower"
+leader_of() { # $1 = porta → imprime "leader"/"follower" (valores do /readyz)
   curl -s "http://127.0.0.1:$1/readyz" 2>/dev/null | grep -o '"detail":"[a-z]*"' | head -1 | cut -d'"' -f4
 }
 wait_ready() { for i in $(seq 1 20); do [ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$1/readyz" 2>/dev/null)" = "200" ] && return 0; sleep 1; done; return 1; }
 kill_port() { p=$(netstat -ano 2>/dev/null | grep LISTENING | grep ":$1 " | awk '{print $NF}' | head -1); [ -n "${p:-}" ] && { taskkill //PID "$p" //F >/dev/null 2>&1 || kill -9 "$p" 2>/dev/null; }; }
 
-echo "[chaos] subindo nó A (:$PA) e B (:$PB) no mesmo Postgres…"
+echo "[chaos] starting node A (:$PA) and B (:$PB) against the same Postgres…"
 nohup "$BIN" -addr=":$PA" -db-driver=postgres -db="$DSN" -workspace="$WS/a" -git-source="" -github-repo="" -node-id=chaosA >"$WS/a.log" 2>&1 &
-wait_ready "$PA" || { echo "nó A não subiu"; exit 1; }
+wait_ready "$PA" || { echo "node A did not start"; exit 1; }
 nohup "$BIN" -addr=":$PB" -db-driver=postgres -db="$DSN" -workspace="$WS/b" -git-source="" -github-repo="" -node-id=chaosB >"$WS/b.log" 2>&1 &
-wait_ready "$PB" || { echo "nó B não subiu"; exit 1; }
+wait_ready "$PB" || { echo "node B did not start"; exit 1; }
 
 LA="$(leader_of "$PA")"; LB="$(leader_of "$PB")"
 echo "[chaos] A=$LA  B=$LB"
-[ "$LA" = "leader" ] && [ "$LB" = "follower" ] || [ "$LA" = "follower" ] && [ "$LB" = "leader" ] || { echo "FALHA: não há exatamente 1 líder"; }
+[ "$LA" = "leader" ] && [ "$LB" = "follower" ] || [ "$LA" = "follower" ] && [ "$LB" = "leader" ] || { echo "FAILED: there is not exactly 1 leader"; }
 
 # Mata o líder e mede o failover no follower.
 if [ "$LA" = "leader" ]; then LEADER_PORT="$PA"; SURV="$PB"; else LEADER_PORT="$PB"; SURV="$PA"; fi
-echo "[chaos] matando o líder (:$LEADER_PORT)…"
+echo "[chaos] killing the leader (:$LEADER_PORT)…"
 kill_port "$LEADER_PORT"
 T0=$(date +%s)
 for i in $(seq 1 20); do
-  [ "$(leader_of "$SURV")" = "leader" ] && { echo "[chaos] OK — :$SURV assumiu a liderança em ~$(( $(date +%s) - T0 ))s"; break; }
+  [ "$(leader_of "$SURV")" = "leader" ] && { echo "[chaos] OK — :$SURV took leadership in ~$(( $(date +%s) - T0 ))s"; break; }
   sleep 1
 done
-[ "$(leader_of "$SURV")" = "leader" ] || echo "FALHA: o follower não assumiu"
+[ "$(leader_of "$SURV")" = "leader" ] || echo "FAILED: the follower never took over"
 
-echo "[chaos] limpando…"
+echo "[chaos] cleaning up…"
 kill_port "$PA"; kill_port "$PB"; rm -rf "$WS"
-echo "[chaos] fim."
+echo "[chaos] done."

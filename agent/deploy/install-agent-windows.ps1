@@ -24,19 +24,19 @@ $ErrorActionPreference = "Stop"
 # Precisa de admin (registrar Tarefa como SYSTEM/boot).
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
          ).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)
-if (-not $admin) { Write-Host "Rode num PowerShell COMO ADMINISTRADOR." -ForegroundColor Red; return }
+if (-not $admin) { Write-Host "Run this in a PowerShell session AS ADMINISTRATOR." -ForegroundColor Red; return }
 
 # Pergunta o que faltar.
-if (-not $Server) { $Server = Read-Host "URL do servidor (ex.: wss://regente.suaempresa.com/ws/agent)" }
+if (-not $Server) { $Server = Read-Host "Server URL (e.g. wss://regente.yourcompany.com/ws/agent)" }
 if (-not $Token) {
-  $sec = Read-Host "Token do agente (Settings -> Agentes -> Criar token)" -AsSecureString
+  $sec = Read-Host "Agent token (Settings -> Agents -> Create token)" -AsSecureString
   $Token = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
              [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
 }
-if (-not $Server -or -not $Token) { Write-Host "Servidor e Token sao obrigatorios." -ForegroundColor Red; return }
+if (-not $Server -or -not $Token) { Write-Host "Server and Token are required." -ForegroundColor Red; return }
 
 # Só há binário Windows amd64 na release.
-if (-not [Environment]::Is64BitOperatingSystem) { Write-Host "Requer Windows 64-bit (amd64)." -ForegroundColor Red; return }
+if (-not [Environment]::Is64BitOperatingSystem) { Write-Host "Requires 64-bit Windows (amd64)." -ForegroundColor Red; return }
 $asset = "regente-agent_windows_amd64.exe"
 $url = if ($Version -eq "latest") { "https://github.com/$Repo/releases/latest/download/$asset" }
        else { "https://github.com/$Repo/releases/download/$Version/$asset" }
@@ -47,7 +47,7 @@ $url = if ($Version -eq "latest") { "https://github.com/$Repo/releases/latest/do
 $dstDir = "C:\Program Files\Regente"
 New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
 $exe = Join-Path $dstDir "regente-agent.exe"
-Write-Host "Baixando $asset ($Version)..."
+Write-Host "Downloading $asset ($Version)..."
 Invoke-WebRequest -Uri $url -OutFile $exe -UseBasicParsing
 
 # Tarefa Agendada: boot + SYSTEM + auto-restart (mesma config do install-windows.ps1).
@@ -61,5 +61,5 @@ Register-ScheduledTask -TaskName "RegenteAgent" -Action $action -Trigger $trigge
   -Principal $principal -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName "RegenteAgent"
 
-Write-Host "OK - RegenteAgent instalado e iniciado (boot + auto-restart, como SYSTEM)." -ForegroundColor Green
-Write-Host "Status:  Get-ScheduledTask RegenteAgent    |    Confira '$Id' online em Settings -> Agentes."
+Write-Host "OK - RegenteAgent installed and started (boot + auto-restart, as SYSTEM)." -ForegroundColor Green
+Write-Host "Status:  Get-ScheduledTask RegenteAgent    |    Check that '$Id' is online under Settings -> Agents."

@@ -15,7 +15,7 @@ param(
 $ErrorActionPreference = "Stop"
 $src = Join-Path $PSScriptRoot "..\regente-agent.exe"
 if (-not (Test-Path $src)) {
-  throw "binário não encontrado em $src — rode: (cd ..; go build -o regente-agent.exe .)"
+  throw "binary not found at $src — run: (cd ..; go build -o regente-agent.exe .)"
 }
 
 $dstDir = "C:\Program Files\Regente"
@@ -34,4 +34,4 @@ Register-ScheduledTask -TaskName "RegenteAgent" -Action $action -Trigger $trigge
   -Principal $principal -Settings $settings -Force | Out-Null
 
 Start-ScheduledTask -TaskName "RegenteAgent"
-Write-Host "OK — RegenteAgent registrado e iniciado. Ver: Get-ScheduledTask RegenteAgent"
+Write-Host "OK — RegenteAgent registered and started. Check it: Get-ScheduledTask RegenteAgent"

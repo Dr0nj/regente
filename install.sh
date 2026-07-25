@@ -21,18 +21,18 @@ set -euo pipefail
 REPO="${REGENTE_REPO:-Dr0nj/regente}"
 VERSION="${REGENTE_VERSION:-latest}"
 
-[ "$(id -u)" = 0 ] || { echo "rode como root:  sudo bash $0   (ou:  curl … | sudo bash)"; exit 1; }
+[ "$(id -u)" = 0 ] || { echo "run as root:  sudo bash $0   (or:  curl … | sudo bash)"; exit 1; }
 case "$(uname -s)" in
   Linux) : ;;
-  *) echo "este instalador é só pra Linux (systemd). Windows: use deploy/install-windows.ps1"; exit 1 ;;
+  *) echo "this installer is Linux-only (systemd). On Windows use deploy/install-windows.ps1"; exit 1 ;;
 esac
 case "$(uname -m)" in
   x86_64|amd64)  ARCH=amd64 ;;
   aarch64|arm64) ARCH=arm64 ;;
-  *) echo "arquitetura não suportada: $(uname -m) (amd64/arm64 apenas)"; exit 1 ;;
+  *) echo "unsupported architecture: $(uname -m) (amd64/arm64 only)"; exit 1 ;;
 esac
 for c in curl tar systemctl; do
-  command -v "$c" >/dev/null || { echo "'$c' é necessário e não está no PATH"; exit 1; }
+  command -v "$c" >/dev/null || { echo "'$c' is required and is not on the PATH"; exit 1; }
 done
 
 BUNDLE="regente-server_linux_${ARCH}.tar.gz"
@@ -43,18 +43,18 @@ else
 fi
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
-echo "== Regente — baixando $BUNDLE ($VERSION) de $REPO ..."
+echo "== Regente — downloading $BUNDLE ($VERSION) from $REPO ..."
 curl -fSL "$URL" -o "$TMP/bundle.tar.gz"
 tar -xzf "$TMP/bundle.tar.gz" -C "$TMP"
 DIR="$TMP/regente-server_linux_${ARCH}"
-[ -x "$DIR/regente-server" ] || { echo "bundle inválido: binário regente-server não encontrado"; exit 1; }
+[ -x "$DIR/regente-server" ] || { echo "invalid bundle: the regente-server binary was not found"; exit 1; }
 
 # Delega pro installer systemd do bundle (que também instala a UI single-origin).
 RUN_USER="${RUN_USER:-${SUDO_USER:-root}}" bash "$DIR/deploy/install-linux.sh"
 
 echo ""
-echo "== Próximos passos"
-echo "  1) sudo \$EDITOR /etc/regente/server.env   # TROQUE REGENTE_TOKEN por um valor forte; aponte o GitOps"
+echo "== Next steps"
+echo "  1) sudo \$EDITOR /etc/regente/server.env   # REPLACE REGENTE_TOKEN with a strong value; point GitOps at your repo"
 echo "  2) sudo systemctl restart regente-server"
-echo "  3) abra http://<este-host>:8080  (login: admin / admin — troca obrigatória na 1ª vez)"
-echo "  Para HTTPS/link público e agentes em outras máquinas, ver deploy/ e o README."
+echo "  3) open http://<this-host>:8080  (login: admin / admin — you must change it on first use)"
+echo "  For HTTPS/public links and agents on other machines, see deploy/ and the README."
