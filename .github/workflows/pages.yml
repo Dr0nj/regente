@@ -1,22 +1,23 @@
-# Publica docs/site/ no GitHub Pages — a documentação e a referência de API viram
-# um LINK, sem ninguém precisar clonar o repo nem subir server.
+# Publica docs/site/ no GitHub Pages — a documentação e a referência de API são
+# um LINK (https://dr0nj.github.io/regente/), sem ninguém precisar clonar o repo
+# nem subir server. Ligado em 2026-07-27 (repo público + Source = GitHub Actions).
 #
-# COMO LIGAR (uma vez, é ação sua no GitHub):
-#   1. o repositório precisa ser PÚBLICO (Pages em repo privado exige plano pago);
-#   2. Settings → Pages → Build and deployment → Source = "GitHub Actions";
-#   3. rode este workflow (aba Actions → Publish docs → Run workflow).
-#
-# A URL fica https://dr0nj.github.io/regente/ — atualize o link no README.
-#
-# Depois de validar, descomente o gatilho `push` abaixo para publicar a cada
-# merge na main; até lá ele roda só sob demanda (não avermelha o CI).
+# Roda a cada push na main que toque doc, e sob demanda pela aba Actions.
 name: Publish docs
 
 on:
   workflow_dispatch:
-  # push:
-  #   branches: [main]
-  #   paths: ["docs/site/**", "README.md", "*/README.md", "docs/**.md"]
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "README.md"
+      - "*/README.md"
+      - "*/*/README.md"
+      - "server/internal/api/openapi.yaml"
+      - "server/internal/api/apidocs.html"
+      - "server/cmd/docsite/**"
+      - ".github/workflows/pages.yml"
 
 permissions:
   contents: read

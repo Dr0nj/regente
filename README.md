@@ -60,24 +60,20 @@ This repository is the **monorepo** for the whole platform:
 
 ## 📚 Documentation
 
-Everything below is a **static site** — no server, no build, nothing to install. It is generated
-from the markdown in this repository and committed to [`docs/site/`](docs/site).
+**Nothing to install, nothing to start — just click:**
 
 | Page | What is in it |
 |---|---|
-| [**Documentation site**](docs/site/index.html) | This README, the component guides, operations, DR, SLOs, MCP and the conditions spec — all in one navigable place. |
-| [**API reference**](docs/site/api.html) | The full OpenAPI contract: every endpoint, parameter, schema and example. |
+| 📖 [**Documentation**](https://dr0nj.github.io/regente/) | This README, the component guides, operations, DR, SLOs, MCP and the conditions spec — all in one navigable place. |
+| 🔌 [**API reference**](https://dr0nj.github.io/regente/api.html) | The full OpenAPI contract: every endpoint, parameter, schema and example. Also as [openapi.yaml](https://dr0nj.github.io/regente/openapi.yaml) and [openapi.json](https://dr0nj.github.io/regente/openapi.json) for Postman or a code generator. |
 
-**How to open them without running anything:** clone or download this repository and open
-`docs/site/index.html` in your browser — double-clicking works. The pages are self-contained:
-the CSS is inlined and the API spec is embedded, so there is nothing to fetch and no server to
-start.
+The site is generated from the markdown in this repository and published by
+[a workflow](.github/workflows/pages.yml) on every push to `main`. It is also committed to
+[`docs/site/`](docs/site), so **it works offline too**: clone or download the repo and open
+`docs/site/index.html` in your browser — double-clicking is enough. The pages are
+self-contained, with the CSS inlined and the API spec embedded, so there is nothing to fetch.
 
-> The same site can be published as a plain link with GitHub Pages — the workflow is ready in
-> [`.github/workflows/pages.yml`](.github/workflows/pages.yml); it needs the repository to be
-> public and Pages to be switched on once (the file explains the three steps).
-
-To regenerate the site after editing any markdown:
+To regenerate it after editing any markdown:
 
 ```bash
 cd server && go run ./cmd/docsite -repo .. -out ../docs/site

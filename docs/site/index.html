@@ -137,8 +137,7 @@ whoever operates it).</p>
 </blockquote>
 <hr>
 <h2 id="-documentation">📚 Documentation</h2>
-<p>Everything below is a <strong>static site</strong> — no server, no build, nothing to install. It is generated
-from the markdown in this repository and committed to <a href="docs/site"><code>docs/site/</code></a>.</p>
+<p><strong>Nothing to install, nothing to start — just click:</strong></p>
 <table>
 <thead>
 <tr>
@@ -148,25 +147,21 @@ from the markdown in this repository and committed to <a href="docs/site"><code>
 </thead>
 <tbody>
 <tr>
-<td><a href="docs/site/index.html"><strong>Documentation site</strong></a></td>
+<td>📖 <a href="https://dr0nj.github.io/regente/"><strong>Documentation</strong></a></td>
 <td>This README, the component guides, operations, DR, SLOs, MCP and the conditions spec — all in one navigable place.</td>
 </tr>
 <tr>
-<td><a href="docs/site/api.html"><strong>API reference</strong></a></td>
-<td>The full OpenAPI contract: every endpoint, parameter, schema and example.</td>
+<td>🔌 <a href="https://dr0nj.github.io/regente/api.html"><strong>API reference</strong></a></td>
+<td>The full OpenAPI contract: every endpoint, parameter, schema and example. Also as <a href="https://dr0nj.github.io/regente/openapi.yaml">openapi.yaml</a> and <a href="https://dr0nj.github.io/regente/openapi.json">openapi.json</a> for Postman or a code generator.</td>
 </tr>
 </tbody>
 </table>
-<p><strong>How to open them without running anything:</strong> clone or download this repository and open
-<code>docs/site/index.html</code> in your browser — double-clicking works. The pages are self-contained:
-the CSS is inlined and the API spec is embedded, so there is nothing to fetch and no server to
-start.</p>
-<blockquote>
-<p>The same site can be published as a plain link with GitHub Pages — the workflow is ready in
-<a href=".github/workflows/pages.yml"><code>.github/workflows/pages.yml</code></a>; it needs the repository to be
-public and Pages to be switched on once (the file explains the three steps).</p>
-</blockquote>
-<p>To regenerate the site after editing any markdown:</p>
+<p>The site is generated from the markdown in this repository and published by
+<a href=".github/workflows/pages.yml">a workflow</a> on every push to <code>main</code>. It is also committed to
+<a href="docs/site"><code>docs/site/</code></a>, so <strong>it works offline too</strong>: clone or download the repo and open
+<code>docs/site/index.html</code> in your browser — double-clicking is enough. The pages are
+self-contained, with the CSS inlined and the API spec embedded, so there is nothing to fetch.</p>
+<p>To regenerate it after editing any markdown:</p>
 <pre><code class="language-bash">cd server &amp;&amp; go run ./cmd/docsite -repo .. -out ../docs/site
 </code></pre>
 <p>A running server serves the same content live: the docs at <code>/docs</code> (with <code>-docs-dir</code>) and an
