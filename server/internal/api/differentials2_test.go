@@ -25,9 +25,9 @@ func newDiffTestServer(t *testing.T) (*httptest.Server, *db.DB, *scheduler.Sched
 	h := hub.New()
 	sched := scheduler.New(storage.NewFileStore(t.TempDir(), false), d, h, time.Second)
 	sched.AttachConditions(scheduler.NewConditionEngine(d))
-	t.Cleanup(sched.Stop)
 	srv := httptest.NewServer(NewRouter(Config{DB: d, Hub: h, Scheduler: sched, Token: "test-token"}))
 	t.Cleanup(func() { srv.Close(); d.Close() })
+	t.Cleanup(sched.Stop) // LIFO: drena as goroutines do scheduler ANTES do Close do DB
 	return srv, d, sched
 }
 

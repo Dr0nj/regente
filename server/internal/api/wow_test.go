@@ -67,9 +67,13 @@ func newSelfServiceServer(t *testing.T) (*httptest.Server, *storage.FileStore, *
 	store := storage.NewFileStore(t.TempDir(), false)
 	sched := scheduler.New(store, d, h, time.Second)
 	sched.DemoMode = true
-	t.Cleanup(sched.Stop)
 	srv := httptest.NewServer(NewRouter(Config{DB: d, Hub: h, Scheduler: sched, Store: store, Token: "test-token"}))
 	t.Cleanup(func() { srv.Close(); d.Close() })
+	// Stop DEPOIS do Close na ordem de registro = ANTES dele na execução (Cleanup
+	// é LIFO). O self-service ordena via ForceOrder → dispatch em goroutine (e
+	// mock-finish de 1s no DemoMode): drenar antes do Close do DB é o que impede
+	// o write pós-teardown durante o RemoveAll do t.TempDir().
+	t.Cleanup(sched.Stop)
 	return srv, store, sched
 }
 

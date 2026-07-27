@@ -127,7 +127,7 @@ type Scheduler struct {
 // Bus — Fase 2 (futuro serverless): transporte do control-plane. Abstrai a
 // difusão de eventos para a web e o roteamento de dispatch para agentes, de
 // modo que o WebSocket hub (default) possa ser trocado por NATS/SSE/long-poll
-// sem tocar no core do scheduler (ver docs/arquitetura-futuro.md). *hub.Hub
+// sem tocar no core do scheduler (ver docs/architecture-future.md). *hub.Hub
 // satisfaz esta interface; o tipo hub.Client segue compartilhado por ser o
 // canal de envio concreto para o agente.
 type Bus interface {
@@ -182,7 +182,7 @@ func New(store *storage.FileStore, db *db.DB, bus Bus, tick time.Duration) *Sche
 // (advisory lock no Postgres). Chamado do main no modo -scheduler=external, onde
 // não há líder de longa duração segurando o dispatch e dois containers podem
 // receber `POST /scheduler/tick` ao mesmo tempo. No-op fora do Postgres. Ver
-// ticklock.go / docs/arquitetura-futuro.md §4.
+// ticklock.go / docs/architecture-future.md §4.
 func (s *Scheduler) EnableTickLock() {
 	if s.tickGuard == nil {
 		s.tickGuard = &tickGuard{db: s.db}
@@ -200,6 +200,41 @@ func (s *Scheduler) sleepOrStop(d time.Duration) bool {
 	case <-s.quit:
 		return false
 	}
+}
+
+// stopping — Stop() já foi chamado? Usado para NÃO ABRIR trabalho novo durante o
+// teardown: uma goroutine que só nasceria para morrer no primeiro sleepOrStop é
+// um no-op caro (ainda faz o claim e emite eventos antes de perceber a parada).
+func (s *Scheduler) stopping() bool {
+	select {
+	case <-s.quit:
+		return true
+	default:
+		return false
+	}
+}
+
+// spawnTracked roda fn numa goroutine RASTREADA pelo wg — o Add acontece no
+// stack do CHAMADOR (antes do `go`), que é o que dá o happens-before com o
+// wg.Wait() do Stop. Fazer o Add dentro da goroutine é a armadilha: o Wait pode
+// ver o contador em zero e retornar antes dela sequer começar, e o write vaza
+// para depois do Close do DB / RemoveAll do t.TempDir(). Recupera panics pela
+// mesma postura do R2 (uma goroutine de fundo nunca derruba o processo).
+// No-op se o Stop já foi pedido.
+func (s *Scheduler) spawnTracked(what string, fn func()) {
+	if s.stopping() {
+		return
+	}
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[scheduler] PANIC em %s recuperado: %v", what, r)
+			}
+		}()
+		fn()
+	}()
 }
 
 // Stop sinaliza as goroutines de fundo (dispatch/mock-finish/retry) a abortar e
@@ -366,7 +401,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 // deps/dispatch uma vez. É idempotente (claim atômico em startInstance + checks
 // de existência na daily), então pode ser disparado por um cron externo
 // (-scheduler=external + POST /api/scheduler/tick) num deploy serverless
-// scale-to-zero, sem o ticker em goroutine. Fase 1 — ver docs/arquitetura-futuro.md.
+// scale-to-zero, sem o ticker em goroutine. Fase 1 — ver docs/architecture-future.md.
 //
 // G1 — só o líder materializa a daily e despacha; followers retornam cedo.
 func (s *Scheduler) Tick() {
@@ -407,7 +442,7 @@ func (s *Scheduler) Tick() {
 // ciclo, exposto para um cron DIÁRIO dedicado (POST /api/scheduler/daily) no
 // modo serverless — separando a cadência da daily (1×/dia) do tick de dispatch
 // (segundos). Leader-gated e panic-recuperado como o Tick. Ver
-// docs/arquitetura-futuro.md §4.
+// docs/architecture-future.md §4.
 func (s *Scheduler) RunDailyIfDue() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -1714,19 +1749,12 @@ func (s *Scheduler) maybeRetry(id, output string) bool {
 	// escrevendo no DB durante o RemoveAll do t.TempDir() (flake da CI).
 	// R2 — recover: um panic na parte síncrona de startInstance não pode derrubar
 	// o processo.
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("[scheduler] PANIC no retry de %s recuperado: %v", id, r)
-			}
-		}()
+	s.spawnTracked("retry de "+id, func() {
 		if !s.sleepOrStop(5 * time.Second) {
 			return // Stop() — aborta o backoff sem re-disparar pós-teardown
 		}
 		s.startInstance(id, def)
-	}()
+	})
 	return true
 }
 
@@ -1993,6 +2021,13 @@ func (s *Scheduler) ForceOrder(defID string) (string, error) {
 			return id, nil // recurso indisponível — o tick re-tenta
 		}
 	}
-	go s.startInstance(id, *def)
+	// Dispatch em goroutine RASTREADA (ver spawnTracked): a parte SÍNCRONA de
+	// startInstance (claim + evento `started`) e o mock-finish do DemoMode
+	// (`submitted` + FinishInstance 1s depois) rodam aqui. Solta (`go
+	// s.startInstance`) elas escapavam do Stop() e escreviam no DB depois do
+	// teardown do teste, durante o RemoveAll do t.TempDir() — o flake
+	// "directory not empty" + "sql: database is closed" da CI (TestAction_RunJob,
+	// pelo run-job → ForceOrder).
+	s.spawnTracked("force de "+id, func() { s.startInstance(id, *def) })
 	return id, nil
 }

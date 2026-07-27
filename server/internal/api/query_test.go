@@ -73,7 +73,7 @@ func TestRunQuery_EndToEnd(t *testing.T) {
 	h := hub.New()
 	sched := scheduler.New(storage.NewFileStore(t.TempDir(), false), d, h, time.Second)
 	srv := httptest.NewServer(NewRouter(Config{DB: d, Hub: h, Scheduler: sched, Token: "test-token"}))
-	defer func() { srv.Close(); d.Close() }()
+	defer func() { srv.Close(); sched.Stop(); d.Close() }() // Stop antes do Close do DB
 
 	post := func(q string) map[string]any {
 		raw, _ := json.Marshal(map[string]string{"q": q})
