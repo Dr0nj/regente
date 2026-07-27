@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4) · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html" class="active">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</a>
+<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch</a>
+</nav>
+<main>
+<article>
+<h1 id="-dr--backup--restore--regente-server-r6--config-across-restarts-r4">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</h1>
+<blockquote>
+<p>How to <strong>survive a disaster, a container restart and an HA failover without losing state or
+configuration</strong>. Applies to both state store backends: <strong>SQLite</strong> (single node) and
+<strong>Postgres</strong> (production/HA). Scripts live in
+<a href="../server/deploy/backup.sh"><code>../server/deploy/backup.sh</code></a> and
+<a href="../server/deploy/restore.sh"><code>../server/deploy/restore.sh</code></a>.</p>
+</blockquote>
+<h2 id="principle-what-has-to-survive">Principle (what has to survive)</h2>
+<p>Everything that is <strong>durable state</strong> lives in the state store (the DB), not on the ephemeral
+filesystem of the process or container:</p>
+<ul>
+<li><strong>runtime</strong>: <code>instances</code>, <code>daily_runs</code>, <code>instance_events</code>, <code>instance_output</code>, <code>conditions</code>,
+<code>resources</code>, <code>sla_breaches</code>, <code>alert_*</code>, <code>agent_tokens</code>…</li>
+<li><strong>config (R4)</strong>: the <code>settings</code> table — <code>env_label</code>, <code>github_token</code>, <code>webhook_secret</code>, alert
+credentials (Slack/webhook/SMTP/PagerDuty).</li>
+<li><strong>definitions</strong>: YAML versioned in <strong>Git</strong> (the workspace) — it already has its own DR: it is
+a repository.</li>
+</ul>
+<blockquote>
+<p>So: <strong>losing the container loses nothing</strong>, as long as the DB lives outside it (a persistent
+volume for SQLite, an external Postgres server) and is backed up. The two sections below make
+sure of that.</p>
+</blockquote>
+<hr>
+<h2 id="r4--configuration-survives-a-restart-checklist">R4 — configuration survives a restart (checklist)</h2>
+<p>Runtime configuration is already read from the DB at boot (<code>settings</code>). For it to survive a
+restart, an ephemeral container or a failover, make sure that:</p>
+<ul>
+<li><input disabled="" type="checkbox"> <strong>SQLite</strong>: the <code>-db</code> file sits on a <strong>persistent volume</strong>, not on the container's
+ephemeral layer. On k8s: a <code>PersistentVolumeClaim</code> mounted at the <code>-db</code> path.</li>
+<li><input disabled="" type="checkbox"> <strong>Postgres</strong>: <code>-db</code> points at an <strong>external PG</strong> (managed, or a StatefulSet with a PVC) —
+never a PG inside the same ephemeral pod.</li>
+<li><input disabled="" type="checkbox"> <strong>Secrets</strong>: prefer the <strong>secrets provider</strong> (<code>REGENTE_SECRET_*</code> / <code>-secrets-file</code>) over
+storing the PAT or webhook in the database in plaintext — that way sensitive configuration
+comes from your secret manager and the DB only carries the rest.</li>
+<li><input disabled="" type="checkbox"> <strong>Restart smoke test</strong>: start → set <code>env_label</code>/token → stop → start → check that it came
+back (covered by the <code>TestSettings_SurviveRestart</code> test).</li>
+</ul>
+<hr>
+<h2 id="r6--backup">R6 — backup</h2>
+<h3 id="sqlite-single-node">SQLite (single node)</h3>
+<p>An <strong>online, consistent</strong> snapshot taken by the binary itself (<code>VACUUM INTO</code>, pure-Go, without
+stopping the server):</p>
+<pre><code class="language-sh">regente-server -db ./regente.db -backup /backups/regente-$(date +%F).db
+# or through the script (with retention):
+REGENTE_DB_DRIVER=sqlite REGENTE_DB=./regente.db ./server/deploy/backup.sh /backups
+</code></pre>
+<h3 id="postgres-production--ha">Postgres (production / HA)</h3>
+<p>A consistent <strong>logical</strong> backup (custom format):</p>
+<pre><code class="language-sh">REGENTE_DB_DRIVER=postgres REGENTE_DB=&quot;postgres://u:p@host/db?sslmode=require&quot; \
+  ./server/deploy/backup.sh /backups            # runs pg_dump -Fc
+</code></pre>
+<p><strong>PITR (point-in-time recovery)</strong> — to recover up to the second before an incident, <code>pg_dump</code>
+(a snapshot) is <strong>not enough</strong>; enable WAL archiving in Postgres:</p>
+<ul>
+<li><strong>Managed PG</strong> (Neon / Cloud SQL / RDS / Supabase): turn on <em>PITR / continuous backups</em> in the
+console — the provider archives the WAL. This is the recommended path (zero infrastructure).</li>
+<li><strong>Self-hosted PG</strong>: <code>wal_level=replica</code>, <code>archive_mode=on</code>,
+<code>archive_command='... cp %p /wal-archive/%f'</code> plus a periodic <code>pg_basebackup</code>. Restore =
+basebackup + WAL replay up to <code>recovery_target_time</code>.</li>
+</ul>
+<h3 id="scheduling">Scheduling</h3>
+<ul>
+<li><strong>cron</strong>: <code>0 */6 * * *  REGENTE_DB_DRIVER=postgres REGENTE_DB=... /opt/regente/backup.sh /backups</code></li>
+<li><strong>systemd timer</strong>: a <code>.service</code> that calls the script plus a <code>.timer</code> with
+<code>OnCalendar=*-*-* 0/6:00:00</code>.</li>
+<li><strong>k8s CronJob</strong>: a container with the binary (or <code>pg_dump</code>), <code>schedule: &quot;0 */6 * * *&quot;</code>, the
+PVC/secret mounted, and <code>./backup.sh</code> as the command.</li>
+</ul>
+<hr>
+<h2 id="r6--restore-drill">R6 — restore (drill)</h2>
+<blockquote>
+<p><strong>Stop the server before restoring.</strong> In HA, stop every node (the leader re-elects itself
+afterwards).</p>
+</blockquote>
+<pre><code class="language-sh"># Postgres:
+REGENTE_DB_DRIVER=postgres REGENTE_DB=&quot;postgres://u:p@host/db&quot; \
+  ./server/deploy/restore.sh /backups/regente-20260623-030000.dump
+
+# SQLite:
+REGENTE_DB_DRIVER=sqlite REGENTE_DB=./regente.db \
+  ./server/deploy/restore.sh /backups/regente-20260623-030000.db
+</code></pre>
+<p>Post-restore validation:</p>
+<ol>
+<li>Start one node and check <code>GET /readyz</code> → <strong>200</strong> with <code>db.ok=true</code>.</li>
+<li><code>GET /api/env</code> → the expected <code>env_label</code> is back (this proves R4).</li>
+<li><code>GET /metrics</code> → <code>regente_instances{...}</code> reflects the restored order_date.</li>
+<li>In HA, start the remaining nodes and confirm there is <strong>exactly one leader</strong> in <code>/readyz</code>.</li>
+</ol>
+<blockquote>
+<p><strong>Run the drill for real, periodically</strong> — a backup that has never been restored is not a
+backup.</p>
+</blockquote>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

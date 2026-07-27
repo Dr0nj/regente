@@ -1,0 +1,1092 @@
+# API-1 — Contrato OpenAPI CURADO da superfície de integração do Regente.
+#
+# ESCRITO À MÃO de propósito (decisão registrada no roadmap): NÃO é auto-doc
+# swaggo dos ~137 handlers — a maioria é superfície INTERNA da SPA (Design
+# sessions, auth de UI, settings...), muda com a UI e não é contrato. Aqui
+# entra só o que um sistema EXTERNO realmente chama (CI/CD, ticketing,
+# pipeline de dados, cron serverless, monitoração) — a MESMA superfície do
+# SDK Go (pkg/client, ADV-6) e do CLI `regente ops`.
+#
+# ESPELHO DECLARADO dos handlers Go: mudou rota/payload da superfície de
+# integração → atualiza AQUI (o teste apidocs_test.go trava rota da spec que
+# não existe mais no router). Servido em /api-docs (viewer) e
+# /api-docs/openapi.{yaml,json} (o contrato cru).
+#
+# Texto voltado ao usuário: INGLÊS (o contrato é público).
+openapi: 3.0.3
+info:
+  title: Regente — integration API
+  version: "1.0"
+  description: |
+    **Curated** contract of Regente's integration surface: the routes an
+    external system actually calls. The SPA's internal surface (Design
+    sessions, users, settings, alerting...) is deliberately left out — it
+    evolves with the UI and is not a contract.
+
+    ### Authentication
+    `Authorization: Bearer <token>` on everything under `/api`, except where
+    marked public. The token is either a session issued by the UI login **or**
+    the deployment's static token (`REGENTE_TOKEN`, equivalent to admin — the
+    same one the Go SDK `pkg/client` and the `regente ops` CLI use). Auth
+    errors: `401` for a missing/invalid token, `403` for insufficient
+    role/ACL. Error bodies are `text/plain` (raw message), not JSON.
+
+    ### RBAC
+    Reads respect the user's folder ACLs (admin sees everything). Lifecycle
+    actions require the `operator`/`admin` role **and** write access on the
+    instance's folder. Archives and export are admin-only.
+
+    ### The QUERY HTTP verb
+    `POST /api/instances/query` also accepts the `QUERY` method (IETF httpbis
+    draft — safe/idempotent with a body), same handler and same contract.
+    OpenAPI 3.0 cannot model custom verbs, so the POST form is documented
+    here; `QUERY` is progressive enhancement for clients that support it.
+
+    ### Ingest idempotency
+    `POST /api/events/ingest` is idempotent on the SENDER's key (`id` + PK in
+    `external_events`): an at-least-once retry answers `duplicate:true`
+    without reapplying any effect. Without an `id`, every POST applies (no
+    key, no dedupe).
+servers:
+  - url: /
+    description: Single-origin — the server serves the API, the SPA, the docs and this contract on the same port.
+tags:
+  - name: System
+    description: Health/liveness/readiness and Prometheus metrics. Public (scraper/probe-friendly).
+  - name: Query
+    description: Typed composed query (D-5) and NL-query over the current day's state.
+  - name: Lifecycle
+    description: Operational actions on an instance (Control-M parity) + Force Order.
+  - name: External events
+    description: Idempotent ingestion (D-3) — another system unblocks jobs without polling.
+  - name: Daily
+    description: State and report/SLO of the daily (E5).
+  - name: Forecast
+    description: Simulation of what the daily would materialize (F21/CTM-6). Read-only, never touches the database.
+  - name: Catalog
+    description: JobTypes with a declared per-type schema (ADV-1).
+  - name: Archives
+    description: Dailies archived by the retention policy (ADV-5). Admin-only.
+  - name: Quick actions
+    description: Single-scope HMAC links coming from alerts (D-15). The signed token IS the auth.
+  - name: Scheduler
+    description: On-demand tick for the -scheduler=external mode (external cron).
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      tags: [System]
+      summary: Basic health check
+      operationId: health
+      security: []
+      x-permission: public
+      responses:
+        "200":
+          description: Server is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+  /livez:
+    get:
+      tags: [System]
+      summary: Liveness (R2)
+      description: |
+        200 for as long as the process serves HTTP. Reports the age of the
+        scheduler's last tick (informational — it does NOT fail on a stale
+        tick: under `-scheduler=external` the tick comes from cron and failing
+        would cause a restart loop).
+      operationId: livez
+      security: []
+      x-permission: public
+      responses:
+        "200":
+          description: Process alive.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alive: { type: boolean }
+                  schedulerLastTickAgeSeconds:
+                    type: number
+                    description: -1 if the scheduler has never ticked.
+  /readyz:
+    get:
+      tags: [System]
+      summary: Readiness (R3)
+      description: |
+        "Can this node serve correct answers?" The hard gate is a reachable DB
+        (503 without one — point the k8s readinessProbe here). Leadership and
+        tick/daily age are REPORTED but never fail the check: a follower serves
+        the API normally.
+      operationId: readyz
+      security: []
+      x-permission: public
+      responses:
+        "200":
+          description: Node ready.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Readyz" }
+        "503":
+          description: DB unreachable — take the node out of rotation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Readyz" }
+  /metrics:
+    get:
+      tags: [System]
+      summary: Prometheus metrics (P17)
+      description: |
+        Prometheus text format, no external dependency. Main gauges:
+        `regente_up`, `regente_env_info{env}`, `regente_instances{status}`,
+        `regente_agents_online`, `regente_sla_breaches_total`,
+        `regente_git_drift`, `regente_scheduler_last_tick_age_seconds`,
+        `regente_is_leader`, `regente_event_queue_depth`.
+      operationId: metrics
+      security: []
+      x-permission: public
+      responses:
+        "200":
+          description: Prometheus exposition.
+          content:
+            text/plain:
+              schema: { type: string }
+              example: |
+                regente_up 1
+                regente_instances{status="OK"} 1234
+                regente_is_leader 1
+  /api/instances/query:
+    post:
+      tags: [Query]
+      summary: Typed composed query (D-5)
+      description: |
+        Composed filtering beyond the query string of `/api/instances`: date
+        ranges, IN lists (folders/statuses), flags (forced/carried/late) and
+        aggregation (`groupBy`). STRICT parsing — an unknown field is a 400
+        (this is not SQL-over-HTTP; every filter is typed and parameterized).
+        An empty body `{}` means today's daily, unfiltered. Keyset pagination
+        via `cursor` = the id of the last item on the previous page (only
+        without `groupBy`).
+
+        Also accepts the `QUERY` HTTP method (same handler/contract).
+      operationId: queryInstances
+      x-permission: any logged-in user (reads filtered by folder ACLs)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StructuredQuery" }
+            example: { statuses: [NOTOK], limit: 100 }
+      responses:
+        "200":
+          description: Paginated list (without groupBy) OR aggregation (with groupBy).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/QueryResultList"
+                  - $ref: "#/components/schemas/QueryResultGrouped"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/query:
+    post:
+      tags: [Query]
+      summary: NL-query (text → structured query)
+      description: |
+        Interprets a natural-language question (en/pt) about the current day —
+        "how many jobs failed today?", "why didn't etl-sales run?" — and runs
+        the intent (summary/count/list/explain) against the database.
+        Deterministic (an intent parser, no AI). The response returns the
+        interpreted intent plus the structured answer.
+      operationId: nlQuery
+      x-permission: any logged-in user (reads filtered by folder ACLs)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [q]
+              properties:
+                q: { type: string, description: The question, in natural language. }
+            example: { q: "how many jobs failed today?" }
+      responses:
+        "200":
+          description: Interpreted intent + answer.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  interpreted:
+                    type: object
+                    description: How the question was understood (kind/status/folder/job).
+                  answer:
+                    type: object
+                    description: Structured answer (its shape varies with the kind — text/count/byStatus/items...).
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/instances/{id}:
+    get:
+      tags: [Query]
+      summary: Detail of one instance (+ the order's frozen action)
+      description: |
+        The full runtime row plus what the list deliberately does NOT carry
+        (scale payload): `label`, `jobType` and `actionConfig` extracted from
+        the `definition_snapshot` — the photo of the definition frozen when the
+        instance was ordered, the SAME one the dispatch executes. Editing the
+        job in Design after the order does not change this response. A folder
+        the user cannot read answers 404 (it does not leak existence).
+      operationId: getInstance
+      x-permission: any logged-in user (reads filtered by folder ACLs)
+      parameters: [{ $ref: "#/components/parameters/instanceId" }]
+      responses:
+        "200":
+          description: Instance detail.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InstanceDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Instance not found (or folder not readable).
+          content:
+            text/plain:
+              schema: { type: string }
+    delete:
+      tags: [Lifecycle]
+      summary: Delete — removes the order (ONLY on HOLD)
+      description: |
+        Control-M "Delete job": removes the instance from the screen and from
+        the state store. Requires the job to be on HOLD — since RUNNING is not
+        holdable, a job in execution is never deletable; any other status
+        becomes deletable by going through Hold first. The dependency-event
+        ledger stays intact: an OK consumption that was held remains spent (the
+        rerun of a clone stays in WAIT EVENT); an unconsumed reservation goes
+        back to the pool.
+      operationId: deleteInstance
+      x-permission: operator/admin + write access on the instance's folder
+      parameters: [{ $ref: "#/components/parameters/instanceId" }]
+      responses:
+        "200":
+          description: Removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActionResult" }
+              example: { id: "etl-sales_2026-07-10_a1b2", status: deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Instance not found.
+          content:
+            text/plain:
+              schema: { type: string }
+        "409":
+          description: Not on HOLD (hold it first; RUNNING is not deletable).
+          content:
+            text/plain:
+              schema: { type: string }
+  /api/instances/{id}/hold:
+    post:
+      tags: [Lifecycle]
+      summary: Hold — holds an instance (any status except RUNNING)
+      description: |
+        General hold: any status → HELD, except RUNNING (409 — the execution is
+        already on the agent; cancel it or wait) and HELD itself (an idempotent
+        no-op that echoes the current state). The original status is frozen in
+        `heldFromStatus` and Release restores THAT — holding an OK and
+        releasing it re-executes nothing.
+      operationId: holdInstance
+      x-permission: operator/admin + write access on the instance's folder
+      parameters: [{ $ref: "#/components/parameters/instanceId" }]
+      responses:
+        "200":
+          description: Hold applied (or a no-op if it was already HELD).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActionResult" }
+              example: { id: "etl-sales_2026-07-10_a1b2", status: HELD }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: RUNNING cannot be held.
+          content:
+            text/plain:
+              schema: { type: string }
+  /api/instances/{id}/release:
+    post:
+      tags: [Lifecycle]
+      summary: Release — releases a HELD instance
+      description: |
+        HELD → the ORIGINAL status frozen by the hold (`heldFromStatus`; legacy
+        holds without it fall back to WAITING). A released WAITING re-enters
+        normal gating on the next tick; a released OK/NOTOK simply goes back to
+        being OK/NOTOK. A job held by a FOLDER PAUSE answers 409 — only the
+        folder resume releases it.
+      operationId: releaseInstance
+      x-permission: operator/admin + write access on the instance's folder
+      parameters: [{ $ref: "#/components/parameters/instanceId" }]
+      responses:
+        "200":
+          description: Release applied (or a no-op if it was not HELD).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActionResult" }
+              example: { id: "etl-sales_2026-07-10_a1b2", status: WAITING }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: Held by a folder pause (release it through the folder).
+          content:
+            text/plain:
+              schema: { type: string }
+  /api/instances/{id}/cancel:
+    post:
+      tags: [Lifecycle]
+      summary: Cancel — cancels the instance
+      description: Marks it CANCELLED (unconditionally) and closes finished_at.
+      operationId: cancelInstance
+      x-permission: operator/admin + write access on the instance's folder
+      parameters: [{ $ref: "#/components/parameters/instanceId" }]
+      responses:
+        "200":
+          description: Cancelled.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActionResult" }
+              example: { id: "etl-sales_2026-07-10_a1b2", status: CANCELLED }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/instances/{id}/rerun:
+    post:
+      tags: [Lifecycle]
+      summary: Rerun — resets to WAITING
+      description: |
+        Clears started/finished/exitCode/output and goes back to WAITING. The
+        `confirmed` flag SURVIVES the rerun (BUG-2): an already-confirmed job
+        does not fall back to the CONFIRM gate. Pending alerts for the job are
+        marked as handled; the tick is nudged — with the gates satisfied, the
+        job goes in right away.
+      operationId: rerunInstance
+      x-permission: operator/admin + write access on the instance's folder
+      parameters: [{ $ref: "#/components/parameters/instanceId" }]
+      responses:
+        "200":
+          description: Reset to WAITING.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActionResult" }
+              example: { id: "etl-sales_2026-07-10_a1b2", status: WAITING }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/instances/{id}/set-ok:
+    post:
+      tags: [Lifecycle]
+      summary: Set OK — flips WAITING/NOTOK/CANCELLED → OK
+      description: |
+        Control-M "Set OK": marks it OK, publishes the dependency event and
+        MATERIALIZES the ConditionsOut — unblocking the on-success successors.
+        It also applies to WAITING (a job stuck on WAIT EVENT finishes OK right
+        away, BUG-3). 400 if the instance is not in an eligible state (e.g.
+        RUNNING).
+      operationId: setOKInstance
+      x-permission: operator/admin + write access on the instance's folder
+      parameters: [{ $ref: "#/components/parameters/instanceId" }]
+      responses:
+        "200":
+          description: Marked OK.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActionResult" }
+              example: { id: "etl-sales_2026-07-10_a1b2", status: OK }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/instances/{id}/confirm:
+    post:
+      tags: [Lifecycle]
+      summary: Confirm — opens the WAIT_CONFIRM gate
+      description: |
+        Control-M "Confirm": releases a job defined with `confirm: true`. It
+        applies to WAITING and HELD (confirming while held counts; it runs once
+        released). Not even Force bypasses this gate — only Confirm. It nudges
+        the tick: confirmed, dispatched.
+      operationId: confirmInstance
+      x-permission: operator/admin + write access on the instance's folder
+      parameters: [{ $ref: "#/components/parameters/instanceId" }]
+      responses:
+        "200":
+          description: Confirmed.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ActionResult"
+                  - type: object
+                    properties:
+                      confirmed: { type: boolean }
+              example: { id: "closing_2026-07-10_c3d4", status: WAITING, confirmed: true }
+        "400":
+          description: Instance not found, or not on WAITING/HELD.
+          content:
+            text/plain:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/definitions/{id}/force:
+    post:
+      tags: [Lifecycle]
+      summary: Force Order — materializes the published def into today's daily
+      description: |
+        Control-M "Order Force": creates an instance from the most current
+        PUBLISHED definition, right now, in today's daily (the regular daily is
+        an immutable photo; force picks up the live def — only for the forced
+        job).
+      operationId: forceOrder
+      x-permission: operator/admin + write access on the definition's folder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: The definition ID (the YAML id in the workspace).
+      responses:
+        "200":
+          description: Instance created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  instanceId: { type: string }
+              example: { instanceId: "etl-sales_2026-07-10_f0rc" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Definition not found.
+          content:
+            text/plain:
+              schema: { type: string }
+  /api/events/ingest:
+    post:
+      tags: [External events]
+      summary: Idempotent ingestion of an external event (D-3)
+      description: |
+        Another system (CDC, pipeline, vendor webhook) reports that something
+        happened — and that unblocks jobs WITHOUT polling: it sets conditions
+        (scoped by `date`, defaulting to today in the business timezone) and/or
+        forces a job.
+
+        **Idempotent** on the sender's key: `id` is the PK — an at-least-once
+        retry answers `duplicate: true` without reapplying. **Persisted**: the
+        event and what it caused (`applied`) stay in the table (forensics for
+        "who unblocked this job at 03:14"). **Immediate**: it nudges the tick.
+
+        Requires `conditions[]` (or `condition`) and/or `forceJob` — nothing to
+        apply is a 400.
+      operationId: ingestEvent
+      x-permission: operator/admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IngestEvent" }
+            example:
+              id: order-batch-2026-07-10
+              source: sap
+              kind: file-arrived
+              conditions: [SALES_FILE_OK]
+              forceJob: etl-sales
+      responses:
+        "200":
+          description: |
+            Event accepted. `duplicate: false` + `applied` (the list of what was
+            done, item by item, with partial ERRORs inline) — or
+            `duplicate: true` + `applied: false` on a retry (nothing reapplied).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IngestResult" }
+              example:
+                id: order-batch-2026-07-10
+                duplicate: false
+                applied: ["condition SALES_FILE_OK@2026-07-10", "force etl-sales → etl-sales_2026-07-10_a1b2"]
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/events/external:
+    get:
+      tags: [External events]
+      summary: Latest ingested events (forensics/debug)
+      operationId: listExternalEvents
+      x-permission: any logged-in user
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 100 }
+      responses:
+        "200":
+          description: Most recent first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ExternalEvent" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/daily/status:
+    get:
+      tags: [Daily]
+      summary: Daily state (business clock)
+      description: |
+        Last materialization + the configured time (`settings.daily_at`) + the
+        business timezone (E1). `orderDate`/`serverNow` are in the business
+        timezone — that is the clock that decides what "today" means.
+      operationId: dailyStatus
+      x-permission: any logged-in user
+      responses:
+        "200":
+          description: Current state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DailyStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/daily/report:
+    get:
+      tags: [Daily]
+      summary: Daily report/SLO (E5)
+      description: |
+        The summary operations asks for at the end of the day: counts per
+        state, punctuality of the materialization (`lateStart`, 5-minute
+        tolerance), whether the day "closed" (`closed` — nothing
+        WAITING/RUNNING), failures (capped at 100, the count is always exact)
+        and SLA breaches. It is also the payload of the optional push
+        (`daily_report_channels`).
+      operationId: dailyReport
+      x-permission: any logged-in user
+      parameters:
+        - name: date
+          in: query
+          schema: { type: string, format: date }
+          description: YYYY-MM-DD; defaults to today's daily in the business timezone.
+      responses:
+        "200":
+          description: Aggregated report.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DailyReport" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/forecast:
+    get:
+      tags: [Forecast]
+      summary: Forecast for one day (F21)
+      description: |
+        Simulates in RAM what the daily would materialize on `date`: who is
+        eligible (the SAME gating as RunDaily — frequency, include/exclude
+        calendars, shift, via IsScheduledOn), topological order (waves), blocks
+        from deps/resources/conditions and projected SLA violations. It never
+        touches the database.
+      operationId: getForecast
+      x-permission: any logged-in user
+      parameters:
+        - name: date
+          in: query
+          schema: { type: string, format: date }
+          description: YYYY-MM-DD; defaults to today.
+      responses:
+        "200":
+          description: Simulation of the day.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ForecastReport" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/forecast/range:
+    get:
+      tags: [Forecast]
+      summary: Forecast for N days ahead (CTM-6)
+      description: One ForecastReport per day, same gating as RunDaily. Control-M's "≥1 week".
+      operationId: getForecastRange
+      x-permission: any logged-in user
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+          description: YYYY-MM-DD; defaults to today.
+        - name: days
+          in: query
+          schema: { type: integer, default: 7, minimum: 1, maximum: 366 }
+      responses:
+        "200":
+          description: One report per day.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ForecastReport" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/jobtypes:
+    get:
+      tags: [Catalog]
+      summary: JobType catalog (ADV-1)
+      description: |
+        The DEDICATED schema of every jobType (fields, required ones, kinds,
+        enums, aliases), straight from the registry the validator uses — the
+        same source as the DRAFT-on-save / STRICT-on-publish validation. The
+        documentation baseline for integrators and payload generation.
+      operationId: jobTypeCatalog
+      x-permission: any logged-in user
+      responses:
+        "200":
+          description: Declarative registry.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobTypes:
+                    type: array
+                    items:
+                      type: object
+                      description: Schema per type (name/label/fields...) — driven by the server.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/archive:
+    get:
+      tags: [Archives]
+      summary: Lists archived dailies (ADV-5)
+      description: |
+        The NDJSON files the post-daily retention GC writes into
+        `settings.archive_dir`. Admin-only (an archive carries output and
+        snapshots from ALL folders — it does not go through per-team RBAC).
+      operationId: listArchives
+      x-permission: admin
+      responses:
+        "200":
+          description: Available files (sorted by name/day).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArchiveList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/archive/{file}:
+    get:
+      tags: [Archives]
+      summary: Downloads one day's NDJSON (ADV-5)
+      operationId: downloadArchive
+      x-permission: admin
+      parameters:
+        - name: file
+          in: path
+          required: true
+          schema: { type: string, pattern: "^instances-\\d{4}-\\d{2}-\\d{2}(-\\d+)?\\.ndjson$" }
+          description: The exact name in the instances-YYYY-MM-DD[-N].ndjson format (anything else is a 400).
+      responses:
+        "200":
+          description: File streamed (Content-Disposition attachment).
+          content:
+            application/x-ndjson:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Archive not found.
+          content:
+            text/plain:
+              schema: { type: string }
+  /api/scheduler/tick:
+    post:
+      tags: [Scheduler]
+      summary: On-demand tick (serverless mode)
+      description: |
+        Fires one scheduling cycle (materializes the daily if it is due +
+        dispatch). Designed for `-scheduler=external`, where an external cron
+        (Cloud Scheduler, k8s CronJob, GitHub Actions) hits this instead of the
+        internal ticker. Idempotent and leader-guarded — safe to call
+        frequently. In serverless, a per-tick lock serializes overlapping ticks
+        across containers (ARCH-3).
+      operationId: schedulerTick
+      x-permission: operator/admin
+      responses:
+        "200":
+          description: Cycle executed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  at: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/scheduler/daily:
+    post:
+      tags: [Scheduler]
+      summary: Dedicated daily trigger (serverless mode)
+      description: |
+        Materializes today's daily IF the configured time has passed and it has
+        not run yet (idempotent, leader-guarded), **without** running the
+        dispatch cycle. Designed to split the cadences in serverless: a
+        minute-level cron on `/scheduler/tick` (dispatch) and a **daily** cron
+        here (materialization) — instead of every tick checking the daily.
+      operationId: schedulerDaily
+      x-permission: operator/admin
+      responses:
+        "200":
+          description: Check executed (materialized if due).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  orderDate: { type: string, format: date, description: '"Today" in the business timezone.' }
+                  at: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /qa/{token}:
+    get:
+      tags: [Quick actions]
+      summary: Quick action confirmation page (D-15)
+      description: |
+        A signed link (HMAC, 24h TTL, single instance+action scope) that
+        arrives with the alert. GET NEVER executes — a link preview in a chat
+        must not trigger a rerun; the page shows the button that does the POST.
+        No Authorization header: the signed token itself is the auth.
+      operationId: quickActionPage
+      security: []
+      x-permission: public (auth = the link's HMAC token)
+      parameters: [{ $ref: "#/components/parameters/qaToken" }]
+      responses:
+        "200":
+          description: HTML confirmation page (mobile-first, self-contained).
+          content:
+            text/html:
+              schema: { type: string }
+        "403":
+          description: Invalid token (HTML).
+          content:
+            text/html:
+              schema: { type: string }
+        "410":
+          description: Expired token (HTML).
+          content:
+            text/html:
+              schema: { type: string }
+    post:
+      tags: [Quick actions]
+      summary: Executes the quick action
+      description: |
+        Verifies the token and EXECUTES the embedded action (same semantics as
+        the lifecycle handlers; actor = "quick-action"). The response is
+        feedback HTML.
+      operationId: quickActionExec
+      security: []
+      x-permission: public (auth = the link's HMAC token)
+      parameters: [{ $ref: "#/components/parameters/qaToken" }]
+      responses:
+        "200":
+          description: Action applied (confirmation HTML).
+          content:
+            text/html:
+              schema: { type: string }
+        "403":
+          description: Invalid token (HTML).
+          content:
+            text/html:
+              schema: { type: string }
+        "409":
+          description: Action not applied — the instance's state does not allow it (HTML).
+          content:
+            text/html:
+              schema: { type: string }
+        "410":
+          description: Expired token (HTML).
+          content:
+            text/html:
+              schema: { type: string }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: A login session OR the deployment's static token (REGENTE_TOKEN = admin).
+  parameters:
+    instanceId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+      description: The instance ID (e.g. the `id` returned by the composed query).
+    qaToken:
+      name: token
+      in: path
+      required: true
+      schema: { type: string }
+      description: Signed HMAC token (issued by alerting; 24h TTL).
+  responses:
+    BadRequest:
+      description: Invalid request (raw message in text/plain).
+      content:
+        text/plain:
+          schema: { type: string }
+    Unauthorized:
+      description: Missing or invalid token.
+      content:
+        text/plain:
+          schema: { type: string, example: unauthorized }
+    Forbidden:
+      description: Insufficient role/ACL (writer, admin or write access on the folder).
+      content:
+        text/plain:
+          schema: { type: string, example: forbidden }
+  schemas:
+    Instance:
+      type: object
+      description: |
+        One instance in the daily (an IMMUTABLE snapshot of the order —
+        team/dryRun and friends freeze at the moment the job is ordered).
+      properties:
+        id: { type: string }
+        definitionId: { type: string }
+        team: { type: string, description: The folder (frozen on the order). }
+        orderDate: { type: string, format: date }
+        status:
+          type: string
+          enum: [WAITING, RUNNING, OK, NOTOK, HELD, CANCELLED]
+        scheduledAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time, nullable: true }
+        finishedAt: { type: string, format: date-time, nullable: true }
+        agentId: { type: string }
+        exitCode: { type: integer }
+        output: { type: string }
+        forced: { type: boolean }
+        carriedFrom:
+          type: string
+          format: date
+          description: The day of origin if it came from another daily's carry-over.
+        confirmed: { type: boolean, description: "Confirm gate opened (jobs with confirm: true)." }
+        cycleRuns: { type: integer, description: OK laps completed during the day (cyclic jobs). }
+        dryRun: { type: boolean, description: Frozen on the order (the GHOST badge). }
+    InstanceDetail:
+      allOf:
+        - $ref: "#/components/schemas/Instance"
+        - type: object
+          description: Fields extracted from definition_snapshot (the photo of the order).
+          properties:
+            label: { type: string, description: The job label frozen on the order. }
+            jobType: { type: string, description: The job type (COMMAND/SCRIPT/...) frozen on the order. }
+            actionConfig:
+              type: object
+              additionalProperties: true
+              description: Action parameters (e.g. command/cwd) frozen on the order — what the dispatch executes.
+    StructuredQuery:
+      type: object
+      description: Everything optional; the zero value means today's daily, unfiltered. An unknown field is a 400.
+      additionalProperties: false
+      properties:
+        date: { type: string, format: date, description: An exact day (YYYY-MM-DD). }
+        from: { type: string, format: date, description: ...or an inclusive from..to range. }
+        to: { type: string, format: date }
+        folders:
+          type: array
+          items: { type: string }
+          description: IN over the folder/team.
+        statuses:
+          type: array
+          items: { type: string }
+          description: IN over the status (WAITING/RUNNING/OK/NOTOK/HELD/CANCELLED).
+        search: { type: string, description: LIKE over id / definitionId. }
+        defIdPrefix: { type: string, description: definitionId LIKE 'prefix%'. }
+        forced: { type: boolean, description: Only forced ones (true) / only non-forced ones (false). }
+        carried: { type: boolean, description: Only carry-overs from another daily (true) / only native ones (false). }
+        late: { type: boolean, description: "true = WAITING with scheduledAt in the past (late)." }
+        groupBy:
+          type: string
+          enum: [status, folder, definition]
+          description: Aggregation in the database — switches the response to the grouped shape.
+        limit: { type: integer, default: 500, maximum: 5000 }
+        cursor: { type: string, description: Keyset — the id of the last item on the previous page. }
+    QueryResultList:
+      type: object
+      description: The paginated shape (without groupBy).
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Instance" }
+        nextCursor:
+          type: string
+          description: Pass it back in `cursor` for the next page; empty means there is nothing left.
+    QueryResultGrouped:
+      type: object
+      description: The aggregated shape (with groupBy) — counters straight from the database, no row materialized.
+      properties:
+        groupBy: { type: string }
+        groups:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              count: { type: integer }
+        total: { type: integer }
+    IngestEvent:
+      type: object
+      description: Requires conditions[] (or condition) and/or forceJob.
+      properties:
+        id:
+          type: string
+          description: The SENDER's dedupe key (PK). Omitted means no dedupe — every POST applies.
+        source: { type: string, description: Who sent it (becomes the actor "external:<source>"). }
+        kind: { type: string, description: 'A free-form label for the event type (file-arrived, job-done...).' }
+        condition: { type: string, description: Shorthand for a single condition. }
+        conditions:
+          type: array
+          items: { type: string }
+          description: Conditions to set (date-scoped).
+        forceJob: { type: string, description: The definition to force into the daily. }
+        date: { type: string, format: date, description: Scope of the conditions; defaults to today (business tz). }
+    IngestResult:
+      type: object
+      properties:
+        id: { type: string }
+        duplicate: { type: boolean }
+        applied:
+          description: |
+            The list of what was applied (with partial ERRORs inline) — or the
+            boolean `false` when it is a duplicate (nothing reapplied).
+          oneOf:
+            - type: array
+              items: { type: string }
+            - type: boolean
+    ExternalEvent:
+      type: object
+      properties:
+        id: { type: string }
+        source: { type: string }
+        kind: { type: string }
+        applied: { type: string, description: A "; "-separated summary of what the event caused. }
+        receivedAt: { type: string, format: date-time }
+    ActionResult:
+      type: object
+      properties:
+        id: { type: string }
+        status: { type: string }
+    DailyStatus:
+      type: object
+      properties:
+        orderDate: { type: string, format: date, description: '"Today" in the business timezone.' }
+        dailyAt: { type: string, description: The configured time (HH:MM). }
+        timezone: { type: string, description: IANA (settings.daily_timezone); empty means the server's local clock. }
+        lastRunDate: { type: string, format: date }
+        lastRunAt: { type: string }
+        serverNow: { type: string, format: date-time }
+    DailyReport:
+      type: object
+      properties:
+        date: { type: string, format: date }
+        dailyAt: { type: string }
+        timezone: { type: string }
+        startedAt: { type: string, format: date-time, nullable: true }
+        lateStart:
+          type: boolean
+          description: Materialized >5 min after the configured time (the scheduler's punctuality SLO).
+        closed:
+          type: boolean
+          description: Nothing WAITING/RUNNING — the day closed (the push trigger).
+        counts: { $ref: "#/components/schemas/DailyReportCounts" }
+        failures:
+          type: array
+          items: { $ref: "#/components/schemas/DailyReportFailure" }
+          description: Capped at 100 items; counts.notok is always exact.
+        slaBreaches:
+          type: array
+          items: { $ref: "#/components/schemas/SLABreach" }
+        reportSent: { type: boolean, description: The daily push was already sent (report_sent_at). }
+    DailyReportCounts:
+      type: object
+      properties:
+        ordered: { type: integer, description: Total instances for the orderDate. }
+        ok: { type: integer }
+        notok: { type: integer }
+        waiting: { type: integer }
+        running: { type: integer }
+        held: { type: integer }
+        cancelled: { type: integer }
+        carried: { type: integer, description: Came from earlier dailies (carry-over). }
+    DailyReportFailure:
+      type: object
+      properties:
+        defId: { type: string }
+        team: { type: string }
+        exitCode: { type: integer }
+        finishedAt: { type: string, format: date-time, nullable: true }
+    SLABreach:
+      type: object
+      properties:
+        id: { type: integer }
+        instanceId: { type: string }
+        definitionId: { type: string }
+        kind: { type: string, enum: [duration, deadline] }
+        severity: { type: string }
+        message: { type: string }
+        detectedAt: { type: string, format: date-time }
+        notified: { type: boolean }
+    ForecastReport:
+      type: object
+      properties:
+        orderDate: { type: string, format: date }
+        jobs:
+          type: array
+          items: { $ref: "#/components/schemas/ForecastJob" }
+        peakResourceUsage:
+          type: object
+          additionalProperties: { type: integer }
+          description: Projected peak usage per resource.
+    ForecastJob:
+      type: object
+      properties:
+        defId: { type: string }
+        label: { type: string }
+        team: { type: string }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        eligible: { type: boolean }
+        reason: { type: string, description: 'Why it does not run ("no calendar match", "blocked by deps"...).' }
+        wave: { type: integer, description: Topological order (0 = root). }
+        wouldBreachSla: { type: boolean }
+    ArchiveList:
+      type: object
+      properties:
+        dir: { type: string }
+        archives:
+          type: array
+          items: { $ref: "#/components/schemas/ArchiveItem" }
+    ArchiveItem:
+      type: object
+      properties:
+        file: { type: string, example: instances-2026-07-01.ndjson }
+        day: { type: string, format: date }
+        sizeBytes: { type: integer }
+        modifiedAt: { type: string, format: date-time }
+    Readyz:
+      type: object
+      properties:
+        ready: { type: boolean }
+        db:
+          type: object
+          properties:
+            ok: { type: boolean }
+            detail: { type: string }
+        leader:
+          type: object
+          description: Informational — a follower is ready.
+          properties:
+            ok: { type: boolean }
+            detail: { type: string, enum: [leader, follower] }
+        schedulerLastTickAgeSeconds: { type: number }
+        schedulerStale: { type: boolean, description: 'Last tick more than 120s ago (informational, does not fail).' }
+        lastDaily: { type: string, format: date }

@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>regente-server · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html" class="active">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</a>
+<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch</a>
+</nav>
+<main>
+<article>
+<h1 id="regente-server">regente-server</h1>
+<p>The Go daemon: the control plane. It holds the scheduler, the REST API, the WebSocket hub and
+the GitOps layer.</p>
+<h2 id="architecture">Architecture</h2>
+<ul>
+<li>HTTP REST API (chi) on <code>:8080</code></li>
+<li>A WebSocket hub for the web UI (live events) and for agents (dispatch); agents can also use
+HTTP long-poll or SSE</li>
+<li>The scheduler core running in a goroutine (daily + tick)</li>
+<li>Definitions: YAML at <code>workspace/definitions/&lt;folder&gt;/&lt;id&gt;.yaml</code>, optionally committed through
+Git</li>
+<li>Runtime state: SQLite (pure Go, no CGO) or Postgres — chosen with <code>-db-driver</code></li>
+</ul>
+<h2 id="build">Build</h2>
+<p>Requires Go 1.25+.</p>
+<pre><code class="language-bash">cd server
+go mod tidy
+CGO_ENABLED=0 go build -o regente-server .
+</code></pre>
+<h2 id="run-dev">Run (dev)</h2>
+<pre><code class="language-bash">./regente-server -addr :8080 -workspace ./workspace -db ./regente.db -api-token dev-token
+</code></pre>
+<p>The most common flags (all of them also read a <code>REGENTE_*</code> environment variable, so a systemd
+unit or a k8s manifest needs no arguments):</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-addr</code></td>
+<td><code>:8080</code></td>
+<td>HTTP listen address</td>
+</tr>
+<tr>
+<td><code>-workspace</code></td>
+<td><code>./workspace</code></td>
+<td>Path containing <code>definitions/</code></td>
+</tr>
+<tr>
+<td><code>-db</code></td>
+<td><code>./regente.db</code></td>
+<td>SQLite file path, or the Postgres DSN</td>
+</tr>
+<tr>
+<td><code>-db-driver</code></td>
+<td><code>sqlite</code></td>
+<td><code>sqlite</code> | <code>postgres</code></td>
+</tr>
+<tr>
+<td><code>-api-token</code></td>
+<td><code>dev-token</code> / <code>REGENTE_TOKEN</code></td>
+<td>Bearer token for the web UI and agents</td>
+</tr>
+<tr>
+<td><code>-spa-dir</code></td>
+<td>—</td>
+<td>Serves the built UI on the same origin (single-origin)</td>
+</tr>
+<tr>
+<td><code>-docs-dir</code></td>
+<td>—</td>
+<td>Serves a generated docs site under <code>/docs</code></td>
+</tr>
+<tr>
+<td><code>-git-source</code></td>
+<td>—</td>
+<td>Workspace repository URL (GitOps)</td>
+</tr>
+<tr>
+<td><code>-git-commit</code></td>
+<td><code>false</code></td>
+<td>Commits saves (the workspace must be a repo)</td>
+</tr>
+<tr>
+<td><code>-tick-ms</code></td>
+<td><code>2000</code></td>
+<td>Scheduler tick</td>
+</tr>
+<tr>
+<td><code>-scheduler</code></td>
+<td><code>internal</code></td>
+<td><code>internal</code> (goroutine ticker) | <code>external</code> (driven over HTTP)</td>
+</tr>
+<tr>
+<td><code>-role</code></td>
+<td><code>all</code></td>
+<td><code>all</code> | <code>api</code> | <code>scheduler</code></td>
+</tr>
+<tr>
+<td><code>-auth-mode</code></td>
+<td><code>local</code></td>
+<td><code>local</code> | <code>oidc</code> (opt-in SSO)</td>
+</tr>
+<tr>
+<td><code>-bus</code></td>
+<td><code>hub</code></td>
+<td><code>hub</code> (local) | <code>nats</code> (distributed multi-node hub)</td>
+</tr>
+<tr>
+<td><code>-backup</code></td>
+<td>—</td>
+<td>One-shot mode: writes an online backup and exits</td>
+</tr>
+</tbody>
+</table>
+<p>Run <code>./regente-server -h</code> for the full list.</p>
+<h2 id="api">API</h2>
+<p>Every <code>/api/*</code> route requires <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+<p>The <strong>contract lives in the binary</strong>: a running server serves the curated OpenAPI spec plus a
+self-contained viewer at <strong><code>/api-docs</code></strong>, and the raw spec at <code>/api-docs/openapi.yaml</code> and
+<code>/api-docs/openapi.json</code> (importable into Postman, Insomnia or a code generator). To read it
+without starting anything, see the <a href="../docs/site/api.html">API reference</a> in the generated docs
+site.</p>
+<h2 id="extra-commands">Extra commands</h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>go run ./cmd/mcp</code></td>
+<td>MCP server — operate Regente from an AI agent (<a href="mcp.html">docs</a>)</td>
+</tr>
+<tr>
+<td><code>go run ./cmd/docsite</code></td>
+<td>Generates the static documentation site</td>
+</tr>
+<tr>
+<td><code>go run ./cmd/importctm</code></td>
+<td>Imports a Control-M export (DEFTABLE XML) into a workspace</td>
+</tr>
+<tr>
+<td><code>go run ./cmd/regente</code></td>
+<td>Operator CLI (<code>ops</code>, <code>promote</code>, <code>dev</code>, <code>test</code>)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="production">Production</h2>
+<p>Run the server <strong>supervised</strong>, with automatic restart — see <a href="deploy"><code>deploy/</code></a> (systemd
+<code>Restart=always</code> / Windows Service / a k8s <code>livenessProbe</code>), the
+<a href="operations.html">operations guide</a> and the <a href="dr-backup.html">DR runbook</a>.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

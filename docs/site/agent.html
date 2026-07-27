@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>regente-agent · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html" class="active">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</a>
+<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch</a>
+</nav>
+<main>
+<article>
+<h1 id="regente-agent">regente-agent</h1>
+<p>Regente's local executor. Run <strong>one agent on every machine</strong> that should execute jobs (your
+laptop, an on-prem server, a VM/EC2, and so on).</p>
+<p>It connects to <code>regente-server</code> with an <strong>outbound</strong> connection — no ports need to be opened on
+the agent's machine, and it crosses NAT and firewalls. Same runner model as GitHub Actions,
+GitLab or the Control-M Agent. It runs jobs locally, returns the result, and <strong>streams
+stdout/stderr in real time</strong> (visible in the instance detail).</p>
+<h2 id="executors">Executors</h2>
+<table>
+<thead>
+<tr>
+<th>jobType</th>
+<th>What it does</th>
+<th>Params (actionConfig)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>COMMAND</code></td>
+<td>A command in the OS shell (<code>powershell -Command</code> on Windows, <code>sh -c</code> on Linux)</td>
+<td><code>command</code>, <code>cwd?</code></td>
+</tr>
+<tr>
+<td><code>SCRIPT</code></td>
+<td>Runs a script; the interpreter comes from the extension (<code>.ps1</code>/<code>.bat</code>/<code>.sh</code>)</td>
+<td><code>scriptPath</code>, <code>args?</code>, <code>cwd?</code></td>
+</tr>
+<tr>
+<td><code>HTTP</code></td>
+<td>A REST call with status validation</td>
+<td><code>method</code>, <code>url</code>, <code>headers?</code>, <code>body?</code>, <code>expectStatus?</code></td>
+</tr>
+<tr>
+<td><code>DATABASE</code></td>
+<td>SQL against Postgres/MySQL/SQLite (pure-Go drivers, no client on the host)</td>
+<td><code>driver</code>, <code>dsn</code>, <code>sql</code>, <code>maxRows?</code></td>
+</tr>
+<tr>
+<td><code>FILE_WATCH</code></td>
+<td>Waits for a file to arrive (and settle) on the agent's host</td>
+<td><code>path</code>, <code>intervalSec?</code>, <code>stableSec?</code></td>
+</tr>
+<tr>
+<td><code>FILE_TRANSFER</code></td>
+<td><strong>Native MFT</strong>: moves files between local, SFTP and S3 — globbing at the source, atomic writes, SHA-256 checksum (alias <code>MFT</code>)</td>
+<td><code>src</code>, <code>dst</code>, <code>checksum?</code>, <code>deleteSource?</code>, <code>overwrite?</code>, …</td>
+</tr>
+<tr>
+<td><code>LAMBDA</code></td>
+<td>Invokes an AWS Lambda function (SigV4 on the stdlib, no SDK)</td>
+<td><code>function</code>, <code>region?</code>, <code>payload?</code></td>
+</tr>
+<tr>
+<td><code>BATCH</code> · <code>GLUE</code> · <code>STEP_FUNCTION</code></td>
+<td>AWS Batch job, Glue job run, Step Functions execution</td>
+<td>see the API reference</td>
+</tr>
+<tr>
+<td><code>GCP_RUN</code></td>
+<td>Triggers a Cloud Run Job (Run Admin API v2)</td>
+<td><code>project</code>, <code>region</code>, <code>job</code></td>
+</tr>
+<tr>
+<td><code>WASM</code></td>
+<td>Runs a sandboxed WASI WebAssembly module through <a href="https://wazero.dev">wazero</a> (pure Go, no CGO)</td>
+<td><code>wasmPath</code> | <code>wasmUrl</code>, <code>args?</code>, <code>stdin?</code></td>
+</tr>
+<tr>
+<td><code>K8S_JOB</code></td>
+<td>Creates a <strong>Kubernetes Job</strong> through the REST API and waits for it</td>
+<td><code>image</code>, <code>command?</code>, <code>namespace?</code>, <code>apiServer?</code>, <code>token?</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><code>SSH</code> (an agentless remote command) does <strong>not</strong> use the agent — it runs on the server itself.
+<code>K8S_JOB</code> needs an agent that announces <code>-caps K8S</code> (with access to the cluster API).</p>
+</blockquote>
+<h2 id="build">Build</h2>
+<pre><code class="language-bash">go build -o regente-agent .      # Linux/macOS
+go build -o regente-agent.exe .  # Windows
+</code></pre>
+<h2 id="run-foreground">Run (foreground)</h2>
+<pre><code class="language-bash">./regente-agent \
+  -server ws://YOUR-SERVER:8080/ws/agent \
+  -token  rgta_...        # Settings → Agents → Create token \
+  -id     my-host \
+  -caps   COMMAND,SCRIPT,HTTP
+</code></pre>
+<p>Token: create <strong>one token per agent</strong> in the UI (Settings → Agents → Create token). The legacy
+<code>dev-token</code> still works in dev. Without a valid token the handshake is refused.</p>
+<p><strong>Transport</strong> (<code>-transport</code>): <code>ws</code> (WebSocket, the default), <code>http</code> (long-poll) or <code>sse</code>
+(Server-Sent Events, immediate push). The last two are serverless-friendly — still outbound, but
+they let the control plane be stateless and scale to zero. See
+<a href="architecture-future.html">architecture-future.md</a>.</p>
+<h2 id="install-as-a-service">Install as a service</h2>
+<p>The friendly installers download the binary from the latest release and register the agent as a
+service (<strong>systemd</strong> · <strong>launchd</strong> · <strong>Scheduled Task</strong>) — it starts at boot, restarts if it
+crashes, and runs with nobody logged in. <strong>No Docker, Go or runtime needed.</strong> They prompt for the
+server and the token if you do not pass them.</p>
+<pre><code class="language-bash"># Linux or macOS
+curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install-agent.sh -o install-agent.sh
+sudo bash install-agent.sh
+# fleet / unattended:
+sudo SERVER=wss://YOUR-DOMAIN/ws/agent TOKEN=rgta_xxx bash install-agent.sh
+</code></pre>
+<pre><code class="language-powershell"># Windows (PowerShell as Administrator)
+irm https://github.com/Dr0nj/regente/releases/latest/download/install-agent-windows.ps1 | iex
+# fleet / unattended: download the .ps1 and run it with  -Server wss://... -Token rgta_xxx
+</code></pre>
+<p>Building from source instead? Use <a href="deploy/install-linux.sh"><code>deploy/install-linux.sh</code></a> or
+<a href="deploy/install-windows.ps1"><code>deploy/install-windows.ps1</code></a>.</p>
+<h2 id="dispatch-how-the-server-picks-an-agent">Dispatch: how the server picks an agent</h2>
+<ul>
+<li>A job with a <strong>specific agent</strong> (the &quot;Agent (where it runs)&quot; field in the job drawer) goes
+straight to it. The pin is strict: if that agent is down, the job waits in WAIT AGENT until it
+comes back — it never migrates on its own.</li>
+<li>Otherwise the server picks an online agent whose <strong>capability</strong> matches the jobType
+(<code>PickAgent</code>). That is why <code>-caps</code> must list the jobTypes the agent accepts.</li>
+<li><strong>Environment</strong> (the job's <code>environment</code> versus the agent's <code>-env</code> flag): a side with no label
+is a wildcard; when both have labels they must match (case-insensitive). A <code>prod</code> job
+<strong>never</strong> lands on a <code>dev</code> agent — not even pinned (it stays in WAIT AGENT with the reason in
+the Explain).</li>
+</ul>
+<h2 id="websocket-protocol">WebSocket protocol</h2>
+<pre><code class="language-jsonc">// server → agent
+{ &quot;event&quot;:&quot;dispatch&quot;, &quot;instanceId&quot;:&quot;...&quot;, &quot;jobType&quot;:&quot;COMMAND&quot;, &quot;params&quot;:{...}, &quot;timeout&quot;:300 }
+// server → agent (kill a running job)
+{ &quot;event&quot;:&quot;cancel&quot;, &quot;instanceId&quot;:&quot;...&quot; }
+// agent → server (streaming while it runs)
+{ &quot;event&quot;:&quot;output&quot;, &quot;instanceId&quot;:&quot;...&quot;, &quot;chunk&quot;:&quot;a line of stdout/stderr&quot; }
+// agent → server (final)
+{ &quot;event&quot;:&quot;result&quot;, &quot;instanceId&quot;:&quot;...&quot;, &quot;exitCode&quot;:0, &quot;output&quot;:&quot;the full output&quot; }
+// agent → server (every 30s)
+{ &quot;event&quot;:&quot;heartbeat&quot; }
+</code></pre>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

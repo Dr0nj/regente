@@ -62,7 +62,7 @@ func main() {
 		auditSIEMURL = flag.String("audit-siem-url", envOr("REGENTE_AUDIT_SIEM_URL", ""), "Security: SIEM HTTP endpoint to POST audit events to (empty = JSON to stderr only)")
 		secretsFile  = flag.String("secrets-file", envOr("REGENTE_SECRETS_FILE", ""), "H3: JSON secrets file {\"github_token\":...}; the REGENTE_SECRET_<KEY> env takes priority")
 		tickMs       = flag.Int("tick-ms", 2000, "Scheduler tick interval (ms) — used in internal mode")
-		// Fase 1/2 (serverless) — papel do processo + origem do tick. Ver docs/arquitetura-futuro.md.
+		// Fase 1/2 (serverless) — papel do processo + origem do tick. Ver docs/architecture-future.md.
 		role          = flag.String("role", envOr("REGENTE_ROLE", "all"), "Process role: all | api | scheduler")
 		schedulerMode = flag.String("scheduler", envOr("REGENTE_SCHEDULER", "internal"), "Scheduler trigger: internal (goroutine ticker) | external (cron via POST /api/scheduler/tick)")
 		// R5 — bus distribuído (opt-in). hub (default) = comportamento local de sempre.

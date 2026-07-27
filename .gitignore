@@ -17,6 +17,7 @@ dist/
 /server/regente.db*
 /server/workspace/
 /server/sessions/
+/sessions/
 /deploy/demo/sessions/
 
 # --- Logs ---
@@ -37,4 +38,8 @@ Thumbs.db
 # --- Claude Code: overrides pessoais (settings versionado é o settings.json) ---
 .claude/settings.local.json
 .claude/launch.json
-docs/site/
+
+# docs/site/ é build, mas VERSIONADO de propósito: é o jeito de alguém abrir a
+# documentação e a referência de API SEM subir server nem toolchain (clona/baixa
+# e abre o index.html). O CI regenera e falha se ficar defasado — ver
+# .github/workflows/ci.yml (passo "docs site up to date").

@@ -1,77 +1,78 @@
-# `regente` — CLI de Developer Experience
+# `regente` — the developer-experience CLI
 
-Onde o Control-M perde feio: o ciclo **definir → testar → rodar local → promover → operar**
-vira linha de comando + Git, sem console proprietário no meio. Fecha os diferenciais D-6..D-9
-e o ADV-6 (`ops` + SDK Go).
+This is where Control-M loses badly: the **define → test → run locally → promote → operate**
+cycle becomes a command line plus Git, with no proprietary console in the middle.
 
 ```
 go build -o regente ./cmd/regente
 ```
 
-## `regente test <job.yaml | workspace-dir>` — D-7
+## `regente test <job.yaml | workspace-dir>`
 
-Valida e **simula** sem servidor. Pipeline:
+Validates and **simulates** without a server. The pipeline:
 
-1. parse **estrito** (campo desconhecido = erro — pega typo antes do runtime);
-2. validação estrutural (id/label/team, actionConfig por jobType — a mesma do save da API);
-3. grafo: upstream para job inexistente · **ciclo** de dependências;
-4. **policy as code** (D-10): `policies.yaml` do workspace, se houver;
-5. **simulação da daily** de `-date` com o MESMO engine do servidor (`DryRun`/`IsScheduledOn`):
-   quem RODA, quem ESPERA, quem NUNCA dispara.
+1. **strict** parsing (an unknown field is an error — it catches typos before runtime);
+2. structural validation (id/label/team, actionConfig per jobType — the same as the API's save);
+3. the graph: an upstream pointing at a job that does not exist · a dependency **cycle**;
+4. **policy as code**: the workspace's `policies.yaml`, if there is one;
+5. a **daily simulation** for `-date` using the SAME engine as the server
+   (`DryRun`/`IsScheduledOn`): who RUNS, who WAITS, who NEVER fires.
 
-Exit `0` = passou (warnings ok) · `1` = falhou → use direto no CI do repo de workspace.
+Exit `0` = passed (warnings are fine) · `1` = failed → use it directly in the workspace repo's
+CI.
 
 ```
-regente test ./regente-workspace -date 2026-07-08        # workspace inteiro
-regente test job.yaml -json                              # saída JSON pra CI
+regente test ./regente-workspace -date 2026-07-08        # the whole workspace
+regente test job.yaml -json                              # JSON output for CI
 ```
 
-## `regente dev [daily]` — D-8
+## `regente dev [daily]`
 
-Um Regente inteiro, **descartável**, numa porta local: SQLite temp (estado morre com o
-processo), demo-mode (sem agente, jobs mock-finalizam OK), workspace local (sem Git/push/rede),
-daily materializada já no boot + ticker interno.
+A whole Regente, **disposable**, on a local port: a temporary SQLite (state dies with the
+process), demo mode (no agent — jobs mock-finish OK), a local workspace (no Git, no push, no
+network), the daily materialized at boot plus the internal ticker.
 
 ```
 regente dev daily -workspace ./regente-workspace -date 2026-07-08 -addr :8686
 ```
 
-## `regente promote -from <branch> -to <branch>` — D-9
+## `regente promote -from <branch> -to <branch>`
 
-Promoção multi-ambiente **Git-nativa**: ambientes são branches do repo de workspace. Promover =
-o snapshot dos paths promovíveis da origem (definitions/, calendars/, **policies.yaml** — código E
-política juntos) **substitui** o destino (add/update/**delete**, não merge). Commit revisável no
-branch destino; o server daquele ambiente pega pelo fluxo GitOps normal.
+**Git-native** multi-environment promotion: environments are branches of the workspace repo.
+Promoting means the snapshot of the promotable paths from the source (definitions/, calendars/,
+**policies.yaml** — code AND policy together) **replaces** the destination (add/update/**delete**,
+not a merge). It produces a reviewable commit on the destination branch; that environment's
+server picks it up through the normal GitOps flow.
 
 ```
 regente promote -repo https://github.com/org/regente-workspace.git -from dev -to staging
-regente promote -from dev -to main -folders financeiro,pix        # promoção parcial
-regente promote -from dev -to main -dry-run                       # só o diff
+regente promote -from dev -to main -folders finance,pix        # partial promotion
+regente promote -from dev -to main -dry-run                    # just the diff
 ```
 
-> Flags podem vir em qualquer ordem em relação ao argumento posicional
+> Flags can come in any order relative to the positional argument
 > (`regente test ws -json` == `regente test -json ws`).
 
-## `regente ops <subcomando>` — ADV-6
+## `regente ops <subcommand>`
 
-Opera um **server vivo**, construído 100% sobre o SDK Go (`pkg/client`) — o CLI não fala
-HTTP direto; qualquer integração pode importar o mesmo pacote.
+Operates a **live server**, built entirely on the Go SDK (`pkg/client`) — the CLI never speaks
+HTTP directly, so any integration can import the same package.
 
 ```
 regente ops instances [-date D] [-status NOTOK,WAITING] [-folder F] [-late] [-group status] [-json]
 regente ops action <hold|release|cancel|rerun|set-ok|confirm> <instanceId>
 regente ops force <definitionId>
-regente ops ingest -source ci -id build-123 -condition dados-ok
+regente ops ingest -source ci -id build-123 -condition data-ok
 regente ops daily [-report] [-date D] [-json]
-regente ops archives [list | get <arquivo> -o saida.ndjson]
+regente ops archives [list | get <file> -o output.ndjson]
 regente ops jobtypes [-json]
 ```
 
-Conexão: `-server`/`-token` ou envs `REGENTE_SERVER`/`REGENTE_TOKEN`.
-A superfície é a **curada de integração** (query composta D-5, lifecycle, ingest D-3,
-daily E5, archives ADV-5, catálogo ADV-1) — mesma lista do API-1 no roadmap.
+Connection: `-server`/`-token`, or the `REGENTE_SERVER`/`REGENTE_TOKEN` environment variables.
+The surface is the **curated integration one** (composed query, lifecycle, ingest, daily,
+archives, catalog) — the same list the OpenAPI contract documents.
 
-### SDK Go (`pkg/client`)
+### Go SDK (`pkg/client`)
 
 ```go
 import "github.com/Dr0nj/regente-server/pkg/client"

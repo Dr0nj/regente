@@ -9,7 +9,7 @@
 //
 // Por que isso destrava serverless: sem conexão persistente no processo, o
 // control plane pode rodar atrás de runtimes scale-to-zero. Ver
-// docs/arquitetura-futuro.md (Fase 2).
+// docs/architecture-future.md (Fase 2).
 package api
 
 import (

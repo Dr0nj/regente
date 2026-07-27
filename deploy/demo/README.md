@@ -1,102 +1,106 @@
-# Hospedar a demo do Regente pra amigos testarem
+# Hosting a Regente demo for other people to try
 
-Objetivo: um **link https público** onde amigos entram, **criam e executam jobs de
-verdade**, sem você abrir sua máquina nem seu GitHub além do necessário.
+The goal: a **public https link** where people log in and **create and run real jobs**, without
+you exposing your machine or your GitHub beyond what is needed.
 
-## Como funciona (a arquitetura da demo)
+## How it works
 
 ```
-  amigos (browser)
-        │  https://<algo>.trycloudflare.com
+  guests (browser)
+        │  https://<something>.trycloudflare.com
         ▼
-  Cloudflare Tunnel  ──►  regente-server (seu PC, :9091)
-                              │   • serve o SPA buildado  (mesma porta → sem CORS)
-                              │   • API + WebSocket        (mesma porta)
-                              │   • GitOps DIRETO ──► github.com/Dr0nj/regente-workspace
+  Cloudflare Tunnel  ──►  regente-server (your PC, :9091)
+                              │   • serves the built SPA   (same port → no CORS)
+                              │   • API + WebSocket        (same port)
+                              │   • GitOps DIRECT ──► github.com/Dr0nj/regente-workspace
                               ▼
-                          agente em CONTAINER Docker (descartável)
-                              • jobs COMMAND/SCRIPT/HTTP rodam AQUI DENTRO
-                              • sem volumes do host, não-root, cap-drop, limites de CPU/RAM
+                          agent in a Docker CONTAINER (disposable)
+                              • COMMAND/SCRIPT/HTTP jobs run IN HERE
+                              • no host volumes, non-root, cap-drop, CPU/RAM limits
 ```
 
-Decisões desta demo (as que você escolheu):
-- **Cloudflare Tunnel** — grátis, sem conta, sem cartão. O link é efêmero
-  (`*.trycloudflare.com`) e muda a cada vez que você sobe — **não precisa rebuildar** o
-  front, porque ele usa `window.location.origin` (qualquer URL do túnel funciona).
-- **Execução em Docker isolado** — jobs rodam de verdade, mas presos num container
-  descartável. Os comandos dos amigos **não tocam sua máquina/arquivos**.
-- **GitOps direto no `regente-workspace` real** — jobs criados viram commit direto no
-  `main`. Simples e fluido (sem PR no meio). Ver "Segurança" abaixo.
+Decisions behind this demo:
 
-## Pré-requisitos
+- **Cloudflare Tunnel** — free, no account, no card. The link is ephemeral
+  (`*.trycloudflare.com`) and changes every time you start it — and you **never have to rebuild**
+  the frontend, because it uses `window.location.origin` (any tunnel URL works).
+- **Execution in an isolated Docker container** — jobs really run, but they are trapped in a
+  disposable container. Your guests' commands **never touch your machine or your files**.
+- **GitOps straight into the real `regente-workspace`** — jobs people create become commits
+  directly on `main`. Simple and fluid (no PR in the middle). See "Security" below.
 
-- **Go 1.25+** e **Node/npm** (build do server e do front)
-- **Docker Desktop LIGADO** (o agente sandbox)
-- **cloudflared** no PATH: `winget install --id Cloudflare.cloudflared`
-- Um **GitHub PAT** com permissão de **push** em `Dr0nj/regente-workspace`
-  (fine-grained: Contents = Read and write nesse repo). O script reusa o token salvo
-  em `%LOCALAPPDATA%\regente-lab\github-token.txt` se existir; senão, ele pergunta.
+## Requirements
 
-## Subir
+- **Go 1.25+** and **Node/npm** (to build the server and the frontend)
+- **Docker Desktop RUNNING** (for the sandbox agent)
+- **cloudflared** on the PATH: `winget install --id Cloudflare.cloudflared`
+- A **GitHub PAT** with **push** permission on `Dr0nj/regente-workspace` (fine-grained:
+  Contents = Read and write on that repo). The script reuses the token saved in
+  `%LOCALAPPDATA%\regente-lab\github-token.txt` if it exists; otherwise it asks.
 
-Na raiz do repo, no PowerShell:
+## Start it
+
+From the repository root, in PowerShell:
 
 ```powershell
 .\deploy\demo\host-demo.ps1
 ```
 
-Se aparecer **"a execução de scripts foi desabilitada neste sistema"** (política padrão do
-Windows), rode de uma destas formas — **nenhuma precisa de admin**:
+If you see **"running scripts is disabled on this system"** (the Windows default policy), use one
+of these — **neither needs admin rights**:
 
 ```powershell
-# opção A — só desta vez, sem mudar nada no sistema:
+# option A — just this once, changing nothing on the system:
 powershell -ExecutionPolicy Bypass -File .\deploy\demo\host-demo.ps1
 
-# opção B — libera scripts locais pro seu usuário de vez (roda 1x e pronto):
+# option B — allow local scripts for your user permanently (run once):
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 .\deploy\demo\host-demo.ps1
 ```
 
-O script: builda o front (`@origin`), builda e sobe o server em `:9091` servindo tudo
-numa origem só, builda e sobe o agente em Docker, e abre o Cloudflare Tunnel. **Copie o
-link `https://<...>.trycloudflare.com`** que aparecer e mande pros amigos.
+The script builds the frontend (`@origin`), builds and starts the server on `:9091` serving
+everything from one origin, builds and starts the agent in Docker, and opens the Cloudflare
+Tunnel. **Copy the `https://<...>.trycloudflare.com` link** it prints and send it to your guests.
 
-Login inicial: **admin / admin** (ele obriga a trocar a senha na 1ª vez).
+Initial login: **admin / admin** (it forces a password change on first use).
 
-### Convidar os amigos
+### Inviting people
 
-Em **Configurações → Usuários**, crie uma conta por pessoa e escolha o papel:
-- **operator** — cria e executa jobs (o que você quer pra quem vai testar de verdade)
-- **viewer** — só observa (bom pra quem só vai dar feedback visual)
+In **Settings → Users**, create one account per person and pick the role:
 
-Assim cada amigo entra com o próprio login (não compartilhe o admin).
+- **operator** — creates and runs jobs (what you want for people who will really try it out)
+- **viewer** — observes only (good for someone who will just give visual feedback)
 
-## Parar
+That way everyone logs in with their own account — do not share the admin one.
 
-Feche a janela do `cloudflared` (Ctrl+C) e:
+## Stop it
+
+Close the `cloudflared` window (Ctrl+C) and run:
 
 ```powershell
 docker rm -f regente-sandbox
 Get-Process regente-server -ErrorAction SilentlyContinue | Stop-Process -Force
 ```
 
-## Segurança — leia antes de convidar gente
+## Security — read this before inviting anyone
 
-Você está expondo um orquestrador que **executa comandos**. Mitigações já embutidas:
-- Execução **dentro do container** (sem mount do host, não-root, `--cap-drop ALL`,
-  `--security-opt no-new-privileges`, limites de PID/CPU/RAM). O que os amigos rodam
-  fica preso ali; derrubar/reciclar é `docker rm -f regente-sandbox`.
-- **Contas por pessoa** com RBAC (operator/viewer), em vez do admin compartilhado.
-- Token de API **aleatório** por sessão (o script gera um a cada run).
+You are exposing an orchestrator that **executes commands**. Mitigations already built in:
 
-Pontos de atenção (porque você escolheu escrita direta no repo real):
-- Jobs criados **commitam direto no `main`** do seu `regente-workspace`. Se algum amigo
-  bagunçar, é `git revert` no repo. Se preferir revisão no meio, troque no script
-  `-git-write-mode direct` por `pr-required` (aí cada mudança vira PR pra você aprovar —
-  precisa de PAT com permissão de PR).
-- O container tem saída de rede (jobs HTTP e `COMMAND` podem acessar a internet). Se
-  quiser cortar isso, rode o agente com `--network none` (mas aí jobs HTTP/rede param).
-- O link `trycloudflare.com` é **público**: quem tiver a URL vê a tela de login. A
-  proteção é o login/RBAC — só entregue contas a quem você confia.
+- Execution happens **inside the container** (no host mount, non-root, `--cap-drop ALL`,
+  `--security-opt no-new-privileges`, PID/CPU/RAM limits). Whatever your guests run stays in
+  there; `docker rm -f regente-sandbox` tears it down or recycles it.
+- **Per-person accounts** with RBAC (operator/viewer) instead of a shared admin.
+- A **random** API token per session (the script generates one on every run).
 
-Convide poucos, de confiança, e derrube a demo quando terminar.
+Things to keep in mind (because this demo writes directly to the real repo):
+
+- Jobs people create **commit straight to `main`** in your `regente-workspace`. If someone makes
+  a mess, it is a `git revert` in the repo. If you would rather review changes, swap
+  `-git-write-mode direct` for `pr-required` in the script (every change then becomes a PR for
+  you to approve — that needs a PAT with PR permission).
+- The container has outbound network access (HTTP and `COMMAND` jobs can reach the internet). To
+  cut that off, run the agent with `--network none` (but then HTTP/network jobs stop working).
+- The `trycloudflare.com` link is **public**: anyone with the URL sees the login screen. The
+  protection is the login and RBAC — only hand out accounts to people you trust.
+
+Invite a small number of people you trust, and shut the demo down when you are done.

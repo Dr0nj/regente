@@ -1,353 +1,376 @@
-# Condições — especificação de comportamento (FONTE ÚNICA)
+# Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)
 
-> **LEIA ESTE ARQUIVO INTEIRO antes de tocar em qualquer código de dependência,
-> condição, rerun, Set OK ou Force.** Ele é a fonte única da semântica; o
-> roadmap registra *quando* cada regra entrou, mas o comportamento canônico é o
-> daqui. Se um patch contradiz este doc, ou o patch está errado ou este doc
-> precisa mudar JUNTO (no mesmo commit, com o porquê).
+> **READ THIS WHOLE FILE before touching any code that deals with dependencies,
+> conditions, rerun, Set OK or Force.** It is the single source of truth for the
+> semantics; the roadmap records *when* each rule landed, but the canonical
+> behaviour is defined here. If a patch contradicts this document, either the
+> patch is wrong or this document has to change WITH it (same commit, with the
+> reasoning).
 
-## O modelo único (2026-07-17)
+## The single model (2026-07-17)
 
-**Toda dependência é uma CONDIÇÃO nomeada num POOL global** (Control-M global
-conditions). Não existem mais dois sistemas ("setas do grafo" × "conditions
-F16") — o report do usuário que unificou: *"todas as condições de dependências
-têm que ser uma coisa só em termos de arquitetura; tanto ligando pela caixa
-quanto colocando na mão, as condições vão para o mesmo lugar"*.
+**Every dependency is a named CONDITION in a global POOL** (Control-M global
+conditions). There are no longer two systems ("graph arrows" versus "F16
+conditions") — the user report that unified them: *"all dependency conditions
+have to be one single thing architecturally; whether you wire it through the box
+or type it by hand, the conditions go to the same place"*.
 
-O pool é a tabela `conditions` (`name`, `scope_date`, `set_at`, `set_by`):
+The pool is the `conditions` table (`name`, `scope_date`, `set_at`, `set_by`):
 
-- `scope_date = 'YYYY-MM-DD'` → condição daquela diária (ODAT);
-- `scope_date = ''` → permanente/estática (`@stat`).
+- `scope_date = 'YYYY-MM-DD'` → a condition for that daily (ODAT);
+- `scope_date = ''` → permanent/static (`@stat`).
 
-Cada job declara três listas (drawer Design → aba **Condições**; YAML;
-mass-update; MCP):
+Each job declares three lists (Design drawer → **Conditions** tab; YAML;
+mass update; MCP):
 
-| campo | papel | quando age |
+| field | role | when it acts |
 |---|---|---|
-| `conditionsIn` | **entrada** — depende de | gate: o job só roda quando TODAS existem no pool, no escopo resolvido do sufixo contra o SEU ODAT |
-| `conditionsOutAdd` | **saída＋** — adiciona | no término **OK ou Set OK** |
-| `conditionsOutRemove` | **saída−** — deleta (CONSUMO) | no término **OK ou Set OK** |
+| `conditionsIn` | **in** — depends on | gate: the job only runs when ALL of them exist in the pool, in the scope resolved from the suffix against ITS OWN ODAT |
+| `conditionsOutAdd` | **out＋** — adds | when it ends **OK or on Set OK** |
+| `conditionsOutRemove` | **out−** — deletes (CONSUMPTION) | when it ends **OK or on Set OK** |
 
-**A setinha do Design é açúcar de UI.** Ligar A→B cria a condição
-`LinkCondName(A,B) = "A-TO-B"` (uppercase dos ids): **saída＋ em A**;
-**entrada E saída− em B** (a deleção é automática na ligação — regra do
-usuário). Digitar à mão os MESMOS nomes dá exatamente no mesmo lugar; quem
-liga à mão precisa colocar o nome **na entrada E na saída−** se quiser
-semântica de consumo (sem a saída−, a condição sobrevive ao OK — fan-out N:M
-deliberado).
+**The Design arrow is UI sugar.** Wiring A→B creates the condition
+`LinkCondName(A,B) = "A-TO-B"` (uppercased ids): **out＋ on A**; **in AND out−
+on B** (the deletion is automatic on the link — the user's rule). Typing the
+SAME names by hand lands in exactly the same place; whoever wires by hand has to
+put the name **in the in-list AND in the out− list** to get consumption
+semantics (without out−, the condition survives the OK — deliberate N:M fan-out).
 
-Ergonomia da setinha (2026-07-17, report "arrasto e não cria a dependência"):
-a bolinha tem pegada de 18px (nub visual segue 6px), o drop tem ímã
-(`connectionRadius`) e **soltar sobre o CARD do outro job liga** (fallback
-`onConnectEnd` — não precisa acertar o handle). A DIREÇÃO segue a bolinha de
-origem: a de **baixo** = este job produz pro alvo; a de **cima** = invertida —
-o job arrastado passa a DEPENDER do alvo. Os campos escritos são os mesmos nos
-dois gestos (invariante 9). O drawer do Design faz **AUTOSAVE** (trocar de
-job/fechar salva o que estava sujo; job novo segue exigindo Save) e recebe a
-def VIVA, mesclando por diff condições escritas por fora — um drawer aberto
-nunca mais sobrescreve a ligação recém-criada pela setinha.
+Arrow ergonomics (2026-07-17, report "I drag and it doesn't create the
+dependency"): the dot has an 18px hit area (the visual nub stays 6px), the drop
+has a magnet (`connectionRadius`) and **dropping on the other job's CARD
+connects** (the `onConnectEnd` fallback — you do not have to hit the handle).
+The DIRECTION follows the dot you started from: the **bottom** one = this job
+produces for the target; the **top** one is inverted — the dragged job now
+DEPENDS on the target. The fields written are the same in both gestures
+(invariant 9). The Design drawer **AUTOSAVES** (switching jobs or closing saves
+whatever was dirty; a brand-new job still requires Save) and receives the LIVE
+definition, merging by diff any conditions written from outside — an open drawer
+never again overwrites the link the arrow just created.
 
-**Quem cria/remove condição no pool:**
-1. término **OK/Set OK** de um job (saída＋/saída−) — `ApplyOutcomes`, no ODAT
-   do produtor;
-2. ação **On/Do `set-condition`** (ex.: no NOTOK — é como arestas legadas
-   `on-failure` são expressas);
-3. **operador**, pelo painel **Condições** do Monitoring (botão ao lado do
-   Organizar — list/add/delete com data) ou API/MCP;
-4. evento externo (`POST /api/events/ingest`).
+**Who creates or removes a condition in the pool:**
+1. a job ending **OK / Set OK** (out＋/out−) — `ApplyOutcomes`, on the producer's
+   ODAT;
+2. an **On/Do `set-condition`** action (e.g. on NOTOK — this is how legacy
+   `on-failure` edges are expressed);
+3. the **operator**, through the Monitoring **Conditions** panel (the button next
+   to Organize — list/add/delete with a date) or the API/MCP;
+4. an external event (`POST /api/events/ingest`).
 
-Toda mudança no pool emite WS **`condition.changed`** (o painel e as linhas do
-grafo são reflexo ao vivo) e cutuca o tick (quem esperava roda NA HORA).
+Every change to the pool emits the WS event **`condition.changed`** (the panel
+and the graph edges are a live reflection) and nudges the tick (whatever was
+waiting runs RIGHT AWAY).
 
-## Datas — ODAT / PREV / STAT
+## Dates — ODAT / PREV / STAT
 
-**ODAT** = data de ORIGEM da ordem (Control-M ODATE):
-`ODAT = COALESCE(carried_from, order_date)` (`scheduler/odate.go`). O
-carry-over avança `order_date` preservando a origem — **todo escopo de data
-usa ODAT**, nunca o dia ativo avançado (job carregado do dia 14 cria e procura
-condições DO DIA 14).
+**ODAT** = the order's ORIGIN date (Control-M ODATE):
+`ODAT = COALESCE(carried_from, order_date)` (`scheduler/odate.go`). Carry-over
+advances `order_date` while preserving the origin — **every date scope uses
+ODAT**, never the advanced active day (a job carried from the 14th creates and
+looks for conditions FROM THE 14th).
 
-A data de uma condição vive como **sufixo no nome**, editado pela caixinha de
-seleção por linha (o usuário nunca digita arroba):
+A condition's date lives as a **suffix on the name**, edited through the
+per-row selector (the user never types an at-sign):
 
-| seletor | sufixo | significado (relativo ao ODAT do job) |
+| selector | suffix | meaning (relative to the job's ODAT) |
 |---|---|---|
-| **Odate** (default) | sem sufixo / `@odat` | diária de origem (entrada procura `scope=ODAT` ou permanente; saída cria no ODAT) |
-| **Prev** | `@prev` | diária ANTERIOR = último New Day em `daily_runs` antes do ODAT; sem registro, ODAT−1 |
-| **Stat** | `@stat` | permanente: entrada só enxerga `scope_date=''`; saída cria/remove a permanente |
+| **Odate** (default) | no suffix / `@odat` | the origin daily (in-conditions look for `scope=ODAT` or permanent; out-conditions are created on the ODAT) |
+| **Prev** | `@prev` | the PREVIOUS daily = the last New Day in `daily_runs` before the ODAT; with no record, ODAT−1 |
+| **Stat** | `@stat` | permanent: an in-condition only sees `scope_date=''`; an out-condition creates/removes the permanent one |
 
-## As regras (numeradas — cite pelo número em commits/testes)
+## The rules (numbered — cite them by number in commits and tests)
 
-**C1 — Gate.** Job WAITING roda quando TODAS as `conditionsIn` existem no pool
-(escopo resolvido). Condição ausente = **WAIT COND** (card, Explain
-`WAIT_CONDITION`) — espera indefinida, NUNCA auto-cancel (paridade Control-M;
-quem nunca ficar elegível morre na virada da daily se keepActive permitir).
-Hot path: o tick carrega o pool UMA vez por ciclo (`CondIndex`).
+**C1 — Gate.** A WAITING job runs when ALL of its `conditionsIn` exist in the
+pool (resolved scope). A missing condition = **WAIT COND** (card, Explain
+`WAIT_CONDITION`) — it waits indefinitely, NEVER auto-cancels (Control-M parity;
+whatever never becomes eligible dies at the daily rollover, if keepActive
+allows). Hot path: the tick loads the pool ONCE per cycle (`CondIndex`).
 
-**C2 — OK aplica as saídas.** Término OK (real) e **Set OK** (BUG-3/4)
-aplicam saída＋ e saída− — nos DOIS papéis: como produtor destrava sucessores;
-como consumidor **CONSOME** a própria entrada (a saída− armada pela setinha).
-NOTOK terminal NÃO aplica nada.
+**C2 — OK applies the out-conditions.** Ending OK (for real) and **Set OK**
+(BUG-3/4) both apply out＋ and out− — in BOTH roles: as a producer it unblocks
+successors; as a consumer it **CONSUMES** its own in-condition (the out− armed
+by the arrow). A terminal NOTOK applies NOTHING.
 
-**C3 — Consumo = deleção no OK.** A "permanência do consumo" do modelo antigo
-agora é consequência natural: rerun de um consumidor que terminou OK entra em
-WAIT COND, porque o próprio OK apagou a condição de entrada. **Set OK + rerun
-= aguardando** (o Set OK foi no pool e deletou — cenário-guia do usuário).
-Rerun após **NOTOK/CANCELLED** roda direto (falha não consome; a condição
-segue no pool).
+**C3 — Consumption = deletion on OK.** The old model's "consumption permanence"
+is now a natural consequence: rerunning a consumer that ended OK lands in WAIT
+COND, because its own OK deleted the in-condition. **Set OK + rerun = waiting**
+(the Set OK went to the pool and deleted it — the user's guiding scenario). A
+rerun after **NOTOK/CANCELLED** runs straight away (a failure does not consume;
+the condition is still in the pool).
 
-**C4 — Rerun/cancel/delete/hold NÃO tocam o pool.** Nenhuma ação de operador
-sobre instances mexe em condição; só términos OK/Set OK (C2), ações On/Do e o
-operador PELO PAINEL. Rerun do PAI cria condição NOVA no próximo OK — é o que
-destrava o rerun do filho.
+**C4 — Rerun/cancel/delete/hold do NOT touch the pool.** No operator action on
+instances touches a condition; only OK/Set OK terminations (C2), On/Do actions
+and the operator THROUGH THE PANEL. Rerunning the PARENT creates a NEW condition
+on its next OK — that is what unblocks the child's rerun.
 
-**C5 — Force.** `Order Force` (Design) cria ordem nova que bypassa SÓ o
-agendamento — o gate C1 vale (cópia de consumidor já consumido nasce em WAIT
-COND até alguém recriar a condição). Se a condição AINDA existe no pool, a
-cópia roda — pool puro, sem trava por-instância (mudança deliberada vs. o
-modelo de claims). `Run Now` (Monitoring) bypassa C1 por completo; o bypass
-NÃO é pegajoso (rerun zera `forced` quando `force_mode=''`).
+**C5 — Force.** `Order Force` (Design) creates a new order that bypasses ONLY
+the scheduling — the C1 gate still applies (a copy of an already-consumed
+consumer is born in WAIT COND until someone recreates the condition). If the
+condition STILL exists in the pool, the copy runs — a pure pool, with no
+per-instance lock (a deliberate change from the claims model). `Run Now`
+(Monitoring) bypasses C1 entirely; the bypass is NOT sticky (a rerun clears
+`forced` when `force_mode=''`).
 
-**C6 — Sem condição imutável.** O operador pode deletar/adicionar QUALQUER
-condição no painel; o efeito é imediato (deletou → dependente volta a esperar;
-adicionou → dependente roda na hora). Regra do usuário: *"não teremos nenhum
-tipo de condição imutável"*.
+**C6 — No immutable conditions.** The operator can delete or add ANY condition
+in the panel; the effect is immediate (deleted → the dependent goes back to
+waiting; added → the dependent runs right away). The user's rule: *"we will not
+have any kind of immutable condition"*.
 
-**C7 — JSON nunca null.** Toda lista da API (`blockers` do Explain, etc.)
-serializa `[]`, nunca `null` (slice nil derruba o front).
+**C7 — JSON is never null.** Every list in the API (Explain's `blockers`, etc.)
+serializes as `[]`, never `null` (a nil slice breaks the frontend).
 
-## Lógica booleana de entrada — AND/OR (CL)
+## Boolean entry logic — AND/OR (CL)
 
-> **Status: TEMA FECHADO — CL-1…CL-6 entregues e validados. CL-1 (avaliador DNF),
-> CL-2 (fallback `$TIME` + desacople do piso `windowFrom` + toggle na UI), CL-3
-> (data model + imutabilidade), CL-4 (gate + Explain OR-aware + LINHAS OR do
-> canvas), CL-5 (editor de grupos no drawer), CL-6 (bateria + docs + validação ao
-> vivo).**
-> Validação ao vivo (2026-07-20, servidor git-backed): construir `(A) OU (B)` no
-> drawer persiste `conditionLogic` no YAML via round-trip completo (`conditionsIn`
-> = união dos membros, `conditionsOutAdd` preservado, reabre limpo); e a **linha OR
-> do canvas do Design** renderiza pontilhada com rótulo **"OU"** (baseline AND era
-> tracejado sem rótulo). O visual OR do **Monitoring** usa o MESMO `makeEdge`/
-> `condIsAlternative` a partir da coluna congelada `cond_logic` (schemaV21) —
-> coberto por `TestList_SerializesCondLogic` e pelo código compartilhado.
-> A UI é a aba **Condições** do drawer (Design): a entrada é lista plana (AND) por
-> padrão e o toggle **AND/OR** revela o editor de GRUPOS (cada grupo com AND/OR +
-> operador de topo — rótulos em inglês, o vocabulário canônico do `op:`; o rótulo
-> das linhas OR do canvas é **"OR"**). A UI mantém `conditionsIn` = união dos
-> membros; `conditionLogic` só existe no modo avançado.
-> **Descobribilidade do CL-2 (2026-07-21, report "não achei o OR com horário"):**
-> o atalho **"OR rodar no horário"** aparece SEMPRE que há UMA condição — com
-> `windowFrom` ele cria a DNF `(C1) OU ($TIME)`; sem `windowFrom` ele fica
-> esmaecido e o clique abre a aba **Horário** (o guard na UI segue: `$TIME` sem
-> "A partir de" seria satisfeito imediatamente e anularia a condição). O
-> **＋ horário** de cada grupo idem; um membro ⏱ órfão de `windowFrom` (janela
-> apagada depois de adicionar o token) fica ÂMBAR com o aviso "satisfeito
-> imediatamente".
+> **Status: TOPIC CLOSED — CL-1…CL-6 delivered and validated.** CL-1 (the DNF
+> evaluator), CL-2 (the `$TIME` fallback + decoupling from the `windowFrom`
+> floor + the UI toggle), CL-3 (data model + immutability), CL-4 (gate +
+> OR-aware Explain + the canvas OR EDGES), CL-5 (the group editor in the
+> drawer), CL-6 (test battery + docs + live validation).
+>
+> Live validation (2026-07-20, git-backed server): building `(A) OR (B)` in the
+> drawer persists `conditionLogic` in the YAML through a full round trip
+> (`conditionsIn` = the union of the members, `conditionsOutAdd` preserved,
+> reopens clean); and the **OR edge on the Design canvas** renders dotted with
+> the label **"OR"** (the AND baseline was dashed with no label). The
+> **Monitoring** OR visual uses the SAME `makeEdge`/`condIsAlternative`, reading
+> the frozen `cond_logic` column (schemaV21) — covered by
+> `TestList_SerializesCondLogic` and by the shared code.
+>
+> The UI is the drawer's **Conditions** tab (Design): the entry is a flat list
+> (AND) by default, and the **AND/OR** toggle reveals the GROUP editor (each
+> group with its own AND/OR plus a top-level operator — the labels use the
+> canonical `op:` vocabulary).
+>
+> **CL-2 discoverability (2026-07-21, report "I couldn't find OR with a
+> time"):** the **"OR run at the scheduled time"** shortcut shows up WHENEVER
+> there is ONE condition — with `windowFrom` it builds the DNF `(C1) OR
+> ($TIME)`; without `windowFrom` it is dimmed and clicking it opens the
+> **Schedule** tab (the UI guard stands: `$TIME` without a "From" would be
+> satisfied immediately and would cancel out the condition). The per-group
+> **＋ time** behaves the same; a ⏱ member orphaned from `windowFrom` (the
+> window was cleared after the token was added) turns AMBER with the warning
+> "satisfied immediately".
 
-A entrada de um job deixou de ser SÓ um AND implícito de `conditionsIn`: ganhou
-um campo **opcional** `conditionLogic` — uma expressão booleana em **forma DNF**
-(disjunção de conjunções, dois níveis, cada nível com seu operador):
+A job's entry stopped being ONLY an implicit AND of `conditionsIn`: it gained an
+**optional** `conditionLogic` field — a boolean expression in **DNF form** (a
+disjunction of conjunctions, two levels, each level with its own operator):
 
 ```
 conditionLogic:
-  op: OR                      # operador de TOPO entre os grupos
+  op: OR                      # TOP-level operator between the groups
   groups:
     - { op: AND, members: [C1, C2] }
     - { op: AND, members: [C3] }
 ```
 
-- **Modelo canônico:** `topOp( grupoOp(membro ∈ pool?) for grupo in groups )`.
+- **Canonical model:** `topOp( groupOp(member ∈ pool?) for group in groups )`.
   - `(C1 AND C2) OR C3` → `op:OR, groups:[{AND,[C1,C2]},{AND,[C3]}]`.
   - `(C1 OR C2) AND C3` → `op:AND, groups:[{OR,[C1,C2]},{AND,[C3]}]`.
-- **Semântica do OR:** o **primeiro ramo que chega satisfaz e dispara** — assim
-  que QUALQUER grupo fica verdadeiro, o job roda (não espera os demais).
-- **Membros** carregam o sufixo de data `@odat/@prev/@stat` como sempre. O token
-  reservado **`$TIME`** é satisfeito quando `now >= scheduledAt` (mesmo relógio
-  do gate de janela) — é a base do fallback temporal "condição OU horário"
-  (CL-2); o gate já o avalia, mas o desacoplamento do piso `windowFrom` é CL-2.
-- **Retrocompat (C1 continua valendo):** `conditionLogic` ausente/nil = **UM
-  grupo AND** sobre `conditionsIn` — o gate antigo, byte a byte (um blocker por
-  condição faltante). Com lógica, o gate bloqueia só se **NENHUM ramo é
-  satisfazível** e emite UM blocker com a expressão (`RenderExpr`, ex.:
-  "aguardando (C1 E C2) OU C3 — nenhum ramo satisfeito"); o Explain mostra o
-  mesmo texto.
-- **Invariante membros ⊆ `conditionsIn`:** todo membro não-`$TIME` também consta
-  em `conditionsIn` (garantido por `NormalizeConditions` no chokepoint de
-  leitura). Assim topologia (`upstream` derivado), linhas do Monitoring e a
-  coluna congelada `conds_in` seguem lendo `conditionsIn` **sem saber da
-  lógica** — só a AVALIAÇÃO do gate usa `conditionLogic`.
-- **Membros AVULSOS = requisito AND:** um nome de `conditionsIn` que NÃO está em
-  nenhum grupo da lógica é ANDado com a expressão inteira
-  (`satisfeito = topOp(grupos) E todos-os-avulsos`). É o que faz a **setinha**
-  "just work" num job com lógica: ela adiciona a condição simples em
-  `conditionsIn` e ela vira obrigatória, sem precisar dobrar a aresta dentro de
-  um OR ambíguo. A UI preserva os avulsos ao editar os grupos.
-- **Imutabilidade M1:** `conditionLogic` é congelada no `definition_snapshot`
-  como o resto da def (o gate lê via `defForInstance`); mudar a lógica na def
-  viva NÃO relaxa uma instance já ordenada. O card/Explain leem a lógica
-  CONGELADA. Ver [[regente-monitoring-immutable-snapshot]].
-- **Linhas OR do canvas (CL-4):** uma aresta P→C é "alternativa" (OU) quando a
-  condição que a liga é membro de um grupo OR na lógica do consumidor
-  (`condIsAlternative` em `lib/conditions-model.ts`) — renderizada pontilhada +
-  rótulo "OU" (`makeEdge(...,alt)` em `v2/canvas-layout.ts`). No **Design** vem da
-  def viva (`buildDesignCanvas`); no **Monitoring** vem da coluna CONGELADA
-  `cond_logic` (schemaV21) — `frozenMonitorCols`/`MigrateCondLogicSnapshot`/
-  `instanceRow.CondLogic`/`JobInstance.condLogic` (imutável, nunca a def viva).
-  A setinha sempre cria AND (linha sólida).
-- **Código:** tipos + avaliador puro em `domain/conditions.go`
+- **OR semantics:** the **first branch to arrive satisfies it and fires** — as
+  soon as ANY group becomes true, the job runs (it does not wait for the rest).
+- **Members** carry the `@odat/@prev/@stat` date suffix as always. The reserved
+  token **`$TIME`** is satisfied when `now >= scheduledAt` (the same clock as the
+  window gate) — it is the basis of the "condition OR time" temporal fallback
+  (CL-2); the gate already evaluates it, and decoupling it from the `windowFrom`
+  floor is CL-2.
+- **Backward compatibility (C1 still holds):** an absent/nil `conditionLogic` =
+  **ONE AND group** over `conditionsIn` — the old gate, byte for byte (one
+  blocker per missing condition). With logic, the gate only blocks when **NO
+  branch is satisfiable** and emits ONE blocker carrying the expression
+  (`RenderExpr`, e.g. "waiting for (C1 AND C2) OR C3 — no branch satisfied"); the
+  Explain shows the same text.
+- **Invariant: members ⊆ `conditionsIn`.** Every non-`$TIME` member also appears
+  in `conditionsIn` (guaranteed by `NormalizeConditions` at the read chokepoint).
+  That way topology (the derived `upstream`), the Monitoring edges and the frozen
+  `conds_in` column keep reading `conditionsIn` **without knowing about the
+  logic** — only the gate's EVALUATION uses `conditionLogic`.
+- **LOOSE members = an AND requirement.** A name in `conditionsIn` that is NOT in
+  any group of the logic is ANDed with the whole expression
+  (`satisfied = topOp(groups) AND all-loose-members`). This is what makes the
+  **arrow** "just work" on a job that has logic: it adds the simple condition to
+  `conditionsIn` and that becomes mandatory, without having to fold the edge into
+  an ambiguous OR. The UI preserves loose members while you edit the groups.
+- **M1 immutability:** `conditionLogic` is frozen in the `definition_snapshot`
+  like the rest of the definition (the gate reads it through `defForInstance`);
+  changing the logic on the live definition does NOT relax an instance that was
+  already ordered. The card and the Explain read the FROZEN logic.
+- **Canvas OR edges (CL-4):** an edge P→C is "alternative" (OR) when the
+  condition that links it is a member of an OR group in the consumer's logic
+  (`condIsAlternative` in `lib/conditions-model.ts`) — rendered dotted with the
+  label "OR" (`makeEdge(...,alt)` in `v2/canvas-layout.ts`). In **Design** it
+  comes from the live definition (`buildDesignCanvas`); in **Monitoring** it
+  comes from the FROZEN `cond_logic` column (schemaV21) —
+  `frozenMonitorCols`/`MigrateCondLogicSnapshot`/`instanceRow.CondLogic`/
+  `JobInstance.condLogic` (immutable, never the live definition). The arrow
+  always creates an AND (a solid edge).
+- **Code:** types plus the pure evaluator in `domain/conditions.go`
   (`ConditionLogic`, `CondGroup`, `EvalConditionLogic`, `RenderExpr`,
-  `looseMembers`, `UsesTimeToken`); wiring do gate em `scheduler/explain.go`
-  (`gateInstance`, `$TIME` desacopla o piso de janela). Front: tipos em
-  `lib/orchestrator-model.ts`, round-trip em
-  `lib/adapters/storage/ServerApiAdapter.ts`, editor (`EntryConditions`,
-  `GroupedLogicEditor`, `GroupBox`, `OpToggle`) em `v2/JobConfigDrawer.tsx`.
-  Testes: `domain/conditionlogic_test.go` (avaliador puro/DNF/`$TIME`/avulsos/
-  normalização), `scheduler/condlogic_gate_test.go` (gate+Explain+`$TIME`+
-  imutabilidade) e `api/bugs_behavior_test.go::TestList_SerializesCondLogic`.
+  `looseMembers`, `UsesTimeToken`); the gate wiring in `scheduler/explain.go`
+  (`gateInstance`, where `$TIME` decouples the window floor). Frontend: types in
+  `lib/orchestrator-model.ts`, the round trip in
+  `lib/adapters/storage/ServerApiAdapter.ts`, and the editor (`EntryConditions`,
+  `GroupedLogicEditor`, `GroupBox`, `OpToggle`) in `v2/JobConfigDrawer.tsx`.
+  Tests: `domain/conditionlogic_test.go` (pure evaluator/DNF/`$TIME`/loose
+  members/normalization), `scheduler/condlogic_gate_test.go`
+  (gate+Explain+`$TIME`+immutability) and
+  `api/bugs_behavior_test.go::TestList_SerializesCondLogic`.
 
-## `upstream[]` — legado e visão derivada
+## `upstream[]` — legacy input and a derived view
 
-O campo `upstream` NÃO é mais gate nem é persistido:
+The `upstream` field is no longer a gate and is no longer persisted:
 
-1. **Compat de leitura**: YAML antigo com `upstream:` é EXPANDIDO em condições
-   explícitas no chokepoint de leitura (`FileStore.List` →
-   `domain.NormalizeConditions`, idempotente — cobre scheduler, API, sessions
-   e publish; espelho TS em `lib/conditions-model.ts` p/ modo local):
-   - `on-success`/vazio → saída＋ no pai; entrada + saída− no filho;
-   - `on-complete` → idem + ação On/Do `set-condition` no NOTOK do pai;
-   - `on-failure` → SÓ a ação On/Do no NOTOK (nada no OK);
-   - `always` → sem gate (vira só topologia);
-   - `dateRef` vira o sufixo da entrada/saída− do filho; aresta `@stat` faz o
-     pai criar a PERMANENTE (único escopo que um IN `@stat` enxerga).
-2. **Visão derivada**: depois da expansão, `upstream` é RECALCULADO por
-   name-matching produtor→consumidor (base do nome, ignorando sufixo) e serve
-   só de topologia para canvas/WhatIf/RCA/forecast/vizinhança. `FileStore.Save`
-   SEMPRE o descarta (persistir a visão re-expandiria como aresta legada).
+1. **Read compatibility**: old YAML with `upstream:` is EXPANDED into explicit
+   conditions at the read chokepoint (`FileStore.List` →
+   `domain.NormalizeConditions`, idempotent — it covers the scheduler, the API,
+   sessions and publish; the TS mirror lives in `lib/conditions-model.ts` for
+   local mode):
+   - `on-success`/empty → out＋ on the parent; in + out− on the child;
+   - `on-complete` → the same, plus an On/Do `set-condition` action on the
+     parent's NOTOK;
+   - `on-failure` → ONLY the On/Do action on NOTOK (nothing on OK);
+   - `always` → no gate (it becomes topology only);
+   - `dateRef` becomes the suffix of the child's in/out− conditions; an `@stat`
+     edge makes the parent create the PERMANENT one (the only scope a `@stat` IN
+     can see).
+2. **Derived view**: after the expansion, `upstream` is RECOMPUTED by
+   producer→consumer name matching (the base name, ignoring the suffix) and
+   serves only as topology for the canvas/WhatIf/RCA/forecast/neighborhood.
+   `FileStore.Save` ALWAYS drops it (persisting the view would re-expand it as a
+   legacy edge).
 
-**Snapshots** ordenados antes da unificação: `defForInstance` expande o lado
-consumidor em memória (`ExpandSnapshotConditions`, com a regra de idempotência
-contra as defs vivas). **`applyConditionsOut` é SNAPSHOT-ONLY (M1, 2026-07-17):**
-as saídas aplicadas no OK/Set OK vêm SÓ da def congelada na ordem — criar um
-consumidor novo no Design depois da ordem NÃO faz o OK de hoje produzir a
-condição nova (só a próxima ordem Force/daily carrega o OutAdd novo). A união
-snapshot∪def-viva que existia por compat pré-unificação foi CONGELADA nos
-snapshots em voo uma única vez no upgrade (`MigrateMonitoringSnapshot`,
-meta_flags `monitoring-snapshot-v18`); def viva só como fallback de instance
-legada SEM snapshot. Backfill one-time da unificação no boot
-(`MigrateConditionsUnify`, flag em `meta_flags` schemaV17): par
-(pai já OK, filho WAITING não-consumido) semeia a condição no pool.
-**dep_events/dep_claims (schemaV15) estão APOSENTADAS** — tabelas ficam no
-banco por compat, nada lê/escreve.
+**Snapshots** ordered before the unification: `defForInstance` expands the
+consumer side in memory (`ExpandSnapshotConditions`, with the idempotency rule
+against the live definitions). **`applyConditionsOut` is SNAPSHOT-ONLY (M1,
+2026-07-17):** the out-conditions applied on OK/Set OK come ONLY from the
+definition frozen at order time — creating a new consumer in Design after the
+order does NOT make today's OK produce the new condition (only the next
+Force/daily order carries the new OutAdd). The snapshot ∪ live-definition union
+that existed for pre-unification compatibility was FROZEN into the in-flight
+snapshots once, during the upgrade (`MigrateMonitoringSnapshot`, meta_flags
+`monitoring-snapshot-v18`); the live definition is only a fallback for a legacy
+instance WITHOUT a snapshot. There is a one-time unification backfill at boot
+(`MigrateConditionsUnify`, flagged in `meta_flags`, schemaV17): a pair
+(parent already OK, child WAITING and unconsumed) seeds the condition into the
+pool. **dep_events/dep_claims (schemaV15) are RETIRED** — the tables stay in the
+database for compatibility, but nothing reads or writes them.
 
-## Linhas do Monitoring — reflexo do pool
+## Monitoring edges — a reflection of the pool
 
-Topologia = **matching instance-a-instance pelos SNAPSHOTS da ordem** (M1,
-2026-07-17): cada instance carrega `condsIn`/`condsOutAdd` congelados
-(schemaV18) e a linha existe quando o `condsOutAdd` de uma cópia produz uma
-entrada do `condsIn` da outra, respeitando o sufixo de data (`@odat` mesma
-origem · `@prev` diária anterior · `@stat` qualquer — carregado do 14 só ganha
-linha com o pai do 14). Criar/ligar jobs novos no Design NÃO redesenha
-instances já ordenadas; a topologia viva (`def.upstream` derivado) é só do
-DESIGN. A COR é o estado das condições que LIGAM o par para ESTE consumidor:
+Topology = **instance-to-instance matching through the ORDER SNAPSHOTS** (M1,
+2026-07-17): each instance carries frozen `condsIn`/`condsOutAdd` (schemaV18) and
+the edge exists when one copy's `condsOutAdd` produces an entry in the other's
+`condsIn`, respecting the date suffix (`@odat` same origin · `@prev` previous
+daily · `@stat` any — something carried from the 14th only gets an edge to the
+parent from the 14th). Creating or wiring new jobs in Design does NOT redraw
+instances that were already ordered; the live topology (the derived
+`def.upstream`) belongs to DESIGN only. The COLOUR is the state of the conditions
+that LINK the pair for THIS consumer:
 
-- **verde ✓** — a condição existe no pool, OU o consumidor já rodou sobre ela
-  (RUNNING/OK — no OK ele consome, mas a linha segue verde: deu certo);
-- **vermelho ✗** — o job SUBSEQUENTE está NOTOK;
-- **cinza** — a condição não existe (ainda não criada · consumida por um OK —
-  ex.: Set OK + rerun · deletada no painel) e o consumidor espera.
+- **green ✓** — the condition exists in the pool, OR the consumer already ran on
+  it (RUNNING/OK — on OK it consumes it, but the edge stays green: it worked);
+- **red ✗** — the DOWNSTREAM job is NOTOK;
+- **grey** — the condition does not exist (not created yet · consumed by an OK —
+  e.g. Set OK + rerun · deleted in the panel) and the consumer is waiting.
 
-O CARD (**WAIT COND**) usa a régua do gate (C1): WAITING com QUALQUER entrada
-ausente (todas as `conditionsIn`, não só as de setinha); `Run Now` (manual)
-não acusa. Fonte no front: `isWaitingOnConds` + pool do `conditions-store`
-(WS `condition.changed` ressincroniza; modo local usa localStorage com a MESMA
-semântica, incluindo `applyOutcomesLocal` no OK).
+The CARD (**WAIT COND**) uses the gate's ruler (C1): WAITING with ANY missing
+in-condition (all of `conditionsIn`, not just the ones from arrows); `Run Now`
+(manual) does not flag it. Frontend source: `isWaitingOnConds` plus the
+`conditions-store` pool (the `condition.changed` WS event resyncs it; local mode
+uses localStorage with the SAME semantics, including `applyOutcomesLocal` on OK).
 
-## Ciclo de vida da daily (carry-over) — quem atravessa a virada
+## Daily life cycle (carry-over) — who crosses the rollover
 
-(Inalterado pela unificação.) Regra pura em `carryDecision` (scheduler.go);
-idades em **DIAS-CALENDÁRIO** (timezone da daily):
+(Unchanged by the unification.) The pure rule lives in `carryDecision`
+(scheduler.go); ages are in **CALENDAR DAYS** (the daily's timezone):
 
-| estado na virada | atravessa? |
+| state at the rollover | crosses? |
 |---|---|
-| RUNNING | SEMPRE |
-| HELD | SEMPRE, enquanto em hold |
-| NOTOK | `dias desde a FALHA ≤ keepActive\|1` |
-| WAITING com retry AGENDADO (`attempts>1` **e** `started_at`) | regra do NOTOK |
-| WAITING (incl. CONFIRM) | `dias desde o ODAT ≤ keepActive` — keepActive=0 morre na 1ª virada |
-| OK / CANCELLED | nunca |
+| RUNNING | ALWAYS |
+| HELD | ALWAYS, while on hold |
+| NOTOK | `days since the FAILURE ≤ keepActive\|1` |
+| WAITING with a SCHEDULED retry (`attempts>1` **and** `started_at`) | the NOTOK rule |
+| WAITING (CONFIRM included) | `days since the ODAT ≤ keepActive` — keepActive=0 dies at the first rollover |
+| OK / CANCELLED | never |
 
-Hold GERAL + Delete: hold vale pra qualquer status exceto RUNNING
-(`held_from_status` restaurado no release); Delete só em HOLD. Nenhum dos dois
-toca o pool (C4).
+General Hold + Delete: hold applies to any status except RUNNING
+(`held_from_status` is restored on release); Delete only works on HOLD. Neither
+touches the pool (C4).
 
-## Invariantes (o que NUNCA pode voltar a acontecer)
+## Invariants (what must NEVER happen again)
 
-1. Rerun de consumidor que terminou OK re-rodando **sem condição nova** (C3).
-2. Set OK deixando de aplicar saída＋ ou saída− (C2).
-3. Deleção no painel NÃO travando o dependente, ou adição NÃO liberando (C6).
-4. Bypass de Run Now sobrevivendo a um rerun (C5).
-5. API mandando `null` onde o front espera lista (C7).
-6. Monitoring derivando QUALQUER coisa de card da def viva (M1: label, tipo,
-   linhas, `waitConfirm`, `waitAgent` e as saídas do `applyConditionsOut` são
-   TODOS do snapshot/colunas congeladas; o WAIT COND lê o POOL, que é estado
-   de runtime, não def — e a lista de entradas que ele checa é a congelada).
-7. Condição de uma ORIGEM satisfazendo consumidor de OUTRA origem sem o
-   sufixo pedir (§Datas — job do dia 14 não come condição de hoje).
-8. `upstream` derivado sendo PERSISTIDO (re-expandiria como aresta legada).
-9. Ligação pela setinha e ligação à mão divergirem em QUALQUER coisa — os dois
-   caminhos escrevem os mesmos campos.
+1. A rerun of a consumer that ended OK running again **without a new condition**
+   (C3).
+2. Set OK failing to apply out＋ or out− (C2).
+3. A deletion in the panel NOT blocking the dependent, or an addition NOT
+   releasing it (C6).
+4. A Run Now bypass surviving a rerun (C5).
+5. The API sending `null` where the frontend expects a list (C7).
+6. Monitoring deriving ANYTHING on a card from the live definition (M1: the
+   label, the type, the edges, `waitConfirm`, `waitAgent` and the out-conditions
+   of `applyConditionsOut` ALL come from the snapshot/frozen columns — WAIT COND
+   reads the POOL, which is runtime state rather than definition, and the list of
+   in-conditions it checks is the frozen one).
+7. A condition from ONE origin satisfying a consumer from ANOTHER origin without
+   the suffix asking for it (§Dates — a job from the 14th does not eat today's
+   condition).
+8. The derived `upstream` being PERSISTED (it would re-expand as a legacy edge).
+9. Wiring by arrow and wiring by hand diverging in ANYTHING — both paths write
+   the same fields.
 
-## Onde está no código
+## Where it lives in the code
 
-- `server/internal/domain/conditions.go` — modelo único: `SplitCondRef`,
-  `LinkCondName`, `NormalizeConditions` (expansão idempotente + visão
-  derivada), `ExpandSnapshotConditions`.
-- `server/internal/scheduler/conditions.go` — pool (`ConditionEngine`):
-  Set/Unset (broadcast via OnChange), `CondIndex` (foto por tick),
-  `MissingIdx` (fonte única do "falta qual?"), `ApplyOutcomes`.
-- `server/internal/scheduler/scheduler.go` — gate no tick (condIdx),
+- `server/internal/domain/conditions.go` — the single model: `SplitCondRef`,
+  `LinkCondName`, `NormalizeConditions` (idempotent expansion + the derived
+  view), `ExpandSnapshotConditions`.
+- `server/internal/scheduler/conditions.go` — the pool (`ConditionEngine`):
+  Set/Unset (broadcast through OnChange), `CondIndex` (a per-tick photo),
+  `MissingIdx` (the single source of "which one is missing?"), `ApplyOutcomes`.
+- `server/internal/scheduler/scheduler.go` — the gate in the tick (condIdx),
   `FinishInstance`/`SetOK` → `applyConditionsOut` (snapshot-only, M1),
-  `defForInstance` (expansão de snapshot), `ForceOrder`.
-- `server/internal/scheduler/condmigrate.go` — backfill one-time (meta_flags).
-- `server/internal/scheduler/monitorsnapshot.go` — colunas congeladas schemaV18
-  (`frozenMonitorCols`) + `MigrateMonitoringSnapshot` (backfill + congelamento
-  da união produtor nos snapshots em voo).
+  `defForInstance` (snapshot expansion), `ForceOrder`.
+- `server/internal/scheduler/condmigrate.go` — the one-time backfill
+  (meta_flags).
+- `server/internal/scheduler/monitorsnapshot.go` — the frozen schemaV18 columns
+  (`frozenMonitorCols`) + `MigrateMonitoringSnapshot` (backfill + freezing the
+  producer union into in-flight snapshots).
 - `server/internal/scheduler/explain.go` — `gateInstance` (WAIT_CONDITION),
   Explain.
-- `server/internal/storage/file.go` — List normaliza; Save descarta upstream.
-- `server/internal/api/bloco2.go` + router — GET/POST `/api/conditions*`.
-- `app/src/lib/conditions-model.ts` — espelho TS puro (normalização, pool
+- `server/internal/storage/file.go` — List normalizes; Save drops upstream.
+- `server/internal/api/bloco2.go` + the router — GET/POST `/api/conditions*`.
+- `app/src/lib/conditions-model.ts` — the pure TS mirror (normalization, pool
   helpers, `edgeCondNames`, `missingConds`).
-- `app/src/lib/conditions-store.ts` — pool no front (server WS / localStorage;
-  `applyOutcomesLocal`).
-- `app/src/v2/ConditionsPanel.tsx` — painel Condições (Monitoring, ao lado do
-  Organizar).
-- `app/src/v2/canvas-layout.ts` — linhas pool-aware (`evaluateEdgeState`),
-  `isWaitingOnConds`, espaçamento (NODE_GAP_Y=72) e ✓ 9px.
-- `app/src/v2/V2Preview.tsx` — `connectDefs` (setinha → condições nos dois
-  jobs; `onConnect` + fallback `onConnectEnd` de drop-no-card, direção pela
-  bolinha de origem), pool state, botão Condições.
-- `app/src/v2/JobConfigDrawer.tsx` — aba **Condições** unificada; autosave do
-  draft (troca de job/fechar) + merge por diff das condições externas.
+- `app/src/lib/conditions-store.ts` — the pool in the frontend (server WS /
+  localStorage; `applyOutcomesLocal`).
+- `app/src/v2/ConditionsPanel.tsx` — the Conditions panel (Monitoring, next to
+  Organize).
+- `app/src/v2/canvas-layout.ts` — pool-aware edges (`evaluateEdgeState`),
+  `isWaitingOnConds`, spacing (NODE_GAP_Y=72) and the 9px ✓.
+- `app/src/v2/V2Preview.tsx` — `connectDefs` (arrow → conditions on both jobs;
+  `onConnect` plus the `onConnectEnd` drop-on-card fallback, direction taken from
+  the originating dot), pool state, the Conditions button.
+- `app/src/v2/JobConfigDrawer.tsx` — the unified **Conditions** tab; draft
+  autosave (on job switch/close) + a diff merge of external conditions.
 
-## Testes que travam a semântica
+## The tests that lock the semantics down
 
-`scheduler/conditions_unify_test.go` (normalização/idempotência/visão ·
-fluxo feliz com consumo · rerun após OK espera e após NOTOK roda · Set OK nos
-dois papéis (C2) e Set OK+rerun aguardando (C3) · deleção/adição pelo painel
-(C6) · Order Force segue o pool (C5) · on-failure vira ação · backfill da
-migração) · `scheduler/lifecycle_test.go` (carryDecision; `TestOdat_*`
-reescritos pro pool: escopo de origem, @prev, @stat com produtor permanente) ·
-`scheduler/setok_bugs_test.go` (Set OK materializa saídas) ·
-`api/bugs_behavior_test.go` (Set OK de WAITING; forced zera) ·
-`api/holdall_delete_test.go` (hold geral/delete — sem claims) ·
-`scheduler/explain_test.go` (WAIT_CONDITION p/ aresta legada; blockers `[]`).
+`scheduler/conditions_unify_test.go` (normalization/idempotency/the view · the
+happy path with consumption · rerun after OK waits and after NOTOK runs · Set OK
+in both roles (C2) and Set OK+rerun waiting (C3) · deletion/addition through the
+panel (C6) · Order Force follows the pool (C5) · on-failure becomes an action ·
+the migration backfill) · `scheduler/lifecycle_test.go` (carryDecision; the
+`TestOdat_*` tests rewritten for the pool: origin scope, @prev, @stat with a
+permanent producer) · `scheduler/setok_bugs_test.go` (Set OK materializes the
+out-conditions) · `api/bugs_behavior_test.go` (Set OK from WAITING; forced is
+cleared) · `api/holdall_delete_test.go` (general hold/delete — no claims) ·
+`scheduler/explain_test.go` (WAIT_CONDITION for a legacy edge; blockers `[]`).
 
-## Checklist antes de mexer nesta área
+## Checklist before touching this area
 
-1. Releia este doc (5 min) e o cabeçalho de `domain/conditions.go`.
-2. Rode `go test ./internal/scheduler/ ./internal/api/` ANTES e DEPOIS.
-3. Mudou semântica? Atualize **este doc + os testes no MESMO commit**.
-4. Valide ao vivo com o par pai→filho (setinha cria as 3 listas; deletar no
-   painel trava o filho; Set OK+rerun aguarda; rerun do pai destrava) — e
-   **rebuilde server E front** antes de testar (binário velho engana).
+1. Re-read this document (5 minutes) and the header of `domain/conditions.go`.
+2. Run `go test ./internal/scheduler/ ./internal/api/` BEFORE and AFTER.
+3. Changed the semantics? Update **this document and the tests in the SAME
+   commit**.
+4. Validate live with a parent→child pair (the arrow creates the three lists;
+   deleting in the panel blocks the child; Set OK+rerun waits; rerunning the
+   parent unblocks it) — and **rebuild the server AND the frontend** before
+   testing (a stale binary will fool you).

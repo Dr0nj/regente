@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Regente — Web (frontend) · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html" class="active">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</a>
+<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch</a>
+</nav>
+<main>
+<article>
+<div align="center">
+  <img src="app/public/favicon-512.png" width="96" alt="Regente" />
+  <h1>Regente — Web (frontend)</h1>
+  <p><strong>The frontend of Regente, a Git-native workflow orchestrator inspired by Control-M.</strong></p>
+</div>
+<blockquote>
+<p>📦 This is the <strong><code>app/</code></strong> folder of the monorepo. The project overview, the architecture and
+how to install the <strong>server</strong> and the <strong>agent</strong> live in the <strong><a href="index.html">root README</a></strong>.</p>
+</blockquote>
+<p>The frontend (React + TypeScript + Vite) is the HTTP/WebSocket client of <code>regente-server</code>:
+Monitoring (what is running today) and Design (a drag-and-drop canvas of the definitions, with
+Publish to Git). The UX is the one a Control-M operator knows (folders, hold/rerun/force, find &amp;
+update).</p>
+<hr>
+<h2 id="concept">Concept</h2>
+<p>Two separate worlds, Control-M style:</p>
+<ul>
+<li><strong>Monitoring</strong> — what is running today; the result of the <em>Daily</em>. Consumption only:
+hold / release / cancel / set-ok / rerun / force order, per-instance audit, SLA.</li>
+<li><strong>Design</strong> — where the definitions are edited. You open one or more <em>folders</em> (an ephemeral Git
+clone per session), edit on the drag-and-drop canvas and hit <strong>Publish</strong> (the only write path
+to GitHub).</li>
+</ul>
+<p><strong>The Daily</strong> runs once a day: it reads Git, decides what runs today (schedule + calendars +
+dependencies + conditions) and materializes <strong>immutable</strong> <em>instances</em> — a change published in
+Design during the day only takes effect on the next daily, or through a manual Force Order.</p>
+<h2 id="stack">Stack</h2>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Technology</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Frontend (this folder)</td>
+<td>React + TypeScript + Vite, <a href="https://reactflow.dev">@xyflow/react</a> (canvas), lucide icons</td>
+</tr>
+<tr>
+<td>Backend</td>
+<td>Go (<code>regente-server</code>) — GitOps + SQLite/Postgres, WebSocket hub</td>
+</tr>
+<tr>
+<td>Executor</td>
+<td>Go (<code>regente-agent</code>) — outbound connection (WS · HTTP long-poll · SSE)</td>
+</tr>
+<tr>
+<td>Source of truth</td>
+<td>A GitHub repository (YAML at <code>definitions/&lt;folder&gt;/&lt;id&gt;.yaml</code>)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="running-the-frontend">Running the frontend</h2>
+<p>Requirements: Node 18+ and a running <code>regente-server</code> (see below).</p>
+<pre><code class="language-bash">npm install
+cp .env.example .env        # set VITE_REGENTE_SERVER_URL
+npm run dev                 # http://localhost:5173
+</code></pre>
+<p>Environment variables (<code>.env</code>):</p>
+<pre><code class="language-bash">VITE_REGENTE_SERVER_URL=http://localhost:8080   # empty = local mode (localStorage)
+VITE_REGENTE_TOKEN=dev-token
+</code></pre>
+<p>Default dev login: <code>admin</code> / <code>admin</code>.</p>
+<p><code>VITE_REGENTE_SERVER_URL=@origin</code> means <strong>same-origin</strong>: the Go server serves the SPA on its own
+port (<code>-spa-dir</code>), so the UI resolves <code>window.location.origin</code> at runtime. This is how the
+single-origin deployment and the tunnelled demo work — the URL can change without rebuilding the
+frontend.</p>
+<h2 id="architecture">Architecture</h2>
+<pre><code>  ┌──────────────┐    REST + WebSocket    ┌──────────────────┐   git push/pull   ┌──────────┐
+  │  Frontend     │ ─────────────────────▶ │  regente-server   │ ◀───────────────▶ │  GitHub   │
+  │  (this folder)│ ◀───────────────────── │  (Go, SQLite/PG)  │   (source of      │  (YAML)   │
+  └──────────────┘    instance.changed     └──────────────────┘    truth)          └──────────┘
+                                                    ▲
+                                                    │ WebSocket (the agent dials out)
+                                                    │ dispatch ▼   ▲ result
+                                            ┌──────────────────┐
+                                            │  regente-agent    │  runs COMMAND/SCRIPT/HTTP
+                                            │  (your PC / EC2)  │  on Windows or Linux
+                                            └──────────────────┘
+</code></pre>
+<p>In development:</p>
+<pre><code class="language-bash"># server (GitOps + SQLite)
+cd ../server &amp;&amp; go run . -api-token dev-token
+
+# executor agent (on the machine where the commands should run)
+cd ../agent  &amp;&amp; go run . -server ws://localhost:8080/ws/agent -token dev-token \
+                         -id my-pc -caps COMMAND,SCRIPT,HTTP
+</code></pre>
+<h2 id="layout">Layout</h2>
+<pre><code>src/
+├── v2/                  # the current UI (Monitoring, Design, drawers, dialogs)
+│   ├── V2Preview.tsx    # main shell (topbar, canvas, modes)
+│   ├── JobConfigDrawer  # job editing (General/Schedule/Calendars/Action/Conditions)
+│   ├── ScheduleEditor   # visual Control-M style scheduler
+│   ├── AlertsPanel.tsx  # alerts screen (events + rules + channels)
+│   └── ...
+├── lib/                 # API clients + model + adapters
+│   ├── server-client.ts # REST + WS
+│   ├── git-api.ts       # status, token, cleanup, deep links
+│   ├── agents-api.ts    # online agents
+│   ├── alerts-api.ts    # alerts (dual-mode server/local facade)
+│   └── adapters/        # ports &amp; adapters (storage/scheduler/executor)
+└── main.tsx
+</code></pre>
+<h2 id="checks">Checks</h2>
+<pre><code class="language-bash">npm run build     # tsc -b &amp;&amp; vite build
+npm run lint      # eslint — a CI gate, it must stay at zero
+</code></pre>
+<hr>
+<p><sub>A personal portfolio project. The UI is inspired by operating Control-M; it has no
+relationship with BMC.</sub></p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

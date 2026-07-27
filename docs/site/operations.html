@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>⚙️ Running in production — enterprise readiness · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html" class="active">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</a>
+<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch</a>
+</nav>
+<main>
+<article>
+<h1 id="-running-in-production--enterprise-readiness">⚙️ Running in production — enterprise readiness</h1>
+<blockquote>
+<p>How to run <code>regente-server</code> in production without losing availability or correctness:
+<strong>zero-downtime upgrades</strong>, <strong>multiple environments</strong> (Dev/Staging/Prod), <strong>quotas</strong> that
+survive a failover, and <strong>GitOps drift reconciliation</strong>. It connects to the resilience track
+(R1–R7) and to the <a href="slos.html">SLOs</a>.</p>
+</blockquote>
+<h2 id="1-zero-downtime-rolling-upgrades">1. Zero-downtime (rolling) upgrades</h2>
+<p>The control plane is <strong>stateless</strong> — every piece of durable state lives outside the process
+(Postgres + the Git workspace) — and it uses <strong>leader election through an advisory lock</strong> (G1).
+That makes a rolling upgrade a special case of the failover already validated in chaos/HA:</p>
+<pre><code>1. Nodes A (vN) and B (vN) behind a LB/VIP, on the SAME Postgres → A is leader, B follower.
+2. Start node C on the NEW version (vN+1) → it joins as a follower (the advisory lock is taken).
+3. Wait for C to become READY (/readyz = 200) — only then does the LB send it traffic.
+4. Drain and stop an OLD node. If it was the leader, the lock is released and another node
+   (C included) takes over in ~4s (measured in chaos/HA).
+5. Repeat until the whole fleet is on vN+1.
+</code></pre>
+<p><strong>Why the API sees zero downtime:</strong> a follower serves the API normally (<code>/readyz</code> gates on the
+DB, not on leadership — R3). During the ~4s failover window <strong>the API keeps answering</strong> from the
+followers; only daily materialization and dispatch pause briefly — and both are <strong>idempotent</strong>
+(atomic claim + existence check), so resuming neither duplicates nor loses anything.</p>
+<p><strong>Migrations:</strong> migrations are <strong>idempotent and versioned</strong> (<code>schema_migrations</code>). A vN+1 node
+applies whatever is missing at boot; vN and vN+1 coexist as long as the migration is additive
+(rule: never drop or rename a column in the same release as the code that uses it — expand and
+contract across two releases).</p>
+<p>Automated demonstration:
+<a href="../server/deploy/rolling-upgrade.sh"><code>../server/deploy/rolling-upgrade.sh</code></a> (starts two nodes on
+the same PG, promotes the new one, drains the old one and measures the leadership gap).</p>
+<h2 id="2-multiple-environments-dev--staging--prod">2. Multiple environments (Dev / Staging / Prod)</h2>
+<p>Each environment is an <strong>independent deployment</strong> — no magic flags inside a single process.
+Isolation comes from the <strong>workspace branch + state store + label</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Axis</th>
+<th>Dev</th>
+<th>Staging</th>
+<th>Prod</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Workspace (defs)</td>
+<td>branch <code>dev</code></td>
+<td>branch <code>staging</code></td>
+<td>branch <code>main</code></td>
+</tr>
+<tr>
+<td>State store</td>
+<td>dev PG/SQLite</td>
+<td>staging PG</td>
+<td>prod PG (HA)</td>
+</tr>
+<tr>
+<td><code>env_label</code></td>
+<td><code>DEV</code></td>
+<td><code>STAGING</code></td>
+<td><code>PROD</code></td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-sh"># Prod example
+regente-server -db-driver postgres -db &quot;$PROD_DSN&quot; \
+  -git-branch main -github-repo Dr0nj/regente-workspace
+# env_label is set through the UI (Settings → Environment) or seeded; it shows up in
+# /api/env and /metrics
+</code></pre>
+<p><strong>Promotion</strong> is a Git flow: a PR <code>dev → staging → main</code> in <code>regente-workspace</code> promotes the
+definitions from one environment to the next (reviewable, auditable, revertible with
+<code>git revert</code>).</p>
+<p><strong>Per-environment observability:</strong> <code>/metrics</code> exposes <code>regente_env_info{env=&quot;PROD&quot;} 1</code>;
+dashboards and alerts group or filter on that label, so a single Prometheus covers all three
+environments without mixing series.</p>
+<h2 id="3-quotas-resources-across-a-failover">3. Quotas (resources) across a failover</h2>
+<p>Quotas (F15 — <em>quantitative resources</em>, Control-M style) cap how many jobs compete for a named
+resource (e.g. <code>db=5</code> → at most 5 jobs using the pool at once). The tracker is <strong>in memory and
+lives on the leader</strong>. When a node takes leadership (at boot or after a failover), the new leader
+<strong>rebuilds usage from the <code>RUNNING</code> instances</strong> in durable state — each instance carries the
+snapshot of its definition, resources included — via <code>RebuildResourcesFromRunning</code>. Without it, a
+freshly promoted leader would start with an empty tracker and let capacity be exceeded. Covered
+by a test (<code>TestQuotas_RebuildFromRunning</code>).</p>
+<h2 id="4-drift-reconciliation-gitops">4. Drift reconciliation (GitOps)</h2>
+<p>The repository is the <strong>desired</strong> state; the runtime holds a local copy. When the remote moves
+ahead (a push, a merged PR), the runtime is in <strong>drift</strong>.</p>
+<ul>
+<li><strong>Auto-sync</strong> (already there): <code>-git-poll-interval</code> runs a periodic <code>fetch+reset+reload</code> — the
+runtime converges to Git on its own. Drift also raises a <code>git.drift</code> event in the UI.</li>
+<li><strong>Operational reconciler</strong> (<code>-drift-reconcile-sec</code>, opt-in): only the <strong>leader</strong> runs it; when
+it detects drift it <strong>alerts through the same channels as R7</strong> (Slack/webhook/email/PagerDuty)
+— not just a badge in the UI. Two modes:
+<ul>
+<li><code>-drift-reconcile-mode=alert</code> (default): it does <strong>not</strong> touch the workspace, it only
+<strong>notifies</strong> whoever is on call. Ideal for regulated environments or <code>pr-required</code> setups,
+where an automatic reset is not allowed.</li>
+<li><code>-drift-reconcile-mode=sync</code>: it <strong>reconciles by itself</strong> (fetch+reset+reload). Useful when
+git-poll is off and you want periodic convergence plus an alert if convergence fails.</li>
+</ul>
+</li>
+</ul>
+<pre><code class="language-sh"># Regulated prod: notify, do not reset on its own
+regente-server ... -git-poll-interval 0 -drift-reconcile-sec 60 -drift-reconcile-mode alert
+</code></pre>
+<h2 id="5-production-checklist">5. Production checklist</h2>
+<pre><code>[ ] State store OUTSIDE the ephemeral container (managed PG, or a volume for SQLite) — R4/R6
+[ ] Supervisor with automatic restart (systemd Restart=always / Windows Service / k8s) — R1
+[ ] /livez on the livenessProbe · /readyz on the readinessProbe — R2/R3
+[ ] -selfmon ON with alert channels configured (Slack/PagerDuty) — R7
+[ ] Scheduled backup (backup.sh / pg_dump) + a restore drill — R6
+[ ] env_label set per environment; Prometheus grouping by regente_env_info
+[ ] -drift-reconcile-sec enabled (alert when regulated, sync otherwise)
+[ ] Rolling upgrade rehearsed (rolling-upgrade.sh) before the first real deployment
+</code></pre>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🎯 Control plane SLOs — regente-server · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</a>
+<a href="slos.html" class="active">🎯 Control plane SLOs — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch</a>
+</nav>
+<main>
+<article>
+<h1 id="-control-plane-slos--regente-server">🎯 Control plane SLOs — regente-server</h1>
+<blockquote>
+<p>Service-level objectives for Regente's &quot;brain&quot;, each tied to a <strong>metric</strong> (<code>/metrics</code>), a
+<strong>probe</strong> (<code>/livez</code> · <code>/readyz</code>) and an <strong>automatic alert</strong> (R7, <code>-selfmon</code>). This is how the
+orchestrator watches itself.</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>SLO</th>
+<th>Target</th>
+<th>Signal (metric/probe)</th>
+<th>Alert (R7)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>API availability</strong></td>
+<td>≥ 99.9% of <code>GET /readyz</code> = 200</td>
+<td><code>/readyz</code> (gate = DB reachable)</td>
+<td><code>db-unreachable</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Failover time</strong> (leader dies → new leader)</td>
+<td>≤ 10 s</td>
+<td><code>regente_is_leader</code> (changes)</td>
+<td><code>leader-flapping</code> (if it changes too often)</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Scheduling freshness</strong> (loop alive)</td>
+<td>tick &lt; 90 s</td>
+<td><code>regente_scheduler_last_tick_age_seconds</code></td>
+<td><code>tick-stalled</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Execution capacity</strong> (agent fleet)</td>
+<td>no unplanned drops</td>
+<td><code>regente_agents_online</code></td>
+<td><code>agents-drop</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Process liveness</strong></td>
+<td>automatic restart if it hangs</td>
+<td><code>/livez</code> + <code>livenessProbe</code></td>
+<td>(R1 supervisor)</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>RPO/RTO (DR)</strong></td>
+<td>RPO ≤ backup interval · RTO ≤ minutes</td>
+<td>R6 backup (<code>-backup</code>/<code>pg_dump</code>)</td>
+<td>runbook <a href="dr-backup.html"><code>dr-backup.md</code></a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="how-each-slo-is-observed-and-defended">How each SLO is observed and defended</h2>
+<ul>
+<li><strong>1. Availability</strong> — <code>/readyz</code> only answers 200 when the DB is reachable (hard gate). The
+k8s <code>readinessProbe</code> takes the pod out of rotation on a violation; R7 raises
+<code>db-unreachable</code>.</li>
+<li><strong>2. Failover</strong> — only the leader runs the daily and the dispatch; when it dies the advisory
+lock is released and another node takes over. <strong>Measured at ~4 s</strong> in the real two-node
+validation. <code>regente_is_leader</code> lets you alert on <code>changes()</code> in Prometheus (flapping) on top
+of R7's native alert.</li>
+<li><strong>3. Freshness</strong> — every node stamps <code>lastTick</code> each cycle; the age is exposed both in the
+gauge and in <code>/readyz</code>. Past 90 s, R7 raises <code>tick-stalled</code> (jobs may not be getting
+promoted).</li>
+<li><strong>4. Capacity</strong> — a drop in <code>regente_agents_online</code> against the baseline raises <code>agents-drop</code>.</li>
+<li><strong>5. Liveness</strong> — <code>/livez</code> answers for as long as the process serves; the supervisor (systemd
+<code>Restart=always</code> / Windows Service / <code>livenessProbe</code>) restarts a hung process.</li>
+<li><strong>6. DR</strong> — online backup (<code>-backup</code> = <code>VACUUM INTO</code> on SQLite; <code>pg_dump</code>/PITR on Postgres);
+restore validated by the runbook drill (<code>/readyz</code> 200 + <code>/api/env</code> after the restore).</li>
+</ul>
+<h2 id="continuous-verification">Continuous verification</h2>
+<ul>
+<li><strong>Unit/integration</strong> — <code>go test ./...</code> (covers <code>/readyz</code>, the mTLS handshake, RBAC, selfmon
+evaluation, a backup round-trip, <strong>HTTP E2E</strong> and a <strong>load smoke test</strong> at ~7.5k req/s
+locally).</li>
+<li><strong>Chaos/HA</strong> — <code>server/deploy/chaos-ha.sh</code> automates it: two nodes on the same Postgres →
+exactly one leader → kill the leader → check the failover.</li>
+<li><strong>Real load</strong> — for production volume (10k+ jobs/day, p99), running <code>hey</code>/<code>k6</code> against a real
+deployment is still an open quality item.</li>
+</ul>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

@@ -3,7 +3,7 @@
 // Não é correção (o claim atômico de startInstance já garante no máximo 1
 // execução por instance mesmo com N ticks concorrentes) — é HIGIENE: evita
 // dois ciclos rodando scheduling redundante ao mesmo tempo. Ver a discussão em
-// docs/arquitetura-futuro.md §4 ("Concorrência e HA — clássico vs. serverless").
+// docs/architecture-future.md §4 ("Concorrência e HA — clássico vs. serverless").
 //
 // Duas camadas:
 //   - EM-PROCESSO (sempre ativa): um guard atômico impede que os nudges

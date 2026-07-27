@@ -2,7 +2,7 @@
 
 Orientação para agentes trabalhando neste repositório. Detalhe de produto está
 no [`README.md`](README.md); decisões de arquitetura futura em
-[`docs/arquitetura-futuro.md`](docs/arquitetura-futuro.md).
+[`docs/architecture-future.md`](docs/architecture-future.md).
 
 ## O que é
 

@@ -27,6 +27,16 @@ jobs:
       - name: deadcode (informativo)
         run: go run golang.org/x/tools/cmd/deadcode@latest -test ./... || true
       - run: go test ./...
+      # docs/site/ é build VERSIONADO (a doc abre sem subir server). Regenera e
+      # falha se estiver defasado — senão o site do repo mente sobre o markdown.
+      - name: docs site up to date
+        run: |
+          go run ./cmd/docsite -repo .. -out ../docs/site
+          if ! git -C .. diff --quiet -- docs/site; then
+            echo "::error::docs/site esta defasado. Rode: cd server && go run ./cmd/docsite -repo .. -out ../docs/site"
+            git -C .. --no-pager diff --stat -- docs/site
+            exit 1
+          fi
 
   agent:
     name: agent (Go)

@@ -103,6 +103,17 @@ func yamlNodeJSON(buf *bytes.Buffer, n *yaml.Node) error {
 	return fmt.Errorf("yaml node kind %d inesperado", n.Kind)
 }
 
+// OpenAPIAssets devolve o viewer e a spec (YAML + JSON) embutidos — a MESMA
+// fonte que /api-docs serve. Existe para o docsite gerar a referência de API
+// como página ESTÁTICA (que precisa abrir do disco, sem server rodando).
+func OpenAPIAssets() (viewer, specYAML, specJSON []byte, err error) {
+	j, err := openAPIJSON()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return apiDocsHTML, openAPIYAML, j, nil
+}
+
 func (s *server) apiDocsPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(apiDocsHTML)

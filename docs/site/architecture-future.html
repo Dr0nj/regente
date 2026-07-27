@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Future architecture — serverless, portable, no lock-in · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</a>
+<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html" class="active">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch</a>
+</nav>
+<main>
+<article>
+<h1 id="future-architecture--serverless-portable-no-lock-in">Future architecture — serverless, portable, no lock-in</h1>
+<blockquote>
+<p>Status: living document · Last revision: 2026-07-10
+Scope: control plane (<code>server/</code>) + agent transport + executors.
+Root decision: <strong>&quot;portable serverless&quot; (a scale-to-zero container with state and trigger
+externalized), not FaaS.</strong></p>
+</blockquote>
+<p>This document is the guiding ADR for Regente's evolution across three phases. It records the
+<strong>why</strong>, what has <strong>already been applied in this repository</strong>, and what is <strong>design/R&amp;D</strong> for the
+next iterations. Each phase clearly marks what is production versus what is projected.</p>
+<hr>
+<h2 id="1-context-and-problem">1. Context and problem</h2>
+<p>We want Regente to be:</p>
+<ol>
+<li><strong>Serverless</strong> — no server to babysit, scales to zero, you pay for what you use.</li>
+<li><strong>Free of lock-in</strong> — not tied to AWS (or to any single cloud).</li>
+<li><strong>Aligned with modern technology</strong> and attractive to the community (adoption).</li>
+</ol>
+<p>The real tension: <strong>a scheduler is stateful and time-driven by nature.</strong> Today Regente is a
+classic daemon with two pieces that fight serverless:</p>
+<ul>
+<li>A <strong>goroutine ticker</strong> (every 2s) materializes the daily and dispatches — it needs an
+always-on process.</li>
+<li>A <strong>persistent WebSocket</strong> to agents and to the web — long-lived connections.</li>
+</ul>
+<p>Everything else is already serverless-ready: a stateless REST API, <strong>state in Postgres</strong>
+(pluggable dialect) and <strong>configuration in Git</strong>.</p>
+<h3 id="the-reframe">The reframe</h3>
+<p><code>serverless</code> ≠ FaaS. There is a spectrum:</p>
+<table>
+<thead>
+<tr>
+<th>Approach</th>
+<th>Lock-in</th>
+<th>Fit for a scheduler</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FaaS (Lambda, Cloud Functions)</td>
+<td>high</td>
+<td>poor (WS + long jobs + tick)</td>
+</tr>
+<tr>
+<td><strong>Container-serverless (Knative, Cloud Run, Fly, App Runner)</strong></td>
+<td><strong>low</strong></td>
+<td><strong>great</strong></td>
+</tr>
+<tr>
+<td>Self-hosted serverless (Knative on any k8s)</td>
+<td>none</td>
+<td>great</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Decision:</strong> go <strong>container-serverless</strong>. It keeps the single binary and the zero-infrastructure
+story (the project's biggest adoption asset), delivers serverless economics and operations, and
+does <strong>not</strong> couple us to AWS.</p>
+<h3 id="what-not-to-do">What NOT to do</h3>
+<ul>
+<li><strong>FaaS per job</strong> — more lock-in, kills the single binary, fights the state.</li>
+<li><strong>DynamoDB as the primary store</strong> — AWS's deepest lock-in. Serverless Postgres (Neon/Supabase)
+gives you scale-to-zero without tying you to a cloud.</li>
+</ul>
+<hr>
+<h2 id="2-anti-lock-in-principles">2. Anti-lock-in principles</h2>
+<p>Depend on <strong>open protocols and standards</strong>, not on managed services:</p>
+<table>
+<thead>
+<tr>
+<th>Need</th>
+<th>Open standard (our choice)</th>
+<th>Managed equivalent (swapped at deploy time)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Packaging</td>
+<td>OCI image</td>
+<td>any registry</td>
+</tr>
+<tr>
+<td>Runtime</td>
+<td>Knative (CNCF)</td>
+<td>Cloud Run · App Runner · Container Apps · Fly</td>
+</tr>
+<tr>
+<td>State</td>
+<td>Postgres wire protocol</td>
+<td>Neon · Supabase · Cloud SQL · RDS</td>
+</tr>
+<tr>
+<td>Time trigger</td>
+<td>cron → HTTP</td>
+<td>Cloud Scheduler · EventBridge · Actions cron</td>
+</tr>
+<tr>
+<td>Agent bus</td>
+<td>NATS (CNCF) / SSE / long-poll</td>
+<td>managed NATS</td>
+</tr>
+<tr>
+<td>Identity</td>
+<td>OIDC</td>
+<td>any IdP</td>
+</tr>
+<tr>
+<td>Logs/artifacts</td>
+<td>S3-compatible API</td>
+<td>R2 · MinIO · S3 · GCS</td>
+</tr>
+</tbody>
+</table>
+<p>The <strong>ports &amp; adapters</strong> discipline the project already has (pluggable DB dialect,
+<code>ExecutorPort</code> in the frontend) is extended to <code>Bus</code> (transport) and to the <strong>trigger</strong> (HTTP).
+That turns lock-in into a <em>deployment</em> choice rather than a <em>code</em> choice.</p>
+<hr>
+<h2 id="3-target-architecture">3. Target architecture</h2>
+<pre><code>            external cron (Cloud Scheduler / k8s CronJob / Actions)
+                      │  POST /api/scheduler/tick   (Phase 1)
+                      ▼
+   ┌────────────────────────────────┐        Postgres (wire protocol)
+   │  regente-server (OCI image)     │◀──────  Neon/Supabase/Cloud SQL/RDS
+   │  -role=all|api|scheduler        │
+   │  -scheduler=internal|external   │──────▶  Git (source of truth, YAML)
+   │  scale-to-zero (Knative/Run/Fly)│
+   └────────────────────────────────┘
+                      ▲   Bus (Phase 2): WebSocket today; NATS/SSE tomorrow
+                      │   dispatch ▼   ▲ result
+              ┌────────────────────────────────┐
+              │  agents / executors (Phase 3)   │
+              │  COMMAND·SCRIPT·HTTP·SSH today   │
+              │  + WASM · AWS · GCP · k8s Jobs   │  (a new one = a new capability)
+              └────────────────────────────────┘
+</code></pre>
+<hr>
+<h2 id="4-phase-1--externalize-the-time-trigger---applied">4. Phase 1 — externalize the time trigger  ✅ applied</h2>
+<p><strong>Goal:</strong> remove the dependency on an always-on ticker so the service can scale to zero. This is
+the <strong>highest-leverage</strong> change (roughly 80% of &quot;serverless&quot;).</p>
+<p><strong>Implemented in this repo:</strong></p>
+<ul>
+<li><code>Scheduler.Tick()</code> (<code>server/internal/scheduler/scheduler.go</code>) — one scheduling cycle
+(daily-if-due + dispatch), <strong>idempotent</strong> (atomic claim in <code>startInstance</code> + an existence check
+in the daily) and <strong>leader-guarded</strong>. <code>Run()</code> now just calls <code>Tick()</code> in a loop.</li>
+<li>Flags in <code>main.go</code>:
+<ul>
+<li><code>-scheduler=internal|external</code> (<code>REGENTE_SCHEDULER</code>). <code>internal</code> = goroutine ticker (the
+default, classic daemon). <code>external</code> = no ticker; definitions load at boot and the cycle is
+driven over HTTP.</li>
+<li><code>-role=all|api|scheduler</code> (<code>REGENTE_ROLE</code>) — modular monolith: the same binary starts as
+everything (default) or splits API from scheduling.</li>
+</ul>
+</li>
+<li>Endpoint <code>POST /api/scheduler/tick</code> (writer-gated) → calls <code>Tick()</code>.</li>
+<li>Deployment artifacts in <a href="deploy.html"><code>../deploy/</code></a>: <code>Dockerfile</code> (distroless),
+<code>knative-service.yaml</code> (<code>minScale: 0</code>), <code>cronjob.yaml</code> (the external trigger), <code>README.md</code>.</li>
+</ul>
+<p><strong>Compatibility:</strong> the defaults (<code>all</code> + <code>internal</code>) behave exactly as before. Nothing breaks for
+anyone running it as a daemon.</p>
+<p><strong>Result:</strong> with <code>-scheduler=external</code> + an external cron + managed Postgres, the control plane
+runs <strong>serverless, scale-to-zero, without lock-in</strong>.</p>
+<p><strong>Validated in a container (2026-06-18):</strong> the image from <a href="deploy.html"><code>../deploy</code></a> + Postgres in a
+container → clean boot, <code>/health</code>→200, leader election, and the external trigger
+<code>POST /api/scheduler/tick</code> materialized the daily (<code>5 instances</code>, persisted in PG) idempotently.
+The first run <strong>uncovered</strong> a hole: the storage layer shelled out to <code>git</code>, so the
+<code>distroless/static</code> image crashed at boot (<code>EnsureClone</code>: no <code>git</code>) — worked around at the time
+with Alpine+git. The <strong>permanent fix</strong> migrated <code>internal/storage/git.go</code> to <strong>go-git</strong> (pure Go,
+no shell-out): the image went back to <code>gcr.io/distroless/static-debian12:nonroot</code> (static,
+non-root, only ca-certificates) and boot/daily now clone and fetch+reset <strong>without <code>git</code> on the
+PATH</strong>. One sharp edge handled: go-git's <code>reset --hard</code> deletes untracked files (git does not);
+we reproduced git's behaviour by limiting the reset to the union of tracked paths, which
+preserves the SQLite DB inside the workspace.</p>
+<p><strong>Dedicated daily trigger (ARCH-5, ✅ applied 2026-07-10):</strong> <code>autoDailyIfDue</code> was exposed as
+<code>Scheduler.RunDailyIfDue()</code> (leader-gated, idempotent) behind <code>POST /api/scheduler/daily</code> — in
+serverless you point a minute-level cron at <code>/scheduler/tick</code> (dispatch) and a <strong>daily</strong> cron at
+<code>/scheduler/daily</code> (materialization), splitting the cadences. Tick still calls <code>autoDailyIfDue</code>
+(backward compatible with the internal daemon).</p>
+<h3 id="concurrency-and-ha--classic-versus-serverless-important">Concurrency and HA — classic versus serverless (important)</h3>
+<p>Regente has <strong>two HA models</strong>, and they are not the same mechanism. Confusing them leads to
+over-investing in the wrong lock.</p>
+<p><strong>Classic track (daemon, <code>-scheduler=internal</code>):</strong> N always-on nodes, one holds
+<code>pg_try_advisory_lock</code> and runs the ticker; the others are <em>hot standbys</em>. This is
+<code>G1 leader election</code> (<code>internal/leader</code>, <code>PgAdvisory</code>). It makes sense for on-prem/enterprise
+deployments of 2–3 fixed nodes. Failover ≈ the lock TTL when the leader dies.</p>
+<p><strong>Serverless track (<code>-scheduler=external</code>, scale-to-zero):</strong> the leadership advisory lock <strong>does
+not map</strong> — there is no long-lived process to <em>hold</em> the lock, and most of the time there are
+<strong>zero</strong> instances. The external cron fires <code>POST /api/scheduler/tick</code>, a container starts, runs
+<code>Tick()</code>, and dies. The defence against <strong>double execution</strong> does not come from leadership; it
+comes from <strong>idempotency + an atomic claim</strong>, both already in the code:</p>
+<ol>
+<li><code>Tick()</code> is idempotent — concurrent or overlapping ticks converge.</li>
+<li>The <strong>atomic claim</strong> in <code>startInstance</code> (<code>UPDATE … SET status='RUNNING' WHERE id=? AND status='WAITING'</code>, bail out on 0 rows) — a row-level correctness guard, independent of how
+many instances are running. This is the real safety net.</li>
+<li>The existence check when materializing the daily — idempotent across ticks.</li>
+</ol>
+<p>In other words: <strong>in serverless, leader election stops being correctness and becomes an
+optimization</strong> (avoiding N nodes doing redundant scheduling). If you do need to shield against
+<strong>overlapping</strong> ticks (a cron that fires twice, or long ticks that cross), the right mechanism is
+a <strong>per-tick lock</strong> — <code>pg_try_advisory_lock</code> acquired at the start of <code>Tick()</code> and released at the
+end, short scope — and <strong>not</strong> a long-lived leadership lock.</p>
+<p><strong>Summary:</strong> <code>F1 Postgres</code> is the foundation of both tracks. <code>G1 advisory-lock</code> is HA for the
+<strong>classic</strong> track; serverless gets HA &quot;for free&quot; (stateless replicas + durable managed PG +
+idempotency + the atomic claim).</p>
+<p><strong>Per-tick lock (ARCH-3, ✅ applied 2026-07-10):</strong> the mechanism designed above — serializing
+<strong>overlapping</strong> ticks with a short-scoped advisory lock — was implemented in
+<code>scheduler/ticklock.go</code>. Two layers: in-process (<code>atomic.Bool</code>, always on) plus a cross-process
+<code>pg_try_advisory_lock</code> on Postgres (a key distinct from leadership, opt-in via <code>EnableTickLock()</code>,
+switched on by <code>-scheduler=external</code>). It remains hygiene, not correctness — the atomic claim is
+the safety net.</p>
+<hr>
+<h2 id="5-phase-2--pluggable-agent-transport-busport---seam--long-poll--sse--nats-applied">5. Phase 2 — pluggable agent transport (BusPort)  ✅ seam + long-poll + SSE + NATS applied</h2>
+<p><strong>Goal:</strong> the WebSocket hub is the last piece that requires persistence. Abstract the transport
+and offer a stateless path for serverless deployments.</p>
+<p><strong>Implemented in this repo:</strong></p>
+<ul>
+<li>The <code>scheduler.Bus</code> interface (<code>server/internal/scheduler/scheduler.go</code>):
+<pre><code class="language-go">type Bus interface {
+    BroadcastWeb(event string, payload interface{})
+    PickAgent(capability string) *hub.Client
+    GetAgent(id string) *hub.Client
+}
+</code></pre>
+The scheduler depends on <code>Bus</code>, not on <code>*hub.Hub</code>. The transport became a replaceable detail.</li>
+<li><strong>HTTP long-poll transport</strong> (<code>server/internal/api/agent_http.go</code> + the agent):
+<ul>
+<li><code>GET /api/agent/poll?id=&amp;caps=</code> — blocks for ~25s waiting for a dispatch (204 on timeout);
+<code>POST /api/agent/result</code> finishes it; <code>POST /api/agent/output</code> streams stdout/stderr.</li>
+<li>The <code>agentBroker</code> registers the agent as a <code>hub.Client</code> with a <code>Send</code> channel, so it
+<strong>reuses all the existing routing</strong> (<code>startInstance</code> → <code>PickAgent</code> → <code>Send</code>) — zero change in
+the scheduler. A reaper removes agents that stop polling (there is no &quot;disconnect&quot; like on
+WS).</li>
+<li>Agent: the <code>-transport=ws|http</code> flag (<code>REGENTE_AGENT_TRANSPORT</code>). <code>http</code> keeps the
+NAT-friendly outbound model with no persistent connection in the server process → the
+control plane can scale to zero.</li>
+<li><strong>Validated end-to-end:</strong> an agent on <code>-transport=http</code> receives dispatches (daily and
+force), executes them and returns the result and stream.</li>
+</ul>
+</li>
+</ul>
+<p><strong>Also applied (after this ADR was first written):</strong></p>
+<ul>
+<li><strong>SSE transport</strong> (ARCH-4, ✅ 2026-07-10) — <code>api/agent_sse.go</code> + <code>-transport=sse</code> on the agent:
+a <code>text/event-stream</code> with IMMEDIATE dispatch push (no ~25s long-poll window), same outbound
+model and the same <code>agentBroker</code>/<code>hub.Client</code>; results come back through the same POSTs.</li>
+<li><strong>NATS adapter + distributed hub</strong> (R5, ✅ 2026-06-22) — <code>-bus=nats</code>: fan-out of web events,
+agent presence, and dispatch routed to the node that owns the agent, across multiple nodes.
+VALIDATED on two real nodes.</li>
+</ul>
+<hr>
+<h2 id="6-phase-3--executors-as-plugins--modern-technology---wasm--cloud--otel-applied">6. Phase 3 — executors as plugins + modern technology  ✅ WASM + cloud + OTel applied</h2>
+<p><strong>Goal:</strong> stay aligned with modern technology and differentiate, while keeping the core
+vendor-agnostic.</p>
+<p><strong>The seam (the central point):</strong> routing by <strong>capability</strong>. The agent announces its capabilities
+(<code>-caps</code>) and dispatches through a <code>switch jobType</code> (<code>agent/main.go</code>); the server matches
+<code>jobType</code>→agent via <code>PickAgent(capability)</code>. <strong>Adding a new executor = adding a <code>case</code> and
+announcing the capability.</strong> The core does not change.</p>
+<p><strong>Implemented in this repo — the WASM executor:</strong></p>
+<ul>
+<li><code>jobType: WASM</code> + the <code>WASM</code> capability (in the default <code>-caps</code>).</li>
+<li><code>runWASM</code>/<code>execWASM</code> (<code>agent/main.go</code>) use <strong>wazero</strong> (a pure-Go WASM runtime, no CGO — the same
+ethos as modernc's SQLite). It runs WASI modules (<code>_start</code>) compilable from Rust/Go/TinyGo/C;
+sandboxed by construction (it only sees what you provide). Params: <code>wasmPath</code> or <code>wasmUrl</code>,
+<code>args</code>, <code>stdin</code>. It captures stdout/stderr and maps the WASI exit to the job's exitCode.</li>
+<li><strong>Tested:</strong> unit (<code>agent/wasm_test.go</code> with an embedded WASI fixture) + end-to-end (dispatch →
+runWASM → result through the agent).</li>
+</ul>
+<p><strong>Also applied (after the first draft):</strong></p>
+<ul>
+<li><strong>Cloud executors as ordinary adapters</strong> (✅) — <code>AWS</code> Lambda (SigV4 on the stdlib) plus
+Batch/Glue/Step (ADV-8), <code>GCP</code> Cloud Run Jobs, and <code>k8s Jobs</code> (validated on a real kind
+cluster). Each one is <strong>a capability</strong>, never the foundation — AWS is a plugin, not a base.</li>
+<li><strong>OpenTelemetry</strong> (✅) — opt-in OTLP/HTTP tracing (<code>-otel-endpoint</code>), otelhttp plus spans in the
+scheduler.</li>
+</ul>
+<p><strong>🚫 Decided NOT to do (noted, not pending):</strong></p>
+<ul>
+<li><strong>Durable execution (Temporal / Restate)</strong> — replacing retry/tick/state-machine with a durable
+engine <strong>contradicts this ADR's root decision</strong> (single binary, zero infrastructure,
+anti-lock-in): it would mean running one more cluster to babysit. And the correctness it buys
+(resuming a flow after a crash without re-running steps) Regente <strong>already gets</strong> from
+idempotency plus the atomic claim. Kept as an architectural reference, not as work.</li>
+<li><strong>Postgres-as-a-queue</strong> (<code>SKIP LOCKED</code>, e.g. River) — it would rewrite the dispatch (a hot path
+validated at 1M) in favour of an alternative to the atomic claim, which <strong>is a cousin</strong> of
+<code>SKIP LOCKED</code> and already covers the case. No gain that pays for the swap.</li>
+</ul>
+<hr>
+<h2 id="7-status-and-decisions">7. Status and decisions</h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Phase</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Idempotent <code>Tick()</code> + refactored <code>Run()</code></td>
+<td>1</td>
+<td>✅ applied</td>
+</tr>
+<tr>
+<td><code>-scheduler</code>, <code>-role</code> flags</td>
+<td>1</td>
+<td>✅ applied</td>
+</tr>
+<tr>
+<td><code>POST /api/scheduler/tick</code></td>
+<td>1</td>
+<td>✅ applied</td>
+</tr>
+<tr>
+<td>Dockerfile + Knative + CronJob + deploy/README</td>
+<td>1</td>
+<td>✅ applied · container e2e validated (2026-06-18)</td>
+</tr>
+<tr>
+<td>Distroless image without <code>git</code> on the PATH</td>
+<td>1</td>
+<td>✅ storage migrated to go-git (pure Go); image back to <code>distroless/static:nonroot</code></td>
+</tr>
+<tr>
+<td>Classic HA — advisory-lock leader election (<code>G1</code>)</td>
+<td>1</td>
+<td>✅ applied · two nodes validated on real PG (failover ~1s, 2026-06-18)</td>
+</tr>
+<tr>
+<td>Serverless HA — idempotency + atomic claim</td>
+<td>1</td>
+<td>✅ applied (correctness)</td>
+</tr>
+<tr>
+<td>Per-tick lock (overlapping ticks, ARCH-3)</td>
+<td>1</td>
+<td>✅ applied (2026-07-10; hygiene, not correctness)</td>
+</tr>
+<tr>
+<td>Dedicated daily trigger (<code>/api/scheduler/daily</code>, ARCH-5)</td>
+<td>1</td>
+<td>✅ applied (2026-07-10)</td>
+</tr>
+<tr>
+<td><code>Bus</code> interface (transport seam)</td>
+<td>2</td>
+<td>✅ applied</td>
+</tr>
+<tr>
+<td>HTTP long-poll transport (<code>-transport=http</code>)</td>
+<td>2</td>
+<td>✅ applied (e2e)</td>
+</tr>
+<tr>
+<td>SSE transport (<code>-transport=sse</code>, ARCH-4)</td>
+<td>2</td>
+<td>✅ applied (2026-07-10; live e2e)</td>
+</tr>
+<tr>
+<td>NATS adapter</td>
+<td>2</td>
+<td>✅ applied (R5; two real nodes)</td>
+</tr>
+<tr>
+<td>Distributed WebSocket hub</td>
+<td>2</td>
+<td>✅ applied (R5)</td>
+</tr>
+<tr>
+<td>WASM executor (wazero)</td>
+<td>3</td>
+<td>✅ applied (unit + e2e)</td>
+</tr>
+<tr>
+<td>Cloud adapters (AWS/GCP/k8s) by capability</td>
+<td>3</td>
+<td>✅ applied (real k8s; AWS/GCP mocked + ADV-8)</td>
+</tr>
+<tr>
+<td>OpenTelemetry (OTLP tracing)</td>
+<td>3</td>
+<td>✅ applied (opt-in)</td>
+</tr>
+<tr>
+<td>Durable execution (Temporal/Restate)</td>
+<td>3</td>
+<td>🚫 decided against (contradicts the root decision)</td>
+</tr>
+<tr>
+<td>Postgres-as-a-queue (River/SKIP LOCKED)</td>
+<td>3</td>
+<td>🚫 decided against (the atomic claim already covers it)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Rollout principle:</strong> every phase is backward compatible. The defaults preserve the classic
+daemon; serverless is opt-in through a flag or the deployment.</p>
+<hr>
+<h2 id="8-references">8. References</h2>
+<ul>
+<li>Knative (portable scale-to-zero): <a href="https://knative.dev">https://knative.dev</a></li>
+<li>NATS (CNCF bus): <a href="https://nats.io">https://nats.io</a></li>
+<li>Temporal (durable execution): <a href="https://temporal.io">https://temporal.io</a> · Restate: <a href="https://restate.dev">https://restate.dev</a></li>
+<li>extism / wasmtime (WASM): <a href="https://extism.org">https://extism.org</a> · <a href="https://wasmtime.dev">https://wasmtime.dev</a></li>
+<li>River (Postgres queue): <a href="https://riverqueue.com">https://riverqueue.com</a></li>
+<li>Ports &amp; adapters (hexagonal) pattern: Alistair Cockburn</li>
+</ul>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

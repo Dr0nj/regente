@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deploy — portable serverless · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html" class="active">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</a>
+<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch</a>
+</nav>
+<main>
+<article>
+<h1 id="deploy--portable-serverless">Deploy — portable serverless</h1>
+<p>Artifacts for running <code>regente-server</code> as a <strong>scale-to-zero serverless container without vendor
+lock-in</strong>. The full strategy lives in
+<a href="architecture-future.html"><code>../docs/architecture-future.md</code></a>.</p>
+<blockquote>
+<p>Looking for the <strong>normal install</strong> (a VPS or your own machine, supervised by systemd)? That is
+in the <a href="index.html#-installation">root README</a> — it is the recommended path. This folder is
+for the serverless/container route.</p>
+</blockquote>
+<h2 id="the-idea-in-one-line">The idea in one line</h2>
+<p>Package it as an <strong>OCI image</strong> (an open standard), externalize the <strong>state</strong> (Postgres over the
+wire protocol) and the <strong>time trigger</strong> (an external cron → <code>POST /api/scheduler/tick</code>). The same
+image runs on Knative, Cloud Run, Fly, App Runner or Container Apps — you pick the cloud at
+deployment time, not in the code.</p>
+<h2 id="files">Files</h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Dockerfile</code></td>
+<td>Multi-stage build of the server → a <strong>distroless</strong> image (no shell, no packages, no <code>git</code>).</td>
+</tr>
+<tr>
+<td><code>.dockerignore</code></td>
+<td>Keeps the build context lean.</td>
+</tr>
+<tr>
+<td><code>knative-service.yaml</code></td>
+<td>A Knative Service with <code>minScale: 0</code> (scale to zero) and <code>-scheduler=external</code>.</td>
+</tr>
+<tr>
+<td><code>cronjob.yaml</code></td>
+<td>The external time trigger (a k8s CronJob hitting <code>/tick</code>).</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>A runtime without <code>git</code>.</strong> Configuration is externalized in Git, but the storage layer
+(<code>internal/storage/git.go</code>) uses <strong>go-git</strong> (pure Go) — there is no <code>exec git</code>. That is why the
+final image is <code>gcr.io/distroless/static-debian12:nonroot</code>: static, non-root (uid 65532), with
+only <code>ca-certificates</code> (for HTTPS clones). No shell, no package manager, no <code>git</code> on the PATH —
+a minimal attack surface.</p>
+</blockquote>
+<h2 id="build">Build</h2>
+<pre><code class="language-bash"># from the repository root
+docker build -f deploy/Dockerfile -t ghcr.io/dr0nj/regente-server:latest .
+docker push ghcr.io/dr0nj/regente-server:latest
+</code></pre>
+<h2 id="run-knative--any-k8s">Run (Knative / any k8s)</h2>
+<pre><code class="language-bash">kubectl create secret generic regente-secrets \
+  --from-literal=REGENTE_DB='postgres://user:pw@host:5432/regente' \
+  --from-literal=REGENTE_TOKEN='&lt;a-strong-token&gt;'
+
+kubectl apply -f deploy/knative-service.yaml
+kubectl apply -f deploy/cronjob.yaml
+</code></pre>
+<h2 id="lock-in-free-equivalents">Lock-in-free equivalents</h2>
+<table>
+<thead>
+<tr>
+<th>Piece</th>
+<th>Open / portable</th>
+<th>Managed (only the manifest changes)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Runtime</td>
+<td>Knative (CNCF)</td>
+<td>Cloud Run · App Runner · Container Apps · Fly</td>
+</tr>
+<tr>
+<td>State</td>
+<td>Postgres (wire protocol)</td>
+<td>Neon · Supabase · Cloud SQL · RDS</td>
+</tr>
+<tr>
+<td>Trigger</td>
+<td>k8s CronJob</td>
+<td>Cloud Scheduler · EventBridge · GitHub Actions cron</td>
+</tr>
+<tr>
+<td>Agent bus</td>
+<td>NATS (CNCF) / SSE</td>
+<td>managed NATS</td>
+</tr>
+<tr>
+<td>Logs/artifacts</td>
+<td>S3-compatible API</td>
+<td>R2 · MinIO · S3 · GCS</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>The classic mode is still available: without <code>-scheduler=external</code> the server runs its internal
+ticker (the usual daemon). Both modes share the same binary.</p>
+</blockquote>
+<h2 id="local-container-validation-2026-06-18">Local container validation (2026-06-18)</h2>
+<p>The serverless path was exercised end to end with Docker (the image from this folder plus
+Postgres 16 in a container, on the same network):</p>
+<pre><code class="language-bash">docker network create regente-net
+docker run -d --name regente-pg --network regente-net \
+  -e POSTGRES_USER=regente -e POSTGRES_PASSWORD=regente -e POSTGRES_DB=regente_test \
+  postgres:16-alpine
+docker build -f deploy/Dockerfile -t regente-server:local .
+docker run -d --name regente-app --network regente-net -p 8090:8080 regente-server:local \
+  -db-driver postgres -db 'postgres://regente:regente@regente-pg:5432/regente_test?sslmode=disable' \
+  -addr :8080 -scheduler=external
+</code></pre>
+<p>Result: clean boot (it cloned the workspace <strong>inside the container</strong>), <code>/health</code>→200, leader
+election through the advisory lock, and <code>POST /api/scheduler/tick</code> (the external trigger)
+materialized the daily — <code>5 instances created</code>, persisted in Postgres — <strong>idempotently</strong> (repeated
+ticks do not duplicate).</p>
+<p><strong>Re-validated on the distroless image (2026-06-18):</strong> after migrating storage to go-git, the same
+sequence runs on <code>gcr.io/distroless/static-debian12:nonroot</code> (<strong>with no <code>git</code> on the PATH</strong>, no
+shell). Boot cloned the workspace through go-git (<code>main@923f091</code>), <code>/health</code>→200, and the tick ran
+fetch+reset before the daily (<code>synced workspace to 923f091</code> → <code>5 instances created</code>),
+idempotently. A <strong>non-root</strong> image, ~33 MB (down from ~55 MB with Alpine+git).</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

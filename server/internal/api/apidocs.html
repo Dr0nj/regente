@@ -83,6 +83,12 @@
   .try .out{margin-top:10px;display:none}
   .try .status{font:700 12px var(--mono);margin-bottom:6px}
   footer{color:var(--muted);font-size:12px;text-align:center;padding:30px 0}
+  /* Modo estático (docsite): não há server atrás da página — o campo de token
+     não serve pra nada e o aviso explica onde o Try-it existe. */
+  .staticnote{display:none;color:var(--muted);font-size:12px}
+  .staticnote code{font:11.5px var(--mono);color:var(--text)}
+  body.static #tok{display:none}
+  body.static .staticnote{display:block}
   @media (max-width:900px){.layout{grid-template-columns:1fr}nav{position:static;max-height:none;display:none}}
 </style>
 </head>
@@ -91,6 +97,7 @@
   <div class="brand">REGENTE<small>integration API</small></div>
   <div class="links"><a href="openapi.yaml">openapi.yaml</a> · <a href="openapi.json">openapi.json</a></div>
   <input id="tok" type="password" placeholder="Bearer token (only for Try it; kept in localStorage)" autocomplete="off">
+  <div class="staticnote">Static reference. To send real requests, open <code>/api-docs</code> on a running Regente server.</div>
 </header>
 <div class="layout">
   <nav id="nav"></nav>
@@ -106,8 +113,25 @@ const tokEl = document.getElementById("tok");
 tokEl.value = localStorage.getItem(TOK_KEY) || "";
 tokEl.addEventListener("input", () => localStorage.setItem(TOK_KEY, tokEl.value));
 
-fetch("openapi.json").then(r => r.json()).then(s => { spec = s; render(); })
-  .catch(e => { document.getElementById("main").innerHTML = "<p>Falha ao carregar openapi.json: " + esc(e) + "</p>"; });
+// A spec chega de dois jeitos. Servido pelo server: fetch do /api-docs/openapi.json.
+// Gerado pelo docsite (site estático): o docsite INJETA a spec neste <script> — o
+// fetch é bloqueado em file:// (CORS), e sem server não há Try-it pra chamar. A
+// presença do node é o sinal de modo estático.
+const inlineSpec = document.getElementById("openapi-inline");
+const STATIC = !!inlineSpec;
+if (STATIC) {
+  document.body.classList.add("static");
+  // queueMicrotask de propósito: render() usa bindings `let` declarados MAIS
+  // ABAIXO neste script (opSeq etc.). Chamar aqui, síncrono, cai na temporal
+  // dead zone — o caminho do fetch nunca viu isso por ser assíncrono.
+  queueMicrotask(() => {
+    try { spec = JSON.parse(inlineSpec.textContent); render(); }
+    catch (e) { document.getElementById("main").innerHTML = "<p>Malformed embedded spec: " + esc(e) + "</p>"; }
+  });
+} else {
+  fetch("openapi.json").then(r => r.json()).then(s => { spec = s; render(); })
+    .catch(e => { document.getElementById("main").innerHTML = "<p>Failed to load openapi.json: " + esc(e) + "</p>"; });
+}
 
 function refName(ref){ return ref.split("/").pop(); }
 function deref(node){
@@ -245,15 +269,18 @@ function opCard(path, method, op){
 
   h += "<h4>curl</h4><pre>" + esc(curl(method, path, op)) + "</pre>";
 
-  // Try-it — single-origin: o fetch bate direto na API desta porta.
-  h += '<div class="try"><b style="font-size:13px">Try it</b>';
-  for (const p of params)
-    h += '<label>' + esc(p.name) + " (" + esc(p.in) + ')</label><input data-pname="' + esc(p.name) + '" data-pin="' + esc(p.in) + '">';
-  if (rb) h += "<label>JSON body</label><textarea data-body>" +
-    esc(rb.example !== undefined ? JSON.stringify(rb.example, null, 2) : "{}") + "</textarea>";
-  h += '<button data-method="' + method + '" data-path="' + esc(path) + '" data-public="' +
-    (Array.isArray(op.security) && op.security.length === 0 ? "1" : "") + '">Send</button>' +
-    '<div class="out"><div class="status"></div><pre></pre></div></div>';
+  // Try-it — single-origin: o fetch bate direto na API desta porta. No site
+  // estático não há API atrás da página, então o painel nem é montado.
+  if (!STATIC) {
+    h += '<div class="try"><b style="font-size:13px">Try it</b>';
+    for (const p of params)
+      h += '<label>' + esc(p.name) + " (" + esc(p.in) + ')</label><input data-pname="' + esc(p.name) + '" data-pin="' + esc(p.in) + '">';
+    if (rb) h += "<label>JSON body</label><textarea data-body>" +
+      esc(rb.example !== undefined ? JSON.stringify(rb.example, null, 2) : "{}") + "</textarea>";
+    h += '<button data-method="' + method + '" data-path="' + esc(path) + '" data-public="' +
+      (Array.isArray(op.security) && op.security.length === 0 ? "1" : "") + '">Send</button>' +
+      '<div class="out"><div class="status"></div><pre></pre></div></div>';
+  }
 
   h += "</div></details>";
   return h;

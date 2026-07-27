@@ -1,0 +1,50 @@
+# Publica docs/site/ no GitHub Pages — a documentação e a referência de API viram
+# um LINK, sem ninguém precisar clonar o repo nem subir server.
+#
+# COMO LIGAR (uma vez, é ação sua no GitHub):
+#   1. o repositório precisa ser PÚBLICO (Pages em repo privado exige plano pago);
+#   2. Settings → Pages → Build and deployment → Source = "GitHub Actions";
+#   3. rode este workflow (aba Actions → Publish docs → Run workflow).
+#
+# A URL fica https://dr0nj.github.io/regente/ — atualize o link no README.
+#
+# Depois de validar, descomente o gatilho `push` abaixo para publicar a cada
+# merge na main; até lá ele roda só sob demanda (não avermelha o CI).
+name: Publish docs
+
+on:
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+  #   paths: ["docs/site/**", "README.md", "*/README.md", "docs/**.md"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      # Regenera em vez de confiar no commitado — o site publicado sempre reflete
+      # o markdown deste commit.
+      - name: Generate site
+        run: cd server && go run ./cmd/docsite -repo .. -out ../docs/site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/site
+      - id: deploy
+        uses: actions/deploy-pages@v4

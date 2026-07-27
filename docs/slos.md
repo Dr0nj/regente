@@ -1,39 +1,42 @@
-# 🎯 SLOs do control plane — regente-server
+# 🎯 Control plane SLOs — regente-server
 
-> Objetivos de nível de serviço do "cérebro" do Regente, cada um amarrado a uma **métrica**
-> (`/metrics`), a um **probe** (`/livez` · `/readyz`) e a um **alerta automático** (R7,
-> `-selfmon`). É assim que o orquestrador vigia a si mesmo — ver [`roadmap.md`](roadmap.md)
-> (trilha Resiliência R1–R7) e a validação de chaos/HA já feita.
+> Service-level objectives for Regente's "brain", each tied to a **metric** (`/metrics`), a
+> **probe** (`/livez` · `/readyz`) and an **automatic alert** (R7, `-selfmon`). This is how the
+> orchestrator watches itself.
 
-| # | SLO | Alvo | Sinal (métrica/probe) | Alerta (R7) |
-|---|-----|------|------------------------|-------------|
-| 1 | **Disponibilidade da API** | ≥ 99.9% de `GET /readyz` = 200 | `/readyz` (gate = DB alcançável) | `db-unreachable` |
-| 2 | **Tempo de failover** (líder cai → novo líder) | ≤ 10 s | `regente_is_leader` (changes) | `leader-flapping` (se trocar demais) |
-| 3 | **Frescor do scheduling** (loop vivo) | tick < 90 s | `regente_scheduler_last_tick_age_seconds` | `tick-stalled` |
-| 4 | **Capacidade de execução** (frota de agentes) | sem quedas não-planejadas | `regente_agents_online` | `agents-drop` |
-| 5 | **Liveness do processo** | reinício automático se travar | `/livez` + `livenessProbe` | (supervisor R1) |
-| 6 | **RPO/RTO (DR)** | RPO ≤ intervalo de backup · RTO ≤ minutos | backup R6 (`-backup`/`pg_dump`) | runbook [`dr-backup.md`](dr-backup.md) |
+| # | SLO | Target | Signal (metric/probe) | Alert (R7) |
+|---|-----|--------|-----------------------|------------|
+| 1 | **API availability** | ≥ 99.9% of `GET /readyz` = 200 | `/readyz` (gate = DB reachable) | `db-unreachable` |
+| 2 | **Failover time** (leader dies → new leader) | ≤ 10 s | `regente_is_leader` (changes) | `leader-flapping` (if it changes too often) |
+| 3 | **Scheduling freshness** (loop alive) | tick < 90 s | `regente_scheduler_last_tick_age_seconds` | `tick-stalled` |
+| 4 | **Execution capacity** (agent fleet) | no unplanned drops | `regente_agents_online` | `agents-drop` |
+| 5 | **Process liveness** | automatic restart if it hangs | `/livez` + `livenessProbe` | (R1 supervisor) |
+| 6 | **RPO/RTO (DR)** | RPO ≤ backup interval · RTO ≤ minutes | R6 backup (`-backup`/`pg_dump`) | runbook [`dr-backup.md`](dr-backup.md) |
 
-## Como cada SLO é observado e defendido
+## How each SLO is observed and defended
 
-- **1. Disponibilidade** — `/readyz` só responde 200 se o DB está alcançável (gate duro). O
-  `readinessProbe` do k8s tira o pod de rotação quando viola; o R7 alerta `db-unreachable`.
-- **2. Failover** — só o líder roda daily/dispatch; ao morrer, o advisory lock é liberado e
-  outro nó assume. **Medido ~4 s** na validação 2-nós real. `regente_is_leader` permite
-  alertar `changes()` no Prometheus (flapping) além do alerta nativo do R7.
-- **3. Frescor** — todo nó marca `lastTick` a cada ciclo; idade exposta no gauge e no
-  `/readyz`. Acima de 90 s o R7 dispara `tick-stalled` (jobs podem não estar promovendo).
-- **4. Capacidade** — queda de `regente_agents_online` versus o baseline gera `agents-drop`.
-- **5. Liveness** — `/livez` responde enquanto o processo serve; o supervisor (systemd
-  `Restart=always` / Windows Service / `livenessProbe`) reinicia um processo travado.
-- **6. DR** — backup online (`-backup` = VACUUM INTO no SQLite; `pg_dump`/PITR no Postgres);
-  restore validado pelo drill do runbook (`/readyz` 200 + `/api/env` pós-restore).
+- **1. Availability** — `/readyz` only answers 200 when the DB is reachable (hard gate). The
+  k8s `readinessProbe` takes the pod out of rotation on a violation; R7 raises
+  `db-unreachable`.
+- **2. Failover** — only the leader runs the daily and the dispatch; when it dies the advisory
+  lock is released and another node takes over. **Measured at ~4 s** in the real two-node
+  validation. `regente_is_leader` lets you alert on `changes()` in Prometheus (flapping) on top
+  of R7's native alert.
+- **3. Freshness** — every node stamps `lastTick` each cycle; the age is exposed both in the
+  gauge and in `/readyz`. Past 90 s, R7 raises `tick-stalled` (jobs may not be getting
+  promoted).
+- **4. Capacity** — a drop in `regente_agents_online` against the baseline raises `agents-drop`.
+- **5. Liveness** — `/livez` answers for as long as the process serves; the supervisor (systemd
+  `Restart=always` / Windows Service / `livenessProbe`) restarts a hung process.
+- **6. DR** — online backup (`-backup` = `VACUUM INTO` on SQLite; `pg_dump`/PITR on Postgres);
+  restore validated by the runbook drill (`/readyz` 200 + `/api/env` after the restore).
 
-## Verificação contínua
+## Continuous verification
 
-- **Unit/integração** — `go test ./...` (inclui `/readyz`, mTLS handshake, RBAC, selfmon eval,
-  backup round-trip, **E2E HTTP** e **smoke de carga** ~7.5k req/s local).
-- **Chaos/HA** — `server/deploy/chaos-ha.sh` automatiza: 2 nós no mesmo Postgres → 1 líder →
-  mata o líder → confere failover. (resultado já registrado no roadmap, 2026-06-23.)
-- **Carga real** — para volume de produção (10k+ jobs/dia, p99), rodar `hey`/`k6` contra um
-  deploy real fica como item de Qualidade aberto no roadmap.
+- **Unit/integration** — `go test ./...` (covers `/readyz`, the mTLS handshake, RBAC, selfmon
+  evaluation, a backup round-trip, **HTTP E2E** and a **load smoke test** at ~7.5k req/s
+  locally).
+- **Chaos/HA** — `server/deploy/chaos-ha.sh` automates it: two nodes on the same Postgres →
+  exactly one leader → kill the leader → check the failover.
+- **Real load** — for production volume (10k+ jobs/day, p99), running `hey`/`k6` against a real
+  deployment is still an open quality item.

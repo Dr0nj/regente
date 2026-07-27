@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🤖 Regente MCP — the agent-native layer · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</a>
+<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="mcp.html" class="active">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch</a>
+</nav>
+<main>
+<article>
+<h1 id="-regente-mcp--the-agent-native-layer">🤖 Regente MCP — the agent-native layer</h1>
+<p><code>regente-mcp</code> is an <a href="https://modelcontextprotocol.io">MCP (Model Context Protocol)</a> server that
+exposes Regente's <strong>deterministic differentiators</strong> as <em>tools</em> for an agent (Claude Desktop and
+friends). The idea: you <strong>operate Regente by talking to it</strong> — <em>&quot;what failed in payments today,
+and why?&quot;</em> — and the agent calls the tools, which return the truth the engine already computed
+(the LLM <strong>narrates</strong>; it does not invent).</p>
+<blockquote>
+<p>Architecture: it is a <strong>facade</strong> over the REST API — it never touches the server core.
+Pure-Go stdlib, JSON-RPC 2.0 over stdio (the transport Claude Desktop uses).</p>
+</blockquote>
+<h2 id="tools">Tools</h2>
+<p>Read-only (always available) — <strong>11</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it does</th>
+<th>Endpoint</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>daily_summary</code></td>
+<td>overview of the day (total · by status · by folder)</td>
+<td><code>/api/instances/summary</code></td>
+</tr>
+<tr>
+<td><code>forecast</code></td>
+<td>schedule forecast (dry run); <code>days&gt;1</code> forecasts a window of a week or more</td>
+<td><code>/api/forecast</code> · <code>/api/forecast/range</code></td>
+</tr>
+<tr>
+<td><code>list_instances</code></td>
+<td>finds instances by folder/status/search (to get the <code>instanceId</code>)</td>
+<td><code>/api/instances</code></td>
+</tr>
+<tr>
+<td><code>explain_job</code></td>
+<td>why a job did (or did not) run — structured gating</td>
+<td><code>/api/instances/{id}/explain</code></td>
+</tr>
+<tr>
+<td><code>blast_radius</code></td>
+<td>impact of cancelling/holding a job (downstream · SLA)</td>
+<td><code>/api/instances/{id}/blast-radius</code></td>
+</tr>
+<tr>
+<td><code>job_neighborhood</code></td>
+<td>local graph (ancestors/descendants up to <code>radius</code> hops)</td>
+<td><code>/api/instances/{id}/neighborhood</code></td>
+</tr>
+<tr>
+<td><code>root_cause</code></td>
+<td>root cause of a failure or block (walks up the chain of failed upstreams)</td>
+<td><code>/api/instances/{id}/rca</code></td>
+</tr>
+<tr>
+<td><code>diff_daily</code></td>
+<td>what changed between two dailies</td>
+<td><code>/api/daily/diff</code></td>
+</tr>
+<tr>
+<td><code>dry_run</code></td>
+<td>simulates a future daily (runs/waits/never)</td>
+<td><code>/api/daily/dryrun</code></td>
+</tr>
+<tr>
+<td><code>event_log</code></td>
+<td>the day's event feed (cross-instance), filterable</td>
+<td><code>/api/events</code></td>
+</tr>
+<tr>
+<td><code>query</code></td>
+<td>a natural-language question (EN/PT) → a deterministic answer</td>
+<td><code>/api/query</code></td>
+</tr>
+</tbody>
+</table>
+<p>Write (only with <code>-allow-writes</code>; the MCP client still asks for approval per call) — <strong>11</strong>, all
+marked <strong>destructiveHint</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it does</th>
+<th>Endpoint</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hold_job</code></td>
+<td>holds a WAITING job → HELD (Control-M Hold)</td>
+<td><code>POST /api/instances/{id}/hold</code></td>
+</tr>
+<tr>
+<td><code>release_job</code></td>
+<td>releases a HELD job → WAITING (Release)</td>
+<td><code>POST /api/instances/{id}/release</code></td>
+</tr>
+<tr>
+<td><code>cancel_job</code></td>
+<td>cancels a job for the day (→ CANCELLED)</td>
+<td><code>POST /api/instances/{id}/cancel</code></td>
+</tr>
+<tr>
+<td><code>confirm_job</code></td>
+<td>confirms a job sitting at the WAIT_CONFIRM gate (Control-M Confirm)</td>
+<td><code>POST /api/instances/{id}/confirm</code></td>
+</tr>
+<tr>
+<td><code>rerun_job</code></td>
+<td>re-runs a job (→ WAITING)</td>
+<td><code>POST /api/instances/{id}/rerun</code></td>
+</tr>
+<tr>
+<td><code>set_ok</code></td>
+<td>marks NOTOK/CANCELLED as OK and unblocks the successors</td>
+<td><code>POST /api/instances/{id}/set-ok</code></td>
+</tr>
+<tr>
+<td><code>force_order</code></td>
+<td>orders and runs a <strong>definition</strong> right now, outside the schedule</td>
+<td><code>POST /api/definitions/{id}/force</code></td>
+</tr>
+<tr>
+<td><code>pause_folder</code></td>
+<td>pauses a whole workflow (WAITING→HELD in bulk, state preserved)</td>
+<td><code>POST /api/folders/{name}/pause</code></td>
+</tr>
+<tr>
+<td><code>resume_folder</code></td>
+<td>resumes the workflow (HELD→WAITING in bulk)</td>
+<td><code>POST /api/folders/{name}/resume</code></td>
+</tr>
+<tr>
+<td><code>bulk_action</code></td>
+<td>one action across N instances (transactional per item, max 500)</td>
+<td><code>POST /api/bulk/instances</code></td>
+</tr>
+<tr>
+<td><code>ingest_event</code></td>
+<td>sets conditions and/or forces a job through an external event (idempotent)</td>
+<td><code>POST /api/events/ingest</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="build--run">Build &amp; run</h2>
+<pre><code class="language-bash">cd server &amp;&amp; go build -o regente-mcp ./cmd/mcp
+REGENTE_URL=http://localhost:8080 REGENTE_TOKEN=&lt;token&gt; ./regente-mcp
+# writes (hold/release/cancel/confirm/rerun/set-ok · force_order ·
+# pause/resume_folder · bulk_action · ingest_event), optional:
+./regente-mcp -allow-writes
+</code></pre>
+<h2 id="claude-desktop">Claude Desktop</h2>
+<p>In <code>claude_desktop_config.json</code> (Settings → Developer → Edit Config):</p>
+<pre><code class="language-json">{
+  &quot;mcpServers&quot;: {
+    &quot;regente&quot;: {
+      &quot;command&quot;: &quot;/path/to/regente-mcp&quot;,
+      &quot;env&quot;: {
+        &quot;REGENTE_URL&quot;: &quot;http://localhost:8080&quot;,
+        &quot;REGENTE_TOKEN&quot;: &quot;your-token&quot;
+      }
+    }
+  }
+}
+</code></pre>
+<p>Restart Claude Desktop. Then just ask: <em>&quot;using regente, give me today's daily summary&quot;</em>, <em>&quot;why
+didn't the job closing-2026-06-24 run?&quot;</em>, <em>&quot;if I cancel PIX_SEND right now, what's the impact?&quot;</em>,
+<em>&quot;what changed in today's daily versus yesterday's?&quot;</em>, <em>&quot;forecast next week&quot;</em>. With
+<code>-allow-writes</code> the agent can also <strong>act</strong> (always with approval): <em>&quot;hold the PIX folder until I
+release it&quot;</em>, <em>&quot;mark the closing job as OK and unblock the successors&quot;</em>, <em>&quot;force etl-sales now&quot;</em>,
+<em>&quot;the file arrived: set the condition SALES_FILE_OK&quot;</em>.</p>
+<h2 id="security-posture">Security posture</h2>
+<ul>
+<li><strong>Read-only by default.</strong> Writes require <code>-allow-writes</code> on the server <strong>and</strong> human approval
+in the MCP client on every call (two locks).</li>
+<li><strong>Deterministic.</strong> The tools return what the scheduler already computed (gating, the
+dependency graph, frozen snapshots). The LLM narrates — it never decides scheduling.</li>
+<li>The token is the same API Bearer token; give it only the role (RBAC) the use case needs.</li>
+</ul>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

@@ -1,7 +1,7 @@
 # Knative Service — "serverless portátil" sem lock-in de fornecedor.
 # Knative é CNCF e roda em qualquer Kubernetes (GKE, EKS, AKS, on-prem, kind).
 # A MESMA imagem roda em Cloud Run / Fly / App Runner / Container Apps trocando
-# só este manifesto. Ver docs/arquitetura-futuro.md (Fase 1).
+# só este manifesto. Ver docs/architecture-future.md (Fase 1).
 #
 # Pré-requisitos:
 #   - Postgres acessível (use serverless compatível com o protocolo: Neon,

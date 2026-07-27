@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</a>
+<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html" class="active">Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch</a>
+</nav>
+<main>
+<article>
+<h1 id="case-study--regente-a-control-m-class-git-native-job-orchestrator-from-scratch">Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch</h1>
+<blockquote>
+<p><strong>TL;DR.</strong> Regente is a batch workload orchestrator in the spirit of BMC Control-M —
+immutable daily, condition-based dependencies, calendars, resources, Confirm,
+forecast — built from scratch as a Go + React monorepo, with <strong>Git as the source of
+truth</strong> for definitions. Validated live with <strong>1,000,000 jobs/day</strong> (materialization
+in 17s, summary in 51ms), it runs from a single binary on a $5 VPS up to multi-node
+HA with Postgres, and exposes the control plane to AI agents via <strong>MCP (22 tools)</strong>.
+~44k lines of Go, ~24k of TypeScript, 427 tests.</p>
+</blockquote>
+<hr>
+<h2 id="1-the-problem">1. The problem</h2>
+<p>Enterprise orchestrators (Control-M, Autosys, Tivoli) solve a real problem — the batch
+operations day: &quot;materialize today's jobs, honor dependencies/calendars/windows, give
+me hold/release/rerun/force and an audit trail&quot;. But they charge dearly for it, in
+three currencies:</p>
+<ul>
+<li><strong>License and lock-in</strong> — the company's runbook lives inside a proprietary console.</li>
+<li><strong>Jobs outside version control</strong> — the definition lives in the tool's database;
+diff, review and rollback become manual processes.</li>
+<li><strong>DevEx friction</strong> — testing a new job requires a shared environment; &quot;promoting
+from dev to prod&quot; is a ritual.</li>
+</ul>
+<p>The project's question: <em>how much of this category can be rebuilt with modern
+engineering — Git, single binary, open API — without losing the operational semantics
+that make Control-M good?</em></p>
+<h2 id="2-the-architecture-bets">2. The architecture bets</h2>
+<p><strong>Actually Git-native.</strong> Job definitions are YAML in a separate GitHub repository
+(<code>regente-workspace</code>). The daily syncs <code>origin/main</code> <strong>before</strong> materializing; every
+order records the SHA of the commit it came from. Editing in the UI's Design opens a
+<em>design session</em> (ephemeral server-side clone) and <strong>nothing runs without a publish</strong> —
+publish = commit+push (or PR, if policy requires). Drift between runtime and Git is
+detected and alerted.</p>
+<p><strong>Immutability as a product rule.</strong> When ordered, the definition is <strong>frozen</strong> into the
+instance (JSON snapshot + denormalized columns). Publishing a change in Design never
+rewrites the current day — Monitoring is the photograph of what was scheduled, as in
+Control-M. This rule became the deciding test for several bugs (&quot;the badge changed by
+itself&quot; = something read the live definition).</p>
+<p><strong>Operable monolith, serverless optional.</strong> One Go binary serves API + WebSocket + UI
+(single-origin) over SQLite — a one-box deploy. The same flags become a &quot;portable
+serverless&quot; deploy: scheduler driven by an external cron (<code>POST /scheduler/tick</code>,
+idempotent, advisory-lock per tick), pluggable agent transport (WS, long-poll, SSE,
+NATS), WASM executor. Postgres + leader election (advisory lock) give multi-node HA
+without changing the scheduling code — only the leader materializes and dispatches.</p>
+<p><strong>A single source of decision.</strong> Every execution gate (window, dependency, condition,
+agent, resource, Confirm) goes through <strong>one</strong> evaluator (<code>gateInstance</code>). The tick
+uses it to decide; the UI's &quot;Why not?&quot; uses it to explain. No blocker can exist without
+showing up in Explain — by construction, not by discipline.</p>
+<h2 id="3-control-m-semantics-the-hard-part">3. Control-M semantics (the hard part)</h2>
+<p>Parity isn't the feature list — it's the behavior at the edges:</p>
+<ul>
+<li><strong>Daily / New Day</strong> — set-based batch materialization (1 commit per 5k chunk),
+honest carry-over: an order crossing the rollover <strong>moves forward while keeping its
+original date</strong> — everything scoped by date (conditions <code>@odat</code>, variables, windows)
+keeps using the date the order was born on. RUNNING/HELD always cross; unhandled
+NOTOK survives the configured number of days since the failure; WAITING only with
+explicit retention.</li>
+<li><strong>Dependencies as explicit CONDITIONS in a single pool</strong> — the A→B arrow on the
+canvas is sugar for a named condition (<code>A-TO-B</code>): the parent's OK <strong>creates</strong> the
+condition, the successor's input <strong>waits</strong> for it, and a negative output <strong>consumes</strong>
+(deletes) it — which models fan-in with consumption, as in Control-M. The input
+accepts <strong>real AND/OR logic</strong> (groups with a top-level operator) and the <code>$TIME</code>
+token (&quot;condition OR time&quot;); rerunning the parent undoes the OK and dependents
+<strong>go back to waiting</strong> for a fresh completion.</li>
+<li><strong>Force with two gestures</strong> — &quot;Run Now&quot; unblocks the existing instance (bypasses
+window/deps/resources; Confirm and agent are never bypassed); &quot;Order Force&quot; creates
+a new order outside the schedule that <strong>respects</strong> the runtime gates.</li>
+<li><strong>Conditions IN/OUT, quantitative resources, calendars</strong> (Nth business day, shift to
+next/previous business day, include/exclude, holidays), <strong>cyclic</strong> jobs with window
+and cap, <strong>Confirm</strong> (a runtime wait, not a schedule one), <strong>durable scheduled
+retry</strong> (survives restarts and the day rollover — a goroutine sleeping for 3 days
+would die on the first deploy), <strong>%%variables</strong> with global/local scope and
+business-day offsets (<code>%%ODATE+3B</code>).</li>
+<li><strong>Strictly pinned agents</strong> — a job created on an agent stays <strong>on that</strong> agent; if
+it goes down, the job waits in WAIT AGENT. It never migrates on its own. Every
+server ships with an embedded <strong>SERVER-AGENT</strong> (HTTP/REST) — API calls run without
+installing an external agent.</li>
+</ul>
+<h2 id="4-beyond-control-m">4. Beyond Control-M</h2>
+<p>Where it can beat the original without inventing gimmicks:</p>
+<ul>
+<li><strong>Explain (&quot;why didn't it run?&quot;)</strong> — a structured, per-instance answer, from the
+same source that decides the dispatch.</li>
+<li><strong>Blast radius / What-If / Dry-run / Daily diff</strong> — simulations of the day without
+materializing anything.</li>
+<li><strong>Agent-native (MCP)</strong> — 22 tools (11 read + 11 gated write) expose the control
+plane to AI agents: an LLM can diagnose a stuck job and (with permission) rerun it.</li>
+<li><strong>Command-line DevEx</strong> — <code>regente test</code> (validates+simulates a workspace,
+CI-friendly), <code>regente dev</code> (disposable local environment), <code>regente promote</code>
+(promotion between branches), a Go DSL that generates YAML, curated OpenAPI served
+by the binary itself.</li>
+<li><strong>Signed quick actions</strong> in alerts (Slack/e-mail/PagerDuty) — one-click
+rerun/confirm with an expiring token.</li>
+</ul>
+<h2 id="5-scale-validated-not-estimated">5. Scale validated (not estimated)</h2>
+<p>A 1M jobs/day scenario, seeded and operated live:</p>
+<ul>
+<li><strong>Daily materialization (write-path):</strong> 1,000,000 instances in <strong>~17s</strong>.</li>
+<li><strong>Day summary (read-path):</strong> <strong>51ms @100k</strong>, keyset+offset pagination.</li>
+<li><strong>UI with 1M jobs:</strong> instant dashboard; a folder opens in ~39ms; <strong>37 rows in the
+DOM</strong> for the entire day (virtualization).</li>
+<li><strong>Canvas board:</strong> configurable cap (500–5000) + server-driven ViewPoint.</li>
+</ul>
+<p>The decisions that paid the bill: set-based existence checks (1 query, not 1 per
+definition), batched inserts with prepared statements, atomic dispatch claim
+(<code>UPDATE … WHERE status=WAITING</code>), keyset pagination on the read-path, and a
+virtualized sidebar with compressed height (the browser overflows float32 above
+~16.7M px — a detail that only shows up with 1M rows).</p>
+<h2 id="6-reliability">6. Reliability</h2>
+<ul>
+<li><strong>Atomic claim</strong> per instance guarantees ≤1 execution even with multiple dispatch
+paths (tick, force, retry) or multiple nodes.</li>
+<li><strong>Panic-recovery</strong> at every scheduler entry point; a watchdog for stuck RUNNING;
+self-monitoring that alerts through the product's own channels.</li>
+<li><strong>Online backup</strong> (<code>-backup</code> = VACUUM INTO), documented DR, retention/archives
+with GC.</li>
+<li><strong>427 Go tests</strong> — including exhaustive calendar suites (two independent
+&quot;special business day&quot; code paths must agree day by day for a whole month) and a
+hand-written forecast oracle, independent of the code it validates.</li>
+</ul>
+<h2 id="7-security-and-enterprise">7. Security and enterprise</h2>
+<p>Per-folder RBAC (ACLs), optional OIDC/SSO, mTLS between server and agents, an audit
+trail with SIEM export, per-agent tokens, secrets via provider (env/file — the GitHub
+PAT never needs to persist in cleartext in the state store), an execution sandbox for
+multi-tenant agents (container with no capabilities, no mounts, dedicated uid).</p>
+<h2 id="8-the-one-box-deploy-the-acid-test">8. The one-box deploy (the acid test)</h2>
+<p><code>curl … | sudo bash</code> on a Linux VPS: downloads the release bundle (binary + SPA +
+deploy files), registers systemd, serves UI+API+WS on a single origin,
+<code>regente-configure</code> walks through a strong token + PAT via the secrets provider,
+nginx+certbot provide TLS with renewal. The same product that does HA with Postgres
+runs entirely on a $5 machine — that range was a goal, not an accident.</p>
+<h2 id="9-next-up-ai-that-stays-inside-the-perimeter-roadmap-spec-ready">9. Next up: AI that stays inside the perimeter <em>(roadmap, spec ready)</em></h2>
+<p>The Control-M audience lives in regulated environments — banks, insurers, utilities —
+where sysout, logs and host data <strong>cannot leave the perimeter</strong>. Every &quot;AI-powered&quot;
+scheduler on the market ships that data to a cloud API; Regente's next job type,
+<code>AI_AGENT</code>, does the opposite: the LLM runs <strong>on the same host as the agent</strong>
+(Ollama/llama.cpp/vLLM), analyzes sysout and logs right there, and the server only
+receives the verdict — no data travels. The prompt is part of the definition, so it
+<strong>freezes into the order's immutable snapshot</strong>: the exact prompt that ran stays
+auditable forever, and Confirm, conditions, SLA, RBAC and the audit trail all work
+without a single new line, because <code>AI_AGENT</code> is a job type like any other. Phase one
+is analysis-only, <strong>no tools</strong> — a prompt injection can at worst produce a wrong
+report, never an executed command. Built-in use case: automatic RCA when a job fails,
+with JSON-Schema-validated output becoming variables for the successors.</p>
+<h2 id="10-lessons-that-apply-to-any-system">10. Lessons that apply to any system</h2>
+<ol>
+<li><strong>Immutability is a product feature, not a storage detail.</strong> Freezing the
+definition into the order eliminated an entire class of &quot;it changed by itself&quot; bugs.</li>
+<li><strong>A single source of decision buys explainability for free.</strong> Explain never
+diverges from dispatch because it IS dispatch.</li>
+<li><strong>Durable state &gt; patient goroutines.</strong> A 3-day retry lives in the database, not
+in a sleep.</li>
+<li><strong>Dependency satisfaction is explicit state, not a lookup.</strong> Deriving the edge
+from the parent's live status breaks at the first human operation (rerun/cancel);
+named conditions created and consumed in a pool — and frozen into the order —
+model what the operator expects.</li>
+<li><strong>Scale is additive if the hot path is set-based from the start.</strong> The same code
+that serves 10 jobs serves 1M — the optimizations were about access patterns, not
+architecture.</li>
+<li><strong>Test against an oracle, not against your own function.</strong> The calendar suites
+caught real divergences that mirror tests would never see.</li>
+</ol>
+<h2 id="11-project-numbers">11. Project numbers</h2>
+<ul>
+<li><strong>Code:</strong> ~44k lines of Go (server+agent) · ~24k lines of TS/TSX (UI).</li>
+<li><strong>Tests:</strong> 427 Go test functions across 97 files + live E2E validations.</li>
+<li><strong>Executors:</strong> COMMAND · SCRIPT · HTTP/REST · agentless SSH · DATABASE · FILE_WATCH
+· MFT · WASM · K8s · Lambda · Batch · Glue · Step Functions · Cloud Run.</li>
+<li><strong>Scale:</strong> 1M jobs/day validated live (write 17s · summary 51ms · virtualized UI).</li>
+<li><strong>Deploy:</strong> single binary (SQLite) → multi-node HA (Postgres + leader election) →
+portable serverless (external tick).</li>
+<li><strong>Interface:</strong> React UI (Design/Monitoring), 17 themes, CLI, OpenAPI, MCP (22 tools).</li>
+</ul>
+<hr>
+<p><em>Written 2026-07-13 at the close of the roadmap's Phase Z; revised 2026-07-21 (AND/OR
+conditions and origin-date carry-over replacing retired models · updated numbers ·
+AI_AGENT section · article-ready format, no tables). Per-delivery details, with dates
+and commits, in <a href="roadmap.md"><code>docs/roadmap.md</code></a>. English version of
+<a href="case-study.md"><code>docs/case-study.md</code></a>.</em></p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

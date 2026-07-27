@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conditions — behaviour specification (SINGLE SOURCE OF TRUTH) · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html" class="active">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</a>
+<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch</a>
+</nav>
+<main>
+<article>
+<h1 id="conditions--behaviour-specification-single-source-of-truth">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</h1>
+<blockquote>
+<p><strong>READ THIS WHOLE FILE before touching any code that deals with dependencies,
+conditions, rerun, Set OK or Force.</strong> It is the single source of truth for the
+semantics; the roadmap records <em>when</em> each rule landed, but the canonical
+behaviour is defined here. If a patch contradicts this document, either the
+patch is wrong or this document has to change WITH it (same commit, with the
+reasoning).</p>
+</blockquote>
+<h2 id="the-single-model-2026-07-17">The single model (2026-07-17)</h2>
+<p><strong>Every dependency is a named CONDITION in a global POOL</strong> (Control-M global
+conditions). There are no longer two systems (&quot;graph arrows&quot; versus &quot;F16
+conditions&quot;) — the user report that unified them: <em>&quot;all dependency conditions
+have to be one single thing architecturally; whether you wire it through the box
+or type it by hand, the conditions go to the same place&quot;</em>.</p>
+<p>The pool is the <code>conditions</code> table (<code>name</code>, <code>scope_date</code>, <code>set_at</code>, <code>set_by</code>):</p>
+<ul>
+<li><code>scope_date = 'YYYY-MM-DD'</code> → a condition for that daily (ODAT);</li>
+<li><code>scope_date = ''</code> → permanent/static (<code>@stat</code>).</li>
+</ul>
+<p>Each job declares three lists (Design drawer → <strong>Conditions</strong> tab; YAML;
+mass update; MCP):</p>
+<table>
+<thead>
+<tr>
+<th>field</th>
+<th>role</th>
+<th>when it acts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>conditionsIn</code></td>
+<td><strong>in</strong> — depends on</td>
+<td>gate: the job only runs when ALL of them exist in the pool, in the scope resolved from the suffix against ITS OWN ODAT</td>
+</tr>
+<tr>
+<td><code>conditionsOutAdd</code></td>
+<td><strong>out＋</strong> — adds</td>
+<td>when it ends <strong>OK or on Set OK</strong></td>
+</tr>
+<tr>
+<td><code>conditionsOutRemove</code></td>
+<td><strong>out−</strong> — deletes (CONSUMPTION)</td>
+<td>when it ends <strong>OK or on Set OK</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>The Design arrow is UI sugar.</strong> Wiring A→B creates the condition
+<code>LinkCondName(A,B) = &quot;A-TO-B&quot;</code> (uppercased ids): <strong>out＋ on A</strong>; <strong>in AND out−
+on B</strong> (the deletion is automatic on the link — the user's rule). Typing the
+SAME names by hand lands in exactly the same place; whoever wires by hand has to
+put the name <strong>in the in-list AND in the out− list</strong> to get consumption
+semantics (without out−, the condition survives the OK — deliberate N:M fan-out).</p>
+<p>Arrow ergonomics (2026-07-17, report &quot;I drag and it doesn't create the
+dependency&quot;): the dot has an 18px hit area (the visual nub stays 6px), the drop
+has a magnet (<code>connectionRadius</code>) and <strong>dropping on the other job's CARD
+connects</strong> (the <code>onConnectEnd</code> fallback — you do not have to hit the handle).
+The DIRECTION follows the dot you started from: the <strong>bottom</strong> one = this job
+produces for the target; the <strong>top</strong> one is inverted — the dragged job now
+DEPENDS on the target. The fields written are the same in both gestures
+(invariant 9). The Design drawer <strong>AUTOSAVES</strong> (switching jobs or closing saves
+whatever was dirty; a brand-new job still requires Save) and receives the LIVE
+definition, merging by diff any conditions written from outside — an open drawer
+never again overwrites the link the arrow just created.</p>
+<p><strong>Who creates or removes a condition in the pool:</strong></p>
+<ol>
+<li>a job ending <strong>OK / Set OK</strong> (out＋/out−) — <code>ApplyOutcomes</code>, on the producer's
+ODAT;</li>
+<li>an <strong>On/Do <code>set-condition</code></strong> action (e.g. on NOTOK — this is how legacy
+<code>on-failure</code> edges are expressed);</li>
+<li>the <strong>operator</strong>, through the Monitoring <strong>Conditions</strong> panel (the button next
+to Organize — list/add/delete with a date) or the API/MCP;</li>
+<li>an external event (<code>POST /api/events/ingest</code>).</li>
+</ol>
+<p>Every change to the pool emits the WS event <strong><code>condition.changed</code></strong> (the panel
+and the graph edges are a live reflection) and nudges the tick (whatever was
+waiting runs RIGHT AWAY).</p>
+<h2 id="dates--odat--prev--stat">Dates — ODAT / PREV / STAT</h2>
+<p><strong>ODAT</strong> = the order's ORIGIN date (Control-M ODATE):
+<code>ODAT = COALESCE(carried_from, order_date)</code> (<code>scheduler/odate.go</code>). Carry-over
+advances <code>order_date</code> while preserving the origin — <strong>every date scope uses
+ODAT</strong>, never the advanced active day (a job carried from the 14th creates and
+looks for conditions FROM THE 14th).</p>
+<p>A condition's date lives as a <strong>suffix on the name</strong>, edited through the
+per-row selector (the user never types an at-sign):</p>
+<table>
+<thead>
+<tr>
+<th>selector</th>
+<th>suffix</th>
+<th>meaning (relative to the job's ODAT)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Odate</strong> (default)</td>
+<td>no suffix / <code>@odat</code></td>
+<td>the origin daily (in-conditions look for <code>scope=ODAT</code> or permanent; out-conditions are created on the ODAT)</td>
+</tr>
+<tr>
+<td><strong>Prev</strong></td>
+<td><code>@prev</code></td>
+<td>the PREVIOUS daily = the last New Day in <code>daily_runs</code> before the ODAT; with no record, ODAT−1</td>
+</tr>
+<tr>
+<td><strong>Stat</strong></td>
+<td><code>@stat</code></td>
+<td>permanent: an in-condition only sees <code>scope_date=''</code>; an out-condition creates/removes the permanent one</td>
+</tr>
+</tbody>
+</table>
+<h2 id="the-rules-numbered--cite-them-by-number-in-commits-and-tests">The rules (numbered — cite them by number in commits and tests)</h2>
+<p><strong>C1 — Gate.</strong> A WAITING job runs when ALL of its <code>conditionsIn</code> exist in the
+pool (resolved scope). A missing condition = <strong>WAIT COND</strong> (card, Explain
+<code>WAIT_CONDITION</code>) — it waits indefinitely, NEVER auto-cancels (Control-M parity;
+whatever never becomes eligible dies at the daily rollover, if keepActive
+allows). Hot path: the tick loads the pool ONCE per cycle (<code>CondIndex</code>).</p>
+<p><strong>C2 — OK applies the out-conditions.</strong> Ending OK (for real) and <strong>Set OK</strong>
+(BUG-3/4) both apply out＋ and out− — in BOTH roles: as a producer it unblocks
+successors; as a consumer it <strong>CONSUMES</strong> its own in-condition (the out− armed
+by the arrow). A terminal NOTOK applies NOTHING.</p>
+<p><strong>C3 — Consumption = deletion on OK.</strong> The old model's &quot;consumption permanence&quot;
+is now a natural consequence: rerunning a consumer that ended OK lands in WAIT
+COND, because its own OK deleted the in-condition. <strong>Set OK + rerun = waiting</strong>
+(the Set OK went to the pool and deleted it — the user's guiding scenario). A
+rerun after <strong>NOTOK/CANCELLED</strong> runs straight away (a failure does not consume;
+the condition is still in the pool).</p>
+<p><strong>C4 — Rerun/cancel/delete/hold do NOT touch the pool.</strong> No operator action on
+instances touches a condition; only OK/Set OK terminations (C2), On/Do actions
+and the operator THROUGH THE PANEL. Rerunning the PARENT creates a NEW condition
+on its next OK — that is what unblocks the child's rerun.</p>
+<p><strong>C5 — Force.</strong> <code>Order Force</code> (Design) creates a new order that bypasses ONLY
+the scheduling — the C1 gate still applies (a copy of an already-consumed
+consumer is born in WAIT COND until someone recreates the condition). If the
+condition STILL exists in the pool, the copy runs — a pure pool, with no
+per-instance lock (a deliberate change from the claims model). <code>Run Now</code>
+(Monitoring) bypasses C1 entirely; the bypass is NOT sticky (a rerun clears
+<code>forced</code> when <code>force_mode=''</code>).</p>
+<p><strong>C6 — No immutable conditions.</strong> The operator can delete or add ANY condition
+in the panel; the effect is immediate (deleted → the dependent goes back to
+waiting; added → the dependent runs right away). The user's rule: <em>&quot;we will not
+have any kind of immutable condition&quot;</em>.</p>
+<p><strong>C7 — JSON is never null.</strong> Every list in the API (Explain's <code>blockers</code>, etc.)
+serializes as <code>[]</code>, never <code>null</code> (a nil slice breaks the frontend).</p>
+<h2 id="boolean-entry-logic--andor-cl">Boolean entry logic — AND/OR (CL)</h2>
+<blockquote>
+<p><strong>Status: TOPIC CLOSED — CL-1…CL-6 delivered and validated.</strong> CL-1 (the DNF
+evaluator), CL-2 (the <code>$TIME</code> fallback + decoupling from the <code>windowFrom</code>
+floor + the UI toggle), CL-3 (data model + immutability), CL-4 (gate +
+OR-aware Explain + the canvas OR EDGES), CL-5 (the group editor in the
+drawer), CL-6 (test battery + docs + live validation).</p>
+<p>Live validation (2026-07-20, git-backed server): building <code>(A) OR (B)</code> in the
+drawer persists <code>conditionLogic</code> in the YAML through a full round trip
+(<code>conditionsIn</code> = the union of the members, <code>conditionsOutAdd</code> preserved,
+reopens clean); and the <strong>OR edge on the Design canvas</strong> renders dotted with
+the label <strong>&quot;OR&quot;</strong> (the AND baseline was dashed with no label). The
+<strong>Monitoring</strong> OR visual uses the SAME <code>makeEdge</code>/<code>condIsAlternative</code>, reading
+the frozen <code>cond_logic</code> column (schemaV21) — covered by
+<code>TestList_SerializesCondLogic</code> and by the shared code.</p>
+<p>The UI is the drawer's <strong>Conditions</strong> tab (Design): the entry is a flat list
+(AND) by default, and the <strong>AND/OR</strong> toggle reveals the GROUP editor (each
+group with its own AND/OR plus a top-level operator — the labels use the
+canonical <code>op:</code> vocabulary).</p>
+<p><strong>CL-2 discoverability (2026-07-21, report &quot;I couldn't find OR with a
+time&quot;):</strong> the <strong>&quot;OR run at the scheduled time&quot;</strong> shortcut shows up WHENEVER
+there is ONE condition — with <code>windowFrom</code> it builds the DNF <code>(C1) OR ($TIME)</code>; without <code>windowFrom</code> it is dimmed and clicking it opens the
+<strong>Schedule</strong> tab (the UI guard stands: <code>$TIME</code> without a &quot;From&quot; would be
+satisfied immediately and would cancel out the condition). The per-group
+<strong>＋ time</strong> behaves the same; a ⏱ member orphaned from <code>windowFrom</code> (the
+window was cleared after the token was added) turns AMBER with the warning
+&quot;satisfied immediately&quot;.</p>
+</blockquote>
+<p>A job's entry stopped being ONLY an implicit AND of <code>conditionsIn</code>: it gained an
+<strong>optional</strong> <code>conditionLogic</code> field — a boolean expression in <strong>DNF form</strong> (a
+disjunction of conjunctions, two levels, each level with its own operator):</p>
+<pre><code>conditionLogic:
+  op: OR                      # TOP-level operator between the groups
+  groups:
+    - { op: AND, members: [C1, C2] }
+    - { op: AND, members: [C3] }
+</code></pre>
+<ul>
+<li><strong>Canonical model:</strong> <code>topOp( groupOp(member ∈ pool?) for group in groups )</code>.
+<ul>
+<li><code>(C1 AND C2) OR C3</code> → <code>op:OR, groups:[{AND,[C1,C2]},{AND,[C3]}]</code>.</li>
+<li><code>(C1 OR C2) AND C3</code> → <code>op:AND, groups:[{OR,[C1,C2]},{AND,[C3]}]</code>.</li>
+</ul>
+</li>
+<li><strong>OR semantics:</strong> the <strong>first branch to arrive satisfies it and fires</strong> — as
+soon as ANY group becomes true, the job runs (it does not wait for the rest).</li>
+<li><strong>Members</strong> carry the <code>@odat/@prev/@stat</code> date suffix as always. The reserved
+token <strong><code>$TIME</code></strong> is satisfied when <code>now &gt;= scheduledAt</code> (the same clock as the
+window gate) — it is the basis of the &quot;condition OR time&quot; temporal fallback
+(CL-2); the gate already evaluates it, and decoupling it from the <code>windowFrom</code>
+floor is CL-2.</li>
+<li><strong>Backward compatibility (C1 still holds):</strong> an absent/nil <code>conditionLogic</code> =
+<strong>ONE AND group</strong> over <code>conditionsIn</code> — the old gate, byte for byte (one
+blocker per missing condition). With logic, the gate only blocks when <strong>NO
+branch is satisfiable</strong> and emits ONE blocker carrying the expression
+(<code>RenderExpr</code>, e.g. &quot;waiting for (C1 AND C2) OR C3 — no branch satisfied&quot;); the
+Explain shows the same text.</li>
+<li><strong>Invariant: members ⊆ <code>conditionsIn</code>.</strong> Every non-<code>$TIME</code> member also appears
+in <code>conditionsIn</code> (guaranteed by <code>NormalizeConditions</code> at the read chokepoint).
+That way topology (the derived <code>upstream</code>), the Monitoring edges and the frozen
+<code>conds_in</code> column keep reading <code>conditionsIn</code> <strong>without knowing about the
+logic</strong> — only the gate's EVALUATION uses <code>conditionLogic</code>.</li>
+<li><strong>LOOSE members = an AND requirement.</strong> A name in <code>conditionsIn</code> that is NOT in
+any group of the logic is ANDed with the whole expression
+(<code>satisfied = topOp(groups) AND all-loose-members</code>). This is what makes the
+<strong>arrow</strong> &quot;just work&quot; on a job that has logic: it adds the simple condition to
+<code>conditionsIn</code> and that becomes mandatory, without having to fold the edge into
+an ambiguous OR. The UI preserves loose members while you edit the groups.</li>
+<li><strong>M1 immutability:</strong> <code>conditionLogic</code> is frozen in the <code>definition_snapshot</code>
+like the rest of the definition (the gate reads it through <code>defForInstance</code>);
+changing the logic on the live definition does NOT relax an instance that was
+already ordered. The card and the Explain read the FROZEN logic.</li>
+<li><strong>Canvas OR edges (CL-4):</strong> an edge P→C is &quot;alternative&quot; (OR) when the
+condition that links it is a member of an OR group in the consumer's logic
+(<code>condIsAlternative</code> in <code>lib/conditions-model.ts</code>) — rendered dotted with the
+label &quot;OR&quot; (<code>makeEdge(...,alt)</code> in <code>v2/canvas-layout.ts</code>). In <strong>Design</strong> it
+comes from the live definition (<code>buildDesignCanvas</code>); in <strong>Monitoring</strong> it
+comes from the FROZEN <code>cond_logic</code> column (schemaV21) —
+<code>frozenMonitorCols</code>/<code>MigrateCondLogicSnapshot</code>/<code>instanceRow.CondLogic</code>/
+<code>JobInstance.condLogic</code> (immutable, never the live definition). The arrow
+always creates an AND (a solid edge).</li>
+<li><strong>Code:</strong> types plus the pure evaluator in <code>domain/conditions.go</code>
+(<code>ConditionLogic</code>, <code>CondGroup</code>, <code>EvalConditionLogic</code>, <code>RenderExpr</code>,
+<code>looseMembers</code>, <code>UsesTimeToken</code>); the gate wiring in <code>scheduler/explain.go</code>
+(<code>gateInstance</code>, where <code>$TIME</code> decouples the window floor). Frontend: types in
+<code>lib/orchestrator-model.ts</code>, the round trip in
+<code>lib/adapters/storage/ServerApiAdapter.ts</code>, and the editor (<code>EntryConditions</code>,
+<code>GroupedLogicEditor</code>, <code>GroupBox</code>, <code>OpToggle</code>) in <code>v2/JobConfigDrawer.tsx</code>.
+Tests: <code>domain/conditionlogic_test.go</code> (pure evaluator/DNF/<code>$TIME</code>/loose
+members/normalization), <code>scheduler/condlogic_gate_test.go</code>
+(gate+Explain+<code>$TIME</code>+immutability) and
+<code>api/bugs_behavior_test.go::TestList_SerializesCondLogic</code>.</li>
+</ul>
+<h2 id="upstream--legacy-input-and-a-derived-view"><code>upstream[]</code> — legacy input and a derived view</h2>
+<p>The <code>upstream</code> field is no longer a gate and is no longer persisted:</p>
+<ol>
+<li><strong>Read compatibility</strong>: old YAML with <code>upstream:</code> is EXPANDED into explicit
+conditions at the read chokepoint (<code>FileStore.List</code> →
+<code>domain.NormalizeConditions</code>, idempotent — it covers the scheduler, the API,
+sessions and publish; the TS mirror lives in <code>lib/conditions-model.ts</code> for
+local mode):
+<ul>
+<li><code>on-success</code>/empty → out＋ on the parent; in + out− on the child;</li>
+<li><code>on-complete</code> → the same, plus an On/Do <code>set-condition</code> action on the
+parent's NOTOK;</li>
+<li><code>on-failure</code> → ONLY the On/Do action on NOTOK (nothing on OK);</li>
+<li><code>always</code> → no gate (it becomes topology only);</li>
+<li><code>dateRef</code> becomes the suffix of the child's in/out− conditions; an <code>@stat</code>
+edge makes the parent create the PERMANENT one (the only scope a <code>@stat</code> IN
+can see).</li>
+</ul>
+</li>
+<li><strong>Derived view</strong>: after the expansion, <code>upstream</code> is RECOMPUTED by
+producer→consumer name matching (the base name, ignoring the suffix) and
+serves only as topology for the canvas/WhatIf/RCA/forecast/neighborhood.
+<code>FileStore.Save</code> ALWAYS drops it (persisting the view would re-expand it as a
+legacy edge).</li>
+</ol>
+<p><strong>Snapshots</strong> ordered before the unification: <code>defForInstance</code> expands the
+consumer side in memory (<code>ExpandSnapshotConditions</code>, with the idempotency rule
+against the live definitions). <strong><code>applyConditionsOut</code> is SNAPSHOT-ONLY (M1,
+2026-07-17):</strong> the out-conditions applied on OK/Set OK come ONLY from the
+definition frozen at order time — creating a new consumer in Design after the
+order does NOT make today's OK produce the new condition (only the next
+Force/daily order carries the new OutAdd). The snapshot ∪ live-definition union
+that existed for pre-unification compatibility was FROZEN into the in-flight
+snapshots once, during the upgrade (<code>MigrateMonitoringSnapshot</code>, meta_flags
+<code>monitoring-snapshot-v18</code>); the live definition is only a fallback for a legacy
+instance WITHOUT a snapshot. There is a one-time unification backfill at boot
+(<code>MigrateConditionsUnify</code>, flagged in <code>meta_flags</code>, schemaV17): a pair
+(parent already OK, child WAITING and unconsumed) seeds the condition into the
+pool. <strong>dep_events/dep_claims (schemaV15) are RETIRED</strong> — the tables stay in the
+database for compatibility, but nothing reads or writes them.</p>
+<h2 id="monitoring-edges--a-reflection-of-the-pool">Monitoring edges — a reflection of the pool</h2>
+<p>Topology = <strong>instance-to-instance matching through the ORDER SNAPSHOTS</strong> (M1,
+2026-07-17): each instance carries frozen <code>condsIn</code>/<code>condsOutAdd</code> (schemaV18) and
+the edge exists when one copy's <code>condsOutAdd</code> produces an entry in the other's
+<code>condsIn</code>, respecting the date suffix (<code>@odat</code> same origin · <code>@prev</code> previous
+daily · <code>@stat</code> any — something carried from the 14th only gets an edge to the
+parent from the 14th). Creating or wiring new jobs in Design does NOT redraw
+instances that were already ordered; the live topology (the derived
+<code>def.upstream</code>) belongs to DESIGN only. The COLOUR is the state of the conditions
+that LINK the pair for THIS consumer:</p>
+<ul>
+<li><strong>green ✓</strong> — the condition exists in the pool, OR the consumer already ran on
+it (RUNNING/OK — on OK it consumes it, but the edge stays green: it worked);</li>
+<li><strong>red ✗</strong> — the DOWNSTREAM job is NOTOK;</li>
+<li><strong>grey</strong> — the condition does not exist (not created yet · consumed by an OK —
+e.g. Set OK + rerun · deleted in the panel) and the consumer is waiting.</li>
+</ul>
+<p>The CARD (<strong>WAIT COND</strong>) uses the gate's ruler (C1): WAITING with ANY missing
+in-condition (all of <code>conditionsIn</code>, not just the ones from arrows); <code>Run Now</code>
+(manual) does not flag it. Frontend source: <code>isWaitingOnConds</code> plus the
+<code>conditions-store</code> pool (the <code>condition.changed</code> WS event resyncs it; local mode
+uses localStorage with the SAME semantics, including <code>applyOutcomesLocal</code> on OK).</p>
+<h2 id="daily-life-cycle-carry-over--who-crosses-the-rollover">Daily life cycle (carry-over) — who crosses the rollover</h2>
+<p>(Unchanged by the unification.) The pure rule lives in <code>carryDecision</code>
+(scheduler.go); ages are in <strong>CALENDAR DAYS</strong> (the daily's timezone):</p>
+<table>
+<thead>
+<tr>
+<th>state at the rollover</th>
+<th>crosses?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RUNNING</td>
+<td>ALWAYS</td>
+</tr>
+<tr>
+<td>HELD</td>
+<td>ALWAYS, while on hold</td>
+</tr>
+<tr>
+<td>NOTOK</td>
+<td><code>days since the FAILURE ≤ keepActive|1</code></td>
+</tr>
+<tr>
+<td>WAITING with a SCHEDULED retry (<code>attempts&gt;1</code> <strong>and</strong> <code>started_at</code>)</td>
+<td>the NOTOK rule</td>
+</tr>
+<tr>
+<td>WAITING (CONFIRM included)</td>
+<td><code>days since the ODAT ≤ keepActive</code> — keepActive=0 dies at the first rollover</td>
+</tr>
+<tr>
+<td>OK / CANCELLED</td>
+<td>never</td>
+</tr>
+</tbody>
+</table>
+<p>General Hold + Delete: hold applies to any status except RUNNING
+(<code>held_from_status</code> is restored on release); Delete only works on HOLD. Neither
+touches the pool (C4).</p>
+<h2 id="invariants-what-must-never-happen-again">Invariants (what must NEVER happen again)</h2>
+<ol>
+<li>A rerun of a consumer that ended OK running again <strong>without a new condition</strong>
+(C3).</li>
+<li>Set OK failing to apply out＋ or out− (C2).</li>
+<li>A deletion in the panel NOT blocking the dependent, or an addition NOT
+releasing it (C6).</li>
+<li>A Run Now bypass surviving a rerun (C5).</li>
+<li>The API sending <code>null</code> where the frontend expects a list (C7).</li>
+<li>Monitoring deriving ANYTHING on a card from the live definition (M1: the
+label, the type, the edges, <code>waitConfirm</code>, <code>waitAgent</code> and the out-conditions
+of <code>applyConditionsOut</code> ALL come from the snapshot/frozen columns — WAIT COND
+reads the POOL, which is runtime state rather than definition, and the list of
+in-conditions it checks is the frozen one).</li>
+<li>A condition from ONE origin satisfying a consumer from ANOTHER origin without
+the suffix asking for it (§Dates — a job from the 14th does not eat today's
+condition).</li>
+<li>The derived <code>upstream</code> being PERSISTED (it would re-expand as a legacy edge).</li>
+<li>Wiring by arrow and wiring by hand diverging in ANYTHING — both paths write
+the same fields.</li>
+</ol>
+<h2 id="where-it-lives-in-the-code">Where it lives in the code</h2>
+<ul>
+<li><code>server/internal/domain/conditions.go</code> — the single model: <code>SplitCondRef</code>,
+<code>LinkCondName</code>, <code>NormalizeConditions</code> (idempotent expansion + the derived
+view), <code>ExpandSnapshotConditions</code>.</li>
+<li><code>server/internal/scheduler/conditions.go</code> — the pool (<code>ConditionEngine</code>):
+Set/Unset (broadcast through OnChange), <code>CondIndex</code> (a per-tick photo),
+<code>MissingIdx</code> (the single source of &quot;which one is missing?&quot;), <code>ApplyOutcomes</code>.</li>
+<li><code>server/internal/scheduler/scheduler.go</code> — the gate in the tick (condIdx),
+<code>FinishInstance</code>/<code>SetOK</code> → <code>applyConditionsOut</code> (snapshot-only, M1),
+<code>defForInstance</code> (snapshot expansion), <code>ForceOrder</code>.</li>
+<li><code>server/internal/scheduler/condmigrate.go</code> — the one-time backfill
+(meta_flags).</li>
+<li><code>server/internal/scheduler/monitorsnapshot.go</code> — the frozen schemaV18 columns
+(<code>frozenMonitorCols</code>) + <code>MigrateMonitoringSnapshot</code> (backfill + freezing the
+producer union into in-flight snapshots).</li>
+<li><code>server/internal/scheduler/explain.go</code> — <code>gateInstance</code> (WAIT_CONDITION),
+Explain.</li>
+<li><code>server/internal/storage/file.go</code> — List normalizes; Save drops upstream.</li>
+<li><code>server/internal/api/bloco2.go</code> + the router — GET/POST <code>/api/conditions*</code>.</li>
+<li><code>app/src/lib/conditions-model.ts</code> — the pure TS mirror (normalization, pool
+helpers, <code>edgeCondNames</code>, <code>missingConds</code>).</li>
+<li><code>app/src/lib/conditions-store.ts</code> — the pool in the frontend (server WS /
+localStorage; <code>applyOutcomesLocal</code>).</li>
+<li><code>app/src/v2/ConditionsPanel.tsx</code> — the Conditions panel (Monitoring, next to
+Organize).</li>
+<li><code>app/src/v2/canvas-layout.ts</code> — pool-aware edges (<code>evaluateEdgeState</code>),
+<code>isWaitingOnConds</code>, spacing (NODE_GAP_Y=72) and the 9px ✓.</li>
+<li><code>app/src/v2/V2Preview.tsx</code> — <code>connectDefs</code> (arrow → conditions on both jobs;
+<code>onConnect</code> plus the <code>onConnectEnd</code> drop-on-card fallback, direction taken from
+the originating dot), pool state, the Conditions button.</li>
+<li><code>app/src/v2/JobConfigDrawer.tsx</code> — the unified <strong>Conditions</strong> tab; draft
+autosave (on job switch/close) + a diff merge of external conditions.</li>
+</ul>
+<h2 id="the-tests-that-lock-the-semantics-down">The tests that lock the semantics down</h2>
+<p><code>scheduler/conditions_unify_test.go</code> (normalization/idempotency/the view · the
+happy path with consumption · rerun after OK waits and after NOTOK runs · Set OK
+in both roles (C2) and Set OK+rerun waiting (C3) · deletion/addition through the
+panel (C6) · Order Force follows the pool (C5) · on-failure becomes an action ·
+the migration backfill) · <code>scheduler/lifecycle_test.go</code> (carryDecision; the
+<code>TestOdat_*</code> tests rewritten for the pool: origin scope, @prev, @stat with a
+permanent producer) · <code>scheduler/setok_bugs_test.go</code> (Set OK materializes the
+out-conditions) · <code>api/bugs_behavior_test.go</code> (Set OK from WAITING; forced is
+cleared) · <code>api/holdall_delete_test.go</code> (general hold/delete — no claims) ·
+<code>scheduler/explain_test.go</code> (WAIT_CONDITION for a legacy edge; blockers <code>[]</code>).</p>
+<h2 id="checklist-before-touching-this-area">Checklist before touching this area</h2>
+<ol>
+<li>Re-read this document (5 minutes) and the header of <code>domain/conditions.go</code>.</li>
+<li>Run <code>go test ./internal/scheduler/ ./internal/api/</code> BEFORE and AFTER.</li>
+<li>Changed the semantics? Update <strong>this document and the tests in the SAME
+commit</strong>.</li>
+<li>Validate live with a parent→child pair (the arrow creates the three lists;
+deleting in the panel blocks the child; Set OK+rerun waits; rerunning the
+parent unblocks it) — and <strong>rebuild the server AND the frontend</strong> before
+testing (a stale binary will fool you).</li>
+</ol>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

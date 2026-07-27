@@ -23,7 +23,7 @@ func (s *server) metrics(w http.ResponseWriter, r *http.Request) {
 
 	// Multi-ambiente: identifica QUAL deployment está respondendo (Dev/Staging/Prod).
 	// Dashboards/alertas agrupam por este label; cada ambiente é um deployment
-	// separado (workspace/branch + DB + env_label próprios) — ver docs/operacao.md.
+	// separado (workspace/branch + DB + env_label próprios) — ver docs/operations.md.
 	var env string
 	_ = s.cfg.DB.QueryRow(`SELECT value FROM settings WHERE key='env_label'`).Scan(&env)
 	if env == "" {

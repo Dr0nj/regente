@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Regente · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html" class="active">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</a>
+<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch</a>
+</nav>
+<main>
+<article>
+<div align="center">
+  <img src="app/public/logo-r.png" width="92" alt="Regente" />
+  <h1>Regente</h1>
+  <p><strong>A Git-native workflow orchestrator, inspired by Control-M.</strong></p>
+  <p>
+    <a href="#-what-it-is">What it is</a> ·
+    <a href="#-documentation">Docs</a> ·
+    <a href="#-try-it-in-5-minutes">Try it</a> ·
+    <a href="#-installation">Installation</a> ·
+    <a href="#-what-it-can-do">Capabilities</a> ·
+    <a href="#-architecture">Architecture</a> ·
+    <a href="#-development">Development</a>
+  </p>
+</div>
+<hr>
+<h2 id="-what-it-is">🧭 What it is</h2>
+<p>Regente runs your <strong>scheduled jobs</strong> — the scripts, commands, transfers and API calls that have
+to happen every day, in the right order, at the right time, on the right machine.</p>
+<p>If you have never used a tool like this, here is the idea in four sentences:</p>
+<ol>
+<li>You <strong>draw</strong> your jobs on a canvas and connect them with arrows (&quot;run B after A succeeds&quot;).</li>
+<li>Every box you draw is stored as a <strong>YAML file in a Git repository</strong> — that repository is the
+single source of truth, so every change is reviewable and revertible.</li>
+<li>Once a day Regente reads that repository and decides <strong>what runs today</strong>, creating one
+<em>instance</em> per job. That day's picture is then frozen: editing a job in the afternoon does not
+rewrite the morning's run.</li>
+<li>The jobs actually execute on <strong>your</strong> machines, through a small program called an <strong>agent</strong>
+that you install there.</li>
+</ol>
+<p>Two screens, kept deliberately apart:</p>
+<ul>
+<li><strong>Monitoring</strong> — what is running <em>today</em>. You watch it and act on it: hold, release, cancel
+(which kills the running process), mark as OK, re-run, force a job to run now. You cannot edit
+job definitions here.</li>
+<li><strong>Design</strong> — where job definitions are edited. You open a folder, edit on the canvas, and press
+<strong>Publish</strong>, which is the only path that writes to GitHub. Drafts are never lost: refreshing
+the page or switching screens resumes where you left off.</li>
+</ul>
+<p>This repository is the <strong>monorepo</strong> for the whole platform:</p>
+<table>
+<thead>
+<tr>
+<th>Folder</th>
+<th>Component</th>
+<th>Stack</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="server.html"><code>server/</code></a></td>
+<td><strong>regente-server</strong> — the daemon (REST API + WebSocket hub, scheduler, GitOps)</td>
+<td>Go</td>
+</tr>
+<tr>
+<td><a href="agent.html"><code>agent/</code></a></td>
+<td><strong>regente-agent</strong> — the executor that runs on your machines</td>
+<td>Go</td>
+</tr>
+<tr>
+<td><a href="app.html"><code>app/</code></a></td>
+<td><strong>regente-web</strong> — the frontend (Monitoring, Design canvas)</td>
+<td>React + TypeScript + Vite</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>The jobs themselves (the <em>definitions</em>, as YAML) live in a <strong>separate</strong> GitOps workspace
+repository. This repo holds only the platform <strong>code</strong>.</p>
+</blockquote>
+<blockquote>
+<p>🌐 <strong>Language:</strong> the <strong>product speaks English</strong> — the UI, server messages, the CLI, agent
+output, the OpenAPI contract and the installation scripts. The <strong>planning documents and the
+code comments in this repo are in Portuguese</strong> (they are read by whoever develops it, not by
+whoever operates it).</p>
+</blockquote>
+<hr>
+<h2 id="-documentation">📚 Documentation</h2>
+<p>Everything below is a <strong>static site</strong> — no server, no build, nothing to install. It is generated
+from the markdown in this repository and committed to <a href="docs/site"><code>docs/site/</code></a>.</p>
+<table>
+<thead>
+<tr>
+<th>Page</th>
+<th>What is in it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/site/index.html"><strong>Documentation site</strong></a></td>
+<td>This README, the component guides, operations, DR, SLOs, MCP and the conditions spec — all in one navigable place.</td>
+</tr>
+<tr>
+<td><a href="docs/site/api.html"><strong>API reference</strong></a></td>
+<td>The full OpenAPI contract: every endpoint, parameter, schema and example.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>How to open them without running anything:</strong> clone or download this repository and open
+<code>docs/site/index.html</code> in your browser — double-clicking works. The pages are self-contained:
+the CSS is inlined and the API spec is embedded, so there is nothing to fetch and no server to
+start.</p>
+<blockquote>
+<p>The same site can be published as a plain link with GitHub Pages — the workflow is ready in
+<a href=".github/workflows/pages.yml"><code>.github/workflows/pages.yml</code></a>; it needs the repository to be
+public and Pages to be switched on once (the file explains the three steps).</p>
+</blockquote>
+<p>To regenerate the site after editing any markdown:</p>
+<pre><code class="language-bash">cd server &amp;&amp; go run ./cmd/docsite -repo .. -out ../docs/site
+</code></pre>
+<p>A running server serves the same content live: the docs at <code>/docs</code> (with <code>-docs-dir</code>) and an
+interactive API explorer at <code>/api-docs</code>, where you can send real requests with your token.</p>
+<p>Deeper documents: <a href="operations.html">operations</a> · <a href="dr-backup.html">DR and backup</a> ·
+<a href="slos.html">SLOs</a> · <a href="conditions-events.html">conditions spec</a> ·
+<a href="mcp.html">MCP / AI agents</a> · <a href="architecture-future.html">future architecture</a>.</p>
+<hr>
+<h2 id="-try-it-in-5-minutes">🚀 Try it in 5 minutes</h2>
+<p>The fastest way to see it working — nothing to configure, nothing left behind. You need
+<a href="https://go.dev/dl/">Go 1.25+</a>.</p>
+<pre><code class="language-bash">git clone https://github.com/Dr0nj/regente.git &amp;&amp; cd regente/server
+go run ./cmd/regente dev daily -addr :8686
+</code></pre>
+<p>That starts a complete, <strong>disposable</strong> Regente on <a href="http://localhost:8686">http://localhost:8686</a>: a temporary database
+that dies with the process, no Git and no network, and jobs that finish successfully without a
+real agent. Open the URL and log in with <code>admin</code> / <code>admin</code>.</p>
+<p>When you want the real thing, keep reading.</p>
+<hr>
+<h2 id="-installation">📦 Installation</h2>
+<p>There are three ways to run the server and two ways to run an agent. Pick by what the machine
+should do.</p>
+<p><strong>The recommended default is systemd</strong>: the service is supervised (<code>Restart=always</code>), so it
+starts at boot and comes back on its own after a crash, and its state lives in
+<code>/var/lib/regente</code>, so it survives reboots and upgrades.</p>
+<p>Every option below comes in two flavours:</p>
+<ul>
+<li><strong>From a release</strong> — <code>install.sh</code> downloads a ready-made bundle. <strong>No Go and no Node needed on
+the machine.</strong> This is the easy path.</li>
+<li><strong>From source</strong> — you build it yourself. Needs Go 1.25+, plus Node 18+ if you want the UI.</li>
+</ul>
+<blockquote>
+<p><strong>On Windows?</strong> Every <code>deploy/</code> folder has an <code>install-windows.ps1</code> that registers a Scheduled
+Task (starts at boot, restarts on failure). Run PowerShell <strong>as Administrator</strong>.</p>
+</blockquote>
+<h3 id="option-1--server-only-headless-api">Option 1 — server only (headless API)</h3>
+<p>A control plane <strong>with no UI attached</strong>. Use it when you drive Regente through the API or the
+CLI, or when the UI is served from somewhere else.</p>
+<pre><code class="language-bash"># from a release (no toolchain needed):
+curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install.sh -o regente-install.sh
+sudo WITH_UI=0 bash regente-install.sh
+
+# or from source:
+cd server &amp;&amp; CGO_ENABLED=0 go build -o regente-server . &amp;&amp; sudo WITH_UI=0 ./deploy/install-linux.sh
+</code></pre>
+<h3 id="option-2--server--ui-on-one-port--recommended">Option 2 — server + UI on one port ⭐ recommended</h3>
+<p>The UI, the API and the WebSocket share the <strong>same port and origin</strong>, so there is no CORS to
+configure and the frontend resolves its own address at runtime — which means the same build works
+behind any domain or tunnel.</p>
+<pre><code class="language-bash"># from a release (binary + UI + systemd unit, all ready):
+curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install.sh -o regente-install.sh
+sudo bash regente-install.sh
+
+# or from source (it builds the UI and wires it up on its own):
+cd server &amp;&amp; CGO_ENABLED=0 go build -o regente-server .
+(cd ../app &amp;&amp; VITE_REGENTE_SERVER_URL=@origin npm ci &amp;&amp; npm run build)
+sudo ./deploy/install-linux.sh
+</code></pre>
+<h3 id="option-3--server--a-local-agent-single-box-lab">Option 3 — server + a local agent (single-box lab)</h3>
+<p>The server <strong>and</strong> an agent on the same machine, so that box also executes jobs. In production
+your agents live on the <strong>other</strong> machines; putting them together is a convenience for testing.</p>
+<pre><code class="language-bash"># 1) install the server (option 1 or 2), then:
+cd agent &amp;&amp; CGO_ENABLED=0 go build -o regente-agent .
+sudo SERVER=ws://localhost:8080/ws/agent TOKEN=&lt;token&gt; ID=$(hostname) \
+     CAPS=COMMAND,SCRIPT,HTTP ./deploy/install-linux.sh
+# create the TOKEN in Settings → Agents (or use REGENTE_TOKEN while developing).
+</code></pre>
+<h3 id="after-installing-the-server-all-options">After installing the server (all options)</h3>
+<pre><code class="language-bash">sudo regente-configure                    # guided: strong token, GitHub PAT/repo, domain
+sudo systemctl restart regente-server
+</code></pre>
+<p>Then open <code>http://&lt;your-host&gt;:8080</code> and log in with <code>admin</code> / <code>admin</code> — it will make you change
+the password. If you would rather configure it by hand, edit <code>/etc/regente/server.env</code>.</p>
+<blockquote>
+<p>⚠️ <strong><code>REGENTE_TOKEN</code> is admin-equivalent</strong> — it bypasses the login entirely. Generate a strong
+value and never leave it as <code>dev-token</code> or <code>change-me</code>. <code>regente-configure</code> generates one for
+you.</p>
+</blockquote>
+<p>Useful commands afterwards:</p>
+<pre><code class="language-bash">sudo systemctl restart regente-server     # apply a new binary or config (migrations run at boot)
+journalctl -u regente-server -f           # follow the logs
+</code></pre>
+<h3 id="agents-on-the-other-machines-linux--macos--windows">Agents on the other machines (Linux · macOS · Windows)</h3>
+<p>An <strong>agent</strong> is what actually runs your jobs, on the machine where you install it. It dials
+<strong>out</strong> to the server, so you never open a port on the agent's machine and it works behind NAT
+and corporate firewalls.</p>
+<p>These installers download the binary from the latest release and register the agent as a proper
+service (<strong>systemd</strong> on Linux, <strong>launchd</strong> on macOS, a <strong>Scheduled Task</strong> on Windows): it starts
+at boot, restarts if it crashes, and runs with nobody logged in. <strong>No Docker, no Go, no runtime
+required.</strong> They prompt for the server address and the token if you do not pass them.</p>
+<pre><code class="language-bash"># Linux or macOS — download it and run it (it asks for the server and the token)
+curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install-agent.sh -o install-agent.sh
+sudo bash install-agent.sh
+
+# a whole fleet, unattended:
+sudo SERVER=wss://YOUR-DOMAIN/ws/agent TOKEN=rgta_xxx bash install-agent.sh
+</code></pre>
+<pre><code class="language-powershell"># Windows (PowerShell as Administrator) — it asks for the server and the token
+irm https://github.com/Dr0nj/regente/releases/latest/download/install-agent-windows.ps1 | iex
+
+# a whole fleet, unattended: download the .ps1 and run it with  -Server wss://... -Token rgta_xxx
+</code></pre>
+<p>Create the <strong>agent token</strong> in Settings → Agents. Your fleet then shows up there, online. Building
+from source instead? Use <a href="agent/deploy"><code>agent/deploy/</code></a>.</p>
+<h3 id="a-public-link-with-https-and-a-real-domain">A public link with HTTPS and a real domain</h3>
+<p>Put the server behind nginx with TLS and a domain. The full systemd recipe — nginx config,
+Let's Encrypt, firewall, enterprise hardening (SSO, RBAC, SIEM, mTLS) and a sandboxed agent for
+guests — is in <a href="deploy/vps/README.md"><code>deploy/vps/</code></a>.</p>
+<h3 id="docker--kubernetes--serverless">Docker · Kubernetes · serverless</h3>
+<p>A distroless image, a Knative Service with scale-to-zero and an external cron trigger live in
+<a href="deploy.html"><code>deploy/</code></a>. The same binary runs on Knative, Cloud Run, Fly, App Runner or
+Container Apps — you choose the cloud when you deploy, not in the code.</p>
+<h3 id="showing-it-to-other-people-a-temporary-public-demo">Showing it to other people (a temporary public demo)</h3>
+<p>A script that builds everything, serves the UI on one origin, runs the agent in a disposable
+Docker container and opens a free public HTTPS tunnel:
+<a href="deploy/demo/README.md"><code>deploy/demo/</code></a>.</p>
+<h3 id="migrating-from-control-m">Migrating from Control-M</h3>
+<p><code>importctm</code> reads a Control-M export XML and generates a Regente workspace for review, with an
+import report and <code># TODO-import</code> notes wherever a decision is needed. It <strong>never pushes</strong>. See
+<a href="server/cmd/importctm/README.md"><code>server/cmd/importctm/</code></a>.</p>
+<hr>
+<h2 id="-what-it-can-do">⚡ What it can do</h2>
+<h3 id="defining-and-scheduling-work">Defining and scheduling work</h3>
+<ul>
+<li><strong>Git-native (GitOps)</strong> — Publish becomes a commit or a pull request; changes made on GitHub
+come back into the UI through a webhook plus polling. Deep links go from a job to its YAML and
+from an instance to its commit.</li>
+<li><strong>Control-M-style scheduling</strong> — frequency (daily / days of the week / days of the month),
+execution windows and cyclic runs. <strong>Calendars</strong> act as include/exclude rules alongside the
+frequency, with a plain-language translation of what each one does and a <strong>real calendar
+preview</strong> (12 mini-months and a year selector; the highlighted days are exactly the days the
+job will run, computed by the backend with the same rule as the daily).</li>
+<li><strong>Dependencies are CONDITIONS in a single pool</strong> (Control-M global conditions). Drawing A→B on
+the canvas creates the condition <code>A-TO-B</code>; typing it by hand lands in exactly the same place.
+A job runs when its input conditions exist in the pool; finishing OK adds its outputs and
+<strong>deletes</strong> the ones it consumed. The Monitoring <strong>Conditions</strong> panel lists the whole pool —
+deleting an entry blocks whoever depends on it, adding one releases them immediately.
+Control-M date references per row: <code>Odate</code>, <code>Prev</code> and <code>Stat</code>.</li>
+<li><strong>AND/OR logic on the entry</strong> — by default every input condition is required (AND), but a
+toggle groups them, each group with its own operator plus a top-level one, e.g.
+<code>(C1 AND C2) OR C3</code> (it runs on the first branch that completes). With a single condition, the
+<strong>&quot;OR run at the scheduled time&quot;</strong> shortcut runs when the condition arrives <strong>or</strong> when the
+start time is reached — whichever comes first.</li>
+<li><strong>Immutable daily</strong> — instances are frozen at order time. A change published during the day
+only takes effect on the next daily, or through a Force Order.</li>
+<li><strong>Daily life cycle (Control-M carry-over)</strong> — an order that is still open does not vanish at
+the rollover: RUNNING and HELD always cross; an untreated NOTOK persists one more day (or N,
+through <code>schedule.keepActive</code>); OK and CANCELLED close. The order advances its date while
+keeping its id, status and history, and shows where it came from.</li>
+<li><strong>A schema per job type</strong> — every type declares its parameters (which are required, value
+types, enums, aliases): a typo or a wrong value is flagged <strong>immediately</strong> as you edit, and
+missing required fields are enforced at publish time.</li>
+<li><strong>Jobs as code</strong> — a YAML editor for the working set right inside Design, with live linting and
+a guide to the dialect.</li>
+</ul>
+<h3 id="executing-it">Executing it</h3>
+<ul>
+<li><strong>Local executors through an agent</strong> — <code>COMMAND</code> (shell), <code>SCRIPT</code> (.sh/.bat/.ps1), <code>HTTP</code>,
+<code>DATABASE</code> (Postgres/MySQL/SQLite through pure-Go drivers, no client installed on the host),
+<code>FILE_WATCH</code>, and <code>FILE_TRANSFER</code> (native MFT between local, SFTP and S3, with globbing,
+atomic writes and SHA-256 checksums). Every job can target a specific agent or be routed by
+capability, with a token <strong>per agent</strong>. <strong>Strict pinning:</strong> a job pinned to an agent runs only
+there — if that agent goes down, the job waits in WAIT AGENT until it comes back, and never
+migrates on its own.</li>
+<li><strong>Cloud executors</strong> — AWS Lambda, Batch, Glue and Step Functions; GCP Cloud Run Jobs;
+Kubernetes Jobs. Each one is just a capability, never the foundation.</li>
+<li><strong>WASM</strong> — sandboxed WASI modules through <a href="https://wazero.dev">wazero</a> (pure Go, no CGO).</li>
+<li><strong>SSH, agentless</strong> — a remote command straight from the server, with streamed output.</li>
+<li><strong>A built-in SERVER-AGENT</strong> — every server ships with a default <code>HTTP</code>/<code>REST</code> agent, so API
+calls run from the server itself with no external agent to install.</li>
+<li><strong>Cancel really kills</strong> — cancelling a RUNNING job aborts the process on the agent (the whole
+process tree), and the job ends NOTOK without an automatic retry.</li>
+<li><strong>Automatic retries</strong> on failure (honouring <code>retries</code>), and <strong>cyclic execution</strong> that re-arms
+itself every N minutes inside the window.</li>
+<li><strong>Confirm</strong> — a job that only runs after an operator releases it (not even Force bypasses it).</li>
+<li><strong>Resources and quotas</strong> — an exclusive lock, or a pool with a queue, so only N jobs use a
+named resource at a time. The usage tracker is rebuilt after a failover.</li>
+<li><strong>Multiple environments</strong> — the <code>environment</code> field routes execution: an agent started with
+<code>-env prod</code> only receives jobs from that environment. A <code>prod</code> job never lands on a <code>dev</code>
+agent.</li>
+</ul>
+<h3 id="operating-and-understanding-it">Operating and understanding it</h3>
+<ul>
+<li><strong>Explain — &quot;why didn't this job run?&quot;</strong> For any instance it shows the gating the scheduler
+already computed: the window, dependencies (which upstream or condition), missing conditions,
+an unavailable resource (wanted, in use, capacity). The same evaluator both decides the
+dispatch and explains it, so there is no second implementation to keep in sync.</li>
+<li><strong>Root cause analysis</strong> — walks up the chain of failed upstreams to the job that actually
+broke.</li>
+<li><strong>Blast radius</strong> — &quot;if I cancel or hold this job right now, what breaks?&quot; It shows the
+downstream jobs that stop running, the SLAs at risk and the folders affected.</li>
+<li><strong>Daily diff</strong> — compares two days (today versus yesterday, or an explicit range) and shows
+which jobs were added, removed and changed, field by field.</li>
+<li><strong>Dry run and forecast</strong> — simulates the daily for any date without materializing anything:
+who runs, who waits (and behind whom) and who never fires, and why. The forecast projects a
+week or more ahead.</li>
+<li><strong>What-If</strong> — &quot;what if job X is 40 minutes late / takes twice as long / fails?&quot; It projects the
+day, baseline versus scenario, using real durations from history.</li>
+<li><strong>Statistics per job</strong> — success rate, min/avg/p50/p90/max.</li>
+<li><strong>Natural-language queries</strong> — ask &quot;how many jobs failed today?&quot; and get a deterministic
+answer, parsed by a rule-based intent parser rather than a model.</li>
+<li><strong>Output and logs, separated</strong> — the <strong>Output</strong> tab is a live tail of the process's own
+stdout/stderr, kept per attempt (so a retry does not lose the failed attempt's output); the
+<strong>Log</strong> tab is the scheduling journal (ordered → wait → submitted → started → retry →
+finished, plus operator actions).</li>
+<li><strong>Alerting</strong> — configurable rules evaluated after each run (failure, slowness, retries, success
+rate, consecutive failures), with an alerts screen, real-time toasts, and per-rule routing to
+Slack, a generic webhook, email (SMTP) or PagerDuty. Cooldown is per rule × job, so a burst
+across different jobs never swallows alerts.</li>
+<li><strong>Bulk actions and find &amp; update</strong> — one action across many instances, and mass edits of
+definitions.</li>
+<li><strong>Agents screen</strong> — the consolidated fleet (online, plus offline with a last-seen time), a
+detail modal per agent (OS/arch, host, version, uptime, capabilities) and an active ping with
+round-trip latency.</li>
+</ul>
+<h3 id="the-platform-underneath">The platform underneath</h3>
+<ul>
+<li><strong>AI-agent native (MCP)</strong> — an <a href="https://modelcontextprotocol.io">MCP</a> server exposing <strong>22
+tools</strong>, so you can <strong>operate Regente by talking to it</strong>. Eleven read-only tools are always
+available; eleven write tools sit behind <code>-allow-writes</code> <strong>and</strong> per-call approval in the
+client. See <a href="mcp.html"><code>docs/mcp.md</code></a>.</li>
+<li><strong>Enterprise readiness</strong> — a <strong>Postgres</strong> backend (as well as SQLite), <strong>leader election</strong> for
+scheduler HA, a pluggable <strong>secrets manager</strong>, opt-in <strong>SSO/OIDC</strong>, RBAC with per-folder ACLs,
+and audit forwarding to a SIEM.</li>
+<li><strong>Portable serverless</strong> — an external time trigger, a pluggable agent transport (WebSocket ·
+HTTP long-poll · SSE · NATS) and a distroless image that scales to zero, with no cloud lock-in.</li>
+<li><strong>Scale</strong> — validated end to end at Control-M volumes: the write path materializes 1M instances
+in 17s, and the UI was driven live against 1,000,000 jobs without ever downloading a whole day.</li>
+<li><strong>Observability</strong> — Prometheus metrics at <code>/metrics</code>, opt-in OpenTelemetry tracing, plus
+liveness and readiness probes.</li>
+<li><strong>Themes</strong> — 17 themes (13 dark, 4 light), applied instantly and remembered in the browser.</li>
+</ul>
+<hr>
+<h2 id="-architecture">🏗 Architecture</h2>
+<pre><code>  ┌──────────────┐    REST + WebSocket    ┌──────────────────┐   git push/pull    ┌──────────┐
+  │  app/        | ────────────────────▶ |  server/          │ ◀───────────────▶ │  GitHub   │
+  │  (React)     | ◀─────────────────────|  (Go, SQLite/PG)  │   (source of       │  (YAML)   │
+  └──────────────┘    instance.changed    └──────────────────┘    truth)          └──────────┘
+                                                    ▲
+                                                    │ WebSocket (the agent dials out — NAT-friendly)
+                                                    │ dispatch ▼   ▲ result
+                                            ┌──────────────────┐
+                                            │  agent/          |  runs COMMAND/SCRIPT/HTTP/…
+                                            │  (your PC / EC2) |  on Windows or Linux
+                                            └──────────────────┘
+</code></pre>
+<ul>
+<li><strong>Local-first:</strong> the agent makes an <strong>outbound</strong> connection to the server (crossing NAT and
+firewalls), receives dispatches, and returns the result and the output stream.</li>
+<li><strong>Pluggable state store:</strong> SQLite (the default — pure Go, zero infrastructure) or Postgres
+(HA and scale), same codebase, selected with <code>-db-driver</code>.</li>
+<li><strong>HA:</strong> with Postgres, several servers use <em>leader election</em> (an advisory lock) — only the
+leader materializes the daily; all of them serve the API.</li>
+</ul>
+<p>Component details: <a href="server.html"><code>server/</code></a> · <a href="agent.html"><code>agent/</code></a> ·
+<a href="app.html"><code>app/</code></a>.</p>
+<hr>
+<h2 id="-development">🛠 Development</h2>
+<p>Three terminals — server, agent and frontend:</p>
+<pre><code class="language-bash"># 1. server
+cd server &amp;&amp; go run . -api-token dev-token
+
+# 2. agent (a separate terminal)
+cd agent &amp;&amp; go run . -server ws://localhost:8080/ws/agent -token dev-token -id my-pc -caps COMMAND,SCRIPT,HTTP
+
+# 3. frontend (a separate terminal)
+cd app &amp;&amp; npm install &amp;&amp; cp .env.example .env &amp;&amp; npm run dev    # http://localhost:5173
+</code></pre>
+<p>Dev login: <code>admin</code> / <code>admin</code>.</p>
+<p>Before pushing, run the same checks CI runs:</p>
+<pre><code class="language-bash">bash scripts/verify.sh
+</code></pre>
+<p>That covers the server (build + vet + test), the agent (build + test) and the app (build). CI
+additionally gates on <code>staticcheck</code> and <code>npm run lint</code>, both of which must stay clean.</p>
+<hr>
+<h2 id="-roadmap">🗺 Roadmap</h2>
+<p>All planning lives in <strong><a href="docs/roadmap.md"><code>docs/roadmap.md</code></a></strong> — the single source of status
+(delivered, backlog and changelog). It is an internal working document, written in Portuguese,
+and it is deliberately kept out of the published documentation site.</p>
+<p>For the <strong>story of the project</strong> — the problem, the architectural bets, Control-M semantics at
+the edges, the scale validated at 1M jobs/day and the lessons learned — read the
+<strong><a href="case-study.en.html">case study</a></strong>.</p>
+<hr>
+<div align="center">
+<sub>A personal portfolio project. The UX is inspired by operating Control-M; it has no
+relationship with BMC.</sub>
+</div>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

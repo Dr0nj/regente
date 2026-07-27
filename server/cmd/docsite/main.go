@@ -30,6 +30,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Dr0nj/regente-server/internal/api"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
@@ -57,17 +58,32 @@ type page struct {
 }
 
 // knownOrder fixa o topo da navegação; o resto entra alfabético depois.
+// A referência de API entra no meio (apiNavOrder) — não vem de markdown.
 var knownOrder = map[string]int{
-	"README.md":                  0,
-	"server/README.md":           1,
-	"agent/README.md":            2,
-	"app/README.md":              3,
-	"docs/roadmap.md":            4,
-	"docs/arquitetura-futuro.md": 5,
-	"docs/operacao.md":           6,
-	"docs/dr-backup.md":          7,
-	"docs/slos.md":               8,
-	"docs/mcp.md":                9,
+	"README.md":        0,
+	"server/README.md": 1,
+	"agent/README.md":  2,
+	"app/README.md":    3,
+	"deploy/README.md": 4,
+	// 5 = API reference (apiNavOrder)
+	"docs/operations.md":          6,
+	"docs/conditions-events.md":   7,
+	"docs/dr-backup.md":           8,
+	"docs/slos.md":                9,
+	"docs/mcp.md":                 10,
+	"docs/architecture-future.md": 11,
+	"docs/case-study.en.md":       12,
+}
+
+// skipDoc — markdown do repo que NÃO vai pro site público: documento de
+// trabalho interno (fica em pt-BR de propósito) ou rascunho. O site é a cara
+// do produto, e o produto fala inglês.
+var skipDoc = map[string]bool{
+	"docs/roadmap.md":                      true, // planejamento nosso, pt-BR
+	"docs/linkedin-post.md":                true, // rascunhos de divulgação
+	"docs/case-study.md":                   true, // versão PT (a EN é publicada)
+	"docs/monitoring-immutability-plan.md": true, // plano interno, pt-BR
+	"docs/plano-layout-jobs.md":            true, // plano interno, pt-BR
 }
 
 // Build gera o site a partir do repo. Retorna o nº de páginas.
@@ -122,7 +138,53 @@ func Build(repoDir, outDir string) (int, error) {
 			return 0, err
 		}
 	}
-	return len(pages), nil
+	if err := writeAPIReference(outDir); err != nil {
+		return 0, fmt.Errorf("api reference: %w", err)
+	}
+	return len(pages) + 1, nil
+}
+
+// apiNavOrder — posição da referência de API na navegação (entre os READMEs
+// dos componentes e os docs). Ver knownOrder.
+const apiNavOrder = 5
+
+// writeAPIReference emite a referência de API como página ESTÁTICA: o MESMO
+// viewer que o server serve em /api-docs, com a spec INJETADA num
+// <script type="application/json"> — em file:// o fetch é bloqueado por CORS, e
+// num static host não há API atrás da página pra alimentar o Try-it (o viewer
+// detecta o node injetado e entra em modo estático sozinho). openapi.yaml/json
+// vão junto: são os links do header e o que se importa em Postman/codegen.
+func writeAPIReference(outDir string) error {
+	viewer, specYAML, specJSON, err := api.OpenAPIAssets()
+	if err != nil {
+		return err
+	}
+	inline := []byte(`<script id="openapi-inline" type="application/json">` +
+		scriptSafeJSON(specJSON) + "</script>\n</head>")
+	html := bytes.Replace(viewer, []byte("</head>"), inline, 1)
+	html = bytes.Replace(html, []byte(`<div class="links">`),
+		[]byte(`<div class="links"><a href="index.html">← Docs</a> · `), 1)
+
+	for name, body := range map[string][]byte{
+		"api.html":     html,
+		"openapi.yaml": specYAML,
+		"openapi.json": specJSON,
+	} {
+		if err := os.WriteFile(filepath.Join(outDir, name), body, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// scriptSafeJSON escapa o que fecharia o <script> mais cedo (um "</script>"
+// dentro de alguma description da spec). JSON aceita \uXXXX dentro de string,
+// e fora de string esses bytes nao aparecem - a troca e segura e o JSON.parse
+// do viewer enxerga exatamente o mesmo documento.
+func scriptSafeJSON(b []byte) string {
+	return strings.NewReplacer(
+		"<", "\\u003c", ">", "\\u003e", "&", "\\u0026",
+	).Replace(string(b))
 }
 
 // collect acha os markdown que viram página: README.md, */README.md
@@ -142,7 +204,7 @@ func collect(repoDir string) ([]page, error) {
 	}
 	docs, _ := os.ReadDir(filepath.Join(repoDir, "docs"))
 	for _, e := range docs {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") && !skipDoc["docs/"+e.Name()] {
 			srcs = append(srcs, "docs/"+e.Name())
 		}
 	}
@@ -246,12 +308,24 @@ func copyAssets(body []byte, src, repoDir, outDir string) []byte {
 // renderPage monta o HTML final: sidebar de navegação + conteúdo, CSS inline.
 func renderPage(p page, all []page) []byte {
 	var nav strings.Builder
+	apiWritten := false
+	writeAPILink := func() {
+		nav.WriteString(`<a href="api.html">API reference</a>` + "\n")
+		apiWritten = true
+	}
 	for _, q := range all {
+		// A referência de API não vem de markdown — entra na posição fixa.
+		if !apiWritten && q.order > apiNavOrder {
+			writeAPILink()
+		}
 		cls := ""
 		if q.slug == p.slug {
 			cls = ` class="active"`
 		}
 		fmt.Fprintf(&nav, `<a href="%s.html"%s>%s</a>`+"\n", q.slug, cls, html.EscapeString(q.title))
+	}
+	if !apiWritten {
+		writeAPILink()
 	}
 	var b bytes.Buffer
 	fmt.Fprintf(&b, `<!doctype html>

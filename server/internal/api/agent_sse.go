@@ -7,7 +7,7 @@
 // agente abre a conexão) e reaproveita TODO o resto: o mesmo `agentBroker`
 // registra o agente como `hub.Client`, então o dispatch continua saindo por
 // PickAgent+Send sem tocar o scheduler, e os resultados voltam pelos MESMOS
-// POST /api/agent/result e /output do long-poll. Ver docs/arquitetura-futuro.md §5.
+// POST /api/agent/result e /output do long-poll. Ver docs/architecture-future.md §5.
 package api
 
 import (

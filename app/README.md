@@ -1,140 +1,120 @@
 <div align="center">
   <img src="public/favicon-512.png" width="96" alt="Regente" />
   <h1>Regente — Web (frontend)</h1>
-  <p><strong>Frontend do Regente, orquestrador de workflows Git-nativo inspirado em Control-M.</strong></p>
+  <p><strong>The frontend of Regente, a Git-native workflow orchestrator inspired by Control-M.</strong></p>
 </div>
 
-> 📦 Esta é a pasta **`app/`** do monorepo. Visão geral do projeto, arquitetura e
-> instalação do **server**/**agent** estão no **[README raiz](../README.md)**.
+> 📦 This is the **`app/`** folder of the monorepo. The project overview, the architecture and
+> how to install the **server** and the **agent** live in the **[root README](../README.md)**.
 
-O frontend (React + TypeScript + Vite) é o cliente HTTP/WebSocket do `regente-server`:
-Monitoring (o que roda hoje) e Design (canvas drag-and-drop das definitions, com
-Publish pro Git). A UX é a de quem opera Control-M (folders, hold/rerun/force,
-find & update).
+The frontend (React + TypeScript + Vite) is the HTTP/WebSocket client of `regente-server`:
+Monitoring (what is running today) and Design (a drag-and-drop canvas of the definitions, with
+Publish to Git). The UX is the one a Control-M operator knows (folders, hold/rerun/force, find &
+update).
 
 ---
 
-## Conceito
+## Concept
 
-Dois mundos separados, estilo Control-M:
+Two separate worlds, Control-M style:
 
-- **Monitoring** — o que está rodando hoje. Resultado da *Daily*. Só consumo:
-  hold / release / cancel / set-ok / rerun / force order, audit por instance, SLA.
-- **Design** — onde as definitions são editadas. Você abre uma ou mais *folders*
-  (clone Git efêmero por sessão), edita no canvas drag-and-drop e dá **Publish**
-  (único caminho de escrita pro GitHub).
+- **Monitoring** — what is running today; the result of the *Daily*. Consumption only:
+  hold / release / cancel / set-ok / rerun / force order, per-instance audit, SLA.
+- **Design** — where the definitions are edited. You open one or more *folders* (an ephemeral Git
+  clone per session), edit on the drag-and-drop canvas and hit **Publish** (the only write path
+  to GitHub).
 
-**A Daily** roda 1×/dia à meia-noite (BRT): lê o Git, decide o que roda hoje
-(schedule + calendars + dependências + conditions) e materializa *instances*
-**imutáveis** — uma mudança publicada no Design durante o dia só entra na próxima
-daily ou via Force Order manual.
-
-## Funcionalidades
-
-- 🟢 **Git-nativo (GitOps)** — Publish vira commit/PR; mudanças no GitHub voltam
-  pra UI via webhook + polling. Deep-links job→YAML, instance→commit.
-- 🟢 **Executores locais via agente** — `COMMAND` (shell), `SCRIPT` (.sh/.bat/.ps1)
-  e `HTTP`, rodando na máquina onde o agente está (Windows ou Linux). Cada job
-  pode mirar um agente específico ou ser roteado por capability. Tokens **por
-  agente** + agente instalável como serviço (systemd / Tarefa Agendada).
-- 🟢 **SSH agentless** — `SSH` roda comando remoto direto do server (sem agente
-  no alvo), com stream de saída.
-- 🟢 **Retry de execution** — re-tentativa automática em falha (respeita `retries`).
-- 🟢 **Observabilidade** — `/metrics` em formato Prometheus.
-- 🟢 **Executor WASM** — `WASM` roda módulos WebAssembly WASI sandboxed via wazero
-  (pure-Go, sem CGO).
-- 🟢 **Alerting (Fase 8)** — regras configuráveis, tela de alertas (sino + badge +
-  ack), toast em tempo real e routing externo (Slack/webhook).
-- 🟢 **Schedule estilo Control-M** — dias da semana/mês, N-ésimo dia útil, regras
-  avançadas, janelas e execução cíclica; calendars include/exclude visuais.
-- 🟢 **Dependências entre jobs** com condições (on-success/failure/complete/always).
-- 🟢 **Engines de paridade** — calendars, resources/quotas, conditions, variáveis
-  globais (interpolação), SLA e forecast/analytics.
-- 🟢 **Token do GitHub pela UI** — configurável em runtime (Settings), persistido
-  server-side, sem precisar subir o server com `GITHUB_TOKEN`.
+**The Daily** runs once a day: it reads Git, decides what runs today (schedule + calendars +
+dependencies + conditions) and materializes **immutable** *instances* — a change published in
+Design during the day only takes effect on the next daily, or through a manual Force Order.
 
 ## Stack
 
-| Camada | Tecnologia |
+| Layer | Technology |
 |---|---|
-| Frontend (este repo) | React + TypeScript + Vite, [@xyflow/react](https://reactflow.dev) (canvas), ícones lucide |
+| Frontend (this folder) | React + TypeScript + Vite, [@xyflow/react](https://reactflow.dev) (canvas), lucide icons |
 | Backend | Go (`regente-server`) — GitOps + SQLite/Postgres, WebSocket hub |
-| Executor | Go (`regente-agent`) — conexão outbound (WS ou HTTP long-poll), roda COMMAND/SCRIPT/HTTP/SSH/WASM |
-| Fonte da verdade | Repositório GitHub (YAML em `definitions/<folder>/<id>.yaml`) |
+| Executor | Go (`regente-agent`) — outbound connection (WS · HTTP long-poll · SSE) |
+| Source of truth | A GitHub repository (YAML at `definitions/<folder>/<id>.yaml`) |
 
-## Rodando o frontend
+## Running the frontend
 
-Pré-requisitos: Node 18+ e o `regente-server` rodando (ver abaixo).
+Requirements: Node 18+ and a running `regente-server` (see below).
 
 ```bash
 npm install
-cp .env.example .env        # configure VITE_REGENTE_SERVER_URL
+cp .env.example .env        # set VITE_REGENTE_SERVER_URL
 npm run dev                 # http://localhost:5173
 ```
 
-Variáveis (`.env`):
+Environment variables (`.env`):
 
 ```bash
-VITE_REGENTE_SERVER_URL=http://localhost:8080   # vazio = modo local (localStorage)
+VITE_REGENTE_SERVER_URL=http://localhost:8080   # empty = local mode (localStorage)
 VITE_REGENTE_TOKEN=dev-token
 ```
 
-Login padrão de dev: `admin` / `admin`.
+Default dev login: `admin` / `admin`.
 
-## Arquitetura
+`VITE_REGENTE_SERVER_URL=@origin` means **same-origin**: the Go server serves the SPA on its own
+port (`-spa-dir`), so the UI resolves `window.location.origin` at runtime. This is how the
+single-origin deployment and the tunnelled demo work — the URL can change without rebuilding the
+frontend.
+
+## Architecture
 
 ```
   ┌──────────────┐    REST + WebSocket    ┌──────────────────┐   git push/pull   ┌──────────┐
   │  Frontend     │ ─────────────────────▶ │  regente-server   │ ◀───────────────▶ │  GitHub   │
-  │  (este repo)  │ ◀───────────────────── │  (Go, SQLite)     │   (fonte da       │  (YAML)   │
-  └──────────────┘    instance.changed     └──────────────────┘    verdade)        └──────────┘
+  │  (this folder)│ ◀───────────────────── │  (Go, SQLite/PG)  │   (source of      │  (YAML)   │
+  └──────────────┘    instance.changed     └──────────────────┘    truth)          └──────────┘
                                                     ▲
-                                                    │ WebSocket (agente disca pra fora)
+                                                    │ WebSocket (the agent dials out)
                                                     │ dispatch ▼   ▲ result
                                             ┌──────────────────┐
-                                            │  regente-agent    │  roda COMMAND/SCRIPT/HTTP
-                                            │  (seu PC / EC2)   │  no Windows ou Linux
+                                            │  regente-agent    │  runs COMMAND/SCRIPT/HTTP
+                                            │  (your PC / EC2)  │  on Windows or Linux
                                             └──────────────────┘
 ```
 
-O `regente-server` e o `regente-agent` (Go) vivem fora deste repositório. Em dev:
+In development:
 
 ```bash
 # server (GitOps + SQLite)
 cd ../server && go run . -api-token dev-token
 
-# agente executor (na máquina onde os comandos devem rodar)
+# executor agent (on the machine where the commands should run)
 cd ../agent  && go run . -server ws://localhost:8080/ws/agent -token dev-token \
-                         -id meu-pc -caps COMMAND,SCRIPT,HTTP
+                         -id my-pc -caps COMMAND,SCRIPT,HTTP
 ```
 
-## Estrutura (frontend)
+## Layout
 
 ```
 src/
-├── v2/                  # UI atual (Monitoring, Design, drawers, dialogs)
-│   ├── V2Preview.tsx    # shell principal (topbar, canvas, modos)
-│   ├── JobConfigDrawer  # edição de job (Geral/Schedule/Calendars/Action/Deps)
-│   ├── ScheduleEditor   # scheduler visual estilo Control-M
-│   ├── AlertsPanel.tsx  # tela de alertas (eventos + regras + canais) — Fase 8
+├── v2/                  # the current UI (Monitoring, Design, drawers, dialogs)
+│   ├── V2Preview.tsx    # main shell (topbar, canvas, modes)
+│   ├── JobConfigDrawer  # job editing (General/Schedule/Calendars/Action/Conditions)
+│   ├── ScheduleEditor   # visual Control-M style scheduler
+│   ├── AlertsPanel.tsx  # alerts screen (events + rules + channels)
 │   └── ...
-├── lib/                 # clientes de API + modelo + adapters
+├── lib/                 # API clients + model + adapters
 │   ├── server-client.ts # REST + WS
-│   ├── git-api.ts       # status, token, cleanup, deep-links
-│   ├── agents-api.ts    # agentes online
-│   ├── alerts-api.ts    # alertas (facade dual-mode server/local)
+│   ├── git-api.ts       # status, token, cleanup, deep links
+│   ├── agents-api.ts    # online agents
+│   ├── alerts-api.ts    # alerts (dual-mode server/local facade)
 │   └── adapters/        # ports & adapters (storage/scheduler/executor)
 └── main.tsx
 ```
 
-## Roadmap
+## Checks
 
-> Fonte única no monorepo (evita divergência): checklist no
-> **[README raiz](../README.md#-roadmap)** e a versão visual consolidada em
-> **[`../docs/roadmap.md`](../docs/roadmap.md)**. A estratégia serverless
-> (sem lock-in) está em **[`../docs/arquitetura-futuro.md`](../docs/arquitetura-futuro.md)**.
+```bash
+npm run build     # tsc -b && vite build
+npm run lint      # eslint — a CI gate, it must stay at zero
+```
 
 ---
 
-<sub>Projeto pessoal de portfólio. UI inspirada na operação do Control-M; nenhuma
-relação com a BMC.</sub>
+<sub>A personal portfolio project. The UI is inspired by operating Control-M; it has no
+relationship with BMC.</sub>
