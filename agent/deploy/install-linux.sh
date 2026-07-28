@@ -33,9 +33,17 @@ BIN_SRC="$(dirname "$0")/../regente-agent"
 
 install -m 0755 "$BIN_SRC" /usr/local/bin/regente-agent
 
+# Token num EnvironmentFile 0600 (o agente lê REGENTE_TOKEN), nunca na ExecStart:
+# argumento de processo é visível pra qualquer usuário no `ps`. Mesmo contrato do
+# install-agent.sh das releases.
+ENVFILE=/etc/regente/agent.env
+mkdir -p /etc/regente
+umask 077
+printf 'REGENTE_TOKEN=%s\n' "$TOKEN" > "$ENVFILE"
+chmod 0600 "$ENVFILE"
+
 UNIT=/etc/systemd/system/regente-agent.service
 sed -e "s#__SERVER__#${SERVER}#g" \
-    -e "s#__TOKEN__#${TOKEN}#g" \
     -e "s#__ID__#${ID}#g" \
     -e "s#__CAPS__#${CAPS}#g" \
     -e "s#__USER__#${RUN_USER}#g" \

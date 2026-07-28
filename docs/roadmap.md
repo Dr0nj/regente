@@ -1193,6 +1193,25 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
        (adotar o disco ali poderia sobrescrever um repo cheio no primeiro push). README
        ganhou o parágrafo do repo já existente, incluindo o que NÃO vem do Git
        (users/tokens/histórico moram na DB → docs/dr-backup.md).
+✅ VA-11 · RELEASE A CADA PUSH na main, com PORTÃO de instalação (decisão do
+       usuário: "não é melhor sempre fazer um release quando mexermos?"). O que
+       está na main e não está numa release NÃO EXISTE pra quem instala — o
+       README manda baixar de releases/latest. Publicar sempre só é seguro com
+       o portão, porque a v0.2.0 passou em build/vet/test/staticcheck/lint e
+       ainda assim travava a instalação. Peças: `scripts/smoke-install.sh` +
+       `scripts/smoke/` (Dockerfile Ubuntu+systemd próprio, sem imagem de
+       terceiros na CI) instalam o artefato num systemd DE VERDADE e rodam 25
+       asserções — instalar do bundle · config quebrada sem crash-loop e sem
+       .git parcial · repo vazio · repo já usado (migração) · agente com URL da
+       UI normalizada e token 0600 · job executando OK com output · reboot
+       preservando serviço/DB/UI/workspace. No release.yml virou o job `smoke`,
+       entre `build` e `publish`: falhou, não publica. Job `version` calcula o
+       próximo patch (tag manual vX.Y.Z segue valendo pra minor/major; `[no
+       release]` na mensagem do commit pula) e `concurrency: release` serializa.
+       Rodando local (`--build`) o smoke também achou: o installer de agente DO
+       CÓDIGO-FONTE ainda passava o token na linha de comando (visível no `ps`)
+       enquanto o da release já usava EnvironmentFile 0600 — corrigido, agora
+       os dois caminhos endurecem igual.
 ```
 
 > **Provado nesse container** (release v0.2.0 baixada do GitHub, nada preparado à mão):

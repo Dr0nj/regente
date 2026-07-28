@@ -8,6 +8,8 @@
 *.exe~
 *.exe
 dist/
+# saida do smoke de instalacao local (scripts/smoke-install.sh --build)
+.smoke/
 
 # --- Runtime state (NUNCA versionar) ---
 *.db

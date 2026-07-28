@@ -1,10 +1,21 @@
 name: Release
 
-# Dispara ao empurrar uma tag de versão, ex.: git tag v0.2.0 && git push --tags
-# workflow_dispatch permite REPUBLICAR os assets de uma tag existente sem criar
-# outra versão (foi assim que a v0.1.0 ficou com só 2 dos 5 alvos anexados).
+# TRÊS gatilhos:
+#   • push na main  → release AUTOMÁTICA (patch seguinte). O que está na main mas
+#     não está numa release não existe pra quem instala: o README manda baixar de
+#     releases/latest. Pra pular uma entrega, escreva [no release] na mensagem do
+#     commit (docs/roadmap sozinhos, por exemplo).
+#   • tag vX.Y.Z    → release daquela versão (é assim que se sobe minor/major).
+#   • workflow_dispatch → REPUBLICA os assets de uma tag existente sem criar
+#     versão nova (foi assim que a v0.1.0 ficou com só 2 dos 5 alvos anexados).
+#
+# Publicar sempre só é seguro por causa do job `smoke`: ele INSTALA o artefato num
+# Linux com systemd de verdade antes de publicar. Sem esse portão, "release a cada
+# push" espalharia regressão na velocidade do push — foi o que aconteceu com a
+# v0.2.0 (passou em build/vet/test/lint e travava a instalação mesmo assim).
 on:
   push:
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
     inputs:
@@ -16,11 +27,52 @@ on:
 permissions:
   contents: write # necessário para criar o GitHub Release e anexar binários
 
+# Uma release por vez: dois pushes seguidos calculariam o MESMO patch seguinte e
+# uma sobrescreveria a outra. cancel-in-progress=false porque a que já começou
+# tem de terminar (ela é a que vai virar `latest`).
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
+  # Decide a versão ANTES de qualquer build: tag do ref, input do dispatch, ou
+  # o próximo patch a partir da maior tag existente (push na main).
+  version:
+    name: definir versão
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
+      skip: ${{ steps.pick.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # precisa do histórico de tags pra calcular o patch
+      - id: pick
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"; echo "skip=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "${{ startsWith(github.ref, 'refs/tags/v') }}" = true ]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"; echo "skip=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # push na main: opt-out explícito por mensagem de commit
+          msg="$(git log -1 --pretty=%B)"
+          case "$msg" in
+            *"[no release]"*|*"[skip release]"*)
+              echo "commit pediu pra não publicar"; echo "skip=true" >> "$GITHUB_OUTPUT"; echo "tag=" >> "$GITHUB_OUTPUT"; exit 0 ;;
+          esac
+          last="$(git tag -l 'v*.*.*' | sort -V | tail -1)"
+          last="${last:-v0.0.0}"
+          IFS=. read -r maj min pat <<< "${last#v}"
+          echo "tag=v${maj}.${min}.$((pat + 1))" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
   # V1/V2 — a UI é buildada UMA vez (single-origin: @origin -> window.location.origin
   # em runtime) e reusada nos bundles Linux de todas as arquiteturas.
   spa:
     name: build SPA (single-origin)
+    needs: version
+    if: needs.version.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +95,7 @@ jobs:
 
   build:
     name: build ${{ matrix.goos }}/${{ matrix.goarch }}
-    needs: spa
+    needs: [version, spa]
     runs-on: ubuntu-latest
     strategy:
       # fail-fast=false: um alvo quebrado não deve cancelar os outros — mas o
@@ -112,9 +164,34 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # PORTÃO: instala o artefato que está prestes a ser publicado num Linux com
+  # systemd de verdade e exercita o circuito do operador (instalar · config
+  # errada sem crash-loop · repo vazio · repo já usado · agente · job rodando ·
+  # reboot). Falhou aqui, não publica — é o que torna "release a cada push"
+  # seguro. Ver scripts/smoke-install.sh.
+  smoke:
+    name: smoke de instalação (systemd real)
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Baixar os artefatos linux/amd64
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-linux-amd64
+          path: dist
+      - name: Instalar de verdade e validar
+        run: |
+          chmod +x dist/regente-agent_linux_amd64
+          bash scripts/smoke-install.sh \
+            --bundle dist/regente-server_linux_amd64.tar.gz \
+            --agent  dist/regente-agent_linux_amd64
+
   publish:
     name: publish release
-    needs: build
+    needs: [version, build, smoke]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -168,6 +245,6 @@ jobs:
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
+          tag_name: ${{ needs.version.outputs.tag }}
           files: dist/*
           fail_on_unmatched_files: true

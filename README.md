@@ -511,6 +511,21 @@ bash scripts/verify.sh
 That covers the server (build + vet + test), the agent (build + test) and the app (build). CI
 additionally gates on `staticcheck` and `npm run lint`, both of which must stay clean.
 
+If you touched anything on the installation path — the installers, the bundle, the GitOps
+bootstrap — run the installation smoke test too. It installs the built artifact on a real
+systemd Linux (in a container) and drives the whole operator circuit: install, a wrong
+repository (which must not crash-loop), an empty repository, a repository already in use, an
+agent, a job that actually runs, and a reboot.
+
+```bash
+bash scripts/smoke-install.sh --build
+```
+
+**Every push to `main` publishes a release**, and this smoke test is the gate that runs before
+it: if the artifact does not install, nothing is published. Put `[no release]` in the commit
+message to skip publishing (documentation-only changes, for instance); tag `vX.Y.Z` by hand when
+you want a minor or major instead of the next patch.
+
 ---
 
 ## 🗺 Roadmap
