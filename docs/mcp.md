@@ -32,10 +32,10 @@ marked **destructiveHint**:
 
 | Tool | What it does | Endpoint |
 |---|---|---|
-| `hold_job` | holds a job in any status except RUNNING → HELD, freezing the original status (Control-M Hold) | `POST /api/instances/{id}/hold` |
+| `hold_job` | holds a job in any status except RUNNING → HELD, freezing the original status (classic Hold) | `POST /api/instances/{id}/hold` |
 | `release_job` | releases a HELD job back to the **original** status frozen by the hold (Release) | `POST /api/instances/{id}/release` |
 | `cancel_job` | cancels a job for the day (→ CANCELLED) | `POST /api/instances/{id}/cancel` |
-| `confirm_job` | confirms a job sitting at the WAIT_CONFIRM gate (Control-M Confirm) | `POST /api/instances/{id}/confirm` |
+| `confirm_job` | confirms a job sitting at the WAIT_CONFIRM gate (classic Confirm) | `POST /api/instances/{id}/confirm` |
 | `rerun_job` | re-runs a job (→ WAITING) | `POST /api/instances/{id}/rerun` |
 | `set_ok` | marks NOTOK/CANCELLED as OK and unblocks the successors | `POST /api/instances/{id}/set-ok` |
 | `force_order` | orders and runs a **definition** right now, outside the schedule | `POST /api/definitions/{id}/force` |

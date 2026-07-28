@@ -237,7 +237,7 @@ func (m *mcpServer) dispatch(name string, args map[string]interface{}) (string, 
 		return m.get("/api/daily/diff" + qs(map[string]string{"from": str("from"), "to": str("to"), "folder": str("folder")}))
 	case "dry_run":
 		return m.get("/api/daily/dryrun" + qs(map[string]string{"date": str("date")}))
-	// ── Escritas unitárias por instância (Control-M operator actions) ──
+	// ── Escritas unitárias por instância (classic operator actions) ──
 	case "hold_job":
 		return writeID("hold")
 	case "release_job":
@@ -427,15 +427,15 @@ func (m *mcpServer) tools() []map[string]interface{} {
 			}
 		}
 		out = append(out,
-			instTool("hold_job", "Holds a job (Control-M Hold, any status except RUNNING) — becomes HELD; the original status is frozen and release restores it. DESTRUCTIVE ACTION — confirm with the operator first."),
-			instTool("release_job", "Releases a HELD job back to the ORIGINAL status frozen by the hold (Control-M Release; legacy holds fall back to WAITING). DESTRUCTIVE ACTION — confirm with the operator first."),
+			instTool("hold_job", "Holds a job (classic Hold, any status except RUNNING) — becomes HELD; the original status is frozen and release restores it. DESTRUCTIVE ACTION — confirm with the operator first."),
+			instTool("release_job", "Releases a HELD job back to the ORIGINAL status frozen by the hold (classic Release; legacy holds fall back to WAITING). DESTRUCTIVE ACTION — confirm with the operator first."),
 			instTool("cancel_job", "Cancels a job for the day (becomes CANCELLED, terminal). DESTRUCTIVE ACTION — confirm with the operator first."),
-			instTool("confirm_job", "Confirms a job waiting at the WAIT_CONFIRM gate (Control-M Confirm; def with confirm:true). DESTRUCTIVE ACTION — confirm with the operator first."),
+			instTool("confirm_job", "Confirms a job waiting at the WAIT_CONFIRM gate (classic Confirm; def with confirm:true). DESTRUCTIVE ACTION — confirm with the operator first."),
 			instTool("rerun_job", "Reruns a job (back to WAITING). DESTRUCTIVE ACTION — confirm with the operator first."),
 			instTool("set_ok", "Marks a NOTOK/CANCELLED job as OK (Set OK), unblocking successors. DESTRUCTIVE ACTION — confirm with the operator first."),
 			map[string]interface{}{
 				"name":        "force_order",
-				"description": "Force Order: orders and runs a DEFINITION NOW, outside the schedule and ignoring deps (Control-M Order/Force). Returns the created instanceId. DESTRUCTIVE ACTION — confirm with the operator first.",
+				"description": "Force Order: orders and runs a DEFINITION NOW, outside the schedule and ignoring deps (classic Order/Force). Returns the created instanceId. DESTRUCTIVE ACTION — confirm with the operator first.",
 				"inputSchema": schema(map[string]interface{}{"definitionId": strProp("the DEFINITION id (not the instance) — e.g. etl-sales")}, "definitionId"),
 				"annotations": destructive,
 			},
@@ -447,7 +447,7 @@ func (m *mcpServer) tools() []map[string]interface{} {
 			},
 			map[string]interface{}{
 				"name":        "resume_folder",
-				"description": "Resumes a paused workflow: everything held by the folder pause for the day goes back to the ORIGINAL status (Control-M Release folder). DESTRUCTIVE ACTION — confirm with the operator first.",
+				"description": "Resumes a paused workflow: everything held by the folder pause for the day goes back to the ORIGINAL status (classic Release folder). DESTRUCTIVE ACTION — confirm with the operator first.",
 				"inputSchema": schema(map[string]interface{}{"folder": strProp("exact folder/team"), "date": strProp("YYYY-MM-DD (default today)")}, "folder"),
 				"annotations": destructive,
 			},

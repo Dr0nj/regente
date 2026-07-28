@@ -56,7 +56,7 @@ tags:
   - name: Query
     description: Typed composed query (D-5) and NL-query over the current day's state.
   - name: Lifecycle
-    description: Operational actions on an instance (Control-M parity) + Force Order.
+    description: Operational actions on an instance (classic enterprise parity) + Force Order.
   - name: External events
     description: Idempotent ingestion (D-3) — another system unblocks jobs without polling.
   - name: Daily
@@ -261,7 +261,7 @@ paths:
       tags: [Lifecycle]
       summary: Delete — removes the order (ONLY on HOLD)
       description: |
-        Control-M "Delete job": removes the instance from the screen and from
+        The classic "Delete job": removes the instance from the screen and from
         the state store. Requires the job to be on HOLD — since RUNNING is not
         holdable, a job in execution is never deletable; any other status
         becomes deletable by going through Hold first. The dependency-event
@@ -388,7 +388,7 @@ paths:
       tags: [Lifecycle]
       summary: Set OK — flips WAITING/NOTOK/CANCELLED → OK
       description: |
-        Control-M "Set OK": marks it OK, publishes the dependency event and
+        The classic "Set OK": marks it OK, publishes the dependency event and
         MATERIALIZES the ConditionsOut — unblocking the on-success successors.
         It also applies to WAITING (a job stuck on WAIT EVENT finishes OK right
         away, BUG-3). 400 if the instance is not in an eligible state (e.g.
@@ -411,7 +411,7 @@ paths:
       tags: [Lifecycle]
       summary: Confirm — opens the WAIT_CONFIRM gate
       description: |
-        Control-M "Confirm": releases a job defined with `confirm: true`. It
+        The classic "Confirm": releases a job defined with `confirm: true`. It
         applies to WAITING and HELD (confirming while held counts; it runs once
         released). Not even Force bypasses this gate — only Confirm. It nudges
         the tick: confirmed, dispatched.
@@ -442,7 +442,7 @@ paths:
       tags: [Lifecycle]
       summary: Force Order — materializes the published def into today's daily
       description: |
-        Control-M "Order Force": creates an instance from the most current
+        The classic "Order Force": creates an instance from the most current
         PUBLISHED definition, right now, in today's daily (the regular daily is
         an immutable photo; force picks up the live def — only for the forced
         job).
@@ -608,7 +608,7 @@ paths:
     get:
       tags: [Forecast]
       summary: Forecast for N days ahead (CTM-6)
-      description: One ForecastReport per day, same gating as RunDaily. Control-M's "≥1 week".
+      description: One ForecastReport per day, same gating as RunDaily. The classic "≥1 week".
       operationId: getForecastRange
       x-permission: any logged-in user
       parameters:

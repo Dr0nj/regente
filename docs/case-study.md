@@ -1,6 +1,7 @@
-# Case study — Regente: um orquestrador de jobs classe Control-M, Git-nativo, do zero
+# Case study — Regente: um orquestrador de jobs classe enterprise, Git-nativo, do zero
 
-> **TL;DR.** O Regente é um orquestrador de workloads batch no espírito do BMC Control-M —
+> **TL;DR.** O Regente é um orquestrador de workloads batch no espírito dos orquestradores
+> enterprise clássicos —
 > daily imutável, dependências com condições, calendários, recursos, Confirm, forecast —
 > construído do zero como monorepo Go + React, com **Git como fonte de verdade** das
 > definições. Validado ao vivo com **1.000.000 de jobs/dia** (materialização em 17s,
@@ -12,7 +13,7 @@
 
 ## 1. O problema
 
-Orquestradores enterprise (Control-M, Autosys, Tivoli) resolvem um problema real — o dia
+Os orquestradores enterprise clássicos resolvem um problema real — o dia
 de operação batch: "materialize os jobs de hoje, respeite dependências/calendários/janelas,
 me dê hold/release/rerun/force e um trilho de auditoria". Mas cobram caro por isso, em
 três moedas:
@@ -24,8 +25,8 @@ três moedas:
   dev pra prod" é um ritual.
 
 A pergunta do projeto: *quanto dessa categoria dá pra reconstruir com engenharia moderna
-— Git, binário único, API aberta — sem perder a semântica operacional que faz o Control-M
-ser bom?*
+— Git, binário único, API aberta — sem perder a semântica operacional que faz essa
+categoria ser boa?*
 
 ## 2. As apostas de arquitetura
 
@@ -37,7 +38,8 @@ session* (clone efêmero server-side) e **nada roda sem publicar** — publish =
 
 **Imutabilidade como regra de produto.** Ao ordenar, a definição é **congelada** na
 instância (snapshot JSON + colunas denormalizadas). Publicar uma mudança no Design nunca
-reescreve o dia corrente — o Monitoring é a foto do que foi agendado, como no Control-M.
+reescreve o dia corrente — o Monitoring é a foto do que foi agendado, como manda o modelo
+enterprise clássico.
 Essa regra virou o teste decisivo de vários bugs ("o selo mudou sozinho" = leu a def viva).
 
 **Monolito operável, serverless opcional.** Um binário Go serve API + WebSocket + UI
@@ -52,7 +54,7 @@ agente, recurso, Confirm) passa por **um** avaliador (`gateInstance`). O tick us
 decidir; o "Why not?" da UI usa-o para explicar. Nenhum bloqueio existe sem aparecer no
 Explain — por construção, não por disciplina.
 
-## 3. Semântica Control-M (a parte difícil)
+## 3. Semântica enterprise clássica (a parte difícil)
 
 A paridade não é a lista de features — é o comportamento nas bordas:
 
@@ -65,7 +67,7 @@ A paridade não é a lista de features — é o comportamento nas bordas:
 - **Dependências como CONDIÇÕES explícitas num pool único** — a seta A→B do canvas é
   açúcar para uma condição nomeada (`A-TO-B`): o OK do pai **cria** a condição, a
   entrada do sucessor **aguarda** por ela, e uma saída negativa **consome** (deleta) —
-  o que modela fan-in com consumo, como no Control-M. A entrada aceita **lógica E/OU
+  o que modela fan-in com consumo, como no modelo clássico. A entrada aceita **lógica E/OU
   real** (grupos com operador de topo) e o token `$TIME` ("condição OU horário");
   rerun do pai desfaz o OK e quem depende **volta a aguardar** um término novo.
 - **Force com dois gestos** — "Run Now" destrava a instância existente (bypass de
@@ -80,9 +82,9 @@ A paridade não é a lista de features — é o comportamento nas bordas:
   cair, o job espera em WAIT AGENT. Nunca migra sozinho. Todo server nasce com um
   **SERVER-AGENT embutido** (HTTP/REST) — chamada de API roda sem instalar agente externo.
 
-## 4. Além do Control-M
+## 4. Além do modelo clássico
 
-Onde dá pra ser melhor que o original sem inventar moda:
+Onde dá pra ser melhor que os incumbentes sem inventar moda:
 
 - **Explain ("por que não rodou?")** — resposta estruturada por instância, da mesma
   fonte que decide o dispatch.
@@ -139,7 +141,8 @@ um acidente.
 
 ## 9. O próximo passo: IA que não sai do perímetro *(roadmap, spec pronta)*
 
-O público Control-M vive em ambiente regulado — bancos, seguradoras, utilities — onde
+O público de orquestração enterprise vive em ambiente regulado — bancos, seguradoras,
+utilities — onde
 sysout, logs e dados de host **não podem sair do perímetro**. Todo scheduler "com IA"
 do mercado manda esses dados pra uma API de nuvem; o próximo jobType do Regente, o
 `AI_AGENT`, faz o inverso: a LLM roda **no mesmo host do agente** (Ollama/llama.cpp/

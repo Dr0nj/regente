@@ -380,9 +380,9 @@ export default function DesignSidebarV2({
 
           {tab === "variables" && (
             <div style={{ padding: "12px 14px", fontSize: 11, color: "var(--v2-text-muted)", fontFamily: "var(--v2-font-mono)", lineHeight: 1.5 }}>
-              Global variables are managed in the Control-M Panel
+              Global variables are managed in the Control Panel
               <br />
-              <span style={{ opacity: 0.6 }}>(user menu → Control-M → Variables)</span>
+              <span style={{ opacity: 0.6 }}>(user menu → Control Panel → Variables)</span>
             </div>
           )}
         </div>

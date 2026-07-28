@@ -1,7 +1,8 @@
-# importctm — a Control-M → Regente importer
+# importctm — a legacy-orchestrator → Regente importer
 
-Reads a Control-M export XML (`DEFTABLE`/`FOLDER`/`SMART_FOLDER`/`JOB`, the format produced by
-`ctm export`/forecast) and generates a **local Regente workspace** for you to review:
+Reads the `DEFTABLE`/`FOLDER`/`SMART_FOLDER`/`JOB` export XML produced by legacy enterprise
+schedulers (the Control-M export format — named here only to identify the file this tool parses;
+see the trademark note at the end) and generates a **local Regente workspace** for you to review:
 
 ```
 importctm -in export.xml -out ./workspace [-dry-run] [-folder-filter FIN]
@@ -21,7 +22,7 @@ writes nothing.
 
 ## Mappings (v1)
 
-| Control-M | Regente | Notes |
+| Source export | Regente | Notes |
 |---|---|---|
 | `FOLDER`/`SMART_FOLDER` + `PARENT_FOLDER` | `team` (the folder) | The job's `PARENT_FOLDER` wins; the fallback is `FOLDER_NAME`. |
 | `JOBNAME` | `id` | Slugified (lowercase, `[a-z0-9_-]`); a collision gets a `-2`, `-3`… suffix. |
@@ -55,3 +56,9 @@ decision is left to the reviewer.
 
 Any **other attribute** on a `JOB` becomes a `# TODO-import: attribute X="v" not mapped` line at
 the end of the YAML **and** shows up in the report's Pending column — nothing is lost silently.
+
+---
+
+<sub>**Trademark note.** Regente is an independent project, not affiliated with, endorsed by or
+derived from any commercial orchestration product. Product names appearing above are trademarks of
+their respective owners and are used solely to identify the file format this importer reads.</sub>

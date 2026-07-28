@@ -291,7 +291,7 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 	if r.Forced && r.ForceMode != ForceModeOrder {
 		if def.Confirm && !r.Confirmed {
 			ex.Blockers = []Blocker{{Kind: GateConfirm, Detail: "waiting for operator confirmation (the job requires Confirm)"}}
-			ex.Summary = "Force waiting on Confirm — the confirmation is not bypassed (Control-M)."
+			ex.Summary = "Force waiting on Confirm — the confirmation is not bypassed."
 			return ex, nil
 		}
 		ex.Runnable = true

@@ -68,7 +68,7 @@ the published docs site.
 |---|---|
 | `go run ./cmd/mcp` | MCP server — operate Regente from an AI agent ([docs](../docs/mcp.md)) |
 | `go run ./cmd/docsite` | Generates the static documentation site |
-| `go run ./cmd/importctm` | Imports a Control-M export (DEFTABLE XML) into a workspace |
+| `go run ./cmd/importctm` | Imports a legacy orchestrator export (DEFTABLE XML) into a workspace |
 | `go run ./cmd/regente` | Operator CLI (`ops`, `promote`, `dev`, `test`) |
 
 ## Production

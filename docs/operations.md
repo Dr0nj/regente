@@ -63,7 +63,7 @@ environments without mixing series.
 
 ## 3. Quotas (resources) across a failover
 
-Quotas (F15 — *quantitative resources*, Control-M style) cap how many jobs compete for a named
+Quotas (F15 — *quantitative resources*, classic enterprise style) cap how many jobs compete for a named
 resource (e.g. `db=5` → at most 5 jobs using the pool at once). Two halves, with different
 lifetimes:
 

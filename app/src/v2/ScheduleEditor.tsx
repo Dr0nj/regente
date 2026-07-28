@@ -232,7 +232,7 @@ function CalendarSection({ calendars, onChange, available }: { calendars: Calend
         <button onClick={() => add("include")} disabled={!pick} style={{ ...chipBtn, borderColor: "var(--v2-accent-brand)", color: "var(--v2-accent-brand)" }}><Plus size={11} /> include</button>
         <button onClick={() => add("exclude")} disabled={!pick} style={{ ...chipBtn, borderColor: "#7f1d1d", color: "#fca5a5" }}><Plus size={11} /> exclude</button>
       </div>
-      {available.length === 0 && <Hint>No calendar created yet. Create one in Control-M Panel → Calendars.</Hint>}
+      {available.length === 0 && <Hint>No calendar created yet. Create one in Control Panel → Calendars.</Hint>}
       <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
         {calendars.map((c, i) => (
           <div key={`${c.name}-${c.mode}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", background: "var(--v2-bg-canvas)", border: "1px solid var(--v2-border-subtle)", borderRadius: 3 }}>

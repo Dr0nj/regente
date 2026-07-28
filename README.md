@@ -1,7 +1,7 @@
 <div align="center">
   <img src="app/public/logo-r.png" width="92" alt="Regente" />
   <h1>Regente</h1>
-  <p><strong>A Git-native workflow orchestrator, inspired by Control-M.</strong></p>
+  <p><strong>A Git-native workflow orchestrator with enterprise-class batch semantics.</strong></p>
   <p>
     <a href="#-what-it-is">What it is</a> ·
     <a href="#-documentation">Docs</a> ·
@@ -342,10 +342,11 @@ A script that builds everything, serves the UI on one origin, runs the agent in 
 Docker container and opens a free public HTTPS tunnel:
 [`deploy/demo/`](deploy/demo/README.md).
 
-### Migrating from Control-M
+### Migrating from a legacy orchestrator
 
-`importctm` reads a Control-M export XML and generates a Regente workspace for review, with an
-import report and `# TODO-import` notes wherever a decision is needed. It **never pushes**. See
+`importctm` reads the export XML of a legacy enterprise scheduler (the Control-M export format,
+named here only to identify the file it parses) and generates a Regente workspace for review, with
+an import report and `# TODO-import` notes wherever a decision is needed. It **never pushes**. See
 [`server/cmd/importctm/`](server/cmd/importctm/README.md).
 
 ---
@@ -357,17 +358,17 @@ import report and `# TODO-import` notes wherever a decision is needed. It **neve
 - **Git-native (GitOps)** — Publish becomes a commit or a pull request; changes made on GitHub
   come back into the UI through a webhook plus polling. Deep links go from a job to its YAML and
   from an instance to its commit.
-- **Control-M-style scheduling** — frequency (daily / days of the week / days of the month),
+- **Enterprise-style scheduling** — frequency (daily / days of the week / days of the month),
   execution windows and cyclic runs. **Calendars** act as include/exclude rules alongside the
   frequency, with a plain-language translation of what each one does and a **real calendar
   preview** (12 mini-months and a year selector; the highlighted days are exactly the days the
   job will run, computed by the backend with the same rule as the daily).
-- **Dependencies are CONDITIONS in a single pool** (Control-M global conditions). Drawing A→B on
+- **Dependencies are CONDITIONS in a single pool** (the classic global-condition model). Drawing A→B on
   the canvas creates the condition `A-TO-B`; typing it by hand lands in exactly the same place.
   A job runs when its input conditions exist in the pool; finishing OK adds its outputs and
   **deletes** the ones it consumed. The Monitoring **Conditions** panel lists the whole pool —
   deleting an entry blocks whoever depends on it, adding one releases them immediately.
-  Control-M date references per row: `Odate`, `Prev` and `Stat`.
+  Classic date references per row: `Odate`, `Prev` and `Stat`.
 - **AND/OR logic on the entry** — by default every input condition is required (AND), but a
   toggle groups them, each group with its own operator plus a top-level one, e.g.
   `(C1 AND C2) OR C3` (it runs on the first branch that completes). With a single condition, the
@@ -375,7 +376,7 @@ import report and `# TODO-import` notes wherever a decision is needed. It **neve
   start time is reached — whichever comes first.
 - **Immutable daily** — instances are frozen at order time. A change published during the day
   only takes effect on the next daily, or through a Force Order.
-- **Daily life cycle (Control-M carry-over)** — an order that is still open does not vanish at
+- **Daily life cycle (carry-over)** — an order that is still open does not vanish at
   the rollover: RUNNING and HELD always cross; an untreated NOTOK persists one more day (or N,
   through `schedule.keepActive`); OK and CANCELLED close. The order advances its date while
   keeping its id, status and history, and shows where it came from.
@@ -456,7 +457,7 @@ import report and `# TODO-import` notes wherever a decision is needed. It **neve
   and audit forwarding to a SIEM.
 - **Portable serverless** — an external time trigger, a pluggable agent transport (WebSocket ·
   HTTP long-poll · SSE · NATS) and a distroless image that scales to zero, with no cloud lock-in.
-- **Scale** — validated end to end at Control-M volumes: the write path materializes 1M instances
+- **Scale** — validated end to end at enterprise volumes: the write path materializes 1M instances
   in 17s, and the UI was driven live against 1,000,000 jobs without ever downloading a whole day.
 - **Observability** — Prometheus metrics at `/metrics`, opt-in OpenTelemetry tracing, plus
   liveness and readiness probes.
@@ -542,13 +543,15 @@ All planning lives in **[`docs/roadmap.md`](docs/roadmap.md)** — the single so
 (delivered, backlog and changelog). It is an internal working document, written in Portuguese,
 and it is deliberately kept out of the published documentation site.
 
-For the **story of the project** — the problem, the architectural bets, Control-M semantics at
-the edges, the scale validated at 1M jobs/day and the lessons learned — read the
+For the **story of the project** — the problem, the architectural bets, classic enterprise
+semantics at the edges, the scale validated at 1M jobs/day and the lessons learned — read the
 **[case study](docs/case-study.en.md)**.
 
 ---
 
 <div align="center">
-<sub>A personal portfolio project. The UX is inspired by operating Control-M; it has no
-relationship with BMC.</sub>
+<sub>A personal portfolio project, independently designed and built. It is not affiliated with,
+endorsed by, or derived from any commercial orchestration product. Third-party product names, where
+they appear, are trademarks of their respective owners and are used only to identify a file format
+the importer can read.</sub>
 </div>

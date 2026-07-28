@@ -284,7 +284,7 @@ const SCHEDULE_CHILDREN: GuideEntry[] = [
   {
     tag: "shift",
     kind: "string",
-    summary: "What to do when the NOMINAL day is not eligible (holiday/exclude; with no calendar, the weekend). Control-M \"roll\".",
+    summary: "What to do when the NOMINAL day is not eligible (holiday/exclude; with no calendar, the weekend) — the classic \"roll\".",
     forms: [
       { form: '"" | "none"', desc: "skips that cycle (classic)" },
       { form: '"next-businessday"', desc: "rolls to the NEXT eligible day" },
@@ -343,7 +343,7 @@ const ACTIONS_CHILDREN: GuideEntry[] = [
     summary: "The rule TRIGGER.",
     forms: [
       { form: '"result"', desc: "the job's TERMINAL status (after retries are exhausted) — qualify it with `status`" },
-      { form: '"exit"', desc: "the job's TERMINAL exit code (Control-M COMPSTAT) — qualify it with `exitCodes`" },
+      { form: '"exit"', desc: "the job's TERMINAL exit code (classic COMPSTAT) — qualify it with `exitCodes`" },
       { form: '"attempt"', desc: "the Nth attempt FAILED (rerun ladder) — qualify it with `attempt`" },
       { form: '"runtime"', desc: "job RUNNING for more than N minutes (shout) — qualify it with `afterMin`" },
     ],
@@ -521,7 +521,7 @@ retryDelayMin: 60   # retry every 1h`,
   {
     tag: "confirm",
     kind: "bool",
-    summary: "Control-M \"Wait for confirmation\": the instance does NOT run until an operator confirms it.",
+    summary: "\"Wait for confirmation\": the instance does NOT run until an operator confirms it.",
     detail: "WAIT_CONFIRM gate (purple ✋CONFIRM card). Not even Force Order bypasses it; a rerun requires confirming again. Confirmation: the button on the card/drawer or POST /instances/{id}/confirm.",
   },
   {
@@ -558,7 +558,7 @@ retryDelayMin: 60   # retry every 1h`,
   {
     tag: "resources",
     kind: "map name → quantity",
-    summary: "Quantitative resources consumed (Control-M resources): with no free units, the job waits.",
+    summary: "Quantitative resources consumed (classic quantitative resources): with no free units, the job waits.",
     detail: "WAIT_RESOURCE gate with a QUEUE; a multi-resource request is ALL-OR-NOTHING (no partial reservation). Each resource's capacity is managed in the UI (an unknown resource is born with capacity 1 = exclusive lock).",
     example: `resources:
   db-fin: 1
@@ -624,7 +624,7 @@ params:
   {
     tag: "actions",
     kind: "list of On/Do rules",
-    summary: "Control-M \"On/Do\" automation: On <trigger> Do <action>. Expand for every trigger and action.",
+    summary: "\"On/Do\" automation: On <trigger> Do <action>. Expand for every trigger and action.",
     detail: "FLAT structure per rule: trigger fields (on + qualifier) and action fields (do + parameters) live side by side; only the relevant ones are read. Each rule fires at most once per instance.",
     children: ACTIONS_CHILDREN,
     example: `actions:

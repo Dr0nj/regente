@@ -14,7 +14,7 @@ no [`README.md`](README.md); decisões de arquitetura futura em
 
 ## O que é
 
-Orquestrador de jobs estilo Control-M, **Git-native**. Monorepo:
+Orquestrador de jobs estilo enterprise clássico, **Git-native**. Monorepo:
 
 | Pasta | Stack | Papel |
 |---|---|---|

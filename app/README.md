@@ -1,7 +1,7 @@
 <div align="center">
   <img src="public/favicon-512.png" width="96" alt="Regente" />
   <h1>Regente — Web (frontend)</h1>
-  <p><strong>The frontend of Regente, a Git-native workflow orchestrator inspired by Control-M.</strong></p>
+  <p><strong>The frontend of Regente, a Git-native workflow orchestrator with enterprise-class batch semantics.</strong></p>
 </div>
 
 > 📦 This is the **`app/`** folder of the monorepo. The project overview, the architecture and
@@ -9,14 +9,14 @@
 
 The frontend (React + TypeScript + Vite) is the HTTP/WebSocket client of `regente-server`:
 Monitoring (what is running today) and Design (a drag-and-drop canvas of the definitions, with
-Publish to Git). The UX is the one a Control-M operator knows (folders, hold/rerun/force, find &
+Publish to Git). The UX is the one a batch operator knows (folders, hold/rerun/force, find &
 update).
 
 ---
 
 ## Concept
 
-Two separate worlds, Control-M style:
+Two separate worlds, classic enterprise style:
 
 - **Monitoring** — what is running today; the result of the *Daily*. Consumption only:
   hold / release / cancel / set-ok / rerun / force order, per-instance audit, SLA.
@@ -95,7 +95,7 @@ src/
 ├── v2/                  # the current UI (Monitoring, Design, drawers, dialogs)
 │   ├── V2Preview.tsx    # main shell (topbar, canvas, modes)
 │   ├── JobConfigDrawer  # job editing (General/Schedule/Calendars/Action/Conditions)
-│   ├── ScheduleEditor   # visual Control-M style scheduler
+│   ├── ScheduleEditor   # visual enterprise-style scheduler
 │   ├── AlertsPanel.tsx  # alerts screen (events + rules + channels)
 │   └── ...
 ├── lib/                 # API clients + model + adapters
@@ -116,5 +116,5 @@ npm run lint      # eslint — a CI gate, it must stay at zero
 
 ---
 
-<sub>A personal portfolio project. The UI is inspired by operating Control-M; it has no
-relationship with BMC.</sub>
+<sub>A personal portfolio project, independently designed and built. It is not affiliated with,
+endorsed by, or derived from any commercial orchestration product.</sub>

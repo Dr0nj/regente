@@ -56,7 +56,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="slos.html">🎯 Control plane SLOs — regente-server</a>
 <a href="mcp.html" class="active">🤖 Regente MCP — the agent-native layer</a>
 <a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
-<a href="case-study.en.html">Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
 </nav>
 <main>
 <article>
@@ -151,7 +151,7 @@ marked <strong>destructiveHint</strong>:</p>
 <tbody>
 <tr>
 <td><code>hold_job</code></td>
-<td>holds a job in any status except RUNNING → HELD, freezing the original status (Control-M Hold)</td>
+<td>holds a job in any status except RUNNING → HELD, freezing the original status (classic Hold)</td>
 <td><code>POST /api/instances/{id}/hold</code></td>
 </tr>
 <tr>
@@ -166,7 +166,7 @@ marked <strong>destructiveHint</strong>:</p>
 </tr>
 <tr>
 <td><code>confirm_job</code></td>
-<td>confirms a job sitting at the WAIT_CONFIRM gate (Control-M Confirm)</td>
+<td>confirms a job sitting at the WAIT_CONFIRM gate (classic Confirm)</td>
 <td><code>POST /api/instances/{id}/confirm</code></td>
 </tr>
 <tr>

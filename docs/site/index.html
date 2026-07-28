@@ -56,14 +56,14 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="slos.html">🎯 Control plane SLOs — regente-server</a>
 <a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
 <a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
-<a href="case-study.en.html">Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
 </nav>
 <main>
 <article>
 <div align="center">
   <img src="app/public/logo-r.png" width="92" alt="Regente" />
   <h1>Regente</h1>
-  <p><strong>A Git-native workflow orchestrator, inspired by Control-M.</strong></p>
+  <p><strong>A Git-native workflow orchestrator with enterprise-class batch semantics.</strong></p>
   <p>
     <a href="#-what-it-is">What it is</a> ·
     <a href="#-documentation">Docs</a> ·
@@ -410,9 +410,10 @@ Container Apps — you choose the cloud when you deploy, not in the code.</p>
 <p>A script that builds everything, serves the UI on one origin, runs the agent in a disposable
 Docker container and opens a free public HTTPS tunnel:
 <a href="https://github.com/Dr0nj/regente/blob/main/deploy/demo/README.md"><code>deploy/demo/</code></a>.</p>
-<h3 id="migrating-from-control-m">Migrating from Control-M</h3>
-<p><code>importctm</code> reads a Control-M export XML and generates a Regente workspace for review, with an
-import report and <code># TODO-import</code> notes wherever a decision is needed. It <strong>never pushes</strong>. See
+<h3 id="migrating-from-a-legacy-orchestrator">Migrating from a legacy orchestrator</h3>
+<p><code>importctm</code> reads the export XML of a legacy enterprise scheduler (the Control-M export format,
+named here only to identify the file it parses) and generates a Regente workspace for review, with
+an import report and <code># TODO-import</code> notes wherever a decision is needed. It <strong>never pushes</strong>. See
 <a href="https://github.com/Dr0nj/regente/blob/main/server/cmd/importctm/README.md"><code>server/cmd/importctm/</code></a>.</p>
 <hr>
 <h2 id="-what-it-can-do">⚡ What it can do</h2>
@@ -421,17 +422,17 @@ import report and <code># TODO-import</code> notes wherever a decision is needed
 <li><strong>Git-native (GitOps)</strong> — Publish becomes a commit or a pull request; changes made on GitHub
 come back into the UI through a webhook plus polling. Deep links go from a job to its YAML and
 from an instance to its commit.</li>
-<li><strong>Control-M-style scheduling</strong> — frequency (daily / days of the week / days of the month),
+<li><strong>Enterprise-style scheduling</strong> — frequency (daily / days of the week / days of the month),
 execution windows and cyclic runs. <strong>Calendars</strong> act as include/exclude rules alongside the
 frequency, with a plain-language translation of what each one does and a <strong>real calendar
 preview</strong> (12 mini-months and a year selector; the highlighted days are exactly the days the
 job will run, computed by the backend with the same rule as the daily).</li>
-<li><strong>Dependencies are CONDITIONS in a single pool</strong> (Control-M global conditions). Drawing A→B on
+<li><strong>Dependencies are CONDITIONS in a single pool</strong> (the classic global-condition model). Drawing A→B on
 the canvas creates the condition <code>A-TO-B</code>; typing it by hand lands in exactly the same place.
 A job runs when its input conditions exist in the pool; finishing OK adds its outputs and
 <strong>deletes</strong> the ones it consumed. The Monitoring <strong>Conditions</strong> panel lists the whole pool —
 deleting an entry blocks whoever depends on it, adding one releases them immediately.
-Control-M date references per row: <code>Odate</code>, <code>Prev</code> and <code>Stat</code>.</li>
+Classic date references per row: <code>Odate</code>, <code>Prev</code> and <code>Stat</code>.</li>
 <li><strong>AND/OR logic on the entry</strong> — by default every input condition is required (AND), but a
 toggle groups them, each group with its own operator plus a top-level one, e.g.
 <code>(C1 AND C2) OR C3</code> (it runs on the first branch that completes). With a single condition, the
@@ -439,7 +440,7 @@ toggle groups them, each group with its own operator plus a top-level one, e.g.
 start time is reached — whichever comes first.</li>
 <li><strong>Immutable daily</strong> — instances are frozen at order time. A change published during the day
 only takes effect on the next daily, or through a Force Order.</li>
-<li><strong>Daily life cycle (Control-M carry-over)</strong> — an order that is still open does not vanish at
+<li><strong>Daily life cycle (carry-over)</strong> — an order that is still open does not vanish at
 the rollover: RUNNING and HELD always cross; an untreated NOTOK persists one more day (or N,
 through <code>schedule.keepActive</code>); OK and CANCELLED close. The order advances its date while
 keeping its id, status and history, and shows where it came from.</li>
@@ -520,7 +521,7 @@ scheduler HA, a pluggable <strong>secrets manager</strong>, opt-in <strong>SSO/O
 and audit forwarding to a SIEM.</li>
 <li><strong>Portable serverless</strong> — an external time trigger, a pluggable agent transport (WebSocket ·
 HTTP long-poll · SSE · NATS) and a distroless image that scales to zero, with no cloud lock-in.</li>
-<li><strong>Scale</strong> — validated end to end at Control-M volumes: the write path materializes 1M instances
+<li><strong>Scale</strong> — validated end to end at enterprise volumes: the write path materializes 1M instances
 in 17s, and the UI was driven live against 1,000,000 jobs without ever downloading a whole day.</li>
 <li><strong>Observability</strong> — Prometheus metrics at <code>/metrics</code>, opt-in OpenTelemetry tracing, plus
 liveness and readiness probes.</li>
@@ -585,13 +586,15 @@ first line is read, so a commit body may talk about the marker without triggerin
 <p>All planning lives in <strong><a href="https://github.com/Dr0nj/regente/blob/main/docs/roadmap.md"><code>docs/roadmap.md</code></a></strong> — the single source of status
 (delivered, backlog and changelog). It is an internal working document, written in Portuguese,
 and it is deliberately kept out of the published documentation site.</p>
-<p>For the <strong>story of the project</strong> — the problem, the architectural bets, Control-M semantics at
-the edges, the scale validated at 1M jobs/day and the lessons learned — read the
+<p>For the <strong>story of the project</strong> — the problem, the architectural bets, classic enterprise
+semantics at the edges, the scale validated at 1M jobs/day and the lessons learned — read the
 <strong><a href="case-study.en.html">case study</a></strong>.</p>
 <hr>
 <div align="center">
-<sub>A personal portfolio project. The UX is inspired by operating Control-M; it has no
-relationship with BMC.</sub>
+<sub>A personal portfolio project, independently designed and built. It is not affiliated with,
+endorsed by, or derived from any commercial orchestration product. Third-party product names, where
+they appear, are trademarks of their respective owners and are used only to identify a file format
+the importer can read.</sub>
 </div>
 </article>
 <footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>

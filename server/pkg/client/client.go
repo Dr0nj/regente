@@ -114,7 +114,7 @@ func (c *Client) Action(instanceID, action string) error {
 	return c.do(http.MethodPost, "/api/instances/"+url.PathEscape(instanceID)+"/"+action, nil, nil)
 }
 
-// ForceOrder — POST /api/definitions/{id}/force (Control-M "Order Force":
+// ForceOrder — POST /api/definitions/{id}/force (the classic "Order Force":
 // materializa a def PUBLICADA mais atual na diária de hoje).
 func (c *Client) ForceOrder(definitionID string) error {
 	return c.do(http.MethodPost, "/api/definitions/"+url.PathEscape(definitionID)+"/force", nil, nil)

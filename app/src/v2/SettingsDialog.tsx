@@ -254,7 +254,7 @@ export function SettingsDialog({ onClose }: Props) {
               </label>
               <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 6, display: "block", lineHeight: 1.5 }}>
                 Prototype. Shows a map of the environment in the bottom corner of Monitoring — click/drag to
-                navigate large environments (Control-M style). Resizable; off by default.
+                navigate large environments. Resizable; off by default.
               </span>
 
               <div style={{ marginTop: 12, borderTop: "1px solid var(--v2-border-subtle)", paddingTop: 10 }}>

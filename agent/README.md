@@ -5,7 +5,7 @@ laptop, an on-prem server, a VM/EC2, and so on).
 
 It connects to `regente-server` with an **outbound** connection — no ports need to be opened on
 the agent's machine, and it crosses NAT and firewalls. Same runner model as GitHub Actions,
-GitLab or the Control-M Agent. It runs jobs locally, returns the result, and **streams
+GitLab or a classic enterprise scheduler's agent. It runs jobs locally, returns the result, and **streams
 stdout/stderr in real time** (visible in the instance detail).
 
 ## Executors

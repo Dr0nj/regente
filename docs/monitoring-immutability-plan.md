@@ -21,7 +21,7 @@
 >
 > Histórico original (levantamento de 2026-07-17) abaixo — mantido como referência.
 
-## O contrato (pedido do usuário, 2026-07-17 — é a semântica Control-M do Active Jobs File)
+## O contrato (pedido do usuário, 2026-07-17 — é a semântica clássica do Active Jobs File)
 
 - O Monitoring é a **foto da ordem**. Nome (label), tipo, condições, gates, action: TUDO
   congela na hora que a instance entra (daily ou force). **Publicar mudança no Design NÃO
@@ -35,7 +35,7 @@
   o OK do `job0002` de hoje **NÃO cria** `JOB0002-TO-JOB0003` (o snapshot dele não tem
   essa saída). O `job0003` forçado hoje fica **WAIT COND** até um operador setar a
   condição no painel (ou forçar o pai de novo — a cópia forçada do pai JÁ tem a saída
-  nova no snapshot dela). É exatamente a paridade Control-M; o usuário confirmou que
+  nova no snapshot dela). É exatamente a paridade enterprise clássica; o usuário confirmou que
   quer esse comportamento.
 
 ## O que JÁ é imutável (conquistado antes — NÃO mexer)

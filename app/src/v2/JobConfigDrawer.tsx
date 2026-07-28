@@ -495,7 +495,7 @@ export default function JobConfigDrawer({ definition, isNew, availableFolders, a
             </label>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--v2-text-secondary)" }}>
               <input type="checkbox" checked={confirmReq} onChange={(e) => { dirtyRef.current = true; setConfirmReq(e.target.checked); }} />
-              Require confirmation (Control-M Confirm — only runs after an operator confirms)
+              Require confirmation (only runs after an operator confirms)
             </label>
           </>
         )}

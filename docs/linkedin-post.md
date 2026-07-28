@@ -14,7 +14,7 @@
 ## Versão principal — Português
 
 Nos últimos meses eu construí, como projeto pessoal, um orquestrador de jobs classe
-Control-M — do zero. Chama **Regente**.
+enterprise — do zero. Chama **Regente**.
 
 Quem opera batch enterprise conhece o padrão: daily que materializa o dia, dependências
 com condições, calendários de dia útil, hold/release/rerun/force, confirm de operador,
@@ -30,7 +30,7 @@ O resultado:
 main antes de materializar e cada ordem grava o SHA que a originou. Editar na UI cria uma
 sessão de design; nada roda sem publish (commit/PR).
 
-🔹 **Semântica Control-M de verdade** — daily imutável (snapshot congelado na ordem),
+🔹 **Semântica de orquestrador enterprise clássico, de verdade** — daily imutável (snapshot congelado na ordem),
 carry-over honesto na virada (a ordem avança de dia preservando a data de origem),
 dependências como condições explícitas com lógica AND/OR real e consumo (rerun do pai
 volta a segurar quem depende dele), calendários com N-ésimo dia útil e shift, cyclic,
@@ -64,13 +64,13 @@ que este projeto mais me ensinou.
 
 Case study técnico completo no primeiro comentário.
 
-#engenharia #golang #react #orquestracao #controlm #devops #sre
+#engenharia #golang #react #orquestracao #batch #devops #sre
 
 ---
 
 ## Main version — English
 
-Over the past months I built, as a personal project, a Control-M-class job
+Over the past months I built, as a personal project, an enterprise-class job
 orchestrator — from scratch. It's called **Regente**.
 
 Anyone who runs enterprise batch knows the pattern: a daily that materializes the day,
@@ -87,7 +87,7 @@ The result:
 before materializing, and every order records the SHA it came from. Editing in the UI
 opens a design session; nothing runs without a publish (commit/PR).
 
-🔹 **Real Control-M semantics** — immutable daily (snapshot frozen into the order),
+🔹 **Real classic-enterprise semantics** — immutable daily (snapshot frozen into the order),
 honest carry-over at day rollover (the order moves forward while keeping its original
 date), dependencies as explicit conditions with real AND/OR logic and consumption
 (rerunning a parent holds its dependents again), calendars with Nth-business-day and
@@ -122,13 +122,13 @@ that's where this project taught me the most.
 
 Full technical case study in the first comment.
 
-#engineering #golang #react #orchestration #controlm #devops #sre
+#engineering #golang #react #orchestration #batch #devops #sre
 
 ---
 
 ## Versão curta — Português
 
-Construí do zero um orquestrador de jobs classe Control-M: **Regente**.
+Construí do zero um orquestrador de jobs classe enterprise: **Regente**.
 
 Git como fonte de verdade (jobs em YAML, publish = commit/PR), daily imutável,
 dependências como condições com AND/OR real, calendários de dia útil, Confirm,
@@ -151,7 +151,7 @@ Case study técnico no primeiro comentário.
 
 ## Short version — English
 
-I built a Control-M-class job orchestrator from scratch: **Regente**.
+I built an enterprise-class job orchestrator from scratch: **Regente**.
 
 Git as the source of truth (jobs in YAML, publish = commit/PR), immutable daily,
 dependencies as conditions with real AND/OR logic, business-day calendars, operator

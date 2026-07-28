@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch · Regente Docs</title>
+<title>Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch · Regente Docs</title>
 <style>
 :root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
 *{box-sizing:border-box}
@@ -56,13 +56,14 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="slos.html">🎯 Control plane SLOs — regente-server</a>
 <a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
 <a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
-<a href="case-study.en.html" class="active">Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch</a>
+<a href="case-study.en.html" class="active">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
 </nav>
 <main>
 <article>
-<h1 id="case-study--regente-a-control-m-class-git-native-job-orchestrator-from-scratch">Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch</h1>
+<h1 id="case-study--regente-an-enterprise-class-git-native-job-orchestrator-from-scratch">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</h1>
 <blockquote>
-<p><strong>TL;DR.</strong> Regente is a batch workload orchestrator in the spirit of BMC Control-M —
+<p><strong>TL;DR.</strong> Regente is a batch workload orchestrator in the spirit of the classic
+enterprise orchestrators —
 immutable daily, condition-based dependencies, calendars, resources, Confirm,
 forecast — built from scratch as a Go + React monorepo, with <strong>Git as the source of
 truth</strong> for definitions. Validated live with <strong>1,000,000 jobs/day</strong> (materialization
@@ -72,7 +73,7 @@ HA with Postgres, and exposes the control plane to AI agents via <strong>MCP (22
 </blockquote>
 <hr>
 <h2 id="1-the-problem">1. The problem</h2>
-<p>Enterprise orchestrators (Control-M, Autosys, Tivoli) solve a real problem — the batch
+<p>The classic enterprise orchestrators solve a real problem — the batch
 operations day: &quot;materialize today's jobs, honor dependencies/calendars/windows, give
 me hold/release/rerun/force and an audit trail&quot;. But they charge dearly for it, in
 three currencies:</p>
@@ -85,7 +86,7 @@ from dev to prod&quot; is a ritual.</li>
 </ul>
 <p>The project's question: <em>how much of this category can be rebuilt with modern
 engineering — Git, single binary, open API — without losing the operational semantics
-that make Control-M good?</em></p>
+that make that category good?</em></p>
 <h2 id="2-the-architecture-bets">2. The architecture bets</h2>
 <p><strong>Actually Git-native.</strong> Job definitions are YAML in a separate GitHub repository
 (<code>regente-workspace</code>). The daily syncs <code>origin/main</code> <strong>before</strong> materializing; every
@@ -95,8 +96,8 @@ publish = commit+push (or PR, if policy requires). Drift between runtime and Git
 detected and alerted.</p>
 <p><strong>Immutability as a product rule.</strong> When ordered, the definition is <strong>frozen</strong> into the
 instance (JSON snapshot + denormalized columns). Publishing a change in Design never
-rewrites the current day — Monitoring is the photograph of what was scheduled, as in
-Control-M. This rule became the deciding test for several bugs (&quot;the badge changed by
+rewrites the current day — Monitoring is the photograph of what was scheduled, as the
+classic enterprise model demands. This rule became the deciding test for several bugs (&quot;the badge changed by
 itself&quot; = something read the live definition).</p>
 <p><strong>Operable monolith, serverless optional.</strong> One Go binary serves API + WebSocket + UI
 (single-origin) over SQLite — a one-box deploy. The same flags become a &quot;portable
@@ -108,7 +109,7 @@ without changing the scheduling code — only the leader materializes and dispat
 agent, resource, Confirm) goes through <strong>one</strong> evaluator (<code>gateInstance</code>). The tick
 uses it to decide; the UI's &quot;Why not?&quot; uses it to explain. No blocker can exist without
 showing up in Explain — by construction, not by discipline.</p>
-<h2 id="3-control-m-semantics-the-hard-part">3. Control-M semantics (the hard part)</h2>
+<h2 id="3-classic-enterprise-semantics-the-hard-part">3. Classic enterprise semantics (the hard part)</h2>
 <p>Parity isn't the feature list — it's the behavior at the edges:</p>
 <ul>
 <li><strong>Daily / New Day</strong> — set-based batch materialization (1 commit per 5k chunk),
@@ -120,7 +121,7 @@ explicit retention.</li>
 <li><strong>Dependencies as explicit CONDITIONS in a single pool</strong> — the A→B arrow on the
 canvas is sugar for a named condition (<code>A-TO-B</code>): the parent's OK <strong>creates</strong> the
 condition, the successor's input <strong>waits</strong> for it, and a negative output <strong>consumes</strong>
-(deletes) it — which models fan-in with consumption, as in Control-M. The input
+(deletes) it — which models fan-in with consumption, as in the classic model. The input
 accepts <strong>real AND/OR logic</strong> (groups with a top-level operator) and the <code>$TIME</code>
 token (&quot;condition OR time&quot;); rerunning the parent undoes the OK and dependents
 <strong>go back to waiting</strong> for a fresh completion.</li>
@@ -138,8 +139,8 @@ it goes down, the job waits in WAIT AGENT. It never migrates on its own. Every
 server ships with an embedded <strong>SERVER-AGENT</strong> (HTTP/REST) — API calls run without
 installing an external agent.</li>
 </ul>
-<h2 id="4-beyond-control-m">4. Beyond Control-M</h2>
-<p>Where it can beat the original without inventing gimmicks:</p>
+<h2 id="4-beyond-the-classic-model">4. Beyond the classic model</h2>
+<p>Where it can beat the incumbents without inventing gimmicks:</p>
 <ul>
 <li><strong>Explain (&quot;why didn't it run?&quot;)</strong> — a structured, per-instance answer, from the
 same source that decides the dispatch.</li>
@@ -192,7 +193,7 @@ deploy files), registers systemd, serves UI+API+WS on a single origin,
 nginx+certbot provide TLS with renewal. The same product that does HA with Postgres
 runs entirely on a $5 machine — that range was a goal, not an accident.</p>
 <h2 id="9-next-up-ai-that-stays-inside-the-perimeter-roadmap-spec-ready">9. Next up: AI that stays inside the perimeter <em>(roadmap, spec ready)</em></h2>
-<p>The Control-M audience lives in regulated environments — banks, insurers, utilities —
+<p>The enterprise-orchestration audience lives in regulated environments — banks, insurers, utilities —
 where sysout, logs and host data <strong>cannot leave the perimeter</strong>. Every &quot;AI-powered&quot;
 scheduler on the market ships that data to a cloud API; Regente's next job type,
 <code>AI_AGENT</code>, does the opposite: the LLM runs <strong>on the same host as the agent</strong>

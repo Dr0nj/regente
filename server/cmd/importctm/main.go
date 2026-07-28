@@ -227,7 +227,7 @@ func run(args []string, stdout io.Writer) error {
 			BusinessDays: []string{"mon", "tue", "wed", "thu", "fri"},
 		}
 		buf, _ := yaml.Marshal(&cal)
-		buf = append(buf, []byte("# TODO-import: fill in holidays/exceptions from the Control-M calendar \""+orig+"\"\n")...)
+		buf = append(buf, []byte("# TODO-import: fill in holidays/exceptions from the source calendar \""+orig+"\"\n")...)
 		dir := filepath.Join(*out, "calendars")
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
@@ -409,7 +409,7 @@ func mapJob(f ctmFolder, j ctmJob, ids map[string]string, emitters map[string][]
 		case "OK", "NOTOK":
 			def.Actions = append(def.Actions, domain.ActionRule{
 				On: "result", Status: strings.ToUpper(strings.TrimSpace(sh.When)),
-				Do: "notify", Message: firstNonEmpty(sh.Message, "Control-M SHOUT"),
+				Do: "notify", Message: firstNonEmpty(sh.Message, "Imported SHOUT"),
 				Severity: shoutSeverity(sh.Urgency),
 			})
 			if d := strings.TrimSpace(sh.Dest); d != "" {
@@ -508,7 +508,7 @@ func mapRecurrence(j ctmJob, def *domain.JobDefinition, todo func(string, ...any
 	default:
 		// DAYS e WEEKDAYS juntos têm semântica AND/OR própria no Control-M.
 		def.Schedule.Frequency = "daily"
-		todo("DAYS=%q + WEEKDAYS=%q combined (Control-M AND/OR) — review the recurrence", days, weekdays)
+		todo("DAYS=%q + WEEKDAYS=%q combined (source AND/OR) — review the recurrence", days, weekdays)
 	}
 }
 
@@ -601,7 +601,7 @@ func buildReport(in string, results []jobResult, calendars map[string]string) st
 		}
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Import Control-M → Regente\n\n")
+	fmt.Fprintf(&b, "# Legacy orchestrator import → Regente\n\n")
 	fmt.Fprintf(&b, "- Source: `%s`\n", in)
 	fmt.Fprintf(&b, "- Jobs: **%d ok** · **%d partial** (with `# TODO-import`) · **%d skipped**\n", ok, partial, skipped)
 	if len(calendars) > 0 {

@@ -1,6 +1,6 @@
 # `regente` — the developer-experience CLI
 
-This is where Control-M loses badly: the **define → test → run locally → promote → operate**
+This is where the classic enterprise orchestrators lose badly: the **define → test → run locally → promote → operate**
 cycle becomes a command line plus Git, with no proprietary console in the middle.
 
 ```

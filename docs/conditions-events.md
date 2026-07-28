@@ -9,8 +9,8 @@
 
 ## The single model (2026-07-17)
 
-**Every dependency is a named CONDITION in a global POOL** (Control-M global
-conditions). There are no longer two systems ("graph arrows" versus "F16
+**Every dependency is a named CONDITION in a global POOL** (the classic global-condition
+model). There are no longer two systems ("graph arrows" versus "F16
 conditions") — the user report that unified them: *"all dependency conditions
 have to be one single thing architecturally; whether you wire it through the box
 or type it by hand, the conditions go to the same place"*.
@@ -63,7 +63,7 @@ waiting runs RIGHT AWAY).
 
 ## Dates — ODAT / PREV / STAT
 
-**ODAT** = the order's ORIGIN date (Control-M ODATE):
+**ODAT** = the order's ORIGIN date (the classic ODATE):
 `ODAT = COALESCE(carried_from, order_date)` (`scheduler/odate.go`). Carry-over
 advances `order_date` while preserving the origin — **every date scope uses
 ODAT**, never the advanced active day (a job carried from the 14th creates and
@@ -82,7 +82,7 @@ per-row selector (the user never types an at-sign):
 
 **C1 — Gate.** A WAITING job runs when ALL of its `conditionsIn` exist in the
 pool (resolved scope). A missing condition = **WAIT COND** (card, Explain
-`WAIT_CONDITION`) — it waits indefinitely, NEVER auto-cancels (Control-M parity;
+`WAIT_CONDITION`) — it waits indefinitely, NEVER auto-cancels (classic enterprise parity;
 whatever never becomes eligible dies at the daily rollover, if keepActive
 allows). Hot path: the tick loads the pool ONCE per cycle (`CondIndex`).
 

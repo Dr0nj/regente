@@ -1,6 +1,7 @@
-# Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch
+# Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch
 
-> **TL;DR.** Regente is a batch workload orchestrator in the spirit of BMC Control-M —
+> **TL;DR.** Regente is a batch workload orchestrator in the spirit of the classic
+> enterprise orchestrators —
 > immutable daily, condition-based dependencies, calendars, resources, Confirm,
 > forecast — built from scratch as a Go + React monorepo, with **Git as the source of
 > truth** for definitions. Validated live with **1,000,000 jobs/day** (materialization
@@ -12,7 +13,7 @@
 
 ## 1. The problem
 
-Enterprise orchestrators (Control-M, Autosys, Tivoli) solve a real problem — the batch
+The classic enterprise orchestrators solve a real problem — the batch
 operations day: "materialize today's jobs, honor dependencies/calendars/windows, give
 me hold/release/rerun/force and an audit trail". But they charge dearly for it, in
 three currencies:
@@ -25,7 +26,7 @@ three currencies:
 
 The project's question: *how much of this category can be rebuilt with modern
 engineering — Git, single binary, open API — without losing the operational semantics
-that make Control-M good?*
+that make that category good?*
 
 ## 2. The architecture bets
 
@@ -38,8 +39,8 @@ detected and alerted.
 
 **Immutability as a product rule.** When ordered, the definition is **frozen** into the
 instance (JSON snapshot + denormalized columns). Publishing a change in Design never
-rewrites the current day — Monitoring is the photograph of what was scheduled, as in
-Control-M. This rule became the deciding test for several bugs ("the badge changed by
+rewrites the current day — Monitoring is the photograph of what was scheduled, as the
+classic enterprise model demands. This rule became the deciding test for several bugs ("the badge changed by
 itself" = something read the live definition).
 
 **Operable monolith, serverless optional.** One Go binary serves API + WebSocket + UI
@@ -54,7 +55,7 @@ agent, resource, Confirm) goes through **one** evaluator (`gateInstance`). The t
 uses it to decide; the UI's "Why not?" uses it to explain. No blocker can exist without
 showing up in Explain — by construction, not by discipline.
 
-## 3. Control-M semantics (the hard part)
+## 3. Classic enterprise semantics (the hard part)
 
 Parity isn't the feature list — it's the behavior at the edges:
 
@@ -67,7 +68,7 @@ Parity isn't the feature list — it's the behavior at the edges:
 - **Dependencies as explicit CONDITIONS in a single pool** — the A→B arrow on the
   canvas is sugar for a named condition (`A-TO-B`): the parent's OK **creates** the
   condition, the successor's input **waits** for it, and a negative output **consumes**
-  (deletes) it — which models fan-in with consumption, as in Control-M. The input
+  (deletes) it — which models fan-in with consumption, as in the classic model. The input
   accepts **real AND/OR logic** (groups with a top-level operator) and the `$TIME`
   token ("condition OR time"); rerunning the parent undoes the OK and dependents
   **go back to waiting** for a fresh completion.
@@ -85,9 +86,9 @@ Parity isn't the feature list — it's the behavior at the edges:
   server ships with an embedded **SERVER-AGENT** (HTTP/REST) — API calls run without
   installing an external agent.
 
-## 4. Beyond Control-M
+## 4. Beyond the classic model
 
-Where it can beat the original without inventing gimmicks:
+Where it can beat the incumbents without inventing gimmicks:
 
 - **Explain ("why didn't it run?")** — a structured, per-instance answer, from the
   same source that decides the dispatch.
@@ -147,7 +148,7 @@ runs entirely on a $5 machine — that range was a goal, not an accident.
 
 ## 9. Next up: AI that stays inside the perimeter *(roadmap, spec ready)*
 
-The Control-M audience lives in regulated environments — banks, insurers, utilities —
+The enterprise-orchestration audience lives in regulated environments — banks, insurers, utilities —
 where sysout, logs and host data **cannot leave the perimeter**. Every "AI-powered"
 scheduler on the market ships that data to a cloud API; Regente's next job type,
 `AI_AGENT`, does the opposite: the LLM runs **on the same host as the agent**

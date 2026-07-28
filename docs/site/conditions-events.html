@@ -56,7 +56,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="slos.html">🎯 Control plane SLOs — regente-server</a>
 <a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
 <a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
-<a href="case-study.en.html">Case study — Regente: a Control-M-class, Git-native job orchestrator, from scratch</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
 </nav>
 <main>
 <article>
@@ -70,8 +70,8 @@ patch is wrong or this document has to change WITH it (same commit, with the
 reasoning).</p>
 </blockquote>
 <h2 id="the-single-model-2026-07-17">The single model (2026-07-17)</h2>
-<p><strong>Every dependency is a named CONDITION in a global POOL</strong> (Control-M global
-conditions). There are no longer two systems (&quot;graph arrows&quot; versus &quot;F16
+<p><strong>Every dependency is a named CONDITION in a global POOL</strong> (the classic global-condition
+model). There are no longer two systems (&quot;graph arrows&quot; versus &quot;F16
 conditions&quot;) — the user report that unified them: <em>&quot;all dependency conditions
 have to be one single thing architecturally; whether you wire it through the box
 or type it by hand, the conditions go to the same place&quot;</em>.</p>
@@ -139,7 +139,7 @@ to Organize — list/add/delete with a date) or the API/MCP;</li>
 and the graph edges are a live reflection) and nudges the tick (whatever was
 waiting runs RIGHT AWAY).</p>
 <h2 id="dates--odat--prev--stat">Dates — ODAT / PREV / STAT</h2>
-<p><strong>ODAT</strong> = the order's ORIGIN date (Control-M ODATE):
+<p><strong>ODAT</strong> = the order's ORIGIN date (the classic ODATE):
 <code>ODAT = COALESCE(carried_from, order_date)</code> (<code>scheduler/odate.go</code>). Carry-over
 advances <code>order_date</code> while preserving the origin — <strong>every date scope uses
 ODAT</strong>, never the advanced active day (a job carried from the 14th creates and
@@ -175,7 +175,7 @@ per-row selector (the user never types an at-sign):</p>
 <h2 id="the-rules-numbered--cite-them-by-number-in-commits-and-tests">The rules (numbered — cite them by number in commits and tests)</h2>
 <p><strong>C1 — Gate.</strong> A WAITING job runs when ALL of its <code>conditionsIn</code> exist in the
 pool (resolved scope). A missing condition = <strong>WAIT COND</strong> (card, Explain
-<code>WAIT_CONDITION</code>) — it waits indefinitely, NEVER auto-cancels (Control-M parity;
+<code>WAIT_CONDITION</code>) — it waits indefinitely, NEVER auto-cancels (classic enterprise parity;
 whatever never becomes eligible dies at the daily rollover, if keepActive
 allows). Hot path: the tick loads the pool ONCE per cycle (<code>CondIndex</code>).</p>
 <p><strong>C2 — OK applies the out-conditions.</strong> Ending OK (for real) and <strong>Set OK</strong>
