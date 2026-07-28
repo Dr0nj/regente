@@ -47,6 +47,10 @@ type Scheduler struct {
 	settings   Settings
 	lastTickAt time.Time // R2 — watchdog: instante do último ciclo de scheduling
 
+	// emptyDailyLoggedFor — data da última daily recusada por não haver NENHUMA
+	// definition carregada (ver RunDaily). Sem isso o aviso sairia a cada tick.
+	emptyDailyLoggedFor string
+
 	// DemoMode — SEM agente online: true = mock-finaliza OK (demo/playground);
 	// false (default, honesto) = a instance volta pra WAITING e o tick re-tenta
 	// quando um agente com a capability conectar. Flag -demo-mode no main.
@@ -689,6 +693,18 @@ func (s *Scheduler) autoDailyIfDue() {
 	if sha != "" {
 		log.Printf("[scheduler] daily %s: synced workspace to %s", today, short(sha))
 	}
+	// Sem NENHUMA definition carregada a daily não materializa nem marca o dia
+	// (ver RunDaily). Precisamos sair ANTES dos GCs: eles são janelas "1×/dia,
+	// logo após a daily", e com o dia não marcado o autoDailyIfDue volta aqui a
+	// cada tick — rodá-los a cada 30s seria bem pior que adiá-los até existir
+	// algum job. RunDaily continua sendo quem loga (1× por data).
+	s.mu.Lock()
+	ndefs := len(s.defs)
+	s.mu.Unlock()
+	if ndefs == 0 {
+		s.RunDaily(today)
+		return
+	}
 	s.RunDaily(today)
 	// E2 — retenção de auditoria: 1×/dia, logo após a daily, só no líder (o
 	// caller já é leader-gated). Síncrono de propósito: roda em lotes curtos e
@@ -979,6 +995,27 @@ func (s *Scheduler) RunDaily(date string) int {
 	carried, err := s.carryOver(date)
 	if err != nil {
 		log.Printf("[scheduler] daily %s ABORTED (carry-over: %v) — retry on the next tick", date, err)
+		return 0
+	}
+
+	// 0b) Conjunto VAZIO de definitions não é uma daily — é quase sempre
+	// configuração pela metade: workspace ainda não clonado, GitOps conectando ou
+	// um YAML inválido derrubando o load inteiro. Marcar daily_runs aqui TRAVA o
+	// dia: o autoDailyIfDue vê a data já processada e não tenta mais, e o operador
+	// fica com o board vazio até a virada seguinte. Foi exatamente isso na primeira
+	// instalação em VPS — a daily correu antes do Git conectar, criou 0 e carimbou
+	// o dia. Sem marcar, o próximo tick materializa sozinho assim que as defs
+	// aparecerem. O carry-over ACIMA continua valendo: instances que atravessam a
+	// virada não dependem de haver definition carregada. (Instalação legitimamente
+	// vazia paga só este aviso, 1× por data.)
+	if len(defs) == 0 {
+		s.mu.Lock()
+		first := s.emptyDailyLoggedFor != date
+		s.emptyDailyLoggedFor = date
+		s.mu.Unlock()
+		if first {
+			log.Printf("[scheduler] daily %s NOT materialised: zero job definitions loaded — the day was NOT marked as done and the next tick retries. Check /api/git/status and the definitions load", date)
+		}
 		return 0
 	}
 

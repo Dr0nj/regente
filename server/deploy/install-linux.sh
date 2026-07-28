@@ -28,6 +28,9 @@ WITH_UI="${WITH_UI:-1}"   # 0/no/false = instala SÓ a API (não serve a UI)
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DATA_DIR=/var/lib/regente
 ENV_FILE=/etc/regente/server.env
+# Repositório do PRODUTO (não confundir com o repo de workspace do operador, que
+# nunca tem default). Mesma convenção do install.sh: sobrescrevível por env.
+REPO_URL="https://github.com/${REGENTE_REPO:-Dr0nj/regente}"
 
 BIN_SRC="$HERE/../regente-server"
 [ -x "$BIN_SRC" ] || { echo "binary not found at $BIN_SRC — run: (cd .. && CGO_ENABLED=0 go build -o regente-server .)"; exit 1; }
@@ -88,6 +91,35 @@ case "$WITH_UI" in
     ;;
 esac
 
+# --- Arquivos de deploy da BORDA (nginx/TLS/sandbox) -----------------------
+# Sem isto o deploy/vps/README.md manda `cp deploy/vps/nginx-regente.conf …` num
+# caminho que NÃO existe depois do one-liner: o install.sh baixa o bundle num
+# mktemp -d com `trap rm` e apaga tudo ao sair. Quem instalou pelo caminho
+# recomendado ficava sem os arquivos que o próprio doc mandava copiar.
+# Mesmos dois layouts da SPA, e o caminho é DIFERENTE em cada um:
+#   • bundle de release:    <bundle>/deploy/vps        → $HERE/vps
+#   • checkout do monorepo: <repo>/deploy/vps          → $HERE/../../deploy/vps
+if [ -n "${DEPLOY_DIR:-}" ]; then
+  VPS_SRC="$DEPLOY_DIR"
+elif [ -f "$HERE/vps/nginx-regente.conf" ]; then
+  VPS_SRC="$HERE/vps"
+elif [ -f "$HERE/../../deploy/vps/nginx-regente.conf" ]; then
+  VPS_SRC="$HERE/../../deploy/vps"
+else
+  VPS_SRC=""
+fi
+DEPLOY_DST="$DATA_DIR/deploy"
+if [ -n "$VPS_SRC" ]; then
+  rm -rf "$DEPLOY_DST/vps"
+  install -d "$DEPLOY_DST/vps"
+  cp -r "$VPS_SRC/." "$DEPLOY_DST/vps/"
+  chmod 0755 "$DEPLOY_DST/vps"/*.sh 2>/dev/null || true
+  echo "Edge deploy files installed at $DEPLOY_DST/vps (nginx + TLS + sandbox agent)."
+else
+  echo "NOTE: no deploy/vps found next to this script — the HTTPS/domain guide will not be installed."
+  echo "      Get it from the repository when you need it:  $REPO_URL/tree/main/deploy/vps"
+fi
+
 UNIT=/etc/systemd/system/regente-server.service
 sed -e "s#__USER__#${RUN_USER}#g" "$HERE/regente-server.service" > "$UNIT"
 
@@ -102,9 +134,25 @@ systemctl enable --now regente-server
 ADDR="$(grep -E '^REGENTE_ADDR=' "$ENV_FILE" | tail -1 | cut -d= -f2-)"
 ADDR="${ADDR:-:8080}"
 PORT="${ADDR##*:}"
-# IP público/externo só para imprimir uma URL clicável (best-effort, sem rede externa).
-HOST_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
-HOST_IP="${HOST_IP:-<this-host>}"
+# Endereço para imprimir uma URL clicável (best-effort, sem rede externa).
+# `hostname -I | awk '{print $1}'` pegava o PRIMEIRO endereço da lista, que NÃO é
+# necessariamente o público: numa caixa com Docker a lista pode começar pela
+# docker0 (172.17.0.1) e o instalador mandaria abrir uma URL que não existe.
+# Ficamos só com IPv4 público; sem nenhum (VM atrás de NAT), NÃO inventamos —
+# imprimimos um placeholder para o operador preencher.
+public_ipv4() {
+  local ip
+  for ip in $(hostname -I 2>/dev/null); do
+    case "$ip" in
+      *:*) continue ;;  # IPv6: fora (a URL precisaria de colchetes e raramente é o caminho)
+      10.*|127.*|169.254.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*) continue ;;
+      *) printf '%s' "$ip"; return 0 ;;
+    esac
+  done
+  return 1
+}
+HOST_IP="$(public_ipv4 || true)"
+HOST_IP="${HOST_IP:-<server-ip>}"
 
 # Health check: prova que subiu de verdade, em vez de mandar o operador adivinhar.
 sleep 1
@@ -127,14 +175,28 @@ else
   echo "  1) sudo \$EDITOR $ENV_FILE     # strong REGENTE_TOKEN, YOUR workspace repo"
 fi
 echo "  2) sudo systemctl restart regente-server"
-echo "  3) open the port on the firewall (a cloud VM ALSO needs it in the security group):"
-echo "       sudo ufw allow ${PORT}/tcp        # ufw"
-echo "       sudo firewall-cmd --add-port=${PORT}/tcp --permanent && sudo firewall-cmd --reload   # firewalld"
 if [ "$SPA_INSTALLED" = "1" ]; then
-  echo "  4) open http://${HOST_IP}:${PORT}   (login: admin / admin — it forces a password change)"
+  echo "  3) FIRST ACCESS — without exposing the control plane. From YOUR machine:"
+  echo "       ssh -L 18080:127.0.0.1:${PORT} <you>@${HOST_IP}"
+  echo "     then open http://localhost:18080   (login: admin / admin — it forces a password change)"
 else
-  echo "  4) API only (no UI installed): curl http://${HOST_IP}:${PORT}/health"
+  echo "  3) FIRST ACCESS (API only, no UI installed). From YOUR machine:"
+  echo "       ssh -L 18080:127.0.0.1:${PORT} <you>@${HOST_IP}"
+  echo "       curl http://localhost:18080/health"
+fi
+echo "  4) PUBLIC LINK — HTTPS with a real domain (this is the supported way to expose it):"
+if [ -d "$DEPLOY_DST/vps" ]; then
+  echo "       $DEPLOY_DST/vps/README.md   (nginx reverse proxy + Let's Encrypt + firewall)"
+else
+  echo "       $REPO_URL/tree/main/deploy/vps   (nginx reverse proxy + Let's Encrypt + firewall)"
 fi
 echo ""
+echo "Publishing port ${PORT} straight to the internet is NOT the recommended path: it is plain"
+echo "HTTP, so the admin password and REGENTE_TOKEN travel in the clear. If you still want it"
+echo "temporarily, allow SSH in the SAME command — enabling ufw without it locks you out:"
+echo "       sudo ufw allow OpenSSH && sudo ufw allow ${PORT}/tcp && sudo ufw enable   # ufw"
+echo "       (OpenSSH is port 22 — if your sshd listens elsewhere, allow THAT port instead)"
+echo "       sudo firewall-cmd --add-port=${PORT}/tcp --permanent && sudo firewall-cmd --reload   # firewalld"
+echo "  (a cloud VM ALSO needs the port opened in its security group.)"
+echo ""
 echo "Logs:    journalctl -u regente-server -f"
-echo "HTTPS/domain (a company-style public link): see deploy/vps/."

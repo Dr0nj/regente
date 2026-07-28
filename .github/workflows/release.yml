@@ -156,6 +156,10 @@ jobs:
           chmod +x "stage/$B/regente-server"
           cp -r app/dist "stage/$B/app/dist"
           cp server/deploy/install-linux.sh server/deploy/configure.sh server/deploy/regente-server.service server/deploy/server.env.example "stage/$B/deploy/"
+          # Borda (nginx/TLS/sandbox): o install-linux.sh instala isto em
+          # /var/lib/regente/deploy/vps. Sem estar no bundle, quem usa o one-liner
+          # fica sem os arquivos que o próprio deploy/vps/README.md manda copiar.
+          cp -r deploy/vps "stage/$B/deploy/vps"
           tar -C stage -czf "dist/$B.tar.gz" "$B"
 
       # Cada alvo entrega seus arquivos como artifact; quem publica é o job único

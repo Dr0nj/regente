@@ -69,6 +69,10 @@ if [ "$BUILD" = 1 ]; then
   cp "$ROOT/server/deploy/install-linux.sh" "$ROOT/server/deploy/configure.sh" \
      "$ROOT/server/deploy/regente-server.service" "$ROOT/server/deploy/server.env.example" \
      "$ROOT/.smoke/stage/regente-server_linux_amd64/deploy/"
+  # Espelha o release.yml: a borda (nginx/TLS/sandbox) também viaja no bundle, e
+  # quem a instala em /var/lib/regente/deploy/vps é o install-linux.sh. Sem isto
+  # o smoke testaria um bundle diferente do que a CI publica.
+  cp -r "$ROOT/deploy/vps" "$ROOT/.smoke/stage/regente-server_linux_amd64/deploy/vps"
   # O release.yml faz `chmod +x` antes de empacotar; num checkout Windows o bit
   # de execução não persiste no NTFS, então aqui o modo é forçado no próprio tar
   # (o installer recusa — corretamente — um bundle sem binário executável).
@@ -79,7 +83,8 @@ if [ "$BUILD" = 1 ]; then
   # "change-me\r" como token e TODA chamada à API volta 400 (header inválido).
   # A CI empacota de um checkout Linux; aqui normalizamos pra o bundle de teste
   # ficar igual ao publicado.
-  sed -i 's/\r$//' "$ROOT/.smoke/stage/regente-server_linux_amd64/deploy/"* 2>/dev/null || true
+  sed -i 's/\r$//' "$ROOT/.smoke/stage/regente-server_linux_amd64/deploy/"* \
+                   "$ROOT/.smoke/stage/regente-server_linux_amd64/deploy/vps/"* 2>/dev/null || true
   tar --mode=0755 -C "$ROOT/.smoke/stage" -czf "$ROOT/.smoke/bundle.tar.gz" regente-server_linux_amd64
   BUNDLE="$ROOT/.smoke/bundle.tar.gz"
   AGENT="$ROOT/.smoke/regente-agent"

@@ -25,36 +25,62 @@ frontend resolves `@origin`, so the same build works on any domain without a reb
 
 ## Step by step
 
+> **Where these files are.** `install-linux.sh` copies this folder to
+> **`/var/lib/regente/deploy/vps`**, so the commands below work on a machine installed with the
+> one-liner — which downloads the bundle into a temporary directory and deletes it on exit, so
+> there is no checkout to copy from. Running from a checkout instead? Set `VPS=deploy/vps`.
+
 ```bash
-# 0) DNS: create an A record (and AAAA if you have IPv6) pointing the domain at the VPS IP.
-#    Check it:  dig +short regente.yourcompany.com
+VPS=/var/lib/regente/deploy/vps          # from a checkout: VPS=deploy/vps
+DOMAIN=regente.yourcompany.com
 
-# 1) Server (option 2, with the single-origin UI) — see the root README. Verify locally:
-curl -sSI http://127.0.0.1:8080/health      # should answer 200
+# 0) Server up (option 2, with the single-origin UI) — see the root README:
+curl -sSI http://127.0.0.1:8080/health      # must answer 200
 
+# 1) DNS — do this FIRST, and prove it. Create an A record (and AAAA if you have
+#    IPv6) pointing the domain at THIS machine, then confirm it resolves here:
+hostname -I                                 # this machine's addresses
+getent hosts "$DOMAIN"                      # must answer with one of them
+```
+
+**Do not skip the check in step 1.** Let's Encrypt validates by fetching
+`http://$DOMAIN/.well-known/…`, so if the name still resolves to the registrar's parking page the
+certificate fails — and the error never mentions DNS, which sends you hunting in the wrong place.
+A freshly bought domain does not start blank: it already points somewhere.
+
+```bash
 # 2) nginx
 sudo apt update && sudo apt install -y nginx
-sudo cp deploy/vps/nginx-regente.conf /etc/nginx/conf.d/regente.conf
-sudo sed -i 's/REGENTE_DOMAIN/regente.yourcompany.com/' /etc/nginx/conf.d/regente.conf
+sudo cp "$VPS/nginx-regente.conf" /etc/nginx/conf.d/regente.conf
+sudo sed -i "s/REGENTE_DOMAIN/$DOMAIN/" /etc/nginx/conf.d/regente.conf
 sudo nginx -t && sudo systemctl reload nginx
+curl -sSI "http://$DOMAIN/" | head -1       # 200 = the whole path already works, before any TLS
 
 # 3) TLS (Let's Encrypt, through the nginx plugin) — brings up :443 and the 80->443 redirect
 sudo apt install -y certbot python3-certbot-nginx
-sudo DOMAIN=regente.yourcompany.com EMAIL=ops@yourcompany.com ./deploy/vps/enable-tls.sh
+sudo DOMAIN="$DOMAIN" EMAIL=ops@yourcompany.com bash "$VPS/enable-tls.sh"
 
-# 4) Firewall: expose only the edge; close 8080.
-sudo ufw allow 80,443/tcp && sudo ufw enable
-#   (the proxy already talks to 127.0.0.1:8080; if REGENTE_ADDR is a public :8080,
-#    change it to 127.0.0.1:8080 in server.env and restart the service.)
+# 4) Close the back door: the proxy reaches the server over the loopback, so the
+#    control plane should not be listening on a public address at all.
+sudo sed -i 's|^REGENTE_ADDR=.*|REGENTE_ADDR=127.0.0.1:8080|' /etc/regente/server.env
+sudo systemctl restart regente-server
+
+# 5) Firewall: expose only the edge. Allow SSH in the SAME command — enabling ufw
+#    without it locks you out of the machine. (OpenSSH is port 22; if your sshd
+#    listens elsewhere, allow that port instead.)
+sudo ufw allow OpenSSH && sudo ufw allow 80,443/tcp && sudo ufw enable
 ```
+
+> **More than one name?** If you also created `www` (a CNAME to the apex is the usual shape), put
+> both in `server_name` **before** running certbot — it reads that directive to decide which names
+> go into the certificate.
 
 Done: `https://regente.yourcompany.com` (initial login `admin`/`admin`, which you must change).
 Certificate renewal is automatic (`systemctl status certbot.timer`).
 
-> **Bind the server to the loopback:** in `/etc/regente/server.env` set
-> `REGENTE_ADDR=127.0.0.1:8080` (only nginx can reach it) and run
-> `sudo systemctl restart regente-server`. That way the control plane can never be reached
-> without going through the TLS edge, even by accident.
+> **Why step 4 matters:** with `REGENTE_ADDR=127.0.0.1:8080` only nginx can reach the control
+> plane, so it can never be talked to without going through the TLS edge — not even by accident,
+> and not even if the firewall is later opened by someone else.
 
 ## Enterprise hardening (what Regente ALREADY has — you just switch it on)
 

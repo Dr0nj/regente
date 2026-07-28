@@ -124,11 +124,12 @@ You need three things. None of them requires knowing Go, Node or Docker.
 1. **A Linux machine with systemd and root access** — any VPS (Ubuntu 22.04+, Debian 12+,
    Rocky/Alma 9+) or a VM at home. 1 vCPU and 1 GB of RAM is enough to start. `curl` and `tar`
    must be present (they usually are).
-2. **A port you can reach.** The server listens on **8080** by default. On a cloud VM you have to
-   open it in **two** places: the machine's firewall *and* the provider's security group /
-   firewall rules. If you plan to put it behind a domain with HTTPS, read
-   [`deploy/vps/`](deploy/vps/README.md) instead — there the port stays closed and nginx handles
-   443.
+2. **A way to reach the UI.** The server listens on **8080**, in plain HTTP. You do **not** have
+   to publish that port: an SSH tunnel (`ssh -L 18080:127.0.0.1:8080 you@host`) is enough for the
+   first login and keeps the password off the wire. For a link other people can use, go straight
+   to [`deploy/vps/`](deploy/vps/README.md) — a domain plus nginx and Let's Encrypt, with `:8080`
+   still closed. Opening 8080 to the internet is the last resort, and on a cloud VM it takes
+   **two** places: the machine's firewall *and* the provider's security group.
 3. **An empty GitHub repository for your workspace** — this is where your job definitions will
    live. Create it on GitHub ("New repository", **no** README, **no** .gitignore — leave it
    completely empty; private is fine) and keep two things at hand:
@@ -239,14 +240,44 @@ sudo regente-configure
 It offers to restart the service at the end and then tells you whether GitOps actually
 connected. Leaving the repository blank is a valid answer: that is offline mode.
 
-**2. Open the port** — on a cloud VM, in the provider's security group *as well*:
+**2. Reach the UI — without publishing it yet.** The default port speaks plain **HTTP**, so the
+first login (`admin`/`admin`) and the `REGENTE_TOKEN` would cross the internet in the clear. Use
+an SSH tunnel from **your own machine** and nothing has to be opened at all:
 
 ```bash
-sudo ufw allow 8080/tcp
+ssh -L 18080:127.0.0.1:8080 <you>@<your-host>
 ```
 
-**3. Open `http://<your-host>:8080`** and log in with `admin` / `admin` — it will make you change
+**3. Open `http://localhost:18080`** and log in with `admin` / `admin` — it will make you change
 the password.
+
+For a link other people can use, go to [`deploy/vps/`](deploy/vps/README.md): a real domain, nginx
+and Let's Encrypt, with `:8080` staying closed. If you only want the port open **temporarily**,
+allow SSH in the same command — enabling `ufw` without it locks you out of the machine — and
+remember a cloud VM also needs the port in the provider's security group:
+
+```bash
+sudo ufw allow OpenSSH && sudo ufw allow 8080/tcp && sudo ufw enable
+```
+
+#### What lives where (and what a reinstall brings back)
+
+The single most common surprise on a fresh machine is a board with **no jobs on it**. Nothing is
+broken — these two halves have different homes:
+
+| Comes from the **Git repository** | Lives only in the **database** |
+|---|---|
+| folders (a folder is a *subdirectory* of `definitions/`) | users and passwords |
+| job definitions and their conditions | agent tokens |
+| the per-folder layout (`.regente-folder.yaml`) | run history, instances, audit trail |
+
+So pointing a new installation at an existing workspace repository brings the **jobs** back, but
+it starts with no agents and an empty history — that is expected. To carry the other half over,
+back up and restore the database ([DR and backup](docs/dr-backup.md)).
+
+And definitions are not instances: the **daily** is what turns a definition into today's order.
+It runs once a day at the configured time (Settings → Scheduling), so a job created after it ran
+only shows up on the board tomorrow — or right away with `POST /api/daily/run`.
 
 > ⚠️ **`REGENTE_TOKEN` is admin-equivalent** — it bypasses the login entirely. Generate a strong
 > value and never leave it as `dev-token` or `change-me`. `regente-configure` generates one for
@@ -319,7 +350,8 @@ check that the service is really up before they finish, and print the log if it 
 | Symptom | What it is | Fix |
 |---|---|---|
 | `curl … install.sh` gives 404 | that release does not carry the file | check <https://github.com/Dr0nj/regente/releases>; install from source (Option 1/2) meanwhile |
-| The page never loads | port closed | `sudo ufw allow 8080/tcp` **and** the provider's security group; test locally first: `curl http://127.0.0.1:8080/health` |
+| The page never loads | port closed | first prove the server itself is up, on the machine: `curl http://127.0.0.1:8080/health`. If that answers, it is the network — reach it with `ssh -L 18080:127.0.0.1:8080 you@host`, or open the port in the firewall **and** the provider's security group |
+| The board is empty after installing | the daily has not run since the definitions arrived | `curl -H "Authorization: Bearer $TOKEN" .../api/definitions` — if they are listed, the daily simply has not run for today yet: `POST /api/daily/run`. If they are **not** listed, check `GET /api/git/status` (field `error`) and the log for `reload defs` (one invalid YAML fails the whole load) |
 | Installed from source, no UI, only API | the built SPA was not found | `cd app && VITE_REGENTE_SERVER_URL=@origin npm ci && npm run build`, then run the installer again (or pass `SPA_DIR=/full/path/to/app/dist`) |
 | Design says sessions are disabled | no workspace repository configured | `sudo regente-configure` and point it at your repository — Design needs GitOps |
 | The git badge says `⚠ not connected` | wrong repository, missing PAT, or PAT without write access | PAT: paste it in Settings → GitHub (immediate). Repository/branch: `sudo regente-configure` |

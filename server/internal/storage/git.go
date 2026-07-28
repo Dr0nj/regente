@@ -553,7 +553,7 @@ func (g *GitOps) ensureCloneLocked() error {
 				_ = g.writeLocalExcludesLocked()
 				return g.refreshSHA()
 			}
-			return err
+			return g.authHint(err)
 		}
 		_ = g.writeLocalExcludesLocked() // best-effort: nunca trackear SQLite DB
 		return g.refreshSHA()
@@ -631,10 +631,38 @@ func (g *GitOps) ensureCloneLocked() error {
 		// nem depois de a config ser corrigida. Só chegamos aqui com o workspace
 		// vazio, então limpar é seguro.
 		g.cleanWorkspaceLocked()
-		return fmt.Errorf("git clone: %w", err)
+		return fmt.Errorf("git clone: %w", g.authHint(err))
 	}
 	_ = g.writeLocalExcludesLocked() // best-effort: nunca trackear SQLite DB
 	return g.refreshSHA()
+}
+
+// authHint traduz falhas de transporte que, na prática, são "não há credencial".
+//
+// O GitHub responde **404 Repository not found** a repositório PRIVADO sem auth —
+// ele não confirma sequer que existe. Repassar esse erro cru mandava quem acabou
+// de instalar caçar permissão do PAT (ou erro de digitação no owner/name) quando
+// o problema era não haver PAT nenhum. O status já sabe a diferença (`hasToken`);
+// a mensagem passa a saber também, e diz onde configurar.
+func (g *GitOps) authHint(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := strings.ToLower(err.Error())
+	looksAuth := errors.Is(err, transport.ErrAuthenticationRequired) ||
+		errors.Is(err, transport.ErrAuthorizationFailed) ||
+		errors.Is(err, transport.ErrRepositoryNotFound) ||
+		strings.Contains(msg, "authentication required") ||
+		strings.Contains(msg, "authorization failed") ||
+		strings.Contains(msg, "repository not found")
+	if !looksAuth {
+		return err
+	}
+	if g.token == "" {
+		return fmt.Errorf("%w — NO GitHub token is configured, and a private repository answers exactly like this. "+
+			"Set one in Settings -> GitHub (it applies immediately, no restart) or as REGENTE_SECRET_GITHUB_TOKEN in the server environment", err)
+	}
+	return fmt.Errorf("%w — a token IS configured, so check that it is valid, not expired, and grants Contents read/write on %s", err, g.source)
 }
 
 // isMissingBranchErr reconhece as várias formas com que o go-git reporta "essa

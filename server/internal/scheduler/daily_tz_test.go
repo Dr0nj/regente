@@ -3,6 +3,8 @@ package scheduler
 import (
 	"testing"
 	"time"
+
+	"github.com/Dr0nj/regente-server/internal/domain"
 )
 
 // E1 — timezone da daily. O relógio de NEGÓCIO (settings.daily_timezone) manda
@@ -35,6 +37,15 @@ func countDailyRuns(t *testing.T, s *Scheduler, date string) int {
 func TestDailyTimezone_AutoDailyCruzaMeiaNoiteDeSP(t *testing.T) {
 	s := newTestScheduler(t)
 	setSetting(t, s, "daily_timezone", "America/Sao_Paulo")
+	// Uma definition qualquer: sem NENHUMA, a daily deliberadamente não marca o dia
+	// (ver TestRunDaily_ZeroDefinitionsDoesNotMarkTheDay) e este teste mediria o
+	// guard em vez da timezone. Vai pelo STORE, não por s.defs: o autoDailyIfDue
+	// passa por dailySync → reloadDefs, que substitui s.defs pelo que está em disco.
+	// Com schedule desligada não materializa instance — o que se observa aqui
+	// continua sendo só o carimbo em daily_runs.
+	if err := s.store.Save(domain.JobDefinition{ID: "tz", Label: "TZ", Team: "T"}); err != nil {
+		t.Fatalf("seed definition: %v", err)
+	}
 	// A diária de 02/jul (o "hoje" de SP às 02:59Z) já rodou — isola o caso.
 	if _, err := s.db.Exec(`INSERT OR REPLACE INTO daily_runs(order_date, started_at) VALUES(?, CURRENT_TIMESTAMP)`, "2026-07-02"); err != nil {
 		t.Fatalf("seed daily_runs: %v", err)

@@ -5,12 +5,15 @@
 #
 # curl/git/python3 são do HARNESS, não do produto: o server usa go-git e não
 # precisa do binário `git`; curl e python3 só servem pra checar health e ler JSON.
+# nginx idem — o produto não depende dele, mas o deploy/vps/README.md manda pôr um
+# reverse proxy na frente, e essa fronteira era justamente a que o smoke NÃO
+# cobria quando a primeira instalação real quebrou nela.
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -qq \
  && apt-get install -y -qq --no-install-recommends \
-      systemd systemd-sysv ca-certificates curl git python3 \
+      systemd systemd-sysv ca-certificates curl git python3 nginx \
  && rm -rf /var/lib/apt/lists/* \
  # Unidades que não fazem sentido em container e só sujam o boot.
  && rm -f /lib/systemd/system/multi-user.target.wants/* \

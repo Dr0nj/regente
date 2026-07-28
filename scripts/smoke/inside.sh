@@ -163,5 +163,59 @@ if api "$BASE/api/instances" | grep -q '"status":"OK"'; then
   fi
 fi
 
+
+# ---------------------------------------------------------------------------
+# Borda: nginx na frente, como manda o deploy/vps/README.md.
+#
+# Esta seção existe porque a PRIMEIRA instalação real em VPS quebrou toda ela —
+# e nada disso estava sob o smoke: o `deploy/vps/` simplesmente não existia na
+# máquina (o one-liner baixa o bundle num mktemp -d e apaga na saída), então o
+# passo 2 do próprio README mandava copiar um arquivo inexistente. TLS e DNS
+# ficam de fora por dependerem de rede externa; o que dá pra provar aqui é o
+# caminho inteiro até o proxy responder.
+head1 "Borda (nginx reverse proxy)"
+
+VPS_DIR=/var/lib/regente/deploy/vps
+if [ -f "$VPS_DIR/nginx-regente.conf" ] && [ -f "$VPS_DIR/enable-tls.sh" ]; then
+  ok "deploy/vps instalado em $VPS_DIR (o README manda copiar daqui)"
+else
+  bad "deploy/vps NÃO foi instalado — o passo 2 do deploy/vps/README.md aponta para um arquivo que não existe"
+fi
+
+if command -v nginx >/dev/null 2>&1 && [ -f "$VPS_DIR/nginx-regente.conf" ]; then
+  SMOKE_DOMAIN=smoke.regente.test
+  cp "$VPS_DIR/nginx-regente.conf" /etc/nginx/conf.d/regente.conf
+  sed -i "s/REGENTE_DOMAIN/$SMOKE_DOMAIN/" /etc/nginx/conf.d/regente.conf
+  if nginx -t >/tmp/nginx-t.log 2>&1; then
+    ok "nginx -t aceita o nginx-regente.conf"
+  else
+    bad "nginx -t recusou o nginx-regente.conf:"; cat /tmp/nginx-t.log
+  fi
+  # `systemctl restart` (não reload): o serviço pode nem ter subido no boot do
+  # container, e reload de um nginx parado falha sem dizer o porquê.
+  systemctl restart nginx >/dev/null 2>&1 || true
+  if wait_for 20 'systemctl is-active nginx | grep -q "^active$"'; then
+    ok "nginx ativo"
+    # Host forjado: sem DNS, é o cabeçalho que faz o server_name casar. Prova o
+    # circuito completo browser -> :80 -> proxy -> regente-server no loopback.
+    edge() { curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H "Host: $SMOKE_DOMAIN" "http://127.0.0.1$1"; }
+    [ "$(edge /health)" = 200 ] && ok "health atravessa o proxy (200)" \
+      || bad "health pelo proxy não voltou 200 (veio $(edge /health))"
+    [ "$(edge /)" = 200 ] && ok "UI servida pelo proxy (200 em /)" \
+      || bad "a UI não veio pelo proxy (veio $(edge /))"
+    # A borda tem de repassar o Authorization: sem isso a API responde 401 e o
+    # sintoma aparece só depois, na UI logada.
+    aut="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H "Host: $SMOKE_DOMAIN" -H "Authorization: Bearer $(tok)" "http://127.0.0.1/api/definitions")"
+    [ "$aut" = 200 ] && ok "API autenticada pelo proxy (200)" || bad "API pelo proxy voltou $aut"
+    curl -s -D- -o /dev/null --max-time 10 -H "Host: $SMOKE_DOMAIN" "http://127.0.0.1/" \
+      | grep -qi 'X-Content-Type-Options: nosniff' \
+      && ok "headers de hardening da borda presentes" || bad "a borda não devolveu os headers de hardening"
+  else
+    bad "nginx não ficou ativo: $(systemctl is-active nginx) — $(journalctl -u nginx -n 5 --no-pager 2>/dev/null | tr '\n' ' ')"
+  fi
+else
+  echo "   [skip] nginx não está na imagem — seção da borda não executada"
+fi
+
 echo
 if [ "$fails" = 0 ]; then echo "SMOKE stage1 OK"; exit 0; else echo "SMOKE stage1: $fails falha(s)"; exit 1; fi

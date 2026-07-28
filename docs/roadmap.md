@@ -1230,6 +1230,76 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > container NOVO do zero: install pelo one-liner → repo errado (serviço no ar, **sem `.git` parcial**)
 > → config corrigida → **bootstrap sozinho**, sem `rm -rf` e sem restart manual extra.
 
+### 🌍 V-LIVE — a primeira instalação REAL num VPS público (2026-07-28)
+
+> Não foi container nem simulação: VPS pago de verdade, Ubuntu 24.04, domínio próprio
+> (`regentehub.com`), DNS no registrador, TLS do Let's Encrypt. **A instalação em si passou
+> limpa** — o que quebrou estava todo FORA da fronteira do `scripts/smoke-install.sh`, que
+> prova install + `regente-configure` + persistência e não tocava em (a) borda nginx/TLS/DNS,
+> (b) entrada COLADA num terminal e (c) o primeiro dia de operação. Essa é a lição-mãe, e é a
+> mesma da auditoria do "Try it in 5 minutes": **o que o teste não roda, apodrece**.
+
+```
+✅ VL-1 · deploy/vps EXISTE na máquina — o deploy/vps/README.md mandava
+       `cp deploy/vps/nginx-regente.conf …` num caminho que NÃO existe depois do caminho
+       recomendado: o install.sh baixa o bundle num `mktemp -d` com `trap rm` e apaga tudo
+       ao sair, e o bundle nem levava a pasta. Agora `release.yml` empacota `deploy/vps` e o
+       install-linux.sh instala em **/var/lib/regente/deploy/vps** (procura nos dois layouts,
+       igual à SPA); o README usa `VPS=/var/lib/regente/deploy/vps` e explica os dois casos.
+✅ VL-2 · Bracketed paste não corrompe mais o PAT — colar num terminal nesse modo entrega
+       `\e[200~<texto>\e[201~` ao `read`, e com `-s` (silencioso) NADA disso aparece. O valor
+       ia pro server.env com o escape junto, o **systemd descartava a linha inteira** do
+       EnvironmentFile e o sintoma final era `git clone: authentication required: Repository
+       not found.` — três saltos longe da causa e com cara de permissão do GitHub.
+       `configure.sh` agora desliga o modo, LIMPA marcadores/CR/controle de TODAS as
+       respostas (`clean()`), avisa quando o PAT não parece um token do GitHub, normaliza
+       domínio colado como URL, e `set_env` RECUSA gravar caractere de controle.
+✅ VL-3 · Erro de GitOps separa "sem token" de "sem permissão" — o GitHub responde 404
+       "Repository not found" a repo PRIVADO sem auth (nem confirma que existe). `authHint()`
+       enriquece: sem token, diz que não há NENHUM e onde configurar (Settings → GitHub, sem
+       restart); com token, manda conferir validade/escopo no repo.
+✅ VL-4 · Daily com ZERO definitions não carimba mais o dia — a daily correu às 21:33, ANTES
+       do GitOps conectar (workspace vazio), materializou 0 instances e **marcou
+       `daily_runs`**. Dali em diante o dia estava "processado": nem com o clone pronto o
+       board voltava, só com `POST /api/daily/run` manual. O sintoma que chega no operador é
+       "instalei e subiu sem job nenhum". Agora conjunto vazio = **não marca**, loga 1× por
+       data e o próximo tick materializa sozinho. O **carry-over continua rodando** (instance
+       que atravessa a virada não depende de haver definition carregada) e os GCs, que são
+       janela "1×/dia logo após a daily", saem antes pra não rodarem a cada tick. 2 testes.
+✅ VL-5 · Instalador para de recomendar HTTP na internet — os "próximos passos" mandavam
+       `ufw allow 8080/tcp` + `open http://IP:8080` com admin/admin, ou seja, senha e
+       REGENTE_TOKEN em texto claro. Agora o passo 3 é **túnel SSH**
+       (`ssh -L 18080:127.0.0.1:8080`), o 4 é o link público com TLS, e abrir a porta virou
+       último recurso — com `ufw allow OpenSSH` na MESMA linha, porque `ufw enable` sem isso
+       tranca o operador fora da máquina.
+✅ VL-6 · IP impresso é o PÚBLICO — era `hostname -I | awk '{print $1}'`, o PRIMEIRO endereço
+       da lista. Nessa caixa veio `179.198.102.161 172.17.0.1 2a02:…`; com a docker0 na
+       frente o instalador mandaria abrir `http://172.17.0.1:8080`. Filtra loopback/link-local
+       /RFC1918/IPv6 e, sem nenhum público (NAT), imprime `<server-ip>` em vez de inventar.
+✅ VL-7 · Doc: DNS ANTES do certbot, loopback como passo, e o quadro Git×DB — a validação do
+       Let's Encrypt busca `http://$DOMAIN/.well-known/…`, então domínio ainda apontando pra
+       página de estacionamento do registrador faz a emissão falhar com uma mensagem que NÃO
+       menciona DNS. O README da borda ganhou o passo 1 com `getent hosts` obrigatório, o
+       `REGENTE_ADDR=127.0.0.1:8080` promovido de nota de rodapé a passo numerado, e o
+       README raiz ganhou a tabela **o que vem do Git × o que vive no banco** (jobs voltam;
+       usuários, tokens de agente e histórico não) + a distinção definition × instance, que
+       são exatamente as duas surpresas de quem instala pela primeira vez.
+✅ VL-8 · O smoke passou a cobrir a borda — `scripts/smoke/` sobe **nginx de verdade** no
+       container, aplica o `nginx-regente.conf`, e prova o circuito com Host forjado:
+       `nginx -t` aceita · health 200 pelo proxy · UI 200 em `/` · API autenticada 200
+       (Authorization repassado) · headers de hardening presentes · e a asserção que teria
+       pego o VL-1 no dia: `deploy/vps` instalado. TLS/DNS ficam de fora por dependerem de
+       rede externa. `--build` espelha o `release.yml` (empacota `deploy/vps`).
+```
+
+> **Bug de brinde, achado lendo o próprio `configure.sh`:** a checagem final casava com
+> `*'"error"'*`, mas a chave `error` vem **sempre** no JSON do `/api/git/status` (vazia quando
+> está tudo bem) — então o script diria "GitOps NOT connected" até no caminho feliz. O que
+> separa os dois casos é o VALOR (`"error":""`). Corrigido.
+
+> **Validado:** `bash scripts/smoke-install.sh --build` verde de ponta a ponta, com a seção
+> nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
+
 ## 📜 Changelog de entregas
 
 > Log cronológico (mais recente primeiro) de tudo que foi entregue, com o "porquê" e os
@@ -1237,6 +1307,7 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 
 | Quando | O que | Detalhe |
 |----|--------|---------|
+| ✅ | ~~**Primeira instalação REAL num VPS público: 8 furos de doc/UX, todos FORA da fronteira do smoke (VL-1..VL-8)**~~ | **Feito (2026-07-28, pedido do usuário "aplica todas as melhorias" depois de subir o Regente num VPS pago com domínio próprio).** Detalhe completo em §📦 Self-hosting em VPS (V-LIVE). Resumo: **a instalação passou limpa — tudo que quebrou estava fora do que o `smoke-install.sh` cobria** (borda nginx/TLS/DNS, entrada COLADA no terminal, primeiro dia de operação). Os quatro que quebram o usuário: **(1)** `deploy/vps` não existia na máquina, e o passo 2 do próprio `deploy/vps/README.md` mandava copiar de lá — o one-liner baixa o bundle num `mktemp -d` com `trap rm`, e o bundle nem levava a pasta; agora `release.yml` empacota e o installer instala em `/var/lib/regente/deploy/vps`. **(2)** **bracketed paste** corrompia o PAT (`\e[200~…` num `read -rsp` silencioso), o systemd descartava a linha inteira do EnvironmentFile e o operador recebia `Repository not found`, que parece permissão do GitHub — `configure.sh` desliga o modo, sanitiza tudo (`clean()`) e `set_env` recusa caractere de controle. **(3)** o erro de GitOps não separava "sem token" de "sem permissão" (`authHint()`). **(4)** a **daily com ZERO definitions carimbava o dia**: rodou antes do GitOps conectar, criou 0 e travou a data — "instalei e subiu sem job nenhum"; agora não marca, loga 1× por data e o próximo tick materializa, com o **carry-over preservado** e os GCs saindo antes pra não rodarem a cada tick. Mais: **(5)** o instalador deixou de recomendar 8080 em HTTP claro (túnel SSH primeiro, `ufw allow OpenSSH` na mesma linha do `enable`), **(6)** o IP impresso passou a ser o **público** (era o primeiro de `hostname -I` — com Docker na caixa, a `docker0`), **(7)** doc com verificação de DNS **antes** do certbot, `REGENTE_ADDR=127.0.0.1` como passo numerado e a tabela **Git × banco** no README raiz, e **(8)** o smoke ganhou a seção da **borda** (nginx real no container, Host forjado, 7 asserções). De brinde, a checagem final do `configure.sh` casava com `*'"error"'*` — chave que vem **sempre** no JSON — e diria "GitOps NOT connected" até no caminho feliz. Validado com `scripts/smoke-install.sh --build` verde de ponta a ponta + suíte do server, `go vet` e staticcheck limpos. |
 | ✅ | ~~**Repo público sem `LICENSE` — ninguém podia usar legalmente**~~ | **Feito (2026-07-28, `4109d74`, achado numa comparação Regente × n8n a pedido do usuário).** Não era item de backlog: o repo **nunca teve `LICENSE`**, e sem licença o direito autoral padrão vale integral — "todos os direitos reservados". Qualquer um podia **ler**, ninguém podia legalmente **usar, modificar ou redistribuir**, e jurídico de banco/seguradora (o público-alvo declarado) barra dependência sem licença antes de qualquer POC. Era o único bug de *produto* que sobrava com todas as trilhas técnicas fechadas. **Escolha: Apache 2.0** (e não MIT) pela **concessão explícita de patente** e pela **cláusula de marca §6** — é a norma do ecossistema Go/infra (Kubernetes, Prometheus) e passa em revisão jurídica corporativa sem discussão; copyleft (AGPL) foi descartado porque espanta adoção corporativa, que é exatamente o gargalo do projeto. Como o autor é **único** detentor dos direitos, relicenciar versões futuras / dual-license continua possível. Entregue: `LICENSE` com o texto **canônico baixado de apache.org** (202 linhas, copyright preenchido no apêndice) · `NOTICE` (copyright + ressalva de que a licença **não** concede nome/logo + a nota de marcas de terceiros que estava solta no rodapé do README) · README com seção *License*, item na navegação e badge · `app/package.json` com `"license"` corrigido de **`"ISC"`** (default que o `npm init` deixou) pra `Apache-2.0`, e de quebra a boilerplate do template do Vite que sobrava em `description`/`author` e o `main` apontando pro `eslint.config.js` (pacote é `private`, nada resolvia esse campo). `docs/site` regenerado — os links relativos pra `LICENSE`/`NOTICE` viram URL absoluta do GitHub via `repoLink`, porque não são páginas publicadas. `go test ./cmd/docsite/...` verde. |
 | ✅ | ~~**Auditoria de doc × código: o "Try it in 5 minutes" do README não funcionava, e o site de docs publicava 404**~~ | **Feito (2026-07-28, pedido do usuário "faz uma auditoria completa no regente, principalmente nos readme e docs explicativos do github para com o código" → "fix everything").** A auditoria RODOU os comandos em vez de só ler. **(1) O primeiro comando do README morria:** `go run ./cmd/regente dev daily` sai com `workspace ./workspace has no definitions/` num clone recém-baixado — o repo não versiona workspace (`/server/workspace/` é gitignored, `git ls-files` confirma zero arquivos) — e, mesmo com workspace, `GET /` devolvia **404**: o `dev` só serve SPA com `-spa-dir` e não há SPA embutida no binário, então o "abra a URL e logue com admin/admin" era falso. Agora o `regente dev` **escreve um workspace de DEMONSTRAÇÃO** (4 jobs: cadeia extract→transform→publish ligada por condições + um HTTP solto) quando não recebe `-workspace`, **acha a UI buildada sozinho** (`app/dist` em 3 níveis, mesmo truque do install-linux.sh) e o resumo do boot diz o que está no ar — incluindo como buildar a UI quando ela não existe. README refeito com o passo do `npm run build` e a saída honesta pra quem não tem Node. Teste novo `TestDemoWorkspace_IsValidAndMaterializes` trava o dialeto (parse ESTRITO + `ValidateDefinition` + daily simulada com os 4 elegíveis). **(2) O site de docs publicava link quebrado em 6 das 13 páginas** (a index sozinha tinha 8: `deploy/vps/README.md`, `server/deploy`, `docs/roadmap.md`, o workflow…): `rewriteLinks` só reescrevia alvo que virou página e deixava o resto como caminho relativo do repo — 404 no Pages E no `docs/site/` aberto do disco (`https://dr0nj.github.io/regente/deploy/vps/README.md` → 404, verificado ao vivo). Agora alvo não-publicado vira **URL absoluta do GitHub** (`blob` p/ arquivo, `tree` p/ diretório) e o invariante tem teste (`TestBuild_NenhumaHrefRelativaQuebrada`). **(3) Doc × código reconciliado:** `server/deploy/README.md` ainda dava `…/regente-workspace.git` como default de `REGENTE_GIT_SOURCE` e usava o repo do lab no exemplo Windows (resíduo do VA-4); `deploy/demo/README.md` descrevia o GitOps hardcoded que virou `-GitRepo owner/name` (sem ele a demo é offline); `docs/mcp.md` descrevia hold/release/pause/resume no modelo PRÉ-hold-geral ("WAITING→HELD", "→WAITING") em vez do congelamento do status original; `docs/operations.md` dizia que o tracker de quotas é todo em memória (as capacidades PERSISTEM desde o schemaV20). **(4) `CLAUDE.md` reescrito** — CI descrita sem staticcheck/lint/docsite/release-a-cada-push, aviso obsoleto de "2 lints pré-existentes em V2Preview" (a catraca RH-4 deixou tudo em ZERO e as 4 regras em `error`), regra de idioma ausente, sem ponteiro pro roadmap/conditions-events como fontes da verdade, agent "single main.go" (13 jobTypes), 4 temas (17). **(5) Toolchain:** `go.work` pedia `go 1.26.2` (nasceu do `go work init` da máquina do dev) enquanto os módulos e a CI dizem 1.25 — todo job Go baixava toolchain novo em silêncio e `GOTOOLCHAIN=local` quebrava; alinhado em `1.25.0`. **(6) i18n:** `server.env.example` (o arquivo que o operador copia pra `/etc/regente/`) estava 100% em pt-BR, com uma linha corrompida ("têm default são") — traduzido; comentário do `sandbox-agent.sh` mandava pro menu "Agentes → Criar token" que não existe mais em inglês. **(7) Números do case study** recontados: ~44k Go/427 testes/97 arquivos → **~47k Go (46 879) · 456 funções de teste em 102 arquivos** (PT, EN e os 4 rascunhos do LinkedIn). Gates verdes: `go test ./server/...`, agent, staticcheck, `npm run lint`, docsite regenerado. |
 | ✅ | ~~**Migração com repo POPULADO validada + release a cada push na main (VA-10/VA-11)**~~ | **Feito (2026-07-28, commits `9a6a273`, `00e3fc1` e `b183ea8`).** Detalhe completo em §📦 Self-hosting em VPS (VA-10 e VA-11): máquina nova apontada pra um repo que já tem jobs (a daily materializa, os jobs rodam), troca de repo A→B, branch `master`, mensagem acionável quando disco E repositório têm conteúdo; e a política de release — **todo push na `main` publica**, com `scripts/smoke-install.sh` (instalação num systemd real, em container) como portão, `[no release]` no ASSUNTO do commit para pular. Primeira auto-release: **v0.2.2**. (Esta linha estava faltando: os dois entraram no §Entregue sem passar pelo changelog.) |
