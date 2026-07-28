@@ -570,9 +570,10 @@ agent, a job that actually runs, and a reboot.</p>
 <pre><code class="language-bash">bash scripts/smoke-install.sh --build
 </code></pre>
 <p><strong>Every push to <code>main</code> publishes a release</strong>, and this smoke test is the gate that runs before
-it: if the artifact does not install, nothing is published. Put <code>[no release]</code> in the commit
-message to skip publishing (documentation-only changes, for instance); tag <code>vX.Y.Z</code> by hand when
-you want a minor or major instead of the next patch.</p>
+it: if the artifact does not install, nothing is published. To skip publishing (a
+documentation-only change, for instance) put <code>[no release]</code> in the commit <strong>subject</strong> — only the
+first line is read, so a commit body may talk about the marker without triggering it. Tag
+<code>vX.Y.Z</code> by hand when you want a minor or major instead of the next patch.</p>
 <hr>
 <h2 id="-roadmap">🗺 Roadmap</h2>
 <p>All planning lives in <strong><a href="docs/roadmap.md"><code>docs/roadmap.md</code></a></strong> — the single source of status

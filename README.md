@@ -522,9 +522,10 @@ bash scripts/smoke-install.sh --build
 ```
 
 **Every push to `main` publishes a release**, and this smoke test is the gate that runs before
-it: if the artifact does not install, nothing is published. Put `[no release]` in the commit
-message to skip publishing (documentation-only changes, for instance); tag `vX.Y.Z` by hand when
-you want a minor or major instead of the next patch.
+it: if the artifact does not install, nothing is published. To skip publishing (a
+documentation-only change, for instance) put `[no release]` in the commit **subject** — only the
+first line is read, so a commit body may talk about the marker without triggering it. Tag
+`vX.Y.Z` by hand when you want a minor or major instead of the next patch.
 
 ---
 

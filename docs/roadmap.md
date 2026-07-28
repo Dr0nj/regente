@@ -1206,8 +1206,11 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
        UI normalizada e token 0600 · job executando OK com output · reboot
        preservando serviço/DB/UI/workspace. No release.yml virou o job `smoke`,
        entre `build` e `publish`: falhou, não publica. Job `version` calcula o
-       próximo patch (tag manual vX.Y.Z segue valendo pra minor/major; `[no
-       release]` na mensagem do commit pula) e `concurrency: release` serializa.
+       próximo patch (tag manual vX.Y.Z segue valendo pra minor/major; o
+       marcador de pular vai no ASSUNTO do commit) e `concurrency` serializa.
+       GOTCHA achado na estreia: procurar o marcador na mensagem INTEIRA fez o
+       primeiro commit da regra — que explicava o marcador no corpo — pular a
+       própria release. Agora só o assunto conta.
        Rodando local (`--build`) o smoke também achou: o installer de agente DO
        CÓDIGO-FONTE ainda passava o token na linha de comando (visível no `ps`)
        enquanto o da release já usava EnvironmentFile 0600 — corrigido, agora
