@@ -357,6 +357,56 @@ UI is reachable, and the reason shows up both in the git badge (<code>⚠ not co
 <pre><code class="language-bash">sudo systemctl restart regente-server     # apply a new binary or config (migrations run at boot)
 journalctl -u regente-server -f           # follow the logs
 </code></pre>
+<h3 id="upgrading-a-running-installation">Upgrading a running installation</h3>
+<p><strong>Run the same installer again.</strong> Reinstalling on top is the supported upgrade path — it detects
+the live service, replaces the binary and the UI, and <strong>restarts the service</strong> so the new version
+is actually the one running:</p>
+<pre><code class="language-bash">curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install.sh -o regente-install.sh &amp;&amp; sudo bash regente-install.sh
+</code></pre>
+<p>You should see <code>UPGRADED in place</code> and a line like <code>Process replaced: PID 1234 -&gt; 5678</code>. That
+second line is the point: swapping the file on disk does <strong>not</strong> swap the process, so without a
+restart you would be running the old binary while everything looked fine. If the installer ever
+warns that the process did not restart, force it:</p>
+<pre><code class="language-bash">sudo systemctl restart regente-server
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Kept</th>
+<th>Replaced</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/etc/regente/server.env</code> — token, GitOps, <code>REGENTE_ADDR</code></td>
+<td>the binary in <code>/usr/local/bin</code></td>
+</tr>
+<tr>
+<td>the database — users, agent tokens, run history</td>
+<td>the UI in <code>/var/lib/regente/app</code></td>
+</tr>
+<tr>
+<td>the workspace clone</td>
+<td><code>/var/lib/regente/deploy/vps</code></td>
+</tr>
+<tr>
+<td>whatever sits in front of it (nginx, TLS certificates)</td>
+<td>the systemd unit (same service user)</td>
+</tr>
+</tbody>
+</table>
+<p>Schema migrations run at boot, so there is no separate migration step. Downtime is one service
+restart — a couple of seconds; running jobs are on the <strong>agents</strong>, and they reconnect on their own.</p>
+<blockquote>
+<p><strong>Agents are separate binaries.</strong> Upgrading the server does not touch them: rerun
+<code>install-agent.sh</code> (or the PowerShell installer) on each agent machine. Agent and server do not
+have to be on the same version — the protocol is compatible across patch releases — but keeping
+them aligned avoids surprises.</p>
+</blockquote>
+<p>For a <strong>zero-downtime</strong> upgrade you need more than one node: with Postgres and leader election,
+bring a new node up as a follower and drain the old one (see
+<a href="https://github.com/Dr0nj/regente/blob/main/server/deploy/rolling-upgrade.sh"><code>server/deploy/rolling-upgrade.sh</code></a>). On a single box, the
+restart above is the honest answer.</p>
 <h3 id="your-first-job-2-minutes">Your first job (2 minutes)</h3>
 <ol>
 <li><strong>Settings → Agents → create a token</strong>, then install an agent (next section). Or skip it: the

@@ -35,6 +35,17 @@ REPO_URL="https://github.com/${REGENTE_REPO:-Dr0nj/regente}"
 BIN_SRC="$HERE/../regente-server"
 [ -x "$BIN_SRC" ] || { echo "binary not found at $BIN_SRC — run: (cd .. && CGO_ENABLED=0 go build -o regente-server .)"; exit 1; }
 
+# Reinstalar POR CIMA é o caminho de upgrade suportado, e ele precisa ser detectado
+# ANTES de qualquer coisa: trocar o arquivo do binário não troca o processo em
+# memória. Guardamos o MainPID para provar, no fim, que o serviço realmente rodou
+# a versão nova — "atualizei e não mudou nada" quase sempre é o processo antigo.
+WAS_ACTIVE=0
+OLD_PID=0
+if systemctl is-active --quiet regente-server 2>/dev/null; then
+  WAS_ACTIVE=1
+  OLD_PID="$(systemctl show regente-server -p MainPID --value 2>/dev/null || echo 0)"
+fi
+
 install -m 0755 "$BIN_SRC" /usr/local/bin/regente-server
 install -d -o "$RUN_USER" -g "$RUN_USER" "$DATA_DIR"
 
@@ -129,7 +140,16 @@ if [ -f "$HERE/configure.sh" ]; then
 fi
 
 systemctl daemon-reload
-systemctl enable --now regente-server
+systemctl enable regente-server >/dev/null 2>&1 || true
+if [ "$WAS_ACTIVE" = 1 ]; then
+  # `enable --now` NÃO serve para upgrade: o `start` de uma unit já ativa é no-op,
+  # então o binário novo ficava no disco com o ANTIGO ainda rodando — e o operador
+  # reinstalava, via tudo "ok" e nada mudado. Reinstalação por cima RESTARTA.
+  echo "Existing service detected — restarting it so the new binary actually takes over."
+  systemctl restart regente-server
+else
+  systemctl start regente-server
+fi
 
 ADDR="$(grep -E '^REGENTE_ADDR=' "$ENV_FILE" | tail -1 | cut -d= -f2-)"
 ADDR="${ADDR:-:8080}"
@@ -161,7 +181,33 @@ if command -v curl >/dev/null; then
   if curl -fsS --max-time 5 "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then HEALTH="ok"; else HEALTH="FAILED"; fi
 fi
 
+NEW_PID="$(systemctl show regente-server -p MainPID --value 2>/dev/null || echo 0)"
+
 echo ""
+if [ "$WAS_ACTIVE" = 1 ]; then
+  echo "OK — regente-server UPGRADED in place (Restart=always) as user '$RUN_USER'."
+  echo "Health:  http://127.0.0.1:${PORT}/health -> ${HEALTH}"
+  if [ "$HEALTH" = "FAILED" ]; then
+    echo "         it did not answer yet — check:  journalctl -u regente-server -n 50 --no-pager"
+  fi
+  # A prova de que a versão nova está NO AR: o processo é outro. Sem isto o
+  # operador não tem como distinguir "atualizou" de "trocou o arquivo e pronto".
+  if [ "$OLD_PID" != "0" ] && [ "$NEW_PID" != "0" ] && [ "$OLD_PID" != "$NEW_PID" ]; then
+    echo "Process replaced: PID $OLD_PID -> $NEW_PID (the new binary is the one running)."
+  elif [ "$OLD_PID" != "0" ] && [ "$OLD_PID" = "$NEW_PID" ]; then
+    echo "WARNING: the process did NOT restart (still PID $OLD_PID) — the old binary is still running."
+    echo "         run:  sudo systemctl restart regente-server"
+  fi
+  echo ""
+  echo "Kept untouched: $ENV_FILE (token, GitOps, REGENTE_ADDR), the database and the"
+  echo "workspace clone under $DATA_DIR, and anything in front of it (nginx, TLS certificates)."
+  echo "Replaced: the binary, the UI, $DEPLOY_DST/vps and the systemd unit."
+  echo "Schema migrations, if any, ran at boot. Agents are separate binaries — upgrade them"
+  echo "on their own machines with agent/deploy/install-agent.sh."
+  echo ""
+  echo "Logs:    journalctl -u regente-server -f"
+  exit 0
+fi
 echo "OK — regente-server installed and started (Restart=always) as user '$RUN_USER'."
 echo "Health:  http://127.0.0.1:${PORT}/health -> ${HEALTH}"
 if [ "$HEALTH" = "FAILED" ]; then

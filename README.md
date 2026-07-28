@@ -300,6 +300,45 @@ sudo systemctl restart regente-server     # apply a new binary or config (migrat
 journalctl -u regente-server -f           # follow the logs
 ```
 
+### Upgrading a running installation
+
+**Run the same installer again.** Reinstalling on top is the supported upgrade path — it detects
+the live service, replaces the binary and the UI, and **restarts the service** so the new version
+is actually the one running:
+
+```bash
+curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install.sh -o regente-install.sh && sudo bash regente-install.sh
+```
+
+You should see `UPGRADED in place` and a line like `Process replaced: PID 1234 -> 5678`. That
+second line is the point: swapping the file on disk does **not** swap the process, so without a
+restart you would be running the old binary while everything looked fine. If the installer ever
+warns that the process did not restart, force it:
+
+```bash
+sudo systemctl restart regente-server
+```
+
+| Kept | Replaced |
+|---|---|
+| `/etc/regente/server.env` — token, GitOps, `REGENTE_ADDR` | the binary in `/usr/local/bin` |
+| the database — users, agent tokens, run history | the UI in `/var/lib/regente/app` |
+| the workspace clone | `/var/lib/regente/deploy/vps` |
+| whatever sits in front of it (nginx, TLS certificates) | the systemd unit (same service user) |
+
+Schema migrations run at boot, so there is no separate migration step. Downtime is one service
+restart — a couple of seconds; running jobs are on the **agents**, and they reconnect on their own.
+
+> **Agents are separate binaries.** Upgrading the server does not touch them: rerun
+> `install-agent.sh` (or the PowerShell installer) on each agent machine. Agent and server do not
+> have to be on the same version — the protocol is compatible across patch releases — but keeping
+> them aligned avoids surprises.
+
+For a **zero-downtime** upgrade you need more than one node: with Postgres and leader election,
+bring a new node up as a follower and drain the old one (see
+[`server/deploy/rolling-upgrade.sh`](server/deploy/rolling-upgrade.sh)). On a single box, the
+restart above is the honest answer.
+
 ### Your first job (2 minutes)
 
 1. **Settings → Agents → create a token**, then install an agent (next section). Or skip it: the

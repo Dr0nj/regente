@@ -217,5 +217,43 @@ else
   echo "   [skip] nginx não está na imagem — seção da borda não executada"
 fi
 
+
+# ---------------------------------------------------------------------------
+# Upgrade: reinstalar POR CIMA de uma instalação viva.
+#
+# É o caminho de atualização que o README manda usar, e nunca era testado — o
+# smoke sempre instalava numa máquina limpa. O defeito que isso escondia:
+# `systemctl enable --now` só INICIA uma unit parada; numa unit já ativa o start
+# é no-op, então o binário novo ia pro disco e o processo ANTIGO continuava
+# rodando. Reinstalar parecia funcionar e não mudava nada.
+head1 "Upgrade in place (reinstalar por cima)"
+
+pid_of() { systemctl show regente-server -p MainPID --value 2>/dev/null; }
+pid_before="$(pid_of)"
+tok_before="$(tok)"
+inst_before="$(api "$BASE/api/instances" | python3 -c "import sys,json;print(len(json.load(sys.stdin)))" 2>/dev/null || echo -1)"
+
+bash "$BDIR/deploy/install-linux.sh" > /tmp/upgrade.log 2>&1 || { echo "reinstalação falhou:"; cat /tmp/upgrade.log; fails=$((fails+1)); }
+
+grep -q 'UPGRADED in place' /tmp/upgrade.log \
+  && ok "instalador reconheceu que era upgrade" || bad "o instalador tratou a reinstalação como instalação nova"
+pid_after="$(pid_of)"
+if [ -n "$pid_before" ] && [ "$pid_before" != 0 ] && [ "$pid_after" != "$pid_before" ]; then
+  ok "processo trocado ($pid_before -> $pid_after): a versão nova está NO AR"
+else
+  bad "o processo NÃO reiniciou (PID $pid_before -> $pid_after) — o binário antigo continua rodando"
+fi
+grep -q 'Process replaced' /tmp/upgrade.log && ok "instalador PROVA a troca no output" \
+  || bad "o instalador não prova que o processo foi substituído"
+
+wait_for 30 '[ "$(code "'"$BASE"'/health")" = 200 ]' || bad "health não voltou depois do upgrade"
+[ "$(code "$BASE/health")" = 200 ] && ok "health 200 depois do upgrade"
+[ "$(tok)" = "$tok_before" ] && ok "server.env preservado (token intacto)" || bad "a reinstalação sobrescreveu o server.env"
+inst_after="$(api "$BASE/api/instances" | python3 -c "import sys,json;print(len(json.load(sys.stdin)))" 2>/dev/null || echo -2)"
+[ "$inst_after" = "$inst_before" ] && ok "banco preservado ($inst_after instance(s))" \
+  || bad "o histórico mudou no upgrade (antes=$inst_before depois=$inst_after)"
+[ -f /var/lib/regente/deploy/vps/nginx-regente.conf ] && ok "deploy/vps continua instalado" \
+  || bad "a reinstalação perdeu o deploy/vps"
+
 echo
 if [ "$fails" = 0 ]; then echo "SMOKE stage1 OK"; exit 0; else echo "SMOKE stage1: $fails falha(s)"; exit 1; fi
