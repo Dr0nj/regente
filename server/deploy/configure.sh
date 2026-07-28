@@ -83,11 +83,15 @@ if [ -n "$repo" ]; then
 fi
 
 # 3) Domínio público — informativo (usado no passo do nginx/TLS em deploy/vps/).
-read -rp "Public domain (e.g. regente.yourcompany.com) [optional]: " dom
+# `|| true` nos reads finais: com `set -e`, um EOF no stdin (terminal fechado,
+# respostas vindas de um pipe) mataria o script DEPOIS de gravar a config e ANTES
+# de avisar que falta reiniciar — pego rodando o configure num container.
+read -rp "Public domain (e.g. regente.yourcompany.com) [optional]: " dom || true
 
 echo ""
 echo "Config written to $ENV_FILE (perms $(stat -c %a "$ENV_FILE" 2>/dev/null || echo 0640))."
-read -rp "Restart regente-server now? [Y/n]: " r
+echo "It only takes effect after a restart: sudo systemctl restart regente-server"
+read -rp "Restart regente-server now? [Y/n]: " r || true
 case "${r:-Y}" in
   [Nn]*) echo "ok — restart it later:  sudo systemctl restart regente-server" ;;
   *)

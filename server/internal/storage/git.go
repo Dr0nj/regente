@@ -534,6 +534,15 @@ func (g *GitOps) ensureCloneLocked() error {
 			// push não passou por falta de PAT). Completa o bootstrap publicando a
 			// branch — é isto que faz "configurei o token depois" funcionar.
 			if errors.Is(err, transport.ErrEmptyRemoteRepository) {
+				// O clone local pode estar PELA METADE: um clone que falhou no meio
+				// (credencial/rede) deixa .git com remote configurado e ZERO commits,
+				// e aí não há o que publicar — o push não faz nada, o fetch reclama
+				// "empty" de novo e o retry gira para sempre. Sem commit na branch,
+				// o caminho certo é o mesmo do repo novo: bootstrap.
+				if _, herr := g.refHash(repo, branchRefName(g.branch)); herr != nil {
+					log.Printf("[git] remote %s is empty and the local clone has no commit on %s — bootstrapping", g.source, g.branch)
+					return g.bootstrapLocked()
+				}
 				log.Printf("[git] remote %s is still empty — publishing the local workspace (branch %s)", g.source, g.branch)
 				if perr := g.pushLocked(repo, g.branch); perr != nil {
 					return fmt.Errorf("the remote is empty and the push failed (a GitHub PAT with 'repo'/contents:write is required): %w", perr)
@@ -601,6 +610,12 @@ func (g *GitOps) ensureCloneLocked() error {
 			_ = g.writeLocalExcludesLocked()
 			return g.refreshSHA()
 		}
+		// Falha genérica (credencial, rede, repo inexistente): o go-git já pode ter
+		// criado .git antes de morrer no transporte. Se esse resto ficar no disco,
+		// TODA tentativa seguinte cai no ramo IsRepo e nunca mais tenta clonar —
+		// nem depois de a config ser corrigida. Só chegamos aqui com o workspace
+		// vazio, então limpar é seguro.
+		g.cleanWorkspaceLocked()
 		return fmt.Errorf("git clone: %w", err)
 	}
 	_ = g.writeLocalExcludesLocked() // best-effort: nunca trackear SQLite DB
@@ -1091,6 +1106,12 @@ func (g *GitOps) PushBranch(branchName string) error {
 }
 
 func (g *GitOps) pushLocked(repo *git.Repository, branchName string) error {
+	// Push de uma branch que não existe localmente NÃO é erro no go-git: ele não
+	// envia nada e volta sem reclamar. Isso mascarava um workspace sem commit
+	// (clone pela metade) como "publicado com sucesso" — falhar aqui é honesto.
+	if _, err := g.refHash(repo, branchRefName(branchName)); err != nil {
+		return fmt.Errorf("nothing to push: the local branch %q does not exist: %w", branchName, err)
+	}
 	refspec := config.RefSpec(fmt.Sprintf("refs/heads/%s:refs/heads/%s", branchName, branchName))
 	err := repo.Push(&git.PushOptions{
 		RemoteName: "origin",

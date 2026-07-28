@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 )
 
@@ -182,6 +183,63 @@ func TestEnsureClone_MissingBranch_FallsBackToRemoteDefault(t *testing.T) {
 	}
 	if !exists(filepath.Join(ws, "README.md")) {
 		t.Error("the remote content was not checked out")
+	}
+}
+
+// Os dois testes abaixo nasceram de uma instalação REAL em container com systemd:
+// o clone falhou (repo errado), e a partir dali o servidor nunca mais conseguiu
+// sincronizar nem depois de a config ser corrigida — ficou publicando "remote is
+// still empty" a cada retry, para sempre. Nenhum teste pegava porque ambos partem
+// de um workspace limpo.
+
+func TestEnsureClone_FailedClone_DoesNotPoisonTheWorkspace(t *testing.T) {
+	// go-git deixa um .git PARCIAL para trás quando o clone falha no meio (repo
+	// criado, remote configurado, zero commits). Com esse resto no disco, todo
+	// EnsureClone seguinte cai no ramo IsRepo e nunca mais tenta clonar — a
+	// recuperação automática morria aí.
+	ws := t.TempDir()
+	bad := NewGitOps(ws, filepath.Join(t.TempDir(), "no-such-repo.git"), "main")
+	if err := bad.EnsureClone(); err == nil {
+		t.Fatal("EnsureClone should fail against a non-existent source")
+	}
+	if exists(filepath.Join(ws, ".git")) {
+		t.Error("a failed clone left .git behind — the workspace is poisoned for every later attempt")
+	}
+
+	// Config corrigida: o MESMO workspace tem de conseguir clonar agora.
+	bare, _ := initRemote(t)
+	good := NewGitOps(ws, bare, testBranch)
+	if err := good.EnsureClone(); err != nil {
+		t.Fatalf("EnsureClone after fixing the source: %v", err)
+	}
+	if !exists(filepath.Join(ws, "README.md")) {
+		t.Error("the remote content was not checked out after the fix")
+	}
+}
+
+func TestEnsureClone_HalfInitializedRepo_EmptyRemote_Bootstraps(t *testing.T) {
+	// Estado exato observado no container: .git existe, HEAD em master, NENHUM
+	// commit, remote apontando pro repo vazio. O push não tinha o que publicar e
+	// o fetch seguinte reclamava "remote repository is empty" — loop infinito.
+	bare := initEmptyRemote(t)
+	ws := t.TempDir()
+	repo, err := git.PlainInit(ws, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.CreateRemote(&config.RemoteConfig{Name: "origin", URLs: []string{bare}}); err != nil {
+		t.Fatal(err)
+	}
+
+	g := NewGitOps(ws, bare, "main")
+	if err := g.EnsureClone(); err != nil {
+		t.Fatalf("EnsureClone on a half-initialized repo: %v", err)
+	}
+	if !remoteHasFile(t, bare, "main", "definitions/.gitkeep") {
+		t.Error("the workspace was not bootstrapped/published from the half-initialized repo")
+	}
+	if g.Status().SHA == "" || g.Status().Error != "" {
+		t.Errorf("status = %+v; want a SHA and no error", g.Status())
 	}
 }
 
