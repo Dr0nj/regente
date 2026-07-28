@@ -152,13 +152,14 @@ whoever operates it).</p>
 </tr>
 <tr>
 <td>🔌 <a href="https://dr0nj.github.io/regente/api.html"><strong>API reference</strong></a></td>
-<td>The full OpenAPI contract: every endpoint, parameter, schema and example. Also as <a href="https://dr0nj.github.io/regente/openapi.yaml">openapi.yaml</a> and <a href="https://dr0nj.github.io/regente/openapi.json">openapi.json</a> for Postman or a code generator.</td>
+<td>The OpenAPI contract of the <strong>integration surface</strong> — the routes an external system calls (query, lifecycle, force, ingest, daily, forecast, archives, catalog, tick), with every parameter, schema and example. The SPA's internal routes are deliberately out. Also as <a href="https://dr0nj.github.io/regente/openapi.yaml">openapi.yaml</a> and <a href="https://dr0nj.github.io/regente/openapi.json">openapi.json</a> for Postman or a code generator.</td>
 </tr>
 </tbody>
 </table>
 <p>The site is generated from the markdown in this repository and published by
-<a href=".github/workflows/pages.yml">a workflow</a> on every push to <code>main</code>. It is also committed to
-<a href="docs/site"><code>docs/site/</code></a>, so <strong>it works offline too</strong>: clone or download the repo and open
+<a href="https://github.com/Dr0nj/regente/blob/main/.github/workflows/pages.yml">a workflow</a> on every push to <code>main</code> that touches the
+documentation. It is also committed to
+<a href="https://github.com/Dr0nj/regente/tree/main/docs/site"><code>docs/site/</code></a>, so <strong>it works offline too</strong>: clone or download the repo and open
 <code>docs/site/index.html</code> in your browser — double-clicking is enough. The pages are
 self-contained, with the CSS inlined and the API spec embedded, so there is nothing to fetch.</p>
 <p>To regenerate it after editing any markdown:</p>
@@ -172,13 +173,18 @@ interactive API explorer at <code>/api-docs</code>, where you can send real requ
 <hr>
 <h2 id="-try-it-in-5-minutes">🚀 Try it in 5 minutes</h2>
 <p>The fastest way to see it working — nothing to configure, nothing left behind. You need
-<a href="https://go.dev/dl/">Go 1.25+</a>.</p>
-<pre><code class="language-bash">git clone https://github.com/Dr0nj/regente.git &amp;&amp; cd regente/server
-go run ./cmd/regente dev daily -addr :8686
+<a href="https://go.dev/dl/">Go 1.25+</a>, plus <a href="https://nodejs.org">Node 20+</a> for the UI.</p>
+<pre><code class="language-bash">git clone https://github.com/Dr0nj/regente.git &amp;&amp; cd regente
+(cd app &amp;&amp; npm ci &amp;&amp; VITE_REGENTE_SERVER_URL=@origin npm run build)
+cd server &amp;&amp; go run ./cmd/regente dev daily -addr :8686
 </code></pre>
 <p>That starts a complete, <strong>disposable</strong> Regente on <a href="http://localhost:8686">http://localhost:8686</a>: a temporary database
-that dies with the process, no Git and no network, and jobs that finish successfully without a
-real agent. Open the URL and log in with <code>admin</code> / <code>admin</code>.</p>
+that dies with the process, a <strong>demo workspace</strong> it writes for you (four jobs — a three-step
+chain wired by conditions, plus a standalone one), no Git and no network, and jobs that finish
+successfully without a real agent. Log in with <code>admin</code> / <code>admin</code>.</p>
+<p><strong>No Node?</strong> Skip the middle line. You still get the API and the interactive API explorer at
+<a href="http://localhost:8686/api-docs">http://localhost:8686/api-docs</a>, where you can fire real requests with the token the command
+prints — you just do not get the web UI, and the command says so.</p>
 <p>When you want the real thing, keep reading.</p>
 <hr>
 <h2 id="-installation">📦 Installation</h2>
@@ -191,7 +197,7 @@ must be present (they usually are).</li>
 <li><strong>A port you can reach.</strong> The server listens on <strong>8080</strong> by default. On a cloud VM you have to
 open it in <strong>two</strong> places: the machine's firewall <em>and</em> the provider's security group /
 firewall rules. If you plan to put it behind a domain with HTTPS, read
-<a href="deploy/vps/README.md"><code>deploy/vps/</code></a> instead — there the port stays closed and nginx handles
+<a href="https://github.com/Dr0nj/regente/blob/main/deploy/vps/README.md"><code>deploy/vps/</code></a> instead — there the port stays closed and nginx handles
 443.</li>
 <li><strong>An empty GitHub repository for your workspace</strong> — this is where your job definitions will
 live. Create it on GitHub (&quot;New repository&quot;, <strong>no</strong> README, <strong>no</strong> .gitignore — leave it
@@ -238,7 +244,7 @@ the machine.</strong> This is the easy path.</li>
 <li><strong>From source</strong> — you build it yourself. Needs Go 1.25+, plus Node 18+ if you want the UI.</li>
 </ul>
 <blockquote>
-<p><strong>On Windows?</strong> <a href="server/deploy"><code>server/deploy/</code></a> and <a href="agent/deploy"><code>agent/deploy/</code></a> each have
+<p><strong>On Windows?</strong> <a href="https://github.com/Dr0nj/regente/tree/main/server/deploy"><code>server/deploy/</code></a> and <a href="https://github.com/Dr0nj/regente/tree/main/agent/deploy"><code>agent/deploy/</code></a> each have
 an <code>install-windows.ps1</code> that registers a Scheduled Task (starts at boot, restarts on failure).
 Run PowerShell <strong>as Administrator</strong>.</p>
 </blockquote>
@@ -341,7 +347,7 @@ irm https://github.com/Dr0nj/regente/releases/latest/download/install-agent-wind
 # a whole fleet, unattended: download the .ps1 and run it with  -Server wss://... -Token rgta_xxx
 </code></pre>
 <p>Create the <strong>agent token</strong> in Settings → Agents. Your fleet then shows up there, online. Building
-from source instead? Use <a href="agent/deploy"><code>agent/deploy/</code></a>.</p>
+from source instead? Use <a href="https://github.com/Dr0nj/regente/tree/main/agent/deploy"><code>agent/deploy/</code></a>.</p>
 <p>The server address is the agent's WebSocket endpoint (<code>ws://host:8080/ws/agent</code>), but if you
 paste the UI address (<code>http://host:8080</code>) the installer converts it for you. Both installers
 check that the service is really up before they finish, and print the log if it is not.</p>
@@ -395,7 +401,7 @@ check that the service is really up before they finish, and print the log if it 
 <h3 id="a-public-link-with-https-and-a-real-domain">A public link with HTTPS and a real domain</h3>
 <p>Put the server behind nginx with TLS and a domain. The full systemd recipe — nginx config,
 Let's Encrypt, firewall, enterprise hardening (SSO, RBAC, SIEM, mTLS) and a sandboxed agent for
-guests — is in <a href="deploy/vps/README.md"><code>deploy/vps/</code></a>.</p>
+guests — is in <a href="https://github.com/Dr0nj/regente/blob/main/deploy/vps/README.md"><code>deploy/vps/</code></a>.</p>
 <h3 id="docker--kubernetes--serverless">Docker · Kubernetes · serverless</h3>
 <p>A distroless image, a Knative Service with scale-to-zero and an external cron trigger live in
 <a href="deploy.html"><code>deploy/</code></a>. The same binary runs on Knative, Cloud Run, Fly, App Runner or
@@ -403,11 +409,11 @@ Container Apps — you choose the cloud when you deploy, not in the code.</p>
 <h3 id="showing-it-to-other-people-a-temporary-public-demo">Showing it to other people (a temporary public demo)</h3>
 <p>A script that builds everything, serves the UI on one origin, runs the agent in a disposable
 Docker container and opens a free public HTTPS tunnel:
-<a href="deploy/demo/README.md"><code>deploy/demo/</code></a>.</p>
+<a href="https://github.com/Dr0nj/regente/blob/main/deploy/demo/README.md"><code>deploy/demo/</code></a>.</p>
 <h3 id="migrating-from-control-m">Migrating from Control-M</h3>
 <p><code>importctm</code> reads a Control-M export XML and generates a Regente workspace for review, with an
 import report and <code># TODO-import</code> notes wherever a decision is needed. It <strong>never pushes</strong>. See
-<a href="server/cmd/importctm/README.md"><code>server/cmd/importctm/</code></a>.</p>
+<a href="https://github.com/Dr0nj/regente/blob/main/server/cmd/importctm/README.md"><code>server/cmd/importctm/</code></a>.</p>
 <hr>
 <h2 id="-what-it-can-do">⚡ What it can do</h2>
 <h3 id="defining-and-scheduling-work">Defining and scheduling work</h3>
@@ -576,7 +582,7 @@ first line is read, so a commit body may talk about the marker without triggerin
 <code>vX.Y.Z</code> by hand when you want a minor or major instead of the next patch.</p>
 <hr>
 <h2 id="-roadmap">🗺 Roadmap</h2>
-<p>All planning lives in <strong><a href="docs/roadmap.md"><code>docs/roadmap.md</code></a></strong> — the single source of status
+<p>All planning lives in <strong><a href="https://github.com/Dr0nj/regente/blob/main/docs/roadmap.md"><code>docs/roadmap.md</code></a></strong> — the single source of status
 (delivered, backlog and changelog). It is an internal working document, written in Portuguese,
 and it is deliberately kept out of the published documentation site.</p>
 <p>For the <strong>story of the project</strong> — the problem, the architectural bets, Control-M semantics at

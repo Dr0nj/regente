@@ -11,8 +11,9 @@
 # de deploy/vps/.
 #
 # Variáveis:
-#   AGENT_TOKEN=  (obrigatório) token do agente — Settings → Agentes → Criar token,
-#                 ou o REGENTE_TOKEN. Não use um token que você não queira num container.
+#   AGENT_TOKEN=  (obrigatório) token do agente — "Settings → Agents → Create token"
+#                 na UI, ou o REGENTE_TOKEN. Não use um token que você não queira
+#                 dentro de um container.
 #   AGENT_SERVER= ws://127.0.0.1:8080/ws/agent   (default; o server local)
 #   AGENT_ID=     sandbox-<hostname>              (default)
 #   AGENT_CAPS=   COMMAND,SCRIPT,HTTP             (default)

@@ -54,7 +54,7 @@ literal. O prompt congela no snapshot imutável da ordem (auditável pra sempre)
 primeira fase é análise-only, sem tools: um prompt injetado no máximo gera um relatório
 errado, nunca um comando executado. Caso de fábrica: RCA automático quando um job falha.
 
-São ~44 mil linhas de Go, ~24 mil de TypeScript e 427 testes — incluindo baterias de
+São ~47 mil linhas de Go, ~24 mil de TypeScript e 456 testes — incluindo baterias de
 calendário validadas contra um oráculo escrito à mão.
 
 A lição que levo: a parte difícil de um orquestrador não é o scheduler — é a semântica
@@ -112,7 +112,7 @@ immutable snapshot (auditable forever), and phase one is analysis-only, no tools
 prompt injection can at worst produce a wrong report, never an executed command.
 Built-in use case: automatic RCA when a job fails.
 
-That's ~44k lines of Go, ~24k of TypeScript and 427 tests — including calendar suites
+That's ~47k lines of Go, ~24k of TypeScript and 456 tests — including calendar suites
 validated against a hand-written oracle.
 
 The lesson I take away: the hard part of an orchestrator isn't the scheduler — it's the
@@ -140,7 +140,7 @@ deploy serverless. O plano de controle é agent-native: 22 tools MCP para um age
 IA operar o dia com permissão. E o próximo passo do roadmap é o jobType `AI_AGENT`:
 LLM local no host do agente analisando falhas sem nenhum dado sair do perímetro.
 
-~44k linhas de Go, ~24k de TS, 427 testes. A parte difícil não foi o scheduler — foi a
+~47k linhas de Go, ~24k de TS, 456 testes. A parte difícil não foi o scheduler — foi a
 semântica nas bordas, exatamente onde as ferramentas de 30 anos ganham o respeito delas.
 
 Case study técnico no primeiro comentário.
@@ -163,7 +163,7 @@ a serverless deploy. The control plane is agent-native: 22 MCP tools so an AI ag
 operate the day with permission. Next on the roadmap: an `AI_AGENT` job type — a local
 LLM on the agent's host analyzing failures with zero data leaving your perimeter.
 
-~44k lines of Go, ~24k of TS, 427 tests. The hard part wasn't the scheduler — it was
+~47k lines of Go, ~24k of TS, 456 tests. The hard part wasn't the scheduler — it was
 the semantics at the edges, exactly where the 30-year-old tools earn their respect.
 
 Full technical case study in the first comment.

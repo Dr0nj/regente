@@ -8,8 +8,10 @@ package main
 
 import (
 	"encoding/json"
+	"html"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -114,6 +116,59 @@ func TestBuild_PulaDocsInternos(t *testing.T) {
 	index, _ := os.ReadFile(filepath.Join(out, "index.html"))
 	if strings.Contains(string(index), `href="roadmap.html"`) {
 		t.Fatal("link pra doc não publicado não pode ser reescrito pra .html")
+	}
+	if !strings.Contains(string(index), `href="https://github.com/Dr0nj/regente/blob/main/docs/roadmap.md"`) {
+		t.Fatalf("link pro roadmap devia ir pro GitHub (relativo é 404 no site), veio:\n%s", index)
+	}
+}
+
+// INVARIANTE: nenhuma href relativa do site pode apontar pra fora do site. O
+// gerador publica um subconjunto do markdown do repo; todo alvo de fora (script,
+// diretório, README de subpasta, doc interno) tem de virar URL absoluta do
+// GitHub. Sem esta trava voltam os 404 silenciosos — 6 das 13 páginas tinham,
+// a index sozinha tinha 8.
+func TestBuild_NenhumaHrefRelativaQuebrada(t *testing.T) {
+	repo := t.TempDir()
+	out := t.TempDir()
+	writeFile(t, repo, "README.md", `# Regente
+
+Install with [install.sh](install.sh), read [deploy/vps](deploy/vps/README.md),
+the [unit dir](server/deploy), the [workflow](.github/workflows/ci.yml) and the
+[roadmap](docs/roadmap.md#backlog). Component: [server](server/README.md).
+`)
+	writeFile(t, repo, "server/README.md", "# regente-server\n")
+	writeFile(t, repo, "install.sh", "#!/bin/sh\n")
+	writeFile(t, repo, "deploy/vps/README.md", "# VPS\n")
+	writeFile(t, repo, "server/deploy/regente.service", "[Unit]\n")
+	writeFile(t, repo, ".github/workflows/ci.yml", "name: CI\n")
+	writeFile(t, repo, "docs/roadmap.md", "# Roadmap\n")
+
+	if _, err := Build(repo, out); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	href := regexp.MustCompile(`href="([^"]+)"`)
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".html") {
+			continue
+		}
+		body, _ := os.ReadFile(filepath.Join(out, e.Name()))
+		for _, m := range href.FindAllStringSubmatch(string(body), -1) {
+			target := html.UnescapeString(m[1])
+			if strings.Contains(target, "://") || strings.HasPrefix(target, "#") {
+				continue
+			}
+			file, _, _ := strings.Cut(target, "#")
+			if file == "" {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(out, filepath.FromSlash(file))); err != nil {
+				t.Errorf("%s: href=%q não existe no site gerado", e.Name(), target)
+			}
+		}
 	}
 }
 

@@ -194,3 +194,43 @@ func TestPromote_DryRunAndNoop(t *testing.T) {
 		t.Fatalf("promoção idempotente não podia falhar: %v", err)
 	}
 }
+
+// ─── regente dev — workspace de DEMONSTRAÇÃO ────────────────────────────────
+
+// O `regente dev daily` do README roda num clone recém-baixado, onde NÃO existe
+// workspace (o de verdade é do operador). Ele escreve o demo abaixo; este teste
+// trava o dialeto: parse ESTRITO (typo de campo = erro), validação estrutural
+// igual à do save da API, e a daily simulada tem de materializar os 4 jobs com
+// a cadeia de condições ligada (1 roda, os outros esperam).
+func TestDemoWorkspace_IsValidAndMaterializes(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeDemoWorkspace(dir); err != nil {
+		t.Fatalf("writeDemoWorkspace: %v", err)
+	}
+
+	rep := &testReport{}
+	defs := strictLoadWorkspace(dir, rep)
+	if len(rep.Errors) > 0 {
+		t.Fatalf("demo workspace não passa no parse estrito: %v", rep.Errors)
+	}
+	if len(defs) != 4 {
+		t.Fatalf("esperava 4 jobs no demo, veio %d", len(defs))
+	}
+	for _, d := range defs {
+		if err := domain.ValidateDefinition(d); err != nil {
+			t.Errorf("%s: %v", d.ID, err)
+		}
+	}
+
+	dr, err := simulate(dir, time.Now().Format("2006-01-02"))
+	if err != nil {
+		t.Fatalf("simulate: %v", err)
+	}
+	c := dr.Counts
+	if c.Total != 4 || c.Run+c.Wait != 4 || c.Blocked != 0 || c.NotScheduled != 0 {
+		t.Fatalf("daily do demo: %+v (esperava os 4 elegíveis, nenhum bloqueado)", c)
+	}
+	if c.Wait == 0 {
+		t.Fatal("demo perdeu a cadeia de condições: ninguém espera ninguém")
+	}
+}

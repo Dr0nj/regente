@@ -32,16 +32,16 @@ marked **destructiveHint**:
 
 | Tool | What it does | Endpoint |
 |---|---|---|
-| `hold_job` | holds a WAITING job → HELD (Control-M Hold) | `POST /api/instances/{id}/hold` |
-| `release_job` | releases a HELD job → WAITING (Release) | `POST /api/instances/{id}/release` |
+| `hold_job` | holds a job in any status except RUNNING → HELD, freezing the original status (Control-M Hold) | `POST /api/instances/{id}/hold` |
+| `release_job` | releases a HELD job back to the **original** status frozen by the hold (Release) | `POST /api/instances/{id}/release` |
 | `cancel_job` | cancels a job for the day (→ CANCELLED) | `POST /api/instances/{id}/cancel` |
 | `confirm_job` | confirms a job sitting at the WAIT_CONFIRM gate (Control-M Confirm) | `POST /api/instances/{id}/confirm` |
 | `rerun_job` | re-runs a job (→ WAITING) | `POST /api/instances/{id}/rerun` |
 | `set_ok` | marks NOTOK/CANCELLED as OK and unblocks the successors | `POST /api/instances/{id}/set-ok` |
 | `force_order` | orders and runs a **definition** right now, outside the schedule | `POST /api/definitions/{id}/force` |
-| `pause_folder` | pauses a whole workflow (WAITING→HELD in bulk, state preserved) | `POST /api/folders/{name}/pause` |
-| `resume_folder` | resumes the workflow (HELD→WAITING in bulk) | `POST /api/folders/{name}/resume` |
-| `bulk_action` | one action across N instances (transactional per item, max 500) | `POST /api/bulk/instances` |
+| `pause_folder` | pauses a whole workflow: every job of the folder for the day (any status except RUNNING, carry-over included) → HELD, state preserved | `POST /api/folders/{name}/pause` |
+| `resume_folder` | resumes the workflow: everything held by the pause goes back to its **original** status | `POST /api/folders/{name}/resume` |
+| `bulk_action` | one action across N instances — hold/release/cancel/rerun/set-ok/confirm/delete (transactional per item, max 500) | `POST /api/bulk/instances` |
 | `ingest_event` | sets conditions and/or forces a job through an external event (idempotent) | `POST /api/events/ingest` |
 
 ## Build & run

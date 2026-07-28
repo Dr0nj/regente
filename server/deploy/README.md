@@ -45,8 +45,12 @@ in ~5s — **without losing state** (instances, the daily and events all persist
 ```powershell
 cd server; go build -o regente-server.exe .
 .\deploy\install-windows.ps1 -Token <a-strong-token> `
-  -GitSource https://github.com/Dr0nj/regente-workspace.git
+  -GitSource https://github.com/<owner>/<your-workspace>.git
 ```
+
+> The workspace repository is **yours**, one per installation — there is no default. Leave
+> `-GitSource` out and the server runs offline, keeping the definitions on local disk; point it
+> at an empty repository and the first start writes the initial content and pushes it.
 
 ## Container / Kubernetes / serverless
 
@@ -76,7 +80,7 @@ Every relevant flag reads an environment variable, so the unit or manifest needs
 | `REGENTE_DB` | `-db` | `./regente.db` (a SQLite path or a Postgres DSN) |
 | `REGENTE_WORKSPACE` | `-workspace` | `./workspace` |
 | `REGENTE_TOKEN` | `-api-token` | `dev-token` |
-| `REGENTE_GIT_SOURCE` | `-git-source` | `…/regente-workspace.git` |
+| `REGENTE_GIT_SOURCE` | `-git-source` | — (**empty = offline**, definitions on local disk; set it to **your own** workspace repository) |
 | `REGENTE_SECRET_GITHUB_TOKEN` | (secrets provider) | — (keeps the PAT out of the DB in plaintext) |
 | `REGENTE_ROLE` / `REGENTE_SCHEDULER` | `-role` / `-scheduler` | `all` / `internal` |
 

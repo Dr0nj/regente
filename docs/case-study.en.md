@@ -6,7 +6,7 @@
 > truth** for definitions. Validated live with **1,000,000 jobs/day** (materialization
 > in 17s, summary in 51ms), it runs from a single binary on a $5 VPS up to multi-node
 > HA with Postgres, and exposes the control plane to AI agents via **MCP (22 tools)**.
-> ~44k lines of Go, ~24k of TypeScript, 427 tests.
+> ~47k lines of Go, ~24k of TypeScript, 456 tests.
 
 ---
 
@@ -126,7 +126,7 @@ virtualized sidebar with compressed height (the browser overflows float32 above
   self-monitoring that alerts through the product's own channels.
 - **Online backup** (`-backup` = VACUUM INTO), documented DR, retention/archives
   with GC.
-- **427 Go tests** — including exhaustive calendar suites (two independent
+- **456 Go tests** — including exhaustive calendar suites (two independent
   "special business day" code paths must agree day by day for a whole month) and a
   hand-written forecast oracle, independent of the code it validates.
 
@@ -180,8 +180,8 @@ with JSON-Schema-validated output becoming variables for the successors.
 
 ## 11. Project numbers
 
-- **Code:** ~44k lines of Go (server+agent) · ~24k lines of TS/TSX (UI).
-- **Tests:** 427 Go test functions across 97 files + live E2E validations.
+- **Code:** ~47k lines of Go (server+agent) · ~24k lines of TS/TSX (UI).
+- **Tests:** 456 Go test functions across 102 files + live E2E validations.
 - **Executors:** COMMAND · SCRIPT · HTTP/REST · agentless SSH · DATABASE · FILE_WATCH
   · MFT · WASM · K8s · Lambda · Batch · Glue · Step Functions · Cloud Run.
 - **Scale:** 1M jobs/day validated live (write 17s · summary 51ms · virtualized UI).

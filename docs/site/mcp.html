@@ -151,12 +151,12 @@ marked <strong>destructiveHint</strong>:</p>
 <tbody>
 <tr>
 <td><code>hold_job</code></td>
-<td>holds a WAITING job → HELD (Control-M Hold)</td>
+<td>holds a job in any status except RUNNING → HELD, freezing the original status (Control-M Hold)</td>
 <td><code>POST /api/instances/{id}/hold</code></td>
 </tr>
 <tr>
 <td><code>release_job</code></td>
-<td>releases a HELD job → WAITING (Release)</td>
+<td>releases a HELD job back to the <strong>original</strong> status frozen by the hold (Release)</td>
 <td><code>POST /api/instances/{id}/release</code></td>
 </tr>
 <tr>
@@ -186,17 +186,17 @@ marked <strong>destructiveHint</strong>:</p>
 </tr>
 <tr>
 <td><code>pause_folder</code></td>
-<td>pauses a whole workflow (WAITING→HELD in bulk, state preserved)</td>
+<td>pauses a whole workflow: every job of the folder for the day (any status except RUNNING, carry-over included) → HELD, state preserved</td>
 <td><code>POST /api/folders/{name}/pause</code></td>
 </tr>
 <tr>
 <td><code>resume_folder</code></td>
-<td>resumes the workflow (HELD→WAITING in bulk)</td>
+<td>resumes the workflow: everything held by the pause goes back to its <strong>original</strong> status</td>
 <td><code>POST /api/folders/{name}/resume</code></td>
 </tr>
 <tr>
 <td><code>bulk_action</code></td>
-<td>one action across N instances (transactional per item, max 500)</td>
+<td>one action across N instances — hold/release/cancel/rerun/set-ok/confirm/delete (transactional per item, max 500)</td>
 <td><code>POST /api/bulk/instances</code></td>
 </tr>
 <tr>

@@ -12,7 +12,7 @@ you exposing your machine or your GitHub beyond what is needed.
   Cloudflare Tunnel  ──►  regente-server (your PC, :9091)
                               │   • serves the built SPA   (same port → no CORS)
                               │   • API + WebSocket        (same port)
-                              │   • GitOps DIRECT ──► github.com/Dr0nj/regente-workspace
+                              │   • GitOps DIRECT ──► YOUR workspace repo (-GitRepo)
                               ▼
                           agent in a Docker CONTAINER (disposable)
                               • COMMAND/SCRIPT/HTTP jobs run IN HERE
@@ -26,16 +26,18 @@ Decisions behind this demo:
   the frontend, because it uses `window.location.origin` (any tunnel URL works).
 - **Execution in an isolated Docker container** — jobs really run, but they are trapped in a
   disposable container. Your guests' commands **never touch your machine or your files**.
-- **GitOps straight into the real `regente-workspace`** — jobs people create become commits
-  directly on `main`. Simple and fluid (no PR in the middle). See "Security" below.
+- **GitOps straight into your own workspace repository** — pass `-GitRepo owner/name` and the
+  jobs people create become commits directly on `main`. Simple and fluid (no PR in the middle).
+  See "Security" below. **Without `-GitRepo` the demo runs offline**: everything works, the
+  definitions just stay on local disk and nothing is pushed anywhere.
 
 ## Requirements
 
 - **Go 1.25+** and **Node/npm** (to build the server and the frontend)
 - **Docker Desktop RUNNING** (for the sandbox agent)
 - **cloudflared** on the PATH: `winget install --id Cloudflare.cloudflared`
-- A **GitHub PAT** with **push** permission on `Dr0nj/regente-workspace` (fine-grained:
-  Contents = Read and write on that repo). The script reuses the token saved in
+- **Only if you use `-GitRepo`:** a **GitHub PAT** with **push** permission on that repository
+  (fine-grained: Contents = Read and write on it). The script reuses the token saved in
   `%LOCALAPPDATA%\regente-lab\github-token.txt` if it exists; otherwise it asks.
 
 ## Start it
@@ -43,7 +45,7 @@ Decisions behind this demo:
 From the repository root, in PowerShell:
 
 ```powershell
-.\deploy\demo\host-demo.ps1
+.\deploy\demo\host-demo.ps1 -GitRepo <owner>/<your-workspace>   # or omit it to run offline
 ```
 
 If you see **"running scripts is disabled on this system"** (the Windows default policy), use one
@@ -51,11 +53,11 @@ of these — **neither needs admin rights**:
 
 ```powershell
 # option A — just this once, changing nothing on the system:
-powershell -ExecutionPolicy Bypass -File .\deploy\demo\host-demo.ps1
+powershell -ExecutionPolicy Bypass -File .\deploy\demo\host-demo.ps1 -GitRepo <owner>/<repo>
 
 # option B — allow local scripts for your user permanently (run once):
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-.\deploy\demo\host-demo.ps1
+.\deploy\demo\host-demo.ps1 -GitRepo <owner>/<repo>
 ```
 
 The script builds the frontend (`@origin`), builds and starts the server on `:9091` serving
@@ -92,9 +94,10 @@ You are exposing an orchestrator that **executes commands**. Mitigations already
 - **Per-person accounts** with RBAC (operator/viewer) instead of a shared admin.
 - A **random** API token per session (the script generates one on every run).
 
-Things to keep in mind (because this demo writes directly to the real repo):
+Things to keep in mind when you run it **with `-GitRepo`** (the demo then writes to that real
+repository):
 
-- Jobs people create **commit straight to `main`** in your `regente-workspace`. If someone makes
+- Jobs people create **commit straight to `main`** in your workspace repository. If someone makes
   a mess, it is a `git revert` in the repo. If you would rather review changes, swap
   `-git-write-mode direct` for `pr-required` in the script (every change then becomes a PR for
   you to approve — that needs a PAT with PR permission).

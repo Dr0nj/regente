@@ -1,4 +1,9 @@
-go 1.26.2
+// Workspace do monorepo: amarra server + agent para rodar `go test ./server/...`
+// da raiz. A diretiva `go` tem de acompanhar os MÓDULOS (server/go.mod e
+// agent/go.mod = 1.25.0) e o pin da CI (setup-go 1.25): o go.work vale também
+// para `cd server && go build`, então uma versão maior aqui obriga todo mundo a
+// baixar um toolchain novo — e quebra de vez com GOTOOLCHAIN=local.
+go 1.25.0
 
 use (
 	./agent

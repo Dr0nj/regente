@@ -64,12 +64,17 @@ environments without mixing series.
 ## 3. Quotas (resources) across a failover
 
 Quotas (F15 — *quantitative resources*, Control-M style) cap how many jobs compete for a named
-resource (e.g. `db=5` → at most 5 jobs using the pool at once). The tracker is **in memory and
-lives on the leader**. When a node takes leadership (at boot or after a failover), the new leader
-**rebuilds usage from the `RUNNING` instances** in durable state — each instance carries the
-snapshot of its definition, resources included — via `RebuildResourcesFromRunning`. Without it, a
-freshly promoted leader would start with an empty tracker and let capacity be exceeded. Covered
-by a test (`TestQuotas_RebuildFromRunning`).
+resource (e.g. `db=5` → at most 5 jobs using the pool at once). Two halves, with different
+lifetimes:
+
+- **Capacities are durable** — the named resources and their capacity live in the `resources`
+  table, so a restart no longer zeroes the registry; the tracker reloads them at boot
+  (`ResourceTracker.LoadFromDB`).
+- **Usage is in memory, on the leader** — when a node takes leadership (at boot or after a
+  failover), the new leader **rebuilds usage from the `RUNNING` instances** in durable state —
+  each instance carries the snapshot of its definition, resources included — via
+  `RebuildResourcesFromRunning`. Without it, a freshly promoted leader would start with an empty
+  tracker and let capacity be exceeded. Covered by a test (`TestQuotas_RebuildFromRunning`).
 
 ## 4. Drift reconciliation (GitOps)
 

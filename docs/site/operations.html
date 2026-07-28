@@ -87,7 +87,7 @@ applies whatever is missing at boot; vN and vN+1 coexist as long as the migratio
 (rule: never drop or rename a column in the same release as the code that uses it — expand and
 contract across two releases).</p>
 <p>Automated demonstration:
-<a href="../server/deploy/rolling-upgrade.sh"><code>../server/deploy/rolling-upgrade.sh</code></a> (starts two nodes on
+<a href="https://github.com/Dr0nj/regente/blob/main/server/deploy/rolling-upgrade.sh"><code>../server/deploy/rolling-upgrade.sh</code></a> (starts two nodes on
 the same PG, promotes the new one, drains the old one and measures the leadership gap).</p>
 <h2 id="2-multiple-environments-dev--staging--prod">2. Multiple environments (Dev / Staging / Prod)</h2>
 <p>Each environment is an <strong>independent deployment</strong> — no magic flags inside a single process.
@@ -136,12 +136,18 @@ dashboards and alerts group or filter on that label, so a single Prometheus cove
 environments without mixing series.</p>
 <h2 id="3-quotas-resources-across-a-failover">3. Quotas (resources) across a failover</h2>
 <p>Quotas (F15 — <em>quantitative resources</em>, Control-M style) cap how many jobs compete for a named
-resource (e.g. <code>db=5</code> → at most 5 jobs using the pool at once). The tracker is <strong>in memory and
-lives on the leader</strong>. When a node takes leadership (at boot or after a failover), the new leader
-<strong>rebuilds usage from the <code>RUNNING</code> instances</strong> in durable state — each instance carries the
-snapshot of its definition, resources included — via <code>RebuildResourcesFromRunning</code>. Without it, a
-freshly promoted leader would start with an empty tracker and let capacity be exceeded. Covered
-by a test (<code>TestQuotas_RebuildFromRunning</code>).</p>
+resource (e.g. <code>db=5</code> → at most 5 jobs using the pool at once). Two halves, with different
+lifetimes:</p>
+<ul>
+<li><strong>Capacities are durable</strong> — the named resources and their capacity live in the <code>resources</code>
+table, so a restart no longer zeroes the registry; the tracker reloads them at boot
+(<code>ResourceTracker.LoadFromDB</code>).</li>
+<li><strong>Usage is in memory, on the leader</strong> — when a node takes leadership (at boot or after a
+failover), the new leader <strong>rebuilds usage from the <code>RUNNING</code> instances</strong> in durable state —
+each instance carries the snapshot of its definition, resources included — via
+<code>RebuildResourcesFromRunning</code>. Without it, a freshly promoted leader would start with an empty
+tracker and let capacity be exceeded. Covered by a test (<code>TestQuotas_RebuildFromRunning</code>).</li>
+</ul>
 <h2 id="4-drift-reconciliation-gitops">4. Drift reconciliation (GitOps)</h2>
 <p>The repository is the <strong>desired</strong> state; the runtime holds a local copy. When the remote moves
 ahead (a push, a merged PR), the runtime is in <strong>drift</strong>.</p>

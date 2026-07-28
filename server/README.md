@@ -59,8 +59,8 @@ Every `/api/*` route requires `Authorization: Bearer <token>`.
 The **contract lives in the binary**: a running server serves the curated OpenAPI spec plus a
 self-contained viewer at **`/api-docs`**, and the raw spec at `/api-docs/openapi.yaml` and
 `/api-docs/openapi.json` (importable into Postman, Insomnia or a code generator). To read it
-without starting anything, see the [API reference](../docs/site/api.html) in the generated docs
-site.
+without starting anything, see the [API reference](https://dr0nj.github.io/regente/api.html) in
+the published docs site.
 
 ## Extra commands
 

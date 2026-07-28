@@ -176,8 +176,8 @@ unit or a k8s manifest needs no arguments):</p>
 <p>The <strong>contract lives in the binary</strong>: a running server serves the curated OpenAPI spec plus a
 self-contained viewer at <strong><code>/api-docs</code></strong>, and the raw spec at <code>/api-docs/openapi.yaml</code> and
 <code>/api-docs/openapi.json</code> (importable into Postman, Insomnia or a code generator). To read it
-without starting anything, see the <a href="../docs/site/api.html">API reference</a> in the generated docs
-site.</p>
+without starting anything, see the <a href="https://dr0nj.github.io/regente/api.html">API reference</a> in
+the published docs site.</p>
 <h2 id="extra-commands">Extra commands</h2>
 <table>
 <thead>
@@ -206,7 +206,7 @@ site.</p>
 </tbody>
 </table>
 <h2 id="production">Production</h2>
-<p>Run the server <strong>supervised</strong>, with automatic restart — see <a href="deploy"><code>deploy/</code></a> (systemd
+<p>Run the server <strong>supervised</strong>, with automatic restart — see <a href="https://github.com/Dr0nj/regente/tree/main/server/deploy"><code>deploy/</code></a> (systemd
 <code>Restart=always</code> / Windows Service / a k8s <code>livenessProbe</code>), the
 <a href="operations.html">operations guide</a> and the <a href="dr-backup.html">DR runbook</a>.</p>
 </article>

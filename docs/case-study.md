@@ -5,8 +5,8 @@
 > construído do zero como monorepo Go + React, com **Git como fonte de verdade** das
 > definições. Validado ao vivo com **1.000.000 de jobs/dia** (materialização em 17s,
 > summary em 51ms), roda de um único binário num VPS de US$5 até HA multi-nó com Postgres,
-> e expõe o plano de controle a agentes de IA via **MCP (22 tools)**. ~44k linhas de Go,
-> ~24k de TypeScript, 427 testes.
+> e expõe o plano de controle a agentes de IA via **MCP (22 tools)**. ~47k linhas de Go,
+> ~24k de TypeScript, 456 testes.
 
 ---
 
@@ -118,7 +118,7 @@ estoura float32 acima de ~16,7M px — detalhe que só aparece com 1M de linhas)
 - **Panic-recovery** em todo ponto de entrada do scheduler; watchdog de RUNNING preso;
   self-monitoring (R7) que alerta pelos próprios canais do produto.
 - **Backup online** (`-backup` = VACUUM INTO), DR documentado, retenção/archives com GC.
-- **427 testes Go** — inclusive baterias exaustivas de calendário (dois caminhos de
+- **456 testes Go** — inclusive baterias exaustivas de calendário (dois caminhos de
   "dia útil especial" têm que concordar dia a dia por um mês inteiro) e um oráculo de
   forecast escrito à mão, independente do código que ele valida.
 
@@ -172,8 +172,8 @@ sucessores.
 
 ## 11. Números do projeto
 
-- **Código:** ~44k linhas Go (server+agent) · ~24k linhas TS/TSX (UI).
-- **Testes:** 427 funções de teste Go em 97 arquivos + validações E2E ao vivo.
+- **Código:** ~47k linhas Go (server+agent) · ~24k linhas TS/TSX (UI).
+- **Testes:** 456 funções de teste Go em 102 arquivos + validações E2E ao vivo.
 - **Executores:** COMMAND · SCRIPT · HTTP/REST · SSH agentless · DATABASE · FILE_WATCH
   · MFT · WASM · K8s · Lambda · Batch · Glue · Step Functions · Cloud Run.
 - **Escala:** 1M jobs/dia validado ao vivo (write 17s · summary 51ms · UI virtualizada).

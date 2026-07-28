@@ -4,6 +4,14 @@ Orientação para agentes trabalhando neste repositório. Detalhe de produto est
 no [`README.md`](README.md); decisões de arquitetura futura em
 [`docs/architecture-future.md`](docs/architecture-future.md).
 
+## Fontes da verdade (ler ANTES de agir)
+
+| Pergunta | Onde responde |
+|---|---|
+| "o que falta / o que já foi entregue?" | [`docs/roadmap.md`](docs/roadmap.md) — **fonte única de status**. Ao entregar: tira do §🔜 Backlog, escreve no §✅ Entregue, soma linha no §📜 Changelog |
+| "como dependências/condições/rerun/Set OK/Force se comportam?" | [`docs/conditions-events.md`](docs/conditions-events.md) — **spec obrigatória**, ler o arquivo inteiro antes de tocar nessa área; mudou semântica, muda spec + testes no MESMO commit |
+| "o que o produto faz / como instala?" | [`README.md`](README.md) (apresentação; não repete roadmap) |
+
 ## O que é
 
 Orquestrador de jobs estilo Control-M, **Git-native**. Monorepo:
@@ -11,10 +19,13 @@ Orquestrador de jobs estilo Control-M, **Git-native**. Monorepo:
 | Pasta | Stack | Papel |
 |---|---|---|
 | `server/` | Go (chi + WebSocket + SQLite/Postgres) | control plane: scheduler, API, hub, GitOps |
-| `agent/` | Go (single `main.go`) | executor local, conexão outbound; COMMAND/SCRIPT/HTTP/WASM |
+| `agent/` | Go | executor local, conexão outbound; 13 jobTypes (COMMAND · SCRIPT · HTTP · DATABASE · FILE_WATCH · FILE_TRANSFER · WASM · K8S · LAMBDA · BATCH · GLUE · STEP_FUNCTION · GCP_RUN). Catálogo de schema por tipo em `server/internal/domain/typeschema.go` |
 | `app/` | React + TS + Vite | UI (Monitoring + Design); dual-mode server/localStorage |
 
-Fonte da verdade das definitions = YAML em repo GitHub separado (`regente-workspace`).
+Fonte da verdade das definitions = YAML num repo GitHub **separado**, que é do
+operador e **diferente em cada instalação** — não existe default de fábrica
+(`-git-source` vazio = modo offline, só disco). Nunca reintroduzir o repo do lab
+como default: ele dá 404 pra qualquer outra pessoa.
 
 ## Comandos
 
@@ -25,19 +36,39 @@ cd server && go build ./... && go vet ./... && go test ./...
 cd agent  && go build ./... && go vet ./... && go test ./...
 # app
 cd app && npm ci && npm run build      # tsc -b && vite build
-cd app && npx eslint <arquivos>        # lint (NÃO rode em V2Preview.tsx isolado: tem 2 lints PRÉ-EXISTENTES)
+cd app && npm run lint                 # eslint — GATE da CI, tem que ficar em ZERO
+# staticcheck (GATE da CI nos dois módulos Go)
+cd server && go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...
+# doc: o site é build VERSIONADO — regenere depois de mexer em qualquer markdown
+cd server && go run ./cmd/docsite -repo .. -out ../docs/site
 ```
 
-CI (`.github/workflows/ci.yml`): 3 jobs — server (build/vet/test), agent
-(build/test), app (`npm ci` + build). Roda em push na `main` e em PRs.
+**3 workflows**, todos disparando na `main`:
+
+- **`ci.yml`** — server (build · vet · **staticcheck** · deadcode informativo ·
+  test · **docs/site atualizado**), agent (build · staticcheck · test), app
+  (`npm ci` · **lint** · build). Também roda em PR.
+- **`pages.yml`** — publica `docs/site/` no GitHub Pages (push que toca doc).
+- **`release.yml`** — **TODO push na `main` publica release**, com
+  `scripts/smoke-install.sh` (instala num systemd real em container) como portão.
+  Pra pular: `[no release]` no **assunto** do commit.
 
 ## Convenções
 
-- **Go:** sempre `gofmt -w` os arquivos tocados antes de commitar. Idioma dos
-  comentários: português. Sem CGO (SQLite via modernc; WASM via wazero).
+- **Idioma (fronteira dura):** **inglês = tudo que o USUÁRIO lê** — UI, mensagens
+  do server, CLI, output do agente, contrato OpenAPI, scripts de instalação,
+  READMEs e `docs/*.md` publicados. **pt-BR = tudo que o DEV lê** — comentário de
+  código, mensagem de commit, `t.Fatalf`, `docs/roadmap.md` e planos internos.
+  Não traduzir termos canônicos do domínio (Schedule · On/Do · ODAT · Force Order ·
+  Set OK…), identificadores de máquina, nem os sinônimos PT do parser de NL-query
+  (são ENTRADA do usuário).
+- **Go:** sempre `gofmt -w` os arquivos TOCADOS antes de commitar (nunca a árvore
+  inteira). Idioma dos comentários: português. Sem CGO (SQLite via modernc; WASM
+  via wazero).
 - **Commits:** Conventional Commits em português (`feat:`, `fix:`, `docs:`…).
 - **Push:** o dono autorizou **commitar e dar push direto na `main`** (sem
-  branch/PR), salvo se houver branch protection — aí cai em branch + PR.
+  branch/PR), salvo se houver branch protection — aí cai em branch + PR. Puxe o
+  remoto antes: o dono edita o roadmap direto no GitHub.
 - **Modelo/identidade:** nunca colocar o id do modelo em commits/PRs/código.
 
 ## Tooling de agente (Claude Code)
@@ -66,8 +97,11 @@ CI (`.github/workflows/ci.yml`): 3 jobs — server (build/vet/test), agent
 - **Fase 2 — transporte plugável:** interface `scheduler.Bus` + transporte HTTP
   long-poll (`agent -transport=http`; `agentBroker` + `/api/agent/poll|result|output`).
 - **Fase 3 — executores como plugins:** roteamento por capability é o seam;
-  executor **WASM** (`jobType: WASM`, wazero) entregue. Adapters de nuvem/NATS/
-  durable-execution ficam projetados.
+  executor **WASM** (`jobType: WASM`, wazero), **adapters de nuvem** (AWS
+  Lambda/Batch/Glue/Step Functions · GCP Cloud Run Jobs · K8S Job), **NATS**
+  (`-bus=nats`) e **OTel** entregues. Durable execution (Temporal/Restate) e
+  Postgres-como-fila foram **decididos NÃO fazer** (ver tabela §7 do ADR) —
+  não são pendência.
 
 ## Features entregues (histórico)
 
@@ -89,9 +123,12 @@ CI (`.github/workflows/ci.yml`): 3 jobs — server (build/vet/test), agent
   do job (`MarkHandledByWorkflow`, hook nos handlers + broadcast `alert.changed`);
   alertas já tratados não são sobrescritos. `rule-failure` vem com cooldown **0** (toda
   falha vira alerta; dedup é por tratamento). Cooldown editável: `PUT .../cooldown`.
-- **Temas** (`app/src/lib/theme.ts` + `data-theme` em `tokens.css`): Escuro (default),
-  Brasil/Brasil Ouro/Brasil Mata (verde-amarelo). Seção "Tema" no `SettingsDialog` com
-  cards de bandeira; persiste em localStorage; aplicado no boot (`main.tsx`). **Toda a UI
+- **Temas** (`app/src/lib/theme.ts` + `data-theme` em `tokens.css`): **17 temas**
+  (13 escuros + 4 claros), Escuro é o default. Seção "Tema" no `SettingsDialog` com
+  cards de swatch; persiste em localStorage; aplicado no boot (`main.tsx`).
+  **GOTCHA-RAIZ: são DOIS sistemas de token** — `--v2-*` E os `--color-*` do Tailwind
+  que o body e o canvas do ReactFlow leem; tema claro tem de sobrescrever os DOIS,
+  senão fundo/grafo ficam pretos. **Toda a UI
   consome os tokens `--v2-*`** — cor chumbada num componente = ele não acompanha o tema
   (foi o bug do `ControlMPanel`, corrigido: trocado tudo por tokens). **Borda neon:** token
   `--v2-accent-glow` por tema + classe `.v2-neon-card` (borda 1px na cor do tema + halo)
@@ -111,7 +148,14 @@ CI (`.github/workflows/ci.yml`): 3 jobs — server (build/vet/test), agent
 - **Fixture WASM:** `agent/testdata/echo.wasm` é compilado de
   `testdata/echo/main.go` com `GOOS=wasip1 GOARCH=wasm go build`. É grande (~2.4MB,
   saída padrão do Go) mas committado para o teste ser hermético.
-- **`V2Preview.tsx`** tem 2 problemas de eslint **pré-existentes** (linha do
-  `_condition` e um `eslint-disable` órfão) — não são regressões; não gaste tempo.
+- **eslint está em ZERO e é catraca (RH-4):** `set-state-in-effect`, `refs`,
+  `immutability` e `only-export-components` são **`error`** em
+  `app/eslint.config.js` — código novo não passa no gate se regredir. Não existe
+  mais "lint pré-existente" pra ignorar (o antigo aviso sobre `V2Preview.tsx`
+  morreu com a trilha RH). Precisa violar? **anote** com
+  `// eslint-disable-next-line <regra> -- <motivo>; ver roadmap §RH` — nunca
+  rebaixe a regra. GOTCHA: `set-state-in-effect` flagra a CHAMADA de qualquer
+  função que seta state no corpo do efeito; a saída é escopo async aninhado
+  (`useEffect(() => { void (async () => { … })(); }, [])`).
 - **Scheduler stateful:** o tick interno (modo `internal`) reload de defs no boot
   + on-save; no modo `external` as defs são carregadas no boot (`ReloadDefs`).

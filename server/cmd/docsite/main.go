@@ -121,7 +121,7 @@ func Build(repoDir, outDir string) (int, error) {
 		if err := md.Convert(raw, &buf); err != nil {
 			return 0, fmt.Errorf("%s: %w", pages[i].src, err)
 		}
-		body := rewriteLinks(buf.Bytes(), pages[i].src, slugBySrc)
+		body := rewriteLinks(buf.Bytes(), pages[i].src, repoDir, slugBySrc)
 		body = copyAssets(body, pages[i].src, repoDir, outDir)
 		pages[i].html = body
 	}
@@ -254,7 +254,12 @@ var hrefRe = regexp.MustCompile(`(href|src)="([^"]+)"`)
 // rewriteLinks converte href de .md relativos pro .html correspondente,
 // resolvendo o caminho a partir do DIRETÓRIO da página de origem
 // (docs/x.md com href ../README.md → index.html). Âncoras preservadas.
-func rewriteLinks(body []byte, src string, slugBySrc map[string]string) []byte {
+//
+// Alvo que NÃO virou página (script, diretório, README de subpasta, o roadmap
+// que o skipDoc tira) vira link ABSOLUTO pro GitHub: caminho relativo do repo
+// não existe no site publicado nem no docs/site/ aberto do disco — antes disso
+// eram 404 (6 das 13 páginas tinham, a index sozinha tinha 8).
+func rewriteLinks(body []byte, src, repoDir string, slugBySrc map[string]string) []byte {
 	dir := path.Dir(src)
 	return hrefRe.ReplaceAllFunc(body, func(m []byte) []byte {
 		g := hrefRe.FindSubmatch(m)
@@ -270,7 +275,7 @@ func rewriteLinks(body []byte, src string, slugBySrc map[string]string) []byte {
 			slug, ok = slugBySrc[resolved+"/README.md"]
 		}
 		if !ok {
-			return m
+			return []byte(`href="` + repoLink(resolved, anchor, repoDir) + `"`)
 		}
 		out := slug + ".html"
 		if anchor != "" {
@@ -278,6 +283,31 @@ func rewriteLinks(body []byte, src string, slugBySrc map[string]string) []byte {
 		}
 		return []byte(`href="` + out + `"`)
 	})
+}
+
+// repoBlobBase — onde o alvo não-publicado é lido: o próprio repositório.
+const repoBlobBase = "https://github.com/Dr0nj/regente"
+
+// repoLink monta a URL do GitHub pro caminho do repo (blob p/ arquivo, tree p/
+// diretório). Caminho que não existe no disco fica como está — é link quebrado
+// no markdown, e mascarar isso só esconderia o defeito.
+func repoLink(resolved, anchor, repoDir string) string {
+	st, err := os.Stat(filepath.Join(repoDir, filepath.FromSlash(resolved)))
+	if err != nil {
+		if anchor != "" {
+			return resolved + "#" + anchor
+		}
+		return resolved
+	}
+	kind := "blob"
+	if st.IsDir() {
+		kind = "tree"
+	}
+	url := repoBlobBase + "/" + kind + "/main/" + resolved
+	if anchor != "" {
+		url += "#" + anchor
+	}
+	return url
 }
 
 // copyAssets copia imagens locais referenciadas (src="...") pro site,

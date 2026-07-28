@@ -65,10 +65,11 @@ This repository is the **monorepo** for the whole platform:
 | Page | What is in it |
 |---|---|
 | 📖 [**Documentation**](https://dr0nj.github.io/regente/) | This README, the component guides, operations, DR, SLOs, MCP and the conditions spec — all in one navigable place. |
-| 🔌 [**API reference**](https://dr0nj.github.io/regente/api.html) | The full OpenAPI contract: every endpoint, parameter, schema and example. Also as [openapi.yaml](https://dr0nj.github.io/regente/openapi.yaml) and [openapi.json](https://dr0nj.github.io/regente/openapi.json) for Postman or a code generator. |
+| 🔌 [**API reference**](https://dr0nj.github.io/regente/api.html) | The OpenAPI contract of the **integration surface** — the routes an external system calls (query, lifecycle, force, ingest, daily, forecast, archives, catalog, tick), with every parameter, schema and example. The SPA's internal routes are deliberately out. Also as [openapi.yaml](https://dr0nj.github.io/regente/openapi.yaml) and [openapi.json](https://dr0nj.github.io/regente/openapi.json) for Postman or a code generator. |
 
 The site is generated from the markdown in this repository and published by
-[a workflow](.github/workflows/pages.yml) on every push to `main`. It is also committed to
+[a workflow](.github/workflows/pages.yml) on every push to `main` that touches the
+documentation. It is also committed to
 [`docs/site/`](docs/site), so **it works offline too**: clone or download the repo and open
 `docs/site/index.html` in your browser — double-clicking is enough. The pages are
 self-contained, with the CSS inlined and the API spec embedded, so there is nothing to fetch.
@@ -91,16 +92,22 @@ Deeper documents: [operations](docs/operations.md) · [DR and backup](docs/dr-ba
 ## 🚀 Try it in 5 minutes
 
 The fastest way to see it working — nothing to configure, nothing left behind. You need
-[Go 1.25+](https://go.dev/dl/).
+[Go 1.25+](https://go.dev/dl/), plus [Node 20+](https://nodejs.org) for the UI.
 
 ```bash
-git clone https://github.com/Dr0nj/regente.git && cd regente/server
-go run ./cmd/regente dev daily -addr :8686
+git clone https://github.com/Dr0nj/regente.git && cd regente
+(cd app && npm ci && VITE_REGENTE_SERVER_URL=@origin npm run build)
+cd server && go run ./cmd/regente dev daily -addr :8686
 ```
 
 That starts a complete, **disposable** Regente on <http://localhost:8686>: a temporary database
-that dies with the process, no Git and no network, and jobs that finish successfully without a
-real agent. Open the URL and log in with `admin` / `admin`.
+that dies with the process, a **demo workspace** it writes for you (four jobs — a three-step
+chain wired by conditions, plus a standalone one), no Git and no network, and jobs that finish
+successfully without a real agent. Log in with `admin` / `admin`.
+
+**No Node?** Skip the middle line. You still get the API and the interactive API explorer at
+<http://localhost:8686/api-docs>, where you can fire real requests with the token the command
+prints — you just do not get the web UI, and the command says so.
 
 When you want the real thing, keep reading.
 
