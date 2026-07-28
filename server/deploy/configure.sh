@@ -40,17 +40,46 @@ tok="${tok:-$sug_tok}"
 set_env REGENTE_TOKEN "$tok"
 
 # 2) GitHub — repo do workspace (GitOps) + PAT via secrets provider (fora da DB em claro).
+# SEM default de repositório: o workspace é SEU e é diferente em cada instalação.
+# Sugerir um repo concreto aqui já fez toda instalação nova apontar para o mesmo lab.
+echo ""
+echo "-- Workspace (GitOps): the repository that stores YOUR job definitions."
+echo "   Create an EMPTY repository on GitHub (private is fine) and paste it below as"
+echo "   owner/name — the server writes the initial content into it on the first start."
+echo "   Leave it EMPTY to run offline (definitions live only on this machine's disk)."
 cur_repo="$(current REGENTE_GIT_REPO)"
-read -rp "GitOps workspace repo (owner/name) [${cur_repo:-Dr0nj/regente-workspace}]: " repo
-repo="${repo:-${cur_repo:-Dr0nj/regente-workspace}}"
+while :; do
+  read -rp "Your workspace repo (owner/name)${cur_repo:+ [$cur_repo]}: " repo
+  repo="${repo:-$cur_repo}"
+  case "$repo" in
+    "") break ;;                                   # vazio = offline, aceito
+    */*/*|http*|git@*)
+      echo "   ! use the short form owner/name (not a URL). Example: acme/regente-workspace" ;;
+    */*) break ;;
+    *)  echo "   ! expected owner/name. Example: acme/regente-workspace" ;;
+  esac
+done
 if [ -n "$repo" ]; then
   set_env REGENTE_GIT_REPO "$repo"
   set_env REGENTE_GIT_SOURCE "https://github.com/${repo}.git"
+  cur_br="$(current REGENTE_GIT_BRANCH)"
+  read -rp "Branch [${cur_br:-main}]: " br
+  set_env REGENTE_GIT_BRANCH "${br:-${cur_br:-main}}"
+else
+  # Offline explícito: comenta as chaves para o server não tentar clonar nada.
+  sed -i -E 's|^([[:space:]]*)(REGENTE_GIT_SOURCE=.*)$|\1# \2|; s|^([[:space:]]*)(REGENTE_GIT_REPO=.*)$|\1# \2|' "$ENV_FILE" || true
+  echo "   offline mode: no GitOps (definitions stay on local disk only)."
 fi
-read -rsp "GitHub PAT (push/PR + private clone; Enter = keep/skip): " pat; echo
-if [ -n "$pat" ]; then
-  set_env REGENTE_SECRET_GITHUB_TOKEN "$pat"
-  echo "  PAT stored through the secrets provider (REGENTE_SECRET_GITHUB_TOKEN) — it never reaches the DB in plaintext."
+if [ -n "$repo" ]; then
+  echo ""
+  echo "-- GitHub PAT: needed to write to $repo (fine-grained: Contents read/write on that repo,"
+  echo "   or a classic token with the 'repo' scope). Without it the server can read a public repo"
+  echo "   but cannot Publish."
+  read -rsp "GitHub PAT (Enter = keep/skip): " pat; echo
+  if [ -n "$pat" ]; then
+    set_env REGENTE_SECRET_GITHUB_TOKEN "$pat"
+    echo "  PAT stored through the secrets provider (REGENTE_SECRET_GITHUB_TOKEN) — it never reaches the DB in plaintext."
+  fi
 fi
 
 # 3) Domínio público — informativo (usado no passo do nginx/TLS em deploy/vps/).
@@ -61,7 +90,25 @@ echo "Config written to $ENV_FILE (perms $(stat -c %a "$ENV_FILE" 2>/dev/null ||
 read -rp "Restart regente-server now? [Y/n]: " r
 case "${r:-Y}" in
   [Nn]*) echo "ok — restart it later:  sudo systemctl restart regente-server" ;;
-  *)     systemctl restart regente-server && echo "regente-server restarted." ;;
+  *)
+    systemctl restart regente-server && echo "regente-server restarted."
+    # Mostra o resultado REAL do GitOps: se o repo/PAT estiverem errados o server
+    # sobe assim mesmo (não é mais fatal), então quem configurou precisa ver aqui.
+    if [ -n "$repo" ]; then
+      sleep 2
+      port="$(grep -E '^REGENTE_ADDR=' "$ENV_FILE" | tail -1 | cut -d= -f2- | sed 's/.*://')"
+      port="${port:-8080}"
+      if command -v curl >/dev/null; then
+        st="$(curl -fsS --max-time 5 -H "Authorization: Bearer $tok" "http://127.0.0.1:${port}/api/git/status" 2>/dev/null || true)"
+        case "$st" in
+          *'"error"'*) echo ""; echo "!! GitOps NOT connected yet: $st"
+                       echo "   the server is running anyway — fix the repo/PAT and it reconnects on its own (no restart needed)." ;;
+          *'"sha"'*)   echo "GitOps connected — workspace synced with $repo." ;;
+          *)           echo "GitOps status unavailable — check: journalctl -u regente-server -n 30 --no-pager" ;;
+        esac
+      fi
+    fi
+    ;;
 esac
 if [ -n "$dom" ]; then
   echo ""

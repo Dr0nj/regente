@@ -51,6 +51,22 @@ if [ -z "$SERVER" ] || [ -z "$TOKEN" ]; then
 fi
 [ -n "$SERVER" ] && [ -n "$TOKEN" ] || { echo "SERVER/TOKEN are empty"; exit 1; }
 
+# Normaliza a URL: quem instala cola o endereço da UI (http://host:8080) muito mais
+# vezes do que o endpoint do agente. Convertemos http->ws / https->wss e completamos
+# o /ws/agent — sem isso o serviço sobe e fica reconectando em loop.
+case "$SERVER" in
+  http://*)       SERVER="ws://${SERVER#http://}" ;;
+  https://*)      SERVER="wss://${SERVER#https://}" ;;
+  ws://*|wss://*) : ;;
+  *)              SERVER="ws://$SERVER" ;;
+esac
+case "$SERVER" in
+  */ws/agent) : ;;
+  */)         SERVER="${SERVER}ws/agent" ;;
+  *)          SERVER="${SERVER}/ws/agent" ;;
+esac
+echo "== server: $SERVER"
+
 # Download do binário.
 BIN=/usr/local/bin/regente-agent
 TMP="$(mktemp 2>/dev/null || mktemp -t regente-agent)"; trap 'rm -f "$TMP"' EXIT
@@ -59,6 +75,13 @@ curl -fSL "$URL" -o "$TMP"
 install -m 0755 "$TMP" "$BIN"
 
 if [ "$GOOS" = linux ]; then
+  # O token vai num EnvironmentFile 0600 (o agente lê REGENTE_TOKEN), não na
+  # ExecStart: linha de comando é legível por qualquer usuário via `ps`.
+  ENVFILE=/etc/regente/agent.env
+  mkdir -p /etc/regente
+  umask 077
+  printf 'REGENTE_TOKEN=%s\n' "$TOKEN" > "$ENVFILE"
+  chmod 0600 "$ENVFILE"
   UNIT=/etc/systemd/system/regente-agent.service
   cat > "$UNIT" <<EOF
 [Unit]
@@ -68,7 +91,8 @@ Wants=network-online.target
 StartLimitIntervalSec=0
 
 [Service]
-ExecStart=$BIN -server $SERVER -token $TOKEN -id $ID -caps $CAPS
+EnvironmentFile=$ENVFILE
+ExecStart=$BIN -server $SERVER -id $ID -caps $CAPS
 Restart=always
 RestartSec=5
 User=$RUN_USER
@@ -81,6 +105,14 @@ EOF
   systemctl enable --now regente-agent
   echo ""
   echo "OK — regente-agent is up (systemd, Restart=always, starts at boot as '$RUN_USER')."
+  # Prova que conectou de verdade, em vez de "instalou" e um loop de reconnect silencioso.
+  sleep 3
+  if systemctl is-active --quiet regente-agent; then
+    echo "Service: active."
+  else
+    echo "Service: NOT running — most likely a wrong server URL or token. Last lines:"
+    journalctl -u regente-agent -n 15 --no-pager || true
+  fi
   echo "Logs:  journalctl -u regente-agent -f"
   echo "Stop:  sudo systemctl stop regente-agent"
 else
@@ -95,10 +127,11 @@ else
   <array>
     <string>$BIN</string>
     <string>-server</string><string>$SERVER</string>
-    <string>-token</string><string>$TOKEN</string>
     <string>-id</string><string>$ID</string>
     <string>-caps</string><string>$CAPS</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict><key>REGENTE_TOKEN</key><string>$TOKEN</string></dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>/var/log/regente-agent.log</string>
@@ -106,7 +139,8 @@ else
 </dict>
 </plist>
 EOF
-  chown root:wheel "$PLIST"; chmod 0644 "$PLIST"
+  # 0600: o token mora aqui dentro; o launchd roda como root e lê assim mesmo.
+  chown root:wheel "$PLIST"; chmod 0600 "$PLIST"
   # Recarrega (bootstrap moderno; cai pro load -w em macOS antigo).
   launchctl bootout system "$PLIST" 2>/dev/null || true
   launchctl bootstrap system "$PLIST" 2>/dev/null || launchctl load -w "$PLIST"

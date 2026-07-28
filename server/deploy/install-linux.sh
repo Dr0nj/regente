@@ -43,7 +43,20 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 # --- V1: UI single-origin (opt-out via WITH_UI=0) --------------------------
-SPA_SRC="${SPA_DIR:-$HERE/../app/dist}"   # ../app/dist vale p/ checkout de código E p/ bundle de release
+# Dois layouts válidos, e o caminho é DIFERENTE em cada um:
+#   • bundle de release: <bundle>/deploy/install-linux.sh + <bundle>/app/dist  → $HERE/../app/dist
+#   • checkout do monorepo: server/deploy/install-linux.sh + app/dist na RAIZ  → $HERE/../../app/dist
+# Só o primeiro era testado; do código-fonte o script caía silenciosamente em
+# API-only (server sem UI). Agora procura nos dois, na ordem.
+if [ -n "${SPA_DIR:-}" ]; then
+  SPA_SRC="$SPA_DIR"
+elif [ -f "$HERE/../app/dist/index.html" ]; then
+  SPA_SRC="$HERE/../app/dist"
+elif [ -f "$HERE/../../app/dist/index.html" ]; then
+  SPA_SRC="$HERE/../../app/dist"
+else
+  SPA_SRC="$HERE/../app/dist"   # inexistente: cai no aviso abaixo com um caminho concreto
+fi
 SPA_DST="$DATA_DIR/app"
 SPA_INSTALLED=0
 case "$WITH_UI" in
@@ -68,7 +81,8 @@ case "$WITH_UI" in
       fi
     else
       echo "WARNING: no built SPA found at $SPA_SRC — installing the API ONLY."
-      echo "         To serve the UI too: (cd app && VITE_REGENTE_SERVER_URL=@origin npm ci && npm run build), then reinstall,"
+      echo "         To serve the UI too: (cd app && VITE_REGENTE_SERVER_URL=@origin npm ci && npm run build), then reinstall"
+      echo "         (or point it explicitly:  sudo SPA_DIR=/path/to/app/dist $0 ),"
       echo "         or use the release one-liner (install.sh), which already ships the UI bundled."
     fi
     ;;
@@ -87,17 +101,40 @@ systemctl enable --now regente-server
 
 ADDR="$(grep -E '^REGENTE_ADDR=' "$ENV_FILE" | tail -1 | cut -d= -f2-)"
 ADDR="${ADDR:-:8080}"
+PORT="${ADDR##*:}"
+# IP público/externo só para imprimir uma URL clicável (best-effort, sem rede externa).
+HOST_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+HOST_IP="${HOST_IP:-<this-host>}"
+
+# Health check: prova que subiu de verdade, em vez de mandar o operador adivinhar.
+sleep 1
+HEALTH="unknown"
+if command -v curl >/dev/null; then
+  if curl -fsS --max-time 5 "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then HEALTH="ok"; else HEALTH="FAILED"; fi
+fi
+
 echo ""
 echo "OK — regente-server installed and started (Restart=always) as user '$RUN_USER'."
-if [ "$SPA_INSTALLED" = "1" ]; then
-  echo "UI:      http://<this-host>${ADDR}   (initial login: admin / admin — you must change it on first use)"
+echo "Health:  http://127.0.0.1:${PORT}/health -> ${HEALTH}"
+if [ "$HEALTH" = "FAILED" ]; then
+  echo "         it did not answer yet — check:  journalctl -u regente-server -n 50 --no-pager"
 fi
+echo ""
+echo "== Next steps, in order"
 if [ -x /usr/local/bin/regente-configure ]; then
-  echo "Config:  sudo regente-configure   (guided: strong token, GitHub PAT/repo, domain)"
-  echo "         or edit it by hand: sudo \$EDITOR $ENV_FILE"
+  echo "  1) sudo regente-configure     # strong token, YOUR workspace repo + GitHub PAT"
 else
-  echo "Config:  sudo \$EDITOR $ENV_FILE   (strong REGENTE_TOKEN, GitOps, HTTPS…)"
+  echo "  1) sudo \$EDITOR $ENV_FILE     # strong REGENTE_TOKEN, YOUR workspace repo"
 fi
-echo "         sudo systemctl restart regente-server"
+echo "  2) sudo systemctl restart regente-server"
+echo "  3) open the port on the firewall (a cloud VM ALSO needs it in the security group):"
+echo "       sudo ufw allow ${PORT}/tcp        # ufw"
+echo "       sudo firewall-cmd --add-port=${PORT}/tcp --permanent && sudo firewall-cmd --reload   # firewalld"
+if [ "$SPA_INSTALLED" = "1" ]; then
+  echo "  4) open http://${HOST_IP}:${PORT}   (login: admin / admin — it forces a password change)"
+else
+  echo "  4) API only (no UI installed): curl http://${HOST_IP}:${PORT}/health"
+fi
+echo ""
 echo "Logs:    journalctl -u regente-server -f"
 echo "HTTPS/domain (a company-style public link): see deploy/vps/."

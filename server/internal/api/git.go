@@ -73,7 +73,9 @@ func (s *server) gitStatus(w http.ResponseWriter, r *http.Request) {
 		"configured": st.Configured, "source": st.Source, "webUrl": st.WebURL,
 		"branch": st.Branch, "sha": st.SHA, "shortSha": st.ShortSHA,
 		"lastSync": st.LastSync, "drift": st.Drift, "remoteSha": st.RemoteSHA,
-		"driftErr": st.DriftErr,
+		// error = por que o workspace NÃO está sincronizado. O boot deixou de ser
+		// fatal, então este campo é o único lugar onde a UI descobre o motivo.
+		"driftErr": st.DriftErr, "error": st.Error,
 		"hasToken": s.cfg.Git.HasAuth(), "authMode": s.authMode(),
 		"webhookConfigured": s.cfg.GitHub != nil && s.cfg.GitHub.HasWebhookSecret(),
 	})

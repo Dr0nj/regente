@@ -5,7 +5,11 @@
 # Uso:
 #   .\install-windows.ps1 -Token <token-forte> `
 #       -Db "C:\ProgramData\Regente\regente.db" `
-#       -GitSource https://github.com/Dr0nj/regente-workspace.git
+#       -GitSource https://github.com/<owner>/<seu-workspace>.git
+#
+# -GitSource é o SEU repositório de workspace — um por instalação, nunca um
+# default compartilhado. Pode ser um repo VAZIO recém-criado no GitHub: o server
+# escreve o conteúdo inicial e publica. Sem -GitSource roda offline (só disco).
 #
 # Token do GitHub: prefira definir REGENTE_SECRET_GITHUB_TOKEN no ambiente da
 # máquina (System) a colar em texto; ou configure pela UI (Settings → GitHub).

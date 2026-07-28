@@ -53,6 +53,30 @@ export function GitStatusBadge({ canSync }: { canSync: boolean }) {
 
   const ago = status.lastSync ? humanAgo(status.lastSync) : "never";
   const drifted = !!status.drift;
+  // GitOps configurado mas NUNCA sincronizado (repo errado, PAT sem permissão,
+  // rede fora). O server segue no ar e tentando de novo; aqui o operador vê o
+  // motivo, em vez de um "synced never" que parece normal.
+  const broken = !!status.error && !status.sha;
+
+  if (broken) {
+    return (
+      <div
+        title={`source=${status.source}\nbranch=${status.branch}\n\nNOT CONNECTED: ${status.error}\n\nThe server is running and retrying in the background.\n· Missing/invalid PAT: save it in Settings → GitHub (applies immediately).\n· Wrong repository: sudo regente-configure on the server.`}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 8,
+          padding: "4px 10px", background: "#000",
+          border: "1px solid #ef4444", borderRadius: 6,
+          fontSize: 11, fontFamily: "monospace", color: "#a3a3a3",
+        }}
+      >
+        <span style={{ color: "#ef4444" }}>git</span>
+        <span style={{ color: "#ef4444", fontWeight: 600 }}>⚠ not connected</span>
+        <span style={{ opacity: 0.7, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {status.error}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div

@@ -915,7 +915,7 @@ export default function MonitoringSidebarV2({
       >
         {emptyList ? (
           <div style={{ padding: 20, fontSize: 11, color: "var(--v2-text-muted)", textAlign: "center" }}>
-            nenhum job com esse filtro
+            no job matches this filter
           </div>
         ) : (
           <>

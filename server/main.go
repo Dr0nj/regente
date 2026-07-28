@@ -81,8 +81,11 @@ func main() {
 		demoMode         = flag.Bool("demo-mode", envOr("REGENTE_DEMO_MODE", "") == "1", "Demo/playground: with no agent online, jobs are mock-finalized OK. Default OFF (production): with no agent, the instance stays WAITING and retries when an agent connects")
 		serverAgent      = flag.Bool("server-agent", envOr("REGENTE_SERVER_AGENT", "1") != "0", "Registers the built-in SERVER-AGENT (runs HTTP/REST jobs on the server itself, no external agent). Turn it off with -server-agent=false / REGENTE_SERVER_AGENT=0")
 
-		// F13 GitOps — defaults apontam pro regente-workspace (padrão, não configuração)
-		gitSource    = flag.String("git-source", envOr("REGENTE_GIT_SOURCE", "https://github.com/Dr0nj/regente-workspace.git"), "Git remote URL for workspace source-of-truth")
+		// F13 GitOps — SEM default de repositório: cada instalação aponta pro SEU
+		// workspace (o repo é diferente em cada instalação). Vazio = modo offline,
+		// só disco local. Um default aqui faria toda instalação nova tentar clonar
+		// o repo de outra pessoa.
+		gitSource    = flag.String("git-source", envOr("REGENTE_GIT_SOURCE", ""), "Git remote URL of YOUR workspace repo (source of truth for job definitions). Empty = offline, local disk only")
 		gitBranch    = flag.String("git-branch", envOr("REGENTE_GIT_BRANCH", "main"), "Git branch tracked as source-of-truth")
 		gitPollSec   = flag.Int("git-poll-interval", 30, "Git polling interval in seconds (0 = disabled)")
 		gitWriteMode = flag.String("git-write-mode", envOr("REGENTE_GIT_WRITE_MODE", "direct"), "Write mode: direct | pr-required")
@@ -90,7 +93,7 @@ func main() {
 		driftReconcileSec  = flag.Int("drift-reconcile-sec", intEnvOr("REGENTE_DRIFT_RECONCILE_SEC", 0), "Enterprise: cadence (s) of the GitOps drift reconciler; alerts (and optionally reconciles) when runtime≠Git. 0 = off")
 		driftReconcileMode = flag.String("drift-reconcile-mode", envOr("REGENTE_DRIFT_RECONCILE_MODE", "alert"), "Drift reconciler: alert (only alerts through the R7 channels) | sync (automatic fetch+reset+reload)")
 		ghToken            = flag.String("github-token", envOr("GITHUB_TOKEN", ""), "GitHub PAT for push/PR")
-		ghRepo             = flag.String("github-repo", envOr("REGENTE_GIT_REPO", "Dr0nj/regente-workspace"), "GitHub repo as 'owner/name'")
+		ghRepo             = flag.String("github-repo", envOr("REGENTE_GIT_REPO", ""), "YOUR workspace repo as 'owner/name' (enables push/PR and the webhook). Empty = disabled")
 		ghWebhookSec       = flag.String("github-webhook-secret", envOr("REGENTE_WEBHOOK_SECRET", ""), "Shared secret for GitHub webhook HMAC validation")
 
 		// P3 (2026-04-26) — design session GC.
@@ -197,11 +200,20 @@ func main() {
 		gitOps.InjectToken(effectiveToken)
 		logSource := *gitSource // safe to log (no token)
 		log.Printf("[git] source=%s branch=%s — ensuring clone...", logSource, *gitBranch)
+		// O boot NÃO é fatal: um repo/PAT errado derrubava o processo, e com
+		// Restart=always isso vira crash-loop — o operador fica sem UI justamente
+		// na tela onde arrumaria a configuração. Aqui o server sobe, o motivo
+		// aparece em /api/git/status e uma goroutine tenta de novo até conseguir.
 		if err := gitOps.EnsureClone(); err != nil {
-			log.Fatalf("[git] EnsureClone failed: %v", err)
+			log.Printf("[git] WARNING: workspace not synced: %v", err)
+			log.Printf("[git] the server is UP and the UI is reachable. Retrying in the background (a transient failure recovers on its own; a PAT saved in Settings -> GitHub applies immediately). Wrong repository? sudo regente-configure (it restarts the service). The daily is skipped until then")
+			go retryGitClone(gitOps)
+		} else {
+			st := gitOps.Status()
+			log.Printf("[git] ready: %s@%s (last sync %s)", st.Branch, st.ShortSHA, st.LastSync.Format("15:04:05"))
 		}
-		st := gitOps.Status()
-		log.Printf("[git] ready: %s@%s (last sync %s)", st.Branch, st.ShortSHA, st.LastSync.Format("15:04:05"))
+	} else {
+		log.Printf("[git] offline mode (no -git-source): definitions are read from %s only. Point it at your own workspace repo to enable GitOps", *workspace)
 	}
 	// Ensure definitions dir exists after clone (or when git is off)
 	if err := os.MkdirAll(*workspace+"/definitions", 0o755); err != nil {
@@ -211,9 +223,15 @@ func main() {
 	if *ghRepo != "" {
 		gh, err := storage.NewGitHubClient(effectiveToken, *ghRepo, effectiveWebhookSecret)
 		if err != nil {
-			log.Fatalf("[github] invalid -github-repo: %v", err)
+			// Erro de digitação em REGENTE_GIT_REPO (ex.: a URL inteira em vez de
+			// owner/name) não derruba o server: só desliga push/PR/webhook.
+			log.Printf("[github] WARNING: invalid -github-repo/REGENTE_GIT_REPO %q: %v — push/PR and the webhook stay OFF (expected format: owner/name)", *ghRepo, err)
+		} else {
+			ghClient = gh
 		}
-		ghClient = gh
+	}
+	if ghClient != nil {
+		gh := ghClient
 		// Authoritative auth status:
 		//  - explicit env/flag PAT (HasToken) enables both push AND PR/API ops.
 		//  - embedded creds in source URL only enable push (clone/fetch).
@@ -488,6 +506,14 @@ func main() {
 		log.Printf("[audit] SIEM export -> %s", *auditSIEMURL)
 	}
 
+	// REGENTE_TOKEN é admin-equivalente (bypassa o login). Se ficou no valor de
+	// exemplo, avisa alto e claro: é o erro de segurança mais fácil de cometer
+	// numa instalação nova, e o único jeito de o operador perceber é no log.
+	switch strings.TrimSpace(*apiToken) {
+	case "dev-token", "change-me", "":
+		log.Printf("[security] WARNING: REGENTE_TOKEN is still the example value (%q). It is ADMIN-EQUIVALENT and bypasses the login — anyone who reaches this port owns this Regente. Fix it with: sudo regente-configure", *apiToken)
+	}
+
 	router := api.NewRouter(api.Config{
 		Store:     store,
 		DB:        database,
@@ -563,6 +589,31 @@ func main() {
 	// E4 — flush final da fila de eventos (e teto das goroutines de fundo):
 	// Stop() drena o canal e grava o resto antes de retornar.
 	sched.Stop()
+}
+
+// retryGitClone — o workspace não sincronizou no boot (repo errado, PAT ausente,
+// rede fora). Em vez de derrubar o processo, tentamos de novo em background com
+// backoff até 5 min. O operador conserta a config pela UI/regente-configure e o
+// GitOps se liga sozinho, sem reiniciar o serviço.
+func retryGitClone(g *storage.GitOps) {
+	delay := 15 * time.Second
+	const maxDelay = 5 * time.Minute
+	for {
+		time.Sleep(delay)
+		if err := g.EnsureClone(); err != nil {
+			log.Printf("[git] still not synced (%v) — next attempt in %s", err, delay)
+			if delay < maxDelay {
+				delay *= 2
+				if delay > maxDelay {
+					delay = maxDelay
+				}
+			}
+			continue
+		}
+		st := g.Status()
+		log.Printf("[git] recovered: %s@%s — GitOps is live (no restart needed)", st.Branch, st.ShortSHA)
+		return
+	}
 }
 
 func envOr(key, def string) string {

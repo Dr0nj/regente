@@ -35,6 +35,14 @@ if (-not $Token) {
 }
 if (-not $Server -or -not $Token) { Write-Host "Server and Token are required." -ForegroundColor Red; return }
 
+# Normaliza a URL: quem instala cola o endereco da UI (http://host:8080) muito mais
+# vezes que o endpoint do agente. http->ws / https->wss e completa o /ws/agent.
+if     ($Server -like "http://*")  { $Server = "ws://"  + $Server.Substring(7) }
+elseif ($Server -like "https://*") { $Server = "wss://" + $Server.Substring(8) }
+elseif ($Server -notlike "ws://*" -and $Server -notlike "wss://*") { $Server = "ws://$Server" }
+if ($Server -notlike "*/ws/agent") { $Server = $Server.TrimEnd('/') + "/ws/agent" }
+Write-Host "Server: $Server"
+
 # Só há binário Windows amd64 na release.
 if (-not [Environment]::Is64BitOperatingSystem) { Write-Host "Requires 64-bit Windows (amd64)." -ForegroundColor Red; return }
 $asset = "regente-agent_windows_amd64.exe"
@@ -62,4 +70,15 @@ Register-ScheduledTask -TaskName "RegenteAgent" -Action $action -Trigger $trigge
 Start-ScheduledTask -TaskName "RegenteAgent"
 
 Write-Host "OK - RegenteAgent installed and started (boot + auto-restart, as SYSTEM)." -ForegroundColor Green
+
+# Prova que o processo ficou de pe: uma URL/token errados aparecem aqui, nao so
+# na tela de Agentes 10 minutos depois.
+Start-Sleep -Seconds 3
+if (Get-Process regente-agent -ErrorAction SilentlyContinue) {
+  Write-Host "Process: running." -ForegroundColor Green
+} else {
+  Write-Host "Process: NOT running - most likely a wrong server URL or token." -ForegroundColor Yellow
+  Write-Host "Test it in the foreground to see the error:" -ForegroundColor Yellow
+  Write-Host "  & '$exe' -server $Server -token <token> -id $Id -caps $Caps"
+}
 Write-Host "Status:  Get-ScheduledTask RegenteAgent    |    Check that '$Id' is online under Settings -> Agents."

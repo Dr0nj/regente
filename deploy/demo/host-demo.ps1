@@ -2,7 +2,8 @@
   host-demo.ps1 — sobe a demo do Regente num link público pra amigos testarem a UI
   (criar E executar jobs), no seu PC, com:
     - servidor Go servindo o SPA (single-origin: UI+API+WS numa porta só)
-    - GitOps DIRETO no seu repo real (github.com/Dr0nj/regente-workspace)
+    - GitOps DIRETO no SEU repo de workspace (passe -GitRepo owner/name; sem ele a
+      demo roda offline, com as definitions só no disco local)
     - agente em CONTAINER Docker descartável (jobs rodam isolados, sem tocar sua máquina)
     - Cloudflare Tunnel (link https público, grátis, sem conta)
 
@@ -19,7 +20,7 @@
 param(
   [int]$Port = 9091,
   [string]$Token = "demo-" + -join ((48..57 + 97..122) | Get-Random -Count 12 | ForEach-Object { [char]$_ }),
-  [string]$GitRepo = "Dr0nj/regente-workspace",
+  [string]$GitRepo = "",   # owner/name do SEU workspace; vazio = demo offline
   [string]$GitHubToken = ""
 )
 
@@ -42,12 +43,17 @@ Get-Process regente-server -ErrorAction SilentlyContinue | Stop-Process -Force -
 docker rm -f regente-sandbox *>$null
 
 # --- 0) GitHub PAT (push direto no workspace) — reusa o salvo pelo launcher, senão pede.
-if (-not $GitHubToken) {
-  $saved = Join-Path $env:LOCALAPPDATA "regente-lab\github-token.txt"
-  if (Test-Path $saved) { $GitHubToken = (Get-Content $saved -Raw).Trim() }
-}
-if (-not $GitHubToken) {
-  $GitHubToken = Read-Host "Paste a GitHub PAT with PUSH permission on $GitRepo (Enter = read-only/dry-run)"
+# Sem -GitRepo a demo roda OFFLINE (não faz sentido pedir PAT nem apontar GitOps).
+if ($GitRepo) {
+  if (-not $GitHubToken) {
+    $saved = Join-Path $env:LOCALAPPDATA "regente-lab\github-token.txt"
+    if (Test-Path $saved) { $GitHubToken = (Get-Content $saved -Raw).Trim() }
+  }
+  if (-not $GitHubToken) {
+    $GitHubToken = Read-Host "Paste a GitHub PAT with PUSH permission on $GitRepo (Enter = read-only/dry-run)"
+  }
+} else {
+  Write-Host "No -GitRepo given: running the demo OFFLINE (definitions on local disk only)." -ForegroundColor DarkGray
 }
 
 # --- 1) Build do frontend (same-origin: @origin -> window.location.origin em runtime).
@@ -75,12 +81,13 @@ $srvArgs = @(
   "-spa-dir", $dist,
   "-workspace", (Join-Path $dataDir "ws-git"),
   "-db", (Join-Path $dataDir "regente.db"),
-  "-git-source", "https://github.com/$GitRepo.git",
   "-git-write-mode", "direct",
-  "-github-repo", $GitRepo,
   "-git-commit",
   "-api-token", $Token
 )
+if ($GitRepo) {
+  $srvArgs += @("-git-source", "https://github.com/$GitRepo.git", "-github-repo", $GitRepo)
+}
 if ($GitHubToken) { $srvArgs += @("-github-token", $GitHubToken) }
 $srv = Start-Process -FilePath (Join-Path $repo "regente-server.exe") -ArgumentList $srvArgs -PassThru
 Start-Sleep -Seconds 3

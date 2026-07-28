@@ -108,6 +108,40 @@ When you want the real thing, keep reading.
 
 ## 📦 Installation
 
+### Before you start (5 minutes, do this once)
+
+You need three things. None of them requires knowing Go, Node or Docker.
+
+1. **A Linux machine with systemd and root access** — any VPS (Ubuntu 22.04+, Debian 12+,
+   Rocky/Alma 9+) or a VM at home. 1 vCPU and 1 GB of RAM is enough to start. `curl` and `tar`
+   must be present (they usually are).
+2. **A port you can reach.** The server listens on **8080** by default. On a cloud VM you have to
+   open it in **two** places: the machine's firewall *and* the provider's security group /
+   firewall rules. If you plan to put it behind a domain with HTTPS, read
+   [`deploy/vps/`](deploy/vps/README.md) instead — there the port stays closed and nginx handles
+   443.
+3. **An empty GitHub repository for your workspace** — this is where your job definitions will
+   live. Create it on GitHub ("New repository", **no** README, **no** .gitignore — leave it
+   completely empty; private is fine) and keep two things at hand:
+   - its name as `owner/name`, e.g. `acme/regente-workspace`;
+   - a **Personal Access Token** with write access to it. Fine-grained: *Repository access →
+     only that repo*, *Permissions → Contents: Read and write*. Classic: the `repo` scope.
+     ([Create one here.](https://github.com/settings/tokens))
+
+> **The workspace repository is yours and is different in every installation.** Regente does not
+> ship a default one. On the first start the server writes the initial content into your empty
+> repository (`definitions/`, `.gitignore`, a README) and pushes it — you do not have to prepare
+> anything inside it. The clone lives in `/var/lib/regente/workspace`, so it survives service
+> restarts, machine reboots and binary upgrades; and because the repository is the source of
+> truth, a rebuilt machine recovers everything by cloning it again.
+>
+> You can also skip step 3 entirely: with no workspace repository configured, Regente runs
+> **offline** and keeps the definitions on the local disk only. You can point it at a repository
+> later — if the disk already has jobs and the repository is still empty, they become its first
+> commit.
+
+### Installing the server
+
 There are three ways to run the server and two ways to run an agent. Pick by what the machine
 should do.
 
@@ -121,8 +155,9 @@ Every option below comes in two flavours:
   the machine.** This is the easy path.
 - **From source** — you build it yourself. Needs Go 1.25+, plus Node 18+ if you want the UI.
 
-> **On Windows?** Every `deploy/` folder has an `install-windows.ps1` that registers a Scheduled
-> Task (starts at boot, restarts on failure). Run PowerShell **as Administrator**.
+> **On Windows?** [`server/deploy/`](server/deploy) and [`agent/deploy/`](agent/deploy) each have
+> an `install-windows.ps1` that registers a Scheduled Task (starts at boot, restarts on failure).
+> Run PowerShell **as Administrator**.
 
 ### Option 1 — server only (headless API)
 
@@ -155,6 +190,10 @@ cd server && CGO_ENABLED=0 go build -o regente-server .
 sudo ./deploy/install-linux.sh
 ```
 
+The installer ends by printing a health check and the next steps. If it says
+`Health: FAILED`, the server did not come up — `journalctl -u regente-server -n 50 --no-pager`
+says why.
+
 ### Option 3 — server + a local agent (single-box lab)
 
 The server **and** an agent on the same machine, so that box also executes jobs. In production
@@ -170,17 +209,39 @@ sudo SERVER=ws://localhost:8080/ws/agent TOKEN=<token> ID=$(hostname) \
 
 ### After installing the server (all options)
 
+**1. Configure it.** The guided script asks for the three things that matter — a strong token,
+your workspace repository (`owner/name`) and its PAT — and writes them to
+`/etc/regente/server.env`:
+
 ```bash
-sudo regente-configure                    # guided: strong token, GitHub PAT/repo, domain
-sudo systemctl restart regente-server
+sudo regente-configure
 ```
 
-Then open `http://<your-host>:8080` and log in with `admin` / `admin` — it will make you change
-the password. If you would rather configure it by hand, edit `/etc/regente/server.env`.
+It offers to restart the service at the end and then tells you whether GitOps actually
+connected. Leaving the repository blank is a valid answer: that is offline mode.
+
+**2. Open the port** — on a cloud VM, in the provider's security group *as well*:
+
+```bash
+sudo ufw allow 8080/tcp
+```
+
+**3. Open `http://<your-host>:8080`** and log in with `admin` / `admin` — it will make you change
+the password.
 
 > ⚠️ **`REGENTE_TOKEN` is admin-equivalent** — it bypasses the login entirely. Generate a strong
 > value and never leave it as `dev-token` or `change-me`. `regente-configure` generates one for
-> you.
+> you, and the server logs a loud warning at boot if it is still the example value.
+
+**If something is wrong with the workspace repository, the server still starts.** A typo in the
+repository name or a PAT without write access does not take the service down: it comes up, the
+UI is reachable, and the reason shows up both in the git badge (`⚠ not connected`) and in
+`GET /api/git/status` (field `error`). Only the daily is skipped until it connects (the log says
+`daily … skipped`). Recovery depends on what was wrong:
+
+- **transient** (GitHub down, network out) — the server retries on its own, nothing to do;
+- **missing or invalid PAT** — save it in Settings → GitHub and it applies immediately;
+- **wrong repository or branch** — `sudo regente-configure` and let it restart the service.
 
 Useful commands afterwards:
 
@@ -188,6 +249,17 @@ Useful commands afterwards:
 sudo systemctl restart regente-server     # apply a new binary or config (migrations run at boot)
 journalctl -u regente-server -f           # follow the logs
 ```
+
+### Your first job (2 minutes)
+
+1. **Settings → Agents → create a token**, then install an agent (next section). Or skip it: the
+   built-in **SERVER-AGENT** already runs `HTTP` jobs with no agent installed.
+2. **Design → New folder**, drop a job on the canvas, pick the type (`COMMAND` for a shell
+   command), fill in the command and press **Publish** — that becomes a commit in your workspace
+   repository.
+3. **Monitoring** shows today's run. Nothing there yet? The daily materializes jobs for the day;
+   use **Order Force** on the job to create an order right now.
+4. Check your GitHub repository: the YAML of what you just drew is in `definitions/`.
 
 ### Agents on the other machines (Linux · macOS · Windows)
 
@@ -218,6 +290,22 @@ irm https://github.com/Dr0nj/regente/releases/latest/download/install-agent-wind
 
 Create the **agent token** in Settings → Agents. Your fleet then shows up there, online. Building
 from source instead? Use [`agent/deploy/`](agent/deploy).
+
+The server address is the agent's WebSocket endpoint (`ws://host:8080/ws/agent`), but if you
+paste the UI address (`http://host:8080`) the installer converts it for you. Both installers
+check that the service is really up before they finish, and print the log if it is not.
+
+### When something does not work
+
+| Symptom | What it is | Fix |
+|---|---|---|
+| `curl … install.sh` gives 404 | that release does not carry the file | check <https://github.com/Dr0nj/regente/releases>; install from source (Option 1/2) meanwhile |
+| The page never loads | port closed | `sudo ufw allow 8080/tcp` **and** the provider's security group; test locally first: `curl http://127.0.0.1:8080/health` |
+| Installed from source, no UI, only API | the built SPA was not found | `cd app && VITE_REGENTE_SERVER_URL=@origin npm ci && npm run build`, then run the installer again (or pass `SPA_DIR=/full/path/to/app/dist`) |
+| Design says sessions are disabled | no workspace repository configured | `sudo regente-configure` and point it at your repository — Design needs GitOps |
+| The git badge says `⚠ not connected` | wrong repository, missing PAT, or PAT without write access | PAT: paste it in Settings → GitHub (immediate). Repository/branch: `sudo regente-configure` |
+| Nothing runs and the log says `WAIT AGENT` | no agent with that capability is online | install an agent on a machine (previous section) |
+| The agent installs but does not appear | wrong URL or token | the log tells which: `journalctl -u regente-agent -n 30` |
 
 ### A public link with HTTPS and a real domain
 

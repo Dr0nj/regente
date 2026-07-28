@@ -24,6 +24,7 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -40,6 +41,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
+	"github.com/go-git/go-git/v5/storage/memory"
 	"github.com/go-git/go-git/v5/utils/merkletrie"
 )
 
@@ -56,6 +58,10 @@ type GitOps struct {
 	drift     bool
 	remoteSHA string
 	driftErr  string
+	// Último erro de sincronização (clone/fetch/bootstrap). O boot não é fatal:
+	// o server sobe mesmo com o GitOps quebrado, e este campo é o que conta o
+	// PORQUÊ na UI (/api/git/status) em vez de sumir dentro do log.
+	lastErr string
 	// rebase abort state (replay linear nativo — ver RebaseBranch/AbortRebase)
 	rebaseOrig plumbing.Hash
 	rebaseRef  plumbing.ReferenceName
@@ -452,13 +458,27 @@ func (g *GitOps) IsRepo() bool {
 	return err == nil
 }
 
-// IsEmpty reports if workspace has no files (besides nothing).
+// IsEmpty reporta se o workspace não tem NENHUM arquivo — diretórios vazios não
+// contam. Isso importa porque o próprio server cria `<workspace>/definitions` no
+// boot: com a checagem antiga (len(entries)==0) o primeiro boot com o clone
+// falhando deixava a pasta para trás e todas as tentativas seguintes batiam no
+// guard de "not empty", ou seja, o retry NUNCA se recuperava sozinho.
 func (g *GitOps) IsEmpty() bool {
-	entries, err := os.ReadDir(g.workspace)
+	empty := true
+	err := filepath.WalkDir(g.workspace, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		empty = false
+		return filepath.SkipAll
+	})
 	if err != nil {
-		return true
+		return true // não conseguimos ler: trata como vazio (o clone decide)
 	}
-	return len(entries) == 0
+	return empty
 }
 
 // EnsureClone garante que o workspace é um clone do source/branch.
@@ -466,10 +486,26 @@ func (g *GitOps) IsEmpty() bool {
 // Comportamento:
 //   - Se IsRepo: fetch+reset --hard origin/branch.
 //   - Se vazio (não-repo): clone direto para dentro de workspace.
-//   - Se NÃO repo e NÃO vazio: erro (proteção contra perda de dados).
+//   - Se o remote está VAZIO (repo recém-criado no GitHub, o caso normal de quem
+//     acabou de instalar): faz o bootstrap — init + scaffold + commit + push.
+//   - Se NÃO repo e NÃO vazio: adota o conteúdo SE o remote estiver vazio
+//     (migração offline → GitOps); senão erro (proteção contra perda de dados).
+//
+// Registra o último erro em lastErr (exposto no /api/git/status) para que a UI
+// consiga dizer POR QUE o GitOps não está sincronizado — o boot não é mais fatal.
 func (g *GitOps) EnsureClone() error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	err := g.ensureCloneLocked()
+	if err != nil {
+		g.lastErr = err.Error()
+	} else {
+		g.lastErr = ""
+	}
+	return err
+}
+
+func (g *GitOps) ensureCloneLocked() error {
 	if g.source == "" {
 		return fmt.Errorf("git source not configured")
 	}
@@ -494,12 +530,35 @@ func (g *GitOps) EnsureClone() error {
 			}
 		}
 		if err := g.fetchAndResetLocked(repo); err != nil {
+			// Remote ainda vazio: o clone local já existe (bootstrap anterior cujo
+			// push não passou por falta de PAT). Completa o bootstrap publicando a
+			// branch — é isto que faz "configurei o token depois" funcionar.
+			if errors.Is(err, transport.ErrEmptyRemoteRepository) {
+				log.Printf("[git] remote %s is still empty — publishing the local workspace (branch %s)", g.source, g.branch)
+				if perr := g.pushLocked(repo, g.branch); perr != nil {
+					return fmt.Errorf("the remote is empty and the push failed (a GitHub PAT with 'repo'/contents:write is required): %w", perr)
+				}
+				if ferr := g.fetchLocked(repo, g.branch); ferr != nil {
+					return fmt.Errorf("fetch after publish: %w", ferr)
+				}
+				_ = g.writeLocalExcludesLocked()
+				return g.refreshSHA()
+			}
 			return err
 		}
 		_ = g.writeLocalExcludesLocked() // best-effort: nunca trackear SQLite DB
 		return g.refreshSHA()
 	}
 	if !g.IsEmpty() {
+		// Workspace com conteúdo e sem .git. Se o remote está VAZIO, este é o
+		// caminho "eu rodei offline primeiro e agora liguei o GitOps": adotamos
+		// o que está no disco como commit inicial. Com remote populado seguimos
+		// recusando — sobrescrever o disco com o clone perderia trabalho.
+		empty, probeErr := g.remoteIsEmptyLocked()
+		if probeErr == nil && empty {
+			log.Printf("[git] workspace %q has content and the remote is empty — adopting it as the first commit", g.workspace)
+			return g.bootstrapLocked()
+		}
 		return fmt.Errorf("workspace %q is not a git repo and not empty; refuse to clobber. Move files away or rm -rf and retry", g.workspace)
 	}
 	if err := os.MkdirAll(g.workspace, 0o755); err != nil {
@@ -513,9 +572,163 @@ func (g *GitOps) EnsureClone() error {
 		Tags:          git.NoTags,
 	})
 	if err != nil {
+		// Repo recém-criado no GitHub (sem nenhum commit): não há o que clonar —
+		// nós criamos o conteúdo inicial. É o caminho NORMAL de uma instalação nova.
+		if errors.Is(err, transport.ErrEmptyRemoteRepository) {
+			log.Printf("[git] remote %s is empty — bootstrapping the workspace (branch %s)", g.source, g.branch)
+			g.cleanWorkspaceLocked()
+			return g.bootstrapLocked()
+		}
+		// Branch inexistente no remote (ex.: o repo usa `master`, ou o nome foi
+		// digitado errado). Em vez de derrubar o boot, clonamos a branch default
+		// do repositório e passamos a segui-la.
+		if isMissingBranchErr(err) {
+			g.cleanWorkspaceLocked()
+			repo, derr := git.PlainClone(g.workspace, false, &git.CloneOptions{
+				URL:          g.source,
+				Auth:         g.auth(),
+				SingleBranch: false,
+				Tags:         git.NoTags,
+			})
+			if derr != nil {
+				return fmt.Errorf("git clone: %w (branch %q not found on the remote either)", derr, g.branch)
+			}
+			if head, herr := repo.Head(); herr == nil && head.Name().IsBranch() {
+				def := head.Name().Short()
+				log.Printf("[git] branch %q does not exist on %s — following the repository default branch %q instead (set REGENTE_GIT_BRANCH to change it)", g.branch, g.source, def)
+				g.branch = def
+			}
+			_ = g.writeLocalExcludesLocked()
+			return g.refreshSHA()
+		}
 		return fmt.Errorf("git clone: %w", err)
 	}
 	_ = g.writeLocalExcludesLocked() // best-effort: nunca trackear SQLite DB
+	return g.refreshSHA()
+}
+
+// isMissingBranchErr reconhece as várias formas com que o go-git reporta "essa
+// branch não existe no remote" (o erro não é tipado de forma única).
+func isMissingBranchErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, plumbing.ErrReferenceNotFound) || errors.Is(err, git.NoMatchingRefSpecError{}) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "reference not found") ||
+		strings.Contains(msg, "couldn't find remote ref") ||
+		strings.Contains(msg, "no matching ref")
+}
+
+// cleanWorkspaceLocked zera o diretório do workspace. Só é chamado nos caminhos
+// em que ele estava VAZIO antes da tentativa de clone (o PlainClone pode deixar
+// um .git parcial para trás) — nunca com conteúdo do usuário dentro.
+func (g *GitOps) cleanWorkspaceLocked() {
+	_ = os.RemoveAll(g.workspace)
+	_ = os.MkdirAll(g.workspace, 0o755)
+}
+
+// remoteIsEmptyLocked pergunta ao remote se ele tem alguma ref, sem clonar
+// (equivalente a `git ls-remote`). Erro de rede/credencial volta como erro —
+// o caller decide (nunca tratamos "não sei" como "vazio").
+func (g *GitOps) remoteIsEmptyLocked() (bool, error) {
+	rem := git.NewRemote(memory.NewStorage(), &config.RemoteConfig{
+		Name: "origin",
+		URLs: []string{g.source},
+	})
+	refs, err := rem.List(&git.ListOptions{Auth: g.auth()})
+	if err != nil {
+		if errors.Is(err, transport.ErrEmptyRemoteRepository) {
+			return true, nil
+		}
+		return false, err
+	}
+	return len(refs) == 0, nil
+}
+
+// scaffoldFiles — conteúdo mínimo de um workspace novo. Um repo vazio no GitHub
+// não tem branch nenhuma; o primeiro commit é o que cria `main` lá.
+var scaffoldFiles = map[string]string{
+	"definitions/.gitkeep": "",
+	".gitignore": `# regente: artefatos locais do servidor (nunca versionar)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+`,
+	"README.md": `# Regente workspace
+
+This repository is the **source of truth** for the jobs of a Regente installation.
+It was bootstrapped automatically by the server on its first start.
+
+- ` + "`definitions/`" + ` — one YAML file per job. Edit them here or in the Design
+  screen (Publish writes back to this repository).
+- Everything is reviewable and revertible: a change is a commit, and a rollback
+  is a revert.
+
+Do not commit databases or secrets here.
+`,
+}
+
+// bootstrapLocked cria o repositório local (init + scaffold + commit) e tenta
+// publicar a branch no remote. Sem credencial o push falha de propósito com
+// mensagem explícita — o workspace local continua utilizável e o próximo
+// EnsureClone (após configurar o PAT) completa o bootstrap.
+func (g *GitOps) bootstrapLocked() error {
+	repo, err := git.PlainInit(g.workspace, false)
+	if err != nil {
+		if errors.Is(err, git.ErrRepositoryAlreadyExists) {
+			repo, err = g.openRepo()
+		}
+		if err != nil {
+			return fmt.Errorf("git init: %w", err)
+		}
+	}
+	if _, err := repo.CreateRemote(&config.RemoteConfig{Name: "origin", URLs: []string{g.source}}); err != nil &&
+		!errors.Is(err, git.ErrRemoteExists) {
+		return fmt.Errorf("git remote add: %w", err)
+	}
+	// HEAD na branch pedida ANTES do commit: o go-git inicializa em `master` e o
+	// primeiro commit é o que cria a branch de verdade.
+	if err := repo.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, branchRefName(g.branch))); err != nil {
+		return fmt.Errorf("set HEAD to %s: %w", g.branch, err)
+	}
+	for rel, content := range scaffoldFiles {
+		p := filepath.Join(g.workspace, filepath.FromSlash(rel))
+		if _, err := os.Stat(p); err == nil {
+			continue // não sobrescreve nada que já exista no disco
+		}
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			return err
+		}
+	}
+	_ = g.writeLocalExcludesLocked() // antes do add: a DB local nunca entra no commit
+	wt, err := g.worktree(repo)
+	if err != nil {
+		return err
+	}
+	if err := wt.AddWithOptions(&git.AddOptions{All: true}); err != nil {
+		return fmt.Errorf("git add: %w", err)
+	}
+	sig := &object.Signature{Name: "regente", Email: "bot@regente.local", When: time.Now()}
+	if _, err := wt.Commit("chore: bootstrap regente workspace", &git.CommitOptions{
+		Author: sig, Committer: sig, AllowEmptyCommits: true,
+	}); err != nil {
+		return fmt.Errorf("git commit: %w", err)
+	}
+	if err := g.pushLocked(repo, g.branch); err != nil {
+		return fmt.Errorf("workspace bootstrapped locally, but the push failed (a GitHub PAT with 'repo'/contents:write is required): %w", err)
+	}
+	log.Printf("[git] workspace bootstrapped and pushed to %s (branch %s)", g.source, g.branch)
+	if err := g.fetchLocked(repo, g.branch); err != nil {
+		return fmt.Errorf("fetch after bootstrap: %w", err)
+	}
 	return g.refreshSHA()
 }
 
@@ -531,8 +744,10 @@ func (g *GitOps) SyncFromRemote() error {
 		return err
 	}
 	if err := g.fetchAndResetLocked(repo); err != nil {
+		g.lastErr = err.Error() // visível no /api/git/status, não só no log
 		return err
 	}
+	g.lastErr = ""
 	// refreshSHA must run BEFORE assigning remoteSHA; otherwise we copy the
 	// stale lastSHA from before the fetch+reset (regression observed in
 	// /api/git/sync response: sha updated but remoteSha still old).
@@ -591,6 +806,10 @@ type Status struct {
 	Drift     bool   `json:"drift"`               // true if remote ahead of local
 	RemoteSHA string `json:"remoteSha,omitempty"` // remote HEAD (if drift check ran)
 	DriftErr  string `json:"driftErr,omitempty"`  // last drift check error (transient)
+	// Error — última falha de sincronização (clone/fetch/bootstrap). Vazio = ok.
+	// Configured=true com Error preenchido = "GitOps configurado, mas NÃO ligado":
+	// o server está no ar e a UI mostra o motivo (repo errado, PAT faltando…).
+	Error string `json:"error,omitempty"`
 }
 
 func (g *GitOps) Status() Status {
@@ -619,6 +838,7 @@ func (g *GitOps) Status() Status {
 		Drift:      g.drift,
 		RemoteSHA:  g.remoteSHA,
 		DriftErr:   g.driftErr,
+		Error:      g.lastErr,
 	}
 }
 

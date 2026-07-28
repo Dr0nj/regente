@@ -14,6 +14,12 @@ export interface GitStatus {
   drift?: boolean;
   remoteSha?: string;
   driftErr?: string;
+  /**
+   * Última falha de sincronização do workspace (clone/fetch/bootstrap). O server
+   * não morre mais quando o repo/PAT está errado: sobe assim mesmo, conta o
+   * motivo aqui e tenta de novo em background. É o que o badge mostra.
+   */
+  error?: string;
   // Token via UI — estado de auth para push/PR
   hasToken?: boolean;
   authMode?: "token" | "none" | string;

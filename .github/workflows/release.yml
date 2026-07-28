@@ -1,9 +1,17 @@
 name: Release
 
-# Dispara ao empurrar uma tag de versão, ex.: git tag v0.1.0 && git push --tags
+# Dispara ao empurrar uma tag de versão, ex.: git tag v0.2.0 && git push --tags
+# workflow_dispatch permite REPUBLICAR os assets de uma tag existente sem criar
+# outra versão (foi assim que a v0.1.0 ficou com só 2 dos 5 alvos anexados).
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag existente a (re)publicar, ex.: v0.2.0"
+        required: true
+        type: string
 
 permissions:
   contents: write # necessário para criar o GitHub Release e anexar binários
@@ -16,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -36,6 +46,10 @@ jobs:
     needs: spa
     runs-on: ubuntu-latest
     strategy:
+      # fail-fast=false: um alvo quebrado não deve cancelar os outros — mas o
+      # publish só roda se TODOS passarem (needs: build), então uma release
+      # nunca sai pela metade.
+      fail-fast: false
       matrix:
         include:
           - { goos: linux, goarch: amd64, ext: "", bundle: true }
@@ -45,6 +59,8 @@ jobs:
           - { goos: darwin, goarch: arm64, ext: "", bundle: false }
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
@@ -87,17 +103,71 @@ jobs:
           cp server/deploy/install-linux.sh server/deploy/configure.sh server/deploy/regente-server.service server/deploy/server.env.example "stage/$B/deploy/"
           tar -C stage -czf "dist/$B.tar.gz" "$B"
 
-      # Scripts soltos no release (uma vez, no job amd64): install do agente + o
-      # one-liner do server (install.sh) reachable em .../releases/latest/download/.
-      - name: Stage install scripts
-        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
-        run: |
-          cp agent/deploy/install-windows.ps1 agent/deploy/install-linux.sh dist/
-          cp agent/deploy/install-agent.sh agent/deploy/install-agent-windows.ps1 dist/
-          cp install.sh dist/install.sh
+      # Cada alvo entrega seus arquivos como artifact; quem publica é o job único
+      # abaixo. Antes, os 5 jobs chamavam action-gh-release em paralelo contra a
+      # MESMA release — daí saírem releases incompletas.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
 
-      - name: Attach to release
+  publish:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Download every build artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+
+      # Scripts de instalação soltos na release: são o que o README manda baixar
+      # de .../releases/latest/download/ — sem eles o caminho "fácil" dá 404.
+      - name: Stage install scripts
+        run: |
+          cp install.sh dist/install.sh
+          cp agent/deploy/install-agent.sh agent/deploy/install-agent-windows.ps1 dist/
+
+      # Guarda-chuva contra release incompleta: falha ANTES de publicar se faltar
+      # qualquer arquivo que a documentação promete.
+      - name: Verify the release payload
+        run: |
+          set -euo pipefail
+          required="
+            install.sh
+            install-agent.sh
+            install-agent-windows.ps1
+            regente-server_linux_amd64.tar.gz
+            regente-server_linux_arm64.tar.gz
+            regente-server_linux_amd64
+            regente-server_linux_arm64
+            regente-server_windows_amd64.exe
+            regente-server_darwin_amd64
+            regente-server_darwin_arm64
+            regente-agent_linux_amd64
+            regente-agent_linux_arm64
+            regente-agent_windows_amd64.exe
+            regente-agent_darwin_amd64
+            regente-agent_darwin_arm64
+          "
+          missing=0
+          for f in $required; do
+            if [ ! -s "dist/$f" ]; then echo "MISSING: $f"; missing=1; fi
+          done
+          [ "$missing" = 0 ] || { echo "release payload incomplete — refusing to publish"; exit 1; }
+          (cd dist && sha256sum * > SHA256SUMS)
+          ls -la dist
+
+      - name: Publish
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
           files: dist/*
           fail_on_unmatched_files: true
