@@ -9,8 +9,10 @@
     <a href="#-installation">Installation</a> ·
     <a href="#-what-it-can-do">Capabilities</a> ·
     <a href="#-architecture">Architecture</a> ·
-    <a href="#-development">Development</a>
+    <a href="#-development">Development</a> ·
+    <a href="#-license">License</a>
   </p>
+  <p><a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License: Apache 2.0" /></a></p>
 </div>
 
 ---
@@ -546,6 +548,15 @@ and it is deliberately kept out of the published documentation site.
 For the **story of the project** — the problem, the architectural bets, classic enterprise
 semantics at the edges, the scale validated at 1M jobs/day and the lessons learned — read the
 **[case study](docs/case-study.en.md)**.
+
+---
+
+## 📄 License
+
+Regente is released under the **[Apache License 2.0](LICENSE)** — you may use, modify and
+distribute it, including commercially and inside closed-source products, as long as you keep the
+copyright notice and state your changes. The license also grants the patent rights needed to run
+it, and it does not extend to the project's name or logo (see [`NOTICE`](NOTICE)).
 
 ---
 

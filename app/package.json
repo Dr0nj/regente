@@ -36,9 +36,8 @@
     "typescript-eslint": "^8.58.0",
     "vite": "^8.0.4"
   },
-  "description": "This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.",
-  "main": "eslint.config.js",
+  "description": "regente-web — the Regente frontend (Monitoring and the Design canvas).",
   "keywords": [],
-  "author": "",
-  "license": "ISC"
+  "author": "Thiago Ramos Castro",
+  "license": "Apache-2.0"
 }
