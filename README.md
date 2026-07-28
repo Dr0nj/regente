@@ -135,10 +135,20 @@ You need three things. None of them requires knowing Go, Node or Docker.
 > restarts, machine reboots and binary upgrades; and because the repository is the source of
 > truth, a rebuilt machine recovers everything by cloning it again.
 >
+> **Already have a workspace repository?** Point the installation at it and everything comes
+> back: the folder structure, the job definitions, their conditions and the per-folder layout.
+> That is the ordinary path for moving to a new machine or reinstalling — the server clones the
+> repository and the next daily materializes those jobs. Nothing has to be prepared by hand, and
+> the branch does not have to be `main` (if the configured branch does not exist, the server
+> follows the repository's default and says so in the log). What does **not** come from the
+> repository is the runtime state — users, agent tokens and the run history live in the database;
+> to carry those over, back up and restore it ([DR and backup](docs/dr-backup.md)).
+>
 > You can also skip step 3 entirely: with no workspace repository configured, Regente runs
 > **offline** and keeps the definitions on the local disk only. You can point it at a repository
 > later — if the disk already has jobs and the repository is still empty, they become its first
-> commit.
+> commit. If **both** have content, the server refuses to overwrite either side and tells you the
+> two ways out (keep the repository, or publish the disk) — it never picks for you.
 
 ### Installing the server
 

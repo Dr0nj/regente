@@ -568,7 +568,22 @@ func (g *GitOps) ensureCloneLocked() error {
 			log.Printf("[git] workspace %q has content and the remote is empty — adopting it as the first commit", g.workspace)
 			return g.bootstrapLocked()
 		}
-		return fmt.Errorf("workspace %q is not a git repo and not empty; refuse to clobber. Move files away or rm -rf and retry", g.workspace)
+		if probeErr != nil {
+			// Não sabemos o estado do remote (rede/credencial). Nunca tratar
+			// "não sei" como "vazio": adotar o disco aqui poderia sobrescrever
+			// um repositório cheio no primeiro push.
+			return fmt.Errorf("workspace %q already has job definitions on disk and the repository %s could not be read (%v) — refusing to touch either side until the repository answers",
+				g.workspace, g.source, probeErr)
+		}
+		// Os dois lados têm conteúdo: não há merge automático seguro (qual é a
+		// fonte da verdade?). A mensagem tem de dizer o que FAZER — quem instala
+		// não vai adivinhar, e este é o caminho de quem rodou offline primeiro e
+		// depois apontou pro repo que já usava.
+		return fmt.Errorf("workspace %q already has job definitions on disk and the repository %s is not empty — refusing to overwrite either side. Pick one: "+
+			"(a) keep what is in the repository — move the local copy aside and restart: "+
+			"sudo mv %s %s.local-backup && sudo systemctl restart regente-server; or "+
+			"(b) keep what is on disk — push it to the repository yourself first, or point the config at an EMPTY repository, which publishes the disk automatically",
+			g.workspace, g.source, g.workspace, g.workspace)
 	}
 	if err := os.MkdirAll(g.workspace, 0o755); err != nil {
 		return err

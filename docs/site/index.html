@@ -211,10 +211,19 @@ repository (<code>definitions/</code>, <code>.gitignore</code>, a README) and pu
 anything inside it. The clone lives in <code>/var/lib/regente/workspace</code>, so it survives service
 restarts, machine reboots and binary upgrades; and because the repository is the source of
 truth, a rebuilt machine recovers everything by cloning it again.</p>
+<p><strong>Already have a workspace repository?</strong> Point the installation at it and everything comes
+back: the folder structure, the job definitions, their conditions and the per-folder layout.
+That is the ordinary path for moving to a new machine or reinstalling — the server clones the
+repository and the next daily materializes those jobs. Nothing has to be prepared by hand, and
+the branch does not have to be <code>main</code> (if the configured branch does not exist, the server
+follows the repository's default and says so in the log). What does <strong>not</strong> come from the
+repository is the runtime state — users, agent tokens and the run history live in the database;
+to carry those over, back up and restore it (<a href="dr-backup.html">DR and backup</a>).</p>
 <p>You can also skip step 3 entirely: with no workspace repository configured, Regente runs
 <strong>offline</strong> and keeps the definitions on the local disk only. You can point it at a repository
 later — if the disk already has jobs and the repository is still empty, they become its first
-commit.</p>
+commit. If <strong>both</strong> have content, the server refuses to overwrite either side and tells you the
+two ways out (keep the repository, or publish the disk) — it never picks for you.</p>
 </blockquote>
 <h3 id="installing-the-server">Installing the server</h3>
 <p>There are three ways to run the server and two ways to run an agent. Pick by what the machine

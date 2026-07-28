@@ -1177,6 +1177,22 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
            faz o bootstrap; e pushLocked falha explicitamente se não há o que enviar.
        Também: `regente-configure` morria no EOF do stdin (set -e) DEPOIS de gravar a
        config e ANTES de avisar do restart.
+✅ VA-10 · Repo POPULADO (migração) validado em container — pergunta do usuário: "numa
+       migração vão querer apontar pro GitHub que já havia sido usado, isso é aceitável?".
+       É: máquina NOVA (DB e workspace zerados) + repo de uma instalação anterior → clone →
+       daily materializou os 2 jobs → agente instalado da release → AMBOS rodaram OK, com a
+       condição extracao-TO-carga produzida e o dependente liberado; a folder e o override
+       de grade do .regente-folder.yaml vieram junto. Sub-casos provados: trocar de repo
+       A→B (o disco fica só com o B, sem resto do A), repo com branch `master` enquanto a
+       config pede `main` (segue a default do repositório) e offline-primeiro + repo
+       populado (recusa preservando os DOIS lados). Só a MENSAGEM dessa recusa era um beco
+       sem saída ("Move files away or rm -rf") → reescrita com as duas saídas concretas
+       (mv + restart, ou publicar o disco / apontar pra repo vazio) e validada seguindo-a
+       ao pé da letra: recupera, e o trabalho offline fica em workspace.local-backup.
+       Probe do remote que FALHA ganhou mensagem própria — "não sei" nunca vira "vazio"
+       (adotar o disco ali poderia sobrescrever um repo cheio no primeiro push). README
+       ganhou o parágrafo do repo já existente, incluindo o que NÃO vem do Git
+       (users/tokens/histórico moram na DB → docs/dr-backup.md).
 ```
 
 > **Provado nesse container** (release v0.2.0 baixada do GitHub, nada preparado à mão):
@@ -1186,6 +1202,7 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > `install-agent.sh` com `http://host:8080` vira `ws://host:8080/ws/agent`, token em
 > `EnvironmentFile` 0600, agente **online** na frota · job commitado no workspace + Order
 > Force → **agente executa, OK, exit 0**, output correto na API.
+
 
 > **Releases:** `v0.2.0` = a primeira COMPLETA (16 assets). `v0.2.1` = fix do VA-9, revalidada em
 > container NOVO do zero: install pelo one-liner → repo errado (serviço no ar, **sem `.git` parcial**)

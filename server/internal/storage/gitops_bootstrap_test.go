@@ -156,11 +156,21 @@ func TestEnsureClone_NonEmptyRemote_StillRefusesToClobber(t *testing.T) {
 	if err == nil {
 		t.Fatal("EnsureClone should refuse a non-empty workspace against a populated remote")
 	}
-	if !strings.Contains(err.Error(), "refuse to clobber") {
+	if !strings.Contains(err.Error(), "refusing to overwrite") {
 		t.Errorf("unexpected error: %v", err)
+	}
+	// A mensagem é o único caminho de saída do operador: tem de trazer as DUAS
+	// opções concretas, não só "recusei".
+	for _, want := range []string{"mv ", ".local-backup", "EMPTY repository"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error does not tell the operator what to do (missing %q): %v", want, err)
+		}
 	}
 	if g.Status().Error == "" {
 		t.Error("status.Error should carry the reason the workspace is not synced")
+	}
+	if !exists(filepath.Join(ws, "definitions", "job-a.yaml")) {
+		t.Error("the local definition was touched — refusing must never destroy either side")
 	}
 }
 
