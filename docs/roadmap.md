@@ -1187,6 +1187,10 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > `EnvironmentFile` 0600, agente **online** na frota · job commitado no workspace + Order
 > Force → **agente executa, OK, exit 0**, output correto na API.
 
+> **Releases:** `v0.2.0` = a primeira COMPLETA (16 assets). `v0.2.1` = fix do VA-9, revalidada em
+> container NOVO do zero: install pelo one-liner → repo errado (serviço no ar, **sem `.git` parcial**)
+> → config corrigida → **bootstrap sozinho**, sem `rm -rf` e sem restart manual extra.
+
 ## 📜 Changelog de entregas
 
 > Log cronológico (mais recente primeiro) de tudo que foi entregue, com o "porquê" e os
