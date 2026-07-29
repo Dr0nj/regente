@@ -103,6 +103,23 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
   **Revisado 2026-07-21:** versões **PT + EN** (principal e curta), teaser do `AI_AGENT`
   sempre como ROADMAP (nunca como entregue), texto alinhado ao modelo vivo (carry-over
   por ODAT · condições AND/OR) e nota perfil-pessoal × company page.
+  **Revisado 2026-07-28** (auditoria a pedido do usuário, "confere o case study pra
+  postar"): o texto não tinha **um único link clicável** (o rodapé usava link relativo,
+  que no LinkedIn vira texto morto) e ignorava as duas entregas mais recentes. Agora:
+  TL;DR abre pelo número (1M jobs/dia num VPS de US$5), assume que o projeto é **solo**
+  e leva repositório + site; §7 ganhou o **licenciamento Apache 2.0** com o argumento de
+  jurídico corporativo; §8 virou **a primeira instalação REAL** (VPS pago, domínio, TLS —
+  instalação limpa e nove furos mesmo assim, três narrados) e rendeu a **7ª lição, "o que
+  o teste não roda, apodrece"**; §9 (`AI_AGENT`, não entregue) cortada pela metade pra não
+  parecer vaporware; números recontados (**460 testes em 103 arquivos**). Os 4 posts
+  também: mesma correção de números, parágrafo do VPS real, Apache 2.0 — e o `AI_AGENT`
+  encurtado porque o EN tinha passado de **3.057 caracteres**, acima do teto de 3.000 do
+  feed (agora PT 2.850 · EN 2.924). **Gotcha que vale pra qualquer publicação: o LinkedIn
+  não interpreta markdown em lugar nenhum** — `##`, `**`, crase e `-` colam literais no
+  editor de artigo E no post, então o texto tem que ir limpo e o Heading é aplicado à mão.
+  Prints do produto capturados pra acompanhar (dia batch de 16 jobs em 4 folders, com
+  OK/FAIL/WAIT COND/WAIT AGENT/CONFIRM/HELD na mesma tela, o "Why not?" com root cause,
+  o pool de condições, tema claro e a referência de API) + capa 1920×1080 do artigo.
 - [ ] **Z (publicação)** — **AÇÃO MANUAL SUA** (decisão 2026-07-21: o case study vira
   **ARTIGO no LinkedIn** — PT `docs/case-study.md` + EN `docs/case-study.en.md`, ambos
   revisados e paste-ready, sem tabelas): publicar os 2 artigos, depois o **post do

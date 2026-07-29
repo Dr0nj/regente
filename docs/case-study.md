@@ -1,13 +1,14 @@
 # Case study — Regente: um orquestrador de jobs classe enterprise, Git-nativo, do zero
 
-> **TL;DR.** O Regente é um orquestrador de workloads batch no espírito dos orquestradores
-> enterprise clássicos —
-> daily imutável, dependências com condições, calendários, recursos, Confirm, forecast —
-> construído do zero como monorepo Go + React, com **Git como fonte de verdade** das
-> definições. Validado ao vivo com **1.000.000 de jobs/dia** (materialização em 17s,
-> summary em 51ms), roda de um único binário num VPS de US$5 até HA multi-nó com Postgres,
-> e expõe o plano de controle a agentes de IA via **MCP (22 tools)**. ~47k linhas de Go,
-> ~24k de TypeScript, 456 testes.
+> **TL;DR.** **1.000.000 de jobs/dia rodando num VPS de US$5** — daily materializada em
+> 17s, summary do dia em 51ms. O Regente é um orquestrador de workloads batch no espírito
+> dos orquestradores enterprise clássicos — daily imutável, dependências com condições,
+> calendários, recursos, Confirm, forecast — que eu construí **sozinho, do zero**, como
+> projeto pessoal: um monorepo Go + React com **Git como fonte de verdade** das
+> definições. Escala do binário único até HA multi-nó com Postgres, e expõe o plano de
+> controle a agentes de IA via **MCP (22 tools)**. ~47k linhas de Go, ~24k de TypeScript,
+> 460 testes. Aberto sob Apache 2.0 — código em **github.com/Dr0nj/regente**,
+> documentação em **dr0nj.github.io/regente**.
 
 ---
 
@@ -120,7 +121,7 @@ estoura float32 acima de ~16,7M px — detalhe que só aparece com 1M de linhas)
 - **Panic-recovery** em todo ponto de entrada do scheduler; watchdog de RUNNING preso;
   self-monitoring (R7) que alerta pelos próprios canais do produto.
 - **Backup online** (`-backup` = VACUUM INTO), DR documentado, retenção/archives com GC.
-- **456 testes Go** — inclusive baterias exaustivas de calendário (dois caminhos de
+- **460 testes Go** — inclusive baterias exaustivas de calendário (dois caminhos de
   "dia útil especial" têm que concordar dia a dia por um mês inteiro) e um oráculo de
   forecast escrito à mão, independente do código que ele valida.
 
@@ -131,7 +132,17 @@ export a SIEM, tokens por agente, secrets via provider (env/arquivo — o PAT do
 nunca precisa persistir em claro no state store), sandbox de execução para agentes
 multi-tenant (container sem capabilities, sem mounts, uid dedicado).
 
-## 8. Deploy de 1 caixa (o teste ácido)
+E o item menos técnico da lista, que era o que realmente barrava tudo: **licença**. O
+repositório ficou público por meses sem `LICENSE` — e sem licença vale o direito autoral
+padrão, "todos os direitos reservados": qualquer um podia ler, ninguém podia legalmente
+usar. Jurídico de banco ou seguradora — exatamente o público-alvo declarado — barra
+dependência sem licença antes de qualquer POC. Hoje é **Apache 2.0**, escolhida em cima
+de MIT pela **concessão explícita de patente** e pela cláusula de marca: é a norma do
+ecossistema Go/infra (Kubernetes, Prometheus) e passa em revisão jurídica corporativa sem
+discussão. Copyleft foi descartado de propósito — espanta adoção corporativa, que é
+justamente o gargalo do projeto.
+
+## 8. Deploy de 1 caixa — e a primeira instalação REAL (o teste ácido)
 
 `curl … | sudo bash` num VPS Linux: baixa o bundle da release (binário + SPA + deploy),
 registra systemd, serve UI+API+WS numa origem, `regente-configure` guia token forte +
@@ -139,21 +150,48 @@ PAT via secrets provider, nginx+certbot dão TLS com renovação. O mesmo produt
 HA com Postgres roda inteiro numa máquina de US$5 — essa amplitude era um objetivo, não
 um acidente.
 
+Só que "tem instalador, e o smoke test passa" não é a mesma coisa que "instala". Em
+2026-07-28 eu instalei num VPS pago de verdade: Ubuntu 24.04, domínio próprio, DNS no
+registrador, certificado do Let's Encrypt. **A instalação em si passou limpa — e mesmo
+assim apareceram nove furos.** O padrão entre eles é a lição inteira: *todos* estavam
+FORA da fronteira do que o smoke test rodava. Ele provava install + configure +
+persistência, e não tocava em três coisas — a borda (nginx/TLS/DNS), a entrada **colada**
+num terminal, e o primeiro dia de operação.
+
+Os três que mais doeram:
+
+- **O terminal corrompeu o PAT.** Colar num terminal em modo bracketed-paste entrega
+  `\e[200~<texto>\e[201~` ao `read` — e com `-s` (silencioso) nada disso aparece na tela.
+  O escape foi junto pro `server.env`, o **systemd descartou a linha inteira** do
+  EnvironmentFile, e o sintoma que chegou até mim foi `git clone: authentication
+  required: Repository not found` — três saltos de distância da causa, e com cara de
+  problema de permissão no GitHub.
+- **A daily carimbou o dia com zero jobs.** Ela rodou antes de o GitOps conectar,
+  materializou 0 instances e marcou a data como processada. Dali em diante o dia estava
+  "feito": nem com o clone pronto o board voltava. O que o operador vê é "instalei e
+  subiu sem job nenhum".
+- **Reinstalar por cima não atualizava.** É o caminho de upgrade que o próprio README
+  manda usar, e `systemctl enable --now` só INICIA unit parada — numa unit já ativa, o
+  start é no-op. O binário novo ia pro disco e o processo ANTIGO seguia rodando: o
+  operador reinstalava, via tudo "ok" na tela, e nada mudava.
+
+Os nove foram corrigidos — e o smoke test **cresceu para cobrir a borda**: sobe nginx de
+verdade no container, aplica o conf real, prova o circuito com Host forjado (proxy, UI,
+API autenticada, headers de hardening) e verifica que `deploy/vps` existe na máquina —
+exatamente a asserção que teria pego o primeiro furo antes de mim.
+
 ## 9. O próximo passo: IA que não sai do perímetro *(roadmap, spec pronta)*
 
 O público de orquestração enterprise vive em ambiente regulado — bancos, seguradoras,
-utilities — onde
-sysout, logs e dados de host **não podem sair do perímetro**. Todo scheduler "com IA"
-do mercado manda esses dados pra uma API de nuvem; o próximo jobType do Regente, o
-`AI_AGENT`, faz o inverso: a LLM roda **no mesmo host do agente** (Ollama/llama.cpp/
-vLLM), analisa sysout e logs ali mesmo, e o server recebe só o veredito — nenhum dado
-viaja. O prompt é parte da definição, então **congela no snapshot imutável da ordem**:
-o prompt exato que rodou fica auditável pra sempre, e Confirm, conditions, SLA, RBAC e
-audit trail funcionam sem uma linha nova, porque `AI_AGENT` é um jobType como outro
-qualquer. A primeira fase é análise-only, **sem tools** — um prompt injetado no máximo
-produz um relatório errado, nunca um comando executado. Caso de fábrica: RCA automático
-quando um job falha, com saída validada por JSON Schema virando variáveis para os
-sucessores.
+utilities — onde sysout, logs e dados de host **não podem sair do perímetro**. Todo
+scheduler "com IA" do mercado manda esses dados pra uma API de nuvem; o próximo jobType
+do Regente, o `AI_AGENT`, faz o inverso: a LLM roda **no mesmo host do agente**
+(Ollama/llama.cpp/vLLM), analisa sysout e logs ali mesmo, e o server recebe só o
+veredito — nenhum dado viaja. Como `AI_AGENT` é um jobType igual aos outros, Confirm,
+conditions, SLA, RBAC e audit trail funcionam sem uma linha nova, e o prompt — que é
+parte da definição — **congela no snapshot imutável da ordem**, auditável pra sempre.
+A primeira fase é análise-only, **sem tools**: um prompt injetado no máximo produz um
+relatório errado, nunca um comando executado.
 
 ## 10. Lições que valem para qualquer sistema
 
@@ -172,21 +210,28 @@ sucessores.
    arquitetura.
 6. **Teste contra um oráculo, não contra a própria função.** As baterias de calendário
    pegaram divergências reais que testes espelho jamais veriam.
+7. **O que o teste não roda, apodrece.** Nove furos numa instalação que o smoke test
+   dava como verde — e todos exatamente onde ele não olhava. A fronteira da sua suíte
+   é a fronteira da sua confiança; fora dela você não tem software testado, tem
+   suposição com badge verde.
 
 ## 11. Números do projeto
 
 - **Código:** ~47k linhas Go (server+agent) · ~24k linhas TS/TSX (UI).
-- **Testes:** 456 funções de teste Go em 102 arquivos + validações E2E ao vivo.
+- **Testes:** 460 funções de teste Go em 103 arquivos + validações E2E ao vivo.
 - **Executores:** COMMAND · SCRIPT · HTTP/REST · SSH agentless · DATABASE · FILE_WATCH
   · MFT · WASM · K8s · Lambda · Batch · Glue · Step Functions · Cloud Run.
 - **Escala:** 1M jobs/dia validado ao vivo (write 17s · summary 51ms · UI virtualizada).
 - **Deploy:** binário único (SQLite) → HA multi-nó (Postgres + leader election) →
-  serverless portátil (tick externo).
+  serverless portátil (tick externo) — instalado e operando num VPS público real.
 - **Interface:** UI React (Design/Monitoring), 17 temas, CLI, OpenAPI, MCP (22 tools).
+- **Licença:** Apache 2.0 (com concessão explícita de patente).
+- **Código:** github.com/Dr0nj/regente · **Documentação:** dr0nj.github.io/regente
 
 ---
 
 *Escrito em 2026-07-13, ao fechar a Fase Z do roadmap; revisado em 2026-07-21 (condições
-E/OU e carry-over por data de origem no lugar dos modelos aposentados · números
-atualizados · seção AI_AGENT · formato pronto pra artigo, sem tabelas). Detalhes de cada
-entrega, com datas e commits, em [`docs/roadmap.md`](roadmap.md).*
+E/OU e carry-over por data de origem) e em 2026-07-28 (primeira instalação real em VPS
+público e os nove furos que ela achou · licenciamento Apache 2.0 · números recontados).
+Detalhes de cada entrega, com datas e commits, no roadmap do repositório:
+github.com/Dr0nj/regente*

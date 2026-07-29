@@ -50,19 +50,20 @@ com permissão, agir.
 🔹 **Próximo no roadmap: IA que não tira dado do perímetro** — um jobType `AI_AGENT`
 (spec pronta): a LLM roda **no mesmo host do agente** (Ollama/llama.cpp/vLLM), analisa
 sysout e logs ali mesmo e o server recebe só o veredito — nada sai da sua máquina, e é
-literal. O prompt congela no snapshot imutável da ordem (auditável pra sempre) e a
-primeira fase é análise-only, sem tools: um prompt injetado no máximo gera um relatório
-errado, nunca um comando executado. Caso de fábrica: RCA automático quando um job falha.
+literal. A primeira fase é análise-only, sem tools: um prompt injetado no máximo gera
+um relatório errado, nunca um comando executado.
 
-São ~47 mil linhas de Go, ~24 mil de TypeScript e 456 testes — incluindo baterias de
-calendário validadas contra um oráculo escrito à mão.
+São ~47 mil linhas de Go, ~24 mil de TypeScript e 460 testes.
 
-A lição que levo: a parte difícil de um orquestrador não é o scheduler — é a semântica
+O teste ácido foi instalar num VPS pago de verdade, com domínio e TLS. A instalação
+passou limpa — e mesmo assim apareceram nove furos, todos fora da fronteira do que o
+smoke test rodava. O que o teste não roda, apodrece.
+
+A outra lição: a parte difícil de um orquestrador não é o scheduler — é a semântica
 nas bordas (o que acontece com a dependência quando o operador dá rerun no pai? o que
-sobrevive à virada do dia?). É aí que ferramentas de 30 anos ganham respeito, e foi aí
-que este projeto mais me ensinou.
+sobrevive à virada do dia?). É aí que ferramentas de 30 anos ganham respeito.
 
-Case study técnico completo no primeiro comentário.
+Código aberto sob Apache 2.0. Case study técnico completo no primeiro comentário.
 
 #engenharia #golang #react #orquestracao #batch #devops #sre
 
@@ -107,20 +108,20 @@ permission, act.
 🔹 **Next on the roadmap: AI that never leaves your perimeter** — an `AI_AGENT` job
 type (spec ready): the LLM runs **on the same host as the agent** (Ollama/llama.cpp/
 vLLM), analyzes sysout and logs right there, and the server only receives the verdict —
-your data never leaves your machine, literally. The prompt is frozen into the order's
-immutable snapshot (auditable forever), and phase one is analysis-only, no tools: a
-prompt injection can at worst produce a wrong report, never an executed command.
-Built-in use case: automatic RCA when a job fails.
+your data never leaves your machine, literally. Phase one is analysis-only, no tools:
+a prompt injection can at worst produce a wrong report, never an executed command.
 
-That's ~47k lines of Go, ~24k of TypeScript and 456 tests — including calendar suites
-validated against a hand-written oracle.
+That's ~47k lines of Go, ~24k of TypeScript and 460 tests.
 
-The lesson I take away: the hard part of an orchestrator isn't the scheduler — it's the
+The acid test was installing it on a real paid VPS, with a domain and TLS. The install
+came out clean — and nine holes showed up anyway, every one of them outside the boundary
+of what the smoke test exercised. What your tests don't run, rots.
+
+The other lesson: the hard part of an orchestrator isn't the scheduler — it's the
 semantics at the edges (what happens to a dependency when an operator reruns the parent?
-what survives the day rollover?). That's where 30-year-old tools earn their respect, and
-that's where this project taught me the most.
+what survives the day rollover?). That's where 30-year-old tools earn their respect.
 
-Full technical case study in the first comment.
+Open source under Apache 2.0. Full technical case study in the first comment.
 
 #engineering #golang #react #orchestration #batch #devops #sre
 
@@ -140,7 +141,7 @@ deploy serverless. O plano de controle é agent-native: 22 tools MCP para um age
 IA operar o dia com permissão. E o próximo passo do roadmap é o jobType `AI_AGENT`:
 LLM local no host do agente analisando falhas sem nenhum dado sair do perímetro.
 
-~47k linhas de Go, ~24k de TS, 456 testes. A parte difícil não foi o scheduler — foi a
+~47k linhas de Go, ~24k de TS, 460 testes. A parte difícil não foi o scheduler — foi a
 semântica nas bordas, exatamente onde as ferramentas de 30 anos ganham o respeito delas.
 
 Case study técnico no primeiro comentário.
@@ -163,7 +164,7 @@ a serverless deploy. The control plane is agent-native: 22 MCP tools so an AI ag
 operate the day with permission. Next on the roadmap: an `AI_AGENT` job type — a local
 LLM on the agent's host analyzing failures with zero data leaving your perimeter.
 
-~47k lines of Go, ~24k of TS, 456 tests. The hard part wasn't the scheduler — it was
+~47k lines of Go, ~24k of TS, 460 tests. The hard part wasn't the scheduler — it was
 the semantics at the edges, exactly where the 30-year-old tools earn their respect.
 
 Full technical case study in the first comment.
@@ -179,8 +180,11 @@ Full technical case study in the first comment.
   não alcance). A página reposta o post pessoal e pode seguir com a série de
   mini-posts (1 feature + 1 vídeo curto: What-If · Explain "Why not?" · MCP · 1M ao
   vivo · AI_AGENT quando entregue).
-- **Prints sugeridos:** Monitoring com grafo de dependências (linhas verdes/vermelhas),
-  ViewPoint com 1M de jobs, tela de temas, e o Explain "Why not?".
+- **Prints (já capturados, dia batch real de 16 jobs em 4 folders):** (1) Monitoring com
+  o grafo — OK/FAIL/WAIT COND/WAIT AGENT/CONFIRM/HELD na mesma tela; (2) drawer
+  "Why not?" com a condição que falta + o Root cause apontando o upstream NOTOK;
+  (3) painel ENVIRONMENT CONDITIONS (o pool, com ODAT); (4) tema claro; (5) referência
+  de API em `/api-docs`. Capa do artigo: 1920×1080 com o board + os três números.
 - **Case study = ARTIGO no LinkedIn (decidido 2026-07-21):** publicar PRIMEIRO os
   artigos — PT = `docs/case-study.md` · EN = `docs/case-study.en.md`, ambos já em
   formato de artigo (sem tabelas; títulos `##` viram Heading, negrito e listas colam

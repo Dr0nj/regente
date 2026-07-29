@@ -1,13 +1,14 @@
 # Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch
 
-> **TL;DR.** Regente is a batch workload orchestrator in the spirit of the classic
-> enterprise orchestrators —
-> immutable daily, condition-based dependencies, calendars, resources, Confirm,
-> forecast — built from scratch as a Go + React monorepo, with **Git as the source of
-> truth** for definitions. Validated live with **1,000,000 jobs/day** (materialization
-> in 17s, summary in 51ms), it runs from a single binary on a $5 VPS up to multi-node
-> HA with Postgres, and exposes the control plane to AI agents via **MCP (22 tools)**.
-> ~47k lines of Go, ~24k of TypeScript, 456 tests.
+> **TL;DR.** **1,000,000 jobs/day running on a $5 VPS** — the daily materialized in 17s,
+> the day's summary in 51ms. Regente is a batch workload orchestrator in the spirit of
+> the classic enterprise orchestrators — immutable daily, condition-based dependencies,
+> calendars, resources, Confirm, forecast — that I built **alone, from scratch**, as a
+> personal project: a Go + React monorepo with **Git as the source of truth** for
+> definitions. It scales from that single binary up to multi-node HA with Postgres, and
+> exposes the control plane to AI agents via **MCP (22 tools)**. ~47k lines of Go, ~24k
+> of TypeScript, 460 tests. Open under Apache 2.0 — code at
+> **github.com/Dr0nj/regente**, docs at **dr0nj.github.io/regente**.
 
 ---
 
@@ -127,7 +128,7 @@ virtualized sidebar with compressed height (the browser overflows float32 above
   self-monitoring that alerts through the product's own channels.
 - **Online backup** (`-backup` = VACUUM INTO), documented DR, retention/archives
   with GC.
-- **456 Go tests** — including exhaustive calendar suites (two independent
+- **460 Go tests** — including exhaustive calendar suites (two independent
   "special business day" code paths must agree day by day for a whole month) and a
   hand-written forecast oracle, independent of the code it validates.
 
@@ -138,7 +139,17 @@ trail with SIEM export, per-agent tokens, secrets via provider (env/file — the
 PAT never needs to persist in cleartext in the state store), an execution sandbox for
 multi-tenant agents (container with no capabilities, no mounts, dedicated uid).
 
-## 8. The one-box deploy (the acid test)
+And the least technical item on the list, which was the one actually blocking
+everything: **the license**. The repository sat public for months with no `LICENSE` —
+and with no license, default copyright applies in full, "all rights reserved": anyone
+could read it, nobody could legally use it. A bank's or an insurer's legal team —
+exactly the stated target audience — blocks an unlicensed dependency before any POC.
+It is now **Apache 2.0**, chosen over MIT for the **explicit patent grant** and the
+trademark clause: it is the norm of the Go/infra ecosystem (Kubernetes, Prometheus) and
+clears corporate legal review without an argument. Copyleft was ruled out on purpose —
+it scares off corporate adoption, which is precisely this project's bottleneck.
+
+## 8. The one-box deploy — and the first REAL install (the acid test)
 
 `curl … | sudo bash` on a Linux VPS: downloads the release bundle (binary + SPA +
 deploy files), registers systemd, serves UI+API+WS on a single origin,
@@ -146,20 +157,48 @@ deploy files), registers systemd, serves UI+API+WS on a single origin,
 nginx+certbot provide TLS with renewal. The same product that does HA with Postgres
 runs entirely on a $5 machine — that range was a goal, not an accident.
 
+Except "there is an installer, and the smoke test passes" is not the same thing as "it
+installs". On 2026-07-28 I installed it on a real paid VPS: Ubuntu 24.04, my own domain,
+DNS at the registrar, a Let's Encrypt certificate. **The install itself came out clean —
+and nine holes showed up anyway.** The pattern between them is the whole lesson: *every
+one of them* sat OUTSIDE the boundary of what the smoke test exercised. It proved
+install + configure + persistence, and never touched three things — the edge
+(nginx/TLS/DNS), input **pasted** into a terminal, and the first day of operation.
+
+The three that hurt most:
+
+- **The terminal corrupted the PAT.** Pasting into a terminal in bracketed-paste mode
+  hands `\e[200~<text>\e[201~` to `read` — and with `-s` (silent) none of it shows on
+  screen. The escape went into `server.env`, **systemd discarded the entire line** of
+  the EnvironmentFile, and the symptom that reached me was `git clone: authentication
+  required: Repository not found` — three hops away from the cause, and looking exactly
+  like a GitHub permission problem.
+- **The daily stamped the day with zero jobs.** It ran before GitOps connected,
+  materialized 0 instances, and marked the date as processed. From then on the day was
+  "done": even with the clone ready, the board never came back. What the operator sees
+  is "I installed it and it came up with no jobs at all".
+- **Reinstalling on top did not upgrade.** It is the upgrade path the README itself
+  prescribes, and `systemctl enable --now` only STARTS a stopped unit — on an already
+  active unit, the start is a no-op. The new binary landed on disk while the OLD process
+  kept running: the operator reinstalls, sees "ok" on screen, and nothing changes.
+
+All nine were fixed — and the smoke test **grew to cover the edge**: it brings up a real
+nginx in the container, applies the actual conf, proves the circuit with a forged Host
+(proxy, UI, authenticated API, hardening headers) and asserts that `deploy/vps` exists on
+the machine — precisely the assertion that would have caught the first hole before I did.
+
 ## 9. Next up: AI that stays inside the perimeter *(roadmap, spec ready)*
 
-The enterprise-orchestration audience lives in regulated environments — banks, insurers, utilities —
-where sysout, logs and host data **cannot leave the perimeter**. Every "AI-powered"
-scheduler on the market ships that data to a cloud API; Regente's next job type,
-`AI_AGENT`, does the opposite: the LLM runs **on the same host as the agent**
+The enterprise-orchestration audience lives in regulated environments — banks, insurers,
+utilities — where sysout, logs and host data **cannot leave the perimeter**. Every
+"AI-powered" scheduler on the market ships that data to a cloud API; Regente's next job
+type, `AI_AGENT`, does the opposite: the LLM runs **on the same host as the agent**
 (Ollama/llama.cpp/vLLM), analyzes sysout and logs right there, and the server only
-receives the verdict — no data travels. The prompt is part of the definition, so it
-**freezes into the order's immutable snapshot**: the exact prompt that ran stays
-auditable forever, and Confirm, conditions, SLA, RBAC and the audit trail all work
-without a single new line, because `AI_AGENT` is a job type like any other. Phase one
-is analysis-only, **no tools** — a prompt injection can at worst produce a wrong
-report, never an executed command. Built-in use case: automatic RCA when a job fails,
-with JSON-Schema-validated output becoming variables for the successors.
+receives the verdict — no data travels. Because `AI_AGENT` is a job type like any other,
+Confirm, conditions, SLA, RBAC and the audit trail all work without a single new line,
+and the prompt — being part of the definition — **freezes into the order's immutable
+snapshot**, auditable forever. Phase one is analysis-only, **no tools**: a prompt
+injection can at worst produce a wrong report, never an executed command.
 
 ## 10. Lessons that apply to any system
 
@@ -178,22 +217,28 @@ with JSON-Schema-validated output becoming variables for the successors.
    architecture.
 6. **Test against an oracle, not against your own function.** The calendar suites
    caught real divergences that mirror tests would never see.
+7. **What your tests don't run, rots.** Nine holes in an install the smoke test called
+   green — every one of them exactly where it wasn't looking. The boundary of your
+   suite is the boundary of your confidence; outside it you don't have tested software,
+   you have an assumption wearing a green badge.
 
 ## 11. Project numbers
 
 - **Code:** ~47k lines of Go (server+agent) · ~24k lines of TS/TSX (UI).
-- **Tests:** 456 Go test functions across 102 files + live E2E validations.
+- **Tests:** 460 Go test functions across 103 files + live E2E validations.
 - **Executors:** COMMAND · SCRIPT · HTTP/REST · agentless SSH · DATABASE · FILE_WATCH
   · MFT · WASM · K8s · Lambda · Batch · Glue · Step Functions · Cloud Run.
 - **Scale:** 1M jobs/day validated live (write 17s · summary 51ms · virtualized UI).
 - **Deploy:** single binary (SQLite) → multi-node HA (Postgres + leader election) →
-  portable serverless (external tick).
+  portable serverless (external tick) — installed and running on a real public VPS.
 - **Interface:** React UI (Design/Monitoring), 17 themes, CLI, OpenAPI, MCP (22 tools).
+- **License:** Apache 2.0 (with an explicit patent grant).
+- **Code:** github.com/Dr0nj/regente · **Docs:** dr0nj.github.io/regente
 
 ---
 
 *Written 2026-07-13 at the close of the roadmap's Phase Z; revised 2026-07-21 (AND/OR
-conditions and origin-date carry-over replacing retired models · updated numbers ·
-AI_AGENT section · article-ready format, no tables). Per-delivery details, with dates
-and commits, in [`docs/roadmap.md`](roadmap.md). English version of
-[`docs/case-study.md`](case-study.md).*
+conditions and origin-date carry-over) and 2026-07-28 (the first real install on a
+public VPS and the nine holes it found · Apache 2.0 licensing · recounted numbers).
+Per-delivery details, with dates and commits, in the repository's roadmap:
+github.com/Dr0nj/regente*
