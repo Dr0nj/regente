@@ -221,6 +221,46 @@ if command -v nginx >/dev/null 2>&1 && [ -f "$VPS_DIR/nginx-regente.conf" ]; the
     curl -s -D- -o /dev/null --max-time 10 -H "Host: $SMOKE_DOMAIN" "http://127.0.0.1/" \
       | grep -qi 'X-Content-Type-Options: nosniff' \
       && ok "headers de hardening da borda presentes" || bad "a borda não devolveu os headers de hardening"
+
+    # WebSocket PELA BORDA — o furo que faltava aqui.
+    #
+    # Tudo que este bloco testava até agora é HTTP comum, e HTTP comum atravessa
+    # um proxy mal configurado sem reclamar. Se o `map $http_upgrade` ou a
+    # `location /ws/` do nginx-regente.conf saírem do lugar, /health, / e /api
+    # continuam 200 — e a UI carrega, loga, desenha o board e NUNCA MAIS
+    # atualiza. O sintoma que chega no operador é "parece travado", não "está
+    # quebrado", que é o mais caro de atribuir.
+    #
+    # curl não fala WebSocket, mas o handshake é HTTP: mandando os cabeçalhos de
+    # upgrade, um circuito são responde 101 Switching Protocols. Depois do 101 a
+    # conexão fica ABERTA, então o timeout do curl é esperado — o veredito está
+    # no cabeçalho que já chegou.
+    ws_status() { # ws_status <base-url> [host-header]
+      local key hdr=()
+      key="$(head -c 16 /dev/urandom | base64)"
+      [ -n "${2:-}" ] && hdr=(-H "Host: $2")
+      : > /tmp/ws-head.txt
+      curl -s -i -N --max-time 5 -o /tmp/ws-head.txt "${hdr[@]}" \
+        -H "Authorization: Bearer $(tok)" \
+        -H "Connection: Upgrade" -H "Upgrade: websocket" \
+        -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: $key" \
+        "$1/ws/web" >/dev/null 2>&1 || true
+      head -1 /tmp/ws-head.txt | tr -d '\r'
+    }
+
+    # Direto no server primeiro: separa "o server não faz upgrade" de "a borda
+    # come o Upgrade". Sem essa distinção o FAIL manda caçar no lugar errado.
+    direct_ws="$(ws_status "$BASE")"
+    case "$direct_ws" in
+      *101*) ok "WebSocket faz upgrade direto no server (101)" ;;
+      *)     bad "o server não fez upgrade do WebSocket: '$direct_ws'" ;;
+    esac
+
+    edge_ws="$(ws_status "http://127.0.0.1" "$SMOKE_DOMAIN")"
+    case "$edge_ws" in
+      *101*) ok "WebSocket atravessa o proxy (101) — a UI vai atualizar ao vivo" ;;
+      *)     bad "a borda NÃO repassou o upgrade do WebSocket: '$edge_ws' — a UI carrega e congela (confira map \$http_upgrade / location /ws/)" ;;
+    esac
   else
     bad "nginx não ficou ativo: $(systemctl is-active nginx) — $(journalctl -u nginx -n 5 --no-pager 2>/dev/null | tr '\n' ' ')"
   fi

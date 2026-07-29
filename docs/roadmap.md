@@ -135,6 +135,66 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
   versão publicada é convite, não vitrine, sem números e sem preço. Os 2 posts da company
   page (2026-07) não contavam — página nova não tem alcance orgânico.
 
+### 🔬 Campanha de teste na instância VIVA (V-LIVE-TEST)
+
+> Aberta em 2026-07-29, depois de fechar a publicação. Premissa herdada do §V-LIVE:
+> **o que o teste não roda, apodrece** — e o `smoke-install.sh` prova a instalação num
+> container efêmero e para aí. Uma instância 24/7 falha por coisas que container nenhum
+> vive: o certificado que vence em 60 dias, o disco que enche em três semanas, o tick que
+> parou às 4 da manhã, o backup que ninguém tentou restaurar.
+
+**Já automatizado (2026-07-29):**
+
+- [x] **LT-1 · WebSocket pela borda entrou no smoke.** O bloco de borda testava só HTTP
+  comum — e HTTP comum atravessa um proxy mal configurado sem reclamar. Se o
+  `map $http_upgrade` ou a `location /ws/` saírem do lugar, `/health`, `/` e `/api`
+  continuam **200** e a UI carrega, loga, desenha o board e **nunca mais atualiza**: o
+  sintoma que chega no operador é "parece travado", não "está quebrado", que é o mais caro
+  de atribuir. `curl` não fala WebSocket, mas o handshake é HTTP — mandando os cabeçalhos
+  de upgrade, um circuito são responde **101 Switching Protocols**, e depois do 101 a
+  conexão fica aberta (o timeout do curl é esperado; o veredito está no cabeçalho já
+  recebido). Testa **direto no server E pela borda**, porque sem essa separação o FAIL
+  manda caçar no lugar errado. Validado antes de commitar: 101 com token, **401** sem
+  token e **400** com token mas sem os cabeçalhos de upgrade — esse último prova que a
+  asserção falha de verdade quando a borda come o header, em vez de passar sempre.
+- [x] **LT-2 · `scripts/live-check.sh`** — diagnóstico da máquina viva, **só leitura**
+  (não reinicia serviço, não escreve no banco, não toca na config; o backup vai pra um
+  tmp e é apagado). Cobre: unit ativa **e habilitada no boot** + `NRestarts` (crash-loop
+  mascarado pelo `Restart=always` parece "de pé"); `/health`+`/livez`+`/readyz`; última
+  daily × relógio do server (tick parado é a falha mais silenciosa que existe — a API
+  responde, a UI abre, e nada é despachado); agentes online; GitOps sem erro; pela borda
+  HTTPS + **redirect obrigatório da :80** (200 em claro = TLS decorativo) + o **upgrade do
+  WS pelo TLS** + dias até o cert vencer; disco/tamanho do banco; **backup online +
+  `PRAGMA integrity_check` + contagem de linhas** (backup que ninguém tentou abrir não é
+  backup); erros do journal nas últimas 24h. Com `--deep`, roda também
+  `certbot renew --dry-run` — a renovação é o único passo do TLS que ninguém exercita, e
+  ela falha calada 60 dias depois de tudo estar funcionando.
+
+**Pendente — só a instância viva prova (ordem de risco × tempo até descobrir):**
+
+- [ ] **LT-3 · Criar job pela API, do PC do usuário contra o servidor.** É o primeiro
+  teste "de fora": atravessa DNS + TLS + borda + auth com um cliente que não é a SPA.
+  Cobrir o ciclo inteiro — criar, ver materializar na daily seguinte, forçar, acompanhar
+  o Output, e conferir se o job nasceu **no Git** (o publish é commit+push) e não só no
+  banco. **Combinado com o usuário em 2026-07-29.**
+- [ ] **LT-4 · A virada do dia em produção.** Carry-over atravessando a meia-noite de
+  verdade, com job RUNNING e com NOTOK não tratado. É a semântica mais difícil do produto
+  e nunca rodou fora de teste. Não dá pra apressar: instrumentar e olhar no dia seguinte.
+- [ ] **LT-5 · Reboot do VPS.** Tudo volta sozinho? Unit habilitada, banco íntegro, agente
+  reconectando, e a daily **não** re-carimbando um dia já processado.
+- [ ] **LT-6 · Retry durável atravessando restart.** A promessa é justamente sobreviver a
+  deploy; num systemd real nunca foi provada.
+- [ ] **LT-7 · Drill de RESTORE.** O `live-check` prova que o backup abre íntegro; falta
+  subir uma instância a partir dele e conferir que o dia volta igual.
+- [ ] **LT-8 · Agente remoto numa segunda máquina**, pela internet: reconexão depois de
+  queda de rede e o job pinado esperando em **WAIT AGENT** em vez de migrar sozinho.
+- [ ] **LT-9 · Retenção/GC e crescimento de disco** — só aparece depois de dias
+  acumulando; o `live-check` dá a série, falta a leitura ao longo do tempo.
+- [ ] **LT-10 · Alerta chegando num canal real** e a **quick action assinada** funcionando
+  a partir do e-mail, com token expirado incluído no teste.
+- [ ] **LT-11 · PAT expirando / GitHub fora do ar** — o retry 15s→5min e o badge, com o
+  serviço seguindo de pé e o dia corrente intacto.
+
 ### 🔮 Visão futura (avaliar PÓS-testes, não committado)
 
 > Ideias registradas para **avaliação posterior**, depois de estabilizar/testar o core em
