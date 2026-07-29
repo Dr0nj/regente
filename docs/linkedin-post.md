@@ -11,6 +11,53 @@
 
 ---
 
+## ✅ Versão PUBLICADA (2026-07-29) — a que foi ao ar
+
+> As versões longas abaixo viraram **resumo do artigo**: repetiam a lista de features e
+> não sobrava motivo pra clicar. A publicada é **convite, não vitrine** — sem números,
+> sem preço, terminando em pergunta aberta (pergunta aberta puxa comentário, e comentário
+> é o que o LinkedIn usa pra distribuir). Guardadas aqui como o padrão pra próxima vez.
+
+### Português
+
+Publiquei um case study sobre um projeto pessoal: um orquestrador de jobs classe
+enterprise que construí do zero.
+
+A ideia foi pegar o que os orquestradores enterprise clássicos fazem bem — o dia de
+operação batch, dependências, calendários de dia útil, hold/release/rerun, trilha de
+auditoria — e reconstruir com engenharia moderna: Go e React, binário único, API aberta,
+e o Git como fonte de verdade de cada definição de job.
+
+O artigo passa pelas apostas de arquitetura, pela semântica que se mostrou difícil de
+verdade, pelo que eu errei no caminho e pelo que faria diferente. O projeto é open
+source — os links do código e da documentação estão no artigo.
+
+Se o assunto te interessa, está no primeiro comentário. Queria saber onde a sua
+experiência diverge da minha.
+
+\#golang \#devops \#orquestracao
+
+### English
+
+I published a case study about a personal project: an enterprise-class job orchestrator
+I built from scratch.
+
+The idea was to take what the classic enterprise orchestrators do well — the batch
+operations day, dependencies, business-day calendars, hold/release/rerun, an audit
+trail — and rebuild it with modern engineering: Go and React, a single binary, an open
+API, and Git as the source of truth for every job definition.
+
+The article walks through the architecture bets, the semantics that turned out to be
+genuinely hard, what I got wrong along the way, and what I'd do differently. The project
+is open source — the links to the code and the documentation are in the article.
+
+If the subject interests you, it's in the first comment. I'd like to hear where your
+experience differs from mine.
+
+\#golang \#devops \#orchestration
+
+---
+
 ## Versão principal — Português
 
 Nos últimos meses eu construí, como projeto pessoal, um orquestrador de jobs classe

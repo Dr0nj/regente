@@ -120,13 +120,20 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
   Prints do produto capturados pra acompanhar (dia batch de 16 jobs em 4 folders, com
   OK/FAIL/WAIT COND/WAIT AGENT/CONFIRM/HELD na mesma tela, o "Why not?" com root cause,
   o pool de condições, tema claro e a referência de API) + capa 1920×1080 do artigo.
-- [ ] **Z (publicação)** — **AÇÃO MANUAL SUA** (decisão 2026-07-21: o case study vira
-  **ARTIGO no LinkedIn** — PT `docs/case-study.md` + EN `docs/case-study.en.md`, ambos
-  revisados e paste-ready, sem tabelas): publicar os 2 artigos, depois o **post do
-  PERFIL PESSOAL** (versões PT+EN em `docs/linkedin-post.md`) com o artigo no 1º
-  comentário + prints (Monitoring com grafo · ViewPoint @1M · Explain). Os 2 posts da
-  company page (2026-07) NÃO fecham este item — página nova não tem alcance orgânico.
-  Nenhum agente pode fazer isso por você.
+- [x] **Z (publicação)** — **FEITO PELO USUÁRIO em 2026-07-29**: artigo publicado no
+  LinkedIn + post do **perfil pessoal** com o link do artigo no 1º comentário e os prints
+  do produto. Era o último item que dependia de ação humana — **a Fase Z fecha aqui**.
+  O que a preparação ensinou, e que vale registrar porque não estava em lugar nenhum:
+  **(1)** o LinkedIn **não interpreta markdown em superfície nenhuma** (`##`, `**`, crase
+  e `-` colam literais no editor de artigo E no post), então o texto vai limpo e o Heading
+  é aplicado à mão — daí a rotina de gerar `.txt` sem sintaxe ao lado do `.md`; **(2)**
+  post do feed tem **teto de 3.000 caracteres** e a versão EN tinha estourado (3.057) sem
+  ninguém medir; **(3)** link no CORPO do post derruba alcance (vai no 1º comentário), mas
+  **dentro do artigo é normal** — e era justamente ali que o case study não tinha nenhum,
+  porque usava link relativo de markdown; **(4)** o post **não é resumo do artigo**: as
+  primeiras versões repetiam a lista de features e não sobrava motivo pra clicar — a
+  versão publicada é convite, não vitrine, sem números e sem preço. Os 2 posts da company
+  page (2026-07) não contavam — página nova não tem alcance orgânico.
 
 ### 🔮 Visão futura (avaliar PÓS-testes, não committado)
 
