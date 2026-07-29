@@ -319,6 +319,22 @@ warns that the process did not restart, force it:
 sudo systemctl restart regente-server
 ```
 
+**How to tell which version is actually running.** The UI shows it in the **footer**, on the
+right: `build v0.2.7`. That is the version of the *process serving you*, not of the file on disk —
+compare it with [the latest release](https://github.com/Dr0nj/regente/releases/latest) and you
+know whether the upgrade took. The same answer, from a terminal:
+
+```bash
+curl -s -H "Authorization: Bearer $REGENTE_TOKEN" http://127.0.0.1:8080/api/version
+```
+
+```bash
+regente-server -version     # the binary on disk — if it disagrees with the API, restart the service
+```
+
+A build from source reports `dev`: there is no release behind it, and saying so is more useful
+than inventing a number.
+
 | Kept | Replaced |
 |---|---|
 | `/etc/regente/server.env` — token, GitOps, `REGENTE_ADDR` | the binary in `/usr/local/bin` |

@@ -127,7 +127,10 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
-        run: go build -trimpath -ldflags="-s -w" -o ../dist/regente-server_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }} .
+        # -X main.version: é isto que faz o rodapé da UI, o log de boot e o
+        # `regente-server -version` dizerem a versão REAL do que está rodando.
+        # Sem a injeção o binário publicado se apresentaria como "dev".
+        run: go build -trimpath -ldflags="-s -w -X main.version=${{ needs.version.outputs.tag }}" -o ../dist/regente-server_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }} .
 
       - name: Build agent
         working-directory: agent

@@ -51,6 +51,11 @@ type Config struct {
 	// ADV-7 — site de docs (cmd/docsite): se != "", serve o site estático em /docs
 	// na mesma porta (single-origin, self-contained). Vazio = sem docs.
 	DocsDir string
+	// Version — versão do build (injetada por -ldflags na release; "dev" do fonte).
+	// Servida em GET /api/version, que é o que o rodapé da UI mostra. Fica ATRÁS da
+	// autenticação de propósito: entregar a versão exata a um anônimo é entregar a
+	// lista de CVEs aplicáveis junto, e o /health (público) não precisa disso.
+	Version string
 }
 
 // RemotePresence — agents conectados em OUTROS nós (bus R5). Implementado por
@@ -176,6 +181,10 @@ func NewRouter(cfg Config) http.Handler {
 		// D-3 — event-driven confiável: ingestão idempotente de eventos externos
 		r.With(s.requireWriterMW).Post("/events/ingest", s.ingestEvent)
 		r.Get("/events/external", s.listExternalEvents)
+		// Versão do build — o que o rodapé da UI mostra. Responde "atualizei mesmo?"
+		// sem SSH na caixa: se a release publicou v0.2.7 e aqui ainda diz v0.2.6, o
+		// processo antigo continua no ar.
+		r.Get("/version", s.getVersion)
 		// D-10 — policy as code: política ativa + violações do workspace publicado
 		r.Get("/policy", s.getPolicy)
 		r.Get("/daily/diff", s.diffDaily)              // diferencial: o que mudou entre duas diárias
@@ -461,6 +470,17 @@ func (s *server) wsTokenOK(r *http.Request) bool {
 
 func (s *server) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"status": "ok"})
+}
+
+// getVersion — GET /api/version. Versão do binário em execução (não a do disco:
+// trocar o arquivo não troca o processo, e é justamente essa confusão que este
+// endpoint existe pra desfazer). "dev" = build do código-fonte, sem release.
+func (s *server) getVersion(w http.ResponseWriter, r *http.Request) {
+	v := s.cfg.Version
+	if v == "" {
+		v = "dev"
+	}
+	writeJSON(w, 200, map[string]string{"version": v})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

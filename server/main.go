@@ -46,6 +46,16 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
+// version — versão do build, injetada pela release:
+//
+//	go build -ldflags "-X main.version=v1.2.3"
+//
+// "dev" é o valor de quem builda do código-fonte, e é honesto: não existe
+// release correspondente. Exposta no boot, em `regente-server -version` e em
+// GET /api/version (que é o que o rodapé da UI mostra) — a pergunta "atualizei
+// mesmo?" tem de ser respondível SEM olhar o disco.
+var version = "dev"
+
 func main() {
 	var (
 		addr      = flag.String("addr", envOr("REGENTE_ADDR", ":8080"), "HTTP listen address")
@@ -108,8 +118,17 @@ func main() {
 		oidcRedirectURL  = flag.String("oidc-redirect-url", envOr("REGENTE_OIDC_REDIRECT_URL", ""), "OIDC redirect URL (e.g. http://localhost:8080/api/auth/oidc/callback)")
 		oidcDefaultRole  = flag.String("oidc-default-role", envOr("REGENTE_OIDC_DEFAULT_ROLE", "viewer"), "Role on the 1st federated login: viewer|operator|admin")
 		appURL           = flag.String("app-url", envOr("REGENTE_APP_URL", ""), "SPA URL for the post-OIDC-login redirect (e.g. http://localhost:5173)")
+
+		showVersion = flag.Bool("version", false, "print the build version and exit")
 	)
 	flag.Parse()
+
+	// Antes de abrir banco, workspace ou porta: `-version` tem de responder numa
+	// máquina onde o serviço já está rodando, sem disputar nada com ele.
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
 
 	dialect, err := db.ParseDialect(*dbDriver)
 	if err != nil {
@@ -532,6 +551,7 @@ func main() {
 		DocsDir:   *docsDir,
 		Presence:  remotePresence,
 		NodeID:    *nodeID,
+		Version:   version,
 	})
 
 	if *spaDir != "" {
@@ -567,7 +587,7 @@ func main() {
 				scheme = "https+mTLS"
 			}
 		}
-		log.Printf("regente-server listening on %s [%s] (workspace=%s, db=%s, gitops=%s)", *addr, scheme, *workspace, *dbPath, gitState)
+		log.Printf("regente-server %s listening on %s [%s] (workspace=%s, db=%s, gitops=%s)", version, *addr, scheme, *workspace, *dbPath, gitState)
 		var err error
 		if tlsCfg != nil {
 			err = srv.ListenAndServeTLS("", "") // certs já no TLSConfig

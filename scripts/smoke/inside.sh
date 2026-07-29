@@ -80,6 +80,17 @@ curl -fsS "$BASE/" 2>/dev/null | grep -qi '<!doctype html' && ok "UI servida na 
 [ -x /usr/local/bin/regente-configure ] && ok "regente-configure instalado" || bad "regente-configure não foi instalado"
 grep -q 'firewall' /tmp/install.log && ok "instalador lembra do firewall" || bad "instalador não fala do firewall"
 grep -q 'Health:' /tmp/install.log && ok "instalador imprime health check" || bad "instalador não faz health check"
+# Versão: prova a cadeia toda (ldflags -X main.version → binário → API → rodapé).
+# Só vale quando o bundle foi buildado por --build, que injeta "smoke-test"; um
+# bundle da CI traz a tag da release, então aceitamos qualquer valor != "dev".
+srv_ver="$(api "$BASE/api/version" | jfield version)"
+case "$srv_ver" in
+  ""|dev) bad "GET /api/version não trouxe versão injetada (veio '${srv_ver:-vazio}')" ;;
+  *)      ok "versão do build exposta na API: $srv_ver" ;;
+esac
+[ "$(/usr/local/bin/regente-server -version 2>/dev/null)" = "$srv_ver" ] \
+  && ok "regente-server -version bate com a API" \
+  || bad "o -version do binário não bate com o que a API reporta"
 
 head1 "2) Config quebrada (repo inexistente) NÃO pode derrubar o serviço"
 set_source "https://github.com/regente-smoke/nao-existe-$RANDOM.git"

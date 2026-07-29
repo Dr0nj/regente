@@ -63,7 +63,10 @@ if [ "$BUILD" = 1 ]; then
   echo "== buildando bundle a partir do checkout..."
   rm -rf "$ROOT/.smoke"; mkdir -p "$ROOT/.smoke/stage/regente-server_linux_amd64/deploy" "$ROOT/.smoke/stage/regente-server_linux_amd64/app"
   (cd "$ROOT/app" && VITE_REGENTE_SERVER_URL=@origin npm ci --silent && npm run build >/dev/null)
-  (cd "$ROOT/server" && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o "$ROOT/.smoke/stage/regente-server_linux_amd64/regente-server" .)
+  # -X main.version: espelha o que o release.yml faz. Com um valor RECONHECÍVEL,
+  # o inside.sh consegue provar a cadeia inteira (ldflags → binário → /api/version
+  # → rodapé da UI) em vez de só checar que o campo existe.
+  (cd "$ROOT/server" && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-X main.version=smoke-test" -o "$ROOT/.smoke/stage/regente-server_linux_amd64/regente-server" .)
   (cd "$ROOT/agent" && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o "$ROOT/.smoke/regente-agent" .)
   cp -r "$ROOT/app/dist" "$ROOT/.smoke/stage/regente-server_linux_amd64/app/dist"
   cp "$ROOT/server/deploy/install-linux.sh" "$ROOT/server/deploy/configure.sh" \

@@ -51,6 +51,7 @@ import {
 } from "@/lib/runtime-bridge";
 import { onServerEvent, isServerMode, onAuthEvent, setAuthToken, SERVER_URL } from "@/lib/server-client";
 import { fetchMe, loadCachedUser, type AuthUser } from "@/lib/auth-api";
+import { getServerVersion } from "@/lib/version-api";
 import { LoginForm } from "./LoginForm";
 import { UserMenu } from "./UserMenu";
 import { UsersDialog } from "./UsersDialog";
@@ -160,6 +161,25 @@ function V2PreviewInner() {
     window.addEventListener("regente:minimap-changed", sync);
     return () => window.removeEventListener("regente:minimap-changed", sync);
   }, []);
+  // Versão do build EM EXECUÇÃO (rodapé). Buscada uma vez: ela só muda quando o
+  // server reinicia, e aí a UI recarrega junto. É a resposta visual pra
+  // "atualizei mesmo?" — trocar o binário no disco não troca o processo.
+  // GOTCHA: buscar no mount devolve VAZIO — este componente monta com a tela de
+  // login por cima, e /api/version (como todo /api) responde 401 a quem ainda não
+  // entrou. Depende do estado de auth, não do mount. Boolean derivado de propósito:
+  // `me` troca de identidade a cada refetch e re-dispararia o efeito à toa.
+  const [serverVersion, setServerVersion] = useState("");
+  const authed = !!me;
+  useEffect(() => {
+    if (!authed) return;
+    let dead = false;
+    void getServerVersion().then((v) => {
+      if (!dead) setServerVersion(v);
+    });
+    return () => {
+      dead = true;
+    };
+  }, [authed]);
   // Config da grade de jobs soltos (colunas / max linhas). Pref de visão por browser,
   // editável em Settings; re-layouta o canvas quando muda (evento regente:layout-changed).
   const [layoutCfg, setLayoutCfg] = useState<LayoutConfig>(() => readLayoutConfig());
@@ -2037,7 +2057,13 @@ function V2PreviewInner() {
             </span>
           </span>
         )}
-        <span style={{ marginLeft: "auto", color: "var(--v2-text-secondary)", fontWeight: 600, textTransform: "uppercase" }}>{mode}</span>
+        {serverVersion && (
+          <span style={{ marginLeft: "auto" }} title="Build of the server that is running right now — not the one on disk. After an upgrade, this is what proves the new version took over.">
+            <span style={{ opacity: 0.7 }}>build </span>
+            <span style={{ color: "var(--v2-text-secondary)", fontWeight: 500 }}>{serverVersion}</span>
+          </span>
+        )}
+        <span style={{ marginLeft: serverVersion ? undefined : "auto", color: "var(--v2-text-secondary)", fontWeight: 600, textTransform: "uppercase" }}>{mode}</span>
       </footer>
     </div>
   );

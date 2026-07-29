@@ -369,6 +369,16 @@ restart you would be running the old binary while everything looked fine. If the
 warns that the process did not restart, force it:</p>
 <pre><code class="language-bash">sudo systemctl restart regente-server
 </code></pre>
+<p><strong>How to tell which version is actually running.</strong> The UI shows it in the <strong>footer</strong>, on the
+right: <code>build v0.2.7</code>. That is the version of the <em>process serving you</em>, not of the file on disk —
+compare it with <a href="https://github.com/Dr0nj/regente/releases/latest">the latest release</a> and you
+know whether the upgrade took. The same answer, from a terminal:</p>
+<pre><code class="language-bash">curl -s -H &quot;Authorization: Bearer $REGENTE_TOKEN&quot; http://127.0.0.1:8080/api/version
+</code></pre>
+<pre><code class="language-bash">regente-server -version     # the binary on disk — if it disagrees with the API, restart the service
+</code></pre>
+<p>A build from source reports <code>dev</code>: there is no release behind it, and saying so is more useful
+than inventing a number.</p>
 <table>
 <thead>
 <tr>
