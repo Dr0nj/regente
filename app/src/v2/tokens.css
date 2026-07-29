@@ -37,6 +37,23 @@
   --v2-status-hold:    #f59e0b;
   --v2-status-waiting: #737373;
 
+  /* Edges do grafo ── linha + selo (✓/✗) da condição por estado da dependência.
+     DERIVADOS dos tokens de status/fundo: cada tema — inclusive os que ainda
+     não existem — ganha o selo certo sem repetir hex tema a tema. O fundo do
+     selo é o status diluído no canvas (tema escuro → verde/vermelho MUITO
+     escuro, como era chumbado); o glifo é o status puro. Os temas CLAROS
+     reabrem só estes tokens (bloco abaixo), porque diluir no canvas claro dá
+     contraste de leitura baixo demais pra um glifo de 9px. */
+  --v2-edge-ok:            var(--v2-status-ok);
+  --v2-edge-ok-label:      var(--v2-status-ok);
+  --v2-edge-ok-bg:         color-mix(in srgb, var(--v2-status-ok) 22%, var(--v2-bg-canvas));
+  --v2-edge-blocked:       var(--v2-status-failed);
+  --v2-edge-blocked-label: color-mix(in srgb, var(--v2-status-failed) 60%, #ffffff);
+  --v2-edge-blocked-bg:    color-mix(in srgb, var(--v2-status-failed) 22%, var(--v2-bg-canvas));
+  --v2-edge-idle:          var(--v2-text-muted);
+  --v2-edge-idle-label:    var(--v2-text-secondary);
+  --v2-edge-idle-bg:       var(--v2-bg-elevated);
+
   /* Typography ── compacta, tipo Control-M/Airflow */
   --v2-font-sans: "Inter", -apple-system, system-ui, sans-serif;
   --v2-font-mono: "JetBrains Mono", "SF Mono", Consolas, monospace;
@@ -286,6 +303,24 @@
   --color-status-failed:  #dc2626;
   --color-status-waiting: #b45309;
   --color-status-inactive:#818a92;
+}
+
+/* Selo de condição das edges nos temas CLAROS — a MESMA regra dos --color-*:
+   o default de :root é calibrado pra fundo escuro (status diluído no canvas =
+   selo quase preto) e sobre canvas claro viraria um borrão escuro na linha.
+   Aqui o selo inverte: fundo = tint pálido do status sobre a superfície
+   elevada, glifo = status escurecido (o status dos temas claros já é escuro,
+   mas num tint pálido ele precisa descer mais pra alcançar o mesmo contraste
+   que o tema escuro tem). Bloco único: os 4 temas claros compartilham a regra,
+   e cada um resolve com o SEU --v2-status-*. */
+:root[data-theme="claro"],
+:root[data-theme="branco-azul"],
+:root[data-theme="sepia"],
+:root[data-theme="cinza-claro"] {
+  --v2-edge-ok-label:      color-mix(in srgb, var(--v2-status-ok) 62%, #000000);
+  --v2-edge-ok-bg:         color-mix(in srgb, var(--v2-status-ok) 14%, var(--v2-bg-elevated));
+  --v2-edge-blocked-label: color-mix(in srgb, var(--v2-status-failed) 62%, #000000);
+  --v2-edge-blocked-bg:    color-mix(in srgb, var(--v2-status-failed) 14%, var(--v2-bg-elevated));
 }
 
 :root[data-theme="verde-amarelo"] {

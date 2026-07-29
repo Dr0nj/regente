@@ -291,15 +291,35 @@ export function isWaitingOnConds(
 function edgeStyleForState(state: DepState) {
   // Padrão visual idêntico para condições do mesmo estado.
   // Todas as edges são tracejadas (uniformidade visual).
+  //
+  // Cores via token `--v2-edge-*` (tokens.css), NUNCA hex chumbado: o selo ✓/✗
+  // é desenhado em SVG (<rect>/<text> do EdgeText), e `fill` inline resolve
+  // var() igual a qualquer propriedade CSS. Com hex fixo o selo ficava um
+  // quadrado quase preto sobre o canvas dos temas claros.
   const dash = "5 4";
   if (state === "satisfied") {
-    return { stroke: "#11C76F", labelFill: "#11C76F", labelBg: "#052e19", dash };
+    return {
+      stroke: "var(--v2-edge-ok)",
+      labelFill: "var(--v2-edge-ok-label)",
+      labelBg: "var(--v2-edge-ok-bg)",
+      dash,
+    };
   }
   if (state === "blocked") {
-    return { stroke: "#dc2626", labelFill: "#fca5a5", labelBg: "#450a0a", dash };
+    return {
+      stroke: "var(--v2-edge-blocked)",
+      labelFill: "var(--v2-edge-blocked-label)",
+      labelBg: "var(--v2-edge-blocked-bg)",
+      dash,
+    };
   }
   // pending — neutro/cinza, sem label
-  return { stroke: "#525252", labelFill: "#a3a3a3", labelBg: "#1c1917", dash };
+  return {
+    stroke: "var(--v2-edge-idle)",
+    labelFill: "var(--v2-edge-idle-label)",
+    labelBg: "var(--v2-edge-idle-bg)",
+    dash,
+  };
 }
 
 function makeEdge(

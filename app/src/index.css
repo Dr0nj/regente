@@ -119,7 +119,10 @@ html, body, #root {
    ============================================ */
 .react-flow { background: var(--color-bg-canvas); }
 .react-flow__background { background: var(--color-bg-canvas); }
-.react-flow__edge-path { stroke: #262626; stroke-width: 1.5; }
+/* Fallback do traço da edge (as edges do canvas mandam `stroke` inline via
+   makeEdge/--v2-edge-*): token, nunca hex — chumbado, uma edge sem estilo
+   inline sairia num cinza escuro invisível/borrado sobre os temas claros. */
+.react-flow__edge-path { stroke: var(--color-border-medium); stroke-width: 1.5; }
 .react-flow__edge.selected .react-flow__edge-path,
 .react-flow__edge:focus .react-flow__edge-path { stroke: var(--color-accent-brand); }
 .react-flow__handle {
