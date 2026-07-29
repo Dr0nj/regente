@@ -160,12 +160,13 @@ num terminal, e o primeiro dia de operação.
 
 Os três que mais doeram:
 
-- **O terminal corrompeu o PAT.** Colar num terminal em modo bracketed-paste entrega
-  `\e[200~<texto>\e[201~` ao `read` — e com `-s` (silencioso) nada disso aparece na tela.
-  O escape foi junto pro `server.env`, o **systemd descartou a linha inteira** do
-  EnvironmentFile, e o sintoma que chegou até mim foi `git clone: authentication
-  required: Repository not found` — três saltos de distância da causa, e com cara de
-  problema de permissão no GitHub.
+- **O terminal corrompeu o PAT.** Um terminal em modo bracketed-paste embrulha tudo que
+  você cola em dois marcadores invisíveis, e eles entram no valor junto com o texto —
+  com `read -s` (entrada silenciosa) nem isso aparece na tela pra você desconfiar. Os
+  marcadores foram junto pro `server.env`, o **systemd descartou a linha inteira** do
+  EnvironmentFile, e o sintoma que chegou até mim foi "authentication required:
+  Repository not found" no clone do Git — três saltos de distância da causa, e com cara
+  de problema de permissão no GitHub.
 - **A daily carimbou o dia com zero jobs.** Ela rodou antes de o GitOps conectar,
   materializou 0 instances e marcou a data como processada. Dali em diante o dia estava
   "feito": nem com o clone pronto o board voltava. O que o operador vê é "instalei e

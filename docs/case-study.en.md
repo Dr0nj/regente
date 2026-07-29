@@ -167,12 +167,13 @@ install + configure + persistence, and never touched three things — the edge
 
 The three that hurt most:
 
-- **The terminal corrupted the PAT.** Pasting into a terminal in bracketed-paste mode
-  hands `\e[200~<text>\e[201~` to `read` — and with `-s` (silent) none of it shows on
-  screen. The escape went into `server.env`, **systemd discarded the entire line** of
-  the EnvironmentFile, and the symptom that reached me was `git clone: authentication
-  required: Repository not found` — three hops away from the cause, and looking exactly
-  like a GitHub permission problem.
+- **The terminal corrupted the PAT.** A terminal in bracketed-paste mode wraps whatever
+  you paste in two invisible markers, and they end up inside the value along with the
+  text — with `read -s` (silent input), not even that shows on screen for you to catch
+  it. The markers went into `server.env`, **systemd discarded the entire line** of the
+  EnvironmentFile, and the symptom that reached me was "authentication required:
+  Repository not found" on the Git clone — three hops away from the cause, and looking
+  exactly like a GitHub permission problem.
 - **The daily stamped the day with zero jobs.** It ran before GitOps connected,
   materialized 0 instances, and marked the date as processed. From then on the day was
   "done": even with the clone ready, the board never came back. What the operator sees

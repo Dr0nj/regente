@@ -211,11 +211,13 @@ install + configure + persistence, and never touched three things — the edge
 (nginx/TLS/DNS), input <strong>pasted</strong> into a terminal, and the first day of operation.</p>
 <p>The three that hurt most:</p>
 <ul>
-<li><strong>The terminal corrupted the PAT.</strong> Pasting into a terminal in bracketed-paste mode
-hands <code>\e[200~&lt;text&gt;\e[201~</code> to <code>read</code> — and with <code>-s</code> (silent) none of it shows on
-screen. The escape went into <code>server.env</code>, <strong>systemd discarded the entire line</strong> of
-the EnvironmentFile, and the symptom that reached me was <code>git clone: authentication required: Repository not found</code> — three hops away from the cause, and looking exactly
-like a GitHub permission problem.</li>
+<li><strong>The terminal corrupted the PAT.</strong> A terminal in bracketed-paste mode wraps whatever
+you paste in two invisible markers, and they end up inside the value along with the
+text — with <code>read -s</code> (silent input), not even that shows on screen for you to catch
+it. The markers went into <code>server.env</code>, <strong>systemd discarded the entire line</strong> of the
+EnvironmentFile, and the symptom that reached me was &quot;authentication required:
+Repository not found&quot; on the Git clone — three hops away from the cause, and looking
+exactly like a GitHub permission problem.</li>
 <li><strong>The daily stamped the day with zero jobs.</strong> It ran before GitOps connected,
 materialized 0 instances, and marked the date as processed. From then on the day was
 &quot;done&quot;: even with the clone ready, the board never came back. What the operator sees
