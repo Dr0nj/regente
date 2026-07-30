@@ -17,7 +17,9 @@
 > no §Entregue e some uma linha no §Changelog. Ao **abrir** um item novo: só adicione no §Backlog.
 > Sem barras de progresso nem porcentagens — de propósito (confundem mais do que ajudam).
 >
-> Documento vivo · revisão **2026-07-28**.
+> Documento vivo · revisão **2026-07-30** — o projeto entrou em **modo manutenção**
+> ([§🧰 Modo manutenção](#-modo-manutenção-decidido-em-2026-07-30)); a §Backlog continua
+> valendo como registro do que está aberto, mas nada dela é compromisso de build.
 > Estratégia de arquitetura em [`architecture-future.md`](architecture-future.md);
 > apresentação de produto no [`../README.md`](../README.md).
 
@@ -48,10 +50,15 @@
 - **Idioma — produto e documentação 100% em inglês (I18N-1..7)** — SPA, mensagens do server, CLI, output do agente, o contrato **OpenAPI** público (+ viewer `/api-docs`), os scripts de instalação/operação e a **documentação publicada** (READMEs + `docs/*.md`) passaram a falar só inglês; termos canônicos do domínio (Schedule · On/Do · ODAT · Force Order · Set OK…) e identificadores de máquina ficaram intactos. Comentário de código, mensagem de commit e o `roadmap.md` seguem em pt-BR. A doc virou **site estático publicado** (https://dr0nj.github.io/regente/) que também abre offline do `docs/site/` commitado, com a **referência de API** self-contained junto. Entregue 2026-07-24 (produto) e 2026-07-27 (docs).
 - **Output × Logs (OL-1..OL-4)** — o **sysout da EXECUÇÃO** saiu da trilha de auditoria: tabela própria `instance_output` **por tentativa** (schemaV22), API `/instances/{id}/output` (live-tail), **aba Output ao vivo** com seletor de tentativa (retry deixa de perder o sysout da tentativa falha), e evento **`wait` edge-triggered** na timeline (a espera vira história consultável). O feed/export de auditoria deixam de vazar sysout. Paridade enterprise clássica. Entregue 2026-07-22.
 
-**Trilhas com itens em ABERTO** (detalhe em [§🔜 Backlog](#-backlog-o-que-falta)):
+- **Fase Z — divulgação** — artefatos entregues 2026-07-13/28 (`docs/case-study.md` + os 4 posts) e **publicação FEITA em 2026-07-29** (artigo + post do perfil pessoal). Trilha fechada.
 
-- **Fase V — self-hosting em VPS de caixa única (24/7)** — **V1–V5 entregues** (install single-origin 3-formas · bundle+one-liner · config guiada · hospedagem enterprise nginx+TLS · agente sandbox). **Resta só V6** (docker-compose, opcional — o alvo escolhido foi systemd). O deploy "1 caixa" 24/7 já está pronto de ponta a ponta.
-- **Fase Z — divulgação** — **artefatos ENTREGUES 2026-07-13** (`docs/case-study.md` + `docs/linkedin-post.md`); resta só a **publicação manual no LinkedIn** (ação sua — revisar, escolher prints, postar).
+**Itens ainda ABERTOS** (detalhe em [§🔜 Backlog](#-backlog-o-que-falta)) — desde **2026-07-30 o
+projeto está em [🧰 modo manutenção](#-modo-manutenção-decidido-em-2026-07-30)**, então nada aqui
+é compromisso de build:
+
+- **Fase V / V6** — **V1–V5 entregues** (install single-origin 3-formas · bundle+one-liner · config guiada · hospedagem enterprise nginx+TLS · agente sandbox). O deploy "1 caixa" 24/7 está pronto ponta a ponta; **V6** (docker-compose) era opcional desde 2026-07-11 e agora está **congelado**.
+- **V-LIVE-TEST / LT-3..LT-11** — campanha de teste da instância 24/7, **amarrada à vida do VPS** (é custo de mantê-lo no ar, não trabalho de produto).
+- **AI-1 (`AI_AGENT`)** — visão futura, nunca committada; **congelada**.
 
 > ✅ **Validação em infra real — trilha FECHADA (2026-07-11):** os dois resíduos (secrets via provider · SSH
 > agente como serviço) foram validados AO VIVO. Detalhe em [§🧪 Validação em infra real](#-validação-em-infra-real).
@@ -73,6 +80,55 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > gente vai **fazendo crescer** — quando um item fecha, ele sai daqui e vira um tópico
 > detalhado em §✅ Entregue (+ linha no changelog). As caixinhas espalhadas nas seções de
 > baixo **não valem** como status (ver ⛔ REGRA DE STATUS no topo).
+
+### 🧰 Modo manutenção *(decidido em 2026-07-30)*
+
+> ⛔ **Nada na §Backlog é compromisso de build.** A lista continua sendo o registro honesto
+> do que está aberto — ela só deixou de ser uma fila de trabalho.
+
+**A decisão.** Todas as trilhas estruturais estão entregues e a Fase Z (publicação) fechou em
+2026-07-29. O que sobrou aberto — V6, LT-3..LT-11, AI-1 — não muda o que o projeto **prova**
+pra quem chega nele. O sinal de aposentadoria de um roadmap não é "o código acabou": é **mais
+engenharia parar de mudar a história que o projeto conta**, e esse ponto foi cruzado. O gargalo
+hoje é distribuição, não build: o artigo saiu em 2026-07-29 e rendeu 17 leituras, 0 star, 0
+seguidor. Continuar codando aqui seria confundir o confortável com o útil.
+
+**O piso (isto continua sendo feito).**
+
+- CI verde na `main` — `staticcheck` + `npm run lint` seguem como gate.
+- Dependência com CVE. O `.github/dependabot.yml` (mensal, agrupado) transforma isso em uma
+  revisão por mês; patch de segurança chega fora do calendário pelo *Dependabot security updates*.
+- Issue ou PR de terceiro **respondida** — é a única coisa aqui que tem outra pessoa do outro lado.
+- Bug que quebre o caminho de instalação do README (`curl | bash` → primeiro job rodando). É a
+  primeira impressão; se ela quebra, o projeto inteiro deixa de provar o que provava.
+
+**Congelado (não se faz sem puxada externa).** V6 (compose/Knative) · AI-1 (`AI_AGENT`) ·
+qualquer paridade nova com orquestrador clássico · tema, UI, refactor por gosto. "Puxada externa"
+= issue de alguém real, adoção, ou uma conversa concreta que dependa daquilo. Vontade não conta.
+
+**LT-3..LT-11 estão amarrados à vida do VPS.** A campanha só existe porque existe uma instância
+24/7 pra apodrecer; ela é o **custo** de manter `regentehub.com` no ar, não trabalho de produto.
+Se o VPS for desligado na revisão, a campanha morre junto. Até lá vale rodar os que protegem a
+instância viva quando o `live-check.sh` acusar (LT-5 reboot · LT-7 restore · LT-11 PAT/GitHub) —
+e o LT-4 (virada do dia em produção) tem valor **narrativo**, não de engenharia: é a semântica
+mais difícil do produto rodando pela primeira vez fora de teste, o que rende texto.
+
+**Revisão marcada: 2026-09-30.** Critérios escritos ANTES, pra decisão não virar humor do dia:
+
+| Sinal em 30/09 | Leitura | Ação |
+|---|---|---|
+| Alguém de fora instalou / abriu issue / deu star fora da rede | Existe puxada real | Investir **reativamente**, escopado nessa puxada |
+| Apareceu em entrevista ou conversa e abriu porta | O ativo já pagou | Nada a fazer — mantém o piso |
+| Silêncio nas duas frentes | É peça de portfólio, não produto | Mantém o piso, **desliga o VPS**, encerra LT-* |
+
+**O VPS é o único item com custo recorrente.** Ele só se justifica enquanto for demo viva pra
+onde se aponta alguém. Se em 30/09 ninguém foi apontado pra lá, desliga — o `curl | bash` prova
+a mesma coisa sem mensalidade.
+
+**Fora de escopo, explicitamente:** propor o Regente como substituto de orquestrador em ambiente
+corporativo. Bus factor 1 em esteira crítica, e o autor vira fornecedor da própria avaliação
+técnica (+ risco de cessão de PI). O que o projeto rende profissionalmente é **conhecimento de
+domínio**, não o binário.
 
 ### 🚀 Fase V — Self-hosting em VPS de caixa única (24/7)
 

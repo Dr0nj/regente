@@ -1,0 +1,42 @@
+# Modo manutenção (2026-07-30): o projeto está feature-complete e não tem roadmap de
+# features. A única manutenção recorrente é dependência com CVE e CI verde — então o
+# Dependabot roda MENSAL e AGRUPADO, pra virar uma revisão por mês em vez de um fluxo
+# de PRs avulsos. Patch de segurança não espera esse calendário: ele chega pelo
+# "Dependabot security updates" (ligado nas settings do repo), fora deste agendamento.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /server
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      server-go:
+        patterns: ["*"]
+
+  - package-ecosystem: gomod
+    directory: /agent
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      agent-go:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /app
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      app-npm:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns: ["*"]

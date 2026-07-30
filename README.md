@@ -12,7 +12,13 @@
     <a href="#-development">Development</a> ·
     <a href="#-license">License</a>
   </p>
-  <p><a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License: Apache 2.0" /></a></p>
+  <p>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License: Apache 2.0" /></a>
+    <a href="docs/roadmap.md"><img src="https://img.shields.io/badge/status-feature--complete-brightgreen.svg" alt="Status: feature complete" /></a>
+  </p>
+  <p><sub><strong>Project status:</strong> feature-complete and maintained — every planned track is delivered.
+  There is no new-feature roadmap; maintenance covers security updates, a green CI and answering issues.
+  Need something that is not here? Open an issue — that is what reopens the roadmap.</sub></p>
 </div>
 
 ---
