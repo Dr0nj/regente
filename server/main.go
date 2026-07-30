@@ -90,6 +90,7 @@ func main() {
 		apiToken         = flag.String("api-token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token for API + WS")
 		demoMode         = flag.Bool("demo-mode", envOr("REGENTE_DEMO_MODE", "") == "1", "Demo/playground: with no agent online, jobs are mock-finalized OK. Default OFF (production): with no agent, the instance stays WAITING and retries when an agent connects")
 		serverAgent      = flag.Bool("server-agent", envOr("REGENTE_SERVER_AGENT", "1") != "0", "Registers the built-in SERVER-AGENT (runs HTTP/REST jobs on the server itself, no external agent). Turn it off with -server-agent=false / REGENTE_SERVER_AGENT=0")
+		trustedProxyCIDR = flag.String("trusted-proxies", envOr("REGENTE_TRUSTED_PROXIES", ""), "Comma-separated CIDRs/IPs allowed to set X-Forwarded-For / X-Real-IP (empty = loopback only, which is the nginx-in-front layout of deploy/vps). Headers from any other peer are ignored, so the audit trail cannot be spoofed")
 
 		// F13 GitOps — SEM default de repositório: cada instalação aponta pro SEU
 		// workspace (o repo é diferente em cada instalação). Vazio = modo offline,
@@ -533,6 +534,17 @@ func main() {
 		log.Printf("[security] WARNING: REGENTE_TOKEN is still the example value (%q). It is ADMIN-EQUIVALENT and bypasses the login — anyone who reaches this port owns this Regente. Fix it with: sudo regente-configure", *apiToken)
 	}
 
+	// Segurança — de quem o server aceita X-Forwarded-For/X-Real-IP. Config
+	// ERRADA aqui é falha de segurança (audit forjável), então não cai em
+	// default silencioso: valor inválido derruba o boot.
+	trustedProxies, tpErr := api.ParseTrustedProxies(*trustedProxyCIDR)
+	if tpErr != nil {
+		log.Fatalf("[security] -trusted-proxies inválido (%q): %v", *trustedProxyCIDR, tpErr)
+	}
+	if strings.TrimSpace(*trustedProxyCIDR) != "" {
+		log.Printf("[security] trusted proxies: %v (X-Forwarded-For/X-Real-IP from anyone else is ignored)", trustedProxies)
+	}
+
 	router := api.NewRouter(api.Config{
 		Store:     store,
 		DB:        database,
@@ -552,6 +564,8 @@ func main() {
 		Presence:  remotePresence,
 		NodeID:    *nodeID,
 		Version:   version,
+
+		TrustedProxies: trustedProxies,
 	})
 
 	if *spaDir != "" {

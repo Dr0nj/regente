@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"net/netip"
 	"os"
 	"path"
 	"path/filepath"
@@ -56,6 +57,11 @@ type Config struct {
 	// autenticação de propósito: entregar a versão exata a um anônimo é entregar a
 	// lista de CVEs aplicáveis junto, e o /health (público) não precisa disso.
 	Version string
+	// TrustedProxies — de quem o servidor aceita X-Forwarded-For/X-Real-IP.
+	// Vazio = só loopback (a topologia do deploy/vps: nginx em 127.0.0.1). Ver
+	// realip.go: header vindo de peer fora desta lista é IGNORADO, senão
+	// qualquer um forja a origem no audit/SIEM.
+	TrustedProxies []netip.Prefix
 }
 
 // RemotePresence — agents conectados em OUTROS nós (bus R5). Implementado por
@@ -83,7 +89,10 @@ func NewRouter(cfg Config) http.Handler {
 	}
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.RealIP)
+	// O middleware.RealIP do chi saiu daqui: foi deprecado por ser spoofável
+	// (GHSA-3fxj-6jh8-hvhx e cia). O substituto só honra X-Forwarded-For/X-Real-IP
+	// vindos de um proxy confiável — ver realip.go.
+	r.Use(realIP(cfg.TrustedProxies))
 	r.Use(cors)
 
 	r.Get("/health", s.health)

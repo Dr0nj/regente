@@ -32,8 +32,14 @@ func (s *server) audit(e audit.Event) {
 	}
 }
 
-// clientIP extrai o IP do request (RemoteAddr já normalizado pelo middleware RealIP).
+// clientIP — IP de origem do request, para o audit/SIEM. Prefere o que o
+// middleware realIP resolveu (só existe quando o peer TCP é um proxy
+// CONFIÁVEL); fora disso usa o peer, que é a verdade. Nada aqui sai de header
+// não-verificado — era exatamente esse o furo do middleware.RealIP do chi.
 func clientIP(r *http.Request) string {
+	if ip, ok := r.Context().Value(clientIPCtxKey{}).(string); ok && ip != "" {
+		return ip
+	}
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		return host
 	}
