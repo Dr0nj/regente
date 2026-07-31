@@ -249,7 +249,7 @@ function useDayWindow(active: boolean, filter: StatusFilter, search: string, lab
     const first = Math.max(0, Math.floor(fromIdx / PAGE));
     const last = Math.max(first, Math.floor(toIdx / PAGE));
     for (let pg = first; pg <= last; pg++) {
-      const key = `${folder} ${pg}`;
+      const key = `${folder}\u0000${pg}`;
       if (pages.current.get(folder)?.has(pg) || inflight.current.has(key)) continue;
       inflight.current.add(key);
       const qs = new URLSearchParams({
@@ -297,7 +297,11 @@ export default function MonitoringSidebarV2({
 }: {
   jobs: MonitoringJob[];
   selectedId?: string | null;
-  onSelect?: (id: string) => void;
+  /** `additive` = clique com Shift/Ctrl/Cmd, a MESMA semântica do onNodeClick do
+      canvas: simples troca a seleção, additive alterna. Sem isso a row da
+      sidebar centrava e abria o job mas não o SELECIONAVA no grafo, e não dava
+      pra montar seleção múltipla pela lista (bulk delete ficava inacessível). */
+  onSelect?: (id: string, additive: boolean) => void;
   /** D-2 — pause/resume de workflow: segura/libera os WAITING da folder em massa. */
   onPauseFolder?: (name: string) => void;
   onResumeFolder?: (name: string) => void;
@@ -312,8 +316,8 @@ export default function MonitoringSidebarV2({
   const [query, setQuery] = useState("");
   const [internalSelected, setInternalSelected] = useState<string | null>(null);
   const selected = selectedId !== undefined ? selectedId : internalSelected;
-  const handleSelect = (id: string) => {
-    if (onSelect) onSelect(id);
+  const handleSelect = (id: string, additive = false) => {
+    if (onSelect) onSelect(id, additive);
     else setInternalSelected(id);
   };
 
@@ -663,7 +667,7 @@ export default function MonitoringSidebarV2({
         visibleRows.push(
           <div
             key={j.id}
-            onClick={() => handleSelect(j.id)}
+            onClick={(e) => handleSelect(j.id, e.shiftKey || e.metaKey || e.ctrlKey)}
             style={{
               position: "absolute", top, left: 0, right: 0, height: ROW_H,
               padding: "0 12px 0 22px",

@@ -710,7 +710,21 @@ function V2PreviewInner() {
   const selectedInstance = selectedInstanceId ? instances.find((i) => i.id === selectedInstanceId) : null;
 
   /* ── Sidebar click → centralize node (focusNode vem do useCanvasCamera) ── */
-  const handleSidebarSelect = useCallback((instId: string) => {
+  const handleSidebarSelect = useCallback((instId: string, additive = false) => {
+    // A row da sidebar é uma forma de SELECIONAR o job, não só de olhar pra ele:
+    // alimenta o mesmo `selectedIds` do onNodeClick (fonte única do highlight
+    // neon e do que a BulkActionBar opera). Antes daqui só saíam a câmera e o
+    // drawer, então o card ficava sem destaque e Shift/Ctrl na lista não montava
+    // seleção múltipla — o bulk delete era inalcançável pela sidebar.
+    setSelectedIds((prev) => {
+      if (additive) {
+        const next = new Set(prev);
+        if (next.has(instId)) next.delete(instId); else next.add(instId);
+        return next;
+      }
+      if (prev.size === 1 && prev.has(instId)) return prev; // já é o único
+      return new Set([instId]);
+    });
     setSelectedInstanceId(instId);
     focusNode(`m-${instId}`);
     // UI-1 — sidebar windowed: a row clicada pode estar FORA do espelho local

@@ -32,7 +32,12 @@
 
   /* Status ── semânticas, ≤ 5 cores */
   --v2-status-ok:      #11C76F;
-  --v2-status-running: #22d3ee;
+  --v2-status-running: #facc15;   /* RUNNING é AMARELO (pedido do usuário) */
+  /* Azul/ciano que era o RUNNING: sobrevive como acento de INFO pra quem
+     só queria destaque (badge de environment, severidade info, número no
+     editor de código) e não o status. Sem isso essas telas viravam
+     amarelas junto e 'info' passava a parecer 'warning'. */
+  --v2-accent-info: #22d3ee;
   --v2-status-failed:  #ef4444;
   --v2-status-hold:    #f59e0b;
   --v2-status-waiting: #737373;
@@ -117,7 +122,15 @@
   --v2-accent-glow:    rgba(4, 120, 87, 0.24);
 
   --v2-status-ok:      #15803d;
-  --v2-status-running: #2563eb;
+  /* Amarelo ESCURECIDO, igual nos 4 temas claros: o #facc15 dos escuros dá
+     1,45:1 sobre esta surface quase branca (ilegível); este dá 4,7:1 (AA)
+     mantendo o matiz amarelo. */
+  --v2-status-running: #8a6a00;   /* RUNNING é AMARELO (pedido do usuário) */
+  /* Azul/ciano que era o RUNNING: sobrevive como acento de INFO pra quem
+     só queria destaque (badge de environment, severidade info, número no
+     editor de código) e não o status. Sem isso essas telas viravam
+     amarelas junto e 'info' passava a parecer 'warning'. */
+  --v2-accent-info: #2563eb;
   --v2-status-failed:  #dc2626;
   --v2-status-hold:    #b45309;
   --v2-status-waiting: #7f8992;
@@ -139,7 +152,7 @@
   --color-accent-dark:   #d6f0e3;   /* fundo de ::selection — tint claro p/ texto escuro */
   --color-accent-deep:   #eaf7f0;
   --color-status-success: #15803d;
-  --color-status-running: #2563eb;
+  --color-status-running: #8a6a00;
   --color-status-failed:  #dc2626;
   --color-status-waiting: #b45309;
   --color-status-inactive:#7f8992;
@@ -171,7 +184,12 @@
   --v2-accent-glow:    rgba(37, 99, 235, 0.24);
 
   --v2-status-ok:      #15803d;
-  --v2-status-running: #2563eb;
+  --v2-status-running: #8a6a00;   /* RUNNING é AMARELO (pedido do usuário) */
+  /* Azul/ciano que era o RUNNING: sobrevive como acento de INFO pra quem
+     só queria destaque (badge de environment, severidade info, número no
+     editor de código) e não o status. Sem isso essas telas viravam
+     amarelas junto e 'info' passava a parecer 'warning'. */
+  --v2-accent-info: #2563eb;
   --v2-status-failed:  #dc2626;
   --v2-status-hold:    #b45309;
   --v2-status-waiting: #828d9c;
@@ -192,7 +210,7 @@
   --color-accent-dark:   #dbe8fd;
   --color-accent-deep:   #eef4fe;
   --color-status-success: #15803d;
-  --color-status-running: #2563eb;
+  --color-status-running: #8a6a00;
   --color-status-failed:  #dc2626;
   --color-status-waiting: #b45309;
   --color-status-inactive:#828d9c;
@@ -224,7 +242,12 @@
   --v2-accent-glow:    rgba(154, 84, 16, 0.22);
 
   --v2-status-ok:      #4d7c0f;   /* verde-oliva — combina com a paleta quente */
-  --v2-status-running: #1d6fa5;
+  --v2-status-running: #8a6a00;   /* RUNNING é AMARELO (pedido do usuário) */
+  /* Azul/ciano que era o RUNNING: sobrevive como acento de INFO pra quem
+     só queria destaque (badge de environment, severidade info, número no
+     editor de código) e não o status. Sem isso essas telas viravam
+     amarelas junto e 'info' passava a parecer 'warning'. */
+  --v2-accent-info: #1d6fa5;
   --v2-status-failed:  #b91c1c;
   --v2-status-hold:    #ca8a04;
   --v2-status-waiting: #978a6f;
@@ -245,7 +268,7 @@
   --color-accent-dark:   #efe1c5;
   --color-accent-deep:   #f6edd8;
   --color-status-success: #4d7c0f;
-  --color-status-running: #1d6fa5;
+  --color-status-running: #8a6a00;
   --color-status-failed:  #b91c1c;
   --color-status-waiting: #ca8a04;
   --color-status-inactive:#978a6f;
@@ -278,7 +301,12 @@
 
   /* Interface neutra, mas o STATUS do job é informação — cores semânticas. */
   --v2-status-ok:      #15803d;
-  --v2-status-running: #2563eb;
+  --v2-status-running: #8a6a00;   /* RUNNING é AMARELO (pedido do usuário) */
+  /* Azul/ciano que era o RUNNING: sobrevive como acento de INFO pra quem
+     só queria destaque (badge de environment, severidade info, número no
+     editor de código) e não o status. Sem isso essas telas viravam
+     amarelas junto e 'info' passava a parecer 'warning'. */
+  --v2-accent-info: #2563eb;
   --v2-status-failed:  #dc2626;
   --v2-status-hold:    #b45309;
   --v2-status-waiting: #818a92;
@@ -299,7 +327,7 @@
   --color-accent-dark:   #e1e6ea;
   --color-accent-deep:   #eef1f3;
   --color-status-success: #15803d;
-  --color-status-running: #2563eb;
+  --color-status-running: #8a6a00;
   --color-status-failed:  #dc2626;
   --color-status-waiting: #b45309;
   --color-status-inactive:#818a92;
@@ -347,7 +375,12 @@
   --v2-accent-glow:    rgba(255, 223, 0, 0.35);
 
   --v2-status-ok:      #00b84c;
-  --v2-status-running: #2f6fed;   /* azul bandeira */
+  --v2-status-running: #facc15;   /* RUNNING é AMARELO (pedido do usuário) */
+  /* Azul/ciano que era o RUNNING: sobrevive como acento de INFO pra quem
+     só queria destaque (badge de environment, severidade info, número no
+     editor de código) e não o status. Sem isso essas telas viravam
+     amarelas junto e 'info' passava a parecer 'warning'. */
+  --v2-accent-info: #2f6fed;   /* azul bandeira */
   --v2-status-failed:  #ef4444;
   --v2-status-hold:    #f5b50a;
   --v2-status-waiting: #6c8a76;
@@ -377,7 +410,12 @@
   --v2-accent-glow:    rgba(255, 210, 0, 0.35);
 
   --v2-status-ok:      #2ea043;
-  --v2-status-running: #2f6fed;
+  --v2-status-running: #facc15;   /* RUNNING é AMARELO (pedido do usuário) */
+  /* Azul/ciano que era o RUNNING: sobrevive como acento de INFO pra quem
+     só queria destaque (badge de environment, severidade info, número no
+     editor de código) e não o status. Sem isso essas telas viravam
+     amarelas junto e 'info' passava a parecer 'warning'. */
+  --v2-accent-info: #2f6fed;
   --v2-status-failed:  #ef4444;
   --v2-status-hold:    #f5b50a;
   --v2-status-waiting: #8a7f5e;
@@ -407,7 +445,12 @@
   --v2-accent-glow:    rgba(0, 200, 83, 0.35);
 
   --v2-status-ok:      #00C853;
-  --v2-status-running: #2f6fed;
+  --v2-status-running: #facc15;   /* RUNNING é AMARELO (pedido do usuário) */
+  /* Azul/ciano que era o RUNNING: sobrevive como acento de INFO pra quem
+     só queria destaque (badge de environment, severidade info, número no
+     editor de código) e não o status. Sem isso essas telas viravam
+     amarelas junto e 'info' passava a parecer 'warning'. */
+  --v2-accent-info: #2f6fed;
   --v2-status-failed:  #ef4444;
   --v2-status-hold:    #E6C200;
   --v2-status-waiting: #5c7a66;
@@ -437,7 +480,12 @@
   --v2-accent-glow:    rgba(255, 79, 163, 0.38);
 
   --v2-status-ok:      #20c997;   /* verde-água: sucesso legível sobre rosa */
-  --v2-status-running: #38bdf8;
+  --v2-status-running: #facc15;   /* RUNNING é AMARELO (pedido do usuário) */
+  /* Azul/ciano que era o RUNNING: sobrevive como acento de INFO pra quem
+     só queria destaque (badge de environment, severidade info, número no
+     editor de código) e não o status. Sem isso essas telas viravam
+     amarelas junto e 'info' passava a parecer 'warning'. */
+  --v2-accent-info: #38bdf8;
   --v2-status-failed:  #ef4444;
   --v2-status-hold:    #f59e0b;
   --v2-status-waiting: #9b7385;
@@ -467,7 +515,12 @@
   --v2-accent-glow:    rgba(41, 197, 255, 0.38);
 
   --v2-status-ok:      #11C76F;
-  --v2-status-running: #29C5FF;
+  --v2-status-running: #facc15;   /* RUNNING é AMARELO (pedido do usuário) */
+  /* Azul/ciano que era o RUNNING: sobrevive como acento de INFO pra quem
+     só queria destaque (badge de environment, severidade info, número no
+     editor de código) e não o status. Sem isso essas telas viravam
+     amarelas junto e 'info' passava a parecer 'warning'. */
+  --v2-accent-info: #29C5FF;
   --v2-status-failed:  #ef4444;
   --v2-status-hold:    #f59e0b;
   --v2-status-waiting: #5e7e93;
@@ -497,7 +550,12 @@
   --v2-accent-glow:    rgba(59, 130, 246, 0.36);
 
   --v2-status-ok:      #22c55e;
-  --v2-status-running: #38bdf8;
+  --v2-status-running: #facc15;   /* RUNNING é AMARELO (pedido do usuário) */
+  /* Azul/ciano que era o RUNNING: sobrevive como acento de INFO pra quem
+     só queria destaque (badge de environment, severidade info, número no
+     editor de código) e não o status. Sem isso essas telas viravam
+     amarelas junto e 'info' passava a parecer 'warning'. */
+  --v2-accent-info: #38bdf8;
   --v2-status-failed:  #ef4444;
   --v2-status-hold:    #f59e0b;
   --v2-status-waiting: #5b6b95;
@@ -527,7 +585,12 @@
   --v2-accent-glow:    rgba(168, 85, 247, 0.38);
 
   --v2-status-ok:      #34d399;
-  --v2-status-running: #38bdf8;
+  --v2-status-running: #facc15;   /* RUNNING é AMARELO (pedido do usuário) */
+  /* Azul/ciano que era o RUNNING: sobrevive como acento de INFO pra quem
+     só queria destaque (badge de environment, severidade info, número no
+     editor de código) e não o status. Sem isso essas telas viravam
+     amarelas junto e 'info' passava a parecer 'warning'. */
+  --v2-accent-info: #38bdf8;
   --v2-status-failed:  #ef4444;
   --v2-status-hold:    #f59e0b;
   --v2-status-waiting: #7a6593;
@@ -557,7 +620,12 @@
   --v2-accent-glow:    rgba(255, 77, 77, 0.38);
 
   --v2-status-ok:      #34d399;
-  --v2-status-running: #38bdf8;
+  --v2-status-running: #facc15;   /* RUNNING é AMARELO (pedido do usuário) */
+  /* Azul/ciano que era o RUNNING: sobrevive como acento de INFO pra quem
+     só queria destaque (badge de environment, severidade info, número no
+     editor de código) e não o status. Sem isso essas telas viravam
+     amarelas junto e 'info' passava a parecer 'warning'. */
+  --v2-accent-info: #38bdf8;
   --v2-status-failed:  #ff8a3d;   /* laranja: falha distinta do accent vermelho */
   --v2-status-hold:    #f5b50a;
   --v2-status-waiting: #8a6060;
@@ -587,7 +655,12 @@
   --v2-accent-glow:    rgba(255, 140, 26, 0.38);
 
   --v2-status-ok:      #34d399;
-  --v2-status-running: #38bdf8;
+  --v2-status-running: #facc15;   /* RUNNING é AMARELO (pedido do usuário) */
+  /* Azul/ciano que era o RUNNING: sobrevive como acento de INFO pra quem
+     só queria destaque (badge de environment, severidade info, número no
+     editor de código) e não o status. Sem isso essas telas viravam
+     amarelas junto e 'info' passava a parecer 'warning'. */
+  --v2-accent-info: #38bdf8;
   --v2-status-failed:  #ef4444;
   --v2-status-hold:    #FFC23D;
   --v2-status-waiting: #8a6f54;
@@ -620,7 +693,12 @@
      OK/running/falha/hold precisam ser distinguíveis. Mantemos as cores
      semânticas (como no tema padrão) — só o waiting fica neutro. */
   --v2-status-ok:      #11C76F;
-  --v2-status-running: #22d3ee;
+  --v2-status-running: #facc15;   /* RUNNING é AMARELO (pedido do usuário) */
+  /* Azul/ciano que era o RUNNING: sobrevive como acento de INFO pra quem
+     só queria destaque (badge de environment, severidade info, número no
+     editor de código) e não o status. Sem isso essas telas viravam
+     amarelas junto e 'info' passava a parecer 'warning'. */
+  --v2-accent-info: #22d3ee;
   --v2-status-failed:  #ef4444;
   --v2-status-hold:    #f59e0b;
   --v2-status-waiting: #6b6b6b;
@@ -650,7 +728,12 @@
   --v2-accent-glow:    rgba(217, 200, 154, 0.32);
 
   --v2-status-ok:      #8fbf6f;
-  --v2-status-running: #6fb0d0;
+  --v2-status-running: #facc15;   /* RUNNING é AMARELO (pedido do usuário) */
+  /* Azul/ciano que era o RUNNING: sobrevive como acento de INFO pra quem
+     só queria destaque (badge de environment, severidade info, número no
+     editor de código) e não o status. Sem isso essas telas viravam
+     amarelas junto e 'info' passava a parecer 'warning'. */
+  --v2-accent-info: #6fb0d0;
   --v2-status-failed:  #e06b5a;
   --v2-status-hold:    #d9a441;
   --v2-status-waiting: #8a7c5c;
@@ -680,7 +763,12 @@
   --v2-accent-glow:    rgba(198, 138, 78, 0.34);
 
   --v2-status-ok:      #8fbf6f;
-  --v2-status-running: #6fb0d0;
+  --v2-status-running: #facc15;   /* RUNNING é AMARELO (pedido do usuário) */
+  /* Azul/ciano que era o RUNNING: sobrevive como acento de INFO pra quem
+     só queria destaque (badge de environment, severidade info, número no
+     editor de código) e não o status. Sem isso essas telas viravam
+     amarelas junto e 'info' passava a parecer 'warning'. */
+  --v2-accent-info: #6fb0d0;
   --v2-status-failed:  #e06b5a;
   --v2-status-hold:    #d99a41;
   --v2-status-waiting: #8a6a4c;

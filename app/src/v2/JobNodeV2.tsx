@@ -27,7 +27,7 @@ const STATUS_COLOR: Record<JobStatus, string> = {
 
 const STATUS_LABEL: Record<JobStatus, string> = {
   SUCCESS: "OK",
-  RUNNING: "RUN",
+  RUNNING: "RUNNING",
   FAILED: "FAIL",
   WAITING: "WAIT",
   INACTIVE: "IDLE",
