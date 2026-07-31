@@ -25,7 +25,9 @@ import { isServerMode } from "@/lib/server-client";
 type Tab = "events" | "rules";
 
 const SEVERITY_COLOR: Record<AlertSeverity, string> = {
-  info: "var(--v2-status-running)",
+  // INFO usa o acento de info, não o status RUNNING: quando o RUNNING virou
+  // amarelo, "info" passaria a se ler como "warning".
+  info: "var(--v2-accent-info)",
   warning: "var(--v2-status-waiting)",
   critical: "var(--v2-status-failed)",
 };
