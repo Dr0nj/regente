@@ -56,7 +56,6 @@
 projeto está em [🧰 modo manutenção](#-modo-manutenção-decidido-em-2026-07-30)**, então nada aqui
 é compromisso de build:
 
-- **🐞 DAY-1 — GRAVÍSSIMO, e NÃO congelado** — o `order_date` vira à **meia-noite** em vez de virar na `daily_at`, e server e UI calculam a data em relógios diferentes. Resultado vivido em produção: **ordem forçada com 200 no server e invisível na tela**. Candidato ao piso, não à fila de features.
 - **Fase V / V6** — **V1–V5 entregues** (install single-origin 3-formas · bundle+one-liner · config guiada · hospedagem enterprise nginx+TLS · agente sandbox). O deploy "1 caixa" 24/7 está pronto ponta a ponta; **V6** (docker-compose) era opcional desde 2026-07-11 e agora está **congelado**.
 - **V-LIVE-TEST / LT-3..LT-11** — campanha de teste da instância 24/7, **amarrada à vida do VPS** (é custo de mantê-lo no ar, não trabalho de produto).
 - **AI-1 (`AI_AGENT`)** — visão futura, nunca committada; **congelada**.
@@ -139,39 +138,6 @@ a mesma coisa sem mensalidade.
 corporativo. Bus factor 1 em esteira crítica, e o autor vira fornecedor da própria avaliação
 técnica (+ risco de cessão de PI). O que o projeto rende profissionalmente é **conhecimento de
 domínio**, não o binário.
-
-### 🐞 DAY-1 — GRAVÍSSIMO: o dia vira à MEIA-NOITE, não na daily *(achado 2026-07-30 em produção)*
-
-> ⛔ **Este item NÃO é congelado.** Ele quebra a promessa central do produto — "a ordem do dia" —
-> e foi encontrado na instância viva, com o operador olhando pra uma tela vazia enquanto o
-> servidor tinha as ordens no banco. Candidato direto ao **piso** (§🧰), não à fila de features.
-
-- [ ] **DAY-1** — **`order_date` é data de CALENDÁRIO, mas o dia de negócio deveria virar em `daily_at`.**
-      **Sintoma vivido (2026-07-30, 22h em `regentehub.com`):** o operador força um job, recebe
-      `200 {"instanceId":...}`, e **nada aparece na tela**. O job existe, está WAITING no banco,
-      e some da UI. Duas horas de investigação, rollback do server pra `v0.2.7` e de volta —
-      nada disso tinha a ver com a causa.
-      **Causa raiz, confirmada nos dois lados:**
-      `Scheduler.TodayDate()` = `NowLocal().Format("2006-01-02")` e a UI usa
-      `todayOrderDate()` = `new Date()` do browser. **Os dois viram à meia-noite** — e viram em
-      relógios DIFERENTES: o server no fuso do processo/`daily_timezone`, a UI no fuso do
-      browser. Com o server em UTC e o operador em `-03`, das 21h às 24h locais o server carimba
-      `D+1` e a tela pede `D` → **a ordem existe e é invisível**. Corrigir o fuso alinha os dois,
-      mas **não resolve**: sobra a janela **00:00→`daily_at` (06:00)**, em que a data já avançou
-      e a daily do dia novo ainda não rodou. Aí o operador vê um dia que ainda não começou —
-      vazio — enquanto o dia real segue em aberto.
-      **O que o modelo pede:** a data de negócio é ancorada em `daily_at`, não na meia-noite —
-      antes das 06:00, "hoje" ainda é `D-1`. É a semântica de ODAT de orquestrador clássico, e é
-      a que o próprio produto já promete em [[docs/conditions-events.md]] e no §ODAT.
-      **Onde mexer:** `TodayDate()`/`NowLocal()` (`server/internal/scheduler/scheduler.go`) ·
-      `autoDailyIfDue` (que compara com `now.Format`) · `todayOrderDate()`
-      (`app/src/lib/orchestrator-model.ts`) — e a UI deve pegar a data de negócio **do server**
-      (`GET /api/daily/status` já expõe o relógio dele), nunca calcular a própria.
-      **Regressão obrigatória:** ordem criada 23:50 e ordem criada 00:10 caem na MESMA data de
-      negócio até as 06:00; ordem criada 06:01 cai na seguinte. Testar com o server e o browser
-      em fusos DIFERENTES — foi exatamente o que ninguém tinha testado.
-      **Mitigação enquanto não tem fix:** manter `daily_timezone` e o fuso do SO iguais ao do
-      operador (`timedatectl set-timezone`), o que reduz a janela ruim de 3h+ pra 00:00–06:00.
 
 ### 🚀 Fase V — Self-hosting em VPS de caixa única (24/7)
 
@@ -427,6 +393,29 @@ domínio**, não o binário.
    install-agent.sh (Linux/macOS) · install-agent-windows.ps1; modo silencioso p/ frota
 ✅ Webhook secret (HMAC do GitHub) configurável em runtime pela UI
 ✅ Token do GitHub (PAT) configurável pela UI, persistido server-side (sem env obrigatória)
+```
+
+## 🗓️ DAY-1 — o dia de negócio vira na daily, não à meia-noite *(2026-07-31)*
+
+> **A regra, em uma frase:** entre o `daily_at` de D e o `daily_at` de D+1, o dia é **D**. Se o
+> operador configura a daily às 15:00, o dia 30 vai das 15:00 do dia 30 às 14:59 do dia 31 — e
+> tudo que acontece nessa janela (ordem forçada, Order Force, report, o que a tela pede) é do
+> dia 30. Com o default `daily_at=00:00` isso é idêntico à data-calendário, então instalação
+> existente não sente a mudança.
+
+```
+✅ Scheduler.BusinessDate(t) — data de negócio de um instante, ancorada em daily_at
+✅ TodayDate() = BusinessDate(NowLocal()) — a data que TODA ordem nova recebe
+✅ autoDailyIfDue compara pela data de negócio (passar da meia-noite não materializa nada)
+✅ carry-over: timestamp cru (finished/started) datado pela MESMA régua — vida de
+   keepActive/NOTOK/HELD inalterada (era o risco real da mudança)
+✅ defaults de ?date= (instances · events · forecast · diff · dry-run) e retenção do
+   archiveGC pela data de negócio; AddDays() anda em DIÁRIAS, não em 24h de relógio
+✅ SPA para de calcular "hoje": /api/daily/status publica a data de negócio em
+   setBusinessDate() e todayOrderDate() devolve o dia do SERVER
+✅ virada com a aba aberta: daily.started + _connected ressincronizam a data ANTES do
+   refresh, e um watchdog de 60s cobre o evento perdido
+✅ 6 testes de regressão (day1_test.go) com server em UTC e negócio em -03
 ```
 
 ## 🎨 Identidade visual / UI
@@ -1523,6 +1512,7 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 
 | Quando | O que | Detalhe |
 |----|--------|---------|
+| ✅ | ~~**DAY-1: o dia de negócio virava à MEIA-NOITE, não na daily**~~ | **Feito (2026-07-31, o item GRAVÍSSIMO achado em produção no dia anterior — o único do backlog que nunca foi congelado.)** **O conceito, dito pelo usuário:** *"a daily vai seguindo o dia até o horário de mudança da daily; se o usuário configurar 15h da tarde, só esse horário vai virar o dia, e tudo que acontecer segue"*. Era a semântica de ODAT que o produto já prometia e que o código não implementava: `TodayDate()` era `NowLocal().Format("2006-01-02")` e a SPA usava `new Date()` do browser — **os dois viravam à meia-noite, em relógios diferentes**. Server em UTC + operador em `-03` = das 21h à meia-noite o server carimbava `D+1` e a tela pedia `D`: a ordem forçada respondia `200` e **sumia do board**. Alinhar fuso só encolhia a janela; sobrava `00:00→daily_at`, em que a data já avançou e a daily do dia novo ainda não rodou. Agora existe **`Scheduler.BusinessDate(t)`**, ancorada em `daily_at`, e `TodayDate()` é `BusinessDate(NowLocal())` — fonte ÚNICA da data de uma ordem nova. `autoDailyIfDue` passou a comparar pela data de negócio (passar da meia-noite deixa de ser evento nenhum; a daily dispara **exatamente** quando o relógio cruza o `daily_at`), e o guard de horário ficou de propósito: na janela `00:00→daily_at` ele impede que subir o server ressuscite uma diária velha. ⚠️ **O risco real da mudança era o ciclo de vida, não a data:** a idade do carry compara LABELS de `order_date` (que são datas de negócio), mas `finished_at`/`started_at` são timestamps CRUS — com `daily_at=15:00`, um NOTOK das 02:00 do dia 31 falhou no dia de negócio **30**, e datá-lo como 31 dava a ele **uma diária extra de vida**. O `dayOf` do `carryOver` passou pela mesma régua: **carry-over, HOLD, keepActive e NOTOK mantêm exatamente a vida de antes**, que era a condição posta. Também viraram data de negócio os defaults de `?date=` que ainda liam `time.Now()` (`/api/instances` — o do bug —, `/api/events`, forecast, `daily/diff`, `daily/dry-run`) e o corte do `archiveGC`; `AddDays()` anda em **diárias** sobre o label, porque somar dias a um instante e formatar depois volta a datar pela meia-noite. **Do lado da SPA, a segunda metade do bug:** `todayOrderDate()` deixou de calcular e passa a devolver o que o server publica (`GET /api/daily/status` → `setBusinessDate`), com o relógio do browser só como fallback do local mode. A virada com a aba aberta é tratada como **troca de data**: `daily.started` e `_connected` ressincronizam a data **antes** do refresh (senão o GET sai com o dia velho e o `doFetch` nem entra no ramo que limpa o dia anterior), e um watchdog de 60s cobre o evento perdido — WS caído no `daily_at` ou aba suspensa deixava o board preso no dia anterior até um F5, que é o sintoma do DAY-1 visto do outro lado. **Regressão:** `day1_test.go`, 6 testes com o server em UTC e o negócio em `America/Sao_Paulo` — o par que ninguém tinha testado. Cobrem o aceite pedido (ordem às 23:50 e ordem às 00:10 na MESMA data de negócio; a virada só no `daily_at`), a não-regressão do default `00:00`, a daily que não dispara na meia-noite, a ordem manual caindo sempre na diária corrente, e a idade do carry em dias de negócio. **3 deles ficam VERMELHOS no código anterior** (verificado revertendo o fix) — inclusive o do carry. Suíte de `scheduler` e `api`, `go vet`, `tsc` e `npm run lint` verdes. |
 | ✅ | ~~**RUNNING amarelo + row da sidebar SELECIONA de verdade**~~ | **Feito (2026-07-31, dois incômodos reportados pelo usuário.)** **(1) Status RUNNING** — o card lia `RUN` (o drawer já lia `RUNNING`; a inconsistência era do card) e pintava de **azul/ciano**. Agora lê `RUNNING` e é **amarelo**. ⚠️ O token `--v2-status-running` era reusado como "azul de destaque" fora do status — severidade **info** do AlertsPanel, badge de environment do AgentsManager, número e badge `~update` do CodeModeView, valor no ControlMPanel — que virariam amarelos junto, e "info" passaria a se ler como "warning". Por isso o azul antigo de CADA tema foi preservado num token novo **`--v2-accent-info`** e esses 4 arquivos foram repontados; só o status mudou de cor. Amarelo por família de tema: **`#facc15`** nos 13 escuros (contraste 11,9–12,9 sobre a surface) e **`#8a6a00`** nos 4 claros (4,5–4,8, AA — o `#facc15` dá 1,45 sobre branco, ilegível). **(2) Seleção pela sidebar** — clicar uma row centrava a câmera e abria o drawer mas **não** alimentava o `selectedIds` (fonte única do halo neon e do que a BulkActionBar opera): o card não acendia e Shift/Ctrl na lista não montava seleção múltipla, deixando o **bulk delete inalcançável pela sidebar**. `onSelect` passou a carregar o flag `additive` e o `handleSidebarSelect` aplica a MESMA semântica do `onNodeClick` (simples troca · Shift/Ctrl alterna). **Drive-by:** `MonitoringSidebarV2.tsx` tinha um **byte NUL cru** numa chave de cache (`${folder}\0${pg}`), o que fazia toda ferramenta tratar o arquivo como binário (grep incluído); virou o escape ` `, mesmo valor de string. **Validado ao vivo** (server real + SERVER-AGENT + 4 jobs HTTP de 2 min): label `RUNNING` renderizando `rgb(250,204,21)`; **17 temas varridos no DOM** com pior contraste **4,51** e `--v2-accent-info` presente em todos; clique simples → 1 selecionado, Shift/Ctrl → 3, Ctrl no já-selecionado → remove, clique no canvas sem regressão; e o objetivo final provado ponta a ponta — selecionar 3 pela sidebar → `Hold all` → `Delete all` → instances sumiram. `tsc`, `npm run lint`, `npm run build`, suíte Go de server e agent: verdes. |
 | ✅ | ~~**`GET /api/variables` devolvia valor em claro pra qualquer logado**~~ | **Feito (2026-07-31, manutenção — piso).** O `PUT` e o `DELETE` de variável sempre exigiram admin; o **`GET` não exigia nada** e devolvia `vs.List()` cru — viewer incluído lia o conteúdo de qualquer global, inclusive uma que guardasse credencial. Assimetria era descuido, não decisão: `listAgentTokens` já expõe só `substr(token,1,8)` **com** `requireAdmin`, e `settings.go` mascara as chaves de `secretSettingKeys`. Agora o valor sai só para admin; o resto recebe **nome/updatedAt/updatedBy + `••••••`**, que é o que basta pra escrever `%%NOME` num job. Máscara é marcador **fixo** de propósito — comprimento variável vazaria o tamanho do segredo. 2 testes (admin vê · operator/viewer não · contexto sem usuário mascara). Front não mudou: quem não é admin já levava 403 no `PUT`. **Este item entrou no piso pelo critério acrescentado um dia antes** ("falha de segurança no código próprio"); com o piso original — só CVE de dependência — teria ficado no backlog congelado. |
 | ✅ | ~~**29 CVEs que estavam invisíveis: varredura zerada (14 críticos)**~~ | **Feito (2026-07-30, manutenção — piso).** Assim que os alertas foram ligados (linha abaixo), a varredura acusou **29 alertas abertos, 14 CRÍTICOS** — todos existiam antes e ninguém via. Distribuição: `golang.org/x/crypto` em **server E agent** (7 críticos cada, + high/medium), `google.golang.org/grpc` (high, indireto), `github.com/go-chi/chi/v5` (medium — o mesmo pacote do GHSA do RealIP), e 4 no `app` (`brace-expansion` ×2, `postcss`, `js-yaml`). Corrigido: **Go** — `x/crypto` 0.51.0→**0.52.0** no server e **0.41.0**→0.52.0 no agent (o agent estava 11 minors atrás), `grpc` 1.81.1→**1.82.1**, `chi` 5.1.0→**5.3.1** (que era o bump do PR #4, agora incorporado). **npm** — a raiz das 4 era o `minimatch@3` que o **eslint 9** arrasta; `eslint` 9.39.4→**^10.8.0** zerou as quatro de uma vez, sem migração de config. ⚠️ **Caminho que NÃO deu certo, registrado pra ninguém repetir:** pinar `brace-expansion` em `^5.0.9` via `overrides` parece resolver e **quebra o lint** — o `minimatch@3` usa a API 1.x e o eslint morre com `Oops! Something went wrong!`. As duas linhas do pacote têm correção separada (1.1.16 e 5.0.8), então override único é armadilha; o `overrides` aninhado funcionava mas virou desnecessário com o eslint 10, e foi descartado em favor do diff de **uma linha**. Validado: `go build`+`staticcheck`+suíte verdes em server e agent, **cross-compile `GOOS=linux` nos dois**, `npm audit` em **0 vulnerabilities**, `npm run lint` e `npm run build` limpos. |

@@ -4,6 +4,7 @@ import type { JobNodeData } from "@/lib/job-config";
 import { useResizablePanel, ResizeHandle } from "./resizable";
 import { api, onServerEvent, isServerMode } from "@/lib/server-client";
 import { todayOrderDate } from "@/lib/orchestrator-model";
+import { onBusinessDateChange } from "@/lib/business-date";
 import { legacyCap } from "@/lib/server-instance-store";
 
 /* ──────────────────────────────────────────────────────────────
@@ -166,6 +167,8 @@ function useDayWindow(active: boolean, filter: StatusFilter, search: string, lab
   const pages = useRef(new Map<string, Map<number, MonitoringJob[]>>());
   const rowIndex = useRef(new Map<string, { folder: string; page: number; off: number }>());
   const inflight = useRef(new Set<string>());
+  // DAY-1 — dia de negócio que o último summary usou (ver o efeito de virada).
+  const summaryDate = useRef<string>("");
   const bump = useCallback(() => setVersion((v) => v + 1), []);
 
   const serverStatus = filter !== "ALL" ? FILTER_TO_SERVER[filter] : "";
@@ -180,6 +183,7 @@ function useDayWindow(active: boolean, filter: StatusFilter, search: string, lab
   const loadSummary = useCallback(async () => {
     if (!active) return;
     const date = todayOrderDate();
+    summaryDate.current = date;
     try {
       const s = await api<DaySummary>(`/api/instances/summary?date=${encodeURIComponent(date)}`);
       setSummary(s);
@@ -203,6 +207,26 @@ function useDayWindow(active: boolean, filter: StatusFilter, search: string, lab
     bump();
     void loadSummary();
   }, [loadSummary, clearPages, bump]);
+
+  // DAY-1 — a data de negócio veio do server (ou virou no daily_at): o working
+  // set inteiro é de outro dia. O mount dispara antes da primeira resposta do
+  // /api/daily/status, então sem isto a sidebar ficava paginando o dia que o
+  // relógio do browser chutou enquanto o board já mostrava o certo.
+  //
+  // Assinar não basta: a resposta pode aterrissar ENTRE o `loadSummary` do mount
+  // e este efeito, e aí não sobra notificação pra ouvir (visto ao vivo — board
+  // em 07-30 e summary preso em 07-31). Por isso o efeito também COMPARA com o
+  // dia que o último summary usou e recarrega se ficou pra trás.
+  useEffect(() => {
+    const reload = () => {
+      clearPages();
+      bump();
+      void loadSummary();
+    };
+    const off = onBusinessDateChange(reload);
+    if (summaryDate.current && summaryDate.current !== todayOrderDate()) reload();
+    return off;
+  }, [clearPages, bump, loadSummary]);
 
   // Live: mutações atualizam a linha em cache NA HORA (status visível) e o
   // summary com throttle (rajada de 1k eventos ≠ 1k GETs de summary).
@@ -352,7 +376,13 @@ export default function MonitoringSidebarV2({
       // o cruzamento do cap importa, e forçar jobs cruza via daily/força (raro).
       if (ev.event === "instance.changed" && !windowed) void probe();
     });
-    return () => { dead = true; off(); };
+    // DAY-1 — a sonda roda no mount, ANTES da 1ª resposta do /api/daily/status:
+    // ela mede o dia que o relógio do browser chutou. Num dia errado o total vem
+    // ZERO e o modo windowed nunca liga — com 100k jobs a sidebar cairia no
+    // caminho legado (capado) contra um dia que ela não sabe paginar. Re-sonda
+    // quando a data de negócio chega/vira.
+    const offDate = onBusinessDateChange(() => void probe());
+    return () => { dead = true; off(); offDate(); };
   }, [server, windowed]);
 
   /* ── Dados locais (modo ≤ cap): filtro/busca client-side, como sempre ── */

@@ -6,6 +6,7 @@
 
 import type { JobDefinition, JobInstance } from "@/lib/orchestrator-model";
 import { api } from "@/lib/server-client";
+import { syncDailyStatus } from "@/lib/business-date";
 import { refreshFromServer, getTodayInstances } from "@/lib/server-instance-store";
 
 const DAILY_FLAG_KEY = "regente:daily-run-at";
@@ -36,12 +37,11 @@ export function normalizeDbTime(s: string): string {
   return s.replace(" ", "T") + "Z";
 }
 
+// DAY-1 — delega pro business-date, que é quem publica a data de negócio pro
+// todayOrderDate(). Toda leitura de status da daily tem que passar por lá,
+// senão o rodapé mostra um dia e o board pede outro.
 export async function fetchDailyStatus(): Promise<DailyStatus | null> {
-  try {
-    return await api<DailyStatus>("/api/daily/status");
-  } catch {
-    return null;
-  }
+  return (await syncDailyStatus()) as DailyStatus | null;
 }
 
 /** Dispara daily/run no server. A lista local de defs é ignorada (server usa YAML). */

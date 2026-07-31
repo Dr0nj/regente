@@ -63,6 +63,15 @@ waiting runs RIGHT AWAY).
 
 ## Dates — ODAT / PREV / STAT
 
+**The day turns at `daily_at`, not at midnight.** Every date below is a BUSINESS
+date: the day stays the same until the clock crosses the configured daily time,
+which is the only moment a new `order_date` is materialised. With `daily_at`
+at 15:00, day D runs from 15:00 on D to 14:59 on D+1 — an order placed at 00:10
+belongs to D, exactly like one placed at 23:50. The default `daily_at` is 00:00,
+where the business date equals the calendar date. The server is the single
+source of this date (`Scheduler.BusinessDate`, exposed by `GET /api/daily/status`);
+the UI never derives it from the browser clock.
+
 **ODAT** = the order's ORIGIN date (the classic ODATE):
 `ODAT = COALESCE(carried_from, order_date)` (`scheduler/odate.go`). Carry-over
 advances `order_date` while preserving the origin — **every date scope uses

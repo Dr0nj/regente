@@ -139,6 +139,14 @@ to Organize — list/add/delete with a date) or the API/MCP;</li>
 and the graph edges are a live reflection) and nudges the tick (whatever was
 waiting runs RIGHT AWAY).</p>
 <h2 id="dates--odat--prev--stat">Dates — ODAT / PREV / STAT</h2>
+<p><strong>The day turns at <code>daily_at</code>, not at midnight.</strong> Every date below is a BUSINESS
+date: the day stays the same until the clock crosses the configured daily time,
+which is the only moment a new <code>order_date</code> is materialised. With <code>daily_at</code>
+at 15:00, day D runs from 15:00 on D to 14:59 on D+1 — an order placed at 00:10
+belongs to D, exactly like one placed at 23:50. The default <code>daily_at</code> is 00:00,
+where the business date equals the calendar date. The server is the single
+source of this date (<code>Scheduler.BusinessDate</code>, exposed by <code>GET /api/daily/status</code>);
+the UI never derives it from the browser clock.</p>
 <p><strong>ODAT</strong> = the order's ORIGIN date (the classic ODATE):
 <code>ODAT = COALESCE(carried_from, order_date)</code> (<code>scheduler/odate.go</code>). Carry-over
 advances <code>order_date</code> while preserving the origin — <strong>every date scope uses

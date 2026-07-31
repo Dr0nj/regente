@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, onServerEvent } from "@/lib/server-client";
 import { todayOrderDate } from "@/lib/orchestrator-model";
+import { onBusinessDateChange } from "@/lib/business-date";
 
 interface Summary {
   date: string;
@@ -65,7 +66,20 @@ const PRESETS: { key: string; label: string; status: string }[] = [
 ];
 
 export default function ScaleMonitor({ onClose }: { onClose?: () => void }) {
-  const date = todayOrderDate();
+  // DAY-1 — o dia de negócio é do SERVER e pode chegar depois do mount (ou virar
+  // no daily_at com o painel aberto). Como estado, ele re-dispara o summary e a
+  // paginação; como const de render, o painel ficava no dia do relógio local.
+  // O RELEITURA logo após assinar não é redundante: a resposta do daily/status
+  // pode aterrissar entre o render e o efeito, e aí não haveria notificação
+  // nenhuma pra pegar (foi o que aconteceu ao vivo — o painel ficou no dia
+  // errado com a assinatura já no lugar).
+  const [date, setDate] = useState(todayOrderDate);
+  useEffect(() => {
+    const off = onBusinessDateChange(setDate);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fecha a corrida mount × resposta do /api/daily/status; ver comentário acima
+    setDate(todayOrderDate());
+    return off;
+  }, []);
   const [summary, setSummary] = useState<Summary | null>(null);
   // Dashboard pronto ativo: "" = visão geral; senão a chave de um PRESET.
   const [presetKey, setPresetKey] = useState<string>("");

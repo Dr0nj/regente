@@ -285,6 +285,12 @@ And definitions are not instances: the **daily** is what turns a definition into
 It runs once a day at the configured time (Settings → Scheduling), so a job created after it ran
 only shows up on the board tomorrow — or right away with `POST /api/daily/run`.
 
+**The day turns at that time, not at midnight.** If the daily runs at 15:00, the day stays the
+same until 15:00 the next day — an order placed at 00:10 belongs to the day that is still on the
+board, exactly like one placed at 23:50. The default is 00:00, where the two coincide. The
+server owns this date (see it in `GET /api/daily/status`); the UI never guesses it from your
+computer's clock, so a browser in another timezone still sees the same day.
+
 > ⚠️ **`REGENTE_TOKEN` is admin-equivalent** — it bypasses the login entirely. Generate a strong
 > value and never leave it as `dev-token` or `change-me`. `regente-configure` generates one for
 > you, and the server logs a loud warning at boot if it is still the example value.

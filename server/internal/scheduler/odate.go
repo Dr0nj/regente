@@ -66,6 +66,19 @@ func splitCondRef(name string) (base string, ref domain.DateRef) {
 	return domain.SplitCondRef(name)
 }
 
+// AddDays — aritmética sobre um LABEL de data (YYYY-MM-DD), sem relógio: a
+// diária D±n. Usar isto em vez de somar/subtrair em cima de um time.Time é o que
+// mantém a conta na régua de NEGÓCIO (ver Scheduler.BusinessDate) — somar dias a
+// um instante e só depois formatar volta a datar pela meia-noite.
+// Data malformada volta intacta (conservador).
+func AddDays(date string, n int) string {
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return date
+	}
+	return t.AddDate(0, 0, n).Format("2006-01-02")
+}
+
 // daysBetween — dias-calendário entre duas datas YYYY-MM-DD (b - a).
 // Datas malformadas contam 0 (comportamento conservador: não mata ninguém).
 func daysBetween(a, b string) int {

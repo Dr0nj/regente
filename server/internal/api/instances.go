@@ -11,6 +11,7 @@ import (
 
 	"github.com/Dr0nj/regente-server/internal/auth"
 	"github.com/Dr0nj/regente-server/internal/domain"
+	"github.com/Dr0nj/regente-server/internal/scheduler"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -173,19 +174,24 @@ type instanceQuery struct {
 	search   string   // LIKE em id / definition_id
 }
 
-func parseInstanceQuery(r *http.Request) instanceQuery {
+// Método (e não função livre) só por causa do default de `date`: ele vem do
+// relógio de NEGÓCIO do scheduler, que mora no server.
+func (s *server) parseInstanceQuery(r *http.Request) instanceQuery {
 	q := instanceQuery{
 		date:   r.URL.Query().Get("date"),
 		folder: r.URL.Query().Get("folder"),
 		search: strings.TrimSpace(r.URL.Query().Get("q")),
 	}
 	if q.date == "" {
-		q.date = time.Now().Format("2006-01-02")
+		// DAY-1 — default é a data de NEGÓCIO do server (vira no daily_at), nunca
+		// time.Now(): o dia da tela e o dia que a daily materializou têm que ser o
+		// MESMO, senão a ordem existe no banco e some do board.
+		q.date = s.cfg.Scheduler.TodayDate()
 	}
 	if st := r.URL.Query().Get("status"); st != "" {
-		for _, s := range strings.Split(st, ",") {
-			if s = strings.TrimSpace(s); s != "" {
-				q.statuses = append(q.statuses, s)
+		for _, v := range strings.Split(st, ",") {
+			if v = strings.TrimSpace(v); v != "" {
+				q.statuses = append(q.statuses, v)
 			}
 		}
 	}
@@ -281,7 +287,7 @@ func (s *server) allowedTeams(r *http.Request, date string) (teams []string, res
 // agora filtra/limita NO BANCO (folder, status, q, limit) e aplica RBAC por
 // conjunto. Sem filtro/limit = comportamento de antes (dia inteiro).
 func (s *server) listInstances(w http.ResponseWriter, r *http.Request) {
-	q := parseInstanceQuery(r)
+	q := s.parseInstanceQuery(r)
 	allowed, restrict := s.allowedTeams(r, q.date)
 	where, args := q.where(allowed, restrict)
 
@@ -386,7 +392,7 @@ func (s *server) getInstance(w http.ResponseWriter, r *http.Request) {
 // re-bindar timestamp, dialect-safe). É o caminho de escala: o front carrega o
 // working set em páginas em vez de baixar o dia inteiro.
 func (s *server) pageInstances(w http.ResponseWriter, r *http.Request) {
-	q := parseInstanceQuery(r)
+	q := s.parseInstanceQuery(r)
 	allowed, restrict := s.allowedTeams(r, q.date)
 	where, args := q.where(allowed, restrict)
 	limit := parseLimit(r, 500)
@@ -432,7 +438,7 @@ func (s *server) pageInstances(w http.ResponseWriter, r *http.Request) {
 // baratos mesmo com 1M instances (índice em order_date). {total, byStatus, byFolder}
 // alimenta o dashboard sem baixar uma linha sequer. Respeita os mesmos filtros/RBAC.
 func (s *server) summaryInstances(w http.ResponseWriter, r *http.Request) {
-	q := parseInstanceQuery(r)
+	q := s.parseInstanceQuery(r)
 	allowed, restrict := s.allowedTeams(r, q.date)
 	where, args := q.where(allowed, restrict)
 
@@ -762,7 +768,9 @@ func (s *server) dailyStatus(w http.ResponseWriter, r *http.Request) {
 	tzName, _ := s.cfg.Scheduler.DailyTimezone()
 	now := s.cfg.Scheduler.NowLocal()
 	resp := map[string]interface{}{
-		"orderDate":   now.Format("2006-01-02"),
+		// DAY-1 — a data de NEGÓCIO (vira no daily_at). É daqui que a SPA aprende
+		// que dia é "hoje"; ela NÃO calcula mais pelo relógio do browser.
+		"orderDate":   s.cfg.Scheduler.TodayDate(),
 		"dailyAt":     s.cfg.Scheduler.DailyAt(),
 		"timezone":    tzName,
 		"lastRunDate": lastDate,
@@ -799,7 +807,8 @@ func (s *server) dailyReport(w http.ResponseWriter, r *http.Request) {
 func (s *server) dryRunDaily(w http.ResponseWriter, r *http.Request) {
 	date := r.URL.Query().Get("date")
 	if date == "" {
-		date = time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+		// "amanhã" = a PRÓXIMA diária (DAY-1), não now+24h.
+		date = scheduler.AddDays(s.cfg.Scheduler.TodayDate(), 1)
 	}
 	dr, err := s.cfg.Scheduler.DryRun(date)
 	if err != nil {
@@ -816,7 +825,7 @@ func (s *server) diffDaily(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	to := q.Get("to")
 	if to == "" {
-		to = time.Now().Format("2006-01-02")
+		to = s.cfg.Scheduler.TodayDate() // DAY-1: a diária corrente, não o dia do relógio
 	}
 	from := q.Get("from")
 	if from == "" {

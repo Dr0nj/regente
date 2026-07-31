@@ -10,6 +10,7 @@
 
 import type { JobDefinition, JobInstance, InstanceStatus, ConditionLogic } from "@/lib/orchestrator-model";
 import { todayOrderDate } from "@/lib/orchestrator-model";
+import { syncBusinessDate, onBusinessDateChange } from "@/lib/business-date";
 import { api, onServerEvent } from "@/lib/server-client";
 
 /* ── Server shape ── */
@@ -338,12 +339,48 @@ function scheduleInitialRetry(): void {
 function ensureLoaded(): Promise<void> {
   if (lastFetchDate === todayOrderDate()) return Promise.resolve();
   if (!initialLoad) {
-    initialLoad = refresh().catch((err) => {
-      console.error("[server-instances] initial load failed", err);
-      scheduleInitialRetry();
-    }).finally(() => { initialLoad = null; });
+    // DAY-1 — pergunta ao server QUE DIA É antes do primeiro GET. Sem isso a
+    // carga inicial usa o relógio do browser e pede um dia que pode não existir
+    // (server em outro fuso, ou janela 00:00→daily_at): 200 com lista vazia,
+    // board em branco. Falha aqui não bloqueia — cai no fallback e o
+    // _connected/watchdog reconcilia.
+    initialLoad = syncBusinessDate()
+      .then(() => refresh())
+      .catch((err) => {
+        console.error("[server-instances] initial load failed", err);
+        scheduleInitialRetry();
+      }).finally(() => { initialLoad = null; });
   }
   return initialLoad;
+}
+
+// DAY-1 — a virada da daily é uma TROCA DE DATA no board: ressincroniza a data
+// de negócio ANTES do refresh, senão o GET sai com o dia velho e o doFetch nem
+// entra no ramo de limpeza (que só roda quando a data muda).
+function refreshAcrossDayFlip(why: string): void {
+  void syncBusinessDate()
+    .then(() => refresh())
+    .catch((err) => console.warn(`[server-instances] ${why} refresh failed`, err));
+}
+
+// Watchdog da virada: o gatilho normal é o evento `daily.started` do WS, mas se
+// ele se perder (WS caído exatamente no daily_at, aba suspensa pelo browser) o
+// board fica preso no dia anterior até um F5 — que é o sintoma do DAY-1 visto do
+// outro lado. Uma checagem por minuto de uma linha só é barata.
+//
+// A condição é "o board está num dia que não é mais hoje" (`lastFetchDate`), e
+// NÃO "a data mudou durante esta sincronização": qualquer outro caminho pode ter
+// publicado a data nova antes (o /api/daily/status do rodapé, por exemplo) e aí
+// o watchdog não veria transição nenhuma para reagir — foi exatamente o que
+// aconteceu ao vivo, com o rodapé no dia novo e o board no velho.
+const DAY_FLIP_WATCHDOG_MS = 60_000;
+function startDayFlipWatchdog(): void {
+  if (typeof window === "undefined") return;
+  window.setInterval(() => {
+    void syncBusinessDate().then(() => {
+      if (lastFetchDate !== todayOrderDate()) refresh().catch(() => {});
+    }).catch(() => {});
+  }, DAY_FLIP_WATCHDOG_MS);
 }
 
 /* ── WS subscription (lazy) ── */
@@ -352,6 +389,12 @@ let wsSubscribed = false;
 function ensureWs(): void {
   if (wsSubscribed) return;
   wsSubscribed = true;
+  // Qualquer caminho que descubra a data nova (rodapé, sidebar, ViewPoint) vira
+  // troca de dia no board na hora — o watchdog abaixo é só a rede de segurança.
+  onBusinessDateChange(() => {
+    refresh().catch((err) => console.warn("[server-instances] day-flip refresh failed", err));
+  });
+  startDayFlipWatchdog();
   onServerEvent((ev) => {
     switch (ev.event) {
       case "instance.changed":
@@ -372,13 +415,16 @@ function ensureWs(): void {
         }
         break;
       }
+      // A daily rodou = o dia de negócio VIROU (DAY-1). O board tem que trocar
+      // de dia junto, não só recarregar o dia velho.
       case "daily.started":
-        refresh().catch((err) => console.warn("[server-instances] refresh failed", err));
+        refreshAcrossDayFlip("daily");
         break;
       // WS (re)conectou: ressincroniza tudo — cobre eventos perdidos offline e o
       // primeiro load que falhou com 401 antes do login (token novo já vale aqui).
+      // Inclui a data: offline pode ter atravessado o daily_at.
       case "_connected":
-        void refresh().catch(() => scheduleInitialRetry());
+        void syncBusinessDate().then(() => refresh()).catch(() => scheduleInitialRetry());
         break;
     }
   });

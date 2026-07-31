@@ -334,9 +334,29 @@ export interface JobInstance {
   condLogic?: ConditionLogic;
 }
 
-/* ── Order Date Helper ── */
+/* ── Order Date Helper ──
+ *
+ * DAY-1 — "hoje" é a DATA DE NEGÓCIO, e o dia de negócio vira no `daily_at`, não
+ * à meia-noite. Quem decide é o SERVER (é ele quem materializa a daily): em
+ * server mode `setBusinessDate` publica aqui o `orderDate` do /api/daily/status
+ * e toda a SPA passa a pedir o MESMO dia que o server carimbou.
+ *
+ * O relógio do browser era a segunda metade do bug de produção: server em UTC +
+ * operador em -03, e a tela pedia `GET /api/instances?date=` de um dia que não
+ * existia — a ordem forçada respondia 200 e sumia do board. Aqui ele fica só
+ * como fallback do LOCAL mode (sem server, daily à meia-noite) e da janela
+ * entre o boot da página e a primeira resposta do server.
+ */
+
+let businessDate: string | null = null;
+
+/** Publica a data de negócio do server. `null` volta pro relógio do browser. */
+export function setBusinessDate(date: string | null | undefined): void {
+  businessDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+}
 
 export function todayOrderDate(): string {
+  if (businessDate) return businessDate;
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }

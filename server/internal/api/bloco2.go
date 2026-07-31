@@ -215,7 +215,7 @@ func (s *server) listSLABreaches(w http.ResponseWriter, r *http.Request) {
 func (s *server) getForecast(w http.ResponseWriter, r *http.Request) {
 	date := r.URL.Query().Get("date")
 	if date == "" {
-		date = time.Now().Format("2006-01-02")
+		date = s.cfg.Scheduler.TodayDate() // DAY-1: a diária corrente (vira no daily_at)
 	}
 	defs := s.cfg.Scheduler.Defs()
 	cals := map[string]*domain.Calendar{}

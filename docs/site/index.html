@@ -344,6 +344,11 @@ back up and restore the database (<a href="dr-backup.html">DR and backup</a>).</
 <p>And definitions are not instances: the <strong>daily</strong> is what turns a definition into today's order.
 It runs once a day at the configured time (Settings → Scheduling), so a job created after it ran
 only shows up on the board tomorrow — or right away with <code>POST /api/daily/run</code>.</p>
+<p><strong>The day turns at that time, not at midnight.</strong> If the daily runs at 15:00, the day stays the
+same until 15:00 the next day — an order placed at 00:10 belongs to the day that is still on the
+board, exactly like one placed at 23:50. The default is 00:00, where the two coincide. The
+server owns this date (see it in <code>GET /api/daily/status</code>); the UI never guesses it from your
+computer's clock, so a browser in another timezone still sees the same day.</p>
 <blockquote>
 <p>⚠️ <strong><code>REGENTE_TOKEN</code> is admin-equivalent</strong> — it bypasses the login entirely. Generate a strong
 value and never leave it as <code>dev-token</code> or <code>change-me</code>. <code>regente-configure</code> generates one for

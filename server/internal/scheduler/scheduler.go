@@ -643,9 +643,34 @@ func (s *Scheduler) NowLocal() time.Time {
 	return s.nowFn().In(loc)
 }
 
-// TodayDate — E1: a data "de hoje" (YYYY-MM-DD) na timezone da daily. É o
-// order_date que uma ordem criada AGORA (auto ou manual) recebe.
-func (s *Scheduler) TodayDate() string { return s.NowLocal().Format("2006-01-02") }
+// BusinessDate — DAY-1: a DATA DE NEGÓCIO de um instante. O dia de negócio NÃO
+// vira à meia-noite: vira quando o relógio cruza `daily_at`, que é o único
+// momento em que a daily materializa um order_date novo. Com daily_at=15:00, o
+// dia D vai das 15:00 de D às 14:59 de D+1 — tudo que acontece nessa janela
+// (ordem forçada, Order Force, report, filtro da tela) pertence a D. Com
+// daily_at=00:00 (default) é idêntico à data-calendário, então o produto
+// instalado não muda de comportamento.
+//
+// `t` já deve estar na location de negócio (NowLocal / t.In(loc)).
+func (s *Scheduler) BusinessDate(t time.Time) string {
+	hh, mm, ok := parseHHMM(s.DailyAt())
+	if !ok {
+		return t.Format("2006-01-02")
+	}
+	boundary := time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, t.Location())
+	if t.Before(boundary) {
+		// Antes da virada: ainda é o dia de negócio ANTERIOR. AddDate no meio do
+		// dia (12:00) de propósito — recuar 24h cravado erra em DST.
+		return time.Date(t.Year(), t.Month(), t.Day(), 12, 0, 0, 0, t.Location()).
+			AddDate(0, 0, -1).Format("2006-01-02")
+	}
+	return t.Format("2006-01-02")
+}
+
+// TodayDate — E1 + DAY-1: a data de NEGÓCIO corrente, na timezone da daily. É o
+// order_date que uma ordem criada AGORA (auto ou manual) recebe, e o dia que a
+// tela pede. Fonte ÚNICA: o browser não calcula mais "hoje" sozinho.
+func (s *Scheduler) TodayDate() string { return s.BusinessDate(s.NowLocal()) }
 
 // parseHHMM valida "HH:MM" (00:00–23:59).
 func parseHHMM(v string) (hh, mm int, ok bool) {
@@ -667,7 +692,10 @@ func (s *Scheduler) autoDailyIfDue() {
 	// de `now` NESSA location. Server em UTC com negócio em America/Sao_Paulo
 	// cruza a meia-noite às 03:00Z e materializa com o order_date de SP.
 	now := s.NowLocal()
-	today := now.Format("2006-01-02")
+	// DAY-1 — `today` é a data de NEGÓCIO, não a de calendário: com daily_at=15:00,
+	// às 02:00 de D+1 o dia corrente ainda é D (que já rodou) e a daily NÃO dispara;
+	// ela dispara exatamente quando o relógio cruza 15:00 e BusinessDate passa a D+1.
+	today := s.BusinessDate(now)
 
 	var started sql.NullString
 	err := s.db.QueryRow("SELECT started_at FROM daily_runs WHERE order_date=?", today).Scan(&started)
@@ -679,6 +707,10 @@ func (s *Scheduler) autoDailyIfDue() {
 	if !ok {
 		return
 	}
+	// Guard preservado de propósito: quando o dia de negócio é o ANTERIOR ao de
+	// calendário (janela 00:00→daily_at), o alvo de hoje ainda não chegou. Sem
+	// isso, subir o server nessa janela com daily_runs vazio ressuscitaria uma
+	// diária velha (ou perdida) — comportamento clássico é pular o dia que passou.
 	dailyTime := time.Date(now.Year(), now.Month(), now.Day(), hh, mm, 0, 0, now.Location())
 	if now.Before(dailyTime) {
 		return
@@ -877,11 +909,16 @@ func (s *Scheduler) carryOver(date string) (int, error) {
 	s.mu.Unlock()
 
 	_, loc := s.DailyTimezone()
+	// DAY-1 — a idade do carry compara LABELS de order_date, que são datas de
+	// NEGÓCIO. Um timestamp cru (finished_at/started_at) tem que ser convertido
+	// pela MESMA régua: com daily_at=15:00, um NOTOK às 02:00 de D+1 aconteceu no
+	// dia de negócio D, e datá-lo como D+1 daria a ele uma diária extra de vida.
+	// É isto que mantém keepActive/NOTOK/HELD exatamente com a vida de antes.
 	dayOf := func(t sql.NullTime) string {
 		if !t.Valid {
 			return ""
 		}
-		return t.Time.In(loc).Format("2006-01-02")
+		return s.BusinessDate(t.Time.In(loc))
 	}
 
 	var plan []carriedInstance

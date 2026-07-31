@@ -71,9 +71,11 @@ func (s *Scheduler) archiveGC() {
 	if days <= 0 {
 		return // infinito (default)
 	}
-	// Corte pela data de NEGÓCIO (E1 — timezone da daily), não UTC: order_date
-	// é TEXT ISO, comparação lexicográfica funciona nos dois dialetos.
-	cutoff := s.NowLocal().AddDate(0, 0, -days).Format("2006-01-02")
+	// Corte pela data de NEGÓCIO (E1 — timezone da daily; DAY-1 — vira no
+	// daily_at, não à meia-noite), não UTC: order_date é TEXT ISO, comparação
+	// lexicográfica funciona nos dois dialetos. A subtração é sobre o LABEL do
+	// dia corrente — retenção se conta em diárias, não em 24h de relógio.
+	cutoff := AddDays(s.TodayDate(), -days)
 
 	rows, err := s.db.Query(`SELECT DISTINCT order_date FROM instances WHERE order_date < ? ORDER BY order_date LIMIT ?`, cutoff, archiveGCMaxDays)
 	if err != nil {
