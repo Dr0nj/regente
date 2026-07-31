@@ -9,14 +9,35 @@ import (
 )
 
 // listVariables \u2014 GET /api/variables \u2192 array ordenado por nome.
+//
+// Seguran\u00e7a: o VALOR s\u00f3 sai para admin. O PUT/DELETE sempre exigiram admin, mas
+// o GET n\u00e3o exigia nada e devolvia tudo em claro \u2014 qualquer usu\u00e1rio logado,
+// viewer inclu\u00eddo, lia o conte\u00fado de uma vari\u00e1vel que porventura guardasse
+// credencial. Assimetria era descuido, n\u00e3o decis\u00e3o: `listAgentTokens` j\u00e1 exp\u00f5e
+// s\u00f3 os 8 primeiros caracteres do token, e `settings` mascara as chaves
+// secretas. Aqui o n\u00e3o-admin continua vendo NOME/quando/quem (que \u00e9 o que ele
+// precisa para escrever `%%NOME` num job), com o valor trocado por retic\u00eancias.
 func (s *server) listVariables(w http.ResponseWriter, r *http.Request) {
 	vs := s.cfg.Scheduler.Variables()
 	if vs == nil {
 		writeJSON(w, 200, []any{})
 		return
 	}
-	writeJSON(w, 200, vs.List())
+	list := vs.List()
+	if u, ok := auth.FromContext(r.Context()); !ok || u == nil || !u.Role.CanAdmin() {
+		for i := range list {
+			if list[i].Value != "" {
+				list[i].Value = maskedVariableValue
+			}
+		}
+	}
+	writeJSON(w, 200, list)
 }
+
+// maskedVariableValue \u2014 o que um n\u00e3o-admin recebe no lugar do valor. Marcador
+// FIXO (n\u00e3o derivado do valor real): comprimento vari\u00e1vel j\u00e1 vaza o tamanho do
+// segredo, que \u00e9 dica suficiente para encurtar um ataque de for\u00e7a bruta.
+const maskedVariableValue = "\u2022\u2022\u2022\u2022\u2022\u2022"
 
 // putVariable \u2014 PUT /api/variables/{name}  body: {"value": "..."} (admin).
 func (s *server) putVariable(w http.ResponseWriter, r *http.Request) {
