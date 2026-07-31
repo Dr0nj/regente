@@ -123,7 +123,7 @@ export default function AgentsManager() {
                 {a.os && <span style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", border: "1px solid var(--v2-border-subtle)", borderRadius: 3, padding: "1px 5px" }}>{a.os}{a.arch ? `/${a.arch}` : ""}</span>}
                 {a.environment && (
                   <span title={`Agent environment/site (-env flag) — jobs with environment "${a.environment}" route here`}
-                    style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-accent-info)", border: "1px solid var(--v2-accent-info)", borderRadius: 3, padding: "1px 5px", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-status-running)", border: "1px solid var(--v2-status-running)", borderRadius: 3, padding: "1px 5px", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                     ◉ {a.environment}
                   </span>
                 )}

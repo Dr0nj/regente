@@ -42,7 +42,7 @@ function highlightYaml(src: string): string {
         const restEsc = escapeHtml(rest)
           .replace(/(&quot;.*?&quot;|'.*?')/g, `<span style="color:var(--v2-text-primary)">$1</span>`)
           .replace(/\b(true|false|null)\b/g, `<span style="color:var(--v2-status-waiting)">$1</span>`)
-          .replace(/(?<![\w&#;])(-?\d+(?:\.\d+)?)(?![\w;])/g, `<span style="color:var(--v2-accent-info)">$1</span>`)
+          .replace(/(?<![\w&#;])(-?\d+(?:\.\d+)?)(?![\w;])/g, `<span style="color:var(--v2-status-running)">$1</span>`)
           .replace(/(%%[A-Za-z][\w]*)/g, `<span style="color:#c4b5fd">$1</span>`);
         return `${escapeHtml(ind)}<span style="color:var(--v2-accent-brand);font-weight:600">${escapeHtml(key)}</span><span style="color:var(--v2-text-muted)">${escapeHtml(colon)}</span>${restEsc}`;
       }
@@ -382,7 +382,7 @@ export default function CodeModeView({
             <>
               {result.parsed} job(s) in the document ·{" "}
               {planBadge("＋create", result.plan?.creates ?? [], "var(--v2-status-ok)")}
-              {planBadge("~update", result.plan?.updates ?? [], "var(--v2-accent-info)")}
+              {planBadge("~update", result.plan?.updates ?? [], "var(--v2-status-running)")}
               {planBadge("−delete", result.plan?.deletes ?? [], "var(--v2-status-failed)")}
               <span style={{ color: "var(--v2-text-muted)" }}>{result.plan?.unchanged ?? 0} unchanged</span>
               {result.applied && (

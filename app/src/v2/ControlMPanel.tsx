@@ -401,7 +401,7 @@ function VariablesView() {
           {items.map(v => (
             <tr key={v.name}>
               <td style={td}><code>{v.name}</code></td>
-              <td style={{ ...td, fontFamily: "monospace", color: "var(--v2-accent-info)" }}>{v.value}</td>
+              <td style={{ ...td, fontFamily: "monospace", color: "var(--v2-status-running)" }}>{v.value}</td>
               <td style={{ ...td, color: "var(--v2-text-muted)", fontSize: 11 }}>{new Date(v.updatedAt).toLocaleString()}</td>
               <td style={{ ...td, color: "var(--v2-text-muted)" }}>{v.updatedBy || "—"}</td>
               <td style={td}>
