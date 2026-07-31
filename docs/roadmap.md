@@ -56,6 +56,7 @@
 projeto está em [🧰 modo manutenção](#-modo-manutenção-decidido-em-2026-07-30)**, então nada aqui
 é compromisso de build:
 
+- **🐞 DAY-1 — GRAVÍSSIMO, e NÃO congelado** — o `order_date` vira à **meia-noite** em vez de virar na `daily_at`, e server e UI calculam a data em relógios diferentes. Resultado vivido em produção: **ordem forçada com 200 no server e invisível na tela**. Candidato ao piso, não à fila de features.
 - **Fase V / V6** — **V1–V5 entregues** (install single-origin 3-formas · bundle+one-liner · config guiada · hospedagem enterprise nginx+TLS · agente sandbox). O deploy "1 caixa" 24/7 está pronto ponta a ponta; **V6** (docker-compose) era opcional desde 2026-07-11 e agora está **congelado**.
 - **V-LIVE-TEST / LT-3..LT-11** — campanha de teste da instância 24/7, **amarrada à vida do VPS** (é custo de mantê-lo no ar, não trabalho de produto).
 - **AI-1 (`AI_AGENT`)** — visão futura, nunca committada; **congelada**.
@@ -138,6 +139,39 @@ a mesma coisa sem mensalidade.
 corporativo. Bus factor 1 em esteira crítica, e o autor vira fornecedor da própria avaliação
 técnica (+ risco de cessão de PI). O que o projeto rende profissionalmente é **conhecimento de
 domínio**, não o binário.
+
+### 🐞 DAY-1 — GRAVÍSSIMO: o dia vira à MEIA-NOITE, não na daily *(achado 2026-07-30 em produção)*
+
+> ⛔ **Este item NÃO é congelado.** Ele quebra a promessa central do produto — "a ordem do dia" —
+> e foi encontrado na instância viva, com o operador olhando pra uma tela vazia enquanto o
+> servidor tinha as ordens no banco. Candidato direto ao **piso** (§🧰), não à fila de features.
+
+- [ ] **DAY-1** — **`order_date` é data de CALENDÁRIO, mas o dia de negócio deveria virar em `daily_at`.**
+      **Sintoma vivido (2026-07-30, 22h em `regentehub.com`):** o operador força um job, recebe
+      `200 {"instanceId":...}`, e **nada aparece na tela**. O job existe, está WAITING no banco,
+      e some da UI. Duas horas de investigação, rollback do server pra `v0.2.7` e de volta —
+      nada disso tinha a ver com a causa.
+      **Causa raiz, confirmada nos dois lados:**
+      `Scheduler.TodayDate()` = `NowLocal().Format("2006-01-02")` e a UI usa
+      `todayOrderDate()` = `new Date()` do browser. **Os dois viram à meia-noite** — e viram em
+      relógios DIFERENTES: o server no fuso do processo/`daily_timezone`, a UI no fuso do
+      browser. Com o server em UTC e o operador em `-03`, das 21h às 24h locais o server carimba
+      `D+1` e a tela pede `D` → **a ordem existe e é invisível**. Corrigir o fuso alinha os dois,
+      mas **não resolve**: sobra a janela **00:00→`daily_at` (06:00)**, em que a data já avançou
+      e a daily do dia novo ainda não rodou. Aí o operador vê um dia que ainda não começou —
+      vazio — enquanto o dia real segue em aberto.
+      **O que o modelo pede:** a data de negócio é ancorada em `daily_at`, não na meia-noite —
+      antes das 06:00, "hoje" ainda é `D-1`. É a semântica de ODAT de orquestrador clássico, e é
+      a que o próprio produto já promete em [[docs/conditions-events.md]] e no §ODAT.
+      **Onde mexer:** `TodayDate()`/`NowLocal()` (`server/internal/scheduler/scheduler.go`) ·
+      `autoDailyIfDue` (que compara com `now.Format`) · `todayOrderDate()`
+      (`app/src/lib/orchestrator-model.ts`) — e a UI deve pegar a data de negócio **do server**
+      (`GET /api/daily/status` já expõe o relógio dele), nunca calcular a própria.
+      **Regressão obrigatória:** ordem criada 23:50 e ordem criada 00:10 caem na MESMA data de
+      negócio até as 06:00; ordem criada 06:01 cai na seguinte. Testar com o server e o browser
+      em fusos DIFERENTES — foi exatamente o que ninguém tinha testado.
+      **Mitigação enquanto não tem fix:** manter `daily_timezone` e o fuso do SO iguais ao do
+      operador (`timedatectl set-timezone`), o que reduz a janela ruim de 3h+ pra 00:00–06:00.
 
 ### 🚀 Fase V — Self-hosting em VPS de caixa única (24/7)
 
