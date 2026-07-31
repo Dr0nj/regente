@@ -97,6 +97,7 @@ Regente they already exist; enable them through `/etc/regente/server.env` (or fl
 | **HA / scale** | `REGENTE_DB_DRIVER=postgres` + N nodes on the SAME DB → leader election (only the leader runs the daily and dispatch). Backup/DR in [`../../docs/dr-backup.md`](../../docs/dr-backup.md). |
 | **NAT-friendly agents** | an **outbound** connection (WS/SSE/long-poll) — the agent never opens a port; it crosses corporate firewalls. |
 | **A strong API token** | `REGENTE_TOKEN` is admin-equivalent (it bypasses login) — **generate a strong value**; never leave `dev-token`/`change-me`. |
+| **Trustworthy source IPs in the audit trail** | Nothing to do for this layout: `REGENTE_TRUSTED_PROXIES` defaults to **loopback**, which is exactly the nginx-on-`127.0.0.1` setup above, so the `X-Real-IP`/`X-Forwarded-For` nginx sets are honoured while the same headers from anyone else are ignored. Set it (comma-separated CIDRs) **only** when another proxy or load balancer sits in front of nginx — list that hop, never `0.0.0.0/0`, or the audit trail becomes forgeable again. |
 
 > **Alternative without a proxy:** the server can terminate TLS itself
 > (`REGENTE_TLS_CERT`/`REGENTE_TLS_KEY`) if you would rather not run nginx in front. A reverse
