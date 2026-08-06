@@ -1,16 +1,38 @@
 // Package scheduler — ADV-3 Statistics: estatísticas de execução POR DEFINITION.
 //
-// A visão "Statistics" do Control-M: totais por resultado, taxa de sucesso e a
-// distribuição de duração (min/avg/p50/p90/max) sobre a janela recente. Complementa
-// o PerfForecast (D-4), que foca em prever a PRÓXIMA execução — aqui é o retrato
-// histórico pro operador (aba Stats do drawer).
+// A visão "Statistics" do Control-M: as últimas execuções com início/fim/tempo de
+// execução, totais por resultado, taxa de sucesso e a distribuição de duração
+// (min/avg/p50/p90/max). Complementa o PerfForecast (D-4), que foca em prever a
+// PRÓXIMA execução — aqui é o retrato histórico pro operador (aba Stats do drawer).
+//
+// ST-1 (2026-08-05) — a fonte é `instance_runs` (uma linha por EXECUÇÃO REAL),
+// não mais o par started_at/finished_at da instance. Ver runs.go para o porquê:
+// aquele par é mutado por transições que não são execução (Set OK de quem não
+// rodou, retry/cyclic sobrescrevendo a tentativa anterior) e inflava média/máximo.
 package scheduler
 
 import (
+	"database/sql"
 	"time"
 )
 
-const jobStatsWindow = 200 // últimas N execuções terminadas consideradas
+const (
+	jobStatsWindow = 200 // últimas N execuções terminadas consideradas
+	jobStatsRecent = 10  // execuções detalhadas devolvidas (lista início/fim)
+)
+
+// RunSample — uma execução terminada, como o operador a vê na lista: quando
+// entrou em RUNNING, quando terminou e quanto durou de fato.
+type RunSample struct {
+	InstanceID string    `json:"instanceId"`
+	OrderDate  string    `json:"orderDate"` // ODAT (origem, se carregada)
+	Attempt    int       `json:"attempt"`
+	Status     string    `json:"status"` // OK | NOTOK
+	StartedAt  time.Time `json:"startedAt"`
+	FinishedAt time.Time `json:"finishedAt"`
+	DurationMs int64     `json:"durationMs"`
+	ExitCode   *int      `json:"exitCode,omitempty"`
+}
 
 type JobStats struct {
 	DefID string `json:"defId"`
@@ -28,6 +50,9 @@ type JobStats struct {
 	P90Ms int64 `json:"p90Ms"`
 	MaxMs int64 `json:"maxMs"`
 
+	// Últimas execuções (nova → velha), até jobStatsRecent.
+	Recent []RunSample `json:"recent"`
+
 	// Última execução terminada.
 	LastStatus     string     `json:"lastStatus,omitempty"`
 	LastFinishedAt *time.Time `json:"lastFinishedAt,omitempty"`
@@ -38,54 +63,52 @@ type JobStats struct {
 
 // JobStats — estatísticas da definition sobre as últimas execuções terminadas.
 func (s *Scheduler) JobStats(defID string) JobStats {
-	st := JobStats{DefID: defID, Window: jobStatsWindow}
+	st := JobStats{DefID: defID, Window: jobStatsWindow, Recent: []RunSample{}}
 	rows, err := s.db.Query(
-		`SELECT status, started_at, finished_at FROM instances
-		 WHERE definition_id=? AND status IN ('OK','NOTOK') AND finished_at IS NOT NULL
-		 ORDER BY finished_at DESC LIMIT ?`, defID, jobStatsWindow)
+		`SELECT instance_id, order_date, attempt, status, started_at, finished_at, exit_code
+		   FROM instance_runs
+		  WHERE definition_id=? AND status IN ('OK','NOTOK') AND finished_at IS NOT NULL
+		  ORDER BY finished_at DESC, id DESC LIMIT ?`, defID, jobStatsWindow)
 	if err != nil {
 		return st
 	}
 	defer rows.Close()
 
 	var okDurs []int64
-	first := true
 	for rows.Next() {
-		var status string
-		var started, finished *time.Time
-		if rows.Scan(&status, &started, &finished) != nil {
+		var r RunSample
+		var exit sql.NullInt64
+		if rows.Scan(&r.InstanceID, &r.OrderDate, &r.Attempt, &r.Status, &r.StartedAt, &r.FinishedAt, &exit) != nil {
 			continue
 		}
+		r.DurationMs = r.FinishedAt.Sub(r.StartedAt).Milliseconds()
+		if r.DurationMs < 0 {
+			r.DurationMs = 0
+		}
+		if exit.Valid {
+			code := int(exit.Int64)
+			r.ExitCode = &code
+		}
 		st.Runs++
-		var durMs int64 = -1
-		if started != nil && finished != nil {
-			if ms := finished.Sub(*started).Milliseconds(); ms >= 0 {
-				durMs = ms
-			}
+		if len(st.Recent) < jobStatsRecent {
+			st.Recent = append(st.Recent, r)
 		}
-		if first { // a query vem nova→velha: a primeira linha é a última execução
-			first = false
-			st.LastStatus = status
-			if finished != nil {
-				f := *finished
-				st.LastFinishedAt = &f
-			}
-			if durMs >= 0 {
-				st.LastDurationMs = durMs
-			}
+		if st.Runs == 1 { // a query vem nova→velha: a primeira linha é a última execução
+			st.LastStatus = r.Status
+			f := r.FinishedAt
+			st.LastFinishedAt = &f
+			st.LastDurationMs = r.DurationMs
 		}
-		if status == "OK" {
+		if r.Status == "OK" {
 			st.OK++
-			if durMs >= 0 {
-				okDurs = append(okDurs, durMs)
-			}
+			okDurs = append(okDurs, r.DurationMs)
 		} else {
 			st.NotOK++
 		}
 	}
 	if err := rows.Err(); err != nil {
 		// Estatística sobre janela incompleta mente (success rate/min/max tortos).
-		return JobStats{DefID: defID, Window: jobStatsWindow}
+		return JobStats{DefID: defID, Window: jobStatsWindow, Recent: []RunSample{}}
 	}
 	if st.OK+st.NotOK > 0 {
 		st.SuccessRate = float64(st.OK) / float64(st.OK+st.NotOK)

@@ -38,10 +38,13 @@ const perfSampleWindow = 30
 // PerfForecast calcula a previsão da definition a partir do histórico OK.
 func (s *Scheduler) PerfForecast(defID string) PerfForecast {
 	pf := PerfForecast{DefID: defID, Samples: []DurationSample{}}
+	// ST-1 — amostra de EXECUÇÕES (instance_runs), não do par de timestamps da
+	// instance: aquele par é mutado por Set OK/retry/cyclic e inflava a previsão
+	// junto com a Statistics (ver runs.go).
 	rows, err := s.db.Query(
-		`SELECT order_date, started_at, finished_at FROM instances
-		 WHERE definition_id=? AND status='OK' AND started_at IS NOT NULL AND finished_at IS NOT NULL
-		 ORDER BY finished_at DESC LIMIT ?`, defID, perfSampleWindow)
+		`SELECT order_date, started_at, finished_at FROM instance_runs
+		 WHERE definition_id=? AND status='OK' AND finished_at IS NOT NULL
+		 ORDER BY finished_at DESC, id DESC LIMIT ?`, defID, perfSampleWindow)
 	if err != nil {
 		return pf
 	}
@@ -108,9 +111,9 @@ func (s *Scheduler) DayDurations(date string, lookbackDays int) map[string]int64
 		from = t.AddDate(0, 0, -lookbackDays).Format("2006-01-02")
 	}
 	rows, err := s.db.Query(
-		`SELECT definition_id, started_at, finished_at FROM instances
+		`SELECT definition_id, started_at, finished_at FROM instance_runs
 		 WHERE order_date >= ? AND order_date <= ? AND status='OK'
-		   AND started_at IS NOT NULL AND finished_at IS NOT NULL`, from, date)
+		   AND finished_at IS NOT NULL`, from, date)
 	if err != nil {
 		return map[string]int64{}
 	}

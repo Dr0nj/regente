@@ -19,7 +19,7 @@ import {
   fetchInstanceDetail,
   type InstanceOrderDetail,
 } from "@/lib/runtime-bridge";
-import { injectFailure, fetchPerfForecast, fetchJobStats, type PerfForecast, type JobStats } from "@/lib/differentials-api";
+import { injectFailure, fetchPerfForecast, fetchJobStats, type PerfForecast, type JobStats, type RunSample } from "@/lib/differentials-api";
 import { isServerMode } from "@/lib/server-client";
 import ForecastPanel from "./ForecastPanel";
 import { toast } from "./Toast";
@@ -928,12 +928,19 @@ function StatsTab({ instance }: { instance: JobInstance }) {
   const pf = loaded ? st!.pf : null;
   const stats = loaded ? st!.stats : null;
   const hasHistory = pf && pf.samples.length >= 2;
+  // A execução mais recente DESTA ordem, quando ela está na janela devolvida.
+  const thisRun = stats?.recent?.find((r) => r.instanceId === instance.id);
 
   return (
     <>
       <Section title="This run">
         <Field label="Status"    value={STATUS_LABEL[instance.status]} />
-        <Field label="Duration"  value={fmtDuration(instance.durationMs)} />
+        {/* Duração da EXECUÇÃO desta ordem (ST-1) quando ela existe; o
+            started_at/finished_at da instance é só o intervalo da LINHA — que
+            ações de operador esticam (um Set OK horas depois de uma tentativa
+            falha vira "duração" de horas). Cai no intervalo da linha enquanto a
+            execução está em curso ou em instance anterior à trilha. */}
+        <Field label="Duration"  value={fmtDuration(thisRun?.durationMs ?? instance.durationMs)} />
         <Field label="Attempts"  value={`${instance.attempts} / ${instance.retries + 1}`} />
         <Field label="Timeout"   value={`${instance.timeout}s`} />
         {instance.cycleRuns != null && instance.cycleRuns > 0 && (
@@ -963,6 +970,16 @@ function StatsTab({ instance }: { instance: JobInstance }) {
         </Section>
       )}
 
+      {/* ST-1 — as últimas execuções, uma linha cada (paridade com a lista de
+          start/end do Statistics do Control-M). Só execuções REAIS: a linha
+          nasce quando o job entra em RUNNING — quem ficou em WAIT (ou foi
+          concluído na mão sem rodar) não aparece aqui. */}
+      {loaded && stats && (stats.recent?.length ?? 0) > 0 && (
+        <Section title={`Last runs (${stats.recent!.length})`}>
+          <RunTable runs={stats.recent!} />
+        </Section>
+      )}
+
       <Section title="Duration history">
         {!loaded && <Muted>loading…</Muted>}
         {loaded && !hasHistory && <Muted>Not enough history yet — needs at least 2 successful runs.</Muted>}
@@ -983,6 +1000,62 @@ function StatsTab({ instance }: { instance: JobInstance }) {
         )}
       </Section>
     </>
+  );
+}
+
+/* ST-1 — lista de execuções: quando entrou em RUNNING, quando terminou, quanto
+   durou. `fmtStamp` sempre carimba dd/MM: a lista atravessa dias (e instances
+   carregadas pela virada), e hora sozinha engana. */
+function fmtStamp(iso?: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")} ` +
+    d.toLocaleTimeString("en-GB", { hour12: false });
+}
+
+function RunTable({ runs }: { runs: RunSample[] }) {
+  const th: React.CSSProperties = {
+    textAlign: "left", padding: "2px 10px 4px 0", fontWeight: 400,
+    color: "var(--v2-text-muted)", fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase",
+    borderBottom: "1px solid var(--v2-border-medium)", whiteSpace: "nowrap",
+  };
+  const td: React.CSSProperties = { padding: "3px 10px 3px 0", whiteSpace: "nowrap" };
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ borderCollapse: "collapse", fontSize: 11, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-secondary)" }}>
+        <thead>
+          <tr>
+            <th style={th}>Start</th>
+            <th style={th}>End</th>
+            <th style={th}>Run time</th>
+            <th style={th}>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {runs.map((r, i) => (
+            <tr key={`${r.instanceId}#${r.attempt}#${i}`}>
+              <td style={td}>
+                {fmtStamp(r.startedAt)}
+                {/* Tentativa > 1: a MESMA ordem rodou de novo (retry) — sem isto
+                    duas linhas do mesmo dia pareceriam duplicata. */}
+                {r.attempt > 1 && (
+                  <span style={{ color: "var(--v2-text-muted)" }} title={`attempt ${r.attempt}`}> ·{r.attempt}</span>
+                )}
+              </td>
+              <td style={td}>{fmtStamp(r.finishedAt)}</td>
+              <td style={td}>{fmtDuration(r.durationMs)}</td>
+              <td style={{ ...td, color: r.status === "OK" ? "var(--v2-status-success)" : "var(--v2-status-failed)" }}>
+                {r.status}
+                {r.exitCode != null && r.exitCode !== 0 && (
+                  <span style={{ color: "var(--v2-text-muted)" }}> ({r.exitCode})</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

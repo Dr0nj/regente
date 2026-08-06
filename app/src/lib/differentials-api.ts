@@ -50,6 +50,18 @@ export async function fetchDayDurations(date?: string): Promise<Record<string, n
 
 /* ── ADV-3 — Statistics por definition ── */
 
+/** ST-1 — uma EXECUÇÃO terminada: entrou em RUNNING, terminou, durou tanto. */
+export interface RunSample {
+  instanceId: string;
+  orderDate: string;
+  attempt: number;
+  status: string; // OK | NOTOK
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  exitCode?: number;
+}
+
 export interface JobStats {
   defId: string;
   runs: number;
@@ -61,6 +73,8 @@ export interface JobStats {
   p50Ms: number;
   p90Ms: number;
   maxMs: number;
+  /** Últimas execuções (nova → velha), até 10. */
+  recent?: RunSample[];
   lastStatus?: string;
   lastFinishedAt?: string;
   lastDurationMs?: number;

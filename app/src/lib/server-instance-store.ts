@@ -217,6 +217,24 @@ function upsertFromEvent(payload: unknown): void {
           ? { heldFrom: p.heldFromStatus ? (STATUS_MAP[p.heldFromStatus.toUpperCase()] ?? undefined) : undefined }
           : {}),
       };
+      // ST-1 — o start/fim vêm NO evento (o server os inclui em started/
+      // finished): o card mostra "início–fim" no instante em que o job termina,
+      // sem esperar o refresh de cauda. Sem isto o horário de fim só aparecia no
+      // próximo GET cheio (ou num clique) — a caixinha ficava com meia verdade.
+      //
+      // Sair de terminal APAGA o fim antigo: rerun/retry zeram finished_at no
+      // server, e uma execução nova com o fim da anterior desenharia um intervalo
+      // invertido no card.
+      const started = parseTime(p.startedAt), finished = parseTime(p.finishedAt);
+      if (next.status === "RUNNING" || next.status === "WAITING") {
+        next.completedAt = undefined;
+        next.durationMs = undefined;
+      }
+      if (started !== undefined) next.startedAt = started;
+      if (finished !== undefined) next.completedAt = finished;
+      if (next.startedAt != null && next.completedAt != null && next.completedAt >= next.startedAt) {
+        next.durationMs = next.completedAt - next.startedAt;
+      }
       cache.set(p.id, next);
       notify();
       // também agenda um refresh full para reconciliar

@@ -133,11 +133,14 @@ func (s *Scheduler) archiveDay(day string) error {
 	}
 
 	// Arquivo no chão (renomeado) — agora pode deletar, em lotes.
-	//  1. events e output (OL-1) das instances do dia (senão órfãos eternos);
+	//  1. events, output (OL-1) e execuções (ST-1) das instances do dia — senão
+	//     viram órfãos eternos (mesmo tratamento: saem com a instance, sem ir
+	//     para o NDJSON, que arquiva a linha da instance);
 	//  2. as instances;
 	//  3. conditions e daily_run do dia.
 	s.batchDelete(`DELETE FROM instance_events WHERE id IN (SELECT id FROM instance_events WHERE instance_id IN (SELECT id FROM instances WHERE order_date = ?) LIMIT ?)`, day)
 	s.batchDelete(`DELETE FROM instance_output WHERE id IN (SELECT id FROM instance_output WHERE instance_id IN (SELECT id FROM instances WHERE order_date = ?) LIMIT ?)`, day)
+	s.batchDelete(`DELETE FROM instance_runs WHERE id IN (SELECT id FROM instance_runs WHERE instance_id IN (SELECT id FROM instances WHERE order_date = ?) LIMIT ?)`, day)
 	s.batchDelete(`DELETE FROM instances WHERE id IN (SELECT id FROM instances WHERE order_date = ? LIMIT ?)`, day)
 	if _, err := s.db.Exec(`DELETE FROM conditions WHERE scope_date = ?`, day); err != nil {
 		log.Printf("[scheduler] archive: conditions de %s: %v", day, err)

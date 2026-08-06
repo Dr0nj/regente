@@ -320,13 +320,15 @@ func (s *server) analyticsMTTR(w http.ResponseWriter, r *http.Request) {
 	if since == "" {
 		since = time.Now().AddDate(0, 0, -30).Format("2006-01-02")
 	}
-	// MTTR: avg(finished_at - started_at) em segundos para OK.
+	// MTTR: avg(finished_at - started_at) em segundos para OK. ST-1 — mede sobre
+	// EXECUÇÕES (instance_runs): o par de timestamps da instance é mutado por Set
+	// OK/retry/cyclic e inflava a média (ver scheduler/runs.go).
 	rows, err := s.cfg.DB.Query(
 		`SELECT definition_id,
 		        AVG(CAST((julianday(finished_at) - julianday(started_at)) * 86400 AS INTEGER)) AS avg_sec,
 		        COUNT(*) AS runs
-		 FROM instances
-		 WHERE order_date >= ? AND status='OK' AND started_at IS NOT NULL AND finished_at IS NOT NULL
+		 FROM instance_runs
+		 WHERE order_date >= ? AND status='OK' AND finished_at IS NOT NULL
 		 GROUP BY definition_id ORDER BY avg_sec DESC LIMIT 20`,
 		since,
 	)

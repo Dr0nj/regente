@@ -1475,8 +1475,15 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 	// OL-4 — saiu do WAITING: esquece o último motivo de espera pra que um WAIT
 	// futuro (retry, cyclic) volte a emitir a partir do zero.
 	s.clearWaitReason(id)
+	// ST-1 — o claim É o início da execução (mesma transição que carimba
+	// started_at): abre a linha em instance_runs. Ver runs.go.
+	s.recordRunStart(id)
 	s.emitEvent(id, "started", "scheduler", "")
-	s.hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusRunning)})
+	// startedAt no evento, mesmo racional do finishedAt (ver FinishInstance).
+	s.hub.BroadcastWeb("instance.changed", map[string]string{
+		"id": id, "status": string(domain.StatusRunning),
+		"startedAt": time.Now().UTC().Format(time.RFC3339),
+	})
 
 	s.wg.Add(1)
 	go func() {
@@ -1533,6 +1540,9 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 			// de agentes já é monitorada pelo selfmon (R7) → alerta operacional.
 			_, _ = s.db.Exec(`UPDATE instances SET status=?, started_at=NULL WHERE id=?`,
 				string(domain.StatusWaiting), id)
+			// ST-1 — o claim foi revertido sem executar: a execução aberta some
+			// junto com o started_at (não vira run de duração infinita).
+			s.discardRunStart(id)
 			if len(def.Resources) > 0 && s.resources != nil {
 				s.resources.Release(id)
 			}
@@ -1561,6 +1571,11 @@ func (s *Scheduler) FinishInstance(id string, status domain.InstanceStatus, exit
 	if s.isInstanceTerminal(id) {
 		return
 	}
+	// ST-1 — a TENTATIVA acabou aqui, vire ela terminal ou re-armada pelo retry:
+	// fecha a execução aberta em instance_runs (ver runs.go). Antes do maybeRetry
+	// de propósito — cada tentativa é uma execução, com seu próprio par
+	// início/fim; a linha da instance só guarda a última.
+	s.recordRunEnd(id, status, exitCode)
 	// CTM-1 — %%SETLOCAL: aplicado ANTES do retry (diferente do %%SET global,
 	// que é terminal-only): a próxima tentativa da MESMA instance já lê o estado.
 	s.applyLocalSetVarDirectives(id, output)
@@ -1597,8 +1612,12 @@ func (s *Scheduler) FinishInstance(id string, status domain.InstanceStatus, exit
 		s.applyConditionsOut(id, "scheduler")
 	}
 	s.emitEvent(id, "finished", "agent", fmt.Sprintf("status=%s exit=%d", status, exitCode))
+	// finishedAt viaja NO evento (ST-1): o card do Monitoring mostra "início–fim"
+	// assim que o job termina, sem depender do próximo GET cheio. É o instante que
+	// acabou de ser carimbado no UPDATE acima (mesmo relógio, precisão de ms).
 	s.hub.BroadcastWeb("instance.changed", map[string]interface{}{
 		"id": id, "status": string(status), "exitCode": exitCode,
+		"finishedAt": time.Now().UTC().Format(time.RFC3339),
 	})
 	// Phase 8 — avalia regras de alerta na transição terminal (retries já
 	// esgotados neste ponto). Best-effort; nunca quebra o fluxo de finish.
@@ -1942,6 +1961,8 @@ func (s *Scheduler) finishKilled(id string) {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return // já saiu de RUNNING (término real correu junto) — nada a fazer
 	}
+	// ST-1 — o kill encerra a execução em curso: fecha a linha como NOTOK/-1.
+	s.recordRunEnd(id, domain.StatusNotOK, -1)
 	if s.resources != nil {
 		s.resources.Release(id)
 	}

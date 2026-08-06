@@ -148,6 +148,19 @@ function fmtHm(ms: number): string {
   return new Date(ms).toLocaleTimeString("en-GB", { hour12: false }).slice(0, 5);
 }
 
+// fmtRunRange — o horário no card do Monitoring: início e, quando a execução já
+// TERMINOU, "início–fim" (pedido do usuário; é o que o operador quer ler sem
+// abrir o drawer). Enquanto roda (ou enquanto espera com uma tentativa anterior
+// no currículo) fica só o início. Nunca imprime nada para quem nunca rodou —
+// começar = ter entrado em RUNNING.
+function fmtRunRange(inst: JobInstance): string | undefined {
+  if (!inst.startedAt) return undefined;
+  const start = fmtHm(inst.startedAt);
+  const terminal = inst.status === "OK" || inst.status === "NOTOK";
+  if (!terminal || !inst.completedAt) return start;
+  return `${start}–${fmtHm(inst.completedAt)}`;
+}
+
 /** Resumo curto do schedule estruturado para exibir no node do canvas. */
 function scheduleSummary(s: JobDefinition["schedule"]): string {
   const wd: Record<string, string> = { mon: "mon", tue: "tue", wed: "wed", thu: "thu", fri: "fri", sat: "sat", sun: "sun" };
@@ -664,7 +677,7 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
         jobType: inst.jobType,
         status: INSTANCE_TO_UI_STATUS[inst.status],
         team: inst.team,
-        lastRun: inst.startedAt ? fmtHm(inst.startedAt) : undefined,
+        lastRun: fmtRunRange(inst),
         mode: "monitoring",
         // Selo 🖐 MANUAL = SÓ Order Force (ordem colocada na mão). Run Now força
         // uma instance existente e NÃO ganha tag (force_mode='' → manualOrder=false).

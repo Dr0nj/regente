@@ -503,6 +503,7 @@ var sqliteMigrations = []migration{
 	{version: 20, sql: schemaV20()},
 	{version: 21, sql: schemaV21()},
 	{version: 22, sql: schemaV22(sqliteID, "DATETIME")},
+	{version: 23, sql: schemaV23(sqliteID, "DATETIME")},
 }
 
 var pgMigrations = []migration{
@@ -528,6 +529,51 @@ var pgMigrations = []migration{
 	{version: 20, sql: schemaV20()},
 	{version: 21, sql: schemaV21()},
 	{version: 22, sql: schemaV22(pgID, "TIMESTAMPTZ")},
+	{version: 23, sql: schemaV23(pgID, "TIMESTAMPTZ")},
+}
+
+// schemaV23 — ST-1 (Statistics honesta, 2026-08-05): a EXECUÇÃO vira linha
+// própria, em vez de ser inferida de `instances.started_at`/`finished_at`.
+//
+// O par started_at/finished_at da instance NÃO delimita uma execução: ele é
+// mutado por transições que não são execução nenhuma. Um Set OK num WAITING que
+// já tentou (retry agendado zerou o finished_at) carimba finished_at=AGORA sobre
+// um started_at de horas atrás — e a estatística lia isso como "esta run durou 98
+// minutos". No retry e no cyclic, só a ÚLTIMA tentativa/volta sobrevive na linha
+// da instance; as anteriores somem. E um Set OK num WAITING que nunca rodou
+// entrava na contagem de "runs" sem ter executado.
+//
+// Aqui cada EXECUÇÃO REAL (uma transição WAITING→RUNNING reivindicada) abre uma
+// linha com started_at, e o término daquela tentativa a fecha com
+// finished_at/status/exit_code. Regra do operador: começou = entrou em RUNNING;
+// ficar em WAIT não conta. Ações de operador sobre o que não está rodando (Set
+// OK, cancel de pendente) não criam nem fecham execução.
+//
+// Backfill: uma linha por instance que chegou a rodar (started_at NOT NULL) —
+// o histórico existente continua aparecendo (com a imprecisão de origem, agora
+// visível na lista de últimas runs em vez de escondida numa média).
+func schemaV23(idDef, ts string) string {
+	return `
+CREATE TABLE IF NOT EXISTS instance_runs (
+	id            ` + idDef + `,
+	instance_id   TEXT NOT NULL,
+	definition_id TEXT NOT NULL,
+	order_date    TEXT NOT NULL,
+	attempt       INTEGER NOT NULL DEFAULT 1,
+	started_at    ` + ts + ` NOT NULL,
+	finished_at   ` + ts + `,
+	status        TEXT NOT NULL DEFAULT 'RUNNING',
+	exit_code     INTEGER,
+	agent_id      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_instance_runs_def  ON instance_runs(definition_id, finished_at);
+CREATE INDEX IF NOT EXISTS idx_instance_runs_inst ON instance_runs(instance_id, id);
+CREATE INDEX IF NOT EXISTS idx_instance_runs_date ON instance_runs(order_date);
+INSERT INTO instance_runs(instance_id, definition_id, order_date, attempt, started_at, finished_at, status, exit_code, agent_id)
+SELECT id, definition_id, COALESCE(NULLIF(carried_from,''), order_date), COALESCE(attempts,1),
+       started_at, finished_at, status, exit_code, agent_id
+  FROM instances WHERE started_at IS NOT NULL
+`
 }
 
 // schemaV22 — OL-1 (Output × Logs, 2026-07-22): o sysout da EXECUÇÃO sai da

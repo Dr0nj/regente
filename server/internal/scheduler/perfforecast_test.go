@@ -3,7 +3,6 @@ package scheduler
 // D-4 — performance forecasting: percentis, tendência e ETA por histórico.
 
 import (
-	"fmt"
 	"testing"
 	"time"
 )
@@ -24,18 +23,10 @@ func TestPercentileAndSlope(t *testing.T) {
 	}
 }
 
-// seedRun insere uma execução OK terminada com a duração dada.
+// seedRun insere uma execução OK terminada com a duração dada (instance_runs).
 func seedRun(t *testing.T, s *Scheduler, defID string, day int, dur time.Duration) {
 	t.Helper()
-	start := time.Date(2026, 6, day, 6, 0, 0, 0, time.UTC)
-	if _, err := s.db.Exec(
-		`INSERT INTO instances(id, definition_id, order_date, status, scheduled_at, started_at, finished_at)
-		 VALUES(?,?,?,?,?,?,?)`,
-		fmt.Sprintf("%s-%02d", defID, day), defID, fmt.Sprintf("2026-06-%02d", day),
-		"OK", start, start, start.Add(dur),
-	); err != nil {
-		t.Fatal(err)
-	}
+	seedRunStatus(t, s, defID, day, dur, "OK")
 }
 
 // REGRA: um job ficando mais lento a cada dia é detectado (slower=true) e a
