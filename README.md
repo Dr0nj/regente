@@ -530,7 +530,9 @@ an import report and `# TODO-import` notes wherever a decision is needed. It **n
   week or more ahead.
 - **What-If** — "what if job X is 40 minutes late / takes twice as long / fails?" It projects the
   day, baseline versus scenario, using real durations from history.
-- **Statistics per job** — success rate, min/avg/p50/p90/max.
+- **Statistics per job** — the last runs with start, end and run time, plus success rate and
+  min/avg/p50/p90/max. Timings come from the executions themselves (one record per run, opened
+  when the job enters RUNNING), so waiting time and operator actions never inflate them.
 - **Natural-language queries** — ask "how many jobs failed today?" and get a deterministic
   answer, parsed by a rule-based intent parser rather than a model.
 - **Output and logs, separated** — the **Output** tab is a live tail of the process's own
