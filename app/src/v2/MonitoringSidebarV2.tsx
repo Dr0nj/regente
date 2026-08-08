@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Lock } from "lucide-react";
+import { Lock, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import type { JobNodeData } from "@/lib/job-config";
 import { useResizablePanel, ResizeHandle } from "./resizable";
 import { api, onServerEvent, isServerMode } from "@/lib/server-client";
@@ -56,6 +56,7 @@ const STATUS_DOT: Record<JobNodeData["status"], string> = {
 
 const ROW_H = 30;
 const HEADER_H = 26;
+const RAIL_W = 44;           // largura do painel colapsado (trilho)
 const PAGE = 200;            // linhas por página windowed (300 no ScaleMonitor; aqui a row é mais rica)
 const OVERSCAN_PX = 240;     // margem de pré-render acima/abaixo do viewport
 const MAX_DISPLAY_H = 12_000_000; // teto físico da altura do scroller (ver header)
@@ -85,6 +86,14 @@ function formatDuration(ms?: number): string {
 
 function fmtInt(n: number): string {
   return n.toLocaleString("pt-BR");
+}
+
+// Trilho tem 44px: número por extenso não cabe. Abrevia SEMPRE pra baixo
+// (floor) — inflar a contagem visível seria mentir sobre o dia.
+function fmtCompact(n: number): string {
+  if (n < 10_000) return String(n);
+  if (n < 1_000_000) return `${Math.floor(n / 100) / 10}k`;
+  return `${Math.floor(n / 100_000) / 10}M`;
 }
 
 // Cadeado do hold (schemaV14): AMBAR = segurado pela folder inteira (pausa D-2,
@@ -481,6 +490,15 @@ export default function MonitoringSidebarV2({
     return s;
   }, [windowed, win.summary, groups]);
 
+  // Painel: largura arrastável + COLAPSO para o trilho lateral (railWidth).
+  // Fica aqui em cima, e não junto do render, porque a virtualização abaixo
+  // precisa saber se o painel está no trilho (lista desmontada → não medir
+  // nem paginar).
+  const { width, onMouseDown, reset, collapsed: railed, toggleCollapsed } = useResizablePanel({
+    storageKey: "regente.panel.monitoring.w", defaultWidth: 320, min: 240, max: 640,
+    edge: "right", railWidth: RAIL_W,
+  });
+
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const toggleFolder = (name: string) => {
     setCollapsed((prev) => {
@@ -494,6 +512,10 @@ export default function MonitoringSidebarV2({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewH, setViewH] = useState(600);
+  // GOTCHA do colapso: no trilho o scroller nem existe. Sem `railed` nas deps
+  // o efeito rodaria uma única vez (montagem colapsada = ref nula) e a lista
+  // reabriria presa no viewH default, sem ResizeObserver — virtualizando por
+  // uma altura inventada. Reabrir tem que re-medir.
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
@@ -501,7 +523,7 @@ export default function MonitoringSidebarV2({
     const ro = new ResizeObserver(() => setViewH(el.clientHeight));
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [railed]);
 
   // Offsets dos grupos no espaço VIRTUAL (px teóricos do dia inteiro).
   const { groupTops, virtualH } = useMemo(() => {
@@ -525,7 +547,9 @@ export default function MonitoringSidebarV2({
   // Janela visível → páginas necessárias (windowed). Efeito, não render:
   // dispara fetches (side effect) e depende de scroll/tamanho/cache.
   useEffect(() => {
-    if (!windowed) return;
+    // Trilho não tem lista: paginar aqui seria fetch para ninguém ver. Ao
+    // reabrir o efeito roda de novo (railed nas deps) e busca a janela real.
+    if (!windowed || railed) return;
     const winTop = vTop - OVERSCAN_PX;
     const winBot = vTop + viewH + OVERSCAN_PX;
     groups.forEach((g, gi) => {
@@ -537,7 +561,7 @@ export default function MonitoringSidebarV2({
       const last = Math.min(g.count - 1, Math.ceil((winBot - jobsTop) / ROW_H));
       if (last >= first) win.ensureRange(g.name, first, last);
     });
-  }, [windowed, vTop, viewH, groups, groupTops, collapsed, win.ensureRange, win.version]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [windowed, railed, vTop, viewH, groups, groupTops, collapsed, win.ensureRange, win.version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Rows visíveis ── */
   const visibleRows: ReactNode[] = [];
@@ -777,10 +801,6 @@ export default function MonitoringSidebarV2({
     });
   }
 
-  const { width, onMouseDown, reset } = useResizablePanel({
-    storageKey: "regente.panel.monitoring.w", defaultWidth: 320, min: 240, max: 640, edge: "right",
-  });
-
   // Contador honesto do header: nunca um número truncado disfarçado de total.
   const viewTotal = windowed
     ? (win.scoped ? win.viewSummary?.total ?? 0 : win.summary?.total ?? 0)
@@ -788,26 +808,113 @@ export default function MonitoringSidebarV2({
   const dayTotal = windowed ? win.summary?.total ?? 0 : jobs.length;
   const emptyList = windowed ? groups.length === 0 : filtered.length === 0;
 
+  const shell: CSSProperties = {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    bottom: 10,
+    width,
+    background: "var(--v2-bg-surface)",
+    border: "1px solid var(--v2-border-medium)",
+    borderRadius: 16,
+    boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+    display: "flex",
+    flexDirection: "column",
+    fontFamily: "var(--v2-font-sans)",
+    zIndex: 5,
+    overflow: "hidden",
+  };
+
+  /* ── Colapsado: TRILHO ────────────────────────────────────────
+     Continua sendo o overlay data-canvas-inset="left" — só que com
+     RAIL_W —, então a centralização do canvas segue honesta sem
+     ninguém precisar avisar a câmera. E a câmera NÃO se move sozinha
+     ao colapsar: quem move a câmera é o usuário (ver useCanvasCamera).
+     O trilho não é decorativo: mantém a contagem por status, e clicar
+     num status reabre o painel já filtrado.
+     ────────────────────────────────────────────────────────────── */
+  if (railed) {
+    const railStatuses = [
+      { key: "RUNNING", color: "var(--v2-status-running)", label: "running" },
+      { key: "FAILED", color: "var(--v2-status-failed)", label: "failed" },
+      { key: "SUCCESS", color: "var(--v2-status-ok)", label: "succeeded" },
+      { key: "WAITING", color: "var(--v2-status-waiting)", label: "waiting" },
+    ] as const;
+    return (
+      <aside
+        data-canvas-inset="left"
+        style={{ ...shell, alignItems: "center", padding: "8px 0", gap: 8 }}
+      >
+        <button
+          onClick={toggleCollapsed}
+          title="Expand ACTIVE JOBS"
+          aria-label="Expand ACTIVE JOBS"
+          style={{
+            background: "transparent", border: "1px solid var(--v2-border-subtle)",
+            color: "var(--v2-text-secondary)", borderRadius: 4, cursor: "pointer",
+            width: 28, height: 26, display: "flex", alignItems: "center",
+            justifyContent: "center", padding: 0, flexShrink: 0,
+          }}
+        >
+          <PanelLeftOpen size={14} strokeWidth={2} />
+        </button>
+
+        <span
+          title={windowed ? "real day total (summary)" : "loaded"}
+          style={{
+            fontSize: 9, fontFamily: "var(--v2-font-mono)",
+            color: "var(--v2-text-muted)", letterSpacing: "0.02em", flexShrink: 0,
+          }}
+        >
+          {fmtCompact(dayTotal)}
+        </span>
+
+        <button
+          onClick={toggleCollapsed}
+          title="Expand ACTIVE JOBS"
+          style={{
+            flex: 1, minHeight: 0, background: "transparent", border: "none",
+            cursor: "pointer", padding: 0, display: "flex", alignItems: "center",
+            justifyContent: "center", overflow: "hidden",
+          }}
+        >
+          <span
+            style={{
+              writingMode: "vertical-rl", transform: "rotate(180deg)",
+              fontSize: 10, fontWeight: 600, letterSpacing: "0.14em",
+              color: "var(--v2-text-primary)", whiteSpace: "nowrap",
+            }}
+          >
+            ACTIVE JOBS
+          </span>
+        </button>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "center", flexShrink: 0 }}>
+          {railStatuses.map((s) => (
+            <button
+              key={s.key}
+              onClick={() => { setFilter(s.key as StatusFilter); toggleCollapsed(); }}
+              title={`${fmtInt(counts[s.key])} ${s.label} — open the list filtered`}
+              style={{
+                background: "transparent", border: "none", cursor: "pointer",
+                padding: 0, display: "flex", flexDirection: "column",
+                alignItems: "center", gap: 1, lineHeight: 1,
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.color }} />
+              <span style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)" }}>
+                {fmtCompact(counts[s.key])}
+              </span>
+            </button>
+          ))}
+          <span title="live" style={{ fontSize: 10, color: "var(--v2-accent-brand)", lineHeight: 1 }}>●</span>
+        </div>
+      </aside>
+    );
+  }
+
   return (
-    <aside
-      data-canvas-inset="left"
-      style={{
-        position: "absolute",
-        top: 10,
-        left: 10,
-        bottom: 10,
-        width,
-        background: "var(--v2-bg-surface)",
-        border: "1px solid var(--v2-border-medium)",
-        borderRadius: 16,
-        boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-        display: "flex",
-        flexDirection: "column",
-        fontFamily: "var(--v2-font-sans)",
-        zIndex: 5,
-        overflow: "hidden",
-      }}
-    >
+    <aside data-canvas-inset="left" style={shell}>
       <ResizeHandle edge="right" onMouseDown={onMouseDown} onReset={reset} />
       {/* Header */}
       <div
@@ -837,6 +944,19 @@ export default function MonitoringSidebarV2({
         >
           {windowed ? `${fmtInt(viewTotal)} of ${fmtInt(dayTotal)}` : `${viewTotal}/${dayTotal}`}
         </span>
+        <button
+          onClick={toggleCollapsed}
+          title="Collapse ACTIVE JOBS to the rail"
+          aria-label="Collapse ACTIVE JOBS"
+          style={{
+            background: "transparent", border: "1px solid var(--v2-border-subtle)",
+            color: "var(--v2-text-muted)", borderRadius: 3, cursor: "pointer",
+            width: 22, height: 20, display: "flex", alignItems: "center",
+            justifyContent: "center", padding: 0, flexShrink: 0,
+          }}
+        >
+          <PanelLeftClose size={12} strokeWidth={2} />
+        </button>
       </div>
 
       {/* UI-1 — dia maior que o grafo desenha: a LISTA mostra tudo; avisa do cap. */}

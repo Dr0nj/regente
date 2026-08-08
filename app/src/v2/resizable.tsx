@@ -8,6 +8,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
    - Double-click na borda reseta para o default.
    - edge = "right": handle na borda direita (painel ancorado à ESQUERDA).
      edge = "left":  handle na borda esquerda (painel ancorado à DIREITA).
+   - railWidth (opcional): habilita COLAPSO — o painel encolhe para um trilho
+     dessa largura, sem desmontar. A largura expandida é preservada intacta
+     (o drag continua partindo dela), e o estado colapsado é persistido em
+     "<storageKey>.collapsed". O painel colapsado CONTINUA ocupando espaço
+     medível: quem centraliza o canvas lê os overlays por data-canvas-inset
+     (ver useCanvasCamera.visibleInsets), então o trilho tem que existir no
+     DOM com a largura real, não sumir.
    ────────────────────────────────────────────────────────────── */
 
 export interface ResizableOpts {
@@ -16,20 +23,36 @@ export interface ResizableOpts {
   min: number;
   max: number;
   edge: "left" | "right";
+  /** Largura do trilho colapsado. Ausente = painel não colapsa. */
+  railWidth?: number;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- hook público convive com o componente ResizeHandle no mesmo módulo; mover = churn de imports sem ganho de prod; ver roadmap §RH
 export function useResizablePanel(opts: ResizableOpts) {
-  const { storageKey, defaultWidth, min, max, edge } = opts;
-  const [width, setWidth] = useState<number>(() => {
+  const { storageKey, defaultWidth, min, max, edge, railWidth } = opts;
+  // expandedWidth = largura do painel ABERTO. Colapsar não a toca: o trilho é
+  // só o que devolvemos como `width`, então reabrir devolve a largura de antes.
+  const [expandedWidth, setWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem(storageKey));
     return saved && saved >= min && saved <= max ? saved : defaultWidth;
   });
-  const widthRef = useRef(width);
+  const collapseKey = storageKey + ".collapsed";
+  const [collapsed, setCollapsed] = useState<boolean>(
+    () => !!railWidth && localStorage.getItem(collapseKey) === "1"
+  );
+  const widthRef = useRef(expandedWidth);
   // leitores são handlers de mouse (pós-commit) → efeito é equivalente ao write em render; ver roadmap §RH
   useEffect(() => {
-    widthRef.current = width;
-  }, [width]);
+    widthRef.current = expandedWidth;
+  }, [expandedWidth]);
+
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem(collapseKey, next ? "1" : "0");
+      return next;
+    });
+  }, [collapseKey]);
 
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -64,7 +87,8 @@ export function useResizablePanel(opts: ResizableOpts) {
     localStorage.setItem(storageKey, String(defaultWidth));
   }, [defaultWidth, storageKey]);
 
-  return { width, onMouseDown, reset };
+  const width = collapsed && railWidth ? railWidth : expandedWidth;
+  return { width, onMouseDown, reset, collapsed, toggleCollapsed };
 }
 
 /** Faixa arrastável fina, posicionada na borda interna do painel. */
