@@ -544,7 +544,8 @@ an import report and `# TODO-import` notes wherever a decision is needed. It **n
   Slack, a generic webhook, email (SMTP) or PagerDuty. Cooldown is per rule × job, so a burst
   across different jobs never swallows alerts.
 - **Bulk actions and find & update** — one action across many instances, and mass edits of
-  definitions.
+  definitions. The graph and the ACTIVE JOBS list share one selection: Ctrl/Shift-click in
+  either one highlights the same jobs in both, and the list header counts them.
 - **Agents screen** — the consolidated fleet (online, plus offline with a last-seen time), a
   detail modal per agent (OS/arch, host, version, uptime, capabilities) and an active ping with
   round-trip latency.
