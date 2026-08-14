@@ -6,6 +6,7 @@ import { api, onServerEvent, isServerMode } from "@/lib/server-client";
 import { todayOrderDate } from "@/lib/orchestrator-model";
 import { onBusinessDateChange } from "@/lib/business-date";
 import { legacyCap } from "@/lib/server-instance-store";
+import { toast } from "./Toast";
 
 /* ──────────────────────────────────────────────────────────────
    MonitoringSidebarV2 — flutuante, clean, densidade alta
@@ -324,6 +325,7 @@ export default function MonitoringSidebarV2({
   selectedId,
   selectedIds,
   onSelect,
+  onSelectRange,
   onPauseFolder,
   onResumeFolder,
   onOpenViewPoint,
@@ -342,6 +344,11 @@ export default function MonitoringSidebarV2({
       sidebar centrava e abria o job mas não o SELECIONAVA no grafo, e não dava
       pra montar seleção múltipla pela lista (bulk delete ficava inacessível). */
   onSelect?: (id: string, additive: boolean) => void;
+  /** Shift+clique = FAIXA (da âncora até a row clicada). `additive` = Ctrl/Cmd
+      junto do Shift (soma à seleção em vez de trocar); `focusId` = a row
+      clicada, que leva o drawer e a câmera. Prop AUSENTE = sem faixa: o Shift
+      volta a ser o toggle do Ctrl (é o que o componente standalone faz). */
+  onSelectRange?: (ids: string[], additive: boolean, focusId: string) => void;
   /** D-2 — pause/resume de workflow: segura/libera os WAITING da folder em massa. */
   onPauseFolder?: (name: string) => void;
   onResumeFolder?: (name: string) => void;
@@ -486,6 +493,57 @@ export default function MonitoringSidebarV2({
         return { name, count: rows.length, jobs: arr.length, rows };
       });
   }, [windowed, win.scoped, win.viewSummary, win.summary, filtered, visibleFolders]);
+
+  /* ── Shift = FAIXA (âncora → row clicada), dentro da MESMA folder ──
+     A âncora guarda posição E id porque a lista se REMONTA sozinha (poll de
+     status, filtro, busca, carry-over entrando): só o índice apontaria pra
+     outro job. Identidade que não bate mais = faixa vira clique simples — a
+     seleção nunca inclui algo que o usuário não viu.
+     Cross-folder é clique simples DE PROPÓSITO: no windowed cada folder é
+     paginada por conta e uma folder colapsada esconderia o miolo da faixa. */
+  const anchor = useRef<{ folder: string; idx: number; id: string } | null>(null);
+
+  /** Job numa posição do grupo. Local = `rows[]` (sub-header de carry-over não é
+      job); windowed = página já carregada (ausente → undefined). */
+  const jobAt = useCallback((g: Group, idx: number): MonitoringJob | undefined => {
+    if (g.rows) {
+      const r = g.rows[idx];
+      return r && r.kind === "job" ? r.job : undefined;
+    }
+    return win.getRow(g.name, idx);
+  }, [win]);
+
+  const handleRowClick = (e: React.MouseEvent, folder: string, idx: number, id: string) => {
+    const additive = e.metaKey || e.ctrlKey;
+    const a = anchor.current;
+    if (e.shiftKey && onSelectRange && a && a.folder === folder) {
+      const g = groups.find((x) => x.name === folder);
+      if (g && jobAt(g, a.idx)?.id === a.id) {
+        const ids: string[] = [];
+        for (let k = Math.min(a.idx, idx); k <= Math.max(a.idx, idx); k++) {
+          // Windowed: página ainda não carregada não tem id em memória e fica de
+          // FORA (o chip "N sel" conta o que realmente entrou — não inventamos
+          // seleção sobre linha que não veio do server).
+          const j = jobAt(g, k);
+          if (j) ids.push(j.id);
+        }
+        if (ids.length > 0) {
+          const span = Math.abs(idx - a.idx) + 1;
+          if (ids.length < span) {
+            // Só acontece no windowed com página pulada por scroll rápido. Silêncio
+            // aqui seria mentira: o operador pediu 1→551 e levaria 351 sem saber.
+            toast.info(`${ids.length} of ${span} rows selected`, {
+              detail: "Rows not loaded yet stay out of the selection — scroll through them and select again.",
+            });
+          }
+          onSelectRange(ids, additive, id);
+          return; // âncora NÃO se move: o próximo Shift re-mede da mesma origem
+        }
+      }
+    }
+    anchor.current = { folder, idx, id };
+    handleSelect(id, additive);
+  };
 
   // Folders em PAUSA DE FOLDER (D-2/schemaV14): têm ≥1 job segurado pela folder.
   // Windowed → vem do summary (pausedFolders); local → deriva do holdScope das
@@ -734,12 +792,15 @@ export default function MonitoringSidebarV2({
         visibleRows.push(
           <div
             key={j.id}
-            onClick={(e) => handleSelect(j.id, e.shiftKey || e.metaKey || e.ctrlKey)}
+            onClick={(e) => handleRowClick(e, g.name, i, j.id)}
             style={{
               position: "absolute", top, left: 0, right: 0, height: ROW_H,
               padding: "0 12px 0 22px",
               display: "flex", alignItems: "center", gap: 8,
               borderBottom: "1px solid var(--v2-border-subtle)",
+              // Sem isso o Shift+clique do range também pinta a SELEÇÃO DE TEXTO
+              // do browser por cima das rows.
+              userSelect: "none",
               background: rowSel ? "var(--v2-accent-deep)" : "transparent",
               borderLeft: rowSel ? "2px solid var(--v2-accent-brand)" : "2px solid transparent",
               boxShadow: rowSel ? "inset 0 0 12px var(--v2-accent-glow)" : "none",

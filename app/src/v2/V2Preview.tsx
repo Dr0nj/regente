@@ -710,6 +710,31 @@ function V2PreviewInner() {
   const selectedInstance = selectedInstanceId ? instances.find((i) => i.id === selectedInstanceId) : null;
 
   /* ── Sidebar click → centralize node (focusNode vem do useCanvasCamera) ── */
+  // Foco = drawer + câmera na instance clicada. Comum ao clique simples e à
+  // faixa do Shift (que foca a ÚLTIMA clicada, não a âncora).
+  const focusInstance = useCallback((instId: string) => {
+    setSelectedInstanceId(instId);
+    focusNode(`m-${instId}`);
+    // UI-1 — sidebar windowed: a row clicada pode estar FORA do espelho local
+    // (dia > cap do grafo). Puxa a instance pro cache pra o drawer abrir; o
+    // syncInstances do onInstanceChange re-renderiza quando ela chegar.
+    if (isServerMode() && !instances.some((i) => i.id === instId)) {
+      void fetchInstanceById(instId);
+    }
+  }, [focusNode, instances]);
+
+  // Shift+clique na lista = FAIXA: troca a seleção pelo intervalo (ou soma, com
+  // Ctrl/Cmd junto). Os ids já vêm resolvidos pela sidebar — ela é quem conhece
+  // a ordem visível (agrupada por folder, filtrada, virtualizada).
+  const handleSidebarRange = useCallback((ids: string[], additive: boolean, focusId: string) => {
+    setSelectedIds((prev) => {
+      const next = additive ? new Set(prev) : new Set<string>();
+      for (const id of ids) next.add(id);
+      return next;
+    });
+    focusInstance(focusId);
+  }, [focusInstance]);
+
   const handleSidebarSelect = useCallback((instId: string, additive = false) => {
     // A row da sidebar é uma forma de SELECIONAR o job, não só de olhar pra ele:
     // alimenta o mesmo `selectedIds` do onNodeClick (fonte única do highlight
@@ -725,15 +750,8 @@ function V2PreviewInner() {
       if (prev.size === 1 && prev.has(instId)) return prev; // já é o único
       return new Set([instId]);
     });
-    setSelectedInstanceId(instId);
-    focusNode(`m-${instId}`);
-    // UI-1 — sidebar windowed: a row clicada pode estar FORA do espelho local
-    // (dia > cap do grafo). Puxa a instance pro cache pra o drawer abrir; o
-    // syncInstances do onInstanceChange re-renderiza quando ela chegar.
-    if (isServerMode() && !instances.some((i) => i.id === instId)) {
-      void fetchInstanceById(instId);
-    }
-  }, [focusNode, instances]);
+    focusInstance(instId);
+  }, [focusInstance]);
 
   /* ── Canvas node click ── */
   const onNodeClick: NodeMouseHandler = useCallback((evt, node) => {
@@ -1820,6 +1838,7 @@ function V2PreviewInner() {
               // acendem 2 cards E 2 rows, venha o clique de onde vier.
               selectedIds={selectedIds}
               onSelect={handleSidebarSelect}
+              onSelectRange={handleSidebarRange}
               // UI-1 — dia > cap: a lista vira windowed server-driven (dia inteiro);
               // o botão do aviso leva pro ViewPoint. O eye do FolderManager vale
               // nos dois modos.
