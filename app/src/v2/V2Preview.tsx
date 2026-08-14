@@ -1816,6 +1816,9 @@ function V2PreviewInner() {
             <MonitoringSidebarV2
               jobs={monitoringJobs}
               selectedId={selectedInstanceId}
+              // A lista compartilha a MESMA seleção do canvas: 2 jobs no Ctrl+clique
+              // acendem 2 cards E 2 rows, venha o clique de onde vier.
+              selectedIds={selectedIds}
               onSelect={handleSidebarSelect}
               // UI-1 — dia > cap: a lista vira windowed server-driven (dia inteiro);
               // o botão do aviso leva pro ViewPoint. O eye do FolderManager vale

@@ -322,6 +322,7 @@ function useDayWindow(active: boolean, filter: StatusFilter, search: string, lab
 export default function MonitoringSidebarV2({
   jobs,
   selectedId,
+  selectedIds,
   onSelect,
   onPauseFolder,
   onResumeFolder,
@@ -329,7 +330,13 @@ export default function MonitoringSidebarV2({
   visibleFolders,
 }: {
   jobs: MonitoringJob[];
+  /** Job em FOCO (o que está aberto no drawer). Continua sendo 1 só. */
   selectedId?: string | null;
+  /** SELEÇÃO (a mesma do canvas, `selectedIds` do V2Preview) — a lista é uma
+      superfície da MESMA seleção, então todas as rows selecionadas acendem,
+      não só a do drawer. Sem isso, Ctrl+clique em 2 jobs (no canvas ou aqui
+      mesmo) deixava o grafo com 2 cards neon e a lista com 1 row destacada. */
+  selectedIds?: ReadonlySet<string>;
   /** `additive` = clique com Shift/Ctrl/Cmd, a MESMA semântica do onNodeClick do
       canvas: simples troca a seleção, additive alterna. Sem isso a row da
       sidebar centrava e abria o job mas não o SELECIONAVA no grafo, e não dava
@@ -349,6 +356,11 @@ export default function MonitoringSidebarV2({
   const [query, setQuery] = useState("");
   const [internalSelected, setInternalSelected] = useState<string | null>(null);
   const selected = selectedId !== undefined ? selectedId : internalSelected;
+  // Row acesa = está na seleção OU é a do drawer. O `|| selected === id` mantém
+  // o destaque quando a seleção foi limpa (pós-bulk) mas o drawer segue aberto,
+  // e é o único caminho no modo standalone (sem `selectedIds`).
+  const isSelected = (id: string) => selectedIds?.has(id) === true || selected === id;
+  const selCount = selectedIds?.size ?? 0;
   const handleSelect = (id: string, additive = false) => {
     if (onSelect) onSelect(id, additive);
     else setInternalSelected(id);
@@ -718,6 +730,7 @@ export default function MonitoringSidebarV2({
           );
           continue;
         }
+        const rowSel = isSelected(j.id);
         visibleRows.push(
           <div
             key={j.id}
@@ -727,18 +740,18 @@ export default function MonitoringSidebarV2({
               padding: "0 12px 0 22px",
               display: "flex", alignItems: "center", gap: 8,
               borderBottom: "1px solid var(--v2-border-subtle)",
-              background: selected === j.id ? "var(--v2-accent-deep)" : "transparent",
-              borderLeft: selected === j.id ? "2px solid var(--v2-accent-brand)" : "2px solid transparent",
-              boxShadow: selected === j.id ? "inset 0 0 12px var(--v2-accent-glow)" : "none",
+              background: rowSel ? "var(--v2-accent-deep)" : "transparent",
+              borderLeft: rowSel ? "2px solid var(--v2-accent-brand)" : "2px solid transparent",
+              boxShadow: rowSel ? "inset 0 0 12px var(--v2-accent-glow)" : "none",
               cursor: "pointer", fontSize: 11,
               transition: "background 80ms linear, box-shadow 120ms linear",
               boxSizing: "border-box",
             }}
             onMouseEnter={(e) => {
-              if (selected !== j.id) e.currentTarget.style.background = "var(--v2-bg-hover)";
+              if (!rowSel) e.currentTarget.style.background = "var(--v2-bg-hover)";
             }}
             onMouseLeave={(e) => {
-              if (selected !== j.id) e.currentTarget.style.background = "transparent";
+              if (!rowSel) e.currentTarget.style.background = "transparent";
             }}
           >
             <span
@@ -766,7 +779,7 @@ export default function MonitoringSidebarV2({
               style={{
                 flex: 1, color: "var(--v2-text-primary)",
                 whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                fontWeight: selected === j.id ? 600 : 400,
+                fontWeight: rowSel ? 600 : 400,
               }}
             >
               {j.label}
@@ -944,6 +957,25 @@ export default function MonitoringSidebarV2({
         >
           {windowed ? `${fmtInt(viewTotal)} of ${fmtInt(dayTotal)}` : `${viewTotal}/${dayTotal}`}
         </span>
+        {/* A lista é virtualizada: com 2+ selecionados algumas rows acesas podem
+            estar fora da viewport (ou fora do filtro). O chip diz o tamanho da
+            seleção sem depender de enxergar as rows. */}
+        {selCount > 1 && (
+          <span
+            title={`${selCount} jobs selected — Esc clears the selection`}
+            style={{
+              fontSize: 10,
+              fontFamily: "var(--v2-font-mono)",
+              color: "var(--v2-accent-brand)",
+              padding: "1px 5px",
+              border: "1px solid var(--v2-accent-brand)",
+              borderRadius: 2,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {selCount} sel
+          </span>
+        )}
         <button
           onClick={toggleCollapsed}
           title="Collapse ACTIVE JOBS to the rail"
