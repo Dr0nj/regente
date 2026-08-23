@@ -601,7 +601,7 @@ func main() {
 				scheme = "https+mTLS"
 			}
 		}
-		log.Printf("regente-server %s listening on %s [%s] (workspace=%s, db=%s, gitops=%s)", version, *addr, scheme, *workspace, *dbPath, gitState)
+		log.Printf("regente-server %s listening on %s [%s] (workspace=%s, db=%s, gitops=%s)", version, *addr, scheme, *workspace, db.RedactDSN(*dbPath), gitState)
 		var err error
 		if tlsCfg != nil {
 			err = srv.ListenAndServeTLS("", "") // certs já no TLSConfig
