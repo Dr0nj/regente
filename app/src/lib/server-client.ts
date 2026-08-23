@@ -30,15 +30,42 @@ export function getAuthToken(): string {
   return ENV_TOKEN;
 }
 
+// Marca do último "_resync" (login). O socket que abre logo em seguida é o DESSE
+// login: emitir "_connected" também faria toda a UI repetir os mesmos GETs.
+let lastResyncAt = 0;
+const RESYNC_DEDUP_MS = 1000;
+
 export function setAuthToken(token: string | null): void {
   if (typeof window === "undefined") return;
-  if (token) window.localStorage.setItem(LS_TOKEN_KEY, token);
+  const prev = window.localStorage.getItem(LS_TOKEN_KEY);
+  const next = token || null;
+  // NADA mudou → não mexe no WS. Todo 401 chama setAuthToken(null) (o handler de
+  // "unauthorized"), e na tela de login isso acontece a cada poll: derrubar e
+  // reabrir o socket a cada 401 disparava uma rajada de handshakes que o próprio
+  // browser passa a ADIAR (throttle de WS por host, segundos → minutos). Era essa
+  // fila que segurava o "_connected" DEPOIS do login — board vazio até o F5.
+  if (prev === next) return;
+  if (next) window.localStorage.setItem(LS_TOKEN_KEY, next);
   else window.localStorage.removeItem(LS_TOKEN_KEY);
   // Token mudou (login/logout): o WS aberto está autenticado com o token ANTIGO
-  // (ou nem conectou, se o mount rodou antes do login). Reconecta já com o novo —
-  // o "_connected" emitido no onopen faz os stores ressincronizarem (defs+instances),
-  // sem exigir F5 depois de logar.
+  // (ou nem conectou, se o mount rodou antes do login). Reconecta já com o novo.
   reconnectNow();
+  // ...e no LOGIN não espera o socket abrir para ressincronizar: o "_connected"
+  // depende de um handshake que pode estar na fila do throttle. O "_resync" é
+  // local e síncrono — os stores recarregam JÁ, com o token novo (mesmos
+  // listeners, ver isResyncEvent).
+  if (next) { lastResyncAt = Date.now(); emit({ event: "_resync" }); }
+}
+
+/**
+ * Evento que pede RESSINCRONIZAÇÃO de tudo que foi buscado uma vez:
+ *  - "_connected": o WS (re)abriu — pode ter perdido eventos enquanto esteve fora.
+ *  - "_resync": o token mudou (login) — o que falhou com 401 tem que ser refeito
+ *    agora, sem depender do socket.
+ * Quem busca no mount e não tem outro caminho de recuperação assina os DOIS.
+ */
+export function isResyncEvent(ev: ServerEvent): boolean {
+  return ev.event === "_connected" || ev.event === "_resync";
 }
 
 // Listeners para eventos de auth (401 / logout)
@@ -243,8 +270,9 @@ function connect(): void {
     backoffMs = 1000;
     // Evento sintético local (não vem do server): sinaliza "canal ao vivo de novo".
     // Stores usam isso pra ressincronizar estado perdido enquanto o WS esteve fora
-    // (reconexão de rede, login com token novo, server reiniciado).
-    emit({ event: "_connected" });
+    // (reconexão de rede, server reiniciado). No login o "_resync" já fez esse
+    // trabalho segundos antes — não repete a rodada inteira de GETs.
+    if (Date.now() - lastResyncAt > RESYNC_DEDUP_MS) emit({ event: "_connected" });
   };
   sock.onmessage = (msg) => {
     try {

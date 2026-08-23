@@ -11,7 +11,7 @@
  * (ConditionsOutAdd/Remove) aqui — ver applyOutcomesLocal.
  */
 
-import { isServerMode, onServerEvent } from "@/lib/server-client";
+import { isServerMode, isResyncEvent, onServerEvent } from "@/lib/server-client";
 import { listConditions, setCondition, unsetCondition } from "@/lib/bloco2-api";
 import { localLoad, localSave } from "@/lib/persistence";
 import { condKey, resolveCondScope } from "@/lib/conditions-model";
@@ -69,7 +69,7 @@ function ensure(): void {
       onServerEvent((ev) => {
         // condition.changed cobre tudo; set/unset são os broadcasts legados da API.
         if (ev.event === "condition.changed" || ev.event === "condition.set" ||
-            ev.event === "condition.unset" || ev.event === "_connected") {
+            ev.event === "condition.unset" || isResyncEvent(ev)) {
           void refreshServer();
         }
       });

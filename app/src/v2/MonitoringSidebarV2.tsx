@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { Lock, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import type { JobNodeData } from "@/lib/job-config";
 import { useResizablePanel, ResizeHandle } from "./resizable";
-import { api, onServerEvent, isServerMode } from "@/lib/server-client";
+import { api, onServerEvent, isServerMode, isResyncEvent } from "@/lib/server-client";
 import { todayOrderDate } from "@/lib/orchestrator-model";
 import { onBusinessDateChange } from "@/lib/business-date";
 import { legacyCap } from "@/lib/server-instance-store";
@@ -244,7 +244,7 @@ function useDayWindow(active: boolean, filter: StatusFilter, search: string, lab
   useEffect(() => {
     if (!active) return;
     const off = onServerEvent((ev) => {
-      if (ev.event === "daily.started" || ev.event === "_connected") {
+      if (ev.event === "daily.started" || isResyncEvent(ev)) {
         clearPages();
         void loadSummary();
         bump();
@@ -399,7 +399,7 @@ export default function MonitoringSidebarV2({
         .catch(() => {});
     void probe();
     const off = onServerEvent((ev) => {
-      if (ev.event === "daily.started" || ev.event === "_connected") void probe();
+      if (ev.event === "daily.started" || isResyncEvent(ev)) void probe();
       // Sem summary em cada instance.changed: o hook windowed já cobre; aqui só
       // o cruzamento do cap importa, e forçar jobs cruza via daily/força (raro).
       if (ev.event === "instance.changed" && !windowed) void probe();

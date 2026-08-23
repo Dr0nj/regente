@@ -438,10 +438,12 @@ function ensureWs(): void {
       case "daily.started":
         refreshAcrossDayFlip("daily");
         break;
-      // WS (re)conectou: ressincroniza tudo — cobre eventos perdidos offline e o
-      // primeiro load que falhou com 401 antes do login (token novo já vale aqui).
+      // WS (re)conectou ("_connected") ou o token acabou de mudar ("_resync",
+      // login): ressincroniza tudo — cobre eventos perdidos offline e o primeiro
+      // load que falhou com 401 antes do login (token novo já vale aqui).
       // Inclui a data: offline pode ter atravessado o daily_at.
       case "_connected":
+      case "_resync":
         void syncBusinessDate().then(() => refresh()).catch(() => scheduleInitialRetry());
         break;
     }

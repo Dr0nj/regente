@@ -49,7 +49,7 @@ import {
   fetchDailyStatus,
   normalizeDbTime,
 } from "@/lib/runtime-bridge";
-import { onServerEvent, isServerMode, onAuthEvent, setAuthToken, SERVER_URL } from "@/lib/server-client";
+import { onServerEvent, isServerMode, isResyncEvent, onAuthEvent, setAuthToken, SERVER_URL } from "@/lib/server-client";
 import { fetchMe, loadCachedUser, type AuthUser } from "@/lib/auth-api";
 import { getServerVersion } from "@/lib/version-api";
 import { LoginForm } from "./LoginForm";
@@ -217,7 +217,7 @@ function V2PreviewInner() {
         .catch(() => {});
     void load();
     const off = onServerEvent((ev) => {
-      if (ev.event === "folder.changed" || ev.event === "_connected") void load();
+      if (ev.event === "folder.changed" || isResyncEvent(ev)) void load();
     });
     return () => { dead = true; off(); };
   }, []);
@@ -418,7 +418,7 @@ function V2PreviewInner() {
       if (ev.event === "alert.changed") {
         void fetchUnacknowledgedCount().then(setUnreadAlerts);
       }
-      if (ev.event === "_connected") {
+      if (isResyncEvent(ev)) {
         void fetchUnacknowledgedCount().then(setUnreadAlerts);
         refreshDailyStatus();
         refreshAgents();

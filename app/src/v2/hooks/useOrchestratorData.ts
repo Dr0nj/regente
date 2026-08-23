@@ -24,7 +24,7 @@ import {
   reloadDefinitions,
 } from "@/lib/definition-store";
 import { container } from "@/lib/container";
-import { onServerEvent, isServerMode } from "@/lib/server-client";
+import { onServerEvent, isServerMode, isResyncEvent } from "@/lib/server-client";
 import { listPublishedDefinitions } from "@/lib/adapters/storage/ServerApiAdapter";
 import { toast } from "../Toast";
 
@@ -113,7 +113,7 @@ export function useOrchestratorData() {
         // WS (re)conectou — inclui o pós-login (setAuthToken reconecta com o token
         // novo). Recarrega defs que podem ter falhado no mount (401) ou mudado
         // enquanto o canal esteve fora. Instances ressincronizam no próprio store.
-        if (ev.event === "_connected") {
+        if (isResyncEvent(ev)) {
           void reloadDefinitions().then((list) => { setDefs([...list]); setDefsLoaded(true); });
           refreshPublished();
           return;
