@@ -314,9 +314,31 @@ journalctl -u regente-server -f           # follow the logs
 
 ### Upgrading a running installation
 
-**Run the same installer again.** Reinstalling on top is the supported upgrade path — it detects
-the live service, replaces the binary and the UI, and **restarts the service** so the new version
-is actually the one running:
+**One command:**
+
+```bash
+sudo regente-update
+```
+
+It takes an **online snapshot of the database** first (schema migrations run on the next boot and
+do not have an undo), downloads the latest release, installs it over the current one and
+**restarts the service**. It stops early and touches nothing when you are already on the latest
+version.
+
+```bash
+sudo regente-update v0.2.19      # a specific version — downgrade included
+sudo regente-update --no-backup  # skip the snapshot
+sudo regente-update -f           # reinstall the same version (binary, UI, unit, deploy files)
+```
+
+Snapshots go to `/var/lib/regente/backups` (the last 14 are kept, `REGENTE_BACKUP_KEEP` changes
+that) and the previous binary stays at `/usr/local/bin/regente-server.bak`, so a rollback is a
+copy away — the command prints the exact line. On a machine with no internet access, hand it a
+bundle you downloaded elsewhere: `sudo REGENTE_BUNDLE=./regente-server_linux_amd64.tar.gz
+regente-update`.
+
+**Installed before `regente-update` existed?** Run the installer again — reinstalling on top is
+the same upgrade path (it is what `regente-update` calls), and it brings the command with it:
 
 ```bash
 curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install.sh -o regente-install.sh && sudo bash regente-install.sh

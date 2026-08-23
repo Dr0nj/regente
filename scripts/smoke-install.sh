@@ -69,7 +69,7 @@ if [ "$BUILD" = 1 ]; then
   (cd "$ROOT/server" && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-X main.version=smoke-test" -o "$ROOT/.smoke/stage/regente-server_linux_amd64/regente-server" .)
   (cd "$ROOT/agent" && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o "$ROOT/.smoke/regente-agent" .)
   cp -r "$ROOT/app/dist" "$ROOT/.smoke/stage/regente-server_linux_amd64/app/dist"
-  cp "$ROOT/server/deploy/install-linux.sh" "$ROOT/server/deploy/configure.sh" \
+  cp "$ROOT/server/deploy/install-linux.sh" "$ROOT/server/deploy/configure.sh" "$ROOT/server/deploy/update.sh" \
      "$ROOT/server/deploy/regente-server.service" "$ROOT/server/deploy/server.env.example" \
      "$ROOT/.smoke/stage/regente-server_linux_amd64/deploy/"
   # Espelha o release.yml: a borda (nginx/TLS/sandbox) também viaja no bundle, e

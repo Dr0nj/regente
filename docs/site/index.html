@@ -369,9 +369,23 @@ UI is reachable, and the reason shows up both in the git badge (<code>⚠ not co
 journalctl -u regente-server -f           # follow the logs
 </code></pre>
 <h3 id="upgrading-a-running-installation">Upgrading a running installation</h3>
-<p><strong>Run the same installer again.</strong> Reinstalling on top is the supported upgrade path — it detects
-the live service, replaces the binary and the UI, and <strong>restarts the service</strong> so the new version
-is actually the one running:</p>
+<p><strong>One command:</strong></p>
+<pre><code class="language-bash">sudo regente-update
+</code></pre>
+<p>It takes an <strong>online snapshot of the database</strong> first (schema migrations run on the next boot and
+do not have an undo), downloads the latest release, installs it over the current one and
+<strong>restarts the service</strong>. It stops early and touches nothing when you are already on the latest
+version.</p>
+<pre><code class="language-bash">sudo regente-update v0.2.19      # a specific version — downgrade included
+sudo regente-update --no-backup  # skip the snapshot
+sudo regente-update -f           # reinstall the same version (binary, UI, unit, deploy files)
+</code></pre>
+<p>Snapshots go to <code>/var/lib/regente/backups</code> (the last 14 are kept, <code>REGENTE_BACKUP_KEEP</code> changes
+that) and the previous binary stays at <code>/usr/local/bin/regente-server.bak</code>, so a rollback is a
+copy away — the command prints the exact line. On a machine with no internet access, hand it a
+bundle you downloaded elsewhere: <code>sudo REGENTE_BUNDLE=./regente-server_linux_amd64.tar.gz regente-update</code>.</p>
+<p><strong>Installed before <code>regente-update</code> existed?</strong> Run the installer again — reinstalling on top is
+the same upgrade path (it is what <code>regente-update</code> calls), and it brings the command with it:</p>
 <pre><code class="language-bash">curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install.sh -o regente-install.sh &amp;&amp; sudo bash regente-install.sh
 </code></pre>
 <p>You should see <code>UPGRADED in place</code> and a line like <code>Process replaced: PID 1234 -&gt; 5678</code>. That

@@ -158,7 +158,7 @@ jobs:
           cp "dist/regente-server_linux_${{ matrix.goarch }}" "stage/$B/regente-server"
           chmod +x "stage/$B/regente-server"
           cp -r app/dist "stage/$B/app/dist"
-          cp server/deploy/install-linux.sh server/deploy/configure.sh server/deploy/regente-server.service server/deploy/server.env.example "stage/$B/deploy/"
+          cp server/deploy/install-linux.sh server/deploy/configure.sh server/deploy/update.sh server/deploy/regente-server.service server/deploy/server.env.example "stage/$B/deploy/"
           # Borda (nginx/TLS/sandbox): o install-linux.sh instala isto em
           # /var/lib/regente/deploy/vps. Sem estar no bundle, quem usa o one-liner
           # fica sem os arquivos que o próprio deploy/vps/README.md manda copiar.

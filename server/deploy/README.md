@@ -12,6 +12,7 @@
 | `install-linux.sh` | Installs the unit, the binary and the env file, then enables and starts it. |
 | `install-windows.ps1` | A Scheduled Task (boot + automatic restart) on Windows. |
 | `configure.sh` | Guided setup, installed as `regente-configure`. |
+| `update.sh` | Upgrade in one command, installed as `regente-update`: database snapshot, latest release, restart. |
 | `backup.sh` · `restore.sh` | DR (R6) for SQLite and Postgres. |
 | `chaos-ha.sh` · `rolling-upgrade.sh` | HA drills: failover and a zero-downtime upgrade. |
 

@@ -58,6 +58,38 @@ if [ "$STAGE" = stage2 ]; then
   wait_for 30 '[ -n "$(gitfield sha)" ]' || bad "workspace não voltou sincronizado"
   [ -n "$(gitfield sha)" ] && ok "workspace ainda clonado (sha $(gitfield sha | cut -c1-7))"
   [ -z "$(gitfield error)" ] && ok "GitOps sem erro" || bad "GitOps com erro após o reboot: $(gitfield error)"
+
+  head1 "regente-update: backup do banco + troca de binário + restart"
+  # Não há release NOVA para baixar (o smoke roda ANTES de publicar), então o
+  # alvo é o PRÓPRIO bundle sob teste via REGENTE_BUNDLE + -f: mesmo caminho de
+  # código do upgrade real — só a perna do download fica de fora.
+  [ -x /usr/local/bin/regente-update ] || bad "regente-update não foi instalado"
+  before_pid="$(systemctl show regente-server -p MainPID --value)"
+  REGENTE_BUNDLE=/root/bundle.tar.gz regente-update -f > /tmp/update.log 2>&1     || { bad "regente-update falhou"; tail -20 /tmp/update.log; }
+  wait_for 30 active || bad "o serviço não voltou depois do regente-update"
+  snap="$(ls -1t /var/lib/regente/backups/regente-*.db 2>/dev/null | head -1)"
+  { [ -n "$snap" ] && [ -s "$snap" ]; }     && ok "snapshot do banco criado ($(basename "${snap:-nenhum}"))"     || bad "regente-update não gerou snapshot do banco"
+  [ -f /usr/local/bin/regente-server.bak ] && ok "binário anterior guardado p/ rollback" || bad "não guardou o binário anterior"
+  after_pid="$(systemctl show regente-server -p MainPID --value)"
+  [ "$before_pid" != "$after_pid" ]     && ok "processo trocado ($before_pid -> $after_pid): o binário novo é o que está rodando"     || bad "o processo NÃO reiniciou — atualizou o arquivo e deixou o antigo em memória"
+  wait_for 30 '[ "$(code "'"$BASE"'/health")" = 200 ]' || bad "health não voltou depois do update"
+  [ "$(code "$BASE/health")" = 200 ] && ok "health 200 depois do update"
+  [ -f /var/lib/regente/regente.db ] && ok "banco preservado no update" || bad "o update levou o banco embora"
+  wait_for 30 '[ -n "$(gitfield sha)" ]' || bad "workspace não voltou depois do update"
+  [ -n "$(gitfield sha)" ] && ok "workspace intacto depois do update"
+
+  # Mesma versão sem -f: não reinstala e NÃO reinicia (update não é restart à toa).
+  noop_pid="$(systemctl show regente-server -p MainPID --value)"
+  REGENTE_BUNDLE=/root/bundle.tar.gz regente-update > /tmp/update-noop.log 2>&1 || bad "regente-update (no-op) saiu com erro"
+  grep -qi "already on" /tmp/update-noop.log && ok "reconhece que já está na versão" || bad "não detectou 'já atualizado'"
+  [ "$(systemctl show regente-server -p MainPID --value)" = "$noop_pid" ] && ok "no-op não reiniciou o serviço" || bad "no-op reiniciou o serviço à toa"
+
+  # --no-backup: atualiza sem gerar snapshot (a opção que o operador pediu).
+  n_before="$(ls -1 /var/lib/regente/backups/ 2>/dev/null | wc -l)"
+  REGENTE_BUNDLE=/root/bundle.tar.gz regente-update -f --no-backup > /tmp/update-nb.log 2>&1 || bad "regente-update --no-backup falhou"
+  n_after="$(ls -1 /var/lib/regente/backups/ 2>/dev/null | wc -l)"
+  [ "$n_before" = "$n_after" ] && ok "--no-backup não criou snapshot" || bad "--no-backup criou snapshot mesmo assim"
+  wait_for 30 active || bad "o serviço não voltou depois do --no-backup"
   echo
   [ "$fails" = 0 ] && { echo "SMOKE stage2 OK"; exit 0; } || { echo "SMOKE stage2: $fails falha(s)"; exit 1; }
 fi
@@ -78,6 +110,7 @@ wait_for 30 '[ "$(code "'"$BASE"'/health")" = 200 ]' || bad "health nunca respon
 [ "$(code "$BASE/health")" = 200 ] && ok "health 200"
 curl -fsS "$BASE/" 2>/dev/null | grep -qi '<!doctype html' && ok "UI servida na mesma porta" || bad "a UI não está sendo servida"
 [ -x /usr/local/bin/regente-configure ] && ok "regente-configure instalado" || bad "regente-configure não foi instalado"
+[ -x /usr/local/bin/regente-update ] && ok "regente-update instalado" || bad "regente-update não foi instalado"
 grep -q 'firewall' /tmp/install.log && ok "instalador lembra do firewall" || bad "instalador não fala do firewall"
 grep -q 'Health:' /tmp/install.log && ok "instalador imprime health check" || bad "instalador não faz health check"
 # Versão: prova a cadeia toda (ldflags -X main.version → binário → API → rodapé).

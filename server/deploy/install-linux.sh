@@ -138,6 +138,11 @@ sed -e "s#__USER__#${RUN_USER}#g" "$HERE/regente-server.service" > "$UNIT"
 if [ -f "$HERE/configure.sh" ]; then
   install -m 0755 "$HERE/configure.sh" /usr/local/bin/regente-configure
 fi
+# Upgrade em um comando: `sudo regente-update` (backup do banco + release nova +
+# restart). Mesmo padrão do regente-configure — o script viaja no bundle.
+if [ -f "$HERE/update.sh" ]; then
+  install -m 0755 "$HERE/update.sh" /usr/local/bin/regente-update
+fi
 
 systemctl daemon-reload
 systemctl enable regente-server >/dev/null 2>&1 || true

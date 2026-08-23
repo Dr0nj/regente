@@ -145,7 +145,7 @@ func main() {
 		if err := db.OnlineBackup(database, *backupTo); err != nil {
 			log.Fatalf("[backup] %v", err)
 		}
-		log.Printf("[backup] snapshot online gravado em %s", *backupTo)
+		log.Printf("[backup] online snapshot written to %s", *backupTo)
 		return
 	}
 	if err := db.Migrate(database); err != nil {
