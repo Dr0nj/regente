@@ -1063,6 +1063,9 @@ function V2PreviewInner() {
 
   /* ── Force Order (Run Now) ── */
   const [forceMenuOpen, setForceMenuOpen] = useState(false);
+  // Menu FORCE: folders colapsadas por default + filtro por texto.
+  const [expandedForceFolders, setExpandedForceFolders] = useState<Set<string>>(new Set());
+  const [forceFilter, setForceFilter] = useState("");
   const handleForce = useCallback((def: JobDefinition) => {
     setForceMenuOpen(false);
     // Force só ordena o que está PUBLICADO (o server 404aria de qualquer jeito;
@@ -1090,14 +1093,41 @@ function V2PreviewInner() {
   // Folders que podem ser ordenadas = as que têm job PUBLICADO (o scheduler só
   // conhece o publicado; draft de design session não conta, mesma regra do
   // Order Job logo abaixo no menu).
-  const orderableFolders = useMemo(() => {
-    const byTeam = new Map<string, number>();
+  // Árvore do menu FORCE: os jobs ficam ESCONDIDOS dentro da folder e só abrem no
+  // clique. Lista plana com 200 jobs é um scroll único onde não se acha nada
+  // (pedido do usuário, 2026-08-24). O filtro complementa o colapso: com a folder
+  // aberta ainda são 200 linhas, e é digitando que se chega num job específico.
+  const forceTree = useMemo(() => {
+    const q = forceFilter.trim().toLowerCase();
+    const byTeam = new Map<string, JobDefinition[]>();
     for (const d of runnableDefs) {
-      if (!d.team) continue;
-      byTeam.set(d.team, (byTeam.get(d.team) ?? 0) + 1);
+      const team = d.team ?? "";
+      const list = byTeam.get(team);
+      if (list) list.push(d); else byTeam.set(team, [d]);
     }
-    return [...byTeam.entries()].map(([name, jobs]) => ({ name, jobs })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [runnableDefs]);
+    const out: { name: string; jobs: JobDefinition[]; total: number }[] = [];
+    for (const [name, jobs] of byTeam) {
+      // Filtro que casa com o NOME da folder mostra a folder INTEIRA (procurar
+      // pela folder é procurar por tudo que está nela).
+      const folderHit = q !== "" && name.toLowerCase().includes(q);
+      const hit = q === "" || folderHit
+        ? jobs
+        : jobs.filter((d) => d.label.toLowerCase().includes(q) || d.id.toLowerCase().includes(q));
+      if (hit.length === 0) continue;
+      out.push({ name, jobs: hit, total: jobs.length });
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }, [runnableDefs, forceFilter]);
+
+  // Filtrando, tudo que sobrou vem ABERTO — senão o resultado da busca ficaria
+  // escondido atrás de mais um clique, que é o oposto de procurar.
+  const forceFiltering = forceFilter.trim() !== "";
+  const isForceFolderOpen = (name: string) => forceFiltering || expandedForceFolders.has(name);
+  const toggleForceFolder = (name: string) => setExpandedForceFolders((prev) => {
+    const next = new Set(prev);
+    if (next.has(name)) next.delete(name); else next.add(name);
+    return next;
+  });
 
   const handleOrderFolder = useCallback((folder: string) => {
     setForceMenuOpen(false);
@@ -1554,62 +1584,6 @@ function V2PreviewInner() {
                   }}
                   onMouseLeave={() => setForceMenuOpen(false)}
                 >
-                  {/* Order Folder — a folder INTEIRA vai pra diária ATIVA. Fica
-                      ACIMA da lista de jobs de propósito: com uma folder grande a
-                      lista de jobs é um scroll longo, e a ação de folder some nele. */}
-                  {isServerMode() && orderableFolders.length > 0 && (
-                    <>
-                      <div style={{
-                        padding: "6px 10px",
-                        fontSize: 9,
-                        fontFamily: "var(--v2-font-mono)",
-                        color: "var(--v2-text-muted)",
-                        letterSpacing: "0.08em",
-                        textTransform: "uppercase",
-                        borderBottom: "1px solid var(--v2-border-subtle)",
-                      }}>
-                        Order Folder — into the active daily
-                      </div>
-                      {orderableFolders.map((f) => (
-                        <button
-                          key={f.name}
-                          onClick={() => handleOrderFolder(f.name)}
-                          title={`Orders every job in ${f.name} into the active daily. Jobs already in today's daily are skipped. Bypasses scheduling only — conditions, agent, resources, window and confirmation still apply, so the folder runs in dependency order.`}
-                          style={{
-                            display: "flex",
-                            width: "100%",
-                            padding: "7px 10px",
-                            background: "transparent",
-                            border: "none",
-                            textAlign: "left",
-                            color: "var(--v2-text-primary)",
-                            fontSize: 11,
-                            fontFamily: "var(--v2-font-sans)",
-                            cursor: "pointer",
-                            alignItems: "center",
-                            gap: 8,
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--v2-bg-hover)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                        >
-                          <FolderOpen size={11} style={{ color: "var(--v2-accent-brand)" }} />
-                          <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {f.name}
-                          </span>
-                          <span style={{
-                            fontSize: 9,
-                            fontFamily: "var(--v2-font-mono)",
-                            color: "var(--v2-text-muted)",
-                            padding: "1px 5px",
-                            border: "1px solid var(--v2-border-subtle)",
-                            borderRadius: 2,
-                          }}>
-                            {f.jobs} job{f.jobs === 1 ? "" : "s"}
-                          </span>
-                        </button>
-                      ))}
-                    </>
-                  )}
                   <div style={{
                     padding: "6px 10px",
                     fontSize: 9,
@@ -1619,48 +1593,144 @@ function V2PreviewInner() {
                     textTransform: "uppercase",
                     borderBottom: "1px solid var(--v2-border-subtle)",
                   }}>
-                    Order Job — Run Now
+                    Order — into the active daily
                   </div>
-                  {/* SÓ defs publicadas: job que existe apenas no draft da design
-                      session não aparece aqui (nunca foi pushado — o scheduler
+
+                  {/* Filtro: com a folder aberta ainda sao 200 linhas. So aparece
+                      quando a lista e grande o bastante pra doer. */}
+                  {runnableDefs.length > 12 && (
+                    <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--v2-border-subtle)" }}>
+                      <input
+                        value={forceFilter}
+                        onChange={(e) => setForceFilter(e.target.value)}
+                        placeholder="filter jobs or folders..."
+                        autoFocus
+                        style={{
+                          width: "100%",
+                          padding: "4px 7px",
+                          background: "var(--v2-bg-base)",
+                          border: "1px solid var(--v2-border-medium)",
+                          borderRadius: 3,
+                          color: "var(--v2-text-primary)",
+                          fontSize: 11,
+                          fontFamily: "var(--v2-font-sans)",
+                          outline: "none",
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {forceTree.length === 0 && (
+                    <div style={{ padding: "10px", fontSize: 11, color: "var(--v2-text-muted)" }}>
+                      No job matches this filter.
+                    </div>
+                  )}
+
+                  {/* SO defs publicadas: job que existe apenas no draft da design
+                      session nao aparece aqui (nunca foi pushado — o scheduler
                       nem o conhece; bug reportado 2026-07-13). */}
-                  {runnableDefs.map((d) => (
-                    <button
-                      key={d.id}
-                      onClick={() => handleForce(d)}
-                      style={{
-                        display: "flex",
-                        width: "100%",
-                        padding: "7px 10px",
-                        background: "transparent",
-                        border: "none",
-                        textAlign: "left",
-                        color: "var(--v2-text-primary)",
-                        fontSize: 11,
-                        fontFamily: "var(--v2-font-sans)",
-                        cursor: "pointer",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--v2-bg-hover)")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                    >
-                      <span style={{ color: "var(--v2-accent-brand)" }}>▶</span>
-                      <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {d.label}
-                      </span>
-                      <span style={{
-                        fontSize: 9,
-                        fontFamily: "var(--v2-font-mono)",
-                        color: "var(--v2-text-muted)",
-                        padding: "1px 5px",
-                        border: "1px solid var(--v2-border-subtle)",
-                        borderRadius: 2,
-                      }}>
-                        {d.team ?? "—"}
-                      </span>
-                    </button>
-                  ))}
+                  {forceTree.map((f) => {
+                    const open = isForceFolderOpen(f.name);
+                    return (
+                      <div key={f.name || "__nofolder__"}>
+                        {/* Linha da folder: o CORPO abre/fecha, o chip ORDER ordena.
+                            Duas acoes na mesma linha e nenhuma escondida em hover —
+                            ordenar a folder continua a 1 clique. */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "0 6px 0 0" }}>
+                          <button
+                            onClick={() => toggleForceFolder(f.name)}
+                            title={open ? "Collapse folder" : `Show the ${f.total} job(s) in this folder`}
+                            style={{
+                              display: "flex",
+                              flex: 1,
+                              minWidth: 0,
+                              padding: "7px 4px 7px 10px",
+                              background: "transparent",
+                              border: "none",
+                              textAlign: "left",
+                              color: "var(--v2-text-primary)",
+                              fontSize: 11,
+                              fontFamily: "var(--v2-font-sans)",
+                              cursor: "pointer",
+                              alignItems: "center",
+                              gap: 7,
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--v2-bg-hover)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                          >
+                            <span style={{ width: 8, color: "var(--v2-text-muted)", fontSize: 9 }}>{open ? "▾" : "▸"}</span>
+                            <FolderOpen size={11} style={{ color: "var(--v2-accent-brand)", flexShrink: 0 }} />
+                            <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {f.name || "— no folder —"}
+                            </span>
+                            <span style={{
+                              fontSize: 9,
+                              fontFamily: "var(--v2-font-mono)",
+                              color: "var(--v2-text-muted)",
+                              padding: "1px 5px",
+                              border: "1px solid var(--v2-border-subtle)",
+                              borderRadius: 2,
+                              flexShrink: 0,
+                            }}>
+                              {forceFiltering && f.jobs.length !== f.total ? `${f.jobs.length}/${f.total}` : f.total}
+                            </span>
+                          </button>
+                          {isServerMode() && f.name !== "" && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleOrderFolder(f.name); }}
+                              title={`Orders every job in ${f.name} into the active daily. Jobs already in the daily are skipped. Bypasses scheduling only — conditions, agent, resources, window and confirmation still apply, so the folder runs in dependency order.`}
+                              style={{
+                                flexShrink: 0,
+                                padding: "2px 6px",
+                                background: "transparent",
+                                border: "1px solid var(--v2-border-medium)",
+                                borderRadius: 2,
+                                color: "var(--v2-accent-brand)",
+                                fontSize: 9,
+                                fontFamily: "var(--v2-font-mono)",
+                                letterSpacing: "0.06em",
+                                cursor: "pointer",
+                                fontWeight: 600,
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--v2-accent-deep)")}
+                              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                            >
+                              ORDER
+                            </button>
+                          )}
+                        </div>
+
+                        {open && f.jobs.map((d) => (
+                          <button
+                            key={d.id}
+                            onClick={() => handleForce(d)}
+                            title={`Order Force — ${d.label} into the active daily`}
+                            style={{
+                              display: "flex",
+                              width: "100%",
+                              padding: "6px 10px 6px 33px",
+                              background: "transparent",
+                              border: "none",
+                              textAlign: "left",
+                              color: "var(--v2-text-primary)",
+                              fontSize: 11,
+                              fontFamily: "var(--v2-font-sans)",
+                              cursor: "pointer",
+                              alignItems: "center",
+                              gap: 8,
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--v2-bg-hover)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                          >
+                            <span style={{ color: "var(--v2-accent-brand)" }}>▶</span>
+                            <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {d.label}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
