@@ -2077,8 +2077,14 @@ func (s *Scheduler) ForceOrder(defID string) (string, error) {
 		return "", fmt.Errorf("definition %s not found", defID)
 	}
 	commitSHA := s.currentCommitSHA()
-	now := time.Now()
-	today := now.Format("2006-01-02")
+	// DAY-1: a ordem manual entra na diária ATIVA — data de NEGÓCIO na timezone
+	// da daily (o que o BusinessDate documenta: "tudo que acontece nessa janela,
+	// ordem forçada e Order Force inclusive, pertence a D"), não a data-calendário
+	// do relógio do server. Gravando o calendário, um Order Force às 02:00 com
+	// daily_at=06:00 nascia com o order_date de AMANHÃ — num dia que o board não
+	// está mostrando, então o card sumia sem erro nenhum.
+	now := s.NowLocal()
+	today := s.BusinessDate(now)
 	id := defID + "-FORCE-" + now.Format("150405")
 	snap, _ := json.Marshal(*def) // Fase A: congela a def no momento da ordem manual.
 	mc := frozenMonitorCols(*def) // M1: Force congela a def publicada ATUAL — é a ordem nova.

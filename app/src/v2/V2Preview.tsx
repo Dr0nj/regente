@@ -65,7 +65,7 @@ import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, creat
 import { toast, ToastHost } from "./Toast";
 import { getGitInfo, commitUrl } from "@/lib/git-info";
 import { FolderOpen, Zap, GitCommitHorizontal, LayoutGrid, ChevronLeft, ChevronRight, Code, Wand2, ListChecks, Boxes } from "lucide-react";
-import { pauseFolder, resumeFolder } from "@/lib/differentials-api";
+import { pauseFolder, resumeFolder, orderFolder } from "@/lib/differentials-api";
 
 // Code-splitting: views/diálogos PESADOS e condicionais saem do chunk inicial
 // (React.lazy + Suspense fallback null — todos montam sob flag/estado, então o
@@ -1086,6 +1086,42 @@ function V2PreviewInner() {
     });
   }, [setPendingFocusId, publishedDefs]);
 
+  /* ── Order Folder — a folder INTEIRA na diária ativa ── */
+  // Folders que podem ser ordenadas = as que têm job PUBLICADO (o scheduler só
+  // conhece o publicado; draft de design session não conta, mesma regra do
+  // Order Job logo abaixo no menu).
+  const orderableFolders = useMemo(() => {
+    const byTeam = new Map<string, number>();
+    for (const d of runnableDefs) {
+      if (!d.team) continue;
+      byTeam.set(d.team, (byTeam.get(d.team) ?? 0) + 1);
+    }
+    return [...byTeam.entries()].map(([name, jobs]) => ({ name, jobs })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [runnableDefs]);
+
+  const handleOrderFolder = useCallback((folder: string) => {
+    setForceMenuOpen(false);
+    orderFolder(folder).then((res) => {
+      if (res.ordered === 0) {
+        toast.info("Nothing to order", {
+          detail: `Every job in ${folder} is already in the daily of ${res.date}.`,
+        });
+        return;
+      }
+      toast.success(`${folder} ordered`, {
+        detail: res.skipped > 0
+          ? `${res.ordered} jobs ordered into the daily of ${res.date} · ${res.skipped} already there`
+          : `${res.ordered} jobs ordered into the daily of ${res.date}`,
+      });
+      // O broadcast instance.bulk já chega pelo WS; o refresh cobre o caso de a
+      // conexão estar caída e é o que o resto da tela usa depois de ação em massa.
+      void refreshInstancesFromServer();
+    }).catch((err) => {
+      console.error("[order-folder] failed", err);
+      toast.error("Order Folder failed", { detail: err?.message ?? String(err) });
+    });
+  }, []);
+
   /* ── Run Now sobre a instance EXISTENTE (Monitoring) ── */
   // Bypassa os gates de impedimento (janela/deps/conditions/recursos) e roda o
   // MESMO job — não cria uma nova ordem. Agente indisponível e Confirm NÃO são
@@ -1518,6 +1554,62 @@ function V2PreviewInner() {
                   }}
                   onMouseLeave={() => setForceMenuOpen(false)}
                 >
+                  {/* Order Folder — a folder INTEIRA vai pra diária ATIVA. Fica
+                      ACIMA da lista de jobs de propósito: com uma folder grande a
+                      lista de jobs é um scroll longo, e a ação de folder some nele. */}
+                  {isServerMode() && orderableFolders.length > 0 && (
+                    <>
+                      <div style={{
+                        padding: "6px 10px",
+                        fontSize: 9,
+                        fontFamily: "var(--v2-font-mono)",
+                        color: "var(--v2-text-muted)",
+                        letterSpacing: "0.08em",
+                        textTransform: "uppercase",
+                        borderBottom: "1px solid var(--v2-border-subtle)",
+                      }}>
+                        Order Folder — into the active daily
+                      </div>
+                      {orderableFolders.map((f) => (
+                        <button
+                          key={f.name}
+                          onClick={() => handleOrderFolder(f.name)}
+                          title={`Orders every job in ${f.name} into the active daily. Jobs already in today's daily are skipped. Bypasses scheduling only — conditions, agent, resources, window and confirmation still apply, so the folder runs in dependency order.`}
+                          style={{
+                            display: "flex",
+                            width: "100%",
+                            padding: "7px 10px",
+                            background: "transparent",
+                            border: "none",
+                            textAlign: "left",
+                            color: "var(--v2-text-primary)",
+                            fontSize: 11,
+                            fontFamily: "var(--v2-font-sans)",
+                            cursor: "pointer",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--v2-bg-hover)")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                        >
+                          <FolderOpen size={11} style={{ color: "var(--v2-accent-brand)" }} />
+                          <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {f.name}
+                          </span>
+                          <span style={{
+                            fontSize: 9,
+                            fontFamily: "var(--v2-font-mono)",
+                            color: "var(--v2-text-muted)",
+                            padding: "1px 5px",
+                            border: "1px solid var(--v2-border-subtle)",
+                            borderRadius: 2,
+                          }}>
+                            {f.jobs} job{f.jobs === 1 ? "" : "s"}
+                          </span>
+                        </button>
+                      ))}
+                    </>
+                  )}
                   <div style={{
                     padding: "6px 10px",
                     fontSize: 9,

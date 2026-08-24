@@ -124,3 +124,28 @@ func (s *server) injectFailure(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{"id": id, "injected": true})
 }
+
+// orderFolder — ordena a folder INTEIRA na diária ATIVA (POST /api/folders/{name}/order).
+// Writer + write na folder, como as demais ações operacionais. Definition que já
+// tem instance no dia é PULADA: chamar duas vezes não duplica a folder.
+// Semântica em Scheduler.OrderFolder — bypassa só o agendamento; condições,
+// agente, recursos, janela e Confirm continuam valendo (é o que faz a folder
+// rodar na ordem das dependências).
+func (s *server) orderFolder(w http.ResponseWriter, r *http.Request) {
+	// urlName (não chi.URLParam cru): nome de folder chega percent-encoded e
+	// bater com o `team` da definition exige o nome DECODIFICADO.
+	folder := urlName(r, "name")
+	if !s.requireFolderWrite(w, r, folder) {
+		return
+	}
+	res, err := s.cfg.Scheduler.OrderFolder(folder)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, 200, map[string]any{
+		"folder": res.Folder, "date": res.OrderDate, "action": "ordered",
+		"ordered": len(res.Ordered), "skipped": len(res.Skipped),
+		"instanceIds": res.Ordered, "skippedIds": res.Skipped,
+	})
+}

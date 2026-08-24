@@ -159,6 +159,23 @@ export async function resumeFolder(name: string): Promise<number> {
   return out.affected;
 }
 
+/* ── Order Folder — ordena a folder inteira na diária ATIVA ── */
+
+export interface FolderOrderResult {
+  folder: string;
+  /** order_date de NEGÓCIO em que as ordens entraram (a diária ativa). */
+  date: string;
+  /** quantas ordens foram criadas agora. */
+  ordered: number;
+  /** quantos jobs já estavam na diária ativa e foram pulados. */
+  skipped: number;
+}
+
+export async function orderFolder(name: string): Promise<FolderOrderResult> {
+  return api<FolderOrderResult>(
+    `/api/folders/${encodeURIComponent(name)}/order`, { method: "POST" });
+}
+
 /* ── D-11 chaos engineering ── */
 
 export async function injectFailure(instanceId: string): Promise<void> {

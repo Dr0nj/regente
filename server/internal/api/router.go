@@ -181,6 +181,8 @@ func NewRouter(cfg Config) http.Handler {
 		// D-2 — pause/resume de workflow (folder) com estado preservado
 		r.With(s.requireWriterMW).Post("/folders/{name}/pause", s.pauseFolder)
 		r.With(s.requireWriterMW).Post("/folders/{name}/resume", s.resumeFolder)
+		// Order Folder — ordena a folder inteira na diária ATIVA (pula quem já está nela)
+		r.With(s.requireWriterMW).Post("/folders/{name}/order", s.orderFolder)
 
 		r.Get("/events", s.listEventLog)               // diferencial: event log CQRS-lite (feed do dia)
 		r.Get("/audit/export", s.auditExport)          // E2: export JSONL unificado (admin-only, cursor after_id)
