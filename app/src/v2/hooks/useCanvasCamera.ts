@@ -236,8 +236,13 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
       if (e.shiftKey) return; // Shift+drag = seleção retangular do ReactFlow
       const t = e.target;
       if (!insideFlow(t)) return;
-      // No Design os nós/handles são arrastáveis — não pana se o arrasto começa neles.
-      if (modeRef.current === "design" && (t.closest(".react-flow__node") || t.closest(".react-flow__handle"))) return;
+      // Só o HANDLE (bolinha de conexão) rouba o arrasto no Design — o CORPO do
+      // card é área de pan. Antes o corpo também bloqueava, herdado de quando o
+      // <ReactFlow> tinha nodesDraggable: com uma folder cheia (200 jobs) os cards
+      // cobrem ~83% do pane, então o pan ficava morto na maior parte da tela — o
+      // usuário puxava e a câmera não saía do lugar. Como não existe onNodesChange,
+      // arrastar o card nunca moveu nada: só engolia o gesto.
+      if (modeRef.current === "design" && t.closest(".react-flow__handle")) return;
       if (e.button === 1) e.preventDefault(); // corta o autoscroll do botão do meio
       const vp = getViewport();
       pan = { cx: e.clientX, cy: e.clientY, vx: vp.x, vy: vp.y, zoom: vp.zoom };

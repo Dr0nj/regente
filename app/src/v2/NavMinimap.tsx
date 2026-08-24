@@ -7,6 +7,7 @@
  * Extraído do V2Preview.tsx (2026-07-01).
  */
 
+import { memo, useMemo } from "react";
 import { useStore, type Node } from "@xyflow/react";
 import { NODE_W, NODE_H } from "./canvas-layout";
 
@@ -18,16 +19,16 @@ export default function NavMinimap({ nodes, width, height, onNavigate }: {
   // fora do translateExtent ao clicar perto do topo (pulo no próximo pan).
   onNavigate: (fx: number, fy: number, zoom: number) => void;
 }) {
-  // Viewport ao vivo (transform + tamanho do canvas) p/ desenhar o retângulo da
-  // área visível — é o que "leva em consideração o alinhamento da tela".
-  const tx = useStore((s) => s.transform[0]);
-  const ty = useStore((s) => s.transform[1]);
+  // PERF: o corpo do minimap NÃO assina o transform. Assinava, e como a câmera
+  // escreve o viewport a cada mousemove, o componente inteiro re-renderizava por
+  // frame de pan — com 200 jobs eram 200 <rect> reconciliados a cada frame só pra
+  // mover um retângulo. Quem assina agora é o <ViewportRect> lá embaixo (1 rect),
+  // e a camada de jobs virou memo por [nodes,width,height].
   const tzoom = useStore((s) => s.transform[2]);
-  const vpW = useStore((s) => s.width);
-  const vpH = useStore((s) => s.height);
 
-  // Mostra APENAS os jobs (ignora lanes/containers e outros nós).
-  const jobs = nodes.filter((n) => n.type === "jobV2");
+  // Mostra APENAS os jobs (ignora lanes/containers e outros nós). useMemo pra o
+  // memo do <JobsLayer> segurar: array novo a cada render invalidaria tudo.
+  const jobs = useMemo(() => nodes.filter((n) => n.type === "jobV2"), [nodes]);
   if (jobs.length === 0) {
     return <div style={{ width, height, display: "grid", placeItems: "center", fontSize: 11, color: "var(--v2-text-muted)" }}>no jobs</div>;
   }
@@ -46,12 +47,6 @@ export default function NavMinimap({ nodes, width, height, onNavigate }: {
   // Ancorado no topo-esquerdo (não centraliza) — reflete a organização real: 1ª
   // coluna/linha no canto, seguindo pra direita conforme a grade.
   const offX = MARGIN, offY = MARGIN;
-  const toX = (fx: number) => offX + (fx - minX) * scale;
-  const toY = (fy: number) => offY + (fy - minY) * scale;
-  // Área visível atual (em coords de fluxo) só p/ o retângulo do viewport — clipado
-  // pela caixa do minimap quando o usuário navega além dos jobs.
-  const viewMinX = -tx / tzoom, viewMinY = -ty / tzoom;
-  const viewMaxX = (vpW - tx) / tzoom, viewMaxY = (vpH - ty) / tzoom;
   // Quadradinho na proporção real do card (mín. legível).
   const sw = Math.max(3, NODE_W * scale);
   const sh = Math.max(2, NODE_H * scale);
@@ -64,32 +59,58 @@ export default function NavMinimap({ nodes, width, height, onNavigate }: {
   };
   return (
     <svg width={width} height={height} onClick={handleClick} style={{ display: "block", cursor: "pointer" }}>
-      {jobs.map((n) => (
-        <rect
-          key={n.id}
-          x={toX(n.position.x)}
-          y={toY(n.position.y)}
-          width={sw}
-          height={sh}
-          rx={1}
-          fill={miniNodeColor(n)}
-          stroke="#06080c"
-          strokeWidth={0.5}
-        />
-      ))}
+      <JobsLayer jobs={jobs} minX={minX} minY={minY} scale={scale} offX={offX} offY={offY} sw={sw} sh={sh} />
       {/* Retângulo do viewport — mostra onde a tela está sobre o conteúdo. */}
-      <rect
-        x={toX(viewMinX)}
-        y={toY(viewMinY)}
-        width={(viewMaxX - viewMinX) * scale}
-        height={(viewMaxY - viewMinY) * scale}
-        fill="rgba(255,255,255,0.05)"
-        stroke="var(--v2-accent-brand)"
-        strokeWidth={1}
-        rx={2}
-        pointerEvents="none"
-      />
+      <ViewportRect minX={minX} minY={minY} scale={scale} offX={offX} offY={offY} />
     </svg>
+  );
+}
+
+// Camada dos jobs — memo: só re-renderiza quando a LISTA muda (publish, folder,
+// daily), nunca por movimento de câmera.
+const JobsLayer = memo(function JobsLayer({ jobs, minX, minY, scale, offX, offY, sw, sh }: {
+  jobs: Node[]; minX: number; minY: number; scale: number; offX: number; offY: number; sw: number; sh: number;
+}) {
+  const rects = useMemo(() => jobs.map((n) => (
+    <rect
+      key={n.id}
+      x={offX + (n.position.x - minX) * scale}
+      y={offY + (n.position.y - minY) * scale}
+      width={sw}
+      height={sh}
+      rx={1}
+      fill={miniNodeColor(n)}
+      stroke="#06080c"
+      strokeWidth={0.5}
+    />
+  )), [jobs, minX, minY, scale, offX, offY, sw, sh]);
+  return <>{rects}</>;
+});
+
+// Retângulo da área visível — ÚNICO assinante do transform. Re-renderiza a cada
+// frame de pan, mas custa 1 <rect>.
+function ViewportRect({ minX, minY, scale, offX, offY }: {
+  minX: number; minY: number; scale: number; offX: number; offY: number;
+}) {
+  const tx = useStore((s) => s.transform[0]);
+  const ty = useStore((s) => s.transform[1]);
+  const tzoom = useStore((s) => s.transform[2]);
+  const vpW = useStore((s) => s.width);
+  const vpH = useStore((s) => s.height);
+  const viewMinX = -tx / tzoom, viewMinY = -ty / tzoom;
+  const viewMaxX = (vpW - tx) / tzoom, viewMaxY = (vpH - ty) / tzoom;
+  return (
+    <rect
+      x={offX + (viewMinX - minX) * scale}
+      y={offY + (viewMinY - minY) * scale}
+      width={(viewMaxX - viewMinX) * scale}
+      height={(viewMaxY - viewMinY) * scale}
+      fill="rgba(255,255,255,0.05)"
+      stroke="var(--v2-accent-brand)"
+      strokeWidth={1}
+      rx={2}
+      pointerEvents="none"
+    />
   );
 }
 

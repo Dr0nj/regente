@@ -1404,6 +1404,27 @@ function V2PreviewInner() {
           </button>
         )}
 
+        {/* Organize vale nos DOIS modos: uma folder grande (200 jobs) vira uma
+            faixa de ~16000px e sem um "voltar pro enquadre" o usuário se perde
+            arrastando. Antes só existia no Monitoring. */}
+        <button
+          onClick={() => organizeView(300)}
+          title="Organize — reframes the canvas to the same bounds it opened with (jobs already lay themselves out: dependents in a flow, loose ones on a grid)"
+          style={{
+            padding: "5px 10px",
+            background: "transparent",
+            border: "1px solid var(--v2-border-medium)",
+            color: "var(--v2-text-primary)",
+            borderRadius: 3,
+            fontSize: 10, fontFamily: "var(--v2-font-mono)",
+            letterSpacing: "0.06em", textTransform: "uppercase",
+            cursor: "pointer", fontWeight: 600,
+            display: "flex", alignItems: "center", gap: 6,
+          }}
+        >
+          <LayoutGrid size={11} /> Organize
+        </button>
+
         {mode === "monitoring" && (
           <>
             <button
@@ -1458,24 +1479,6 @@ function V2PreviewInner() {
               }}
             >
               <ListChecks size={11} /> Conditions
-            </button>
-
-            <button
-              onClick={() => organizeView(300)}
-              title="Organize — reframes the canvas to the same bounds it opened with (jobs already lay themselves out: dependents in a flow, loose ones on a grid)"
-              style={{
-                padding: "5px 10px",
-                background: "transparent",
-                border: "1px solid var(--v2-border-medium)",
-                color: "var(--v2-text-primary)",
-                borderRadius: 3,
-                fontSize: 10, fontFamily: "var(--v2-font-mono)",
-                letterSpacing: "0.06em", textTransform: "uppercase",
-                cursor: "pointer", fontWeight: 600,
-                display: "flex", alignItems: "center", gap: 6,
-              }}
-            >
-              <LayoutGrid size={11} /> Organize
             </button>
 
             <div style={{ position: "relative" }}>
@@ -1665,7 +1668,17 @@ function V2PreviewInner() {
           // organizeView de entrada — corrida — e deixava a câmera descentrada/fora
           // do extent. A entrada é 100% do organizeView, no gate 0→N.)
           proOptions={{ hideAttribution: true }}
-          nodesDraggable={mode === "design"}
+          // PERF (folder grande): só monta no DOM o que intersecta a viewport.
+          // Com 200 jobs eram 201 nós + 267 arestas sempre pintados dentro de uma
+          // camada de ~15800x2150px — cada frame de pan re-rasterizava tudo. Os nós
+          // carregam initialWidth/Height (buildDesign/MonitoringCanvas), que é o que
+          // o culling exige pra saber o retângulo antes da medição.
+          onlyRenderVisibleElements
+          // Arrastar CARD desligado: nunca houve onNodesChange, então a posição
+          // arrastada não ia pra lugar nenhum (o rebuild do canvas devolvia o card
+          // pro lugar). Ligado, só servia pra roubar o mousedown do pan. A posição no
+          // Design vem do layout + grade da folder (.regente-folder.yaml).
+          nodesDraggable={false}
           nodesConnectable={mode === "design"}
           elementsSelectable
           // Pan (arrasto) e zoom (roda/pinch/dbl-click) NATIVOS desligados:
