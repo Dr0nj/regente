@@ -115,7 +115,7 @@ by systemd:
 ```bash
 # Requires Docker on the VPS (the Dockerfile builds the Go inside Docker — no Go on the host).
 sudo apt install -y docker.io    # or the official Docker Engine
-# create an agent token in Settings → Agents (or use REGENTE_TOKEN), then:
+# create an agent token in Settings → Agents, then:
 sudo AGENT_TOKEN=rgta_xxx ./sandbox-agent.sh
 #   → starts the 'regente-sandbox' container + the regente-agent-sandbox service (Restart=always)
 #   → journalctl -u regente-agent-sandbox -f   |   docker logs -f regente-sandbox

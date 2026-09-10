@@ -57,7 +57,7 @@ func TestAgentSSE_StreamsDispatch(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	req, _ := http.NewRequest("GET", srv.URL+"/api/agent/events?id=sse-1&caps=COMMAND", nil)
-	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Authorization", "Bearer "+newMachineToken(t, d))
 	resp, err := srv.Client().Do(req)
 	if err != nil {
 		t.Fatal(err)

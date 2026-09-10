@@ -57,6 +57,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
 <a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
 <a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
 </nav>
 <main>
 <article>
@@ -290,7 +291,7 @@ your agents live on the <strong>other</strong> machines; putting them together i
 cd agent &amp;&amp; CGO_ENABLED=0 go build -o regente-agent .
 sudo SERVER=ws://localhost:8080/ws/agent TOKEN=&lt;token&gt; ID=$(hostname) \
      CAPS=COMMAND,SCRIPT,HTTP ./deploy/install-linux.sh
-# create the TOKEN in Settings → Agents (or use REGENTE_TOKEN while developing).
+# create the TOKEN in Settings → Agents, including for local development.
 </code></pre>
 <h3 id="after-installing-the-server-all-options">After installing the server (all options)</h3>
 <p><strong>1. Configure it.</strong> The guided script asks for the three things that matter — a strong token,
@@ -693,13 +694,15 @@ leader materializes the daily; all of them serve the API.</li>
 <pre><code class="language-bash"># 1. server
 cd server &amp;&amp; go run . -api-token dev-token
 
-# 2. agent (a separate terminal)
-cd agent &amp;&amp; go run . -server ws://localhost:8080/ws/agent -token dev-token -id my-pc -caps COMMAND,SCRIPT,HTTP
+# 2. agent (a separate terminal; first create its token in Settings → Agents)
+cd agent &amp;&amp; go run . -server ws://localhost:8080/ws/agent -token rgta_REPLACE_ME -id my-pc -caps COMMAND,SCRIPT,HTTP
 
 # 3. frontend (a separate terminal)
 cd app &amp;&amp; npm install &amp;&amp; cp .env.example .env &amp;&amp; npm run dev    # http://localhost:5173
 </code></pre>
-<p>Dev login: <code>admin</code> / <code>admin</code>.</p>
+<p>Dev login: <code>admin</code> / <code>admin</code>. Agent connections require a separate token issued in
+Settings → Agents; login sessions and the server API token are not accepted. See
+<a href="agent-authentication.html">agent authentication and upgrades</a>.</p>
 <p>Before pushing, run the same checks CI runs:</p>
 <pre><code class="language-bash">bash scripts/verify.sh
 </code></pre>

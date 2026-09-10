@@ -7,7 +7,7 @@
 //
 // Uso:
 //
-//	regente-agent -server ws://localhost:8080/ws/agent -token dev-token -id agent-macbook
+//	regente-agent -server ws://localhost:8080/ws/agent -token rgta_example -id agent-macbook
 package main
 
 import (
@@ -84,13 +84,16 @@ func (r *runRegistry) kill(id string) {
 func main() {
 	var (
 		server    = flag.String("server", "ws://localhost:8080/ws/agent", "regente-server WebSocket URL")
-		token     = flag.String("token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token")
+		token     = flag.String("token", envOr("REGENTE_TOKEN", ""), "Agent token created in Settings > Agents")
 		agentID   = flag.String("id", hostnameOr("agent-local"), "Agent ID (unique)")
 		caps      = flag.String("caps", "COMMAND,SCRIPT,HTTP,REST,WASM,DATABASE,FILE_WATCH,FILE_TRANSFER,MFT", "Comma-separated capabilities advertised")
 		agentEnv  = flag.String("env", envOr("REGENTE_AGENT_ENV", ""), "This agent's environment/site (ADV-2; e.g. prod, dc-sp). Empty = generalist; a job with an environment only routes to an agent in the same env")
 		transport = flag.String("transport", envOr("REGENTE_AGENT_TRANSPORT", "ws"), "Transport: ws (WebSocket) | http (long-poll) | sse (Server-Sent Events, immediate push) — the last two are serverless-friendly")
 	)
 	flag.Parse()
+	if strings.TrimSpace(*token) == "" {
+		log.Fatal("agent token required: create one in Settings > Agents and set -token or REGENTE_TOKEN")
+	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)

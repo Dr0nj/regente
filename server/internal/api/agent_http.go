@@ -89,7 +89,8 @@ func (b *agentBroker) reap() {
 }
 
 func (s *server) agentAuthOK(r *http.Request) bool {
-	return s.agentTokenValid(auth.ExtractToken(r)) || s.wsTokenOK(r)
+	// Sessões humanas e o bearer administrativo nunca autenticam máquinas.
+	return s.agentTokenValid(auth.ExtractToken(r))
 }
 
 // GET /api/agent/poll?id=<id>&caps=COMMAND,SCRIPT — long-poll por dispatch.

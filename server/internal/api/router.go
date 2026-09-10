@@ -171,7 +171,7 @@ func NewRouter(cfg Config) http.Handler {
 		r.With(s.requireWriterMW).Post("/instances/{id}/force", s.forceRunInstance)  // Run Now: força ESTA instance (bypass gates, honra agent+Confirm)
 		r.With(s.requireWriterMW).Delete("/instances/{id}", s.deleteInstance)        // Delete: remove a ordem (SÓ em HOLD; RUNNING nunca)
 		r.Get("/instances/{id}/events", s.listInstanceEvents)
-		r.Get("/instances/{id}/output", s.getInstanceOutput) // OL-2: sysout da execução (por tentativa, live-tail)
+		r.Get("/instances/{id}/output", s.getInstanceOutput)  // OL-2: sysout da execução (por tentativa, live-tail)
 		r.Get("/instances/{id}/explain", s.explainInstance)   // diferencial: "por que não rodou?"
 		r.Get("/instances/{id}/blast-radius", s.blastRadius)  // diferencial: impacto de cancelar/segurar
 		r.Get("/instances/{id}/neighborhood", s.neighborhood) // diferencial: grafo local (up/downstream)
@@ -184,11 +184,11 @@ func NewRouter(cfg Config) http.Handler {
 		// Order Folder — ordena a folder inteira na diária ATIVA (pula quem já está nela)
 		r.With(s.requireWriterMW).Post("/folders/{name}/order", s.orderFolder)
 
-		r.Get("/events", s.listEventLog)               // diferencial: event log CQRS-lite (feed do dia)
-		r.Get("/audit/export", s.auditExport)          // E2: export JSONL unificado (admin-only, cursor after_id)
-		r.Get("/archive", s.listArchives)              // ADV-5: dailies arquivadas pela retenção (admin-only)
-		r.Get("/archive/{file}", s.downloadArchive)    // ADV-5: download do NDJSON de um dia (admin-only)
-		r.Post("/query", s.runQuery)                   // diferencial: NL-query (texto → consulta estruturada)
+		r.Get("/events", s.listEventLog)            // diferencial: event log CQRS-lite (feed do dia)
+		r.Get("/audit/export", s.auditExport)       // E2: export JSONL unificado (admin-only, cursor after_id)
+		r.Get("/archive", s.listArchives)           // ADV-5: dailies arquivadas pela retenção (admin-only)
+		r.Get("/archive/{file}", s.downloadArchive) // ADV-5: download do NDJSON de um dia (admin-only)
+		r.Post("/query", s.runQuery)                // diferencial: NL-query (texto → consulta estruturada)
 		// D-3 — event-driven confiável: ingestão idempotente de eventos externos
 		r.With(s.requireWriterMW).Post("/events/ingest", s.ingestEvent)
 		r.Get("/events/external", s.listExternalEvents)
@@ -425,7 +425,7 @@ func cors(next http.Handler) http.Handler {
 // authMiddleware aceita:
 //  1. Session token (Bearer) emitido por /api/auth/login → resolve para User real.
 //  2. Legacy bearer == cfg.Token → injeta um pseudo-user "system" admin (para
-//     compat com agent + ferramentas curl existentes).
+//     compat com ferramentas administrativas existentes).
 func (s *server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tok := auth.ExtractToken(r)

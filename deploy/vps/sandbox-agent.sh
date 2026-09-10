@@ -12,8 +12,8 @@
 #
 # Variáveis:
 #   AGENT_TOKEN=  (obrigatório) token do agente — "Settings → Agents → Create token"
-#                 na UI, ou o REGENTE_TOKEN. Não use um token que você não queira
-#                 dentro de um container.
+#                 na UI. O bearer administrativo do servidor não é aceito.
+#                 Não compartilhe a credencial com outros agentes.
 #   AGENT_SERVER= ws://127.0.0.1:8080/ws/agent   (default; o server local)
 #   AGENT_ID=     sandbox-<hostname>              (default)
 #   AGENT_CAPS=   COMMAND,SCRIPT,HTTP             (default)
@@ -32,7 +32,7 @@ AGENT_ID="${AGENT_ID:-sandbox-$(hostname)}"
 AGENT_CAPS="${AGENT_CAPS:-COMMAND,SCRIPT,HTTP}"
 IMAGE="${IMAGE:-regente-agent:sandbox}"
 
-[ -n "$AGENT_TOKEN" ] || { echo "set AGENT_TOKEN=... (Settings → Agents → Create token, or the REGENTE_TOKEN)"; exit 1; }
+[ -n "$AGENT_TOKEN" ] || { echo "set AGENT_TOKEN=... (Settings → Agents → Create token)"; exit 1; }
 
 # Build da imagem do agente (mesma da demo Windows; context = agent/, Go dentro do Docker).
 DOCKERFILE="$REPO_ROOT/deploy/demo/Dockerfile.agent"

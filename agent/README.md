@@ -39,13 +39,15 @@ go build -o regente-agent.exe .  # Windows
 ```bash
 ./regente-agent \
   -server ws://YOUR-SERVER:8080/ws/agent \
-  -token  rgta_...        # Settings → Agents → Create token \
+  -token  rgta_REPLACE_ME \
   -id     my-host \
   -caps   COMMAND,SCRIPT,HTTP
 ```
 
-Token: create **one token per agent** in the UI (Settings → Agents → Create token). The legacy
-`dev-token` still works in dev. Without a valid token the handshake is refused.
+Token: create **one token per agent** in the UI (Settings → Agents → Create token),
+including for development. Login sessions and the server API token are not accepted
+by any agent transport. Supply the issued token with `-token` or the agent service's `REGENTE_TOKEN` environment variable; an empty token stops startup.
+See [agent authentication and upgrades](../docs/agent-authentication.md).
 
 **Transport** (`-transport`): `ws` (WebSocket, the default), `http` (long-poll) or `sse`
 (Server-Sent Events, immediate push). The last two are serverless-friendly — still outbound, but

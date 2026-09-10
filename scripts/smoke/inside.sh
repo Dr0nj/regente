@@ -179,7 +179,14 @@ api "$BASE/api/instances" | grep -q smoke-job && ok "daily materializou a ordem"
 head1 "5) Agente instalado como serviço e job executando de verdade"
 # URL propositalmente no formato da UI (http://host:porta): o instalador tem de
 # convertê-la no endpoint do agente sozinho.
-SERVER="http://127.0.0.1:$PORT" TOKEN="$(tok)" ID=smoke-agent CAPS=COMMAND,SCRIPT,HTTP \
+# O bearer administrativo só emite a credencial; o serviço usa token de máquina.
+agent_token="$(api -X POST -H 'Content-Type: application/json' \
+  -d '{"label":"smoke-agent"}' "$BASE/api/agents/tokens" | jfield token)"
+case "$agent_token" in
+  rgta_*) ok "credencial dedicada de agente emitida" ;;
+  *) bad "não foi possível emitir credencial do agente"; exit 1 ;;
+esac
+SERVER="http://127.0.0.1:$PORT" TOKEN="$agent_token" ID=smoke-agent CAPS=COMMAND,SCRIPT,HTTP \
   bash /root/agent-deploy/install-linux.sh > /tmp/agent.log 2>&1 || { echo "installer do agente falhou:"; cat /tmp/agent.log; fails=$((fails+1)); }
 grep -q 'ws://127.0.0.1:8080/ws/agent' /etc/systemd/system/regente-agent.service \
   && ok "URL da UI normalizada para o endpoint do agente" || bad "a URL do agente não foi normalizada"

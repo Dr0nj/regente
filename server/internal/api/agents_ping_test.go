@@ -44,8 +44,9 @@ func TestPingAgent_OfflineAndRoundTrip(t *testing.T) {
 		t.Fatalf("ping em agente offline deveria dar online=false ok=false, veio %+v", off)
 	}
 
-	// Conecta um agente WS real que responde pong.
-	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/agent?token=test-token&id=ag1&caps=COMMAND&os=linux"
+	// Conecta um agente WS real com credencial própria que responde pong.
+	machineToken := newMachineToken(t, d)
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/agent?token=" + machineToken + "&id=ag1&caps=COMMAND&os=linux"
 	c, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
 		t.Fatalf("dial ws: %v", err)

@@ -230,7 +230,7 @@ your agents live on the **other** machines; putting them together is a convenien
 cd agent && CGO_ENABLED=0 go build -o regente-agent .
 sudo SERVER=ws://localhost:8080/ws/agent TOKEN=<token> ID=$(hostname) \
      CAPS=COMMAND,SCRIPT,HTTP ./deploy/install-linux.sh
-# create the TOKEN in Settings → Agents (or use REGENTE_TOKEN while developing).
+# create the TOKEN in Settings → Agents, including for local development.
 ```
 
 ### After installing the server (all options)
@@ -628,14 +628,16 @@ Three terminals — server, agent and frontend:
 # 1. server
 cd server && go run . -api-token dev-token
 
-# 2. agent (a separate terminal)
-cd agent && go run . -server ws://localhost:8080/ws/agent -token dev-token -id my-pc -caps COMMAND,SCRIPT,HTTP
+# 2. agent (a separate terminal; first create its token in Settings → Agents)
+cd agent && go run . -server ws://localhost:8080/ws/agent -token rgta_REPLACE_ME -id my-pc -caps COMMAND,SCRIPT,HTTP
 
 # 3. frontend (a separate terminal)
 cd app && npm install && cp .env.example .env && npm run dev    # http://localhost:5173
 ```
 
-Dev login: `admin` / `admin`.
+Dev login: `admin` / `admin`. Agent connections require a separate token issued in
+Settings → Agents; login sessions and the server API token are not accepted. See
+[agent authentication and upgrades](docs/agent-authentication.md).
 
 Before pushing, run the same checks CI runs:
 

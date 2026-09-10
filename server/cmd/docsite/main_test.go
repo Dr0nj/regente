@@ -224,3 +224,29 @@ func TestBuild_RepoVazioFalha(t *testing.T) {
 		t.Fatal("repo sem markdown deveria falhar")
 	}
 }
+
+// O site deve ser idêntico em checkouts LF e CRLF, inclusive dentro de code blocks.
+func TestBuild_CheckoutLineEndings(t *testing.T) {
+	repo := t.TempDir()
+	lfOut, crlfOut := t.TempDir(), t.TempDir()
+	content := "# Example\n\n~~~sh\necho hello\necho world\n~~~\n\n<div>raw HTML</div>\n"
+	writeFile(t, repo, "README.md", content)
+	if _, err := Build(repo, lfOut); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, repo, "README.md", strings.ReplaceAll(content, "\n", "\r\n"))
+	if _, err := Build(repo, crlfOut); err != nil {
+		t.Fatal(err)
+	}
+	lf, err := os.ReadFile(filepath.Join(lfOut, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	crlf, err := os.ReadFile(filepath.Join(crlfOut, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(lf) != string(crlf) {
+		t.Fatal("HTML gerado varia com os finais de linha do checkout")
+	}
+}

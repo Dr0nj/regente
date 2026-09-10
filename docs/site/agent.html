@@ -57,6 +57,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
 <a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
 <a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
 </nav>
 <main>
 <article>
@@ -145,12 +146,14 @@ go build -o regente-agent.exe .  # Windows
 <h2 id="run-foreground">Run (foreground)</h2>
 <pre><code class="language-bash">./regente-agent \
   -server ws://YOUR-SERVER:8080/ws/agent \
-  -token  rgta_...        # Settings → Agents → Create token \
+  -token  rgta_REPLACE_ME \
   -id     my-host \
   -caps   COMMAND,SCRIPT,HTTP
 </code></pre>
-<p>Token: create <strong>one token per agent</strong> in the UI (Settings → Agents → Create token). The legacy
-<code>dev-token</code> still works in dev. Without a valid token the handshake is refused.</p>
+<p>Token: create <strong>one token per agent</strong> in the UI (Settings → Agents → Create token),
+including for development. Login sessions and the server API token are not accepted
+by any agent transport. Supply the issued token with <code>-token</code> or the agent service's <code>REGENTE_TOKEN</code> environment variable; an empty token stops startup.
+See <a href="agent-authentication.html">agent authentication and upgrades</a>.</p>
 <p><strong>Transport</strong> (<code>-transport</code>): <code>ws</code> (WebSocket, the default), <code>http</code> (long-poll) or <code>sse</code>
 (Server-Sent Events, immediate push). The last two are serverless-friendly — still outbound, but
 they let the control plane be stateless and scale to zero. See

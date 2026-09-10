@@ -81,6 +81,20 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > detalhado em §✅ Entregue (+ linha no changelog). As caixinhas espalhadas nas seções de
 > baixo **não valem** como status (ver ⛔ REGRA DE STATUS no topo).
 
+### Hardening de agentes — ciclo iniciado em 2026-09-10
+
+Escopo ativo deste ciclo: separar credenciais humanas de execução e preparar as
+próximas garantias. Não representa homologação empresarial completa.
+
+- **I00 (restante):** ambiente integrado Postgres/NATS/IdP, perfil de carga e metas
+  operacionais. Baseline Go e lint/build do app já executados no incremento I02a.
+- **I01:** runner de migrações com exclusão mútua, recuperação e verificação de
+  integridade, antes das mudanças de schema de credenciais.
+- **I02 (restante):** vincular credencial a agentId/ambiente/capacidades, hash em
+  repouso, expiração/rotação, revogação de conexões ativas e autorização de output/
+  resultado por atribuição; isolamento entre tentativas depende do contrato durável.
+  O gate exclusivo de tokens próprios foi separado como **I02a**, entregue abaixo.
+
 ### 🧰 Modo manutenção *(decidido em 2026-07-30)*
 
 > ⛔ **Nada na §Backlog é compromisso de build.** A lista continua sendo o registro honesto
@@ -373,6 +387,25 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+## I02a — Credencial própria em todos os transportes de agente (2026-09-10)
+
+Implementado neste incremento: WS, HTTP long-poll, SSE,
+resultado e output autenticam exclusivamente contra agent_tokens. Sessões humanas
+e bearer administrativo não atravessam esse gate. O agente deixou de assumir
+credencial de desenvolvimento quando a configuração está vazia.
+
+Validação: regressão negativa reproduzida antes do patch e verde depois; tokens
+próprios preservam conexão WS/ping, SSE, poll, output e resultado. Suíte Go completa,
+build/vet e baseline lint/build do app passaram. O smoke de instalação foi adaptado
+para emitir token próprio e é gate obrigatório da release no GitHub; a tentativa
+local foi impedida pela falha de inicialização do Docker Desktop.
+Não houve migração de schema; tokens já emitidos pela UI permanecem válidos.
+Guia de atualização: [agent-authentication.md](agent-authentication.md).
+
+O fechamento de I02 e a homologação HA continuam no backlog; este incremento não
+implementa vínculo de identidade, autorização por tentativa ou revogação ativa.
+
 
 > Tudo que já foi construído e validado, agrupado por trilha e **detalhado o suficiente pra
 > virar doc/feature depois**. Quando um item do Backlog fecha, o detalhe vem pra cá. Para a
@@ -1551,6 +1584,11 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-09-10 — I02a:** gate de máquina separado de sessões humanas/bearer administrativo
+  em todos os transportes; agente exige credencial configurada; exemplos e smoke usam
+  token próprio. Regressão e suíte Go verdes; artefatos passam pelo gate de smoke da release.
+
 
 > Log cronológico (mais recente primeiro) de tudo que foi entregue, com o "porquê" e os
 > detalhes de implementação/validação. Complementa o §✅ Entregue (que agrupa por tópico).

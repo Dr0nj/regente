@@ -116,6 +116,8 @@ func Build(repoDir, outDir string) (int, error) {
 		if err != nil {
 			return 0, err
 		}
+		// Normaliza o checkout Windows antes de renderizar blocos de código/HTML.
+		raw = bytes.ReplaceAll(raw, []byte("\r\n"), []byte("\n"))
 		pages[i].title = firstHeading(raw, pages[i].slug)
 		var buf bytes.Buffer
 		if err := md.Convert(raw, &buf); err != nil {
@@ -170,6 +172,8 @@ func writeAPIReference(outDir string) error {
 		"openapi.yaml": specYAML,
 		"openapi.json": specJSON,
 	} {
+		// Assets embutidos também podem vir de um checkout CRLF.
+		body = bytes.ReplaceAll(body, []byte("\r\n"), []byte("\n"))
 		if err := os.WriteFile(filepath.Join(outDir, name), body, 0o644); err != nil {
 			return err
 		}

@@ -66,9 +66,13 @@ cd server && go run ./cmd/docsite -repo .. -out ../docs/site
   inteira). Idioma dos comentários: português. Sem CGO (SQLite via modernc; WASM
   via wazero).
 - **Commits:** Conventional Commits em português (`feat:`, `fix:`, `docs:`…).
-- **Push:** o dono autorizou **commitar e dar push direto na `main`** (sem
-  branch/PR), salvo se houver branch protection — aí cai em branch + PR. Puxe o
-  remoto antes: o dono edita o roadmap direto no GitHub.
+- **Commit/push:** toda atualização **pronta e testada deve ser commitada e enviada
+  à `main` do GitHub**, sem pedir confirmação novamente. Atualize o remoto antes,
+  preserve alterações existentes e nunca use force push. Se houver proteção de
+  branch, use branch + PR. Acompanhe CI/release do commit e trate falhas antes de
+  declarar a entrega concluída.
+- **Privacidade:** nunca mencionar nomes de organizações clientes/empregadoras
+  ou contexto corporativo identificável em código, commits, PRs, issues ou docs.
 - **Modelo/identidade:** nunca colocar o id do modelo em commits/PRs/código.
 
 ## Tooling de agente (Claude Code)

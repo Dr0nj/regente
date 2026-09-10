@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Dr0nj/regente-server/internal/auth"
 	"github.com/Dr0nj/regente-server/internal/domain"
 	"github.com/Dr0nj/regente-server/internal/hub"
 	"github.com/gorilla/websocket"
@@ -47,8 +46,8 @@ func (s *server) wsWeb(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) wsAgent(w http.ResponseWriter, r *http.Request) {
-	// B5 — aceita token POR AGENTE (agent_tokens) ou o token legado/sessão (dev).
-	if !s.agentTokenValid(auth.ExtractToken(r)) && !s.wsTokenOK(r) {
+	// Mesmo gate exclusivo de máquina usado por HTTP e SSE.
+	if !s.agentAuthOK(r) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}

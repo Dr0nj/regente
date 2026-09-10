@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent authentication and upgrades · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</a>
+<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="agent-authentication.html" class="active">Agent authentication and upgrades</a>
+</nav>
+<main>
+<article>
+<h1 id="agent-authentication-and-upgrades">Agent authentication and upgrades</h1>
+<p>Every agent transport requires a token created in <strong>Settings → Agents → Create token</strong>.
+This applies to WebSocket, HTTP long-poll and SSE, including result and output requests.
+The server API token and browser login sessions do not authenticate agents.</p>
+<h2 id="new-installations">New installations</h2>
+<ol>
+<li>Sign in as an administrator and open Settings → Agents.</li>
+<li>Create a separate token for each agent and save the value shown once.</li>
+<li>Configure the agent service with that value. Existing service installers store it
+in the agent's protected environment file; they do not need the server API token.</li>
+<li>Start the agent and verify that it appears online. Execute a harmless test job
+to verify dispatch, output and completion.</li>
+</ol>
+<p>For foreground use, pass the issued token with the agent's -token flag. The agent
+also accepts it through REGENTE_TOKEN in its own process environment. An empty
+credential stops startup with instructions. The environment variable name does not
+make the server's administrative token valid for agents.</p>
+<h2 id="existing-installations">Existing installations</h2>
+<p>Tokens already issued through Settings → Agents remain valid; this change does not
+alter the database schema or require reissuing those tokens.</p>
+<p>If an agent uses the server API token, a login session or dev-token:</p>
+<ol>
+<li>Create a dedicated agent token before upgrading the server.</li>
+<li>Update the agent's service configuration and restart the agent. Dedicated tokens
+also work with the previous server version, so this can be done first.</li>
+<li>Verify a harmless job completes, then upgrade and restart the server.</li>
+<li>Verify agents reconnect and repeat the job check. A 401 on an agent endpoint
+means the supplied credential was not accepted; check the agent configuration
+and whether its token was revoked.</li>
+</ol>
+<p>Keep the administrative token in administrative tools that need it. Do not copy it
+into an agent service to work around an authentication failure.</p>
+<p>An application downgrade restores the previous authentication behavior; it is not
+a security-preserving rollback. If an agent cannot reconnect, correct its dedicated
+credential rather than re-enabling the shared-token path.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>
