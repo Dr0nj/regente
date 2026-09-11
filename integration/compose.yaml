@@ -26,4 +26,4 @@ services:
       KC_HOSTNAME_STRICT: "false"
     ports: ["127.0.0.1::8080"]
     volumes:
-      - ./realm.json:/opt/keycloak/data/import/regente-realm.json:ro
+      - ./realm.json:/opt/keycloak/data/import/regente-lab-realm.json:ro

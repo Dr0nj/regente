@@ -23,9 +23,9 @@ PROCESSES = []
 REPORT = {"status": "running", "stages": [], "profile": "synthetic-ci-v1"}
 
 
-def command(args, *, env=None, timeout=180, name=None):
+def command(args, *, env=None, timeout=180, name=None, stdin=None):
     start = time.monotonic()
-    result = subprocess.run(args, cwd=ROOT, env=env, text=True,
+    result = subprocess.run(args, cwd=ROOT, env=env, text=True, input=stdin,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
     if name:
         (EVIDENCE / (name + ".log")).write_text(result.stdout, encoding="utf-8")
@@ -174,6 +174,29 @@ def cluster(env, dsn, nats_url):
     return len(instance_ids)
 
 
+def legacy_restore(dsn):
+    start = time.monotonic()
+    pg = COMPOSE+["exec", "-T", "postgres"]
+    command(pg+["createdb", "-U", "regente", "regente_legacy"])
+    fixtures = ROOT/"server/internal/db/testdata"
+    sql = (fixtures/"legacy-v22-postgres.sql").read_text() + (fixtures/"legacy-data.sql").read_text()
+    command(pg+["psql", "-U", "regente", "-d", "regente_legacy", "-v", "ON_ERROR_STOP=1"], stdin=sql)
+    command(pg+["pg_dump", "-U", "regente", "-d", "regente_legacy", "-Fc", "-f", "/tmp/legacy.dump"])
+    command(pg+["createdb", "-U", "regente", "regente_legacy_restored"])
+    command(pg+["pg_restore", "-U", "regente", "-d", "regente_legacy_restored", "--exit-on-error", "/tmp/legacy.dump"])
+    restored = dsn.replace("/regente_lab?", "/regente_legacy_restored?")
+    command([str(RUN/"server"), "-db-driver", "postgres", "-db", restored, "-migrate-only"], name="legacy-restored-upgrade")
+    result = command(pg+["psql", "-U", "regente", "-d", "regente_legacy_restored", "-Atc",
+                         "SELECT (SELECT count(*) FROM instance_runs WHERE instance_id='legacy-running'), "
+                         "(SELECT count(*) FROM design_sessions WHERE id='legacy-draft'), "
+                         "(SELECT count(*) FROM agent_tokens WHERE token='synthetic-legacy-token'), "
+                         "(SELECT count(*) FROM daily_runs WHERE finished_at IS NULL)"])
+    if result != "1|1|1|1":
+        raise RuntimeError("Legacy backup/restore/upgrade did not preserve the fixture")
+    REPORT["legacy_restore"] = {"schema_from": 22, "schema_to": 23, "preserved_entities": 4,
+                                "seconds": round(time.monotonic()-start, 3)}
+
+
 def main():
     EVIDENCE.mkdir(parents=True)
     started = time.monotonic()
@@ -208,11 +231,12 @@ def main():
                    REGENTE_TEST_OIDC_USER="lab-user", REGENTE_TEST_OIDC_PASS="synthetic-password")
         output = command(["go", "test", "-json", "-count=1", "-timeout=5m",
                           "./server/internal/db", "./server/internal/api", "-run",
-                          "TestMigration|TestPostgres|TestOnlineBackup|TestIntegrationOIDC"],
+                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC"],
                          env=env, timeout=360, name="database-oidc-tests")
         validate_test_events(output)
         command(["go", "build", "-o", str(RUN/"server"), "./server"], timeout=180, name="server-build")
         command(["go", "build", "-o", str(RUN/"agent"), "./agent"], timeout=180, name="agent-build")
+        legacy_restore(dsn)
         count = cluster(env, dsn, nats_url)
         # Restore em OUTRA base descartável, mantendo a original intacta.
         start = time.monotonic()

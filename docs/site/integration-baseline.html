@@ -119,7 +119,7 @@ are outside this baseline and are not claimed as executed.</p>
 </tr>
 <tr>
 <td>v22 legacy upgrade, v23 backfill once</td>
-<td><code>legacy-data.sql</code>, legacy schema constructors</td>
+<td><code>legacy-data.sql</code>, frozen <code>legacy-v22-*.sql</code> from b88af2a</td>
 <td>Token, running job/output, partial daily, draft metadata preserved</td>
 </tr>
 <tr>
@@ -149,8 +149,8 @@ are outside this baseline and are not claimed as executed.</p>
 </tr>
 <tr>
 <td>PG dump/restore</td>
-<td><code>restored-schema.log</code>, report</td>
-<td>Different database, same runtime schema and completed orders</td>
+<td><code>restored-schema.log</code>, <code>legacy-restored-upgrade.log</code>, report</td>
+<td>Different databases; legacy v22 restored then upgraded; current runtime and completed orders preserved</td>
 </tr>
 <tr>
 <td>Real OIDC authorization-code flow</td>

@@ -53,13 +53,13 @@ are outside this baseline and are not claimed as executed.
 | Scenario | Fixture / evidence | Scope |
 |---|---|---|
 | Fresh DB, two concurrent migrators, restart | `TestMigrationSafety`, both backends | Executed by mandatory gate |
-| v22 legacy upgrade, v23 backfill once | `legacy-data.sql`, legacy schema constructors | Token, running job/output, partial daily, draft metadata preserved |
+| v22 legacy upgrade, v23 backfill once | `legacy-data.sql`, frozen `legacy-v22-*.sql` from b88af2a | Token, running job/output, partial daily, draft metadata preserved |
 | Statement failure after data and DDL | `statement_failure_rolls_back_and_resumes` | Rollback and retry preserve earlier versions |
 | Process killed with open transaction | `process_death_releases_transaction_and_lock` | Real child process, shared lock/transaction primitives, partial DDL and data; then restart runner |
 | SQL/checksum drift, absent hash, gap/future version | `refuse_*` | Startup blocked before application services |
 | Interrupted old autocommit upgrade | `legacy_partial_failure_*` | Fails closed; no automatic guessed repair |
 | SQLite pre-upgrade backup/restore | `TestMigrationLegacySQLiteBackupRestore` | Independent restored file upgrades with preserved data |
-| PG dump/restore | `restored-schema.log`, report | Different database, same runtime schema and completed orders |
+| PG dump/restore | `restored-schema.log`, `legacy-restored-upgrade.log`, report | Different databases; legacy v22 restored then upgraded; current runtime and completed orders preserved |
 | Real OIDC authorization-code flow | `TestIntegrationOIDC_AuthCodeFlow` | Keycloak discovery, login, callback and protected API; not I03 security qualification |
 | Distributed agents and execution | cluster report, node/agent logs | Both agents visible from both nodes; jobs pinned to each node complete; repeat Order Folder does not reexecute effects |
 | Draft content, daily recovery, uncertain effects | preserved synthetic fixtures | Regression scenarios reserved for I07/I10/I12; metadata preservation is not content durability |

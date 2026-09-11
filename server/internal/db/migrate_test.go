@@ -251,20 +251,15 @@ func assertCount(t *testing.T, d *DB, query string, want int) {
 
 func legacyFixture(t *testing.T, d *DB, version int) {
 	t.Helper()
-	migs := sqliteMigrations
-	if d.Dialect() == Postgres {
-		migs = pgMigrations
+	if version != 22 {
+		t.Fatal("fixture congelada disponível apenas para v22")
 	}
-	if _, err := d.Exec(`CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at ` + tsType(d.Dialect()) + ` DEFAULT CURRENT_TIMESTAMP)`); err != nil {
+	ddl, err := os.ReadFile("testdata/legacy-v22-" + string(d.Dialect()) + ".sql")
+	if err != nil {
 		t.Fatal(err)
 	}
-	for _, m := range migs[:version] {
-		for _, stmt := range splitStatements(m.sql) {
-			if _, err := d.Exec(stmt); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if _, err := d.Exec(`INSERT INTO schema_migrations(version) VALUES(?)`, m.version); err != nil {
+	for _, stmt := range splitStatements(string(ddl)) {
+		if _, err := d.Exec(stmt); err != nil {
 			t.Fatal(err)
 		}
 	}
