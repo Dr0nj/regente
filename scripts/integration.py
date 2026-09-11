@@ -6,6 +6,7 @@ from pathlib import Path
 import platform
 import shutil
 import socket
+import ssl
 import subprocess
 import sys
 import time
@@ -21,18 +22,19 @@ COMPOSE = ["docker", "compose", "-p", "regente-it-" + RUN.name,
 ADMIN = "synthetic-lab-admin"
 PROCESSES = []
 REPORT = {"status": "running", "stages": [], "profile": "synthetic-ci-v1"}
+TLS_CONTEXT = None
 
 
-def command(args, *, env=None, timeout=180, name=None, stdin=None):
+def command(args, *, env=None, timeout=180, name=None, stdin=None, expected_exit=0):
     start = time.monotonic()
     result = subprocess.run(args, cwd=ROOT, env=env, text=True, input=stdin,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
     if name:
         (EVIDENCE / (name + ".log")).write_text(result.stdout, encoding="utf-8")
         REPORT["stages"].append({"name": name, "seconds": round(time.monotonic()-start, 3),
-                                 "exit_code": result.returncode})
+                                 "exit_code": result.returncode, "expected_exit": expected_exit})
         print(f"{name}: exit={result.returncode}", flush=True)
-    if result.returncode:
+    if result.returncode != expected_exit:
         raise RuntimeError(f"Command failed: {args[0]} ({name or 'setup'}); {result.stdout[-4000:]}")
     return result.stdout.strip()
 
@@ -52,7 +54,7 @@ def request(url, method="GET", data=None, token=ADMIN):
     req = urllib.request.Request(url, data=raw, method=method,
                                  headers={"Authorization": "Bearer " + token,
                                           "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=10) as response:
+    with urllib.request.urlopen(req, timeout=10, context=TLS_CONTEXT) as response:
         return json.load(response)
 
 
@@ -195,9 +197,20 @@ def legacy_restore(dsn):
         raise RuntimeError("Legacy backup/restore/upgrade did not preserve the fixture")
     REPORT["legacy_restore"] = {"schema_from": 22, "schema_to": 23, "preserved_entities": 4,
                                 "seconds": round(time.monotonic()-start, 3)}
+    # O binário real deve recusar schema futuro ANTES de criar o workspace/API.
+    command(pg+["psql", "-U", "regente", "-d", "regente_legacy_restored", "-v", "ON_ERROR_STOP=1", "-c",
+                "INSERT INTO schema_migrations(version) SELECT max(version)+1 FROM schema_migrations"])
+    untouched = RUN/"incompatible-workspace"
+    output = command([str(RUN/"server"), "-db-driver", "postgres", "-db", restored,
+                      "-workspace", str(untouched), "-addr", "127.0.0.1:"+str(free_port())],
+                     name="incompatible-startup-refused", timeout=15, expected_exit=1)
+    if untouched.exists() or "incompatible migration history" not in output:
+        raise RuntimeError("Incompatible schema was not refused before application startup")
+    REPORT["incompatible_startup_refused"] = True
 
 
 def main():
+    global TLS_CONTEXT
     EVIDENCE.mkdir(parents=True)
     started = time.monotonic()
     compose_started = False
@@ -207,17 +220,26 @@ def main():
         REPORT["platform"] = platform.platform()
         if platform.system() != "Linux" or platform.machine() not in ("x86_64", "amd64"):
             raise RuntimeError("This integration profile requires Linux/amd64 (use the CI gate or a Linux VM)")
-        for dependency in ("go", "docker"):
+        for dependency in ("go", "docker", "openssl"):
             if not shutil.which(dependency):
                 raise RuntimeError("Missing mandatory dependency: "+dependency)
         REPORT["go"] = command(["go", "version"])
         REPORT["compose"] = command(["docker", "compose", "version"])
         command(["docker", "info"], name="docker-engine")
+        tls_dir = RUN/"tls"
+        tls_dir.mkdir()
+        command(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+                 "-subj", "/CN=regente-lab", "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
+                 "-keyout", str(tls_dir/"lab.key"), "-out", str(tls_dir/"lab.crt")], name="lab-certificate")
+        # Chave efêmera de lab: leitura pelo UID não-root do container, fora dos artifacts.
+        (tls_dir/"lab.key").chmod(0o644)
+        os.environ["REGENTE_LAB_TLS_DIR"] = str(tls_dir)
+        TLS_CONTEXT = ssl.create_default_context(cafile=str(tls_dir/"lab.crt"))
         compose_started = True
         command(COMPOSE+["up", "-d"], timeout=300, name="dependencies")
         pg_port = port("postgres", 5432)
         nats_url = "nats://127.0.0.1:" + port("nats", 4222)
-        issuer = "http://127.0.0.1:"+port("keycloak", 8080)+"/realms/regente-lab"
+        issuer = "https://127.0.0.1:"+port("keycloak", 8443)+"/realms/regente-lab"
         eventually("Keycloak discovery", lambda: request(issuer+"/.well-known/openid-configuration"), 150)
         nats_info = request("http://127.0.0.1:"+port("nats", 8222)+"/varz")
         REPORT["nats_version"] = nats_info["version"]
@@ -225,7 +247,7 @@ def main():
         # Configuração pessoal de Git, TLS, banco ou telemetria não entra no lab.
         clean_env = {k: v for k, v in os.environ.items()
                      if not k.startswith(("REGENTE_", "OTEL_")) and k not in ("GITHUB_TOKEN", "GH_TOKEN")}
-        env = dict(clean_env, REGENTE_REQUIRE_INTEGRATION="1", REGENTE_TEST_PG_DSN=dsn,
+        env = dict(clean_env, SSL_CERT_FILE=str(tls_dir/"lab.crt"), REGENTE_REQUIRE_INTEGRATION="1", REGENTE_TEST_PG_DSN=dsn,
                    REGENTE_TEST_OIDC_ISSUER=issuer, REGENTE_TEST_OIDC_CLIENT_ID="regente-lab",
                    REGENTE_TEST_OIDC_CLIENT_SECRET="synthetic-client-secret",
                    REGENTE_TEST_OIDC_USER="lab-user", REGENTE_TEST_OIDC_PASS="synthetic-password")

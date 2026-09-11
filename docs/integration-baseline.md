@@ -7,7 +7,7 @@ See [the migration decision](adr/001-safe-migrations.md).
 
 ## Run the mandatory laboratory
 
-Use a disposable Linux/amd64 machine with Git, Go 1.25+, Python 3.10+, Docker Engine
+Use a disposable Linux/amd64 machine with Git, Go 1.25+, Python 3.10+, OpenSSL, Docker Engine
 and Compose v2. Allow registry/module downloads and approximately 8 GiB RAM for
 the development IdP, compiler and processes. No Python packages are required.
 
@@ -25,6 +25,8 @@ COMMAND agent per node, executes the synthetic workloads, restarts a node, dumps
 and restores PostgreSQL into another database, then validates the restored schema.
 It always stops its own processes and removes its own containers and volumes.
 Credentials and permissive redirect configuration are synthetic and **lab only**.
+The IdP uses HTTPS with a freshly generated local certificate, explicitly trusted
+by the test clients through `SSL_CERT_FILE`; TLS verification stays enabled.
 No connection to an existing deployment is required or accepted by this script.
 
 Images are pinned by Linux/amd64 digest: PostgreSQL 17.6 Alpine, NATS 2.11.8 Alpine,
