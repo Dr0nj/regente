@@ -100,7 +100,7 @@ are regression budgets tied to current mechanisms or a future contract, not SLAs
 | Migration startup | 2-minute default total deadline; configurable for measured large backfills | I01; SQLite driver busy wait may add up to its configured busy timeout |
 | Presence propagation | Within 75s test deadline, allowing the current 5s announcement/15s TTL plus CI startup noise | I00 wiring test, not a low-latency SLA |
 | Dispatch durable ACK | Proposed ≤5s p99, separating a 2s default tick from network/storage budget | I08/I09 must implement and measure; current transport has no durable ACK |
-| Active credential revocation | Proposed ≤5s on all nodes, one bounded revalidation cycle | I02/I04; not delivered by I00 |
+| Active agent credential revocation | ≤5s on both nodes; 1s revalidation and bounded DB query | I02 WS/HTTP/SSE machine identity matrix plus cross-process cluster measurement; human session revocation remains I04 |
 | Reconciliation after recovery | Proposed ≤30s for the 3-order reference set, two 15s presence intervals | I10/I11; increase workload only with measured evidence |
 | Availability | Every scripted probe succeeds after startup/restart readiness; no monthly availability claim | I16 will measure sustained availability and approved outage budget |
 | RPO | Zero committed-order loss for the exact stopped-node/restore snapshots in this lab | I01 checks snapshot preservation; disaster RPO depends on WAL/backup cadence |
@@ -123,7 +123,8 @@ capacity and business acceptance stay open until then.
    the established PITR procedure. Confirm restoration on an isolated target.
 3. Run the new binary with `-migrate-only` and the intended database configuration.
    Increase `-migration-timeout` only from a measured rehearsal; e.g. `10m`.
-4. Success reports schema 23 and supported range `[23,23]`. History is in
+4. Success reports schema 24 and supported range `[24,24]`. Schema-23 agent
+   credentials require [explicit reissue](agent-identity.md). History is in
    `schema_migrations`; hashes and `applied`/`legacy-adopted` provenance are in
    `schema_migration_checksums`. Legacy adoption cannot prove historical SQL or
    detect every pre-existing manual schema mutation; inspect/rehearse old databases.

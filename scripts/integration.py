@@ -102,7 +102,8 @@ def validate_test_events(output):
         raise RuntimeError(f"Mandatory integration tests skipped: {skipped}")
     passed = {e.get("Test") for e in events if e.get("Action") == "pass"}
     required = {"TestPostgresMigrateAndCRUD", "TestMigrationSafety/postgres",
-                "TestMigrationSafety/sqlite", "TestIntegrationOIDC_AuthCodeFlow"}
+                "TestMigrationSafety/sqlite", "TestIntegrationOIDC_AuthCodeFlow",
+                "TestMachineIdentity/sqlite", "TestMachineIdentity/postgres"}
     if not required <= passed:
         raise RuntimeError(f"Missing required test evidence: {required - passed}")
     REPORT["passed_tests"] = sorted(p for p in passed if p)
@@ -111,6 +112,7 @@ def validate_test_events(output):
 def cluster(env, dsn, nats_url):
     start = time.monotonic()
     nodes = []
+    credentials = []
     workloads = json.loads((ROOT / "integration/fixtures/workloads.json").read_text())
     for suffix in ("a", "b"):
         workspace = RUN / ("node-" + suffix)
@@ -135,7 +137,9 @@ def cluster(env, dsn, nats_url):
         base = "http://"+address
         eventually("node "+suffix, lambda: request(base+"/health"))
         nodes.append((proc, base, args, workspace))
-        token = request(base+"/api/agents/tokens", "POST", {"label": "lab-agent-"+suffix})["token"]
+        credential = request(base+"/api/agents/tokens", "POST", {"label": "lab-agent-"+suffix, "agentId": "lab-agent-"+suffix, "environment": "", "capabilities": ["COMMAND"], "expiresAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time()+86400))})
+        credentials.append(credential)
+        token = credential["token"]
         agent_dir = RUN / ("agent-"+suffix)
         agent_dir.mkdir()
         start_process("agent-"+suffix, [str(RUN / "agent"), "-id", "lab-agent-"+suffix,
@@ -173,6 +177,25 @@ def cluster(env, dsn, nats_url):
         if request(base+"/api/instances/"+instance_id)["status"] != "OK":
             raise RuntimeError("Completed job changed after restart")
     REPORT["cluster"]["restart_preserved_jobs"] = True
+    eventually("agent A reconnected after restart",
+               lambda: any(a["id"] == "lab-agent-a" and a.get("local")
+                           for a in request(nodes[0][1]+"/api/agents")))
+    # Revogar no nó B deve fechar o WS do agente conectado ao processo A.
+    revocation_start = time.monotonic()
+    request(nodes[1][1]+"/api/agents/tokens/"+str(credentials[0]["id"]), "DELETE")
+    eventually("cross-node credential revocation",
+               lambda: not any(a["id"] == "lab-agent-a" and a.get("local")
+                               for a in request(nodes[0][1]+"/api/agents")), timeout=5)
+    elapsed = time.monotonic()-revocation_start
+    if elapsed > 5:
+        raise RuntimeError("Cross-node revocation exceeded the 5-second budget")
+    try:
+        request(nodes[1][1]+"/api/agent/output", "POST", {"instanceId": instance_ids[0], "chunk": "denied"}, token=credentials[0]["token"])
+        raise RuntimeError("Revoked credential accepted by peer")
+    except urllib.error.HTTPError as error:
+        if error.code != 401:
+            raise
+    REPORT["cluster"]["cross_node_revocation_seconds"] = round(elapsed, 3)
     return len(instance_ids)
 
 
@@ -191,11 +214,11 @@ def legacy_restore(dsn):
     result = command(pg+["psql", "-U", "regente", "-d", "regente_legacy_restored", "-Atc",
                          "SELECT (SELECT count(*) FROM instance_runs WHERE instance_id='legacy-running'), "
                          "(SELECT count(*) FROM design_sessions WHERE id='legacy-draft'), "
-                         "(SELECT count(*) FROM agent_tokens WHERE token='synthetic-legacy-token'), "
+                         "(SELECT count(*) FROM agent_tokens WHERE label='fixture only' AND agent_id IS NULL AND token_hash LIKE 'retired:%'), "
                          "(SELECT count(*) FROM daily_runs WHERE finished_at IS NULL)"])
     if result != "1|1|1|1":
         raise RuntimeError("Legacy backup/restore/upgrade did not preserve the fixture")
-    REPORT["legacy_restore"] = {"schema_from": 22, "schema_to": 23, "preserved_entities": 4,
+    REPORT["legacy_restore"] = {"schema_from": 22, "schema_to": 24, "preserved_entities": 4,
                                 "seconds": round(time.monotonic()-start, 3)}
     # O binário real deve recusar schema futuro ANTES de criar o workspace/API.
     command(pg+["psql", "-U", "regente", "-d", "regente_legacy_restored", "-v", "ON_ERROR_STOP=1", "-c",
@@ -253,7 +276,7 @@ def main():
                    REGENTE_TEST_OIDC_USER="lab-user", REGENTE_TEST_OIDC_PASS="synthetic-password")
         output = command(["go", "test", "-json", "-count=1", "-timeout=5m",
                           "./server/internal/db", "./server/internal/api", "-run",
-                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC"],
+                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials"],
                          env=env, timeout=360, name="database-oidc-tests")
         validate_test_events(output)
         command(["go", "build", "-o", str(RUN/"server"), "./server"], timeout=180, name="server-build")

@@ -93,9 +93,29 @@ func TestMigrationSafety(t *testing.T) {
 				}
 				assertCount(t, d, `SELECT COUNT(*) FROM instance_runs WHERE instance_id='legacy-running'`, 1)
 				assertCount(t, d, `SELECT COUNT(*) FROM schema_migration_checksums WHERE provenance='legacy-adopted'`, 22)
-				assertCount(t, d, `SELECT COUNT(*) FROM agent_tokens WHERE token='synthetic-legacy-token'`, 1)
+				assertCount(t, d, `SELECT COUNT(*) FROM agent_tokens WHERE label='fixture only' AND agent_id IS NULL AND token_hash LIKE 'retired:%'`, 1)
 				assertCount(t, d, `SELECT COUNT(*) FROM daily_runs WHERE finished_at IS NULL`, 1)
 				assertCount(t, d, `SELECT COUNT(*) FROM design_sessions WHERE id='legacy-draft'`, 1)
+			})
+			t.Run("v23_credentials_require_explicit_reissue", func(t *testing.T) {
+				d, _ := migrationTestDB(t, dialect)
+				migs := sqliteMigrations[:23]
+				if dialect == Postgres {
+					migs = pgMigrations[:23]
+				}
+				if err := migrate(context.Background(), d, migs, 23, 23); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := d.Exec(`INSERT INTO agent_tokens(token,label) VALUES('synthetic-v23-secret','v23 retained metadata')`); err != nil {
+					t.Fatal(err)
+				}
+				if err := Migrate(d); err != nil {
+					t.Fatal(err)
+				}
+				assertCount(t, d, `SELECT COUNT(*) FROM agent_tokens WHERE label='v23 retained metadata' AND agent_id IS NULL AND expires_at=0 AND token_hash LIKE 'retired:%'`, 1)
+				if err := migrate(context.Background(), d, migs, 23, 23); err == nil {
+					t.Fatal("binário v23 aceitou schema v24")
+				}
 			})
 			t.Run("statement_failure_rolls_back_and_resumes", func(t *testing.T) {
 				d, _ := migrationTestDB(t, dialect)
@@ -122,8 +142,8 @@ func TestMigrationSafety(t *testing.T) {
 					query := map[string]string{
 						"checksum":         `UPDATE schema_migration_checksums SET checksum='wrong' WHERE version=1`,
 						"missing_checksum": `DELETE FROM schema_migration_checksums WHERE version=1`,
-						"future":           `INSERT INTO schema_migrations(version) VALUES(24)`,
-						"gap":              `INSERT INTO schema_migrations(version) VALUES(25)`,
+						"future":           `INSERT INTO schema_migrations(version) VALUES(25)`,
+						"gap":              `INSERT INTO schema_migrations(version) VALUES(26)`,
 					}[damage]
 					if query != "" {
 						if _, err := d.Exec(query); err != nil {
@@ -136,7 +156,7 @@ func TestMigrationSafety(t *testing.T) {
 							migs = append([]migration(nil), pgMigrations...)
 						}
 						migs[0].sql += "\n-- modified"
-						if err := migrate(context.Background(), d, migs, 23, 23); err == nil {
+						if err := migrate(context.Background(), d, migs, MinSupportedSchema, MaxSupportedSchema); err == nil {
 							t.Fatal("aceitou SQL modificado")
 						}
 					} else if err := Migrate(d); err == nil {

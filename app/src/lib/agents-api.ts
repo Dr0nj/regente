@@ -39,6 +39,11 @@ export async function pingAgent(id: string): Promise<PingResult> {
 
 // B5 — tokens por agente (admin).
 export interface AgentToken {
+	 agentId: string;
+	 environment: string;
+	 capabilities: string[];
+	 expiresAt: string;
+	 status: "active" | "expired" | "revoked" | "requires_reissue";
   id: number;
   label: string;
   tokenPrefix: string;
@@ -52,8 +57,13 @@ export async function listAgentTokens(): Promise<AgentToken[]> {
 }
 
 /** Cria um token de agente. O `token` cru só volta aqui, uma vez. */
-export async function createAgentToken(label: string): Promise<{ id: number; label: string; token: string }> {
-  return api("/api/agents/tokens", { method: "POST", body: JSON.stringify({ label }) });
+export async function createAgentToken(body: { label: string; agentId: string; environment: string; capabilities: string[]; expiresAt: string }): Promise<{ id: number; token: string }> {
+  return api("/api/agents/tokens", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function rotateAgentToken(id: number, validityDays: number, graceSeconds: number): Promise<{ id: number; token: string }> {
+  const expiresAt = new Date(Date.now() + validityDays * 86400000).toISOString();
+  return api(`/api/agents/tokens/${id}/rotate`, { method: "POST", body: JSON.stringify({ expiresAt, graceSeconds }) });
 }
 
 export async function revokeAgentToken(id: number): Promise<void> {

@@ -75,7 +75,7 @@ func TestSQLiteMigrateAndCRUD(t *testing.T) {
 	}
 
 	// InsertID (RETURNING) + leitura.
-	id, err := d.InsertID(`INSERT INTO agent_tokens(token, label) VALUES(?,?)`, "rgta_test", "lbl")
+	id, err := d.InsertID(`INSERT INTO agent_tokens(token_hash, label) VALUES(?,?)`, "rgta_test", "lbl")
 	if err != nil || id == 0 {
 		t.Fatalf("InsertID: id=%d err=%v", id, err)
 	}
@@ -116,8 +116,8 @@ func TestPostgresMigrateAndCRUD(t *testing.T) {
 	}
 
 	token := "rgta_pgtest"
-	_, _ = d.Exec(`DELETE FROM agent_tokens WHERE token=?`, token)
-	id, err := d.InsertID(`INSERT INTO agent_tokens(token, label) VALUES(?,?)`, token, "pg")
+	_, _ = d.Exec(`DELETE FROM agent_tokens WHERE token_hash=?`, token)
+	id, err := d.InsertID(`INSERT INTO agent_tokens(token_hash, label) VALUES(?,?)`, token, "pg")
 	if err != nil || id == 0 {
 		t.Fatalf("InsertID pg: id=%d err=%v", id, err)
 	}
@@ -125,7 +125,7 @@ func TestPostgresMigrateAndCRUD(t *testing.T) {
 	if err := d.QueryRow(`SELECT label FROM agent_tokens WHERE id=?`, id).Scan(&label); err != nil || label != "pg" {
 		t.Fatalf("read back pg: label=%q err=%v", label, err)
 	}
-	_, _ = d.Exec(`DELETE FROM agent_tokens WHERE token=?`, token)
+	_, _ = d.Exec(`DELETE FROM agent_tokens WHERE token_hash=?`, token)
 
 	// upsert traduzido: INSERT OR REPLACE -> ON CONFLICT DO UPDATE.
 	_, _ = d.Exec(`DELETE FROM conditions WHERE name=?`, "Cpg")

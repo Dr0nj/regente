@@ -180,8 +180,9 @@ head1 "5) Agente instalado como serviço e job executando de verdade"
 # URL propositalmente no formato da UI (http://host:porta): o instalador tem de
 # convertê-la no endpoint do agente sozinho.
 # O bearer administrativo só emite a credencial; o serviço usa token de máquina.
+agent_expiry="$(date -u -d "+1 day" +%Y-%m-%dT%H:%M:%SZ)"
 agent_token="$(api -X POST -H 'Content-Type: application/json' \
-  -d '{"label":"smoke-agent"}' "$BASE/api/agents/tokens" | jfield token)"
+  -d "{\"label\":\"smoke-agent\",\"agentId\":\"smoke-agent\",\"environment\":\"\",\"capabilities\":[\"COMMAND\",\"SCRIPT\",\"HTTP\"],\"expiresAt\":\"$agent_expiry\"}" "$BASE/api/agents/tokens" | jfield token)"
 case "$agent_token" in
   rgta_*) ok "credencial dedicada de agente emitida" ;;
   *) bad "não foi possível emitir credencial do agente"; exit 1 ;;

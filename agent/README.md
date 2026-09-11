@@ -39,15 +39,17 @@ go build -o regente-agent.exe .  # Windows
 ```bash
 ./regente-agent \
   -server ws://YOUR-SERVER:8080/ws/agent \
-  -token  rgta_REPLACE_ME \
   -id     my-host \
   -caps   COMMAND,SCRIPT,HTTP
 ```
 
+Before starting, set REGENTE_TOKEN in the protected service environment.
 Token: create **one token per agent** in the UI (Settings → Agents → Create token),
 including for development. Login sessions and the server API token are not accepted
 by any agent transport. Supply the issued token with `-token` or the agent service's `REGENTE_TOKEN` environment variable; an empty token stops startup.
-See [agent authentication and upgrades](../docs/agent-authentication.md).
+The ID, environment and capability set must match the provisioned principal.
+Schema-23 tokens require reissue after upgrading both binaries. See
+[agent identity and upgrades](../docs/agent-identity.md).
 
 **Transport** (`-transport`): `ws` (WebSocket, the default), `http` (long-poll) or `sse`
 (Server-Sent Events, immediate push). The last two are serverless-friendly — still outbound, but
@@ -85,8 +87,8 @@ Building from source instead? Use [`deploy/install-linux.sh`](deploy/install-lin
   comes back — it never migrates on its own.
 - Otherwise the server picks an online agent whose **capability** matches the jobType
   (`PickAgent`). That is why `-caps` must list the jobTypes the agent accepts.
-- **Environment** (the job's `environment` versus the agent's `-env` flag): a side with no label
-  is a wildcard; when both have labels they must match (case-insensitive). A `prod` job
+- **Environment**: external agents require the exact provisioned label, including case.
+  Empty authorizes only unlabeled jobs. A `prod` job
   **never** lands on a `dev` agent — not even pinned (it stays in WAIT AGENT with the reason in
   the Explain).
 

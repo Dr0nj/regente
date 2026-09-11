@@ -23,11 +23,15 @@ const (
 
 // Client — conexão WS ativa. Send buffer evita travar o writer.
 type Client struct {
-	ID           string
-	Kind         ClientKind
-	Conn         *websocket.Conn
-	Send         chan []byte
-	Capabilities []string // agents: ["COMMAND","REST",...]
+	ID             string
+	Kind           ClientKind
+	Conn           *websocket.Conn
+	Send           chan []byte
+	Capabilities   []string // agents: ["COMMAND","REST",...]
+	CredentialID   int64
+	StrictIdentity bool
+	Authorize      func() bool // revalidação limitada antes de entregar mensagens
+	Done           chan struct{}
 
 	// Environment — ADV-2: label de ambiente/site do agente (flag -env do
 	// agente; ex. "prod", "dc-sp"). Vazio = generalista (serve qualquer job).
@@ -70,6 +74,12 @@ func New() *Hub {
 func (h *Hub) Register(c *Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if old := h.clients[c.ID]; old != nil && old != c {
+		h.removeLocked(old)
+	}
+	if c.Done == nil {
+		c.Done = make(chan struct{})
+	}
 	now := time.Now()
 	if c.ConnectedAt.IsZero() {
 		c.ConnectedAt = now
@@ -94,14 +104,47 @@ func (h *Hub) Touch(id string) {
 func (h *Hub) Unregister(c *Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if _, ok := h.clients[c.ID]; !ok {
+	if h.clients[c.ID] != c {
 		return
 	}
+	h.removeLocked(c)
+}
+
+func (h *Hub) removeLocked(c *Client) {
 	delete(h.clients, c.ID)
 	if c.Kind == ClientAgent {
 		delete(h.agents, c.ID)
 	}
 	close(c.Send)
+	if c.Done != nil {
+		close(c.Done)
+	}
+	if c.Conn != nil {
+		_ = c.Conn.Close()
+	}
+}
+
+// Principal externo nunca herda o coringa legado de ambiente vazio.
+func Matches(c *Client, capability, env string) bool {
+	if capability == "" && env == "" {
+		return true
+	} // controle ping/cancel
+	if c.StrictIdentity {
+		if env != c.Environment {
+			return false
+		}
+	} else if !EnvMatch(env, c.Environment) {
+		return false
+	}
+	if capability == "" {
+		return true
+	} // ping/cancel não anunciam jobType
+	for _, cap := range c.Capabilities {
+		if cap == capability {
+			return true
+		}
+	}
+	return false
 }
 
 // BroadcastWeb envia um evento para todos os clientes web conectados.
@@ -129,7 +172,7 @@ func (h *Hub) PickAgent(capability, env string) *Client {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for _, a := range h.agents {
-		if !EnvMatch(env, a.Environment) {
+		if !Matches(a, capability, env) {
 			continue
 		}
 		for _, cap := range a.Capabilities {
@@ -157,7 +200,7 @@ func (h *Hub) GetAgent(id string) *Client {
 func (h *Hub) HasAgent(agentID, capability, env string) bool {
 	if agentID != "" {
 		a := h.GetAgent(agentID)
-		return a != nil && EnvMatch(env, a.Environment)
+		return a != nil && Matches(a, capability, env)
 	}
 	return h.PickAgent(capability, env) != nil
 }
@@ -181,17 +224,35 @@ const (
 // dele voltar. (Antes havia fallback pro PickAgent, contradizendo o HasAgent que
 // o tick usa e a promessa do pin: "criado no agente-A roda NO agente-A".)
 func (h *Hub) Dispatch(agentID, capability, env string, raw []byte) (DispatchOutcome, string) {
+	return h.DispatchWithAssignment(agentID, capability, env, raw, nil)
+}
+
+// Atribuição persistida antes de publicar no canal, sob o mesmo lock da seleção.
+func (h *Hub) DispatchWithAssignment(agentID, capability, env string, raw []byte, assign func(string) error) (DispatchOutcome, string) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	var a *Client
 	if agentID != "" {
-		p := h.GetAgent(agentID)
-		if p == nil || !EnvMatch(env, p.Environment) {
+		p := h.agents[agentID]
+		if p == nil || !Matches(p, capability, env) {
 			return DispatchNoAgent, ""
 		}
 		a = p
 	} else {
-		a = h.PickAgent(capability, env)
+		for _, p := range h.agents {
+			if Matches(p, capability, env) {
+				a = p
+				break
+			}
+		}
 	}
 	if a == nil {
+		return DispatchNoAgent, ""
+	}
+	if a.Authorize != nil && !a.Authorize() {
+		return DispatchNoAgent, ""
+	}
+	if assign != nil && assign(a.ID) != nil {
 		return DispatchNoAgent, ""
 	}
 	select {
@@ -209,16 +270,17 @@ func (h *Hub) OnlineAgents() []map[string]interface{} {
 	out := []map[string]interface{}{}
 	for id, a := range h.agents {
 		out = append(out, map[string]interface{}{
-			"id":           id,
-			"capabilities": a.Capabilities,
-			"environment":  a.Environment,
-			"os":           a.OS,
-			"arch":         a.Arch,
-			"host":         a.Host,
-			"version":      a.Version,
-			"started":      a.Started,
-			"connectedAt":  a.ConnectedAt,
-			"lastSeen":     a.LastSeen,
+			"id":             id,
+			"capabilities":   a.Capabilities,
+			"environment":    a.Environment,
+			"strictIdentity": a.StrictIdentity,
+			"os":             a.OS,
+			"arch":           a.Arch,
+			"host":           a.Host,
+			"version":        a.Version,
+			"started":        a.Started,
+			"connectedAt":    a.ConnectedAt,
+			"lastSeen":       a.LastSeen,
 		})
 	}
 	return out

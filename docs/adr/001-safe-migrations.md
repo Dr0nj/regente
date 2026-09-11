@@ -21,7 +21,9 @@ the SQL originally executed**. Adoption is atomic. Subsequently missing hashes,
 gaps, unknown versions or changed SQL stop startup. Checksums normalize CRLF to
 LF only. Never edit an applied migration; add a new version.
 
-Schema 0–22 can upgrade; the current runtime requires exactly schema 23. Future
+Schema 0–23 can upgrade; the current runtime requires exactly schema 24. The
+I02 credential contract retires legacy secrets and requires explicit reissue;
+see [the identity upgrade procedure](../agent-identity.md). Future
 releases must explicitly update the supported runtime range and test overlap.
 These checks run before authentication bootstrap, workspace initialization,
 scheduler or HTTP serving. Binaries predating this runner cannot enforce them:

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import {
-  listAgents, listAgentTokens, createAgentToken, revokeAgentToken, pingAgent,
+  listAgents, listAgentTokens, createAgentToken, revokeAgentToken, rotateAgentToken, pingAgent,
   type AgentInfo, type AgentToken, type PingResult,
 } from "../lib/agents-api";
 
@@ -41,6 +41,11 @@ export default function AgentsManager() {
   const [tokens, setTokens] = useState<AgentToken[]>([]);
   const [detail, setDetail] = useState<AgentInfo | null>(null);
   const [newLabel, setNewLabel] = useState("");
+  const [newAgentId, setNewAgentId] = useState("");
+  const [newEnvironment, setNewEnvironment] = useState("");
+  const [newCaps, setNewCaps] = useState("COMMAND");
+  const [validDays, setValidDays] = useState(90);
+  const [tokenError, setTokenError] = useState("");
   const [justCreated, setJustCreated] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // ping ativo: id → "pending" | resultado
@@ -67,17 +72,25 @@ export default function AgentsManager() {
   const online = agents.filter((a) => a.online).length;
 
   async function handleCreate() {
-    setBusy(true); setJustCreated(null);
+    setBusy(true); setJustCreated(null); setTokenError("");
     try {
-      const r = await createAgentToken(newLabel.trim() || "agent");
+      const r = await createAgentToken({ label: newLabel.trim(), agentId: newAgentId.trim(), environment: newEnvironment.trim(), capabilities: newCaps.split(",").map(c => c.trim()), expiresAt: new Date(Date.now() + validDays * 86400000).toISOString() });
       setJustCreated(r.token);
       setNewLabel("");
       reload();
-    } finally { setBusy(false); }
+    } catch { setTokenError("Could not issue token. Check the identity, scope and expiry. An existing agent ID must keep its original scope."); }
+    finally { setBusy(false); }
   }
   async function handleRevoke(id: number) {
-    setBusy(true);
-    try { await revokeAgentToken(id); reload(); } finally { setBusy(false); }
+    setBusy(true); setTokenError(""); setJustCreated(null);
+    try { await revokeAgentToken(id); reload(); } catch { setTokenError("Could not revoke token."); } finally { setBusy(false); }
+  }
+  async function handleRotate(id: number) {
+    setBusy(true); setTokenError(""); setJustCreated(null);
+    try {
+      const r = await rotateAgentToken(id, validDays, 300);
+      setJustCreated(r.token); reload();
+    } catch { setTokenError("Could not rotate token. Only active credentials can be rotated."); } finally { setBusy(false); }
   }
 
   return (
@@ -160,6 +173,14 @@ export default function AgentsManager() {
           Agent tokens
         </legend>
         <label style={{ fontSize: 12, display: "block", marginBottom: 6 }}>New token</label>
+        <p style={{ fontSize: 11, color: "var(--v2-text-secondary)" }}>Credentials bind one agent ID to a fixed environment and capability set. Empty environment permits only jobs without an environment. Legacy tokens require reissue. Rotation keeps the old token valid for up to 5 minutes; update the agent service and restart it within that window.</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginBottom: 8 }}>
+          <label>Agent ID<input aria-label="Agent ID" value={newAgentId} onChange={e => setNewAgentId(e.target.value)} placeholder="worker-01" style={{ width: "100%", boxSizing: "border-box", padding: "6px 10px", background: "var(--v2-bg-elevated)", color: "var(--v2-text-primary)", border: "1px solid var(--v2-border-medium)", borderRadius: 4 }} /></label>
+          <label>Environment<input aria-label="Environment" value={newEnvironment} onChange={e => setNewEnvironment(e.target.value)} placeholder="empty = unlabeled jobs only" style={{ width: "100%", boxSizing: "border-box", padding: "6px 10px", background: "var(--v2-bg-elevated)", color: "var(--v2-text-primary)", border: "1px solid var(--v2-border-medium)", borderRadius: 4 }} /></label>
+          <label>Capabilities<input aria-label="Capabilities" value={newCaps} onChange={e => setNewCaps(e.target.value)} placeholder="COMMAND,SCRIPT" style={{ width: "100%", boxSizing: "border-box", padding: "6px 10px", background: "var(--v2-bg-elevated)", color: "var(--v2-text-primary)", border: "1px solid var(--v2-border-medium)", borderRadius: 4 }} /></label>
+          <label>Validity (days)<input aria-label="Validity in days" type="number" min={1} max={365} value={validDays} onChange={e => setValidDays(Number(e.target.value))} style={{ width: "100%", boxSizing: "border-box", padding: "6px 10px", background: "var(--v2-bg-elevated)", color: "var(--v2-text-primary)", border: "1px solid var(--v2-border-medium)", borderRadius: 4 }} /></label>
+        </div>
+        {tokenError && <p role="alert" style={{ color: "var(--v2-status-failed)" }}>{tokenError}</p>}
         <div style={{ display: "flex", gap: 6 }}>
           <input
             value={newLabel}
@@ -167,7 +188,7 @@ export default function AgentsManager() {
             placeholder="label (e.g. laptop-ops, ec2-prod)"
             style={{ flex: 1, padding: "6px 10px", fontSize: 13, background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)", borderRadius: 4, color: "var(--v2-text-primary)", outline: "none", boxSizing: "border-box" }}
           />
-          <button onClick={handleCreate} disabled={busy}
+          <button onClick={handleCreate} disabled={busy || !newAgentId.trim() || !newCaps.trim() || validDays < 1 || validDays > 365}
             style={{ padding: "6px 14px", fontSize: 12, borderRadius: 4, whiteSpace: "nowrap", background: "var(--v2-accent-brand)", border: "none", color: "#000", fontWeight: 600, cursor: busy ? "wait" : "pointer", opacity: busy ? 0.6 : 1 }}>
             Create token
           </button>
@@ -178,7 +199,8 @@ export default function AgentsManager() {
             <div style={{ color: "var(--v2-status-ok)", fontWeight: 600, marginBottom: 4 }}>Token created — copy it now (it will not be shown again):</div>
             <code style={{ fontFamily: "var(--v2-font-mono)", fontSize: 11, wordBreak: "break-all", userSelect: "all" }}>{justCreated}</code>
             <div style={{ color: "var(--v2-text-muted)", marginTop: 6 }}>
-              Use: <code style={{ fontFamily: "var(--v2-font-mono)" }}>regente-agent -token {justCreated.slice(0, 12)}… -id &lt;name&gt;</code>
+              Store the secret in REGENTE_TOKEN in the protected agent service environment. Set -id, -env and -caps to the exact provisioned scope, then restart the service.
+              <button onClick={() => setJustCreated(null)} style={{ marginLeft: 8 }}>Dismiss secret</button>
             </div>
           </div>
         )}
@@ -187,10 +209,11 @@ export default function AgentsManager() {
           <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 4 }}>
             {tokens.map((t) => (
               <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, padding: "5px 8px", background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-subtle)", borderRadius: 3 }}>
-                <span style={{ flex: 1, color: "var(--v2-text-primary)" }}>{t.label || "—"}</span>
+                <span style={{ flex: 1, color: "var(--v2-text-primary)" }}>{t.label || "—"}<br />{t.agentId || "Unbound legacy credential"} · {t.environment || "unlabeled"} · {t.capabilities.join(", ")}<br />{t.status} {t.agentId && `· expires ${new Date(t.expiresAt).toLocaleString()}`}</span>
                 <span style={{ fontFamily: "var(--v2-font-mono)", fontSize: 10, color: "var(--v2-text-muted)" }}>{t.tokenPrefix}</span>
                 <span style={{ fontSize: 9, color: "var(--v2-text-muted)" }} title="last use">{t.lastUsedAt ? "used" : "never used"}</span>
-                <button onClick={() => handleRevoke(t.id)} disabled={busy}
+                {t.status === "active" && <button onClick={() => handleRotate(t.id)} disabled={busy || validDays < 1 || validDays > 365}>rotate</button>}
+                <button onClick={() => handleRevoke(t.id)} disabled={busy || t.status === "revoked"}
                   style={{ background: "transparent", border: "1px solid rgba(239,68,68,.4)", color: "var(--v2-status-failed)", borderRadius: 3, fontSize: 10, padding: "2px 8px", cursor: "pointer" }}>
                   revoke
                 </button>

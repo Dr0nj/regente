@@ -15,10 +15,17 @@ import (
 )
 
 // Fixtures de transporte usam credencial de máquina, nunca bearer administrativo.
-func newMachineToken(t *testing.T, d *db.DB) string {
+func newMachineToken(t *testing.T, d *db.DB, ids ...string) string {
 	t.Helper()
+	id := "http-worker"
+	if len(ids) > 0 {
+		id = ids[0]
+	}
+	if _, err := d.Exec("INSERT INTO machine_principals(agent_id,environment,capabilities) VALUES(?,?,?) ON CONFLICT(agent_id) DO NOTHING", id, "", "COMMAND"); err != nil {
+		t.Fatal(err)
+	}
 	token := "rgta_" + randID()
-	if _, err := d.Exec("INSERT INTO agent_tokens(token, label) VALUES(?,?)", token, "test agent"); err != nil {
+	if _, err := d.Exec("INSERT INTO agent_tokens(token_hash, label, agent_id,expires_at) VALUES(?,?,?,?)", tokenDigest(token), "test agent", id, time.Now().Add(time.Hour).UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
 	return token
@@ -30,7 +37,7 @@ func TestAgentAuthRejectsHumanCredentials(t *testing.T) {
 	router := NewRouter(Config{DB: d, Hub: hub.New(), Token: "test-token"})
 	tokens := map[string]string{"missing": "", "unknown": "invalid-token", "legacy-admin": "test-token"}
 	revoked := newMachineToken(t, d)
-	if _, err := d.Exec("DELETE FROM agent_tokens WHERE token=?", revoked); err != nil {
+	if _, err := d.Exec("DELETE FROM agent_tokens WHERE token_hash=?", tokenDigest(revoked)); err != nil {
 		t.Fatal(err)
 	}
 	tokens["revoked-agent"] = revoked
@@ -78,7 +85,7 @@ func TestAgentAuthRejectsHumanCredentials(t *testing.T) {
 
 func TestAgentTokenLifecycleAndHTTPResults(t *testing.T) {
 	srv, d := newOpsTestServer(t)
-	resp := doReq(t, srv.Client(), http.MethodPost, srv.URL+"/api/agents/tokens", "test-token", `{"label":"worker"}`)
+	resp := doReq(t, srv.Client(), http.MethodPost, srv.URL+"/api/agents/tokens", "test-token", `{"label":"worker","agentId":"http-worker","environment":"","capabilities":["COMMAND"],"expiresAt":"`+time.Now().Add(time.Hour).UTC().Format(time.RFC3339)+`"}`)
 	var created struct {
 		ID    int64  `json:"id"`
 		Token string `json:"token"`
@@ -97,6 +104,9 @@ func TestAgentTokenLifecycleAndHTTPResults(t *testing.T) {
 		t.Fatalf("token de máquina acessou API humana: %d", resp.StatusCode)
 	}
 	seedInstance(t, d, "machine-job", "ops", "RUNNING")
+	if _, err := d.Exec("UPDATE instances SET agent_id=? WHERE id=?", "http-worker", "machine-job"); err != nil {
+		t.Fatal(err)
+	}
 	resp = doReq(t, srv.Client(), http.MethodPost, srv.URL+"/api/agent/output", created.Token, `{"instanceId":"machine-job","chunk":"working"}`)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {

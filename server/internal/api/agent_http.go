@@ -19,7 +19,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Dr0nj/regente-server/internal/auth"
 	"github.com/Dr0nj/regente-server/internal/domain"
 	"github.com/Dr0nj/regente-server/internal/hub"
 )
@@ -52,10 +51,22 @@ func newAgentBroker(h *hub.Hub) *agentBroker {
 // touch devolve o hub.Client do agente, registrando-o na primeira vez. As
 // capabilities/env são fixadas na criação (evita corrida com PickAgent, que lê
 // sob o lock do hub).
-func (b *agentBroker) touch(id string, caps []string, env string) *hub.Client {
+func (b *agentBroker) touch(p *machinePrincipal, s *server) *hub.Client {
+	id, caps, env := p.AgentID, strings.Split(p.Capabilities, ","), p.Environment
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	pa, ok := b.agents[id]
+	if ok {
+		select {
+		case <-pa.client.Done:
+			ok = false
+		default:
+		}
+	}
+	if ok && pa.client.CredentialID != p.CredentialID {
+		b.hub.Unregister(pa.client)
+		ok = false
+	}
 	if !ok {
 		c := &hub.Client{
 			ID:           id,
@@ -64,7 +75,9 @@ func (b *agentBroker) touch(id string, caps []string, env string) *hub.Client {
 			Capabilities: caps,
 			Environment:  env, // ADV-2 — mesmo label do transporte WS
 		}
+		s.secureMachineClient(c, p)
 		b.hub.Register(c)
+		s.watchMachine(c)
 		pa = &pollAgent{client: c}
 		b.agents[id] = pa
 	}
@@ -88,33 +101,40 @@ func (b *agentBroker) reap() {
 	}
 }
 
-func (s *server) agentAuthOK(r *http.Request) bool {
-	// Sessões humanas e o bearer administrativo nunca autenticam máquinas.
-	return s.agentTokenValid(auth.ExtractToken(r))
+func (b *agentBroker) keepAlive(c *hub.Client) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	pa := b.agents[c.ID]
+	if pa == nil || pa.client != c {
+		return false
+	}
+	select {
+	case <-c.Done:
+		return false
+	default:
+	}
+	pa.lastSeen = time.Now()
+	return true
 }
 
 // GET /api/agent/poll?id=<id>&caps=COMMAND,SCRIPT — long-poll por dispatch.
 func (s *server) agentPoll(w http.ResponseWriter, r *http.Request) {
-	if !s.agentAuthOK(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	p, ok := s.machineHandshake(w, r)
+	if !ok {
 		return
 	}
 	if s.agentBroker == nil {
 		http.Error(w, "http transport disabled", http.StatusServiceUnavailable)
 		return
 	}
-	id := r.URL.Query().Get("id")
-	if id == "" {
-		http.Error(w, "missing id", http.StatusBadRequest)
-		return
-	}
-	var caps []string
-	if c := r.URL.Query().Get("caps"); c != "" {
-		caps = strings.Split(c, ",")
-	}
-	client := s.agentBroker.touch(id, caps, r.URL.Query().Get("env"))
+	client := s.agentBroker.touch(p, s)
+	defer closeMachineStream(w, client)()
 	select {
 	case raw, ok := <-client.Send:
+		if !s.machineValid(p) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 		if !ok {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -130,7 +150,8 @@ func (s *server) agentPoll(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/agent/result {instanceId, exitCode, output} — finaliza a instance.
 func (s *server) agentResult(w http.ResponseWriter, r *http.Request) {
-	if !s.agentAuthOK(r) {
+	p, ok := s.machineAuth(r)
+	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -143,6 +164,10 @@ func (s *server) agentResult(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad body", http.StatusBadRequest)
 		return
 	}
+	if !s.machineOwns(p, ev.InstanceID) {
+		http.Error(w, "instance is not assigned to this agent", http.StatusForbidden)
+		return
+	}
 	status := domain.StatusOK
 	if ev.ExitCode != 0 {
 		status = domain.StatusNotOK
@@ -153,7 +178,8 @@ func (s *server) agentResult(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/agent/output {instanceId, chunk} — stream interino de stdout/stderr.
 func (s *server) agentOutput(w http.ResponseWriter, r *http.Request) {
-	if !s.agentAuthOK(r) {
+	p, ok := s.machineAuth(r)
+	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -163,6 +189,10 @@ func (s *server) agentOutput(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&ev); err != nil {
 		http.Error(w, "bad body", http.StatusBadRequest)
+		return
+	}
+	if !s.machineOwns(p, ev.InstanceID) {
+		http.Error(w, "instance is not assigned to this agent", http.StatusForbidden)
 		return
 	}
 	if ev.InstanceID != "" && ev.Chunk != "" {

@@ -45,9 +45,9 @@ func TestPingAgent_OfflineAndRoundTrip(t *testing.T) {
 	}
 
 	// Conecta um agente WS real com credencial própria que responde pong.
-	machineToken := newMachineToken(t, d)
-	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/agent?token=" + machineToken + "&id=ag1&caps=COMMAND&os=linux"
-	c, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	machineToken := newMachineToken(t, d, "ag1")
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/agent?id=ag1&caps=COMMAND&os=linux"
+	c, _, err := websocket.DefaultDialer.Dial(wsURL, http.Header{"Authorization": []string{"Bearer " + machineToken}})
 	if err != nil {
 		t.Fatalf("dial ws: %v", err)
 	}

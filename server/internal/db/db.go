@@ -12,6 +12,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strconv"
@@ -53,6 +54,14 @@ func (d *DB) Query(query string, args ...any) (*sql.Rows, error) {
 
 func (d *DB) QueryRow(query string, args ...any) *sql.Row {
 	return d.DB.QueryRow(rebind(query, d.dialect), args...)
+}
+
+func (d *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return d.DB.QueryRowContext(ctx, rebind(query, d.dialect), args...)
+}
+
+func (d *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return d.DB.ExecContext(ctx, rebind(query, d.dialect), args...)
 }
 
 // Begin abre uma transação que também reescreve as queries por dialeto.
@@ -458,6 +467,7 @@ var sqliteMigrations = []migration{
 	{version: 21, sql: schemaV21()},
 	{version: 22, sql: schemaV22(sqliteID, "DATETIME")},
 	{version: 23, sql: schemaV23(sqliteID, "DATETIME")},
+	{version: 24, sql: schemaV24()},
 }
 
 var pgMigrations = []migration{
@@ -484,6 +494,7 @@ var pgMigrations = []migration{
 	{version: 21, sql: schemaV21()},
 	{version: 22, sql: schemaV22(pgID, "TIMESTAMPTZ")},
 	{version: 23, sql: schemaV23(pgID, "TIMESTAMPTZ")},
+	{version: 24, sql: schemaV24()},
 }
 
 // schemaV23 — ST-1 (Statistics honesta, 2026-08-05): a EXECUÇÃO vira linha
@@ -558,10 +569,10 @@ CREATE INDEX IF NOT EXISTS idx_instance_output_inst ON instance_output(instance_
 // schemaV21 — lógica booleana de entrada (CL) CONGELADA na instance (2026-07-20).
 // Mesmo racional dos campos M1 (v18): as LINHAS do Monitoring distinguem membros
 // de grupos OR (CL-4) a partir do que a ORDEM tinha, não da def viva. JSON do
-// domain.ConditionLogic; '' = sem lógica (AND implícito de conds_in). O gate já lê
+// domain.ConditionLogic; ” = sem lógica (AND implícito de conds_in). O gate já lê
 // a lógica do definition_snapshot (defForInstance); esta coluna só PROMOVE o dado
 // pra lista sem parsear o snapshot por linha. Backfill em Go via meta_flags (v21).
-// ALTER idêntico nos dois dialetos; instances antigas ficam com '' (linhas AND).
+// ALTER idêntico nos dois dialetos; instances antigas ficam com ” (linhas AND).
 func schemaV21() string {
 	return `ALTER TABLE instances ADD COLUMN cond_logic TEXT NOT NULL DEFAULT ''`
 }
@@ -746,15 +757,15 @@ CREATE TABLE IF NOT EXISTS job_templates (
 // schemaV14 — hold_scope: ORIGEM do HOLD, para separar "pausa de folder" (D-2) de
 // um hold individual de operador. Ambos usam o MESMO status HELD; só o escopo
 // diferencia quem pode liberar:
-//   - ''       = hold individual (ou instância não-HELD): pode ser liberado 1-a-1
-//                pelo Release do operador.
+//   - ”       = hold individual (ou instância não-HELD): pode ser liberado 1-a-1
+//     pelo Release do operador.
 //   - 'folder' = segurado por uma PAUSA DE FOLDER (POST /folders/{name}/pause):
-//                não pode ser liberado individualmente — só o resume da folder
-//                inteira destrava (Control-M "Hold folder" ⇒ "Release folder").
+//     não pode ser liberado individualmente — só o resume da folder
+//     inteira destrava (Control-M "Hold folder" ⇒ "Release folder").
 //
 // Sinaliza na UI: o cadeado do card/linha muda de tinta (folder vs individual) e
 // a própria folder ganha um cadeado quando tem qualquer job em hold de folder.
-// ALTER idêntico em SQLite e Postgres; instances antigas ficam com '' (hold
+// ALTER idêntico em SQLite e Postgres; instances antigas ficam com ” (hold
 // legado conta como individual — comportamento anterior preservado).
 func schemaV14() string {
 	return `ALTER TABLE instances ADD COLUMN hold_scope TEXT NOT NULL DEFAULT ''`
@@ -784,7 +795,7 @@ func schemaV14() string {
 //     rerun de não-consumido devolve os eventos pro pool; rerun/cancel do PAI
 //     não toca claims já feitos (a linha satisfeita permanece verde).
 //
-// instances.force_mode distingue o Force: '' = "Run Now" clássico (bypass total
+// instances.force_mode distingue o Force: ” = "Run Now" clássico (bypass total
 // de gates, ordem EXISTENTE); 'order' = "Order Force" do Design (ordem NOVA fora
 // do agendamento, mas que RESPEITA os gates de runtime — deps/conditions/agente).
 func schemaV15(idDef, ts string) string {
@@ -837,9 +848,10 @@ func schemaV17(ts string) string {
 //     nunca mais da topologia viva do Design (criar job novo no dia não redesenha
 //     instancias antigas). conds_in já gravado EXPANDIDO (ExpandSnapshotConditions
 //     cobre upstream legado).
+//
 // Backfill em Go (parse do definition_snapshot) roda no boot via meta_flags —
 // ver scheduler.MigrateMonitoringSnapshot. Instances antigas sem snapshot ficam
-// com defaults ('' — o front cai na def viva SÓ nesse caso legado).
+// com defaults (” — o front cai na def viva SÓ nesse caso legado).
 // ALTERs idênticos em SQLite e Postgres.
 func schemaV18() string {
 	return `ALTER TABLE instances ADD COLUMN label TEXT NOT NULL DEFAULT '';
@@ -854,11 +866,11 @@ ALTER TABLE instances ADD COLUMN conds_out_add TEXT NOT NULL DEFAULT ''`
 // schemaV19 — recursos/quotas (F15) CONGELADOS na instance (2026-07-18). Mesmo
 // racional dos campos M1 (v18): o card "WAIT RESOURCE" do Monitoring deriva do
 // que a ORDEM exigia, não da def viva — mudar os recursos de um job no Design
-// não reescreve cards já ordenados. JSON {nome: qtd}; '' = sem recurso. O gate
+// não reescreve cards já ordenados. JSON {nome: qtd}; ” = sem recurso. O gate
 // do scheduler já lê os recursos do definition_snapshot (defForInstance), então
 // esta coluna só PROMOVE o mesmo dado pra lista sem parsear o snapshot por linha.
 // Backfill em Go (parse do snapshot) roda no boot via meta_flags (v19).
-// ALTER idêntico em SQLite e Postgres; instances antigas ficam com '' (o card
+// ALTER idêntico em SQLite e Postgres; instances antigas ficam com ” (o card
 // cai no fallback: sem recurso conhecido, sem selo).
 func schemaV19() string {
 	return `ALTER TABLE instances ADD COLUMN resources TEXT NOT NULL DEFAULT ''`
@@ -885,7 +897,7 @@ func schemaV20() string {
 // NOTOK congela o tratamento, segurar um OK evita rerun acidental, e a pausa de
 // folder segura o dia INTEIRO (incluindo carry-over). O Release/Resume restaura
 // o status ORIGINAL daqui em vez de mandar tudo pra WAITING (que re-executaria
-// um OK segurado). '' = hold legado/pré-migração: release cai em WAITING, o
+// um OK segurado). ” = hold legado/pré-migração: release cai em WAITING, o
 // comportamento antigo. Só tem significado enquanto status='HELD' — todo hold
 // sobrescreve o valor na entrada.
 func schemaV16() string {

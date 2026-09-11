@@ -87,7 +87,7 @@ func main() {
 		token     = flag.String("token", envOr("REGENTE_TOKEN", ""), "Agent token created in Settings > Agents")
 		agentID   = flag.String("id", hostnameOr("agent-local"), "Agent ID (unique)")
 		caps      = flag.String("caps", "COMMAND,SCRIPT,HTTP,REST,WASM,DATABASE,FILE_WATCH,FILE_TRANSFER,MFT", "Comma-separated capabilities advertised")
-		agentEnv  = flag.String("env", envOr("REGENTE_AGENT_ENV", ""), "This agent's environment/site (ADV-2; e.g. prod, dc-sp). Empty = generalist; a job with an environment only routes to an agent in the same env")
+		agentEnv  = flag.String("env", envOr("REGENTE_AGENT_ENV", ""), "Provisioned environment (exact match). Empty permits only unlabeled jobs")
 		transport = flag.String("transport", envOr("REGENTE_AGENT_TRANSPORT", "ws"), "Transport: ws (WebSocket) | http (long-poll) | sse (Server-Sent Events, immediate push) — the last two are serverless-friendly")
 	)
 	flag.Parse()
@@ -119,7 +119,7 @@ func main() {
 		log.Fatalf("parse url: %v", err)
 	}
 	q := u.Query()
-	q.Set("token", *token)
+	q.Del("token")
 	q.Set("id", *agentID)
 	q.Set("caps", *caps)
 	if *agentEnv != "" {
@@ -144,7 +144,7 @@ func main() {
 			return
 		default:
 		}
-		if err := runAgent(u.String()); err != nil {
+		if err := runAgent(u.String(), *token); err != nil {
 			log.Printf("connection lost: %v (reconnect in 3s)", err)
 			select {
 			case <-stop:
@@ -155,8 +155,12 @@ func main() {
 	}
 }
 
-func runAgent(wsURL string) error {
-	c, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+func runAgent(wsURL string, tokens ...string) error {
+	header := http.Header{}
+	if len(tokens) > 0 {
+		header.Set("Authorization", "Bearer "+tokens[0])
+	}
+	c, _, err := websocket.DefaultDialer.Dial(wsURL, header)
 	if err != nil {
 		return err
 	}

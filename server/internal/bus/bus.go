@@ -36,6 +36,7 @@ type Transport interface {
 }
 
 type remoteAgent struct {
+	strict   bool
 	node     string
 	caps     []string
 	env      string // ADV-2 — ambiente do agente (roteamento por env cross-nó)
@@ -73,15 +74,18 @@ type webEnvelope struct {
 	Payload interface{} `json:"payload"`
 }
 type agentInfo struct {
-	ID   string   `json:"id"`
-	Caps []string `json:"caps"`
-	Env  string   `json:"env,omitempty"` // ADV-2
+	Strict bool     `json:"strictIdentity,omitempty"`
+	ID     string   `json:"id"`
+	Caps   []string `json:"caps"`
+	Env    string   `json:"env,omitempty"` // ADV-2
 }
 type presenceMsg struct {
 	Node   string      `json:"node"`
 	Agents []agentInfo `json:"agents"`
 }
 type routedDispatch struct {
+	Capability  string          `json:"capability"`
+	Environment string          `json:"environment"`
 	TargetAgent string          `json:"agent"`
 	Raw         json.RawMessage `json:"raw"`
 }
@@ -136,8 +140,12 @@ func (d *Distributed) HasAgent(agentID, capability, env string) bool {
 }
 
 func (d *Distributed) Dispatch(agentID, capability, env string, raw []byte) (hub.DispatchOutcome, string) {
+	return d.DispatchWithAssignment(agentID, capability, env, raw, nil)
+}
+
+func (d *Distributed) DispatchWithAssignment(agentID, capability, env string, raw []byte, assign func(string) error) (hub.DispatchOutcome, string) {
 	// 1. Agent local? mantém a semântica exata do hub (Sent/QueueFull).
-	if out, id := d.local.Dispatch(agentID, capability, env, raw); out != hub.DispatchNoAgent {
+	if out, id := d.local.DispatchWithAssignment(agentID, capability, env, raw, assign); out != hub.DispatchNoAgent {
 		return out, id
 	}
 	// 2. Agent remoto (via presença): roteia o payload ao nó dono.
@@ -145,7 +153,13 @@ func (d *Distributed) Dispatch(agentID, capability, env string, raw []byte) (hub
 	if node == "" {
 		return hub.DispatchNoAgent, ""
 	}
-	data, _ := json.Marshal(routedDispatch{TargetAgent: id, Raw: json.RawMessage(raw)})
+	if assign != nil && assign(id) != nil {
+		return hub.DispatchNoAgent, ""
+	}
+	data, err := json.Marshal(routedDispatch{TargetAgent: id, Raw: json.RawMessage(raw), Capability: capability, Environment: env})
+	if err != nil {
+		return hub.DispatchNoAgent, ""
+	}
 	if err := d.tr.Publish(subjDispatchPrefix+node, data); err != nil {
 		log.Printf("[bus] route dispatch -> %s: %v", node, err)
 		return hub.DispatchNoAgent, ""
@@ -189,13 +203,13 @@ func (d *Distributed) findRemote(agentID, capability, env string) (node, id stri
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	if agentID != "" {
-		if ra, ok := d.remote[agentID]; ok && hub.EnvMatch(env, ra.env) {
+		if ra, ok := d.remote[agentID]; ok && time.Since(ra.lastSeen) <= d.ttl && hub.Matches(&hub.Client{Capabilities: ra.caps, Environment: ra.env, StrictIdentity: ra.strict}, capability, env) {
 			return ra.node, agentID
 		}
 		return "", ""
 	}
 	for aid, ra := range d.remote {
-		if !hub.EnvMatch(env, ra.env) {
+		if time.Since(ra.lastSeen) > d.ttl || !hub.Matches(&hub.Client{Capabilities: ra.caps, Environment: ra.env, StrictIdentity: ra.strict}, capability, env) {
 			continue
 		}
 		for _, c := range ra.caps {
@@ -226,7 +240,7 @@ func (d *Distributed) onPresence(data []byte) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for _, a := range m.Agents {
-		d.remote[a.ID] = remoteAgent{node: m.Node, caps: a.Caps, env: a.Env, lastSeen: now}
+		d.remote[a.ID] = remoteAgent{node: m.Node, caps: a.Caps, env: a.Env, lastSeen: now, strict: a.Strict}
 	}
 	// Expira presença remota não renovada (agent desconectou do nó dono).
 	for id, ra := range d.remote {
@@ -241,13 +255,7 @@ func (d *Distributed) onRoutedDispatch(data []byte) {
 	if json.Unmarshal(data, &env) != nil {
 		return
 	}
-	a := d.local.GetAgent(env.TargetAgent)
-	if a == nil {
-		return // agent saiu deste nó; o watchdog de stuck-running do scheduler cobre
-	}
-	select {
-	case a.Send <- []byte(env.Raw):
-	default:
+	if outcome, _ := d.local.Dispatch(env.TargetAgent, env.Capability, env.Environment, []byte(env.Raw)); outcome != hub.DispatchSent {
 		log.Printf("[bus] dispatch roteado p/ %s: buffer cheio", env.TargetAgent)
 	}
 }
@@ -259,7 +267,8 @@ func (d *Distributed) publishPresence() {
 		id, _ := a["id"].(string)
 		caps, _ := a["capabilities"].([]string)
 		env, _ := a["environment"].(string)
-		agents = append(agents, agentInfo{ID: id, Caps: caps, Env: env})
+		strict, _ := a["strictIdentity"].(bool)
+		agents = append(agents, agentInfo{ID: id, Caps: caps, Env: env, Strict: strict})
 	}
 	data, _ := json.Marshal(presenceMsg{Node: d.node, Agents: agents})
 	if err := d.tr.Publish(subjPresence, data); err != nil {

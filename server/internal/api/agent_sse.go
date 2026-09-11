@@ -12,7 +12,6 @@ package api
 
 import (
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -23,17 +22,12 @@ const sseKeepalive = 20 * time.Second
 
 // agentSSE — GET /api/agent/events?id=&caps=&env= : abre o stream de dispatch.
 func (s *server) agentSSE(w http.ResponseWriter, r *http.Request) {
-	if !s.agentAuthOK(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	p, ok := s.machineHandshake(w, r)
+	if !ok {
 		return
 	}
 	if s.agentBroker == nil {
 		http.Error(w, "http transport disabled", http.StatusServiceUnavailable)
-		return
-	}
-	id := r.URL.Query().Get("id")
-	if id == "" {
-		http.Error(w, "missing id", http.StatusBadRequest)
 		return
 	}
 	flusher, ok := w.(http.Flusher)
@@ -41,12 +35,8 @@ func (s *server) agentSSE(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	var caps []string
-	if c := r.URL.Query().Get("caps"); c != "" {
-		caps = strings.Split(c, ",")
-	}
-	env := r.URL.Query().Get("env")
-	client := s.agentBroker.touch(id, caps, env)
+	client := s.agentBroker.touch(p, s)
+	defer closeMachineStream(w, client)()
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -63,10 +53,15 @@ func (s *server) agentSSE(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case raw, ok := <-client.Send:
+			if !s.machineValid(p) {
+				return
+			}
 			if !ok {
 				return // broker removeu o client (reaper/unregister) → fim do stream
 			}
-			s.agentBroker.touch(id, caps, env) // atividade → mantém lastSeen fresco
+			if !s.agentBroker.keepAlive(client) {
+				return
+			}
 			// SSE: um evento é "data: <linha>\n\n". O payload é JSON de 1 linha.
 			if _, err := w.Write([]byte("data: ")); err != nil {
 				return
@@ -75,9 +70,14 @@ func (s *server) agentSSE(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte("\n\n"))
 			flusher.Flush()
 		case <-ka.C:
+			if !s.machineValid(p) {
+				return
+			}
 			// Heartbeat: re-toca o broker (senão o reaper mata o agente que não
 			// re-polla) e envia um comentário para detectar conexão morta.
-			s.agentBroker.touch(id, caps, env)
+			if !s.agentBroker.keepAlive(client) {
+				return
+			}
 			if _, err := w.Write([]byte(": ping\n\n")); err != nil {
 				return
 			}

@@ -1523,7 +1523,7 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 		// Dispatch via Bus: local (hub) ou roteado ao nó dono do agent (bus NATS).
 		// Só o líder chega aqui (tick leader-gated) → a escolha do agent é feita por
 		// um decisor único, sem dupla-execução entre nós.
-		switch out, agentID := s.hub.Dispatch(def.AgentID, def.JobType, def.Environment, raw); out {
+		switch out, agentID := s.dispatchAssigned(id, def.AgentID, def.JobType, def.Environment, raw); out {
 		case hub.DispatchNoAgent:
 			if s.DemoMode {
 				// Demo/playground: mock finaliza em 1s para não bloquear a demo.
@@ -1552,7 +1552,6 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 			s.emitEvent(id, "submitted", "scheduler", "agent queue full")
 			s.FinishInstance(id, domain.StatusNotOK, -1, "agent queue full")
 		default: // hub.DispatchSent
-			_, _ = s.db.Exec(`UPDATE instances SET agent_id=? WHERE id=?`, agentID, id)
 			s.emitEvent(id, "submitted", "scheduler", "dispatched to agent:"+agentID)
 		}
 		// O resultado chega de forma assíncrona via ws handler -> FinishInstance.

@@ -3,9 +3,7 @@
 package api
 
 import (
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -97,8 +95,8 @@ type agentRow struct {
 	Capabilities []string   `json:"capabilities"`
 	Environment  string     `json:"environment,omitempty"` // ADV-2 — label runtime (flag -env); só quando online
 	Online       bool       `json:"online"`
-	Node         string     `json:"node,omitempty"`  // R5 — em qual nó do cluster está conectado
-	Local        bool       `json:"local,omitempty"` // conectado NESTE nó (pingável via ws local)
+	Node         string     `json:"node,omitempty"`        // R5 — em qual nó do cluster está conectado
+	Local        bool       `json:"local,omitempty"`       // conectado NESTE nó (pingável via ws local)
 	StartedAt    *time.Time `json:"startedAt,omitempty"`   // início do processo (uptime)
 	ConnectedAt  *time.Time `json:"connectedAt,omitempty"` // conectou neste servidor (sessão)
 	FirstSeen    *time.Time `json:"firstSeen,omitempty"`
@@ -234,85 +232,4 @@ func (s *server) recordAgentConnect(c *hub.Client) {
 // recordAgentSeen — carimba last_seen_at (heartbeat / desconexão).
 func (s *server) recordAgentSeen(id string) {
 	_, _ = s.cfg.DB.Exec(`UPDATE agents SET last_seen_at=CURRENT_TIMESTAMP WHERE id=?`, id)
-}
-
-// agentTokenValid valida um token de agente contra a tabela agent_tokens e,
-// se válido, atualiza last_used_at. Usado no handshake do /ws/agent.
-func (s *server) agentTokenValid(tok string) bool {
-	if tok == "" {
-		return false
-	}
-	var id int64
-	if err := s.cfg.DB.QueryRow(`SELECT id FROM agent_tokens WHERE token=?`, tok).Scan(&id); err != nil {
-		return false
-	}
-	_, _ = s.cfg.DB.Exec(`UPDATE agent_tokens SET last_used_at=CURRENT_TIMESTAMP WHERE id=?`, id)
-	return true
-}
-
-// listAgentTokens — GET /api/agents/tokens (admin). Nunca devolve o token cru;
-// só um prefixo pra identificação visual.
-func (s *server) listAgentTokens(w http.ResponseWriter, r *http.Request) {
-	if !s.requireAdmin(w, r) {
-		return
-	}
-	rows, err := s.cfg.DB.Query(`SELECT id, label, substr(token,1,8), created_at, COALESCE(last_used_at,'') FROM agent_tokens ORDER BY id DESC`)
-	if err != nil {
-		writeJSON(w, 500, map[string]string{"error": err.Error()})
-		return
-	}
-	defer rows.Close()
-	out := []map[string]any{}
-	for rows.Next() {
-		var id int64
-		var label, prefix, createdAt, lastUsed string
-		if err := rows.Scan(&id, &label, &prefix, &createdAt, &lastUsed); err != nil {
-			continue
-		}
-		out = append(out, map[string]any{
-			"id": id, "label": label, "tokenPrefix": prefix + "…",
-			"createdAt": createdAt, "lastUsedAt": lastUsed,
-		})
-	}
-	if !rowsOK(w, rows) {
-		return
-	}
-	writeJSON(w, 200, out)
-}
-
-// createAgentToken — POST /api/agents/tokens {label} (admin). Retorna o token
-// cru UMA vez (não é recuperável depois).
-func (s *server) createAgentToken(w http.ResponseWriter, r *http.Request) {
-	if !s.requireAdmin(w, r) {
-		return
-	}
-	var body struct {
-		Label string `json:"label"`
-	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
-	b := make([]byte, 24)
-	if _, err := rand.Read(b); err != nil {
-		writeJSON(w, 500, map[string]string{"error": "rand: " + err.Error()})
-		return
-	}
-	token := "rgta_" + hex.EncodeToString(b)
-	id, err := s.cfg.DB.InsertID(`INSERT INTO agent_tokens(token, label) VALUES(?,?)`, token, body.Label)
-	if err != nil {
-		writeJSON(w, 500, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, 200, map[string]any{"id": id, "label": body.Label, "token": token})
-}
-
-// revokeAgentToken — DELETE /api/agents/tokens/{id} (admin).
-func (s *server) revokeAgentToken(w http.ResponseWriter, r *http.Request) {
-	if !s.requireAdmin(w, r) {
-		return
-	}
-	id := chi.URLParam(r, "id")
-	if _, err := s.cfg.DB.Exec(`DELETE FROM agent_tokens WHERE id=?`, id); err != nil {
-		writeJSON(w, 500, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, 200, map[string]string{"status": "revoked"})
 }

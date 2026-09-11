@@ -58,6 +58,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
 <a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
 <a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
 <a href="integration-baseline.html" class="active">Integration baseline and migration runbook</a>
 </nav>
 <main>
@@ -243,9 +244,9 @@ are regression budgets tied to current mechanisms or a future contract, not SLAs
 <td>I08/I09 must implement and measure; current transport has no durable ACK</td>
 </tr>
 <tr>
-<td>Active credential revocation</td>
-<td>Proposed ≤5s on all nodes, one bounded revalidation cycle</td>
-<td>I02/I04; not delivered by I00</td>
+<td>Active agent credential revocation</td>
+<td>≤5s on both nodes; 1s revalidation and bounded DB query</td>
+<td>I02 WS/HTTP/SSE machine identity matrix plus cross-process cluster measurement; human session revocation remains I04</td>
 </tr>
 <tr>
 <td>Reconciliation after recovery</td>
@@ -289,7 +290,8 @@ the live SQLite <code>.db</code> while ignoring WAL. For PostgreSQL, use <code>p
 the established PITR procedure. Confirm restoration on an isolated target.</li>
 <li>Run the new binary with <code>-migrate-only</code> and the intended database configuration.
 Increase <code>-migration-timeout</code> only from a measured rehearsal; e.g. <code>10m</code>.</li>
-<li>Success reports schema 23 and supported range <code>[23,23]</code>. History is in
+<li>Success reports schema 24 and supported range <code>[24,24]</code>. Schema-23 agent
+credentials require <a href="agent-identity.html">explicit reissue</a>. History is in
 <code>schema_migrations</code>; hashes and <code>applied</code>/<code>legacy-adopted</code> provenance are in
 <code>schema_migration_checksums</code>. Legacy adoption cannot prove historical SQL or
 detect every pre-existing manual schema mutation; inspect/rehearse old databases.</li>

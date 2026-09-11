@@ -47,19 +47,12 @@ func (s *server) wsWeb(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) wsAgent(w http.ResponseWriter, r *http.Request) {
 	// Mesmo gate exclusivo de máquina usado por HTTP e SSE.
-	if !s.agentAuthOK(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	p, ok := s.machineHandshake(w, r)
+	if !ok {
 		return
 	}
-	agentID := r.URL.Query().Get("id")
-	if agentID == "" {
-		agentID = "agent-" + randID()
-	}
-	capStr := r.URL.Query().Get("caps")
-	var caps []string
-	if capStr != "" {
-		caps = strings.Split(capStr, ",")
-	}
+	agentID := p.AgentID
+	caps := strings.Split(p.Capabilities, ",")
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("[ws/agent] upgrade: %v", err)
@@ -79,7 +72,9 @@ func (s *server) wsAgent(w http.ResponseWriter, r *http.Request) {
 		Version:      q.Get("ver"),
 		Started:      q.Get("started"),
 	}
+	s.secureMachineClient(c, p)
 	s.cfg.Hub.Register(c)
+	s.watchMachine(c)
 	s.recordAgentConnect(c)
 	log.Printf("[ws/agent] %s connected caps=%v env=%q os=%s/%s host=%s", agentID, caps, c.Environment, c.OS, c.Arch, c.Host)
 	// Agente voltou: (1) avisa a UI (cards WAIT AGENT re-derivam na hora) e
@@ -92,6 +87,10 @@ func (s *server) wsAgent(w http.ResponseWriter, r *http.Request) {
 
 	go clientWriter(c)
 	clientReader(c, func(msg []byte) {
+		if !s.machineValid(p) {
+			s.cfg.Hub.Unregister(c)
+			return
+		}
 		var ev struct {
 			Event      string `json:"event"`
 			InstanceID string `json:"instanceId"`
@@ -111,12 +110,20 @@ func (s *server) wsAgent(w http.ResponseWriter, r *http.Request) {
 				s.pings.signal(ev.PingID)
 			}
 		case "result":
+			if !s.machineOwns(p, ev.InstanceID) {
+				s.cfg.Hub.Unregister(c)
+				return
+			}
 			status := domain.StatusOK
 			if ev.ExitCode != 0 {
 				status = domain.StatusNotOK
 			}
 			s.cfg.Scheduler.FinishInstance(ev.InstanceID, status, ev.ExitCode, ev.Output)
 		case "output":
+			if !s.machineOwns(p, ev.InstanceID) {
+				s.cfg.Hub.Unregister(c)
+				return
+			}
 			// OL-1 — stream de stdout/stderr: APPENDa em instance_output (por
 			// tentativa, live-tail da aba Output), NÃO em instance_events. Assim o
 			// sysout sai da trilha de auditoria/feed. Chunk gravado verbatim (com
@@ -139,6 +146,9 @@ func (s *server) wsAgent(w http.ResponseWriter, r *http.Request) {
 
 func clientWriter(c *hub.Client) {
 	for msg := range c.Send {
+		if c.Authorize != nil && !c.Authorize() {
+			break
+		}
 		if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 			break
 		}

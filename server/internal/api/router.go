@@ -222,6 +222,7 @@ func NewRouter(cfg Config) http.Handler {
 		// B5 — tokens por agente (admin-only enforced no handler)
 		r.Get("/agents/tokens", s.listAgentTokens)
 		r.Post("/agents/tokens", s.createAgentToken)
+		r.Post("/agents/tokens/{id}/rotate", s.rotateAgentToken)
 		r.Delete("/agents/tokens/{id}", s.revokeAgentToken)
 
 		// F13 GitOps
