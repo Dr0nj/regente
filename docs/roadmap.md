@@ -81,15 +81,11 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > detalhado em §✅ Entregue (+ linha no changelog). As caixinhas espalhadas nas seções de
 > baixo **não valem** como status (ver ⛔ REGRA DE STATUS no topo).
 
-### Hardening de agentes — ciclo iniciado em 2026-09-10
+### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
 Escopo ativo deste ciclo: separar credenciais humanas de execução e preparar as
 próximas garantias. Não representa homologação empresarial completa.
 
-- **I00 (restante):** ambiente integrado Postgres/NATS/IdP, perfil de carga e metas
-  operacionais. Baseline Go e lint/build do app já executados no incremento I02a.
-- **I01:** runner de migrações com exclusão mútua, recuperação e verificação de
-  integridade, antes das mudanças de schema de credenciais.
 - **I02 (restante):** vincular credencial a agentId/ambiente/capacidades, hash em
   repouso, expiração/rotação, revogação de conexões ativas e autorização de output/
   resultado por atribuição; isolamento entre tentativas depende do contrato durável.
@@ -387,6 +383,37 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+## I00/I01 — Baseline reproduzível e migrações seguras (2026-09-11)
+
+**I00 concluído:** laboratório descartável Linux/amd64 com PostgreSQL, NATS e
+Keycloak HTTPS, dois processos de servidor e dois agentes reais. Imagens fixadas
+por digest, portas efêmeras em loopback e configuração sintética isolada. Fixtures
+congeladas do schema v22, credencial, draft, daily parcial, job longo e efeitos
+idempotente/não idempotente. Runbook com inventário de cenários, matriz de
+compatibilidade, perfil sintético, metas de engenharia e responsabilidade de
+aprovação do piloto. CI falha por dependência ausente, Skip ou evidência incompleta;
+publicação da release depende do gate de integração do ref selecionado.
+
+**I01 concluído:** transação por migration, lock SQLite BEGIN IMMEDIATE e advisory
+lock transacional PostgreSQL, releitura do histórico sob lock, SHA-256 e origem
+applied/legacy-adopted. Histórico divergente, incompleto ou futuro bloqueia startup.
+Schema de runtime [23,23], upgrade conhecido antes do scheduler, modo -migrate-only
+e timeout configurável. Adoção legada não finge prova retroativa; v23 parcialmente
+aplicada pelo runner antigo exige recuperação explícita para não duplicar backfill.
+Expand/contract e recuperação por backup documentados; sem downgrade destrutivo.
+
+**Evidência:** CI 34588148310 no SHA 7d24f9e passou server, agent, app e integração.
+SQLite/Postgres: concorrência, falha entre instruções, morte de processo, checksum,
+upgrade legado e restore verdes. OIDC real passou; 3 jobs concluíram nos 2 agentes,
+com presença entre nós e reinício preservando ordens. Restore v22→v23 preservou as
+4 entidades da fixture; binário real recusou schema futuro antes de criar workspace.
+O laboratório completo levou 111,455s nesse runner; isso não é medição de capacidade.
+
+Fontes: [runbook](integration-baseline.md), [ADR](adr/001-safe-migrations.md) e
+[relatório por SHA](evidence/i00-i01-7d24f9e.json).
+I02 permanece parcial; homologação de carga crítica, soak, revogação ativa,
+durabilidade de tentativas e demais garantias empresariais continuam em seus gates.
 
 ## I02a — Credencial própria em todos os transportes de agente (2026-09-10)
 
@@ -1584,6 +1611,11 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-09-11 — I00/I01:** laboratório obrigatório PG/NATS/IdP + 2 nós/2 agentes;
+  migrations transacionais com lock/checksum/compatibilidade; fixtures legadas,
+  testes de interrupção/restore e runbook. CI 34588148310 verde no SHA 7d24f9e;
+  gate compartilhado passa a bloquear publicação de release em caso de falha.
 
 - **2026-09-10 — I02a:** gate de máquina separado de sessões humanas/bearer administrativo
   em todos os transportes; agente exige credencial configurada; exemplos e smoke usam

@@ -5,6 +5,13 @@ critical workload or close the remaining identity, durable execution, HA, draft
 storage, security and capacity work. The source baseline is `b88af2a`, schema 23.
 See [the migration decision](adr/001-safe-migrations.md).
 
+Verified baseline: [CI run 34588148310](https://github.com/Dr0nj/regente/actions/runs/34588148310)
+at `7d24f9ee627950e7530c43c4d74cb56daf9bff86`, clean checkout. Server, agent, web
+and mandatory integration passed. The [recorded report](evidence/i00-i01-7d24f9e.json)
+contains the executed test names and timings: 3 cluster jobs completed, legacy
+restore preserved all 4 fixture entities, and incompatible binary startup was
+rejected. Total lab time was 111.455s on that runner; this is not a capacity result.
+
 ## Run the mandatory laboratory
 
 Use a disposable Linux/amd64 machine with Git, Go 1.25+, Python 3.10+, OpenSSL, Docker Engine
