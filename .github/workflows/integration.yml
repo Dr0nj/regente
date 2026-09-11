@@ -32,3 +32,4 @@ jobs:
           name: integration-evidence
           path: .integration/*/evidence/
           if-no-files-found: error
+          include-hidden-files: true

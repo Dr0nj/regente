@@ -54,8 +54,7 @@ func TestParseDialect(t *testing.T) {
 }
 
 // TestSQLiteMigrateAndCRUD valida o migration runner + um round-trip real no
-// SQLite (o gate testável do F1 neste ambiente; o Postgres é validado pelo
-// usuário com REGENTE_TEST_PG_DSN — ver TestPostgresMigrateAndCRUD).
+// SQLite. O gate obrigatório scripts/integration.py cobre também Postgres real.
 func TestSQLiteMigrateAndCRUD(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "test.db")
 	d, err := Open(SQLite, path)
@@ -103,7 +102,7 @@ func TestSQLiteMigrateAndCRUD(t *testing.T) {
 //	REGENTE_TEST_PG_DSN="postgres://user:pw@localhost:5432/regente_test?sslmode=disable" \
 //	    go test ./internal/db/ -run Postgres -v
 //
-// Usa um schema dedicado (regente_test) e o derruba ao final para não sujar a DB.
+// Usa um schema aleatório exclusivo e o derruba ao final para não sujar a DB.
 func TestPostgresMigrateAndCRUD(t *testing.T) {
 	d, _ := migrationTestDB(t, Postgres)
 	if d.Dialect() != Postgres {

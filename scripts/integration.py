@@ -151,7 +151,9 @@ def cluster(env, dsn, nats_url):
             if row["status"] in ("NOTOK", "CANCELLED"):
                 raise RuntimeError(f"Job failed: {instance_id}: {row['status']}")
             return row if row["status"] == "OK" else False
-        eventually("job "+instance_id, finished)
+        row = eventually("job "+instance_id, finished)
+        if "lab-" not in row.get("output", ""):
+            raise RuntimeError("Completed job lost its synthetic output: "+instance_id)
     if (RUN / "agent-b/non-idempotent-effects.txt").read_text() != "lab-effect\n":
         raise RuntimeError("Synthetic non-idempotent effect executed more than once")
     # Repetir a ordem não executa novamente o efeito não idempotente.
@@ -197,7 +199,10 @@ def main():
         nats_info = request("http://127.0.0.1:"+port("nats", 8222)+"/varz")
         REPORT["nats_version"] = nats_info["version"]
         dsn = f"postgres://regente:synthetic-lab-only@127.0.0.1:{pg_port}/regente_lab?sslmode=disable"
-        env = dict(os.environ, REGENTE_REQUIRE_INTEGRATION="1", REGENTE_TEST_PG_DSN=dsn,
+        # Configuração pessoal de Git, TLS, banco ou telemetria não entra no lab.
+        clean_env = {k: v for k, v in os.environ.items()
+                     if not k.startswith(("REGENTE_", "OTEL_")) and k not in ("GITHUB_TOKEN", "GH_TOKEN")}
+        env = dict(clean_env, REGENTE_REQUIRE_INTEGRATION="1", REGENTE_TEST_PG_DSN=dsn,
                    REGENTE_TEST_OIDC_ISSUER=issuer, REGENTE_TEST_OIDC_CLIENT_ID="regente-lab",
                    REGENTE_TEST_OIDC_CLIENT_SECRET="synthetic-client-secret",
                    REGENTE_TEST_OIDC_USER="lab-user", REGENTE_TEST_OIDC_PASS="synthetic-password")
@@ -231,12 +236,18 @@ def main():
         print(str(error), file=sys.stderr, flush=True)
     finally:
         for proc, _ in list(PROCESSES):
-            stop_process(proc)
+            try:
+                stop_process(proc)
+            except Exception as error:
+                REPORT["status"] = "failed"
+                REPORT["process_cleanup_error"] = str(error)
         if compose_started:
             for args, name in [(["logs", "--no-color"], "dependency-logs"),
                                (["down", "-v", "--remove-orphans"], "cleanup")]:
                 try:
-                    command(COMPOSE+args, name=name)
+                    output = command(COMPOSE+args, name=name)
+                    if REPORT["status"] == "failed" and name == "dependency-logs":
+                        print(output[-12000:], file=sys.stderr, flush=True)
                 except Exception as error:
                     REPORT["status"] = "failed"
                     REPORT[name+"_error"] = str(error)
