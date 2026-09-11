@@ -10,6 +10,8 @@
 dist/
 # saida do smoke de instalacao local (scripts/smoke-install.sh --build)
 .smoke/
+.integration/
+__pycache__/
 
 # --- Runtime state (NUNCA versionar) ---
 *.db

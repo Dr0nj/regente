@@ -1,5 +1,10 @@
 # 🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)
 
+For schema upgrades, legacy history adoption and interrupted migrations, follow
+the [migration and integration runbook](integration-baseline.md#safe-schema-upgrade-and-interrupted-upgrade-recovery).
+Back up draft directories separately: their content is not yet guaranteed by the
+shared database metadata.
+
 > How to **survive a disaster, a container restart and an HA failover without losing state or
 > configuration**. Applies to both state store backends: **SQLite** (single node) and
 > **Postgres** (production/HA). Scripts live in

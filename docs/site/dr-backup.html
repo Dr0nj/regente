@@ -58,10 +58,15 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
 <a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
 <a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
 </nav>
 <main>
 <article>
 <h1 id="-dr--backup--restore--regente-server-r6--config-across-restarts-r4">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</h1>
+<p>For schema upgrades, legacy history adoption and interrupted migrations, follow
+the <a href="integration-baseline.html#safe-schema-upgrade-and-interrupted-upgrade-recovery">migration and integration runbook</a>.
+Back up draft directories separately: their content is not yet guaranteed by the
+shared database metadata.</p>
 <blockquote>
 <p>How to <strong>survive a disaster, a container restart and an HA failover without losing state or
 configuration</strong>. Applies to both state store backends: <strong>SQLite</strong> (single node) and

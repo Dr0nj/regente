@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Integration baseline and migration runbook · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</a>
+<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="integration-baseline.html" class="active">Integration baseline and migration runbook</a>
+</nav>
+<main>
+<article>
+<h1 id="integration-baseline-and-migration-runbook">Integration baseline and migration runbook</h1>
+<p>I00/I01 establish a reproducible engineering baseline. They do not qualify a
+critical workload or close the remaining identity, durable execution, HA, draft
+storage, security and capacity work. The source baseline is <code>b88af2a</code>, schema 23.
+See <a href="https://github.com/Dr0nj/regente/blob/main/docs/adr/001-safe-migrations.md">the migration decision</a>.</p>
+<h2 id="run-the-mandatory-laboratory">Run the mandatory laboratory</h2>
+<p>Use a disposable Linux/amd64 machine with Git, Go 1.25+, Python 3.10+, Docker Engine
+and Compose v2. Allow registry/module downloads and approximately 8 GiB RAM for
+the development IdP, compiler and processes. No Python packages are required.</p>
+<pre><code class="language-sh">git clone https://github.com/Dr0nj/regente.git
+cd regente
+python3 scripts/integration.py
+</code></pre>
+<p>Each invocation owns a unique <code>.integration/&lt;run-id&gt;</code> directory, Compose project,
+network and loopback-only ephemeral ports. PostgreSQL uses disposable tmpfs;
+Keycloak imports <code>integration/realm.json</code>; NATS is a real broker. The script builds
+the checked-out source, starts two control planes sharing PostgreSQL/NATS and one
+COMMAND agent per node, executes the synthetic workloads, restarts a node, dumps
+and restores PostgreSQL into another database, then validates the restored schema.
+It always stops its own processes and removes its own containers and volumes.
+Credentials and permissive redirect configuration are synthetic and <strong>lab only</strong>.
+No connection to an existing deployment is required or accepted by this script.</p>
+<p>Images are pinned by Linux/amd64 digest: PostgreSQL 17.6 Alpine, NATS 2.11.8 Alpine,
+Keycloak 26.3.3. These are reproducibility pins, not a recommended production
+version policy. Update them through a reviewed baseline run. Docker Desktop on a
+Windows host is not needed when using the GitHub integration job; Windows native
+Go tests cover SQLite, while the full cluster profile runs on Linux/amd64.</p>
+<p><code>baseline.json</code> and logs live in <code>.integration/&lt;run-id&gt;/evidence/</code>. The report records
+the exact SHA, dirty-checkout indicator, tool/platform versions, resolved images,
+test names, timings and outcomes. GitHub CI and Release upload that directory as
+<code>integration-evidence</code>, including on failure. A missing dependency, failed service,
+skipped selected test or missing required test fails the gate. Local default
+<code>go test</code> may still skip optional external tests; it is <strong>not</strong> integration evidence.
+Release publication depends on integration success for its selected source ref.
+Pushes to <code>codex/**</code> run CI so the baseline can be tested before promotion to main.</p>
+<p>For a manually managed <strong>disposable</strong> PostgreSQL test database, the Go database
+suite accepts a URL in <code>REGENTE_TEST_PG_DSN</code>. It creates and removes a unique schema
+per test. <code>REGENTE_REQUIRE_INTEGRATION=1</code> makes missing PG/OIDC settings fatal.
+The full script provisions all settings itself. Kubernetes/cloud executor tests
+are outside this baseline and are not claimed as executed.</p>
+<h2 id="scenario-inventory-and-compatibility">Scenario inventory and compatibility</h2>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>Fixture / evidence</th>
+<th>Scope</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Fresh DB, two concurrent migrators, restart</td>
+<td><code>TestMigrationSafety</code>, both backends</td>
+<td>Executed by mandatory gate</td>
+</tr>
+<tr>
+<td>v22 legacy upgrade, v23 backfill once</td>
+<td><code>legacy-data.sql</code>, legacy schema constructors</td>
+<td>Token, running job/output, partial daily, draft metadata preserved</td>
+</tr>
+<tr>
+<td>Statement failure after data and DDL</td>
+<td><code>statement_failure_rolls_back_and_resumes</code></td>
+<td>Rollback and retry preserve earlier versions</td>
+</tr>
+<tr>
+<td>Process killed with open transaction</td>
+<td><code>process_death_releases_transaction_and_lock</code></td>
+<td>Real child process, shared lock/transaction primitives, partial DDL and data; then restart runner</td>
+</tr>
+<tr>
+<td>SQL/checksum drift, absent hash, gap/future version</td>
+<td><code>refuse_*</code></td>
+<td>Startup blocked before application services</td>
+</tr>
+<tr>
+<td>Interrupted old autocommit upgrade</td>
+<td><code>legacy_partial_failure_*</code></td>
+<td>Fails closed; no automatic guessed repair</td>
+</tr>
+<tr>
+<td>SQLite pre-upgrade backup/restore</td>
+<td><code>TestMigrationLegacySQLiteBackupRestore</code></td>
+<td>Independent restored file upgrades with preserved data</td>
+</tr>
+<tr>
+<td>PG dump/restore</td>
+<td><code>restored-schema.log</code>, report</td>
+<td>Different database, same runtime schema and completed orders</td>
+</tr>
+<tr>
+<td>Real OIDC authorization-code flow</td>
+<td><code>TestIntegrationOIDC_AuthCodeFlow</code></td>
+<td>Keycloak discovery, login, callback and protected API; not I03 security qualification</td>
+</tr>
+<tr>
+<td>Distributed agents and execution</td>
+<td>cluster report, node/agent logs</td>
+<td>Both agents visible from both nodes; jobs pinned to each node complete; repeat Order Folder does not reexecute effects</td>
+</tr>
+<tr>
+<td>Draft content, daily recovery, uncertain effects</td>
+<td>preserved synthetic fixtures</td>
+<td>Regression scenarios reserved for I07/I10/I12; metadata preservation is not content durability</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Profile</th>
+<th>Baseline support</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SQLite, one runtime node, local disk/WAL</td>
+<td>Go tests on Windows and Linux; concurrent <em>upgrade</em> contention tested; not shared-file HA</td>
+</tr>
+<tr>
+<td>PostgreSQL 17.6, two Linux/amd64 nodes, NATS</td>
+<td>Full laboratory; separate process restart; no fencing/partition guarantee</td>
+</tr>
+<tr>
+<td>Server and agent from same SHA, WS transport</td>
+<td>Full cluster run; HTTP/SSE remain covered by API/agent tests</td>
+</tr>
+<tr>
+<td>Other PostgreSQL versions, mixed binaries, arm64 cluster, external IdPs</td>
+<td>Not qualified by this baseline</td>
+</tr>
+<tr>
+<td>Pre-runner binaries</td>
+<td>Stop all nodes before first upgrade; they cannot enforce the new history checks</td>
+</tr>
+</tbody>
+</table>
+<h2 id="reference-workload-and-engineering-targets">Reference workload and engineering targets</h2>
+<p>The measured CI workload is deliberately small: <strong>3 orders in one synthetic daily</strong>,
+a burst of 3 eligible orders from one request, at most 3 concurrent commands across
+2 agents, two short file operations and one 10-second command (timeouts 30/45s).
+Output is a few short lines. Schedule is disabled in fixtures; explicit Order Folder
+selects them, with no business window or automatic retries. The append workload
+exposes duplicate effects; the replacement workload is idempotent. This profile
+detects broken wiring and data preservation, <strong>not throughput capacity</strong>.</p>
+<p>The engineering maintainer owns these laboratory thresholds; an operations owner
+must separately approve workload-specific targets before a pilot. Numbers below
+are regression budgets tied to current mechanisms or a future contract, not SLAs:</p>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Laboratory target and rationale</th>
+<th>Qualification gate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Migration startup</td>
+<td>2-minute default total deadline; configurable for measured large backfills</td>
+<td>I01; SQLite driver busy wait may add up to its configured busy timeout</td>
+</tr>
+<tr>
+<td>Presence propagation</td>
+<td>Within 75s test deadline, allowing the current 5s announcement/15s TTL plus CI startup noise</td>
+<td>I00 wiring test, not a low-latency SLA</td>
+</tr>
+<tr>
+<td>Dispatch durable ACK</td>
+<td>Proposed ≤5s p99, separating a 2s default tick from network/storage budget</td>
+<td>I08/I09 must implement and measure; current transport has no durable ACK</td>
+</tr>
+<tr>
+<td>Active credential revocation</td>
+<td>Proposed ≤5s on all nodes, one bounded revalidation cycle</td>
+<td>I02/I04; not delivered by I00</td>
+</tr>
+<tr>
+<td>Reconciliation after recovery</td>
+<td>Proposed ≤30s for the 3-order reference set, two 15s presence intervals</td>
+<td>I10/I11; increase workload only with measured evidence</td>
+</tr>
+<tr>
+<td>Availability</td>
+<td>Every scripted probe succeeds after startup/restart readiness; no monthly availability claim</td>
+<td>I16 will measure sustained availability and approved outage budget</td>
+</tr>
+<tr>
+<td>RPO</td>
+<td>Zero committed-order loss for the exact stopped-node/restore snapshots in this lab</td>
+<td>I01 checks snapshot preservation; disaster RPO depends on WAL/backup cadence</td>
+</tr>
+<tr>
+<td>RTO</td>
+<td>Restore and schema verification within the 20-minute CI job budget; report actual seconds</td>
+<td>I16 must set a workload-sized RTO, including operator and infrastructure time</td>
+</tr>
+<tr>
+<td>Soak</td>
+<td>Proposed 30-minute developer soak, then 24h pilot rehearsal with a frozen load profile</td>
+<td>I16; short I00 smoke is not a completed soak</td>
+</tr>
+</tbody>
+</table>
+<p>Before a pilot, the operations owner records expected daily count, peak ready/s,
+maximum concurrency, duration/output distributions, business windows/timezone,
+retention, topology/platforms and backup constraints. No volume is inferred from
+a prospective organization. The resulting profile replaces the synthetic one;
+capacity and business acceptance stay open until then.</p>
+<h2 id="safe-schema-upgrade-and-interrupted-upgrade-recovery">Safe schema upgrade and interrupted-upgrade recovery</h2>
+<ol>
+<li>Record the source/target binary versions and schema history. Stop old control
+planes, quiesce writes and retain definitions plus draft directories separately
+from the database. Draft content is not yet guaranteed by shared metadata.</li>
+<li>Take and verify a backup using <a href="dr-backup.html">the backup guide</a>. Never copy only
+the live SQLite <code>.db</code> while ignoring WAL. For PostgreSQL, use <code>pg_dump -Fc</code> or
+the established PITR procedure. Confirm restoration on an isolated target.</li>
+<li>Run the new binary with <code>-migrate-only</code> and the intended database configuration.
+Increase <code>-migration-timeout</code> only from a measured rehearsal; e.g. <code>10m</code>.</li>
+<li>Success reports schema 23 and supported range <code>[23,23]</code>. History is in
+<code>schema_migrations</code>; hashes and <code>applied</code>/<code>legacy-adopted</code> provenance are in
+<code>schema_migration_checksums</code>. Legacy adoption cannot prove historical SQL or
+detect every pre-existing manual schema mutation; inspect/rehearse old databases.</li>
+<li>Start the same tested binary on all control planes. A failed migration stops
+startup before the scheduler/API. With this runner, a process interruption rolls
+back the in-progress version; rerun the same binary to continue after the last
+committed version. Do not remove version rows or overwrite hashes.</li>
+<li>A partial migration left by an older autocommit runner needs an explicit repair
+review or restoration of the verified pre-upgrade backup to a <strong>new</strong> database.
+Preserve the failed database for diagnosis. Point the matching binary at the
+restored database only after checking data, history and isolated smoke results.
+This is recovery by restore, not destructive schema downgrade.</li>
+</ol>
+<p>New migrations must be additive first and preserve existing SQL. Every version
+must be registered for both dialects. SQL containing embedded semicolons or
+operations requiring autocommit is unsupported by this runner: design a separate
+verified resumable procedure before introducing it. PostgreSQL automatically rejects
+nontransactional DDL inside the transaction; the runner never retries it in autocommit.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

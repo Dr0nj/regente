@@ -1,7 +1,6 @@
 package db
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 )
@@ -106,15 +105,7 @@ func TestSQLiteMigrateAndCRUD(t *testing.T) {
 //
 // Usa um schema dedicado (regente_test) e o derruba ao final para não sujar a DB.
 func TestPostgresMigrateAndCRUD(t *testing.T) {
-	dsn := os.Getenv("REGENTE_TEST_PG_DSN")
-	if dsn == "" {
-		t.Skip("REGENTE_TEST_PG_DSN não setado — pulando teste Postgres")
-	}
-	d, err := Open(Postgres, dsn)
-	if err != nil {
-		t.Fatalf("open pg: %v", err)
-	}
-	defer d.Close()
+	d, _ := migrationTestDB(t, Postgres)
 	if d.Dialect() != Postgres {
 		t.Fatalf("dialect=%v want postgres", d.Dialect())
 	}

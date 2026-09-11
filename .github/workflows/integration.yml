@@ -1,0 +1,34 @@
+name: Integration baseline
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  baseline:
+    name: PostgreSQL, NATS, OIDC and migration recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: |
+            server/go.sum
+            agent/go.sum
+      - name: Run mandatory integration gate
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_integration_runner.py'
+          python3 scripts/integration.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-evidence
+          path: .integration/*/evidence/
+          if-no-files-found: error

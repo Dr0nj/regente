@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:17.6-alpine@sha256:747d5ed1fdeeb124b880fbe3d7c6557d2c4064ae41d6b6297d417882effce4be
+    platform: linux/amd64
+    environment:
+      POSTGRES_USER: regente
+      POSTGRES_PASSWORD: synthetic-lab-only
+      POSTGRES_DB: regente_lab
+    ports: ["127.0.0.1::5432"]
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U regente -d regente_lab"]
+      interval: 2s
+      timeout: 3s
+      retries: 40
+  nats:
+    image: nats:2.11.8-alpine@sha256:9e5633ac7584fc4e80d34be3ff7e15aa3fabec79a5573c2d9abefcf1f7761d9a
+    platform: linux/amd64
+    command: ["-m", "8222"]
+    ports: ["127.0.0.1::4222", "127.0.0.1::8222"]
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3.3@sha256:b67f53e348e6e09a5deabfe860f770565d589e39183a73818367206801ba7912
+    platform: linux/amd64
+    command: [start-dev, --import-realm]
+    environment:
+      KC_HOSTNAME_STRICT: "false"
+    ports: ["127.0.0.1::8080"]
+    volumes:
+      - ./realm.json:/opt/keycloak/data/import/regente-realm.json:ro

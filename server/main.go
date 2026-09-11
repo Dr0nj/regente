@@ -58,13 +58,15 @@ var version = "dev"
 
 func main() {
 	var (
-		addr      = flag.String("addr", envOr("REGENTE_ADDR", ":8080"), "HTTP listen address")
-		spaDir    = flag.String("spa-dir", envOr("REGENTE_SPA_DIR", ""), "Single-origin hosting: serve the built SPA from this directory (UI+API+WS on the same port). Empty = API only")
-		docsDir   = flag.String("docs-dir", envOr("REGENTE_DOCS_DIR", ""), "ADV-7: serve the docs site (cmd/docsite) at /docs on the same port. Empty = no docs")
-		workspace = flag.String("workspace", envOr("REGENTE_WORKSPACE", "./workspace"), "Path to regente workspace (contains definitions/)")
-		dbPath    = flag.String("db", envOr("REGENTE_DB", "./regente.db"), "DB DSN: path to the SQLite file, or a Postgres connection string when -db-driver=postgres")
-		dbDriver  = flag.String("db-driver", envOr("REGENTE_DB_DRIVER", "sqlite"), "State store backend: sqlite | postgres")
-		backupTo  = flag.String("backup", "", "R6/DR: writes an online backup of the state store to this path and exits (SQLite: VACUUM INTO; Postgres: use pg_dump — see docs/dr-backup.md)")
+		addr             = flag.String("addr", envOr("REGENTE_ADDR", ":8080"), "HTTP listen address")
+		spaDir           = flag.String("spa-dir", envOr("REGENTE_SPA_DIR", ""), "Single-origin hosting: serve the built SPA from this directory (UI+API+WS on the same port). Empty = API only")
+		docsDir          = flag.String("docs-dir", envOr("REGENTE_DOCS_DIR", ""), "ADV-7: serve the docs site (cmd/docsite) at /docs on the same port. Empty = no docs")
+		workspace        = flag.String("workspace", envOr("REGENTE_WORKSPACE", "./workspace"), "Path to regente workspace (contains definitions/)")
+		dbPath           = flag.String("db", envOr("REGENTE_DB", "./regente.db"), "DB DSN: path to the SQLite file, or a Postgres connection string when -db-driver=postgres")
+		dbDriver         = flag.String("db-driver", envOr("REGENTE_DB_DRIVER", "sqlite"), "State store backend: sqlite | postgres")
+		backupTo         = flag.String("backup", "", "R6/DR: writes an online backup of the state store to this path and exits (SQLite: VACUUM INTO; Postgres: use pg_dump — see docs/dr-backup.md)")
+		migrateOnly      = flag.Bool("migrate-only", false, "Apply and verify schema migrations, then exit before starting services")
+		migrationTimeout = flag.Duration("migration-timeout", 2*time.Minute, "Total schema upgrade and lock wait timeout")
 		// Segurança — TLS/mTLS opcional (vazio = HTTP plano, comportamento atual).
 		tlsCert      = flag.String("tls-cert", envOr("REGENTE_TLS_CERT", ""), "Security: server TLS cert (empty = plain HTTP)")
 		tlsKey       = flag.String("tls-key", envOr("REGENTE_TLS_KEY", ""), "Security: server TLS key")
@@ -148,10 +150,19 @@ func main() {
 		log.Printf("[backup] online snapshot written to %s", *backupTo)
 		return
 	}
-	if err := db.Migrate(database); err != nil {
+	if *migrationTimeout <= 0 {
+		log.Fatal("migration-timeout must be positive")
+	}
+	migrationCtx, migrationCancel := context.WithTimeout(context.Background(), *migrationTimeout)
+	err = db.MigrateContext(migrationCtx, database)
+	migrationCancel()
+	if err != nil {
 		log.Fatalf("db migrate: %v", err)
 	}
-	log.Printf("[db] driver=%s", dialect)
+	log.Printf("[db] driver=%s schema=%d supported=[%d,%d]", dialect, db.MaxSupportedSchema, db.MinSupportedSchema, db.MaxSupportedSchema)
+	if *migrateOnly {
+		return
+	}
 
 	// I1 — tracing OTLP (opt-in). Sem endpoint, no-op (zero overhead).
 	otelShutdown, otelErr := telemetry.Init(context.Background(), *otelEndpoint, *otelService)

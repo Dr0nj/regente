@@ -35,6 +35,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  integration:
+    needs: version
+    if: needs.version.outputs.skip != 'true'
+    uses: ./.github/workflows/integration.yml
+    with:
+      ref: ${{ inputs.tag || github.sha }}
   # Decide a versão ANTES de qualquer build: tag do ref, input do dispatch, ou
   # o próximo patch a partir da maior tag existente (push na main).
   version:
@@ -201,7 +207,7 @@ jobs:
 
   publish:
     name: publish release
-    needs: [version, build, smoke]
+    needs: [version, build, smoke, integration]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

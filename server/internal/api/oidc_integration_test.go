@@ -38,6 +38,9 @@ func TestIntegrationOIDC_AuthCodeFlow(t *testing.T) {
 	user := os.Getenv("REGENTE_TEST_OIDC_USER")
 	pass := os.Getenv("REGENTE_TEST_OIDC_PASS")
 	if issuer == "" || clientID == "" || user == "" || pass == "" {
+		if os.Getenv("REGENTE_REQUIRE_INTEGRATION") == "1" {
+			t.Fatal("configuração OIDC obrigatória no gate de integração")
+		}
 		t.Skip("defina REGENTE_TEST_OIDC_ISSUER/CLIENT_ID/CLIENT_SECRET/USER/PASS para o e2e de SSO")
 	}
 

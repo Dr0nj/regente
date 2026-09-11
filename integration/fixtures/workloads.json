@@ -1,0 +1,5 @@
+[
+  {"id":"lab-idempotent","label":"Idempotent replacement","team":"lab","jobType":"COMMAND","agentId":"lab-agent-a","schedule":{"enabled":false},"timeout":30,"actionConfig":{"command":"printf 'lab-result\n' > idempotent-result.txt; cat idempotent-result.txt"}},
+  {"id":"lab-non-idempotent","label":"Non-idempotent append","team":"lab","jobType":"COMMAND","agentId":"lab-agent-b","schedule":{"enabled":false},"timeout":30,"actionConfig":{"command":"printf 'lab-effect\n' >> non-idempotent-effects.txt; cat non-idempotent-effects.txt"}},
+  {"id":"lab-long","label":"Long synthetic job","team":"lab","jobType":"COMMAND","agentId":"lab-agent-b","schedule":{"enabled":false},"timeout":45,"actionConfig":{"command":"printf 'lab-start\n'; sleep 10; printf 'lab-end\n'"}}
+]

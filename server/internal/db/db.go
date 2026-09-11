@@ -230,52 +230,6 @@ type migration struct {
 	sql     string
 }
 
-// Migrate aplica as migrations pendentes (idempotente) para o dialeto ativo.
-func Migrate(d *DB) error {
-	ddl := `CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at ` + tsType(d.dialect) + ` DEFAULT CURRENT_TIMESTAMP)`
-	if _, err := d.DB.Exec(ddl); err != nil {
-		return err
-	}
-	applied := map[int]bool{}
-	rows, err := d.DB.Query(`SELECT version FROM schema_migrations`)
-	if err != nil {
-		return err
-	}
-	for rows.Next() {
-		var v int
-		if rows.Scan(&v) == nil {
-			applied[v] = true
-		}
-	}
-	// `applied` INCOMPLETO re-rodaria migrations já aplicadas (ALTER TABLE
-	// duplicado no melhor caso, mutação de dados repetida no pior) — aborta o
-	// boot em vez de arriscar.
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return fmt.Errorf("schema_migrations: %w", err)
-	}
-	_ = rows.Close()
-
-	migs := sqliteMigrations
-	if d.dialect == Postgres {
-		migs = pgMigrations
-	}
-	for _, m := range migs {
-		if applied[m.version] {
-			continue
-		}
-		for _, stmt := range splitStatements(m.sql) {
-			if _, err := d.DB.Exec(stmt); err != nil {
-				return fmt.Errorf("migration v%d: %w", m.version, err)
-			}
-		}
-		if _, err := d.Exec(`INSERT INTO schema_migrations(version) VALUES(?)`, m.version); err != nil {
-			return fmt.Errorf("record migration v%d: %w", m.version, err)
-		}
-	}
-	return nil
-}
-
 func tsType(d Dialect) string {
 	if d == Postgres {
 		return "TIMESTAMPTZ"

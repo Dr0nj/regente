@@ -1,0 +1,23 @@
+{
+  "realm": "regente-lab",
+  "enabled": true,
+  "sslRequired": "none",
+  "clients": [{
+    "clientId": "regente-lab",
+    "enabled": true,
+    "publicClient": false,
+    "secret": "synthetic-client-secret",
+    "standardFlowEnabled": true,
+    "redirectUris": ["http://127.0.0.1:*"],
+    "defaultClientScopes": ["profile", "email", "roles"]
+  }],
+  "users": [{
+    "username": "lab-user",
+    "enabled": true,
+    "emailVerified": true,
+    "firstName": "Lab",
+    "lastName": "User",
+    "email": "lab-user@example.invalid",
+    "credentials": [{"type": "password", "value": "synthetic-password", "temporary": false}]
+  }]
+}
