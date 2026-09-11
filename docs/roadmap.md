@@ -86,11 +86,6 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 Escopo ativo deste ciclo: separar credenciais humanas de execução e preparar as
 próximas garantias. Não representa homologação empresarial completa.
 
-- **I02 (restante):** vincular credencial a agentId/ambiente/capacidades, hash em
-  repouso, expiração/rotação, revogação de conexões ativas e autorização de output/
-  resultado por atribuição; isolamento entre tentativas depende do contrato durável.
-  O gate exclusivo de tokens próprios foi separado como **I02a**, entregue abaixo.
-
 ### 🧰 Modo manutenção *(decidido em 2026-07-30)*
 
 > ⛔ **Nada na §Backlog é compromisso de build.** A lista continua sendo o registro honesto
@@ -384,6 +379,37 @@ domínio**, não o binário.
 
 # ✅ Entregue *(tracking por tópico)*
 
+## I02 — Identidade vinculada e ciclo de vida de credenciais (2026-09-11)
+
+Principal de máquina imutável por agentId, ambiente e capacidades. Credencial
+aleatória de 256 bits, apenas SHA-256 no banco, segredo exibido uma vez, expiração
+obrigatória e rotação transacional com janela limitada. Schema 24 aposenta os
+segredos legados e preserva metadata para reemissão explícita; atualização dos
+dois binários e backup prévio obrigatórios. API e Settings > Agents adaptados.
+
+WS, HTTP long-poll e SSE usam Authorization Bearer; credenciais em URL recusadas.
+Claims alterados são negados. Ambiente vazio só permite jobs sem ambiente;
+capabilities também são validadas em jobs pinados. Output/resultado exigem uma
+instância RUNNING atribuída ao principal. A atribuição é persistida antes de
+expor o dispatch local/NATS. Desconexão antiga não remove a nova sessão.
+
+Revogação/expiração/rotação revalidadas em todos os nós pelo banco compartilhado,
+com ciclo de 1s e query limitada. Conexões abertas nos três transportes encerram
+na meta laboratorial de 5s, sem depender de notificação NATS.
+
+Evidência: CI 34629928244, SHA ba12019, checkout limpo, server/agent/app e integração
+verdes. Matriz SQLite/Postgres com dois nós: troca de ID/env/caps, atribuição,
+hash, escopo imutável, rotação com janela e revogação/expiração de WS/poll/SSE.
+Cluster real com dois processos de servidor e dois agentes executou 3 jobs;
+revogação emitida no nó B encerrou conexão no A em 1,017s. Laboratório 87,956s;
+restore v22→24 preservou as quatro entidades (credencial como registro aposentado),
+restore atual preservou 3 ordens. Sem claim de capacidade ou SLA empresarial.
+
+Limite: atribuição da instância atual; fencing por executionId, efeitos tardios
+entre tentativas e entrega durável permanecem I08–I10. Revogar acesso não desfaz
+efeitos de comandos já iniciados. Guia: [agent-identity.md](agent-identity.md).
+[Relatório por SHA](evidence/i02-ba12019.json).
+
 ## I00/I01 — Baseline reproduzível e migrações seguras (2026-09-11)
 
 **I00 concluído:** laboratório descartável Linux/amd64 com PostgreSQL, NATS e
@@ -412,8 +438,8 @@ O laboratório completo levou 111,455s nesse runner; isso não é medição de c
 
 Fontes: [runbook](integration-baseline.md), [ADR](adr/001-safe-migrations.md) e
 [relatório por SHA](evidence/i00-i01-7d24f9e.json).
-I02 permanece parcial; homologação de carga crítica, soak, revogação ativa,
-durabilidade de tentativas e demais garantias empresariais continuam em seus gates.
+I02 estava parcial nesta entrega; foi concluído no tópico acima. Homologação de
+carga crítica, soak e durabilidade de tentativas continuam em seus gates.
 
 ## I02a — Credencial própria em todos os transportes de agente (2026-09-10)
 
@@ -427,11 +453,12 @@ próprios preservam conexão WS/ping, SSE, poll, output e resultado. Suíte Go c
 build/vet e baseline lint/build do app passaram. O smoke de instalação foi adaptado
 para emitir token próprio e é gate obrigatório da release no GitHub; a tentativa
 local foi impedida pela falha de inicialização do Docker Desktop.
-Não houve migração de schema; tokens já emitidos pela UI permanecem válidos.
+Nesta entrega I02a não houve migração e tokens permaneceram válidos. A entrega
+I02/schema 24 acima exige reemissão explícita.
 Guia de atualização: [agent-authentication.md](agent-authentication.md).
 
-O fechamento de I02 e a homologação HA continuam no backlog; este incremento não
-implementa vínculo de identidade, autorização por tentativa ou revogação ativa.
+I02 foi concluído no tópico acima. Este incremento histórico I02a não incluía
+vínculo/revogação; fencing de tentativa e homologação HA continuam pendentes.
 
 
 > Tudo que já foi construído e validado, agrupado por trilha e **detalhado o suficiente pra
@@ -1611,6 +1638,11 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-09-11 — I02:** identidade de máquina vinculada, hash/expiração/rotação,
+  revogação ativa WS/poll/SSE entre nós e atribuição antes de dispatch. Schema 24
+  exige reemissão legada. UI/API/CLI e guias atualizados. CI 34629928244 verde no
+  SHA ba12019; PostgreSQL/SQLite e cluster real aprovados (revogação em 1,017s).
 
 - **2026-09-11 — I00/I01:** laboratório obrigatório PG/NATS/IdP + 2 nós/2 agentes;
   migrations transacionais com lock/checksum/compatibilidade; fixtures legadas,

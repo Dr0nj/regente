@@ -97,3 +97,8 @@ v22/v23 retirement and rejection by the previous runtime. The mandatory integrat
 runner also revokes an agent connected to one real server process through the
 other node and measures the observed removal time. See the
 [integration runbook](integration-baseline.md) for reproduction and evidence.
+
+Verified baseline: [CI 34629928244](https://github.com/Dr0nj/regente/actions/runs/34629928244),
+SHA `ba12019c7458b88a9348434df27b8f6cc8b2262d`, clean checkout. All four jobs passed,
+including both database variants of the identity matrix. Cross-process revocation
+took 1.017s; the full lab took 87.956s. [Recorded evidence](https://github.com/Dr0nj/regente/blob/main/docs/evidence/i02-ba12019.json).
