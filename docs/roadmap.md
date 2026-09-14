@@ -83,6 +83,12 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
+- **I03 — autenticação híbrida e OIDC seguro:** implementado; validação de integração
+  e publicação em andamento. Modos local/hybrid/oidc, identidade issuer+subject,
+  cookies/CSRF, revogação, linking assistido e acesso emergencial opt-in.
+- **I04–I17:** eventos autorizados, perfil produtivo, execução durável, HA,
+  auditoria, capacidade, recuperação e piloto seguem na sequência enterprise.
+
 Escopo ativo deste ciclo: separar credenciais humanas de execução e preparar as
 próximas garantias. Não representa homologação empresarial completa.
 

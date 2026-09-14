@@ -120,20 +120,23 @@ func TestIntegrationOIDC_AuthCodeFlow(t *testing.T) {
 		t.Fatalf("callback esperava 302 pro app, veio %d — %s", resp.StatusCode, string(b))
 	}
 	dest := resp.Header.Get("Location")
-	frag := ""
-	if u, err := url.Parse(dest); err == nil {
-		frag = u.Fragment
+	if dest != base {
+		t.Fatalf("redirect expôs credencial ou destino inesperado: %q", dest)
 	}
-	if !strings.HasPrefix(frag, "token=") || len(frag) < len("token=")+10 {
-		t.Fatalf("app não recebeu #token= no final do SSO: %q", dest)
+	var sessionCookie *http.Cookie
+	for _, ck := range resp.Cookies() {
+		if ck.Name == "regente_session" {
+			sessionCookie = ck
+		}
 	}
-	tokenFromSSO := strings.TrimPrefix(frag, "token=")
-	t.Logf("SSO OK — token de sessão emitido (%d chars), usuário '%s' provisionado", len(tokenFromSSO), user)
+	if sessionCookie == nil || !sessionCookie.HttpOnly || sessionCookie.MaxAge != 300 {
+		t.Fatal("SSO não emitiu cookie protegido")
+	}
+	resp.Body.Close()
 
 	// 5) Prova que a sessão emitida pelo SSO É VÁLIDA na API protegida (não é 401).
 	//    O user é provisionado como admin (DefaultRole) → 200 em /api/users.
 	authed := req(t, "GET", base+"/api/users", nil, "")
-	authed.Header.Set("Authorization", "Bearer "+tokenFromSSO)
 	resp = mustDo(t, c, authed)
 	if resp.StatusCode == http.StatusUnauthorized {
 		t.Fatalf("token do SSO não autenticou (401) — sessão federada inválida")
@@ -141,6 +144,23 @@ func TestIntegrationOIDC_AuthCodeFlow(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("token do SSO (admin) deveria acessar /api/users (200), veio %d", resp.StatusCode)
 	}
+	resp.Body.Close()
+	// Revogação/logout usa CSRF obtido por GET autenticado.
+	me := mustDo(t, c, req(t, "GET", base+"/api/auth/me", nil, ""))
+	csrf := me.Header.Get("X-CSRF-Token")
+	me.Body.Close()
+	logout := req(t, "POST", base+"/api/auth/logout", nil, "")
+	logout.Header.Set("X-CSRF-Token", csrf)
+	resp = mustDo(t, c, logout)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("logout: %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	resp = mustDo(t, c, req(t, "GET", base+"/api/auth/me", nil, ""))
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatal("sessão não revogada")
+	}
+	resp.Body.Close()
 }
 
 func req(t *testing.T, method, u string, body io.Reader, ct string) *http.Request {

@@ -5,6 +5,7 @@ import {
   type AuthUser, type Role,
 } from "../lib/auth-api";
 import { listFolders, type FolderInfo } from "../lib/folder-api";
+import { api } from "../lib/server-client";
 
 interface UsersDialogProps {
   meId: number;
@@ -28,6 +29,11 @@ export function UsersDialog({ meId, onClose }: UsersDialogProps) {
   const [resetFor, setResetFor] = useState<AuthUser | null>(null);
   // F11.10b acls
   const [aclFor, setAclFor] = useState<AuthUser | null>(null);
+  const [linkFor, setLinkFor] = useState<AuthUser | null>(null);
+  async function toggleAccess(u: AuthUser) {
+    try { await api(`/api/users/${u.id}/access`, { method: "PATCH", body: JSON.stringify({ disabled: !u.disabled }) }); await reload(); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Access update failed"); }
+  }
 
   // A2: parte async-only (só setStates pós-await) p/ o efeito de mount; os handlers
   // seguem chamando reload() com o reset síncrono (permitido fora de efeito). loading
@@ -127,6 +133,10 @@ export function UsersDialog({ meId, onClose }: UsersDialogProps) {
                   </td>
                   <td style={td}>{u.createdAt ? new Date(u.createdAt).toLocaleString() : "-"}</td>
                   <td style={td}>
+                    {u.disabled && <span>Disabled </span>}
+                    {u.requiresLink && <span>SSO linking required </span>}
+                    <button onClick={() => setLinkFor(u)} style={{ marginRight: 6 }}>Link SSO</button>
+                    <button onClick={() => void toggleAccess(u)} disabled={u.id === meId} style={{ marginRight: 6 }}>{u.disabled ? "Enable" : "Disable"}</button>
                     <button onClick={() => setAclFor(u)} style={{ marginRight: 6 }} disabled={u.role === "admin"}>ACLs</button>
                     <button onClick={() => setResetFor(u)} style={{ marginRight: 6 }}>reset pw</button>
                     <button onClick={() => doDelete(u)} disabled={u.id === meId} style={{ color: u.id === meId ? "gray" : "salmon" }}>del</button>
@@ -139,9 +149,36 @@ export function UsersDialog({ meId, onClose }: UsersDialogProps) {
       </div>
 
       {resetFor && <ResetPasswordPrompt user={resetFor} onClose={() => { setResetFor(null); reload(); }} />}
+      {linkFor && <IdentityLinkPrompt user={linkFor} onClose={() => { setLinkFor(null); void reload(); }} />}
       {aclFor && <AclEditor user={aclFor} onClose={() => setAclFor(null)} />}
     </div>
   );
+}
+
+function IdentityLinkPrompt({ user, onClose }: { user: AuthUser; onClose: () => void }) {
+  const [issuer, setIssuer] = useState("");
+  const [subject, setSubject] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setBusy(true); setErr("");
+    try { await api(`/api/users/${user.id}/identity`, { method: "POST", body: JSON.stringify({ issuer, subject }) }); onClose(); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Link failed"); }
+    finally { setBusy(false); }
+  }
+  return <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", display: "grid", placeItems: "center", zIndex: 9100 }}>
+    <form onSubmit={submit} className="v2-neon-card" style={{ background: "var(--v2-bg)", padding: 24, width: 460, display: "grid", gap: 12 }}>
+      <h3>Link SSO to {user.username}</h3>
+      <p>Verify the issuer and immutable subject in your identity provider. This identity will receive this account’s permissions.</p>
+      <label>Issuer URL<input required type="url" value={issuer} onChange={e => setIssuer(e.target.value)} /></label>
+      <label>Subject<input required value={subject} onChange={e => setSubject(e.target.value)} /></label>
+      <label><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} /> I verified ownership of this identity.</label>
+      {err && <p role="alert">{err}</p>}
+      <button disabled={busy || !confirmed} type="submit">Link identity</button>
+      <button disabled={busy} type="button" onClick={onClose}>Cancel</button>
+    </form>
+  </div>;
 }
 
 function ResetPasswordPrompt({ user, onClose }: { user: AuthUser; onClose: () => void }) {

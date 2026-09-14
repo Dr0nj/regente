@@ -1317,7 +1317,7 @@ function V2PreviewInner() {
 
   // F11.10 — gate render: only show login overlay in server mode after we know
   // there is no user. Local mode skips auth entirely.
-  if (isServerMode() && authChecked && !me) {
+  if (isServerMode() && authChecked && (!me || me.mustChangePassword)) {
     return <LoginForm onLogin={(u) => setMe(u)} />;
   }
 

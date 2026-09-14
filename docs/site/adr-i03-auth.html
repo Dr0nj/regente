@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agent authentication and upgrades · Regente Docs</title>
+<title>I03: selectable authentication and browser sessions · Regente Docs</title>
 <style>
 :root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
 *{box-sizing:border-box}
@@ -57,34 +57,41 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
 <a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
 <a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
-<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
-<a href="agent-authentication.html" class="active">Agent authentication and upgrades</a>
+<a href="adr-i03-auth.html" class="active">I03: selectable authentication and browser sessions</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
 <a href="agent-identity.html">Agent identity and credential lifecycle</a>
 <a href="authentication.html">Authentication: local, hybrid or SSO</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 </nav>
 <main>
 <article>
-<h1 id="agent-authentication-and-upgrades">Agent authentication and upgrades</h1>
-<p>All external agent transports require a dedicated credential bound to an agent ID,
-environment and capability set. Human sessions and the server API bearer cannot
-authenticate machines. Expired, revoked and unbound legacy tokens are rejected.</p>
-<p>In <strong>Settings &gt; Agents</strong>, issue a token with the verified identity and an expiry,
-then copy its one-time secret into the protected <code>REGENTE_TOKEN</code> service environment.
-Configure <code>-id</code>, <code>-env</code> and <code>-caps</code> to match the provisioned scope and restart the agent.
-Verify presence and a harmless job's dispatch, output and completion.</p>
-<p><strong>Upgrading to schema 24 requires reissuing all schema-23 agent tokens and upgrading
-both server and agent binaries.</strong> Stop old processes and take a verified backup first.
-Legacy token metadata remains listed as <code>requires_reissue</code>; its old secret is retired.
-The previous I02a compatibility statement (tokens remaining valid) applies only to
-the earlier schema-23 release, not this upgrade.</p>
-<p>Use Authorization headers; query-string credentials are no longer accepted.
-All three transports—WS, long-poll and SSE—share identity, attribution and active
-revocation checks. Do not restore administrative/shared-token authentication as a
-workaround for an agent that cannot reconnect.</p>
-<p>See <a href="agent-identity.html">Agent identity and credential lifecycle</a> for the upgrade
-procedure, API contract, expiry, rotation grace periods, active revocation and
-the boundary between current-instance attribution and future attempt fencing.</p>
+<h1 id="i03-selectable-authentication-and-browser-sessions">I03: selectable authentication and browser sessions</h1>
+<p>Status: implementation contract, 2026-09-14.</p>
+<p>Regente supports individuals and enterprises. <code>local</code> (default) supports password
+login, <code>hybrid</code> enables both local and OIDC login, and <code>oidc</code> explicitly requires
+SSO. Provider failure never changes the selected policy. Enterprise features are
+opt-in; secure identity and session handling apply to every mode.</p>
+<p>External identities use issuer and subject. Names, email and provider groups do
+not grant existing account access or roles. New accounts receive the explicitly
+configured initial role (viewer by default). Administrators explicitly link an
+unmapped identity and manage access; changes are recorded transactionally.</p>
+<p>OIDC uses coreos/go-oidc and golang.org/x/oauth2 with signature, issuer, audience,
+expiry, nonce, state and PKCE S256 validation. Single-use login transactions and
+event tickets live in the shared database. Browser sessions use HttpOnly cookies,
+server-side revocation and CSRF tokens. CLI password login retains bearer output;
+SSO browser sessions never appear in URLs or browser storage.</p>
+<p>Federated sessions expire after five minutes, bounded also by ID token expiry.
+Reauthentication requests fresh IdP login. This bounds upstream deprovisioning
+without keeping refresh/access tokens in the database. Local administrative
+revocation applies on the next request and within one second on event sockets.
+Group-to-role mapping is deliberately explicit/manual; no group claim elevates
+permissions automatically. A separately configured emergency account may obtain
+a fifteen-minute session and must already have a non-default local password.</p>
+<p>Migration 25 preserves accounts, invalidates legacy human sessions, and records
+old federated accounts as requiring assisted linking. There is no automatic name
+matching. Stop old servers, back up, upgrade all nodes, then sign in again.</p>
+<p>References: <a href="https://pkg.go.dev/github.com/coreos/go-oidc/v3/oidc">https://pkg.go.dev/github.com/coreos/go-oidc/v3/oidc</a> and
+<a href="https://pkg.go.dev/golang.org/x/oauth2">https://pkg.go.dev/golang.org/x/oauth2</a> (PKCE and nonce caller responsibilities).</p>
 </article>
 <footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
 </main>

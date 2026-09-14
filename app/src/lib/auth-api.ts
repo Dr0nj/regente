@@ -8,6 +8,8 @@ export interface AuthUser {
   role: Role;
   createdAt?: string;
   mustChangePassword?: boolean;
+  disabled?: boolean;
+  requiresLink?: boolean;
 }
 
 export interface LoginResponse {
@@ -33,13 +35,13 @@ export function cacheUser(user: AuthUser | null): void {
   else window.localStorage.removeItem(LS_USER_KEY);
 }
 
-export async function login(username: string, password: string): Promise<LoginResponse> {
+export async function login(username: string, password: string, emergency = false): Promise<LoginResponse> {
   if (!isServerMode()) throw new Error("server mode disabled");
   const res = await api<LoginResponse>("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, browser: true, emergency }),
   });
-  setAuthToken(res.token);
+  setAuthToken("cookie");
   cacheUser(res.user);
   return res;
 }
@@ -67,6 +69,9 @@ export async function changePassword(current: string, next: string): Promise<voi
     method: "POST",
     body: JSON.stringify({ current, next }),
   });
+  // A troca revoga todas as sessões; readquire com a senha nova para o navegador atual.
+  const user = loadCachedUser();
+  if (user) await login(user.username, next);
 }
 
 export async function listUsers(): Promise<AuthUser[]> {

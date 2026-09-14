@@ -114,7 +114,8 @@ func main() {
 		designSessionGCTickMin = flag.Int("design-session-gc-tick-min", 60, "Design session GC tick interval in minutes; 0 disables GC")
 
 		// H1 (2026-06-14) — SSO/OIDC. auth-mode=oidc ativa o flow; default local (admin/senha).
-		authMode         = flag.String("auth-mode", envOr("REGENTE_AUTH_MODE", "local"), "Auth mode: local | oidc")
+		authMode         = flag.String("auth-mode", envOr("REGENTE_AUTH_MODE", "local"), "Auth mode: local | hybrid | oidc (SSO required)")
+		emergencyUser    = flag.String("auth-emergency-user", envOr("REGENTE_AUTH_EMERGENCY_USER", ""), "Optional dedicated local administrator for emergency access")
 		oidcIssuer       = flag.String("oidc-issuer", envOr("REGENTE_OIDC_ISSUER", ""), "OIDC issuer URL (e.g. https://idp/realms/regente)")
 		oidcClientID     = flag.String("oidc-client-id", envOr("REGENTE_OIDC_CLIENT_ID", ""), "OIDC client id")
 		oidcClientSecret = flag.String("oidc-client-secret", envOr("REGENTE_OIDC_CLIENT_SECRET", ""), "OIDC client secret")
@@ -509,10 +510,13 @@ func main() {
 		}, h)
 	}
 
-	// H1 — SSO/OIDC discovery (só quando auth-mode=oidc). Falha de discovery
-	// não derruba o server: cai pro login local e loga o motivo.
+	// A falha do IdP preserva a política; somente hybrid mantém senha normal.
 	var oidcProvider *oidc.Provider
-	if strings.EqualFold(*authMode, "oidc") {
+	mode, modeErr := auth.Mode(*authMode)
+	if modeErr != nil {
+		log.Fatal(modeErr)
+	}
+	if mode == "oidc" || mode == "hybrid" {
 		cfg := oidc.Config{
 			Issuer:       *oidcIssuer,
 			ClientID:     *oidcClientID,
@@ -520,9 +524,12 @@ func main() {
 			RedirectURL:  *oidcRedirectURL,
 			DefaultRole:  *oidcDefaultRole,
 		}
+		if !cfg.Enabled() || !auth.Role(cfg.DefaultRole).Valid() {
+			log.Fatal("[auth] incomplete OIDC configuration or invalid initial role")
+		}
 		p, err := oidc.Discover(ctx, cfg)
 		if err != nil {
-			log.Printf("[auth] OIDC disabled (discovery failed): %v — using local login", err)
+			log.Printf("[auth] OIDC unavailable; policy remains %s; fix provider and restart: %v", mode, err)
 		} else {
 			oidcProvider = p
 			log.Printf("[auth] SSO/OIDC active: issuer=%s client=%s", *oidcIssuer, *oidcClientID)
@@ -557,24 +564,26 @@ func main() {
 	}
 
 	router := api.NewRouter(api.Config{
-		Store:     store,
-		DB:        database,
-		Hub:       h,
-		Scheduler: sched,
-		Token:     *apiToken,
-		Git:       gitOps,
-		GitHub:    ghClient,
-		PRWriter:  prWriter,
-		WriteMode: writeMode,
-		Sessions:  sessionMgr,
-		OIDC:      oidcProvider,
-		AppURL:    *appURL,
-		Audit:     auditSink,
-		SPADir:    *spaDir,
-		DocsDir:   *docsDir,
-		Presence:  remotePresence,
-		NodeID:    *nodeID,
-		Version:   version,
+		Store:         store,
+		DB:            database,
+		Hub:           h,
+		Scheduler:     sched,
+		Token:         *apiToken,
+		Git:           gitOps,
+		GitHub:        ghClient,
+		PRWriter:      prWriter,
+		WriteMode:     writeMode,
+		Sessions:      sessionMgr,
+		OIDC:          oidcProvider,
+		AuthMode:      mode,
+		EmergencyUser: *emergencyUser,
+		AppURL:        *appURL,
+		Audit:         auditSink,
+		SPADir:        *spaDir,
+		DocsDir:       *docsDir,
+		Presence:      remotePresence,
+		NodeID:        *nodeID,
+		Version:       version,
 
 		TrustedProxies: trustedProxies,
 	})

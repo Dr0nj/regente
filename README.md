@@ -25,6 +25,10 @@
 
 ## 🧭 What it is
 
+Authentication is selectable: **local username/password**, **hybrid local + SSO**,
+or **SSO required**. Personal installations keep the local default. See the
+[authentication and upgrade guide](docs/authentication.md) for configuration.
+
 Regente runs your **scheduled jobs** — the scripts, commands, transfers and API calls that have
 to happen every day, in the right order, at the right time, on the right machine.
 

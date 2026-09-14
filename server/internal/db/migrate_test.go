@@ -117,6 +117,31 @@ func TestMigrationSafety(t *testing.T) {
 					t.Fatal("binário v23 aceitou schema v24")
 				}
 			})
+			t.Run("v24_human_sessions_and_ambiguous_accounts", func(t *testing.T) {
+				d, _ := migrationTestDB(t, dialect)
+				migs := sqliteMigrations[:24]
+				if dialect == Postgres {
+					migs = pgMigrations[:24]
+				}
+				if err := migrate(context.Background(), d, migs, 24, 24); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := d.Exec("INSERT INTO users(username,password_hash,role) VALUES('legacy-local','preserve-local-hash','admin'),('legacy-federated','!federated','viewer')"); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := d.Exec("INSERT INTO sessions(token,user_id,expires_at) SELECT 'legacy-human-session',id,? FROM users WHERE username='legacy-local'", time.Now().Add(time.Hour)); err != nil {
+					t.Fatal(err)
+				}
+				if err := Migrate(d); err != nil {
+					t.Fatal(err)
+				}
+				assertCount(t, d, "SELECT COUNT(*) FROM sessions", 0)
+				assertCount(t, d, "SELECT COUNT(*) FROM users WHERE username='legacy-local' AND password_hash='preserve-local-hash' AND requires_link=0", 1)
+				assertCount(t, d, "SELECT COUNT(*) FROM users WHERE username='legacy-federated' AND requires_link=1", 1)
+				if err := migrate(context.Background(), d, migs, 24, 24); err == nil {
+					t.Fatal("binário v24 aceitou schema v25")
+				}
+			})
 			t.Run("statement_failure_rolls_back_and_resumes", func(t *testing.T) {
 				d, _ := migrationTestDB(t, dialect)
 				migs := []migration{{1, `CREATE TABLE probe (id INTEGER PRIMARY KEY); INSERT INTO probe VALUES(1)`},
@@ -142,8 +167,8 @@ func TestMigrationSafety(t *testing.T) {
 					query := map[string]string{
 						"checksum":         `UPDATE schema_migration_checksums SET checksum='wrong' WHERE version=1`,
 						"missing_checksum": `DELETE FROM schema_migration_checksums WHERE version=1`,
-						"future":           `INSERT INTO schema_migrations(version) VALUES(25)`,
-						"gap":              `INSERT INTO schema_migrations(version) VALUES(26)`,
+						"future":           fmt.Sprintf(`INSERT INTO schema_migrations(version) VALUES(%d)`, MaxSupportedSchema+1),
+						"gap":              fmt.Sprintf(`INSERT INTO schema_migrations(version) VALUES(%d)`, MaxSupportedSchema+2),
 					}[damage]
 					if query != "" {
 						if _, err := d.Exec(query); err != nil {

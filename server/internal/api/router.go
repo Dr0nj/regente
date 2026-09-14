@@ -41,8 +41,10 @@ type Config struct {
 	// Etapa 3+4+5 (2026-04-26) — Design sessions efêmeras
 	Sessions *storage.SessionManager
 	// H1 (2026-06-14) — SSO/OIDC. nil = desabilitado (login local segue ativo).
-	OIDC   *oidc.Provider
-	AppURL string // destino do redirect pós-login OIDC (ex.: http://localhost:5173)
+	OIDC          *oidc.Provider
+	AppURL        string // destino do redirect pós-login OIDC (ex.: http://localhost:5173)
+	AuthMode      string
+	EmergencyUser string
 	// Segurança — exportação de auditoria p/ SIEM (login, writes). nil = no-op.
 	Audit *audit.Sink
 	// Hosting single-origin: se != "", serve o SPA buildado deste diretório (UI+API+WS
@@ -93,7 +95,7 @@ func NewRouter(cfg Config) http.Handler {
 	// (GHSA-3fxj-6jh8-hvhx e cia). O substituto só honra X-Forwarded-For/X-Real-IP
 	// vindos de um proxy confiável — ver realip.go.
 	r.Use(realIP(cfg.TrustedProxies))
-	r.Use(cors)
+	r.Use(s.cors)
 
 	r.Get("/health", s.health)
 	// R2 — liveness (público): 200 enquanto o processo serve; reporta idade do tick.
@@ -110,6 +112,7 @@ func NewRouter(cfg Config) http.Handler {
 
 	// Auth public endpoint (no session required)
 	r.Post("/api/auth/login", s.authLogin)
+	r.Get("/api/auth/config", s.authConfig)
 
 	// H1 — SSO/OIDC (público; o flow de login). Inertes se OIDC == nil.
 	r.Get("/api/auth/oidc/login", s.oidcLogin)
@@ -121,6 +124,7 @@ func NewRouter(cfg Config) http.Handler {
 		// Auth (post-login)
 		r.Post("/auth/logout", s.authLogout)
 		r.Get("/auth/me", s.authMe)
+		r.Post("/auth/event-ticket", s.authEventTicket)
 		r.Post("/auth/change-password", s.authChangePassword)
 
 		// Users (admin-only enforced em handler)
@@ -129,6 +133,8 @@ func NewRouter(cfg Config) http.Handler {
 		r.Patch("/users/{id}/role", s.updateUserRole)
 		r.Patch("/users/{id}/password", s.resetUserPassword)
 		r.Delete("/users/{id}", s.deleteUser)
+		r.Post("/users/{id}/identity", s.linkIdentity)
+		r.Patch("/users/{id}/access", s.userAccess)
 
 		// F11.10b — per-folder ACL (admin-only)
 		r.Get("/users/{id}/acls", s.listUserACLs)
@@ -410,11 +416,16 @@ func serveSPA(dir string) http.HandlerFunc {
 	}
 }
 
-func cors(next http.Handler) http.Handler {
+func (s *server) cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		if origin := r.Header.Get("Origin"); origin != "" && s.allowedOrigin(r) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Expose-Headers", "X-CSRF-Token")
+			w.Header().Add("Vary", "Origin")
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-CSRF-Token")
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -435,7 +446,7 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		// Legacy token (env REGENTE_TOKEN / dev-token) → admin equivalente
-		if s.cfg.Token != "" && tok == s.cfg.Token {
+		if s.cfg.Token != "" && tok == s.cfg.Token && s.mode() != "oidc" && s.mode() != "invalid" && r.Header.Get("Authorization") != "" {
 			ctx := auth.WithUser(r.Context(), &auth.User{
 				ID:       0,
 				Username: "system",
@@ -445,8 +456,12 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		u, err := auth.Resolve(s.cfg.DB, tok)
-		if err != nil {
+		if err != nil || !s.sessionAllowed(u) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if !s.browserCSRF(w, r, u) {
+			http.Error(w, "Invalid session transport or CSRF token", http.StatusForbidden)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(auth.WithUser(r.Context(), u)))
@@ -461,21 +476,6 @@ func (s *server) requireWriterMW(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-// wsTokenOK aceita legacy token OU session token resolvido.
-func (s *server) wsTokenOK(r *http.Request) bool {
-	tok := auth.ExtractToken(r)
-	if tok == "" {
-		return false
-	}
-	if s.cfg.Token != "" && tok == s.cfg.Token {
-		return true
-	}
-	if _, err := auth.Resolve(s.cfg.DB, tok); err == nil {
-		return true
-	}
-	return false
 }
 
 // silenced legacy helper kept for grep history; not used.

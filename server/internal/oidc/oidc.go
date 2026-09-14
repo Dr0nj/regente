@@ -1,173 +1,122 @@
-// Package oidc — H1: SSO via OpenID Connect (Authorization Code flow).
-//
-// Implementado só com a stdlib (sem dependência nova): discovery do issuer,
-// troca de code por access_token e leitura do userinfo. O resultado é uma
-// Identity que o handler mapeia para um usuário local via auth.LoginFederated.
-//
-// Está 100% gated por -auth-mode=oidc: sem configuração, o login local
-// (admin/senha) segue sendo o único caminho. Validação real exige um IdP
-// (Keycloak, Cognito, Okta, Entra ID, Google) — ver README, seção H1.
-//
-// Hardening pendente para produção (documentado, não bloqueia o stub): PKCE,
-// verificação da assinatura do id_token via JWKS (hoje confiamos no userinfo
-// sobre TLS), e nonce. O state é validado contra cookie.
+// Package oidc implementa Authorization Code com validação OIDC e PKCE S256.
 package oidc
 
 import (
 	"context"
-	"encoding/json"
+	"crypto/subtle"
+	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
+
+	coreoidc "github.com/coreos/go-oidc/v3/oidc"
+	"golang.org/x/oauth2"
 )
 
-// Config — parâmetros do IdP (vêm de flags/env).
 type Config struct {
-	Issuer       string // ex.: https://login.example.com/realms/regente
-	ClientID     string
-	ClientSecret string
-	RedirectURL  string   // ex.: https://regente.example.com/api/auth/oidc/callback
-	Scopes       []string // default: openid email profile
-	DefaultRole  string   // role no 1º acesso (default viewer)
+	Issuer, ClientID, ClientSecret, RedirectURL string
+	Scopes                                      []string
+	DefaultRole                                 string
 }
 
-// Enabled indica se o SSO está configurado.
-func (c Config) Enabled() bool {
-	return c.Issuer != "" && c.ClientID != "" && c.RedirectURL != ""
-}
+func (c Config) Enabled() bool { return c.Issuer != "" && c.ClientID != "" && c.RedirectURL != "" }
 
-type discovery struct {
-	AuthorizationEndpoint string `json:"authorization_endpoint"`
-	TokenEndpoint         string `json:"token_endpoint"`
-	UserinfoEndpoint      string `json:"userinfo_endpoint"`
-}
-
-// Provider é o IdP resolvido (após discovery).
 type Provider struct {
-	cfg  Config
-	disc discovery
-	http *http.Client
+	cfg      Config
+	oauth    oauth2.Config
+	verifier *coreoidc.IDTokenVerifier
+	http     *http.Client
 }
 
-// Identity — quem o IdP autenticou.
 type Identity struct {
+	Issuer            string
 	Subject           string `json:"sub"`
 	Email             string `json:"email"`
-	EmailVerified     bool   `json:"email_verified"`
 	PreferredUsername string `json:"preferred_username"`
 	Name              string `json:"name"`
+	ExpiresAt         time.Time
 }
 
-// Username escolhe o identificador local: preferred_username > email > sub.
 func (id Identity) Username() string {
-	switch {
-	case id.PreferredUsername != "":
+	if id.PreferredUsername != "" {
 		return id.PreferredUsername
-	case id.Email != "":
-		return id.Email
-	default:
-		return id.Subject
 	}
+	if id.Name != "" {
+		return id.Name
+	}
+	return "SSO user"
 }
 
-// Discover busca o /.well-known/openid-configuration do issuer.
+// HTTP local explícito permite desenvolvimento; endpoints remotos exigem TLS.
+func validURL(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && u.Host != "" && u.User == nil && u.Fragment == "" &&
+		(u.Scheme == "https" || u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1" || u.Hostname() == "::1"))
+}
+
 func Discover(ctx context.Context, cfg Config) (*Provider, error) {
-	if !cfg.Enabled() {
-		return nil, fmt.Errorf("oidc: incomplete configuration (issuer/client-id/redirect-url)")
+	if !cfg.Enabled() || !validURL(cfg.Issuer) || !validURL(cfg.RedirectURL) {
+		return nil, errors.New("OIDC requires complete HTTPS configuration (HTTP loopback is allowed)")
 	}
 	if len(cfg.Scopes) == 0 {
-		cfg.Scopes = []string{"openid", "email", "profile"}
+		cfg.Scopes = []string{coreoidc.ScopeOpenID, "email", "profile"}
 	}
-	wellKnown := strings.TrimRight(cfg.Issuer, "/") + "/.well-known/openid-configuration"
 	hc := &http.Client{Timeout: 10 * time.Second}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, wellKnown, nil)
-	res, err := hc.Do(req)
+	provider, err := coreoidc.NewProvider(coreoidc.ClientContext(ctx, hc), cfg.Issuer)
 	if err != nil {
-		return nil, fmt.Errorf("oidc discovery: %w", err)
+		return nil, fmt.Errorf("OIDC discovery: %w", err)
 	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("oidc discovery: status %d", res.StatusCode)
+	ep := provider.Endpoint()
+	if !validURL(ep.AuthURL) || !validURL(ep.TokenURL) {
+		return nil, errors.New("OIDC endpoints require HTTPS")
 	}
-	var d discovery
-	if err := json.NewDecoder(res.Body).Decode(&d); err != nil {
-		return nil, fmt.Errorf("oidc discovery decode: %w", err)
+	var meta struct {
+		JWKS string `json:"jwks_uri"`
 	}
-	if d.AuthorizationEndpoint == "" || d.TokenEndpoint == "" || d.UserinfoEndpoint == "" {
-		return nil, fmt.Errorf("oidc discovery: endpoints ausentes")
+	if err := provider.Claims(&meta); err != nil || !validURL(meta.JWKS) {
+		return nil, errors.New("OIDC JWKS endpoint requires HTTPS")
 	}
-	return &Provider{cfg: cfg, disc: d, http: hc}, nil
+	return &Provider{cfg: cfg, http: hc, oauth: oauth2.Config{ClientID: cfg.ClientID, ClientSecret: cfg.ClientSecret, RedirectURL: cfg.RedirectURL, Scopes: cfg.Scopes, Endpoint: ep}, verifier: provider.Verifier(&coreoidc.Config{ClientID: cfg.ClientID})}, nil
 }
 
 func (p *Provider) Config() Config { return p.cfg }
 
-// AuthCodeURL monta a URL de redirect para o IdP.
-func (p *Provider) AuthCodeURL(state string) string {
-	q := url.Values{}
-	q.Set("response_type", "code")
-	q.Set("client_id", p.cfg.ClientID)
-	q.Set("redirect_uri", p.cfg.RedirectURL)
-	q.Set("scope", strings.Join(p.cfg.Scopes, " "))
-	q.Set("state", state)
-	return p.disc.AuthorizationEndpoint + "?" + q.Encode()
+func (p *Provider) AuthCodeURL(state, nonce, verifier string) string {
+	return p.oauth.AuthCodeURL(state, coreoidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier), oauth2.SetAuthURLParam("prompt", "login"))
 }
 
-// Exchange troca o code por access_token e lê o userinfo → Identity.
-func (p *Provider) Exchange(ctx context.Context, code string) (*Identity, error) {
-	form := url.Values{}
-	form.Set("grant_type", "authorization_code")
-	form.Set("code", code)
-	form.Set("redirect_uri", p.cfg.RedirectURL)
-	form.Set("client_id", p.cfg.ClientID)
-	if p.cfg.ClientSecret != "" {
-		form.Set("client_secret", p.cfg.ClientSecret)
-	}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, p.disc.TokenEndpoint, strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "application/json")
-	res, err := p.http.Do(req)
+func (p *Provider) Exchange(ctx context.Context, code, nonce, verifier string) (*Identity, error) {
+	tok, err := p.oauth.Exchange(coreoidc.ClientContext(ctx, p.http), code, oauth2.VerifierOption(verifier))
 	if err != nil {
-		return nil, fmt.Errorf("oidc token: %w", err)
+		return nil, errors.New("OIDC code exchange failed")
 	}
-	defer res.Body.Close()
-	body, _ := io.ReadAll(res.Body)
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("oidc token: status %d: %s", res.StatusCode, string(body))
+	raw, ok := tok.Extra("id_token").(string)
+	if !ok {
+		return nil, errors.New("OIDC ID token is missing")
 	}
-	var tok struct {
-		AccessToken string `json:"access_token"`
-		TokenType   string `json:"token_type"`
-	}
-	if err := json.Unmarshal(body, &tok); err != nil {
-		return nil, fmt.Errorf("oidc token decode: %w", err)
-	}
-	if tok.AccessToken == "" {
-		return nil, fmt.Errorf("oidc token: empty access_token")
-	}
-	return p.userinfo(ctx, tok.AccessToken)
-}
-
-func (p *Provider) userinfo(ctx context.Context, accessToken string) (*Identity, error) {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.disc.UserinfoEndpoint, nil)
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Accept", "application/json")
-	res, err := p.http.Do(req)
+	idToken, err := p.verifier.Verify(coreoidc.ClientContext(ctx, p.http), raw)
 	if err != nil {
-		return nil, fmt.Errorf("oidc userinfo: %w", err)
+		return nil, errors.New("OIDC ID token verification failed")
 	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("oidc userinfo: status %d", res.StatusCode)
+	if nonce == "" || subtle.ConstantTimeCompare([]byte(idToken.Nonce), []byte(nonce)) != 1 || idToken.Subject == "" {
+		return nil, errors.New("OIDC nonce or subject is invalid")
+	}
+	if idToken.AccessTokenHash != "" {
+		if err := idToken.VerifyAccessToken(tok.AccessToken); err != nil {
+			return nil, errors.New("OIDC access token binding is invalid")
+		}
 	}
 	var id Identity
-	if err := json.NewDecoder(res.Body).Decode(&id); err != nil {
-		return nil, fmt.Errorf("oidc userinfo decode: %w", err)
+	var party struct {
+		AuthorizedParty string `json:"azp"`
 	}
-	if id.Username() == "" {
-		return nil, fmt.Errorf("oidc userinfo: no identifier (sub/email/preferred_username)")
+	if err := idToken.Claims(&party); err != nil || (len(idToken.Audience) > 1 || party.AuthorizedParty != "") && party.AuthorizedParty != p.cfg.ClientID {
+		return nil, errors.New("OIDC authorized party is invalid")
 	}
+	if err := idToken.Claims(&id); err != nil {
+		return nil, errors.New("OIDC claims are invalid")
+	}
+	id.Issuer, id.Subject, id.ExpiresAt = idToken.Issuer, idToken.Subject, idToken.Expiry
 	return &id, nil
 }

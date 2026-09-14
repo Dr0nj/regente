@@ -19,15 +19,16 @@ export const SERVER_URL: string | null =
     : RAW_URL
       ? RAW_URL.replace(/\/$/, "")
       : null;
-const ENV_TOKEN: string = env.VITE_REGENTE_TOKEN?.trim() || "dev-token";
+const ENV_TOKEN: string = env.VITE_REGENTE_TOKEN?.trim() || "";
 const LS_TOKEN_KEY = "regente:authToken";
+let csrfToken = "";
+let browserAuthenticated = false;
+let sessionSignal = false;
+// Sessões anteriores em storage não têm o contrato de transporte do I03.
+if (typeof window !== "undefined") window.localStorage.removeItem(LS_TOKEN_KEY);
 
 export function getAuthToken(): string {
-  if (typeof window !== "undefined") {
-    const t = window.localStorage.getItem(LS_TOKEN_KEY);
-    if (t) return t;
-  }
-  return ENV_TOKEN;
+  return browserAuthenticated ? "" : ENV_TOKEN;
 }
 
 // Marca do último "_resync" (login). O socket que abre logo em seguida é o DESSE
@@ -37,7 +38,7 @@ const RESYNC_DEDUP_MS = 1000;
 
 export function setAuthToken(token: string | null): void {
   if (typeof window === "undefined") return;
-  const prev = window.localStorage.getItem(LS_TOKEN_KEY);
+  const prev = sessionSignal ? "cookie" : null;
   const next = token || null;
   // NADA mudou → não mexe no WS. Todo 401 chama setAuthToken(null) (o handler de
   // "unauthorized"), e na tela de login isso acontece a cada poll: derrubar e
@@ -45,8 +46,10 @@ export function setAuthToken(token: string | null): void {
   // browser passa a ADIAR (throttle de WS por host, segundos → minutos). Era essa
   // fila que segurava o "_connected" DEPOIS do login — board vazio até o F5.
   if (prev === next) return;
-  if (next) window.localStorage.setItem(LS_TOKEN_KEY, next);
-  else window.localStorage.removeItem(LS_TOKEN_KEY);
+  browserAuthenticated = !!next;
+  sessionSignal = !!next;
+  if (!next) csrfToken = "";
+  window.localStorage.removeItem(LS_TOKEN_KEY);
   // Token mudou (login/logout): o WS aberto está autenticado com o token ANTIGO
   // (ou nem conectou, se o mount rodou antes do login). Reconecta já com o novo.
   reconnectNow();
@@ -193,11 +196,15 @@ export async function api<T = unknown>(
 ): Promise<T> {
   if (!SERVER_URL) throw new Error("server mode disabled");
   const headers = new Headers(init.headers ?? {});
-  headers.set("Authorization", `Bearer ${getAuthToken()}`);
+  const bearer = getAuthToken();
+  if (bearer) headers.set("Authorization", `Bearer ${bearer}`);
+  if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
   if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const res = await fetch(`${SERVER_URL}${path}`, { ...init, headers });
+  const res = await fetch(`${SERVER_URL}${path}`, { ...init, credentials: "include", headers });
+  const csrf = res.headers.get("X-CSRF-Token");
+  if (csrf) { csrfToken = csrf; browserAuthenticated = true; }
   if (res.status === 401) {
     emitAuth("unauthorized");
   }
@@ -253,16 +260,23 @@ function emit(ev: ServerEvent): void {
   }
 }
 
-function connect(): void {
+let connecting = false;
+async function connect(): Promise<void> {
   if (!SERVER_URL) return;
+  if (connecting) return;
+  connecting = true;
   let sock: WebSocket;
   try {
-    const url = `${wsUrl("/ws/web")}?token=${encodeURIComponent(getAuthToken())}`;
+    if (!csrfToken && !getAuthToken()) await api("/api/auth/me");
+    const { ticket } = await api<{ ticket: string }>("/api/auth/event-ticket", { method: "POST" });
+    const url = `${wsUrl("/ws/web")}?ticket=${encodeURIComponent(ticket)}`;
     sock = new WebSocket(url);
   } catch (err) {
     console.error("[regente-ws] construct failed", err);
     scheduleReconnect();
     return;
+  } finally {
+    connecting = false;
   }
   ws = sock;
 

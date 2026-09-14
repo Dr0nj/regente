@@ -76,3 +76,18 @@ jobs:
       # rebaixando a regra. Ver app/eslint.config.js e o §RH do roadmap.
       - run: npm run lint
       - run: npm run build
+        env:
+          VITE_REGENTE_SERVER_URL: '@origin'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Browser authentication against the real server
+        run: |
+          go -C ../server build -o ../.integration/server-i03 .
+          npx playwright install --with-deps chromium
+          npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-auth-failures
+          path: app/test-results/

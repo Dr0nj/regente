@@ -48,6 +48,11 @@ func (r Role) CanAdmin() bool {
 }
 
 type User struct {
+	Disabled     bool      `json:"disabled"`
+	RequiresLink bool      `json:"requiresLink"`
+	Source       string    `json:"-"`
+	Browser      bool      `json:"-"`
+	CSRF         string    `json:"-"`
 	ID           int64     `json:"id"`
 	Username     string    `json:"username"`
 	Role         Role      `json:"role"`
@@ -86,7 +91,7 @@ func Bootstrap(db *db.DB) error {
 
 // Login verifica senha e cria nova sessao. Retorna (token, user, err).
 func Login(db *db.DB, username, password string) (string, *User, error) {
-	row := db.QueryRow("SELECT id, username, password_hash, role, created_at, must_change_pw FROM users WHERE username = ?", username)
+	row := db.QueryRow("SELECT id, username, password_hash, role, created_at, must_change_pw FROM users WHERE username = ? AND disabled=0 AND requires_link=0", username)
 	var (
 		id           int64
 		uname        string
@@ -109,7 +114,7 @@ func Login(db *db.DB, username, password string) (string, *User, error) {
 		return "", nil, err
 	}
 	expires := time.Now().Add(sessionTTL)
-	if _, err := db.Exec("INSERT INTO sessions(token,user_id,expires_at) VALUES(?,?,?)", tok, id, expires); err != nil {
+	if _, err := db.Exec("INSERT INTO sessions(token,user_id,expires_at) VALUES(?,?,?)", Digest(tok), id, expires); err != nil {
 		return "", nil, err
 	}
 	return tok, &User{
@@ -121,57 +126,22 @@ func Login(db *db.DB, username, password string) (string, *User, error) {
 	}, nil
 }
 
-// LoginFederated cria/recupera um usuário federado (SSO/OIDC) e abre uma sessão
-// sem senha local. H1: o IdP já autenticou; aqui só provisionamos o usuário
-// (defaultRole no 1º acesso) e emitimos o token de sessão do Regente. O hash
-// "!federated" não é bcrypt válido → esses usuários nunca logam por senha.
-func LoginFederated(db *db.DB, username string, defaultRole Role) (string, *User, error) {
-	if username == "" {
-		return "", nil, errors.New("federated login: empty username")
-	}
-	if !defaultRole.Valid() {
-		defaultRole = RoleViewer
-	}
-	var (
-		id      int64
-		role    string
-		created time.Time
-	)
-	err := db.QueryRow("SELECT id, role, created_at FROM users WHERE username = ?", username).Scan(&id, &role, &created)
-	if errors.Is(err, sql.ErrNoRows) {
-		newID, e := db.InsertID(
-			"INSERT INTO users(username,password_hash,role,must_change_pw) VALUES(?,?,?,0)",
-			username, "!federated", string(defaultRole),
-		)
-		if e != nil {
-			return "", nil, e
-		}
-		id, role, created = newID, string(defaultRole), time.Now()
-	} else if err != nil {
-		return "", nil, err
-	}
-	tok, e := newToken()
-	if e != nil {
-		return "", nil, e
-	}
-	if _, e := db.Exec("INSERT INTO sessions(token,user_id,expires_at) VALUES(?,?,?)", tok, id, time.Now().Add(sessionTTL)); e != nil {
-		return "", nil, e
-	}
-	return tok, &User{ID: id, Username: username, Role: Role(role), CreatedAt: created}, nil
-}
-
 // Logout invalida o token (best-effort; nao falha se nao existir).
 func Logout(db *db.DB, token string) error {
-	_, err := db.Exec("DELETE FROM sessions WHERE token = ?", token)
+	_, err := db.Exec("DELETE FROM sessions WHERE token = ?", Digest(token))
 	return err
 }
 
 // Resolve devolve o user de um token valido ou erro.
 func Resolve(db *db.DB, token string) (*User, error) {
+	return ResolveDigest(db, Digest(token))
+}
+
+func ResolveDigest(db *db.DB, digest string) (*User, error) {
 	row := db.QueryRow(`
-		SELECT u.id, u.username, u.role, u.created_at, u.must_change_pw, s.expires_at
+		SELECT u.id, u.username, u.role, u.created_at, u.must_change_pw, s.expires_at, s.source, s.browser, s.csrf
 		FROM sessions s JOIN users u ON u.id = s.user_id
-		WHERE s.token = ?`, token)
+		WHERE s.token = ? AND u.disabled=0 AND u.requires_link=0`, digest)
 	var (
 		id           int64
 		uname        string
@@ -179,18 +149,22 @@ func Resolve(db *db.DB, token string) (*User, error) {
 		created      time.Time
 		mustChangePW int
 		expires      time.Time
+		source       string
+		browser      int
+		csrf         string
 	)
-	if err := row.Scan(&id, &uname, &role, &created, &mustChangePW, &expires); err != nil {
+	if err := row.Scan(&id, &uname, &role, &created, &mustChangePW, &expires, &source, &browser, &csrf); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrInvalidToken
 		}
 		return nil, err
 	}
 	if time.Now().After(expires) {
-		_, _ = db.Exec("DELETE FROM sessions WHERE token = ?", token)
+		_, _ = db.Exec("DELETE FROM sessions WHERE token = ?", digest)
 		return nil, ErrInvalidToken
 	}
 	return &User{
+		Source: source, Browser: browser != 0, CSRF: csrf,
 		ID:           id,
 		Username:     uname,
 		Role:         Role(role),
@@ -218,8 +192,23 @@ func ChangePassword(db *db.DB, userID int64, current, next string, force bool) e
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec("UPDATE users SET password_hash=?, must_change_pw=0 WHERE id=?", string(hash), userID)
-	return err
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec("UPDATE users SET password_hash=?, must_change_pw=0 WHERE id=? AND requires_link=0", string(hash), userID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil || n != 1 {
+		return errors.New("account requires identity linking or does not exist")
+	}
+	if _, err = tx.Exec("DELETE FROM sessions WHERE user_id=?", userID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // CreateUser insere novo usuario (admin only no caller).
@@ -261,7 +250,7 @@ func DeleteUser(db *db.DB, userID int64) error {
 
 // ListUsers retorna todos.
 func ListUsers(db *db.DB) ([]User, error) {
-	rows, err := db.Query("SELECT id, username, role, created_at, must_change_pw FROM users ORDER BY id")
+	rows, err := db.Query("SELECT id, username, role, created_at, must_change_pw, disabled, requires_link FROM users ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -271,10 +260,12 @@ func ListUsers(db *db.DB) ([]User, error) {
 		var u User
 		var role string
 		var mustChange int
-		if err := rows.Scan(&u.ID, &u.Username, &role, &u.CreatedAt, &mustChange); err != nil {
+		var disabled, requiresLink int
+		if err := rows.Scan(&u.ID, &u.Username, &role, &u.CreatedAt, &mustChange, &disabled, &requiresLink); err != nil {
 			return nil, err
 		}
 		u.Role = Role(role)
+		u.Disabled, u.RequiresLink = disabled != 0, requiresLink != 0
 		u.MustChangePW = mustChange != 0
 		out = append(out, u)
 	}
@@ -298,8 +289,11 @@ func ExtractToken(r *http.Request) string {
 	if strings.HasPrefix(auth, "Bearer ") {
 		return strings.TrimPrefix(auth, "Bearer ")
 	}
-	if q := r.URL.Query().Get("token"); q != "" {
-		return q
+	if ck, err := r.Cookie("__Host-regente_session"); err == nil {
+		return ck.Value
+	}
+	if ck, err := r.Cookie("regente_session"); err == nil {
+		return ck.Value
 	}
 	return ""
 }

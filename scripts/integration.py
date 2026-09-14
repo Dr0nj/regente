@@ -103,7 +103,8 @@ def validate_test_events(output):
     passed = {e.get("Test") for e in events if e.get("Action") == "pass"}
     required = {"TestPostgresMigrateAndCRUD", "TestMigrationSafety/postgres",
                 "TestMigrationSafety/sqlite", "TestIntegrationOIDC_AuthCodeFlow",
-                "TestMachineIdentity/sqlite", "TestMachineIdentity/postgres"}
+                "TestMachineIdentity/sqlite", "TestMachineIdentity/postgres",
+                "TestHumanIdentity/sqlite", "TestHumanIdentity/postgres"}
     if not required <= passed:
         raise RuntimeError(f"Missing required test evidence: {required - passed}")
     REPORT["passed_tests"] = sorted(p for p in passed if p)
@@ -128,7 +129,7 @@ def cluster(env, dsn, nats_url):
                 "-workspace", str(workspace), "-node-id", "lab-node-"+suffix,
                 "-bus", "nats", "-nats-url", nats_url, "-api-token", ADMIN,
                 "-server-agent=false", "-selfmon=false", "-tick-ms", "200",
-                "-design-session-gc-tick-min", "0", "-auth-mode", "oidc",
+                "-design-session-gc-tick-min", "0", "-auth-mode", "hybrid",
                 "-oidc-issuer", env["REGENTE_TEST_OIDC_ISSUER"],
                 "-oidc-client-id", env["REGENTE_TEST_OIDC_CLIENT_ID"],
                 "-oidc-client-secret", env["REGENTE_TEST_OIDC_CLIENT_SECRET"],
@@ -218,7 +219,7 @@ def legacy_restore(dsn):
                          "(SELECT count(*) FROM daily_runs WHERE finished_at IS NULL)"])
     if result != "1|1|1|1":
         raise RuntimeError("Legacy backup/restore/upgrade did not preserve the fixture")
-    REPORT["legacy_restore"] = {"schema_from": 22, "schema_to": 24, "preserved_entities": 4,
+    REPORT["legacy_restore"] = {"schema_from": 22, "schema_to": 25, "preserved_entities": 4,
                                 "seconds": round(time.monotonic()-start, 3)}
     # O binário real deve recusar schema futuro ANTES de criar o workspace/API.
     command(pg+["psql", "-U", "regente", "-d", "regente_legacy_restored", "-v", "ON_ERROR_STOP=1", "-c",
@@ -276,7 +277,7 @@ def main():
                    REGENTE_TEST_OIDC_USER="lab-user", REGENTE_TEST_OIDC_PASS="synthetic-password")
         output = command(["go", "test", "-json", "-count=1", "-timeout=5m",
                           "./server/internal/db", "./server/internal/api", "-run",
-                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials"],
+                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials|TestHumanIdentity"],
                          env=env, timeout=360, name="database-oidc-tests")
         validate_test_events(output)
         command(["go", "build", "-o", str(RUN/"server"), "./server"], timeout=180, name="server-build")

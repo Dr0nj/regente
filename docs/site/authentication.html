@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Authentication: local, hybrid or SSO · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</a>
+<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authentication.html" class="active">Authentication: local, hybrid or SSO</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+</nav>
+<main>
+<article>
+<h1 id="authentication-local-hybrid-or-sso">Authentication: local, hybrid or SSO</h1>
+<p>Regente supports personal installations and enterprise deployments with the same
+product. Choose with <code>-auth-mode</code> or <code>REGENTE_AUTH_MODE</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Username/password</th>
+<th>OIDC SSO</th>
+<th>Provider unavailable</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>local</code> (default)</td>
+<td>Enabled</td>
+<td>Disabled</td>
+<td>Local login continues</td>
+</tr>
+<tr>
+<td><code>hybrid</code></td>
+<td>Enabled</td>
+<td>Enabled</td>
+<td>Local login continues; SSO unavailable</td>
+</tr>
+<tr>
+<td><code>oidc</code></td>
+<td>Disabled</td>
+<td>Required</td>
+<td>Normal login remains blocked</td>
+</tr>
+</tbody>
+</table>
+<p>To retain the behavior of older installations configured with <code>oidc</code>, explicitly
+select <code>hybrid</code> during upgrade. Configure every node with the same policy.</p>
+<h2 id="local-installation">Local installation</h2>
+<p>Run the server normally. On a new database, sign in as <code>admin</code> / <code>admin</code> and change
+the initial password. Create accounts from <strong>Users</strong>. No external identity
+provider or enterprise infrastructure is required.</p>
+<h2 id="enable-both-methods">Enable both methods</h2>
+<p>Register an Authorization Code client with PKCE S256 and an exact redirect URI:</p>
+<pre><code class="language-sh">REGENTE_AUTH_MODE=hybrid
+REGENTE_OIDC_ISSUER=https://id.example/realms/regente
+REGENTE_OIDC_CLIENT_ID=regente
+REGENTE_OIDC_REDIRECT_URL=https://regente.example/api/auth/oidc/callback
+REGENTE_APP_URL=https://regente.example
+REGENTE_OIDC_DEFAULT_ROLE=viewer
+</code></pre>
+<p>Supply <code>REGENTE_OIDC_CLIENT_SECRET</code> through the service's protected environment or
+the existing secrets provider (<code>oidc_client_secret</code>), never Git or URLs. Restart
+after changing configuration. The login page shows SSO and username/password.
+Set <code>REGENTE_AUTH_MODE=oidc</code> to require SSO instead.</p>
+<p>Discovery, authorization, token and JWKS endpoints require HTTPS; HTTP loopback
+supports development. Discovery failure preserves the policy. Fix the provider
+and restart to restore SSO. Validation covers signature, issuer, audience,
+authorized party, expiry, subject, nonce and PKCE. Shared-database state is
+single-use and expires after five minutes.</p>
+<h2 id="identity-and-deprovisioning">Identity and deprovisioning</h2>
+<p>Accounts use <strong>issuer + subject</strong>, never display name or email. A provider user
+named <code>admin</code> cannot inherit local admin access. New accounts get the configured
+initial role (viewer by default); changing the default does not change existing
+accounts. Provider groups do not automatically grant roles. Manage roles and
+folder ACLs explicitly in <strong>Users</strong>.</p>
+<p>To connect an existing account, choose <strong>Link SSO</strong>, enter the exact issuer and
+subject verified at the provider, and confirm ownership. Existing mappings cannot
+be overwritten. Linking and access changes are recorded transactionally in
+<code>identity_audit</code>. <strong>Disable</strong> blocks both login methods and revokes all sessions;
+enabling the account again does not revive them.</p>
+<p>Provider-side deprovisioning is bounded by the five-minute federated session
+lifetime (or ID token expiry, if earlier). No refresh token or silent extension
+is retained: subsequent login requests fresh IdP authentication. This is not
+instantaneous synchronization; provider policy governs acceptance of new logins.</p>
+<h2 id="sessions-and-integrations">Sessions and integrations</h2>
+<p>Browser sessions use HttpOnly, SameSite=Lax cookies. HTTPS adds Secure and the
+<code>__Host-</code> prefix; forwarded TLS is accepted only from configured trusted proxies.
+Set <code>REGENTE_APP_URL</code> to the public frontend origin. Cross-origin browser access
+is limited to that origin; use same-site hosting so cookies can be sent.</p>
+<p>Local sessions last seven days; SSO sessions at most five minutes. Logout,
+password change/reset and disabling a user revoke server-side sessions. Only
+SHA-256 session hashes are stored. No browser session appears in localStorage
+or URL fragments.</p>
+<p>CLI/API clients retain <code>POST /api/auth/login</code> with <code>{username,password}</code> returning
+<code>{token,user}</code> in local/hybrid mode. Send <code>Authorization: Bearer</code> on subsequent
+requests. Browser callers add <code>browser:true</code>; JSON contains an empty token and
+the server sets the cookie. Cookie mutations require <code>X-CSRF-Token</code>, returned by
+login or <code>GET /api/auth/me</code>. Browser cookies cannot be used as API bearers. Query
+string tokens are no longer accepted.</p>
+<p>For events, call authenticated <code>POST /api/auth/event-ticket</code> and connect to
+<code>/ws/web?ticket=...</code> within 30 seconds. Each ticket can be used once; get a new one
+on reconnect. Sessions are checked before delivery and every second. Folder
+filtering remains tracked in I04.</p>
+<h2 id="optional-emergency-access">Optional emergency access</h2>
+<p>Before requiring SSO, create a dedicated local administrator, change its initial
+password, and store it under your recovery procedure. Configure
+<code>REGENTE_AUTH_EMERGENCY_USER</code> with that username on each node. This enables the
+separate <strong>Emergency access</strong> choice. Normal password login stays blocked in
+<code>oidc</code> mode. The account must be an administrator with its password changed;
+password <code>admin</code> is refused. Sessions last 15 minutes and login is audited as
+<code>emergency</code>. Do not reuse an SSO-linked account. An empty configuration disables
+emergency access; removing it also invalidates existing emergency sessions.</p>
+<p>API recovery adds <code>emergency:true</code> to the login request. The static administrative
+token cannot bypass SSO-only mode. Exercise recovery before an outage.</p>
+<h2 id="upgrade-from-schema-24">Upgrade from schema 24</h2>
+<p>Back up and stop old servers. Upgrade all nodes together; old binaries refuse
+schema 25. Accounts, passwords, definitions and machine credentials are preserved.
+<strong>Human sessions are revoked:</strong> users and human API integrations must sign in again.</p>
+<p>Legacy federated accounts have no proven issuer/subject association and are marked
+<strong>SSO linking required</strong>. Verify and link each identity explicitly before resuming
+access; never infer it from names/email. Rehearse on a database copy. Rollback
+requires a compatible binary or verified backup with reconciliation; destructive
+downgrade is not supported.</p>
+<h2 id="verification">Verification</h2>
+<p>Go tests cover signed-token negative cases, identity collisions, linking, CSRF,
+transport separation, revocation and upgrades. Mandatory integration exercises
+SQLite/PostgreSQL, Keycloak and two nodes without accepting skipped tests.
+Playwright uses a real server for all three policies, initial password change,
+session reload and logout.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

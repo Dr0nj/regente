@@ -57,8 +57,10 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
 <a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
 <a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
 <a href="agent-authentication.html">Agent authentication and upgrades</a>
 <a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 </nav>
 <main>
@@ -87,6 +89,9 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 </div>
 <hr>
 <h2 id="-what-it-is">🧭 What it is</h2>
+<p>Authentication is selectable: <strong>local username/password</strong>, <strong>hybrid local + SSO</strong>,
+or <strong>SSO required</strong>. Personal installations keep the local default. See the
+<a href="authentication.html">authentication and upgrade guide</a> for configuration.</p>
 <p>Regente runs your <strong>scheduled jobs</strong> — the scripts, commands, transfers and API calls that have
 to happen every day, in the right order, at the right time, on the right machine.</p>
 <p>If you have never used a tool like this, here is the idea in four sentences:</p>

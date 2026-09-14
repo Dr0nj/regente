@@ -7,7 +7,9 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/Dr0nj/regente-server/internal/auth"
 	"github.com/Dr0nj/regente-server/internal/domain"
 	"github.com/Dr0nj/regente-server/internal/hub"
 	"github.com/gorilla/websocket"
@@ -24,7 +26,21 @@ func randID() string {
 }
 
 func (s *server) wsWeb(w http.ResponseWriter, r *http.Request) {
-	if !s.wsTokenOK(r) {
+	if !s.allowedOrigin(r) {
+		http.Error(w, "Origin is not allowed", http.StatusForbidden)
+		return
+	}
+	var digest string
+	ticket := r.URL.Query().Get("ticket")
+	err := s.cfg.DB.QueryRow("DELETE FROM web_tickets WHERE token_hash=? AND expires_at>? RETURNING session_token", auth.Digest(ticket), time.Now()).Scan(&digest)
+	valid := func() bool {
+		if s.cfg.Token != "" && digest == auth.Digest(s.cfg.Token) {
+			return s.mode() == "local" || s.mode() == "hybrid"
+		}
+		u, e := auth.ResolveDigest(s.cfg.DB, digest)
+		return e == nil && s.sessionAllowed(u)
+	}
+	if err != nil || ticket == "" || !valid() {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -34,12 +50,30 @@ func (s *server) wsWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := &hub.Client{
-		ID:   "web-" + randID(),
-		Kind: hub.ClientWeb,
-		Conn: conn,
-		Send: make(chan []byte, 64),
+		ID:        "web-" + randID(),
+		Kind:      hub.ClientWeb,
+		Conn:      conn,
+		Send:      make(chan []byte, 64),
+		Authorize: valid,
 	}
 	s.cfg.Hub.Register(c)
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if !valid() {
+					_ = conn.Close()
+					return
+				}
+			}
+		}
+	}()
 	go clientWriter(c)
 	clientReader(c, nil)
 	s.cfg.Hub.Unregister(c)

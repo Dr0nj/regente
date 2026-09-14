@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api, SERVER_URL } from "../lib/server-client";
 import { changePassword, login, type AuthUser } from "../lib/auth-api";
 
 /* ── Logo R (asset oficial, branco/transparente) + wordmark ── */
@@ -177,10 +178,16 @@ interface LoginFormProps {
 
 export function LoginForm({ onLogin }: LoginFormProps) {
   const [username, setUsername] = useState("");
+  const [methods, setMethods] = useState<{ local: boolean; sso: boolean; ssoAvailable: boolean; emergency: boolean } | null>(null);
+  const [emergency, setEmergency] = useState(false);
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { void (async () => {
+    try { setMethods(await api("/api/auth/config")); }
+    catch { setErr("Unable to load sign-in options. Check the server connection."); }
+  })(); }, []);
   const [forceChange, setForceChange] = useState<{ user: AuthUser } | null>(null);
   const [next, setNext] = useState("");
   const [next2, setNext2] = useState("");
@@ -192,7 +199,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
     setErr(null);
     setBusy(true);
     try {
-      const res = await login(username.trim(), password);
+      const res = await login(username.trim(), password, emergency);
       if (res.user.mustChangePassword) {
         setForceChange({ user: res.user });
       } else {
@@ -240,7 +247,16 @@ export function LoginForm({ onLogin }: LoginFormProps) {
           <RegenteLogo />
         </div>
 
-        {!forceChange ? (
+        {!forceChange && methods?.sso && <div style={{ display: "grid", gap: 12, marginBottom: 18 }}>
+          <button type="button" style={S.btn} disabled={!methods.ssoAvailable}
+            onClick={() => { window.location.href = `${SERVER_URL}/api/auth/oidc/login`; }}>
+            {methods.ssoAvailable ? "Sign in with SSO" : "SSO is currently unavailable"}
+          </button>
+          {methods.local && <div style={S.footer}>or use your local account</div>}
+        </div>}
+        {!forceChange && methods?.emergency && <button type="button" className="v2-btn" onClick={() => setEmergency(v => !v)}>{emergency ? "Back to normal sign-in" : "Emergency access"}</button>}
+        {!forceChange && !methods?.local && !emergency && err && <div style={S.err}>{err}</div>}
+        {!forceChange && (methods?.local || emergency) ? (
           <form onSubmit={submit} style={{ display: "grid", gap: 14 }}>
             {/* Username */}
             <label style={{ display: "grid", gap: 2 }}>
@@ -298,14 +314,14 @@ export function LoginForm({ onLogin }: LoginFormProps) {
               onMouseEnter={() => setBtnHover(true)}
               onMouseLeave={() => setBtnHover(false)}
             >
-              {busy ? "signing in..." : "Sign in"}
+              {busy ? "signing in..." : emergency ? "Sign in with emergency account" : "Sign in"}
             </button>
 
             <div style={S.footer}>
-              Initial default: admin / admin (you will be forced to change it)
+              {emergency ? "Dedicated recovery account. Access expires in 15 minutes." : "Use your local username and password."}
             </div>
           </form>
-        ) : (
+        ) : forceChange ? (
           <form onSubmit={submitChange} style={{ display: "grid", gap: 14 }}>
             <div style={{ fontSize: 14, color: "#a3a3a3" }}>
               Mandatory password change for <b style={{ color: "#f5f5f5" }}>{forceChange.user.username}</b>
@@ -360,7 +376,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
               {busy ? "saving..." : "Save and sign in"}
             </button>
           </form>
-        )}
+        ) : null}
       </div>
     </div>
   );

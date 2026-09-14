@@ -1,79 +1,71 @@
-// H1 — endpoints de SSO/OIDC. Só ativos quando s.cfg.OIDC != nil
-// (-auth-mode=oidc configurado). O login local segue intacto em paralelo.
 package api
 
 import (
-	"crypto/rand"
-	"encoding/hex"
+	"crypto/subtle"
 	"net/http"
+	"time"
 
+	"github.com/Dr0nj/regente-server/internal/audit"
 	"github.com/Dr0nj/regente-server/internal/auth"
+	"golang.org/x/oauth2"
 )
 
 const oidcStateCookie = "regente_oidc_state"
 
-// oidcLogin — GET /api/auth/oidc/login. Gera state, guarda em cookie e
-// redireciona para o IdP.
 func (s *server) oidcLogin(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.OIDC == nil {
-		http.Error(w, "oidc not configured", http.StatusNotFound)
+	w.Header().Set("Cache-Control", "no-store")
+	if s.mode() == "local" || s.cfg.OIDC == nil {
+		http.Error(w, "SSO is unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		http.Error(w, "state", http.StatusInternalServerError)
+	state, nonce, verifier := oauth2.GenerateVerifier(), oauth2.GenerateVerifier(), oauth2.GenerateVerifier()
+	_, _ = s.cfg.DB.Exec("DELETE FROM auth_transactions WHERE expires_at<?", time.Now())
+	_, err := s.cfg.DB.Exec("INSERT INTO auth_transactions(state_hash,nonce,verifier,expires_at) VALUES(?,?,?,?)", auth.Digest(state), nonce, verifier, time.Now().Add(5*time.Minute))
+	if err != nil {
+		http.Error(w, "Unable to start SSO", http.StatusInternalServerError)
 		return
 	}
-	state := hex.EncodeToString(b)
-	http.SetCookie(w, &http.Cookie{
-		Name:     oidcStateCookie,
-		Value:    state,
-		Path:     "/",
-		MaxAge:   300,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
-	http.Redirect(w, r, s.cfg.OIDC.AuthCodeURL(state), http.StatusFound)
+	http.SetCookie(w, &http.Cookie{Name: s.cookieName(r, oidcStateCookie), Value: state, Path: "/", MaxAge: 300, HttpOnly: true, Secure: s.secureCookie(r), SameSite: http.SameSiteLaxMode})
+	http.Redirect(w, r, s.cfg.OIDC.AuthCodeURL(state, nonce, verifier), http.StatusFound)
 }
 
-// oidcCallback — GET /api/auth/oidc/callback. Valida o state, troca o code,
-// provisiona/abre sessão e redireciona pro app com o token no fragment.
 func (s *server) oidcCallback(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.OIDC == nil {
-		http.Error(w, "oidc not configured", http.StatusNotFound)
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	if s.mode() == "local" || s.cfg.OIDC == nil {
+		http.Error(w, "SSO is unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	state := r.URL.Query().Get("state")
-	ck, err := r.Cookie(oidcStateCookie)
-	if err != nil || state == "" || ck.Value != state {
-		http.Error(w, "invalid oidc state", http.StatusBadRequest)
+	ck, err := r.Cookie(s.cookieName(r, oidcStateCookie))
+	if err != nil || state == "" || subtle.ConstantTimeCompare([]byte(ck.Value), []byte(state)) != 1 {
+		http.Error(w, "Invalid SSO state", http.StatusBadRequest)
 		return
 	}
-	// limpa o cookie de state
-	http.SetCookie(w, &http.Cookie{Name: oidcStateCookie, Value: "", Path: "/", MaxAge: -1})
-
-	code := r.URL.Query().Get("code")
-	if code == "" {
-		http.Error(w, "missing code", http.StatusBadRequest)
+	http.SetCookie(w, &http.Cookie{Name: s.cookieName(r, oidcStateCookie), Path: "/", MaxAge: -1, HttpOnly: true, Secure: s.secureCookie(r), SameSite: http.SameSiteLaxMode})
+	var nonce, verifier string
+	// DELETE RETURNING consome uma única vez mesmo em callback concorrente em outro nó.
+	err = s.cfg.DB.QueryRow("DELETE FROM auth_transactions WHERE state_hash=? AND expires_at>? RETURNING nonce,verifier", auth.Digest(state), time.Now()).Scan(&nonce, &verifier)
+	if err != nil || r.URL.Query().Get("code") == "" {
+		http.Error(w, "Expired or already used SSO login", http.StatusBadRequest)
 		return
 	}
-	identity, err := s.cfg.OIDC.Exchange(r.Context(), code)
+	identity, err := s.cfg.OIDC.Exchange(r.Context(), r.URL.Query().Get("code"), nonce, verifier)
 	if err != nil {
-		http.Error(w, "oidc exchange: "+err.Error(), http.StatusBadGateway)
+		s.audit(audit.Event{Type: "auth.oidc", Action: "login", Outcome: "failure", IP: clientIP(r)})
+		http.Error(w, "SSO verification failed", http.StatusUnauthorized)
 		return
 	}
-	role := auth.Role(s.cfg.OIDC.Config().DefaultRole)
-	token, _, err := auth.LoginFederated(s.cfg.DB, identity.Username(), role)
+	token, u, err := auth.LoginExternal(s.cfg.DB, identity.Issuer, identity.Subject, identity.Username(), auth.Role(s.cfg.OIDC.Config().DefaultRole), identity.ExpiresAt)
 	if err != nil {
-		http.Error(w, "federated login: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "SSO account is unavailable; contact an administrator", http.StatusForbidden)
 		return
 	}
-	// Redireciona pro app com o token no fragment (#token=...), que não é
-	// enviado a servidores. O SPA lê o hash e chama setAuthToken. (Hardening
-	// futuro: cookie HttpOnly + sessão por cookie — ver README H1.)
+	s.setSessionCookie(w, r, token, 300)
+	s.audit(audit.Event{Type: "auth.oidc", Actor: u.Username, Action: "login", Outcome: "success", IP: clientIP(r)})
 	dest := s.cfg.AppURL
 	if dest == "" {
 		dest = "/"
 	}
-	http.Redirect(w, r, dest+"#token="+token, http.StatusFound)
+	http.Redirect(w, r, dest, http.StatusFound)
 }

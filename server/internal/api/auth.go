@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/Dr0nj/regente-server/internal/audit"
 	"github.com/Dr0nj/regente-server/internal/auth"
@@ -13,12 +14,29 @@ import (
 
 // POST /api/auth/login  body: {"username":"...","password":"..."}
 func (s *server) authLogin(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if !s.allowedOrigin(r) {
+		http.Error(w, "Origin is not allowed", http.StatusForbidden)
+		return
+	}
 	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Username  string `json:"username"`
+		Password  string `json:"password"`
+		Browser   bool   `json:"browser"`
+		Emergency bool   `json:"emergency"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	mode := s.mode()
+	if req.Emergency {
+		if s.cfg.EmergencyUser == "" || req.Username != s.cfg.EmergencyUser {
+			http.Error(w, "Emergency access is unavailable", http.StatusForbidden)
+			return
+		}
+	} else if mode != "local" && mode != "hybrid" {
+		http.Error(w, "SSO is required", http.StatusForbidden)
 		return
 	}
 	tok, u, err := auth.Login(s.cfg.DB, req.Username, req.Password)
@@ -31,7 +49,31 @@ func (s *server) authLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.audit(audit.Event{Type: "auth.login", Actor: req.Username, Action: "login", Outcome: "success", IP: clientIP(r)})
+	source, ttl := "local", 7*24*time.Hour
+	if req.Emergency {
+		if u.Role != auth.RoleAdmin || u.MustChangePW || req.Password == "admin" {
+			_ = auth.Logout(s.cfg.DB, tok)
+			http.Error(w, "Emergency account requires an administrator with a changed password", http.StatusForbidden)
+			return
+		}
+		source, ttl = "emergency", 15*time.Minute
+	}
+	if err = auth.ConfigureSession(s.cfg.DB, tok, source, req.Browser, time.Now().Add(ttl)); err != nil {
+		_ = auth.Logout(s.cfg.DB, tok)
+		http.Error(w, "Unable to create session", http.StatusInternalServerError)
+		return
+	}
+	if req.Browser {
+		s.setSessionCookie(w, r, tok, int(ttl.Seconds()))
+		current, e := auth.Resolve(s.cfg.DB, tok)
+		if e != nil {
+			http.Error(w, "Unable to resolve session", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("X-CSRF-Token", current.CSRF)
+		tok = ""
+	}
+	s.audit(audit.Event{Type: "auth.login", Actor: req.Username, Action: source, Outcome: "success", IP: clientIP(r)})
 	writeJSON(w, 200, map[string]any{"token": tok, "user": u})
 }
 
@@ -39,8 +81,12 @@ func (s *server) authLogin(w http.ResponseWriter, r *http.Request) {
 func (s *server) authLogout(w http.ResponseWriter, r *http.Request) {
 	tok := auth.ExtractToken(r)
 	if tok != "" {
-		_ = auth.Logout(s.cfg.DB, tok)
+		if err := auth.Logout(s.cfg.DB, tok); err != nil {
+			http.Error(w, "Unable to revoke session", http.StatusInternalServerError)
+			return
+		}
 	}
+	s.setSessionCookie(w, r, "", -1)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -59,6 +105,10 @@ func (s *server) authChangePassword(w http.ResponseWriter, r *http.Request) {
 	u, ok := auth.FromContext(r.Context())
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if s.mode() == "oidc" && u.Source != "emergency" {
+		http.Error(w, "Local password changes are disabled in SSO-only mode", http.StatusForbidden)
 		return
 	}
 	var req struct {
