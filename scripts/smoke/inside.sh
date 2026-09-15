@@ -277,17 +277,27 @@ if command -v nginx >/dev/null 2>&1 && [ -f "$VPS_DIR/nginx-regente.conf" ]; the
     # conexão fica ABERTA, então o timeout do curl é esperado — o veredito está
     # no cabeçalho que já chegou.
     ws_status() { # ws_status <base-url> [host-header]
-      local key hdr=()
+      local key ticket hdr=()
       key="$(head -c 16 /dev/urandom | base64)"
       [ -n "${2:-}" ] && hdr=(-H "Host: $2")
+      # I03: o handshake só aceita ticket de uso único, nunca bearer direto.
+      # Emite pelo MESMO caminho sob teste para provar também o POST na borda.
+      ticket="$(api "${hdr[@]}" -X POST "$1/api/auth/event-ticket" | jfield ticket)" \
+        || { echo "falha ao emitir ticket de eventos"; return 1; }
+      [ -n "$ticket" ] || { echo "ticket de eventos vazio"; return 1; }
       : > /tmp/ws-head.txt
       curl -s -i -N --max-time 5 -o /tmp/ws-head.txt "${hdr[@]}" \
-        -H "Authorization: Bearer $(tok)" \
         -H "Connection: Upgrade" -H "Upgrade: websocket" \
         -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: $key" \
-        "$1/ws/web" >/dev/null 2>&1 || true
+        "$1/ws/web?ticket=$ticket" >/dev/null 2>&1 || true
       head -1 /tmp/ws-head.txt | tr -d '\r'
     }
+
+    legacy_ws="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+      -H "Host: $SMOKE_DOMAIN" -H "Authorization: Bearer $(tok)" \
+      "http://127.0.0.1/ws/web")"
+    [ "$legacy_ws" = 401 ] && ok "WebSocket recusa bearer sem ticket (401)" \
+      || bad "WebSocket aceitou transporte antigo ou falhou: $legacy_ws"
 
     # Direto no server primeiro: separa "o server não faz upgrade" de "a borda
     # come o Upgrade". Sem essa distinção o FAIL manda caçar no lugar errado.
