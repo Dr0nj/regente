@@ -83,9 +83,6 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
-- **I03 — autenticação híbrida e OIDC seguro:** implementado; validação de integração
-  e publicação em andamento. Modos local/hybrid/oidc, identidade issuer+subject,
-  cookies/CSRF, revogação, linking assistido e acesso emergencial opt-in.
 - **I04–I17:** eventos autorizados, perfil produtivo, execução durável, HA,
   auditoria, capacidade, recuperação e piloto seguem na sequência enterprise.
 
@@ -384,6 +381,25 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+## I03 — Autenticação híbrida e sessões OIDC (2026-09-15)
+
+Modos explícitos local (default, senha), hybrid (senha+SSO) e oidc (SSO obrigatório).
+Produto atende pessoas e empresas; falha do IdP não altera política. Identidade
+por issuer+subject, verificação OIDC completa com PKCE/nonce/state single-use,
+sessões hash e cookies HttpOnly/CSRF, tickets WS breves com revogação, linking
+auditável, disable e emergência segregada opt-in. UI, API/CLI e guia de upgrade
+integrados. Schema 25 preserva contas/senhas, revoga sessões humanas antigas e
+exige linking assistido de contas federadas legadas.
+
+CI **34970031606** verde em **3945518**: server/agent, lint/build, E2E Chromium
+nos três modos, SQLite/PostgreSQL e Keycloak reais, dois nós, restore v22→25.
+Baseline **88,723s**, três jobs concluídos; revogação cross-node **1,010s**.
+Nove E2Es locais passaram após corrigir a corrida de reload durante troca de senha.
+Evidência: `docs/evidence/i03-3945518.json`. Guia: `docs/authentication.md`.
+
+Sessão federada até cinco minutos; grupos/papéis reconciliados explicitamente.
+Autorização de payloads por folder é I04. Sem deploy ou homologação de capacidade.
 
 ## I02 — Identidade vinculada e ciclo de vida de credenciais (2026-09-11)
 
@@ -1644,6 +1660,10 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-09-15 — I03:** local/hybrid/SSO obrigatório, vínculo issuer+subject,
+  OIDC verificado, cookies/CSRF, tickets de evento, linking/disable/emergência e
+  migração 25. CI real e navegador aprovados; guia de autenticação publicado.
 
 - **2026-09-11 — I02:** identidade de máquina vinculada, hash/expiração/rotação,
   revogação ativa WS/poll/SSE entre nós e atribuição antes de dispatch. Schema 24

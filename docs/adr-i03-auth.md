@@ -1,6 +1,6 @@
 # I03: selectable authentication and browser sessions
 
-Status: implementation contract, 2026-09-14.
+Status: implemented and verified, 2026-09-15 (CI 34970031606).
 
 Regente supports individuals and enterprises. `local` (default) supports password
 login, `hybrid` enables both local and OIDC login, and `oidc` explicitly requires
