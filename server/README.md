@@ -46,7 +46,7 @@ unit or a k8s manifest needs no arguments):
 | `-tick-ms` | `2000` | Scheduler tick |
 | `-scheduler` | `internal` | `internal` (goroutine ticker) \| `external` (driven over HTTP) |
 | `-role` | `all` | `all` \| `api` \| `scheduler` |
-| `-auth-mode` | `local` | `local` \| `oidc` (opt-in SSO) |
+| `-auth-mode` | `local` | `local` (password) \| `hybrid` (password + SSO) \| `oidc` (SSO required); see [authentication](../docs/authentication.md) |
 | `-bus` | `hub` | `hub` (local) \| `nats` (distributed multi-node hub) |
 | `-backup` | — | One-shot mode: writes an online backup and exits |
 

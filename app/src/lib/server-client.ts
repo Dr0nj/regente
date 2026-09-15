@@ -24,6 +24,7 @@ const LS_TOKEN_KEY = "regente:authToken";
 let csrfToken = "";
 let browserAuthenticated = false;
 let sessionSignal = false;
+let authRevision = 0;
 // Sessões anteriores em storage não têm o contrato de transporte do I03.
 if (typeof window !== "undefined") window.localStorage.removeItem(LS_TOKEN_KEY);
 
@@ -45,7 +46,8 @@ export function setAuthToken(token: string | null): void {
   // reabrir o socket a cada 401 disparava uma rajada de handshakes que o próprio
   // browser passa a ADIAR (throttle de WS por host, segundos → minutos). Era essa
   // fila que segurava o "_connected" DEPOIS do login — board vazio até o F5.
-  if (prev === next) return;
+  if (prev === next && !next) return;
+  authRevision += 1;
   browserAuthenticated = !!next;
   sessionSignal = !!next;
   if (!next) csrfToken = "";
@@ -195,6 +197,7 @@ export async function api<T = unknown>(
   init: RequestInit = {},
 ): Promise<T> {
   if (!SERVER_URL) throw new Error("server mode disabled");
+  const requestAuthRevision = authRevision;
   const headers = new Headers(init.headers ?? {});
   const bearer = getAuthToken();
   if (bearer) headers.set("Authorization", `Bearer ${bearer}`);
@@ -204,8 +207,8 @@ export async function api<T = unknown>(
   }
   const res = await fetch(`${SERVER_URL}${path}`, { ...init, credentials: "include", headers });
   const csrf = res.headers.get("X-CSRF-Token");
-  if (csrf) { csrfToken = csrf; browserAuthenticated = true; }
-  if (res.status === 401) {
+  if (csrf && requestAuthRevision === authRevision) { csrfToken = csrf; browserAuthenticated = true; }
+  if (res.status === 401 && requestAuthRevision === authRevision) {
     emitAuth("unauthorized");
   }
   if (!res.ok) {

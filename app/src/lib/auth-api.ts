@@ -65,13 +65,14 @@ export async function fetchMe(): Promise<AuthUser | null> {
 }
 
 export async function changePassword(current: string, next: string): Promise<void> {
+  const user = loadCachedUser();
+  if (!user) throw new Error("Sign in before changing your password");
   await api("/api/auth/change-password", {
     method: "POST",
     body: JSON.stringify({ current, next }),
   });
   // A troca revoga todas as sessões; readquire com a senha nova para o navegador atual.
-  const user = loadCachedUser();
-  if (user) await login(user.username, next);
+  await login(user.username, next);
 }
 
 export async function listUsers(): Promise<AuthUser[]> {

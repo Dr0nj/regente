@@ -32,15 +32,17 @@ for (const mode of ["local", "hybrid", "oidc"]) {
       await page.getByRole("button", { name: "Sign in", exact: true }).click();
       await page.getByPlaceholder("Enter the new password").fill("synthetic-new-password");
       await page.getByPlaceholder("Repeat the new password").fill("synthetic-new-password");
+      const newSession = page.waitForResponse(response => response.url() === base + "/api/auth/login" && response.request().method() === "POST" && response.status() === 200);
       await page.getByRole("button", { name: "Save and sign in" }).click();
-      await expect(page.getByPlaceholder("Username", { exact: true })).toHaveCount(0);
+      await newSession;
+      await expect(page.getByRole("button", { name: "Account", exact: true })).toBeVisible();
       const me = await page.evaluate(async () => { const r = await fetch("/api/auth/me"); return { status: r.status, csrf: r.headers.get("X-CSRF-Token") }; });
       expect(me.status).toBe(200);
       expect(me.csrf).toBeTruthy();
       expect(await page.evaluate(() => localStorage.getItem("regente:authToken"))).toBeNull();
       expect(await page.evaluate(() => document.cookie.includes("regente_session"))).toBe(false);
       await page.reload();
-      await expect(page.getByPlaceholder("Username", { exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Account", exact: true })).toBeVisible();
       const statuses = await page.evaluate(async () => {
         const me = await fetch("/api/auth/me"); const csrf = me.headers.get("X-CSRF-Token")!;
         const denied = await fetch("/api/auth/logout", { method: "POST" });
