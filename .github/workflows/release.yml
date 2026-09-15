@@ -50,7 +50,7 @@ jobs:
       tag: ${{ steps.pick.outputs.tag }}
       skip: ${{ steps.pick.outputs.skip }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # precisa do histórico de tags pra calcular o patch
       - id: pick
@@ -84,10 +84,10 @@ jobs:
     if: needs.version.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
       - name: Build SPA (@origin)
@@ -97,7 +97,7 @@ jobs:
         run: |
           npm ci
           npm run build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: app-dist
           path: app/dist
@@ -119,10 +119,10 @@ jobs:
           - { goos: darwin, goarch: amd64, ext: "", bundle: false }
           - { goos: darwin, goarch: arm64, ext: "", bundle: false }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.25"
 
@@ -151,7 +151,7 @@ jobs:
       # relativo (../regente-server, ../app/dist, ./deploy/*).
       - name: Download SPA
         if: matrix.bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: app-dist
           path: app/dist
@@ -174,7 +174,7 @@ jobs:
       # Cada alvo entrega seus arquivos como artifact; quem publica é o job único
       # abaixo. Antes, os 5 jobs chamavam action-gh-release em paralelo contra a
       # MESMA release — daí saírem releases incompletas.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/*
@@ -190,11 +190,11 @@ jobs:
     needs: [version, build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
       - name: Baixar os artefatos linux/amd64
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dist-linux-amd64
           path: dist
@@ -210,12 +210,12 @@ jobs:
     needs: [version, build, smoke, integration]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
 
       - name: Download every build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: dist-*
           merge-multiple: true
@@ -259,7 +259,7 @@ jobs:
           ls -la dist
 
       - name: Publish
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.version.outputs.tag }}
           files: dist/*
