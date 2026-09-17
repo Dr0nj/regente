@@ -22,7 +22,54 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func webTestConnect(t *testing.T, issue, connect *httptest.Server, token, query string) *websocket.Conn {
+type webTestMessage struct {
+	kind int
+	raw  []byte
+	err  error
+}
+
+// Um único leitor processa também os frames de controle. O pong prova que
+// wsWeb já registrou o cliente e entrou em clientReader, sem sleeps ou reenvios.
+type webTestConn struct {
+	*websocket.Conn
+	messages chan webTestMessage
+	done     chan struct{}
+	stop     sync.Once
+}
+
+func newWebTestConn(c *websocket.Conn) *webTestConn {
+	w := &webTestConn{Conn: c, messages: make(chan webTestMessage), done: make(chan struct{})}
+	go func() {
+		for {
+			kind, raw, err := c.ReadMessage()
+			select {
+			case w.messages <- webTestMessage{kind, raw, err}:
+			case <-w.done:
+				return
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	return w
+}
+
+func (c *webTestConn) ReadMessage() (int, []byte, error) {
+	select {
+	case msg := <-c.messages:
+		return msg.kind, msg.raw, msg.err
+	case <-time.After(3 * time.Second):
+		return 0, nil, os.ErrDeadlineExceeded
+	}
+}
+
+func (c *webTestConn) Close() error {
+	c.stop.Do(func() { close(c.done) })
+	return c.Conn.Close()
+}
+
+func webTestConnect(t *testing.T, issue, connect *httptest.Server, token, query string) *webTestConn {
 	t.Helper()
 	var ticket struct{ Ticket string }
 	raw := machineRequest(t, issue, "POST", "/api/auth/event-ticket", token, nil, 200)
@@ -33,8 +80,27 @@ func webTestConnect(t *testing.T, issue, connect *httptest.Server, token, query 
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { c.Close() })
-	return c
+	ready := make(chan struct{}, 1)
+	c.SetPongHandler(func(payload string) error {
+		if payload == "i04-ready" {
+			select {
+			case ready <- struct{}{}:
+			default:
+			}
+		}
+		return nil
+	})
+	w := newWebTestConn(c)
+	t.Cleanup(func() { w.Close() })
+	if err := c.WriteControl(websocket.PingMessage, []byte("i04-ready"), time.Now().Add(3*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-ready:
+	case <-time.After(3 * time.Second):
+		t.Fatal("servidor não confirmou o registro do canal")
+	}
+	return w
 }
 
 func TestWebEventAuthorization(t *testing.T) {
@@ -50,7 +116,6 @@ func TestWebEventAuthorization(t *testing.T) {
 			c := webTestConnect(t, srv, srv, token, "")
 			h.BroadcastWeb("instance.changed", map[string]any{"id": "secret", "status": "RUNNING", "private": "must-not-leak"})
 			h.BroadcastWeb("instance.changed", map[string]any{"id": "allowed", "status": "OK"})
-			c.SetReadDeadline(time.Now().Add(3 * time.Second))
 			_, raw, err := c.ReadMessage()
 			if err != nil {
 				t.Fatal(err)
@@ -103,9 +168,8 @@ func (f *eventNATSTransport) Subscribe(subject string, handler func([]byte)) err
 	return f.nc.FlushTimeout(3 * time.Second)
 }
 
-func readWeb(t *testing.T, c *websocket.Conn, event, contains string) string {
+func readWeb(t *testing.T, c *webTestConn, event, contains string) string {
 	t.Helper()
-	c.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, raw, err := c.ReadMessage()
 	if err != nil {
 		t.Fatal(err)
@@ -119,9 +183,8 @@ func readWeb(t *testing.T, c *websocket.Conn, event, contains string) string {
 	}
 	return string(raw)
 }
-func closedWeb(t *testing.T, c *websocket.Conn) {
+func closedWeb(t *testing.T, c *webTestConn) {
 	t.Helper()
-	c.SetReadDeadline(time.Now().Add(3 * time.Second))
 	if _, raw, err := c.ReadMessage(); err == nil {
 		t.Fatalf("canal revogado entregou: %s", raw)
 	} else if e, ok := err.(interface{ Timeout() bool }); ok && e.Timeout() {
@@ -459,7 +522,9 @@ func TestWebEventQueuedRevocation(t *testing.T) {
 				}
 			}
 			close(release)
-			closedWeb(t, c)
+			reader := newWebTestConn(c)
+			defer reader.Close()
+			closedWeb(t, reader)
 			<-done
 		})
 	}
