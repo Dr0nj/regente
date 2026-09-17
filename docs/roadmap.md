@@ -83,8 +83,6 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
-- **I04:** autorização de eventos implementada e validada localmente; aguardando
-  integração PostgreSQL/NATS, CI e publicação. Contrato em [web-events.md](web-events.md).
 - **I05–I17:** perfil produtivo, execução durável, HA,
   auditoria, capacidade, recuperação e piloto seguem na sequência enterprise.
 
@@ -384,6 +382,26 @@ domínio**, não o binário.
 
 # ✅ Entregue *(tracking por tópico)*
 
+## I04 — Autorização de eventos web (2026-09-17)
+
+Cada mensagem usa sessão, papel e ACL atual do servidor. Payloads por instância
+respeitam folder/ambiente; exclusões preservam escopo interno, lotes não expõem
+agregados cruzados e settings não carregam segredos. Workspace invalida somente
+a visão autorizada; eventos desconhecidos falham fechado. API e Git poller usam
+o barramento distribuído. Troca de ACL é atômica; revogação fecha canais em ambos
+os nós e a UI reconecta com ticket novo e papel atualizado.
+
+CI **35258039494** verde em **b6db081**: server/agent, lint/build, quatro E2Es
+Chromium, SQLite/PostgreSQL, NATS real, Origin, payloads recebidos, mensagens em
+fila, revogação/reconexão e race detector. Baseline sintética **173,118s**.
+A corrida do helper após o handshake foi corrigida com barreira ping/pong;
+dez repetições locais passaram. Evidência: `docs/evidence/i04-b6db081.json`.
+Contrato e upgrade: [web-events.md](web-events.md).
+
+Sem alteração de schema; todos os nós precisam atualização. Environment apenas
+restringe a subscription; a ACL humana existente permanece por folder. Eventos
+continuam best-effort, sem replay. Sem deploy ou homologação de capacidade.
+
 ## I03 — Autenticação híbrida e sessões OIDC (2026-09-15)
 
 Modos explícitos local (default, senha), hybrid (senha+SSO) e oidc (SSO obrigatório).
@@ -401,7 +419,7 @@ Nove E2Es locais passaram após corrigir a corrida de reload durante troca de se
 Evidência: `docs/evidence/i03-3945518.json`. Guia: `docs/authentication.md`.
 
 Sessão federada até cinco minutos; grupos/papéis reconciliados explicitamente.
-Autorização de payloads por folder é I04. Sem deploy ou homologação de capacidade.
+Autorização de payloads por folder entregue separadamente em I04. Sem deploy ou homologação de capacidade.
 
 ## I02 — Identidade vinculada e ciclo de vida de credenciais (2026-09-11)
 
@@ -1662,6 +1680,11 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-09-17 — I04:** eventos web autorizados por sessão/papel/folder,
+  projeções sem metadados cruzados, ACL atômica e fan-out distribuído.
+  Reconexão e revogação entre nós verificadas no CI real e no navegador;
+  race detector aprovado, contrato e guia de upgrade publicados.
 
 - **2026-09-15 — I03:** local/hybrid/SSO obrigatório, vínculo issuer+subject,
   OIDC verificado, cookies/CSRF, tickets de evento, linking/disable/emergência e
