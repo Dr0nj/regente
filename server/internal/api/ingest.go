@@ -87,7 +87,7 @@ func (s *server) ingestEvent(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			applied = append(applied, "condition "+name+"@"+req.Date)
-			s.cfg.Hub.BroadcastWeb("condition.changed", map[string]string{"name": name, "scopeDate": req.Date})
+			s.broadcastWeb("condition.changed", map[string]string{"name": name, "scopeDate": req.Date})
 		}
 	}
 	if req.ForceJob != "" {

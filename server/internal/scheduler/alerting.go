@@ -235,6 +235,7 @@ func (e *AlertEngine) fire(r AlertRule, cond alertCondition, ctx AlertContext) {
 			"severity":     r.Severity,
 			"timestamp":    tsMs,
 			"workflowId":   ctx.WorkflowID,
+			"instanceId":   ctx.InstanceID,
 			"workflowName": ctx.WorkflowName,
 			"message":      msg,
 			"acknowledged": false,
@@ -289,7 +290,7 @@ func (e *AlertEngine) FireSystem(signalKey, name, severity, message string, cool
 // TODOS os sinks configurados (igual a uma regra sem canal externo). Sem cooldown:
 // a regra On/Do já dispara no máximo uma vez por instance (ledger action_fires).
 // Best-effort.
-func (e *AlertEngine) FireAction(workflowID, workflowName, name, severity, message string, channels []string) {
+func (e *AlertEngine) FireAction(workflowID, workflowName, name, severity, message string, channels []string, instanceID ...string) {
 	if severity == "" {
 		severity = "warning"
 	}
@@ -308,6 +309,7 @@ func (e *AlertEngine) FireAction(workflowID, workflowName, name, severity, messa
 			"id": fmt.Sprintf("%d", id), "ruleId": "rule-action", "ruleName": name,
 			"severity": severity, "timestamp": tsMs, "workflowId": workflowID,
 			"workflowName": workflowName, "message": message, "acknowledged": false,
+			"instanceId": actionInstanceID(instanceID),
 		})
 	}
 	r := AlertRule{ID: "rule-action", Name: name, Severity: severity, Channels: strings.Join(channels, ",")}
@@ -862,4 +864,12 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// ID opcional: relatórios globais não fingem pertencer a uma instance.
+func actionInstanceID(ids []string) string {
+	if len(ids) == 1 {
+		return ids[0]
+	}
+	return ""
 }

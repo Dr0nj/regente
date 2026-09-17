@@ -76,9 +76,15 @@ func (s *server) bulkInstances(w http.ResponseWriter, r *http.Request) {
 
 	actor := actorFromCtx(r)
 	results := make([]bulkItemResult, 0, len(req.IDs))
+	scopes := []webScope{}
 	for _, id := range req.IDs {
 		if err := s.canWriteInstanceQuiet(r, id); err != nil {
 			results = append(results, bulkItemResult{ID: id, Error: err.Error()})
+			continue
+		}
+		scope, scopeErr := s.instanceWebScope(id)
+		if scopeErr != nil {
+			results = append(results, bulkItemResult{ID: id, Error: "Unable to resolve event scope"})
 			continue
 		}
 		status, err := s.applyInstanceAction(actor, id, req.Action)
@@ -86,11 +92,12 @@ func (s *server) bulkInstances(w http.ResponseWriter, r *http.Request) {
 			results = append(results, bulkItemResult{ID: id, Error: err.Error()})
 			continue
 		}
+		scopes = append(scopes, scope)
 		results = append(results, bulkItemResult{ID: id, OK: true, Status: status})
 	}
 	resp := newBulkResponse(req.Action, results)
-	s.cfg.Hub.BroadcastWeb("instance.bulk", map[string]any{
-		"action": req.Action, "total": resp.Total, "ok": resp.Ok, "failed": resp.Failed, "actor": actor,
+	s.broadcastWeb("instance.bulk", map[string]any{
+		"_scopes": scopes, "action": req.Action, "total": resp.Total, "ok": resp.Ok, "failed": resp.Failed, "actor": actor,
 	})
 	// Ações que podem deixar jobs elegíveis JÁ (confirm destrava WAIT_CONFIRM;
 	// rerun/release re-entram no gating; set-ok libera dependentes; delete pode
@@ -109,7 +116,7 @@ func (s *server) bulkInstances(w http.ResponseWriter, r *http.Request) {
 // vez de escrever a resposta HTTP (necessário para feedback por item no bulk:
 // E3 manda reportar 403 POR ITEM, não abortar o lote). Mesma semântica do
 // unitário: folder da coluna `team` da instance (fallback def viva); job solto
-// (team='') passa pelo CanWriteFolder("") — admin/operator irrestrito sim,
+// (team=”) passa pelo CanWriteFolder("") — admin/operator irrestrito sim,
 // user em modo ACL-restrito não.
 func (s *server) canWriteInstanceQuiet(r *http.Request, instanceID string) error {
 	folder, err := s.instanceFolder(instanceID)
@@ -154,7 +161,7 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 		var heldFrom string
 		_ = s.cfg.DB.QueryRow(`SELECT COALESCE(held_from_status,'') FROM instances WHERE id=?`, id).Scan(&heldFrom)
 		s.cfg.Scheduler.EmitEvent(id, "held", actor, "bulk")
-		s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusHeld), "holdScope": "", "heldFromStatus": heldFrom})
+		s.broadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusHeld), "holdScope": "", "heldFromStatus": heldFrom})
 		return string(domain.StatusHeld), nil
 
 	case "release":
@@ -171,7 +178,7 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 		status := string(domain.StatusWaiting)
 		_ = s.cfg.DB.QueryRow(`SELECT status FROM instances WHERE id=?`, id).Scan(&status)
 		s.cfg.Scheduler.EmitEvent(id, "released", actor, "bulk")
-		s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": status, "holdScope": "", "heldFromStatus": ""})
+		s.broadcastWeb("instance.changed", map[string]string{"id": id, "status": status, "holdScope": "", "heldFromStatus": ""})
 		return status, nil
 
 	case "cancel":
@@ -185,10 +192,14 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 			return "", fmt.Errorf("instance not found")
 		}
 		s.cfg.Scheduler.EmitEvent(id, "cancelled", actor, "bulk cancel")
-		s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusCancelled)})
+		s.broadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusCancelled)})
 		return string(domain.StatusCancelled), nil
 
 	case "delete":
+		scope, scopeErr := s.instanceWebScope(id)
+		if scopeErr != nil {
+			return "", scopeErr
+		}
 		// Control-M "Delete job" (ver deleteInstance): só em HOLD — RUNNING nunca
 		// é deletável (não é segurável). O pool de condições fica intacto.
 		var status string
@@ -208,7 +219,7 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 		if n, _ := res.RowsAffected(); n == 0 {
 			return "", fmt.Errorf("the instance changed state during the delete")
 		}
-		s.cfg.Hub.BroadcastWeb("instance.deleted", map[string]string{"id": id})
+		s.broadcastWeb("instance.deleted", map[string]any{"id": id, "_scope": scope})
 		return "deleted", nil
 
 	case "rerun":
@@ -232,7 +243,7 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 			return "", fmt.Errorf("instance not found")
 		}
 		s.cfg.Scheduler.EmitEvent(id, "rerun", actor, "bulk rerun")
-		s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusWaiting)})
+		s.broadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusWaiting)})
 		return string(domain.StatusWaiting), nil
 
 	case "set-ok":
@@ -251,7 +262,7 @@ func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
 			return "", fmt.Errorf("not in WAITING/HELD (confirm skipped)")
 		}
 		s.cfg.Scheduler.EmitEvent(id, "confirmed", actor, "bulk confirm")
-		s.cfg.Hub.BroadcastWeb("instance.changed", map[string]interface{}{"id": id, "confirmed": true})
+		s.broadcastWeb("instance.changed", map[string]interface{}{"id": id, "confirmed": true})
 		return "confirmed", nil
 	}
 	return "", fmt.Errorf("unknown action")

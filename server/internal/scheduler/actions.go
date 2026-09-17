@@ -168,7 +168,7 @@ func (s *Scheduler) execAction(instanceID, orderDate string, def domain.JobDefin
 		if msg == "" {
 			msg = defaultActionMessage(def, rule)
 		}
-		s.alerts.FireAction(def.ID, labelOf(def), "On/Do · "+labelOf(def), rule.Severity, msg, rule.Channels)
+		s.alerts.FireAction(def.ID, labelOf(def), "On/Do · "+labelOf(def), rule.Severity, msg, rule.Channels, instanceID)
 		s.emitEvent(instanceID, "action", "actions", "notify: "+msg)
 	case "set-condition":
 		if s.conditions == nil || strings.TrimSpace(rule.Condition) == "" {

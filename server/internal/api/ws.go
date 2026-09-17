@@ -33,17 +33,25 @@ func (s *server) wsWeb(w http.ResponseWriter, r *http.Request) {
 	var digest string
 	ticket := r.URL.Query().Get("ticket")
 	err := s.cfg.DB.QueryRow("DELETE FROM web_tickets WHERE token_hash=? AND expires_at>? RETURNING session_token", auth.Digest(ticket), time.Now()).Scan(&digest)
-	valid := func() bool {
-		if s.cfg.Token != "" && digest == auth.Digest(s.cfg.Token) {
-			return s.mode() == "local" || s.mode() == "hybrid"
-		}
-		u, e := auth.ResolveDigest(s.cfg.DB, digest)
-		return e == nil && s.sessionAllowed(u)
-	}
-	if err != nil || ticket == "" || !valid() {
+	access, accessErr := s.webAccess(digest)
+	if err != nil || ticket == "" || accessErr != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	fingerprint := access.fingerprint()
+	valid := func() bool {
+		current, e := s.webAccess(digest)
+		return e == nil && current.fingerprint() == fingerprint
+	}
+	var environment *string
+	if values, ok := r.URL.Query()["environment"]; ok {
+		if len(values) != 1 || len(values[0]) > 128 {
+			http.Error(w, "Invalid event environment", http.StatusBadRequest)
+			return
+		}
+		environment = &values[0]
+	}
+	view, _ := s.workspaceView(access, environment)
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("[ws/web] upgrade: %v", err)
@@ -56,6 +64,15 @@ func (s *server) wsWeb(w http.ResponseWriter, r *http.Request) {
 		Send:      make(chan []byte, 64),
 		Authorize: valid,
 	}
+	c.FilterWeb = func(raw []byte) []byte {
+		current, e := s.webAccess(digest)
+		if e != nil || current.fingerprint() != fingerprint {
+			_ = conn.Close()
+			return nil
+		}
+		return s.filterWebEvent(current, environment, &view, raw)
+	}
+	conn.SetReadLimit(4096)
 	s.cfg.Hub.Register(c)
 	done := make(chan struct{})
 	defer close(done)
@@ -114,7 +131,7 @@ func (s *server) wsAgent(w http.ResponseWriter, r *http.Request) {
 	// Agente voltou: (1) avisa a UI (cards WAIT AGENT re-derivam na hora) e
 	// (2) cutuca um Tick — jobs parados esperando agente disparam IMEDIATAMENTE,
 	// em vez de aguardar o próximo ciclo. Tick é idempotente e leader-gated.
-	s.cfg.Hub.BroadcastWeb("agent.changed", map[string]any{"id": agentID, "state": "connected", "caps": caps, "environment": c.Environment})
+	s.broadcastWeb("agent.changed", map[string]any{"id": agentID, "state": "connected", "caps": caps, "environment": c.Environment})
 	if s.cfg.Scheduler != nil {
 		go s.cfg.Scheduler.Tick()
 	}
@@ -175,13 +192,23 @@ func (s *server) wsAgent(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[ws/agent] %s disconnected", agentID)
 	// Avisa a UI: jobs desse agente (ou da capability que só ele tinha) devem
 	// re-derivar pra WAIT AGENT.
-	s.cfg.Hub.BroadcastWeb("agent.changed", map[string]any{"id": agentID, "state": "disconnected"})
+	s.broadcastWeb("agent.changed", map[string]any{"id": agentID, "state": "disconnected"})
 }
 
 func clientWriter(c *hub.Client) {
 	for msg := range c.Send {
 		if c.Authorize != nil && !c.Authorize() {
 			break
+		}
+		if c.Kind == hub.ClientWeb {
+			if c.FilterWeb == nil {
+				break
+			}
+			msg = c.FilterWeb(msg)
+			if len(msg) == 0 {
+				continue
+			}
+			_ = c.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		}
 		if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 			break

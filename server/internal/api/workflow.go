@@ -15,7 +15,7 @@
 // mesmo WHERE) — congelando o status original em held_from_status; o resume
 // restaura cada um ao que era, não a WAITING cego. RUNNING é a exceção (a
 // execução já está no agente — termina e pronto; um job não é segurável nem
-// deletável em execução); HELD individual (hold_scope='') também fica de fora,
+// deletável em execução); HELD individual (hold_scope=”) também fica de fora,
 // preservando o hold do operador através do pause/resume da folder. O
 // carry-over persiste HELD entre diárias, então uma folder pode ficar pausada
 // por dias sem perder estado.
@@ -102,7 +102,7 @@ func (s *server) folderPauseResume(w http.ResponseWriter, r *http.Request, pause
 	}
 	n, _ := res.RowsAffected()
 
-	s.cfg.Hub.BroadcastWeb("instance.bulk", map[string]any{
+	s.broadcastWeb("instance.bulk", map[string]any{
 		"action": kind, "folder": folder, "total": n, "ok": n, "actor": actor,
 	})
 	if !pause && n > 0 {

@@ -30,7 +30,8 @@ type Client struct {
 	Capabilities   []string // agents: ["COMMAND","REST",...]
 	CredentialID   int64
 	StrictIdentity bool
-	Authorize      func() bool // revalidação limitada antes de entregar mensagens
+	Authorize      func() bool         // revalidação limitada antes de entregar mensagens
+	FilterWeb      func([]byte) []byte // obrigatório no writer web; nil/retorno vazio = negar
 	Done           chan struct{}
 
 	// Environment — ADV-2: label de ambiente/site do agente (flag -env do

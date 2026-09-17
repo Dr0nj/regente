@@ -553,7 +553,7 @@ func (s *server) holdInstance(w http.ResponseWriter, r *http.Request) {
 	var heldFrom string
 	_ = s.cfg.DB.QueryRow(`SELECT COALESCE(held_from_status,'') FROM instances WHERE id=?`, id).Scan(&heldFrom)
 	s.cfg.Scheduler.EmitEvent(id, "held", "operator", "")
-	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]any{"id": id, "status": string(domain.StatusHeld), "holdScope": "", "heldFromStatus": heldFrom})
+	s.broadcastWeb("instance.changed", map[string]any{"id": id, "status": string(domain.StatusHeld), "holdScope": "", "heldFromStatus": heldFrom})
 	writeJSON(w, 200, map[string]string{"id": id, "status": string(domain.StatusHeld)})
 }
 
@@ -595,7 +595,7 @@ func (s *server) releaseInstance(w http.ResponseWriter, r *http.Request) {
 	status := string(domain.StatusWaiting)
 	_ = s.cfg.DB.QueryRow(`SELECT status FROM instances WHERE id=?`, id).Scan(&status)
 	s.cfg.Scheduler.EmitEvent(id, "released", "operator", "")
-	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]any{"id": id, "status": status, "holdScope": "", "heldFromStatus": ""})
+	s.broadcastWeb("instance.changed", map[string]any{"id": id, "status": status, "holdScope": "", "heldFromStatus": ""})
 	writeJSON(w, 200, map[string]string{"id": id, "status": status})
 }
 
@@ -609,6 +609,11 @@ func (s *server) releaseInstance(w http.ResponseWriter, r *http.Request) {
 func (s *server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !s.requireInstanceWrite(w, r, id) {
+		return
+	}
+	scope, err := s.instanceWebScope(id)
+	if err != nil {
+		http.Error(w, "Unable to resolve event scope", http.StatusInternalServerError)
 		return
 	}
 	var status string
@@ -639,7 +644,7 @@ func (s *server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	go s.cfg.Scheduler.Tick()
-	s.cfg.Hub.BroadcastWeb("instance.deleted", map[string]string{"id": id})
+	s.broadcastWeb("instance.deleted", map[string]any{"id": id, "_scope": scope})
 	writeJSON(w, 200, map[string]string{"id": id, "status": "deleted"})
 }
 
@@ -682,7 +687,7 @@ func (s *server) confirmInstance(w http.ResponseWriter, r *http.Request) {
 	s.cfg.Scheduler.EmitEvent(id, "confirmed", "operator", "")
 	var status string
 	_ = s.cfg.DB.QueryRow(`SELECT status FROM instances WHERE id=?`, id).Scan(&status)
-	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]interface{}{"id": id, "status": status, "confirmed": true})
+	s.broadcastWeb("instance.changed", map[string]interface{}{"id": id, "status": status, "confirmed": true})
 	go s.cfg.Scheduler.Tick()
 	writeJSON(w, 200, map[string]interface{}{"id": id, "status": status, "confirmed": true})
 }
@@ -719,7 +724,7 @@ func (s *server) rerunInstance(w http.ResponseWriter, r *http.Request) {
 	s.cfg.Scheduler.EmitEvent(id, "rerun", "operator", "reset to WAITING")
 	// Ciclo de vida do alerta: o operador agiu no job → marca alertas como tratados.
 	s.markAlertsHandled(id, "rerun")
-	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusWaiting)})
+	s.broadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusWaiting)})
 	// BUG-10/11: rerun com os gates já satisfeitos (ex.: horário que já passou)
 	// entra NA HORA — cutuca o tick em vez de esperar o próximo ciclo.
 	go s.cfg.Scheduler.Tick()
@@ -925,7 +930,7 @@ func (s *server) forceRunInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.cfg.Scheduler.EmitEvent(id, "force-ordered", "operator", "run now — bypasses window/deps/conditions/resources")
-	s.cfg.Hub.BroadcastWeb("instance.changed", map[string]interface{}{"id": id, "status": string(domain.StatusWaiting), "forced": true})
+	s.broadcastWeb("instance.changed", map[string]interface{}{"id": id, "status": string(domain.StatusWaiting), "forced": true})
 	// Cutuca o tick (leader-gated) pra despachar já, sem esperar o ciclo de 2s.
 	go s.cfg.Scheduler.Tick()
 	writeJSON(w, 200, map[string]interface{}{"id": id, "status": string(domain.StatusWaiting), "forced": true})

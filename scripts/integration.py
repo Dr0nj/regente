@@ -104,7 +104,10 @@ def validate_test_events(output):
     required = {"TestPostgresMigrateAndCRUD", "TestMigrationSafety/postgres",
                 "TestMigrationSafety/sqlite", "TestIntegrationOIDC_AuthCodeFlow",
                 "TestMachineIdentity/sqlite", "TestMachineIdentity/postgres",
-                "TestHumanIdentity/sqlite", "TestHumanIdentity/postgres"}
+                "TestHumanIdentity/sqlite", "TestHumanIdentity/postgres",
+                "TestWebEventAuthorization/sqlite", "TestWebEventAuthorization/postgres",
+                "TestWebEventDistributed/sqlite", "TestWebEventDistributed/postgres",
+                "TestWebEventPolicy", "TestWebEventOrigin", "TestWebEventQueuedRevocation"}
     if not required <= passed:
         raise RuntimeError(f"Missing required test evidence: {required - passed}")
     REPORT["passed_tests"] = sorted(p for p in passed if p)
@@ -271,15 +274,17 @@ def main():
         # Configuração pessoal de Git, TLS, banco ou telemetria não entra no lab.
         clean_env = {k: v for k, v in os.environ.items()
                      if not k.startswith(("REGENTE_", "OTEL_")) and k not in ("GITHUB_TOKEN", "GH_TOKEN")}
-        env = dict(clean_env, SSL_CERT_FILE=str(tls_dir/"lab.crt"), REGENTE_REQUIRE_INTEGRATION="1", REGENTE_TEST_PG_DSN=dsn,
+        env = dict(clean_env, SSL_CERT_FILE=str(tls_dir/"lab.crt"), REGENTE_REQUIRE_INTEGRATION="1", REGENTE_TEST_PG_DSN=dsn, REGENTE_TEST_NATS_URL=nats_url,
                    REGENTE_TEST_OIDC_ISSUER=issuer, REGENTE_TEST_OIDC_CLIENT_ID="regente-lab",
                    REGENTE_TEST_OIDC_CLIENT_SECRET="synthetic-client-secret",
                    REGENTE_TEST_OIDC_USER="lab-user", REGENTE_TEST_OIDC_PASS="synthetic-password")
         output = command(["go", "test", "-json", "-count=1", "-timeout=5m",
                           "./server/internal/db", "./server/internal/api", "-run",
-                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials|TestHumanIdentity"],
+                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials|TestHumanIdentity|TestWebEvent"],
                          env=env, timeout=360, name="database-oidc-tests")
         validate_test_events(output)
+        command(["go", "test", "-race", "-count=1", "-timeout=3m", "./server/internal/api", "-run", "^TestWebEvent"],
+                env=env, timeout=300, name="web-events-race")
         command(["go", "build", "-o", str(RUN/"server"), "./server"], timeout=180, name="server-build")
         command(["go", "build", "-o", str(RUN/"agent"), "./agent"], timeout=180, name="agent-build")
         legacy_restore(dsn)

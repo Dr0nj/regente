@@ -375,13 +375,13 @@ func (s *server) publishDesignSession(w http.ResponseWriter, r *http.Request) {
 	if res.Mode == string(storage.WriteModeDirect) && s.cfg.Git != nil {
 		if err := s.cfg.Git.SyncFromRemote(); err == nil {
 			s.cfg.Scheduler.ReloadDefs()
-			s.cfg.Hub.BroadcastWeb("definition.changed", map[string]string{"reason": "design-publish"})
-			s.cfg.Hub.BroadcastWeb("folder.changed", map[string]string{"reason": "design-publish"})
+			s.broadcastWeb("definition.changed", map[string]string{"reason": "design-publish"})
+			s.broadcastWeb("folder.changed", map[string]string{"reason": "design-publish"})
 		}
 	}
 	// Limpa session após publish bem-sucedido.
 	_ = s.cfg.Sessions.Delete(sess.ID)
-	massUndo.clear(sess.ID) // CTM-3: undo morre com a session
+	massUndo.clear(sess.ID)  // CTM-3: undo morre com a session
 	if len(violations) > 0 { // enforcement=warn: publicou, mas avisa
 		writeJSON(w, 200, struct {
 			*storage.PublishResult

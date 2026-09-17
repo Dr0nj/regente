@@ -118,3 +118,8 @@ transport separation, revocation and upgrades. Mandatory integration exercises
 SQLite/PostgreSQL, Keycloak and two nodes without accepting skipped tests.
 Playwright uses a real server for all three policies, initial password change,
 session reload and logout.
+
+## Web events
+
+See [Web event authorization](web-events.md) for folder isolation, live ACL changes,
+reconnection, environment filters and the event payload contract.

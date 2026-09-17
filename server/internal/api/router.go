@@ -29,6 +29,7 @@ type Config struct {
 	Hub       *hub.Hub
 	Scheduler *scheduler.Scheduler
 	Token     string
+	Events    interface{ BroadcastWeb(string, interface{}) } // fan-out configurado; nil usa Hub
 	// R5 — presença cross-nó de agents (bus distribuído). nil = single-node/local:
 	// a frota mostra só os agents deste nó. Com o bus NATS, reflete o cluster inteiro.
 	Presence RemotePresence

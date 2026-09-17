@@ -51,25 +51,15 @@ func (s *server) replaceUserACLs(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	tx, err := s.cfg.DB.Begin()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	// Preparar e aplicar o conjunto numa única transação: um DELETE commitado
+	// antes dos INSERTs abre temporariamente o modo "zero ACLs = read-all".
+	acls := make([]auth.FolderACL, 0, len(body))
+	for _, entry := range body {
+		acls = append(acls, auth.FolderACL{FolderName: entry.Folder, Perms: entry.Perms})
 	}
-	if _, err := tx.Exec("DELETE FROM folder_acls WHERE user_id=?", id); err != nil {
-		_ = tx.Rollback()
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err := auth.ReplaceUserACLs(s.cfg.DB, id, acls); err != nil {
+		http.Error(w, "Unable to replace folder permissions", http.StatusBadRequest)
 		return
-	}
-	if err := tx.Commit(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	for _, e := range body {
-		if err := auth.SetUserACL(s.cfg.DB, id, e.Folder, e.Perms); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
 	}
 	out, _ := auth.ListUserACLs(s.cfg.DB, id)
 	writeJSON(w, 200, out)
@@ -153,7 +143,7 @@ func (s *server) instanceFolder(instanceID string) (string, error) {
 // confirm) por folder, além do writer role do middleware: operator com ACL
 // write=[FIN] não cancela job do RISCO. Instance sem folder (job solto) passa
 // pelo MESMO CanWriteFolder(""): admin e operator irrestrito podem; user em
-// modo ACL-restrito não (coerente com o read-path, que nem lista team='' pra
+// modo ACL-restrito não (coerente com o read-path, que nem lista team=” pra
 // ele). Bearer legado vira pseudo-admin no middleware → bypassa, por design.
 func (s *server) requireInstanceWrite(w http.ResponseWriter, r *http.Request, instanceID string) bool {
 	folder, err := s.instanceFolder(instanceID)

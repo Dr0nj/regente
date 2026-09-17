@@ -54,6 +54,8 @@ type Distributed struct {
 
 	ttl      time.Duration // expira presença remota não renovada
 	interval time.Duration // cadência de publicação de presença
+	done     chan struct{}
+	stop     sync.Once
 }
 
 // NewDistributed cria o bus distribuído. `node` deve ser único por processo no cluster.
@@ -65,6 +67,7 @@ func NewDistributed(node string, local *hub.Hub, tr Transport) *Distributed {
 		remote:   map[string]remoteAgent{},
 		ttl:      15 * time.Second,
 		interval: 5 * time.Second,
+		done:     make(chan struct{}),
 	}
 }
 
@@ -109,8 +112,13 @@ func (d *Distributed) presenceLoop() {
 	t := time.NewTicker(d.interval)
 	defer t.Stop()
 	d.publishPresence()
-	for range t.C {
-		d.publishPresence()
+	for {
+		select {
+		case <-d.done:
+			return
+		case <-t.C:
+			d.publishPresence()
+		}
 	}
 }
 
@@ -275,3 +283,6 @@ func (d *Distributed) publishPresence() {
 		log.Printf("[bus] publish presence: %v", err)
 	}
 }
+
+// Stop encerra o publicador de presença; o dono fecha o transporte em seguida.
+func (d *Distributed) Stop() { d.stop.Do(func() { close(d.done) }) }

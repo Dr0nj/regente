@@ -57,8 +57,11 @@ never again overwrites the link the arrow just created.
    to Organize — list/add/delete with a date) or the API/MCP;
 4. an external event (`POST /api/events/ingest`).
 
-Every change to the pool emits the WS event **`condition.changed`** (the panel
-and the graph edges are a live reflection) and nudges the tick (whatever was
+Every change to the pool emits the internal event **`condition.changed`**. Web
+delivery follows [the event access policy](web-events.md): a restricted subscription
+receives an empty invalidation only for a condition referenced by a visible order.
+For authorized subscriptions, the panel
+and the graph edges remain a live reflection. Each change also nudges the tick (whatever was
 waiting runs RIGHT AWAY).
 
 ## Dates — ODAT / PREV / STAT

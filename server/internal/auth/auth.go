@@ -474,3 +474,40 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrInvalidToken       = errors.New("invalid or expired token")
 )
+
+// ReplaceUserACLs impede que leitores observem um conjunto parcialmente substituído.
+// A semântica de conjunto vazio (acesso global) permanece explícita e inalterada.
+func ReplaceUserACLs(database *db.DB, userID int64, entries []FolderACL) error {
+	clean := make(map[string]string, len(entries))
+	for _, entry := range entries {
+		folder := strings.TrimSpace(entry.FolderName)
+		if folder == "" {
+			return errors.New("folder required")
+		}
+		perms := ""
+		if strings.Contains(entry.Perms, "r") {
+			perms += "r"
+		}
+		if strings.Contains(entry.Perms, "w") {
+			perms += "w"
+		}
+		clean[folder] = perms
+	}
+	tx, err := database.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec("DELETE FROM folder_acls WHERE user_id=?", userID); err != nil {
+		return err
+	}
+	for folder, perms := range clean {
+		if perms == "" {
+			continue
+		}
+		if _, err = tx.Exec("INSERT INTO folder_acls(user_id,folder_name,perms) VALUES(?,?,?)", userID, folder, perms); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}

@@ -264,26 +264,33 @@ function emit(ev: ServerEvent): void {
 }
 
 let connecting = false;
+let connectionRevision = 0;
 async function connect(): Promise<void> {
   if (!SERVER_URL) return;
-  if (connecting) return;
+  if (connecting || ws) return;
   connecting = true;
+  const revision = connectionRevision;
   let sock: WebSocket;
   try {
     if (!csrfToken && !getAuthToken()) await api("/api/auth/me");
     const { ticket } = await api<{ ticket: string }>("/api/auth/event-ticket", { method: "POST" });
+    if (revision !== connectionRevision) return;
     const url = `${wsUrl("/ws/web")}?ticket=${encodeURIComponent(ticket)}`;
     sock = new WebSocket(url);
   } catch (err) {
-    console.error("[regente-ws] construct failed", err);
-    scheduleReconnect();
+    if (revision === connectionRevision) {
+      console.error("[regente-ws] construct failed", err);
+      scheduleReconnect();
+    }
     return;
   } finally {
     connecting = false;
+    if (revision !== connectionRevision) void connect();
   }
   ws = sock;
 
   sock.onopen = () => {
+    if (ws !== sock || revision !== connectionRevision) { sock.close(); return; }
     backoffMs = 1000;
     // Evento sintético local (não vem do server): sinaliza "canal ao vivo de novo".
     // Stores usam isso pra ressincronizar estado perdido enquanto o WS esteve fora
@@ -292,6 +299,7 @@ async function connect(): Promise<void> {
     if (Date.now() - lastResyncAt > RESYNC_DEDUP_MS) emit({ event: "_connected" });
   };
   sock.onmessage = (msg) => {
+    if (ws !== sock || revision !== connectionRevision) return;
     try {
       emit(JSON.parse(String(msg.data)) as ServerEvent);
     } catch (err) {
@@ -320,6 +328,7 @@ function reconnectNow(): void {
   if (!isServerMode() || listeners.size === 0) return;
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   backoffMs = 1000;
+  connectionRevision += 1;
   const old = ws;
   ws = null;
   if (old) {

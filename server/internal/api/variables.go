@@ -67,7 +67,7 @@ func (s *server) putVariable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.Hub != nil {
-		s.cfg.Hub.BroadcastWeb("variables.changed", map[string]any{"name": name, "action": "set"})
+		s.broadcastWeb("variables.changed", map[string]any{"name": name, "action": "set"})
 	}
 	writeJSON(w, 200, v)
 }
@@ -88,7 +88,7 @@ func (s *server) deleteVariable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.Hub != nil {
-		s.cfg.Hub.BroadcastWeb("variables.changed", map[string]any{"name": name, "action": "delete"})
+		s.broadcastWeb("variables.changed", map[string]any{"name": name, "action": "delete"})
 	}
 	w.WriteHeader(204)
 }

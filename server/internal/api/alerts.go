@@ -164,8 +164,8 @@ func (s *server) markAlertsHandled(instanceID, resolution string) {
 	}
 	n, err := eng.MarkHandledByWorkflow(defID, resolution)
 	if err == nil && n > 0 && s.cfg.Hub != nil {
-		s.cfg.Hub.BroadcastWeb("alert.changed", map[string]any{
-			"workflowId": defID, "resolution": resolution, "count": n,
+		s.broadcastWeb("alert.changed", map[string]any{
+			"workflowId": defID, "instanceId": instanceID, "resolution": resolution, "count": n,
 		})
 	}
 }

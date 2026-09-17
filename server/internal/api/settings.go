@@ -124,7 +124,7 @@ func (s *server) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	// broadcast so UI can react
 	if s.cfg.Hub != nil {
-		s.cfg.Hub.BroadcastWeb("settings.changed", body)
+		s.broadcastWeb("settings.changed", map[string]any{})
 	}
 	s.getSettings(w, r)
 }

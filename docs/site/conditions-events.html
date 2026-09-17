@@ -62,6 +62,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="agent-identity.html">Agent identity and credential lifecycle</a>
 <a href="authentication.html">Authentication: local, hybrid or SSO</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="web-events.html">Web event authorization</a>
 </nav>
 <main>
 <article>
@@ -140,8 +141,11 @@ ODAT;</li>
 to Organize — list/add/delete with a date) or the API/MCP;</li>
 <li>an external event (<code>POST /api/events/ingest</code>).</li>
 </ol>
-<p>Every change to the pool emits the WS event <strong><code>condition.changed</code></strong> (the panel
-and the graph edges are a live reflection) and nudges the tick (whatever was
+<p>Every change to the pool emits the internal event <strong><code>condition.changed</code></strong>. Web
+delivery follows <a href="web-events.html">the event access policy</a>: a restricted subscription
+receives an empty invalidation only for a condition referenced by a visible order.
+For authorized subscriptions, the panel
+and the graph edges remain a live reflection. Each change also nudges the tick (whatever was
 waiting runs RIGHT AWAY).</p>
 <h2 id="dates--odat--prev--stat">Dates — ODAT / PREV / STAT</h2>
 <p><strong>The day turns at <code>daily_at</code>, not at midnight.</strong> Every date below is a BUSINESS

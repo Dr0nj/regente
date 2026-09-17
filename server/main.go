@@ -328,6 +328,7 @@ func main() {
 		if err := dbus.Start(); err != nil {
 			log.Fatalf("[bus] distributed start: %v", err)
 		}
+		defer dbus.Stop()
 		theBus = dbus
 		remotePresence = dbus
 		log.Printf("[bus] distributed via NATS url=%s node=%s", *natsURL, *nodeID)
@@ -505,9 +506,9 @@ func main() {
 		log.Printf("[git] polling every %ds", *gitPollSec)
 		api.StartGitPolling(ctx, gitOps, *gitPollSec, func() {
 			sched.ReloadDefs()
-			h.BroadcastWeb("definition.changed", map[string]string{"reason": "git-poll"})
-			h.BroadcastWeb("folder.changed", map[string]string{"reason": "git-poll"})
-		}, h)
+			theBus.BroadcastWeb("definition.changed", map[string]string{"reason": "git-poll"})
+			theBus.BroadcastWeb("folder.changed", map[string]string{"reason": "git-poll"})
+		}, theBus)
 	}
 
 	// A falha do IdP preserva a política; somente hybrid mantém senha normal.
@@ -567,6 +568,7 @@ func main() {
 		Store:         store,
 		DB:            database,
 		Hub:           h,
+		Events:        theBus,
 		Scheduler:     sched,
 		Token:         *apiToken,
 		Git:           gitOps,

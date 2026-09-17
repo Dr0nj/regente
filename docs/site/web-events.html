@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Web event authorization · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</a>
+<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="web-events.html" class="active">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="web-event-authorization">Web event authorization</h1>
+<p>The web event connection uses a 30-second, single-use ticket issued by
+<code>POST /api/auth/event-ticket</code>. A reconnect obtains a new ticket. Browser origins
+must match the server origin or the configured <code>-app-url</code>; clients without an
+Origin header still require a valid ticket. Long-lived tokens in URLs and direct
+bearer WebSocket handshakes are not supported.</p>
+<h2 id="access-policy">Access policy</h2>
+<p>Each connection is tied to its current human session, role and folder ACLs.
+The server checks access immediately before writing each message, including
+messages already queued. Every node reads the same session/ACL database;
+authorization does not depend on receiving a revocation notification over NATS.
+The one-second watchdog closes idle connections after access changes. The UI
+reconnects, obtains a fresh ticket and reloads its authorized view and role.</p>
+<p>Folder semantics match the existing REST policy: administrators have full
+access; a non-admin with no ACL entries has global read access; once ACL entries
+exist, only exact folder names containing <code>r</code> are readable. Removing the final
+ACL intentionally restores global read access. To disable a user, use the user
+access control, rather than deleting their last ACL. Replacing an ACL set is
+atomic; readers cannot observe a temporarily empty set between delete and insert.</p>
+<p>An optional <code>environment</code> query parameter further narrows the subscription:
+omitted means all authorized environments, and an empty value means unlabeled
+jobs only. This is a delivery filter, not a new human permission or a tenant
+boundary. Environment changes are checked against the stored instance on send.
+The standard UI uses the full folder-authorized subscription.</p>
+<h2 id="event-contract">Event contract</h2>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Delivery rule and payload</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>instance.changed</code></td>
+<td>Resolve the stored instance folder/environment; send only its ID, status and supported state fields. Missing or unreadable instances are denied.</td>
+</tr>
+<tr>
+<td><code>instance.deleted</code></td>
+<td>Capture scope before deletion; send only the ID after checking current ACLs. Internal scope never reaches the browser.</td>
+</tr>
+<tr>
+<td><code>instance.bulk</code></td>
+<td>An authorized affected scope must exist. Send an empty invalidation; never mixed-folder totals, actors or lists.</td>
+</tr>
+<tr>
+<td>Definition/folder changes and Git sync</td>
+<td>Compare only the user's readable workspace view. Send an empty <code>_resync</code> only when that view changes. No definition bodies, names, commit SHAs or rename targets are broadcast.</td>
+</tr>
+<tr>
+<td>Job alerts and SLA</td>
+<td>Authorize using the originating instance. Legacy/system alerts without an instance are limited to global-read subscriptions. Alert counts and resolution aggregates are omitted.</td>
+</tr>
+<tr>
+<td><code>condition.*</code></td>
+<td>Global-read clients, or a visible instance referencing the condition. Only an empty invalidation is sent.</td>
+</tr>
+<tr>
+<td><code>daily.started</code></td>
+<td>Business date only; no totals or commit SHA.</td>
+</tr>
+<tr>
+<td><code>settings.changed</code></td>
+<td>Empty invalidation for all authenticated subscriptions. Values never enter the event bus.</td>
+</tr>
+<tr>
+<td>Agent, global variable and Git drift events</td>
+<td>Global-read subscriptions only, with empty invalidations. Environment-filtered subscriptions do not receive these global notifications.</td>
+</tr>
+<tr>
+<td>Unknown or malformed events</td>
+<td>Denied by default, even for administrators.</td>
+</tr>
+</tbody>
+</table>
+<p>This contract restricts the push channel. Existing globally readable REST
+resources remain governed by their own API policies; this change does not
+claim multi-tenant isolation or complete enterprise certification.</p>
+<h2 id="distribution-and-failure-handling">Distribution and failure handling</h2>
+<p>The API, scheduler and Git poller use the configured event bus. A receiving node
+applies its own current access policy before delivery. NATS is a trusted internal
+transport and must not be exposed to users or agents as a publishing endpoint.</p>
+<p>Database or workspace lookup errors do not grant access. A missing scope is not
+an unrestricted scope. A slow socket has a bounded write deadline. Notifications
+remain best-effort and the queue can drop events under backpressure; reconnect
+reloads authoritative state. This package does not introduce durable event replay.</p>
+<p>Upgrade all control-plane nodes before claiming I04 protection. An older node
+can still expose the previous web contract. No schema migration is required;
+rolling back the binary also rolls back this access protection.</p>
+<h2 id="verification-and-troubleshooting">Verification and troubleshooting</h2>
+<ul>
+<li><code>go test ./server/internal/api -run '^TestWebEvent' -count=1</code> tests payload
+isolation, projections, origin, workspace updates, queued-message revocation,
+two nodes, ACL/role changes, expiration and reconnection.</li>
+<li>The mandatory integration gate requires SQLite, PostgreSQL and real NATS,
+rejects missing evidence/Skip, and repeats the web matrix with the race detector.</li>
+<li><code>cd app &amp;&amp; npx playwright test</code> checks the three authentication modes and an
+actual browser reconnect after ACL replacement, including received frames.</li>
+<li>If a notification is absent, verify the current ACL set, source instance,
+optional environment filter and registered event policy. Unknown event types
+require an explicit policy and tests; do not add a generic pass-through.</li>
+<li>Global notifications suppressed for restricted users are intentional. A
+historical alert without a provable instance must not be assigned to a folder
+using a definition's current name.</li>
+<li>Keep logs free of tickets, session digests, settings values and event contents.</li>
+</ul>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

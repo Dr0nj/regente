@@ -162,7 +162,7 @@ func (s *server) setCondition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.Hub != nil {
-		s.cfg.Hub.BroadcastWeb("condition.set", map[string]any{"name": name, "scope": scope, "by": actor})
+		s.broadcastWeb("condition.set", map[string]any{"name": name, "scope": scope, "by": actor})
 	}
 	// BUG-10: job que recebe uma condição roda NA HORA — cutuca o tick em vez
 	// de deixar o WAIT_CONDITION esperando o próximo ciclo.
@@ -183,7 +183,7 @@ func (s *server) unsetCondition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.Hub != nil {
-		s.cfg.Hub.BroadcastWeb("condition.unset", map[string]any{"name": name, "scope": scope})
+		s.broadcastWeb("condition.unset", map[string]any{"name": name, "scope": scope})
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }

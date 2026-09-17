@@ -389,8 +389,6 @@ function V2PreviewInner() {
      resync dos itens "fetch-once" sem outro caminho de recuperação (badge de
      alertas, env label e o /me — server fora do ar no mount deixava o
      LoginForm mesmo com token válido). */
-  const meRef = useRef(me);
-  useEffect(() => { meRef.current = me; }, [me]);
   useEffect(() => {
     if (!isServerMode()) return;
     return onServerEvent((ev) => {
@@ -428,9 +426,8 @@ function V2PreviewInner() {
             .then((data) => { if (data?.label) setEnvLabel(data.label); })
             .catch(() => {});
         }
-        if (!meRef.current) {
-          void fetchMe().then((u) => { if (u) setMe(u); });
-        }
+        // ACL/papel podem ter mudado enquanto o socket estava aberto.
+        void fetchMe().then((u) => { if (u) setMe(u); });
       }
     });
   }, [refreshDailyStatus, refreshAgents]);

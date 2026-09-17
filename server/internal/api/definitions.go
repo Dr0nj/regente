@@ -85,7 +85,7 @@ func (s *server) saveDefinition(w http.ResponseWriter, r *http.Request) {
 	}
 	s.recordDefinitionAudit(actor, "save", def.Team, def.ID, pr)
 	s.cfg.Scheduler.ReloadDefs()
-	s.cfg.Hub.BroadcastWeb("definition.changed", def)
+	s.broadcastWeb("definition.changed", def)
 	writeJSON(w, 200, map[string]any{"definition": def, "git": pr})
 }
 
@@ -108,7 +108,7 @@ func (s *server) deleteDefinition(w http.ResponseWriter, r *http.Request) {
 	}
 	s.recordDefinitionAudit(actor, "delete", team, id, pr)
 	s.cfg.Scheduler.ReloadDefs()
-	s.cfg.Hub.BroadcastWeb("definition.deleted", map[string]any{"team": team, "id": id, "git": pr})
+	s.broadcastWeb("definition.deleted", map[string]any{"team": team, "id": id, "git": pr})
 	writeJSON(w, 200, map[string]any{"deleted": true, "git": pr})
 }
 
@@ -150,7 +150,7 @@ func (s *server) createFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.directPush("create folder "+req.Name, actorFromCtx(r))
-	s.cfg.Hub.BroadcastWeb("folder.changed", map[string]string{"name": req.Name, "action": "created"})
+	s.broadcastWeb("folder.changed", map[string]string{"name": req.Name, "action": "created"})
 	writeJSON(w, 200, map[string]string{"name": req.Name})
 }
 
@@ -173,7 +173,7 @@ func (s *server) renameFolder(w http.ResponseWriter, r *http.Request) {
 	}
 	s.directPush("rename folder "+old+" → "+req.NewName, actorFromCtx(r))
 	s.cfg.Scheduler.ReloadDefs()
-	s.cfg.Hub.BroadcastWeb("folder.changed", map[string]string{"name": req.NewName, "oldName": old, "action": "renamed"})
+	s.broadcastWeb("folder.changed", map[string]string{"name": req.NewName, "oldName": old, "action": "renamed"})
 	writeJSON(w, 200, map[string]string{"name": req.NewName})
 }
 
@@ -190,7 +190,7 @@ func (s *server) deleteFolder(w http.ResponseWriter, r *http.Request) {
 	}
 	s.directPush("delete folder "+name, actorFromCtx(r))
 	s.cfg.Scheduler.ReloadDefs()
-	s.cfg.Hub.BroadcastWeb("folder.changed", map[string]string{"name": name, "action": "deleted"})
+	s.broadcastWeb("folder.changed", map[string]string{"name": name, "action": "deleted"})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -222,7 +222,7 @@ func (s *server) setFolderLayout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.directPush("layout folder "+name, actorFromCtx(r))
-	s.cfg.Hub.BroadcastWeb("folder.changed", map[string]string{"name": name, "action": "layout"})
+	s.broadcastWeb("folder.changed", map[string]string{"name": name, "action": "layout"})
 	writeJSON(w, 200, map[string]any{"name": name, "layout": lay})
 }
 
@@ -238,6 +238,6 @@ func (s *server) archiveFolder(w http.ResponseWriter, r *http.Request) {
 	}
 	s.directPush("archive folder "+name, actorFromCtx(r))
 	s.cfg.Scheduler.ReloadDefs()
-	s.cfg.Hub.BroadcastWeb("folder.changed", map[string]string{"name": name, "action": "archived"})
+	s.broadcastWeb("folder.changed", map[string]string{"name": name, "action": "archived"})
 	writeJSON(w, 200, map[string]string{"name": name})
 }

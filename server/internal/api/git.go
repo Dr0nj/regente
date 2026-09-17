@@ -204,7 +204,7 @@ func (s *server) cleanupDB(w http.ResponseWriter, r *http.Request) {
 	if changed {
 		s.cfg.Scheduler.ReloadDefs()
 		st := s.cfg.Git.Status()
-		s.cfg.Hub.BroadcastWeb("definition.changed", map[string]string{"reason": "git-cleanup", "sha": st.ShortSHA})
+		s.broadcastWeb("definition.changed", map[string]string{"reason": "git-cleanup", "sha": st.ShortSHA})
 	}
 	writeJSON(w, 200, map[string]any{"changed": changed, "status": "ok"})
 }
@@ -225,8 +225,8 @@ func (s *server) gitSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.cfg.Scheduler.ReloadDefs()
-	s.cfg.Hub.BroadcastWeb("definition.changed", map[string]string{"reason": "git-sync"})
-	s.cfg.Hub.BroadcastWeb("folder.changed", map[string]string{"reason": "git-sync"})
+	s.broadcastWeb("definition.changed", map[string]string{"reason": "git-sync"})
+	s.broadcastWeb("folder.changed", map[string]string{"reason": "git-sync"})
 	writeJSON(w, 200, s.cfg.Git.Status())
 }
 
@@ -243,7 +243,7 @@ func (s *server) gitDrift(w http.ResponseWriter, r *http.Request) {
 	}
 	st := s.cfg.Git.Status()
 	if drifted {
-		s.cfg.Hub.BroadcastWeb("git.drift", map[string]any{
+		s.broadcastWeb("git.drift", map[string]any{
 			"drift":     true,
 			"localSha":  st.SHA,
 			"remoteSha": st.RemoteSHA,
@@ -312,8 +312,8 @@ func (s *server) gitWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	s.cfg.Scheduler.ReloadDefs()
 	st := s.cfg.Git.Status()
-	s.cfg.Hub.BroadcastWeb("definition.changed", map[string]string{"reason": "git-webhook", "sha": st.ShortSHA})
-	s.cfg.Hub.BroadcastWeb("folder.changed", map[string]string{"reason": "git-webhook", "sha": st.ShortSHA})
+	s.broadcastWeb("definition.changed", map[string]string{"reason": "git-webhook", "sha": st.ShortSHA})
+	s.broadcastWeb("folder.changed", map[string]string{"reason": "git-webhook", "sha": st.ShortSHA})
 	writeJSON(w, 200, map[string]any{"status": "synced", "git": st})
 }
 

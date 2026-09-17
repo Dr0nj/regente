@@ -83,7 +83,9 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
-- **I04–I17:** eventos autorizados, perfil produtivo, execução durável, HA,
+- **I04:** autorização de eventos implementada e validada localmente; aguardando
+  integração PostgreSQL/NATS, CI e publicação. Contrato em [web-events.md](web-events.md).
+- **I05–I17:** perfil produtivo, execução durável, HA,
   auditoria, capacidade, recuperação e piloto seguem na sequência enterprise.
 
 Escopo ativo deste ciclo: separar credenciais humanas de execução e preparar as
