@@ -52,7 +52,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="api.html">API reference</a>
 <a href="operations.html">⚙️ Running in production — enterprise readiness</a>
 <a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
-<a href="dr-backup.html">🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
 <a href="slos.html">🎯 Control plane SLOs — regente-server</a>
 <a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
 <a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
@@ -62,6 +62,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="agent-identity.html">Agent identity and credential lifecycle</a>
 <a href="authentication.html">Authentication: local, hybrid or SSO</a>
 <a href="integration-baseline.html" class="active">Integration baseline and migration runbook</a>
+<a href="upgrades.html">Upgrade and recovery compatibility</a>
 <a href="web-events.html">Web event authorization</a>
 </nav>
 <main>
@@ -175,9 +176,24 @@ are outside this baseline and are not claimed as executed.</p>
 <td>Both agents visible from both nodes; jobs pinned to each node complete; repeat Order Folder does not reexecute effects</td>
 </tr>
 <tr>
-<td>Draft content, daily recovery, uncertain effects</td>
+<td>Complete draft recovery vs DB-only control, SQLite and PG</td>
+<td><code>draft_recovery</code> report; real backup/restore scripts, tar and restarted processes</td>
+<td>Unpublished content and dirty status verified with same relative path layout; DB-only recovery loses missing drafts; not distributed durability</td>
+</tr>
+<tr>
+<td>Same-binary PG drain</td>
+<td><code>same-binary-drain.log</code></td>
+<td>Owned processes, sampled liveness and leadership transfer; not mixed-version compatibility</td>
+</tr>
+<tr>
+<td>Current schema documented correctly</td>
+<td><code>TestMigrationRunbookContract</code></td>
+<td>Compares runbook to constants and migrated DB; rejects missing/duplicate/stale current statements</td>
+</tr>
+<tr>
+<td>Daily recovery, distributed drafts, uncertain effects</td>
 <td>preserved synthetic fixtures</td>
-<td>Regression scenarios reserved for I07/I10/I12; metadata preservation is not content durability</td>
+<td>Broader guarantees remain reserved for I07/I10/I12</td>
 </tr>
 </tbody>
 </table>
@@ -283,6 +299,11 @@ maximum concurrency, duration/output distributions, business windows/timezone,
 retention, topology/platforms and backup constraints. No volume is inferred from
 a prospective organization. The resulting profile replaces the synthetic one;
 capacity and business acceptance stay open until then.</p>
+<h2 id="current-runtime-schema-contract">Current runtime schema contract</h2>
+<p>Current runtime schema: <strong>25</strong>; supported range: <strong>[25,25]</strong>.</p>
+<p><code>TestMigrationRunbookContract</code> compares this current statement with the migration
+constants and an actual fresh database. Historical fixture versions below remain
+intentional. See the <a href="upgrades.html">compatibility matrix</a> before choosing binaries.</p>
 <h2 id="safe-schema-upgrade-and-interrupted-upgrade-recovery">Safe schema upgrade and interrupted-upgrade recovery</h2>
 <ol>
 <li>Record the source/target binary versions and schema history. Stop old control
@@ -293,11 +314,14 @@ the live SQLite <code>.db</code> while ignoring WAL. For PostgreSQL, use <code>p
 the established PITR procedure. Confirm restoration on an isolated target.</li>
 <li>Run the new binary with <code>-migrate-only</code> and the intended database configuration.
 Increase <code>-migration-timeout</code> only from a measured rehearsal; e.g. <code>10m</code>.</li>
-<li>Success reports schema 24 and supported range <code>[24,24]</code>. Schema-23 agent
+<li>Verify the logged schema and range against the current runtime contract above.
+Schema-23 agent
 credentials require <a href="agent-identity.html">explicit reissue</a>. History is in
 <code>schema_migrations</code>; hashes and <code>applied</code>/<code>legacy-adopted</code> provenance are in
 <code>schema_migration_checksums</code>. Legacy adoption cannot prove historical SQL or
-detect every pre-existing manual schema mutation; inspect/rehearse old databases.</li>
+detect every pre-existing manual schema mutation; inspect/rehearse old databases.
+Schema-24 upgrades revoke human sessions; follow the
+<a href="authentication.html#upgrade-from-schema-24">identity transition</a>.</li>
 <li>Start the same tested binary on all control planes. A failed migration stops
 startup before the scheduler/API. With this runner, a process interruption rolls
 back the in-progress version; rerun the same binary to continue after the last

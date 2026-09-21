@@ -1,113 +1,145 @@
-# 🛟 DR / Backup / Restore — regente-server (R6) + config across restarts (R4)
+# DR: database, unpublished drafts and configuration
 
-For schema upgrades, legacy history adoption and interrupted migrations, follow
-the [migration and integration runbook](integration-baseline.md#safe-schema-upgrade-and-interrupted-upgrade-recovery).
-Back up draft directories separately: their content is not yet guaranteed by the
-shared database metadata.
+Recovery requires a **set of artifacts**, not just the database. Use the
+[upgrade compatibility matrix](upgrades.md) and [migration runbook](integration-baseline.md#safe-schema-upgrade-and-interrupted-upgrade-recovery)
+before starting any restored binary. Stop every control plane and other writer
+for a coherent recovery set. Account for in-flight agents and external effects.
 
-> How to **survive a disaster, a container restart and an HA failover without losing state or
-> configuration**. Applies to both state store backends: **SQLite** (single node) and
-> **Postgres** (production/HA). Scripts live in
-> [`../server/deploy/backup.sh`](../server/deploy/backup.sh) and
-> [`../server/deploy/restore.sh`](../server/deploy/restore.sh).
+## What must survive
 
-## Principle (what has to survive)
+| Artifact | Contains | Recovery requirement |
+|---|---|---|
+| SQLite snapshot / PG dump or PITR | Orders, users, credentials, settings, history, **draft metadata** | Consistent DB backup and tested restoration |
+| Git remote and recorded commit | Published definitions | Preserve access/commit; not unpublished edits |
+| Workspace on disk | Local/offline definitions and local Git state | Preserve local-only changes; not everything was necessarily pushed |
+| `sessions/`, including hidden `.git` and untracked files | **Unpublished draft content** | Separate filesystem archive from the same quiesced recovery point |
+| Environment/config, secret provider, keys/certificates, service unit | Configuration outside DB | Secure backup or documented reprovisioning; no secrets in public evidence |
+| Matching binary/UI and manifest | Versions, checksums, working directory, paths, owner/modes | Compatible executable and original layout |
 
-Everything that is **durable state** lives in the state store (the DB), not on the ephemeral
-filesystem of the process or container:
+`backup.sh`, `restore.sh` and the updater's snapshot operate on the **DB only**.
+They do not save/restore session directories, workspace files or external secrets.
+DB backups may also contain sensitive settings: restrict permissions, encrypt/store
+off-host under your policy, and test decryption/restoration.
 
-- **runtime**: `instances`, `daily_runs`, `instance_events`, `instance_output`, `conditions`,
-  `resources`, `sla_breaches`, `alert_*`, `agent_tokens`…
-- **config (R4)**: the `settings` table — `env_label`, `github_token`, `webhook_secret`, alert
-  credentials (Slack/webhook/SMTP/PagerDuty).
-- **definitions**: YAML versioned in **Git** (the workspace) — it already has its own DR: it is
-  a repository.
+### Draft paths are part of the recovery contract
 
-> So: **losing the container loses nothing**, as long as the DB lives outside it (a persistent
-> volume for SQLite, an external Postgres server) and is backed up. The two sections below make
-> sure of that.
+Sessions live under `./sessions` relative to the **process working directory**,
+not `-workspace` or `-db`. The standard systemd unit uses
+`WorkingDirectory=/var/lib/regente`; drafts normally live in
+`/var/lib/regente/sessions`. Inspect the actual unit and `design_sessions.path`;
+custom deployments may use a different layout.
 
----
+On boot, `SessionManager.Restore` requires each recorded path to contain `.git`.
+If missing, it drops that session's metadata row. Restore files **before first
+application startup** against the recovered DB. Preserve the working directory
+and recorded path layout, including absolute paths if present. Do not repair
+paths by ad-hoc SQL; rehearse relocation separately.
 
-## R4 — configuration survives a restart (checklist)
+| Event | What is needed |
+|---|---|
+| Refresh / navigation | Existing session metadata and files |
+| Process restart on same disk | Same DB, working directory and intact session paths |
+| Container/disk loss | Restore DB **and** files/configuration recovery set |
+| Another node / HA failover | Shared DB is insufficient for local drafts; no distributed-draft guarantee |
 
-Runtime configuration is already read from the DB at boot (`settings`). For it to survive a
-restart, an ephemeral container or a failover, make sure that:
+## Capture a quiesced recovery set
 
-- [ ] **SQLite**: the `-db` file sits on a **persistent volume**, not on the container's
-  ephemeral layer. On k8s: a `PersistentVolumeClaim` mounted at the `-db` path.
-- [ ] **Postgres**: `-db` points at an **external PG** (managed, or a StatefulSet with a PVC) —
-  never a PG inside the same ephemeral pod.
-- [ ] **Secrets**: prefer the **secrets provider** (`REGENTE_SECRET_*` / `-secrets-file`) over
-  storing the PAT or webhook in the database in plaintext — that way sensitive configuration
-  comes from your secret manager and the DB only carries the rest.
-- [ ] **Restart smoke test**: start → set `env_label`/token → stop → start → check that it came
-  back (covered by the `TestSettings_SurviveRestart` test).
+1. Freeze writes/publish/ordering, account for running jobs and stop every control
+   plane. Record versions, Git commit, DB history, service working directory,
+   session paths, owner and permissions in a private manifest.
+2. Snapshot the DB as below. Never copy only a live SQLite `.db` and ignore WAL.
+3. Archive session/workspace directories, including hidden and untracked files.
+   Explicitly record when no sessions exist; do not silently omit paths referenced
+   by the DB. Retain required external configuration.
+4. Verify archive contents/hashes and restore in isolation. Backup command success
+   alone does not prove recoverability.
 
----
-
-## R6 — backup
-
-### SQLite (single node)
-
-An **online, consistent** snapshot taken by the binary itself (`VACUUM INTO`, pure-Go, without
-stopping the server):
-
-```sh
-regente-server -db ./regente.db -backup /backups/regente-$(date +%F).db
-# or through the script (with retention):
-REGENTE_DB_DRIVER=sqlite REGENTE_DB=./regente.db ./server/deploy/backup.sh /backups
-```
-
-### Postgres (production / HA)
-
-A consistent **logical** backup (custom format):
+POSIX example for a **verified standard layout**, after stopping all writers:
 
 ```sh
-REGENTE_DB_DRIVER=postgres REGENTE_DB="postgres://u:p@host/db?sslmode=require" \
-  ./server/deploy/backup.sh /backups            # runs pg_dump -Fc
+umask 077
+RECOVERY_DIR=$(mktemp -d /var/backups/regente-recovery.XXXXXX)
+# Standard SQLite layout; execute the backup as the service owner.
+# For PostgreSQL substitute the PG recipe below.
+REGENTE_BIN=/usr/local/bin/regente-server REGENTE_DB_DRIVER=sqlite \
+  REGENTE_DB=/var/lib/regente/regente.db ./server/deploy/backup.sh "$RECOVERY_DIR"
+# Only after checking these are the real directories and both exist:
+tar -C /var/lib/regente -czf "$RECOVERY_DIR/files.tar.gz" sessions workspace
+tar -tzf "$RECOVERY_DIR/files.tar.gz"   # inspect .git and unpublished files
 ```
 
-**PITR (point-in-time recovery)** — to recover up to the second before an incident, `pg_dump`
-(a snapshot) is **not enough**; enable WAL archiving in Postgres:
+This does not automatically capture `/etc/regente` or a secret provider: use your
+secure configuration-backup procedure. For multiple nodes with local sessions,
+collect every relevant node's files/path ownership; do not merge blindly. An
+online DB snapshot plus a directory copied while edits continue is not a coherent
+recovery set. The complete-set recipe requires quiescence.
 
-- **Managed PG** (Neon / Cloud SQL / RDS / Supabase): turn on *PITR / continuous backups* in the
-  console — the provider archives the WAL. This is the recommended path (zero infrastructure).
-- **Self-hosted PG**: `wal_level=replica`, `archive_mode=on`,
-  `archive_command='... cp %p /wal-archive/%f'` plus a periodic `pg_basebackup`. Restore =
-  basebackup + WAL replay up to `recovery_target_time`.
+## Database-only snapshots
 
-### Scheduling
+### SQLite
 
-- **cron**: `0 */6 * * *  REGENTE_DB_DRIVER=postgres REGENTE_DB=... /opt/regente/backup.sh /backups`
-- **systemd timer**: a `.service` that calls the script plus a `.timer` with
-  `OnCalendar=*-*-* 0/6:00:00`.
-- **k8s CronJob**: a container with the binary (or `pg_dump`), `schedule: "0 */6 * * *"`, the
-  PVC/secret mounted, and `./backup.sh` as the command.
-
----
-
-## R6 — restore (drill)
-
-> **Stop the server before restoring.** In HA, stop every node (the leader re-elects itself
-> afterwards).
+The binary uses `VACUUM INTO` for a consistent online DB snapshot. Run as the
+service owner so opening DB/WAL does not change ownership:
 
 ```sh
-# Postgres:
-REGENTE_DB_DRIVER=postgres REGENTE_DB="postgres://u:p@host/db" \
-  ./server/deploy/restore.sh /backups/regente-20260623-030000.dump
-
-# SQLite:
-REGENTE_DB_DRIVER=sqlite REGENTE_DB=./regente.db \
-  ./server/deploy/restore.sh /backups/regente-20260623-030000.db
+REGENTE_BIN=/usr/local/bin/regente-server REGENTE_DB_DRIVER=sqlite \
+  REGENTE_DB=/var/lib/regente/regente.db ./server/deploy/backup.sh "$RECOVERY_DIR"
 ```
 
-Post-restore validation:
+DB consistency does not make independently copied draft files consistent.
+Periodic online DB backups supplement, not replace, complete recovery sets.
 
-1. Start one node and check `GET /readyz` → **200** with `db.ok=true`.
-2. `GET /api/env` → the expected `env_label` is back (this proves R4).
-3. `GET /metrics` → `regente_instances{...}` reflects the restored order_date.
-4. In HA, start the remaining nodes and confirm there is **exactly one leader** in `/readyz`.
+### PostgreSQL
 
-> **Run the drill for real, periodically** — a backup that has never been restored is not a
-> backup.
+```sh
+REGENTE_DB_DRIVER=postgres REGENTE_DB="$SOURCE_DSN" \
+  ./server/deploy/backup.sh "$RECOVERY_DIR"  # pg_dump -Fc
+```
+
+Use protected credentials/service configuration, not secrets in shell history.
+A dump does not capture later commits. PITR needs a separately tested
+base-backup/WAL-archiving procedure; align its recovery point with filesystem
+artifacts. This guide promises neither zero RPO nor a fixed RTO.
+
+Schedule DB snapshots with cron/systemd timers/Kubernetes as appropriate, and
+schedule complete-set restore drills. Track retention of the **whole** set:
+`REGENTE_BACKUP_KEEP` only manages DB files produced by `backup.sh`.
+
+## Restore drill: new isolated target, never overwrite the only copy
+
+1. Keep the source/failed deployment stopped and preserved for diagnosis. Use an
+   isolated host/container with outbound jobs, Git pushes and notifications
+   disabled. Allocate a new SQLite filename or a newly created empty PG database.
+2. Restore DB with `restore.sh`. It refuses an existing SQLite file or WAL/SHM
+   sidecar; PG restore stops on errors and does not clean existing objects. After
+   a failed disposable restore, create a fresh target before retrying.
+
+```sh
+# PostgreSQL: create the empty target first; TARGET_DSN is not the source.
+REGENTE_DB_DRIVER=postgres REGENTE_DB="$TARGET_DSN" \
+  ./server/deploy/restore.sh /private/recovery/regente-TIMESTAMP.dump
+# SQLite: the parent exists, but recovered.db and its sidecars do not.
+REGENTE_DB_DRIVER=sqlite REGENTE_DB=/isolated/recovered.db \
+  ./server/deploy/restore.sh /private/recovery/regente-TIMESTAMP.db
+```
+
+3. Restore the trusted filesystem archive into an **empty isolated layout**,
+   recreating the original working directory and recorded paths. Inspect before
+   extraction. Standard layout on the isolated host:
+   `tar -C /var/lib/regente -xzf /private/recovery/files.tar.gz`.
+   Restore owner/modes and configuration from the secure manifest. Never extract
+   over a live deployment.
+4. Run a matching compatible binary with `-migrate-only` and inspect history/range.
+   Start one isolated process with `-scheduler external -server-agent=false`,
+   no external tick source or agents, and controlled Git access. Check readiness,
+   authenticated settings, order counts and **actual unpublished draft content
+   and dirty status**, not just metadata counts.
+5. Compare file checksums/expected edits. Only after passing and reconciling
+   writes/effects since the snapshot deliberately switch deployment targets and
+   resume agents/ordering. Migration may require users to log in again.
+
+The mandatory Linux integration laboratory exercises actual SQLite/PG backups,
+tarred unpublished sessions, a new restored DB and a restored process. A separate
+**DB-only** target demonstrates that missing draft files are not recovered. See
+`draft_recovery` in `baseline.json`. These synthetic same-layout drills do not
+prove distributed draft durability.

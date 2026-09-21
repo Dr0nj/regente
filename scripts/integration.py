@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Disposable, mandatory Linux/amd64 integration baseline. Standard library only."""
 import json
+import hashlib
 import os
 from pathlib import Path
 import platform
@@ -101,7 +102,7 @@ def validate_test_events(output):
     if skipped:
         raise RuntimeError(f"Mandatory integration tests skipped: {skipped}")
     passed = {e.get("Test") for e in events if e.get("Action") == "pass"}
-    required = {"TestPostgresMigrateAndCRUD", "TestMigrationSafety/postgres",
+    required = {"TestMigrationRunbookContract", "TestPostgresMigrateAndCRUD", "TestMigrationSafety/postgres",
                 "TestMigrationSafety/sqlite", "TestIntegrationOIDC_AuthCodeFlow",
                 "TestMachineIdentity/sqlite", "TestMachineIdentity/postgres",
                 "TestHumanIdentity/sqlite", "TestHumanIdentity/postgres",
@@ -236,6 +237,121 @@ def legacy_restore(dsn):
     REPORT["incompatible_startup_refused"] = True
 
 
+def draft_recovery(env, dsn):
+    """DB + tar + processo real, em alvos novos; nunca usa instalação do operador."""
+    pg = COMPOSE + ["exec", "-T", "postgres"]
+    for script in ("backup.sh", "restore.sh"):
+        command(COMPOSE + ["cp", str(ROOT / "server/deploy" / script), "postgres:/tmp/" + script])
+    remote = RUN / "draft-git-source"
+    remote.mkdir()
+    command(["git", "init", "-b", "main", str(remote)], env=env)
+    (remote / "definitions/lab").mkdir(parents=True)
+    (remote / "definitions/lab/.keep").write_text("synthetic draft recovery fixture\n")
+    command(["git", "-C", str(remote), "add", "."], env=env)
+    command(["git", "-C", str(remote), "-c", "user.name=Lab", "-c", "user.email=lab@example.invalid",
+             "-c", "commit.gpgsign=false", "commit", "-m", "synthetic fixture"], env=env)
+    REPORT["draft_recovery"] = {}
+
+    def launch(driver, target, cwd, name):
+        address = "127.0.0.1:" + str(free_port())
+        args = [str(RUN / "server"), "-addr", address, "-db-driver", driver, "-db", target,
+                "-workspace", str(cwd / "workspace"), "-git-source", str(remote), "-git-branch", "main",
+                "-github-repo", "", "-git-poll-interval", "0", "-api-token", ADMIN,
+                "-auth-mode", "local", "-scheduler", "external", "-server-agent=false",
+                "-selfmon=false", "-design-session-gc-tick-min", "0"]
+        proc = start_process(name, args, cwd, env)
+        base = "http://" + address
+        eventually(name, lambda: request(base + "/health"))
+        return proc, base
+
+    for driver in ("sqlite", "postgres"):
+        start = time.monotonic()
+        folder = RUN / ("draft-" + driver)
+        source = folder / "source"
+        source.mkdir(parents=True)
+        dbname = "regente_draft_source"
+        if driver == "postgres":
+            command(pg + ["createdb", "-U", "regente", dbname])
+            original = dsn.replace("/regente_lab?", "/" + dbname + "?")
+        else:
+            original = str(source / "state.db")
+        proc, base = launch(driver, original, source, "draft-" + driver + "-source")
+        session = request(base + "/api/design/sessions", "POST", {"folders": ["lab"]})
+        sid = session["id"]
+        definition = {"id": "unpublished", "label": "Synthetic unpublished edit", "team": "lab",
+                      "jobType": "COMMAND", "schedule": {"enabled": False},
+                      "actionConfig": {"command": "echo never-dispatched"}}
+        endpoint = "/api/design/sessions/" + sid
+        request(base + endpoint + "/definitions", "POST", definition)
+        expected = request(base + endpoint + "/definitions")
+        if not request(base + endpoint)["dirty"]:
+            raise RuntimeError("Synthetic draft is not dirty")
+        stop_process(proc)  # DB e arquivos pertencem ao mesmo ponto quiescente.
+        archive = folder / "files.tar.gz"
+        command(["tar", "-czf", str(archive), "-C", str(source), "sessions", "workspace"])
+        files = {str(p.relative_to(source)): hashlib.sha256(p.read_bytes()).hexdigest()
+                 for p in (source / "sessions").rglob("*") if p.is_file()}
+        if not any("/.git/" in p for p in files):
+            raise RuntimeError("Recovery set is missing session .git files")
+        if driver == "sqlite":
+            backups = folder / "backups"
+            command(["sh", str(ROOT / "server/deploy/backup.sh"), str(backups)],
+                    env=dict(env, REGENTE_DB_DRIVER=driver, REGENTE_DB=original,
+                             REGENTE_BIN=str(RUN / "server")), name="draft-sqlite-backup")
+            snapshot = str(next(backups.glob("*.db")))
+        else:
+            command(pg + ["env", "REGENTE_DB_DRIVER=postgres", "REGENTE_DB=postgresql:///" + dbname + "?user=regente",
+                          "sh", "/tmp/backup.sh", "/tmp/draft-backups"], name="draft-postgres-backup")
+            snapshot = command(pg + ["sh", "-c", "ls /tmp/draft-backups/*.dump"])
+        for complete in (True, False):
+            label = "complete" if complete else "db-only"
+            target_dir = folder / label
+            target_dir.mkdir()
+            if complete:
+                command(["tar", "-xzf", str(archive), "-C", str(target_dir)])
+                for relative, digest in files.items():
+                    if hashlib.sha256((target_dir / relative).read_bytes()).hexdigest() != digest:
+                        raise RuntimeError("Recovered draft file differs: " + relative)
+            if driver == "sqlite":
+                target = str(target_dir / "recovered.db")
+                command(["sh", str(ROOT / "server/deploy/restore.sh"), snapshot],
+                        env=dict(env, REGENTE_DB_DRIVER=driver, REGENTE_DB=target), name="draft-sqlite-restore-" + label)
+            else:
+                recovered_db = "regente_draft_" + label.replace("-", "_")
+                command(pg + ["createdb", "-U", "regente", recovered_db])
+                command(pg + ["env", "REGENTE_DB_DRIVER=postgres", "REGENTE_DB=postgresql:///" + recovered_db + "?user=regente",
+                              "sh", "/tmp/restore.sh", snapshot], name="draft-postgres-restore-" + label)
+                target = dsn.replace("/regente_lab?", "/" + recovered_db + "?")
+            command([str(RUN / "server"), "-db-driver", driver, "-db", target, "-migrate-only"],
+                    env=env, name="draft-" + driver + "-schema-" + label)
+            proc, base = launch(driver, target, target_dir, "draft-" + driver + "-" + label)
+            sessions = request(base + "/api/design/sessions")
+            found = [item for item in sessions if item["id"] == sid]
+            if complete:
+                if len(found) != 1 or not found[0]["dirty"] or request(base + endpoint + "/definitions") != expected:
+                    raise RuntimeError("Complete recovery lost unpublished content or dirty state")
+            elif found or (target_dir / "sessions" / sid).exists():
+                raise RuntimeError("DB-only control unexpectedly recovered unpublished draft")
+            stop_process(proc)
+        REPORT["draft_recovery"][driver] = {"complete_set_preserved_content": True,
+            "db_only_did_not_recover_content": True, "archived_files": len(files),
+            "seconds": round(time.monotonic() - start, 3)}
+
+
+def same_binary_drain(env, dsn):
+    pg = COMPOSE + ["exec", "-T", "postgres"]
+    command(pg + ["createdb", "-U", "regente", "regente_drain"])
+    port_old, port_new = free_port(), free_port()
+    while port_new == port_old:
+        port_new = free_port()
+    command(["sh", str(ROOT / "server/deploy/rolling-upgrade.sh")],
+            env=dict(env, REGENTE_DISPOSABLE_DB="1", REGENTE_OLD_BIN=str(RUN / "server"),
+                     REGENTE_NEW_BIN=str(RUN / "server"), PORT_OLD=str(port_old), PORT_NEW=str(port_new),
+                     REGENTE_PG_DSN=dsn.replace("/regente_lab?", "/regente_drain?")),
+            timeout=120, name="same-binary-drain")
+    REPORT["same_binary_drain"] = {"passed": True, "mixed_version_qualified": False}
+
+
 def main():
     global TLS_CONTEXT
     EVIDENCE.mkdir(parents=True)
@@ -288,6 +404,8 @@ def main():
         command(["go", "build", "-o", str(RUN/"server"), "./server"], timeout=180, name="server-build")
         command(["go", "build", "-o", str(RUN/"agent"), "./agent"], timeout=180, name="agent-build")
         legacy_restore(dsn)
+        draft_recovery(env, dsn)
+        same_binary_drain(env, dsn)
         count = cluster(env, dsn, nats_url)
         # Restore em OUTRA base descartável, mantendo a original intacta.
         start = time.monotonic()

@@ -71,7 +71,10 @@ are outside this baseline and are not claimed as executed.
 | PG dump/restore | `restored-schema.log`, `legacy-restored-upgrade.log`, report | Different databases; legacy v22 restored then upgraded; current runtime and completed orders preserved |
 | Real OIDC authorization-code flow | `TestIntegrationOIDC_AuthCodeFlow` | Keycloak discovery, login, callback and protected API; not I03 security qualification |
 | Distributed agents and execution | cluster report, node/agent logs | Both agents visible from both nodes; jobs pinned to each node complete; repeat Order Folder does not reexecute effects |
-| Draft content, daily recovery, uncertain effects | preserved synthetic fixtures | Regression scenarios reserved for I07/I10/I12; metadata preservation is not content durability |
+| Complete draft recovery vs DB-only control, SQLite and PG | `draft_recovery` report; real backup/restore scripts, tar and restarted processes | Unpublished content and dirty status verified with same relative path layout; DB-only recovery loses missing drafts; not distributed durability |
+| Same-binary PG drain | `same-binary-drain.log` | Owned processes, sampled liveness and leadership transfer; not mixed-version compatibility |
+| Current schema documented correctly | `TestMigrationRunbookContract` | Compares runbook to constants and migrated DB; rejects missing/duplicate/stale current statements |
+| Daily recovery, distributed drafts, uncertain effects | preserved synthetic fixtures | Broader guarantees remain reserved for I07/I10/I12 |
 
 | Profile | Baseline support |
 |---|---|
@@ -113,6 +116,14 @@ retention, topology/platforms and backup constraints. No volume is inferred from
 a prospective organization. The resulting profile replaces the synthetic one;
 capacity and business acceptance stay open until then.
 
+## Current runtime schema contract
+
+Current runtime schema: **25**; supported range: **[25,25]**.
+
+`TestMigrationRunbookContract` compares this current statement with the migration
+constants and an actual fresh database. Historical fixture versions below remain
+intentional. See the [compatibility matrix](upgrades.md) before choosing binaries.
+
 ## Safe schema upgrade and interrupted-upgrade recovery
 
 1. Record the source/target binary versions and schema history. Stop old control
@@ -123,11 +134,14 @@ capacity and business acceptance stay open until then.
    the established PITR procedure. Confirm restoration on an isolated target.
 3. Run the new binary with `-migrate-only` and the intended database configuration.
    Increase `-migration-timeout` only from a measured rehearsal; e.g. `10m`.
-4. Success reports schema 24 and supported range `[24,24]`. Schema-23 agent
+4. Verify the logged schema and range against the current runtime contract above.
+   Schema-23 agent
    credentials require [explicit reissue](agent-identity.md). History is in
    `schema_migrations`; hashes and `applied`/`legacy-adopted` provenance are in
    `schema_migration_checksums`. Legacy adoption cannot prove historical SQL or
    detect every pre-existing manual schema mutation; inspect/rehearse old databases.
+   Schema-24 upgrades revoke human sessions; follow the
+   [identity transition](authentication.md#upgrade-from-schema-24).
 5. Start the same tested binary on all control planes. A failed migration stops
    startup before the scheduler/API. With this runner, a process interruption rolls
    back the in-progress version; rerun the same binary to continue after the last

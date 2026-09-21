@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Upgrade and recovery compatibility · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
+<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="upgrades.html" class="active">Upgrade and recovery compatibility</a>
+<a href="web-events.html">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="upgrade-and-recovery-compatibility">Upgrade and recovery compatibility</h1>
+<p>An available release, an additive migration or a patch version number is <strong>not</strong>
+proof of mixed-version compatibility. Use the same tested server/agent release
+unless the exact combination has separate evidence. This guide does not authorize
+a production rollout without a workload-specific rehearsal.</p>
+<h2 id="compatibility-matrix">Compatibility matrix</h2>
+<p>The current schema and supported runtime range are maintained in the
+<a href="integration-baseline.html#current-runtime-schema-contract">migration runbook</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Source / operation</th>
+<th>Evidence and supported procedure</th>
+<th>Not implied</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Empty DB → current runtime</td>
+<td>Fresh/concurrent migration tests on SQLite and PostgreSQL</td>
+<td>Shared-file SQLite HA</td>
+</tr>
+<tr>
+<td>Frozen schema 22 fixture → current runtime</td>
+<td>Restore legacy snapshot to an isolated target, then migrate; data assertions in the mandatory lab</td>
+<td>Every manually modified legacy installation is safe</td>
+</tr>
+<tr>
+<td>Schema 23 → current runtime</td>
+<td>Migration tests preserve metadata but retire legacy machine secrets; <a href="agent-identity.html">reissue credentials</a></td>
+<td>Old agents/tokens keep working</td>
+</tr>
+<tr>
+<td>Schema 24 → current runtime</td>
+<td>Stop all old nodes; migrate together; human sessions revoked, federated identities need explicit linking; <a href="authentication.html#upgrade-from-schema-24">authentication upgrade</a></td>
+<td>Old schema-24 binaries can restart against schema 25</td>
+</tr>
+<tr>
+<td>Restart current build / same-build node drain</td>
+<td>Restart tests and disposable same-binary drain drill</td>
+<td>Cross-version rolling upgrade or end-to-end exactly-once effects</td>
+</tr>
+<tr>
+<td>Older/future/unknown binary against current DB</td>
+<td>Range/history checks refuse unsupported schemas; tests simulate older migration sets and future history</td>
+<td>Historical binaries predating these checks are safe to try</td>
+</tr>
+<tr>
+<td>Return after upgrade</td>
+<td>Compatible binary only, or restore a verified pre-upgrade recovery set into a separate target</td>
+<td>Copying a <code>.bak</code> binary reverses DB migrations</td>
+</tr>
+</tbody>
+</table>
+<p>Tests using older migration sets are schema-contract tests, not certification of
+every historical release executable. No mixed-release rolling pair is currently
+qualified by this matrix. Expand/contract is a design requirement, not permission
+to bypass the runner's supported range or protocol changes.</p>
+<h2 id="before-changing-a-deployment">Before changing a deployment</h2>
+<ol>
+<li>Record source/target binary version, checksum, DB driver/history, service working
+directory, Git commit, configuration and agent versions. Read release-specific
+migration and identity requirements. Preserve a matching binary/UI bundle.</li>
+<li>Stop new ordering/dispatch, account for in-flight jobs and external effects, and
+stop <strong>all</strong> control planes before a schema/identity transition. Agent reconnect
+alone does not reconcile uncertain effects. Do not promise a fixed outage time.</li>
+<li>Capture and verify the <a href="dr-backup.html">complete recovery set</a>: DB, unpublished
+drafts, any local-only definitions and external configuration/secrets. The
+updater's online DB snapshot is not this complete, quiesced recovery set.</li>
+<li>Rehearse restoration/migration on an isolated target with the intended binaries.
+Never test an older binary on the sole copy of an upgraded database. With writes
+stopped, run <code>-migrate-only</code> as the service user against the intended target,
+verify schema/history and follow the <a href="integration-baseline.html#safe-schema-upgrade-and-interrupted-upgrade-recovery">migration runbook</a>.</li>
+<li>Start one node, check authenticated API access, schema, draft content, definitions
+and agent identities; then bring up other nodes on the same tested version.
+Reconcile in-flight work before resuming ordering. Record actual downtime.</li>
+</ol>
+<p>For a rehearsed compatible single-node installation, <code>regente-update</code> downloads
+and installs the bundle and restarts the service. It does not coordinate a fleet,
+prove compatibility, quiesce all writers or back up draft directories. Reinstalling
+through <code>install.sh</code> has the same migration constraints, not an exemption.</p>
+<h2 id="recovery-is-not-a-destructive-schema-downgrade">Recovery is not a destructive schema downgrade</h2>
+<p>Stop every writer and preserve the failed DB/disk set for diagnosis. Restore the
+verified pre-upgrade DB to a <strong>new</strong> target; restore the matching draft/configuration
+set before starting a binary that accepts that schema. Restore the original
+service working-directory/path layout as described in the DR guide. Validate in
+isolation, then deliberately switch the deployment. Reconcile commits, orders and
+external effects after the snapshot: they are not recovered by changing binaries.</p>
+<p>Never delete migration history, rewrite checksums, run destructive down migrations
+or reuse SQLite WAL/SHM files from a different database. A retained <code>.bak</code> file is
+an artifact for a reviewed recovery plan, not a ready-to-run rollback command.</p>
+<h2 id="same-binary-drain-drill">Same-binary drain drill</h2>
+<p><code>server/deploy/rolling-upgrade.sh</code> is a <strong>disposable PostgreSQL same-binary drill</strong>.
+It rejects different binary bytes and requires <code>REGENTE_DISPOSABLE_DB=1</code>; never
+point it at a real deployment. It owns only its spawned PIDs and temporary workspace.
+It samples liveness while draining one process and checks leadership transfer.
+It does not test all authenticated API routes, workload continuity, agent protocol
+compatibility, draft distribution, partitions or different release versions.</p>
+<p>For example, with an empty disposable PostgreSQL database and a local build:</p>
+<pre><code class="language-sh">REGENTE_DISPOSABLE_DB=1 REGENTE_PG_DSN=&quot;$LAB_DSN&quot; \
+  REGENTE_OLD_BIN=./regente-server REGENTE_NEW_BIN=./regente-server \
+  ./server/deploy/rolling-upgrade.sh
+</code></pre>
+<p>Only a separate reviewed/tested compatibility matrix can justify a future
+mixed-version procedure. A successful drain drill does not provide that evidence.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

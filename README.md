@@ -49,8 +49,9 @@ Two screens, kept deliberately apart:
   (which kills the running process), mark as OK, re-run, force a job to run now. You cannot edit
   job definitions here.
 - **Design** — where job definitions are edited. You open a folder, edit on the canvas, and press
-  **Publish**, which is the only path that writes to GitHub. Drafts are never lost: refreshing
-  the page or switching screens resumes where you left off.
+  **Publish**, which is the only path that writes to GitHub. Drafts resume after refresh or
+  navigation while their DB metadata and session directories remain available. Back up
+  unpublished content separately; see [draft recovery](docs/dr-backup.md).
 
 This repository is the **monorepo** for the whole platform:
 
@@ -318,7 +319,9 @@ journalctl -u regente-server -f           # follow the logs
 
 ### Upgrading a running installation
 
-**One command:**
+**First rehearse the [upgrade and recovery procedure](docs/upgrades.md).**
+Stop all control planes for schema/identity transitions and verify the complete
+recovery set, including unpublished drafts. For a rehearsed compatible install:
 
 ```bash
 sudo regente-update
@@ -330,14 +333,17 @@ do not have an undo), downloads the latest release, installs it over the current
 version.
 
 ```bash
-sudo regente-update v0.2.19      # a specific version — downgrade included
-sudo regente-update --no-backup  # skip the snapshot
+sudo regente-update vX.Y.Z      # replace with the exact rehearsed, compatible target
+sudo regente-update --no-backup  # only with a separately verified recovery set
 sudo regente-update -f           # reinstall the same version (binary, UI, unit, deploy files)
 ```
 
 Snapshots go to `/var/lib/regente/backups` (the last 14 are kept, `REGENTE_BACKUP_KEEP` changes
-that) and the previous binary stays at `/usr/local/bin/regente-server.bak`, so a rollback is a
-copy away — the command prints the exact line. On a machine with no internet access, hand it a
+that). The previous binary stays at `/usr/local/bin/regente-server.bak`, but copying it back
+does not reverse migrations and may fail against the upgraded database. Use the
+[recovery procedure](docs/upgrades.md#recovery-is-not-a-destructive-schema-downgrade).
+The updater snapshots the **database only**, not drafts or external configuration.
+On a machine with no internet access, hand it a
 bundle you downloaded elsewhere: `sudo REGENTE_BUNDLE=./regente-server_linux_amd64.tar.gz
 regente-update`.
 
@@ -380,18 +386,20 @@ than inventing a number.
 | the workspace clone | `/var/lib/regente/deploy/vps` |
 | whatever sits in front of it (nginx, TLS certificates) | the systemd unit (same service user) |
 
-Schema migrations run at boot, so there is no separate migration step. Downtime is one service
-restart — a couple of seconds; running jobs are on the **agents**, and they reconnect on their own.
+Schema migrations run at boot; the coordinated procedure uses `-migrate-only` before
+starting application services. Measure downtime in rehearsal; it depends on migration,
+identity changes and recovery checks, not just process restart. Reconnecting agents do
+not by themselves reconcile uncertain in-flight effects.
 
 > **Agents are separate binaries.** Upgrading the server does not touch them: rerun
-> `install-agent.sh` (or the PowerShell installer) on each agent machine. Agent and server do not
-> have to be on the same version — the protocol is compatible across patch releases — but keeping
-> them aligned avoids surprises.
+> `install-agent.sh` (or the PowerShell installer) on each agent machine. Use matching tested
+> releases unless the exact combination has compatibility evidence. Patch numbering does not
+> guarantee protocol compatibility; older credentials may require explicit reissue.
 
-For a **zero-downtime** upgrade you need more than one node: with Postgres and leader election,
-bring a new node up as a follower and drain the old one (see
-[`server/deploy/rolling-upgrade.sh`](server/deploy/rolling-upgrade.sh)). On a single box, the
-restart above is the honest answer.
+No mixed-version zero-downtime upgrade is currently qualified. The
+[`rolling-upgrade.sh`](server/deploy/rolling-upgrade.sh) laboratory exercises a
+**same-binary** node drain only; it does not certify schema or agent compatibility.
+See the [compatibility matrix](docs/upgrades.md#compatibility-matrix).
 
 ### Your first job (2 minutes)
 

@@ -1,38 +1,35 @@
 # ⚙️ Running in production — enterprise readiness
 
-> How to run `regente-server` in production without losing availability or correctness:
-> **zero-downtime upgrades**, **multiple environments** (Dev/Staging/Prod), **quotas** that
-> survive a failover, and **GitOps drift reconciliation**. It connects to the resilience track
-> (R1–R7) and to the [SLOs](slos.md).
+> Operating mechanisms and their limits: coordinated upgrades, multiple environments,
+> quota reconstruction and GitOps drift reconciliation. These mechanisms do not by
+> themselves qualify workload availability or correctness. See the [SLOs](slos.md)
+> and the [upgrade compatibility matrix](upgrades.md).
 
-## 1. Zero-downtime (rolling) upgrades
+## 1. Upgrade compatibility and same-binary drain
 
-The control plane is **stateless** — every piece of durable state lives outside the process
-(Postgres + the Git workspace) — and it uses **leader election through an advisory lock** (G1).
-That makes a rolling upgrade a special case of the failover already validated in chaos/HA:
+PostgreSQL and advisory-lock leadership support multiple control-plane processes.
+Draft content still depends on session directories; the database is not the entire
+recovery set. Follow [DR](dr-backup.md) and [coordinated upgrades](upgrades.md).
+There is no qualified mixed-release rolling pair. The following is only a
+same-binary laboratory sequence, not a production rollout recipe:
 
 ```
-1. Nodes A (vN) and B (vN) behind a LB/VIP, on the SAME Postgres → A is leader, B follower.
-2. Start node C on the NEW version (vN+1) → it joins as a follower (the advisory lock is taken).
-3. Wait for C to become READY (/readyz = 200) — only then does the LB send it traffic.
-4. Drain and stop an OLD node. If it was the leader, the lock is released and another node
-   (C included) takes over in ~4s (measured in chaos/HA).
-5. Repeat until the whole fleet is on vN+1.
+1. Use a disposable Postgres database and the SAME tested binary on both nodes.
+2. Start a second node as follower while the first holds leadership.
+3. Wait for the second node to become READY (/readyz = 200).
+4. Stop the first process; observe leadership transfer and sample liveness on the survivor.
+5. Stop the owned test processes. Record observations, not a universal availability guarantee.
 ```
 
-**Why the API sees zero downtime:** a follower serves the API normally (`/readyz` gates on the
-DB, not on leadership — R3). During the ~4s failover window **the API keeps answering** from the
-followers; only daily materialization and dispatch pause briefly — and both are **idempotent**
-(atomic claim + existence check), so resuming neither duplicates nor loses anything.
+`/readyz` can admit a follower; a passing liveness sample does not demonstrate all
+API routes, workload continuity or freedom from duplicate/lost external effects.
+Additive SQL does not override the binary's schema range or identity/protocol contract.
+For schema transitions, stop old nodes and follow the migration runbook; do not
+start a new migrator alongside an unqualified old runtime.
 
-**Migrations:** migrations are **idempotent and versioned** (`schema_migrations`). A vN+1 node
-applies whatever is missing at boot; vN and vN+1 coexist as long as the migration is additive
-(rule: never drop or rename a column in the same release as the code that uses it — expand and
-contract across two releases).
-
-Automated demonstration:
-[`../server/deploy/rolling-upgrade.sh`](../server/deploy/rolling-upgrade.sh) (starts two nodes on
-the same PG, promotes the new one, drains the old one and measures the leadership gap).
+[`rolling-upgrade.sh`](../server/deploy/rolling-upgrade.sh) rejects different binary
+bytes and requires an explicit disposable-DB acknowledgment. Its successful result
+is a same-binary drain observation, not certification of a version upgrade.
 
 ## 2. Multiple environments (Dev / Staging / Prod)
 
@@ -104,8 +101,8 @@ regente-server ... -git-poll-interval 0 -drift-reconcile-sec 60 -drift-reconcile
 [ ] Supervisor with automatic restart (systemd Restart=always / Windows Service / k8s) — R1
 [ ] /livez on the livenessProbe · /readyz on the readinessProbe — R2/R3
 [ ] -selfmon ON with alert channels configured (Slack/PagerDuty) — R7
-[ ] Scheduled backup (backup.sh / pg_dump) + a restore drill — R6
+[ ] DB backup plus drafts/local definitions/external configuration + complete restore drill — R6
 [ ] env_label set per environment; Prometheus grouping by regente_env_info
 [ ] -drift-reconcile-sec enabled (alert when regulated, sync otherwise)
-[ ] Rolling upgrade rehearsed (rolling-upgrade.sh) before the first real deployment
+[ ] Exact source/target schema and identity compatibility reviewed; coordinated upgrade rehearsed
 ```

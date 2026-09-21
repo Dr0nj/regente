@@ -1,9 +1,9 @@
 # Deploying `regente-server` — supervision (R1)
 
 > **A critical orchestrator never runs as a loose process.** It assumes the process *will* die
-> (crash, OOM, deploy, reboot) and **comes back on its own, without losing anything** — state is
-> durable (SQLite/Postgres) and the daily is idempotent. These artifacts provide the missing
-> half: **process liveness**.
+> (crash, OOM, deploy, reboot) and restarts under a supervisor. These artifacts provide
+> **process liveness**, not a guarantee against lost drafts or uncertain execution effects.
+> Preserve the [complete recovery set](../../docs/dr-backup.md).
 
 | File | What it is for |
 |---|---|
@@ -13,8 +13,8 @@
 | `install-windows.ps1` | A Scheduled Task (boot + automatic restart) on Windows. |
 | `configure.sh` | Guided setup, installed as `regente-configure`. |
 | `update.sh` | Upgrade in one command, installed as `regente-update`: database snapshot, latest release, restart. |
-| `backup.sh` · `restore.sh` | DR (R6) for SQLite and Postgres. |
-| `chaos-ha.sh` · `rolling-upgrade.sh` | HA drills: failover and a zero-downtime upgrade. |
+| `backup.sh` · `restore.sh` | Database-only snapshots/recovery; drafts/configuration require separate backup. |
+| `chaos-ha.sh` · `rolling-upgrade.sh` | Laboratory failover / same-binary drain, not mixed-version qualification. |
 
 ## Linux (systemd)
 
@@ -39,7 +39,8 @@ journalctl -u regente-server -f
 > `curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install.sh -o regente-install.sh && sudo bash regente-install.sh`.
 
 Kill the process (`sudo systemctl kill -s SIGKILL regente-server`, or `kill -9`) and it comes back
-in ~5s — **without losing state** (instances, the daily and events all persist).
+according to the supervisor policy. Recovery of DB state and local draft files depends on
+their persistent volumes; reconcile interrupted execution separately.
 
 ## Windows (Scheduled Task)
 
@@ -61,9 +62,13 @@ gets restarted) + `cronjob.yaml` (the external trigger for `-scheduler=external`
 
 ## DR / backup (R6)
 
-`backup.sh` and `restore.sh` cover SQLite (`-backup` = an online `VACUUM INTO`) and Postgres
-(`pg_dump`/`pg_restore`). The full runbook, PITR and the R4 restart-configuration checklist are in
+`backup.sh` and `restore.sh` cover the **database only**: SQLite (`-backup` = an online
+`VACUUM INTO`) and Postgres (`pg_dump`/`pg_restore`). Restore into a new target, with all
+writers stopped; restore drafts/configuration before startup. The full runbook is in
 [`../../docs/dr-backup.md`](../../docs/dr-backup.md).
+
+Before using `regente-update`, read the [compatibility matrix](../../docs/upgrades.md).
+Its DB snapshot and retained `.bak` binary do not constitute a complete rollback.
 
 ```sh
 REGENTE_DB_DRIVER=postgres REGENTE_DB="$DSN" ./deploy/backup.sh /backups   # schedule via cron/timer/CronJob

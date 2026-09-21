@@ -10,7 +10,7 @@
 #
 # Uso:
 #   sudo regente-update                 # backup + última release
-#   sudo regente-update v0.2.19         # versão específica (downgrade também)
+#   sudo regente-update vX.Y.Z         # alvo compatível já ensaiado
 #   sudo regente-update --no-backup     # pula o snapshot do banco
 #   sudo regente-update -f              # reinstala a MESMA versão (UI/unit/deploy)
 #
@@ -40,11 +40,13 @@ usage() {
 regente-update — update this regente-server installation (systemd, Linux).
 
 Backs the database up, downloads the release, installs it over the current one
-and restarts the service.
+and restarts the service. This is a DATABASE-ONLY snapshot, not a full recovery set.
+Before schema/identity changes, stop all control planes and rehearse the coordinated
+procedure at docs/upgrades.md. This command does not certify mixed-version compatibility.
 
 Usage:
   sudo regente-update                 backup + latest release
-  sudo regente-update v0.2.19         a specific version (downgrade included)
+  sudo regente-update vX.Y.Z          the exact rehearsed, compatible target
   sudo regente-update --no-backup     skip the database snapshot
   sudo regente-update -f | --force    reinstall the SAME version (binary/UI/unit)
   sudo regente-update -h | --help     this help
@@ -57,7 +59,10 @@ Environment:
   REGENTE_BACKUP_KEEP=14              how many snapshots to keep
 
 Kept untouched: /etc/regente/server.env, the database and the workspace clone.
-The previous binary stays at /usr/local/bin/regente-server.bak for rollback.
+The previous binary stays at /usr/local/bin/regente-server.bak as a recovery artifact.
+Copying it back does NOT undo migrations. Use a compatible binary or restore a
+verified pre-upgrade DB/files/configuration set into a new target. Preserve drafts
+separately; old agents/credentials may require coordinated updates and reissue.
 EOF
   exit "${1:-0}"
 }
@@ -151,6 +156,8 @@ if [ "$NEWVER" = "$CURRENT" ] && [ "$FORCE" = 0 ]; then
   exit 0
 fi
 echo "== version: $CURRENT -> $NEWVER"
+echo "== IMPORTANT: database snapshot only; drafts/configuration need separate backup."
+echo "== Compatibility is not inferred from version numbers. See docs/upgrades.md before proceeding."
 
 # ── 2. backup do banco (default; --no-backup pula) ───────────────────────────
 # Snapshot ANTES de trocar o binário: as migrações de schema rodam no boot
@@ -190,7 +197,7 @@ else
   echo "== backup: SKIPPED (--no-backup)"
 fi
 
-# Binário antigo guardado ao lado: rollback é um cp, sem depender de download.
+# Artefato anterior preservado; não autoriza rollback isolado após migração.
 cp -a "$BIN" "$BIN.bak" 2>/dev/null || true
 
 # ── 3. instala por cima (troca binário+UI, daemon-reload, RESTART, health) ────
@@ -202,6 +209,7 @@ echo "== regente-update done: $CURRENT -> $INSTALLED"
 if [ "$BACKUP" = 1 ]; then
   echo "   database snapshot: ${DEST:-none}"
 fi
-echo "   rollback (previous binary kept):"
-echo "     sudo install -m 0755 $BIN.bak $BIN && sudo systemctl restart regente-server"
+echo "   previous binary retained at $BIN.bak; copying it back does NOT reverse schema changes."
+echo "   recovery: use a compatible binary or a verified pre-upgrade DB + draft/configuration set on a NEW target."
+echo "   reconcile writes and external effects since the snapshot; see docs/upgrades.md and docs/dr-backup.md."
 echo "   agents are separate binaries — update them on their own machines with install-agent.sh."

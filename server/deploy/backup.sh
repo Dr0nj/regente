@@ -11,6 +11,8 @@
 #
 # Rode via cron/systemd-timer/k8s CronJob (exemplos em docs/dr-backup.md).
 set -eu
+umask 077
+echo "[backup] DATABASE ONLY: separately preserve drafts, local definitions and external configuration."
 
 OUT="${1:-./backups}"
 mkdir -p "$OUT"
