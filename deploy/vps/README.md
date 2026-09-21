@@ -149,7 +149,10 @@ sudo systemctl stop regente-server        # stops it (state persists in /var/lib
 journalctl -u regente-server -f           # logs
 ```
 
-State (jobs, users, configuration, the PAT) survives reboots and upgrades — see R4 in
-[`../../docs/dr-backup.md`](../../docs/dr-backup.md). For a zero-downtime upgrade with
-Postgres/HA, see
-[`../../server/deploy/rolling-upgrade.sh`](../../server/deploy/rolling-upgrade.sh).
+Persistent DB/volumes preserve state across ordinary restarts; a complete recovery
+set also includes unpublished drafts and external configuration. Follow
+[DR](../../docs/dr-backup.md) and the [upgrade compatibility matrix](../../docs/upgrades.md)
+before replacing binaries. Schema/identity transitions can require stopping all nodes
+and signing in again. The [drain drill](../../server/deploy/rolling-upgrade.sh) uses
+identical binaries on disposable PostgreSQL; it does not qualify a mixed-version
+zero-downtime upgrade.

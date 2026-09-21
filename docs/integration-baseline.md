@@ -118,6 +118,12 @@ capacity and business acceptance stay open until then.
 
 ## Current runtime schema contract
 
+DOC-A recovery extension: [CI 35639790032](https://github.com/Dr0nj/regente/actions/runs/35639790032)
+at `af75c51` passed the complete-set/DB-only draft drills on SQLite and PostgreSQL,
+the same-binary drain and the schema-document contract. The
+[recorded evidence](evidence/doc-a-af75c51.json) is synthetic laboratory evidence,
+not production or mixed-version qualification.
+
 Current runtime schema: **25**; supported range: **[25,25]**.
 
 `TestMigrationRunbookContract` compares this current statement with the migration

@@ -84,17 +84,14 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ### Correções da auditoria documental — ciclo planejado em 2026-09-21
 
 Plano de execução: [reconciliação documental e receitas operacionais](plans/documentation-remediation-2026-09-21.md).
-Baseline auditada: `5318e78` / v0.2.33. Os 14 achados estão **abertos**;
-registrar o plano não significa implementar as correções. Esta subseção é o
+Baseline auditada: `5318e78` / v0.2.33. Etapa A (DOC-01/DOC-02/DOC-06) entregue
+com evidência no §Entregue; **11 achados permanecem abertos**. Esta subseção é o
 registro único do status de DOC-01–DOC-14; o plano detalha dependências e aceite.
 A decisão histórica de manutenção abaixo não elimina esta fila explicitamente
 solicitada. Não há mudança automática de status de I05–I17.
 
 | ID / achado | Prioridade | Etapa | Correção pendente |
 |---|---|---|---|
-| DOC-01 / D01 | P1 | A | Matriz de upgrade/schema/protocolo, rollback e limites de rolling upgrade |
-| DOC-02 / D02 | P1 | A | DR com backup/restauração de drafts, além de DB e Git |
-| DOC-06 / D06 | P2 | A | Runbook e ADR reconciliados com schema atual e check antidefasagem |
 | DOC-03 / D03 | P2 | B | Credencial de máquina na demo/dev e prova de handshake antes de anunciar conexão |
 | DOC-04 / D04 | P2 | B | Variável same-origin aplicada ao build correto, exemplos POSIX/PowerShell |
 | DOC-05 / D05 | P2 | B | Node mínimo alinhado ao lockfile e validado em instalação limpa |
@@ -107,7 +104,7 @@ solicitada. Não há mudança automática de status de I05–I17.
 | DOC-13 / D13 | P3 | D | Status de I04, ciclo empresarial e marcos históricos reconciliados |
 | DOC-11 / D11 | P2 | E | Verify quick/full, gates explícitos e proteção contra regressão documental |
 
-Ordem recomendada: **A → B → C → D → E**. Cada etapa inclui testes pertinentes
+Ordem restante recomendada: **B → C → D → E**. Cada etapa inclui testes pertinentes
 e regeneração do site; E consolida os gates, não adia a validação das anteriores.
 Aceite global: 14 achados com evidência de fechamento, receitas exercitadas em
 ambiente isolado/limpo, site sincronizado, CI verde e nenhuma pendência I05–I17
@@ -414,6 +411,29 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+## DOC-A — Upgrade, recuperação e contrato de schema (2026-09-21)
+
+**DOC-01/DOC-02/DOC-06 fechados.** Matriz explícita de compatibilidade e recuperação
+em [upgrades.md](upgrades.md); README/guias deixam de prometer downgrade por cópia
+de binário ou rolling upgrade irrestrito. O atualizador aponta o procedimento e
+declara snapshot de DB apenas. O ensaio de drain recusa binários diferentes e
+DB não reconhecido como descartável, controla somente seus próprios PIDs e falha
+se probes/transferência não passam. Não certifica compatibilidade entre releases.
+
+[DR](dr-backup.md) inventaria DB, drafts, workspace e configuração, com ordem de
+restauração e layout do working directory. Restore SQLite recusa alvo/WAL/SHM
+existentes; PG restaura em transação com erro fatal, sem limpar objetos existentes.
+Banco isolado + tar + reinício real preservaram conteúdo não publicado e dirty
+status em **SQLite e PostgreSQL**; o controle DB-only não recuperou arquivos ausentes.
+Isso não implementa durabilidade distribuída nem fecha os itens enterprise.
+
+Runbook/ADR reconciliados com faixa corrente; `TestMigrationRunbookContract` compara
+texto, constantes e banco migrado e rejeita fixtures ausentes/duplicadas/defasadas.
+Sem migração nova. CI de implementação **35639790032**, commit **af75c51**, aprovado:
+server/agent, lint/build/browser, testes de segurança dos scripts e integração real
+PostgreSQL/NATS/OIDC/recuperação. [Evidência](evidence/doc-a-af75c51.json).
+Site regenerado pelo gerador. Próxima etapa documental: B; sem deploy em produção.
 
 ## I04 — Autorização de eventos web (2026-09-17)
 
@@ -1713,6 +1733,11 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-09-21 — DOC-A:** DOC-01/DOC-02/DOC-06 entregues: upgrade/rollback
+  delimitados, DR completo para drafts, restore seguro em novo alvo, drain restrito
+  ao mesmo binário e contrato de schema testado. CI 35639790032 aprovado com
+  ensaios SQLite/PostgreSQL completos versus DB-only. Restam 11 achados documentais.
 
 - **2026-09-17 — I04:** eventos web autorizados por sessão/papel/folder,
   projeções sem metadados cruzados, ACL atômica e fan-out distribuído.

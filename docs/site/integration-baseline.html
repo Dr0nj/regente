@@ -300,6 +300,11 @@ retention, topology/platforms and backup constraints. No volume is inferred from
 a prospective organization. The resulting profile replaces the synthetic one;
 capacity and business acceptance stay open until then.</p>
 <h2 id="current-runtime-schema-contract">Current runtime schema contract</h2>
+<p>DOC-A recovery extension: <a href="https://github.com/Dr0nj/regente/actions/runs/35639790032">CI 35639790032</a>
+at <code>af75c51</code> passed the complete-set/DB-only draft drills on SQLite and PostgreSQL,
+the same-binary drain and the schema-document contract. The
+<a href="https://github.com/Dr0nj/regente/blob/main/docs/evidence/doc-a-af75c51.json">recorded evidence</a> is synthetic laboratory evidence,
+not production or mixed-version qualification.</p>
 <p>Current runtime schema: <strong>25</strong>; supported range: <strong>[25,25]</strong>.</p>
 <p><code>TestMigrationRunbookContract</code> compares this current statement with the migration
 constants and an actual fresh database. Historical fixture versions below remain

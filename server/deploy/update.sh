@@ -42,7 +42,8 @@ regente-update — update this regente-server installation (systemd, Linux).
 Backs the database up, downloads the release, installs it over the current one
 and restarts the service. This is a DATABASE-ONLY snapshot, not a full recovery set.
 Before schema/identity changes, stop all control planes and rehearse the coordinated
-procedure at docs/upgrades.md. This command does not certify mixed-version compatibility.
+procedure at https://dr0nj.github.io/regente/upgrades.html .
+This command does not certify mixed-version compatibility.
 
 Usage:
   sudo regente-update                 backup + latest release
@@ -157,7 +158,7 @@ if [ "$NEWVER" = "$CURRENT" ] && [ "$FORCE" = 0 ]; then
 fi
 echo "== version: $CURRENT -> $NEWVER"
 echo "== IMPORTANT: database snapshot only; drafts/configuration need separate backup."
-echo "== Compatibility is not inferred from version numbers. See docs/upgrades.md before proceeding."
+echo "== Compatibility is not inferred from version numbers. See https://dr0nj.github.io/regente/upgrades.html before proceeding."
 
 # ── 2. backup do banco (default; --no-backup pula) ───────────────────────────
 # Snapshot ANTES de trocar o binário: as migrações de schema rodam no boot
@@ -211,5 +212,5 @@ if [ "$BACKUP" = 1 ]; then
 fi
 echo "   previous binary retained at $BIN.bak; copying it back does NOT reverse schema changes."
 echo "   recovery: use a compatible binary or a verified pre-upgrade DB + draft/configuration set on a NEW target."
-echo "   reconcile writes and external effects since the snapshot; see docs/upgrades.md and docs/dr-backup.md."
+echo "   reconcile writes and external effects since the snapshot; see https://dr0nj.github.io/regente/upgrades.html and https://dr0nj.github.io/regente/dr-backup.html ."
 echo "   agents are separate binaries — update them on their own machines with install-agent.sh."

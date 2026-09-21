@@ -1,0 +1,132 @@
+{
+  "baseline_sha": "af75c515331e773a6bf48dc746ddd6efa38c86f1",
+  "ci_run": "https://github.com/Dr0nj/regente/actions/runs/35639790032",
+  "status": "passed",
+  "dirty": false,
+  "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+  "seconds": 191.549,
+  "scope": "DOC-01 DOC-02 DOC-06; synthetic same-layout recovery, not production qualification",
+  "draft_recovery": {
+    "sqlite": {
+      "complete_set_preserved_content": true,
+      "db_only_did_not_recover_content": true,
+      "archived_files": 10,
+      "seconds": 1.201
+    },
+    "postgres": {
+      "complete_set_preserved_content": true,
+      "db_only_did_not_recover_content": true,
+      "archived_files": 10,
+      "seconds": 2.077
+    }
+  },
+  "same_binary_drain": {
+    "passed": true,
+    "mixed_version_qualified": false
+  },
+  "legacy_restore": {
+    "schema_from": 22,
+    "schema_to": 25,
+    "preserved_entities": 4,
+    "seconds": 0.952
+  },
+  "incompatible_startup_refused": true,
+  "restore": {
+    "backend": "postgres",
+    "preserved_orders": 3,
+    "seconds": 0.639
+  },
+  "contract_tests": [
+    "TestMigrationRunbookContract",
+    "TestMigrationRunbookContract/duplicate",
+    "TestMigrationRunbookContract/missing",
+    "TestMigrationRunbookContract/stale_schema",
+    "TestMigrationRunbookContract/wrong_range"
+  ],
+  "stages": [
+    {
+      "name": "legacy-restored-upgrade",
+      "seconds": 0.059,
+      "exit_code": 0,
+      "expected_exit": 0
+    },
+    {
+      "name": "incompatible-startup-refused",
+      "seconds": 0.015,
+      "exit_code": 1,
+      "expected_exit": 1
+    },
+    {
+      "name": "draft-sqlite-backup",
+      "seconds": 0.019,
+      "exit_code": 0,
+      "expected_exit": 0
+    },
+    {
+      "name": "draft-sqlite-restore-complete",
+      "seconds": 0.002,
+      "exit_code": 0,
+      "expected_exit": 0
+    },
+    {
+      "name": "draft-sqlite-schema-complete",
+      "seconds": 0.009,
+      "exit_code": 0,
+      "expected_exit": 0
+    },
+    {
+      "name": "draft-sqlite-restore-db-only",
+      "seconds": 0.002,
+      "exit_code": 0,
+      "expected_exit": 0
+    },
+    {
+      "name": "draft-sqlite-schema-db-only",
+      "seconds": 0.014,
+      "exit_code": 0,
+      "expected_exit": 0
+    },
+    {
+      "name": "draft-postgres-backup",
+      "seconds": 0.189,
+      "exit_code": 0,
+      "expected_exit": 0
+    },
+    {
+      "name": "draft-postgres-restore-complete",
+      "seconds": 0.181,
+      "exit_code": 0,
+      "expected_exit": 0
+    },
+    {
+      "name": "draft-postgres-schema-complete",
+      "seconds": 0.021,
+      "exit_code": 0,
+      "expected_exit": 0
+    },
+    {
+      "name": "draft-postgres-restore-db-only",
+      "seconds": 0.186,
+      "exit_code": 0,
+      "expected_exit": 0
+    },
+    {
+      "name": "draft-postgres-schema-db-only",
+      "seconds": 0.02,
+      "exit_code": 0,
+      "expected_exit": 0
+    },
+    {
+      "name": "same-binary-drain",
+      "seconds": 6.128,
+      "exit_code": 0,
+      "expected_exit": 0
+    },
+    {
+      "name": "restored-schema",
+      "seconds": 0.018,
+      "exit_code": 0,
+      "expected_exit": 0
+    }
+  ]
+}
