@@ -81,6 +81,39 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > detalhado em §✅ Entregue (+ linha no changelog). As caixinhas espalhadas nas seções de
 > baixo **não valem** como status (ver ⛔ REGRA DE STATUS no topo).
 
+### Correções da auditoria documental — ciclo planejado em 2026-09-21
+
+Plano de execução: [reconciliação documental e receitas operacionais](plans/documentation-remediation-2026-09-21.md).
+Baseline auditada: `5318e78` / v0.2.33. Os 14 achados estão **abertos**;
+registrar o plano não significa implementar as correções. Esta subseção é o
+registro único do status de DOC-01–DOC-14; o plano detalha dependências e aceite.
+A decisão histórica de manutenção abaixo não elimina esta fila explicitamente
+solicitada. Não há mudança automática de status de I05–I17.
+
+| ID / achado | Prioridade | Etapa | Correção pendente |
+|---|---|---|---|
+| DOC-01 / D01 | P1 | A | Matriz de upgrade/schema/protocolo, rollback e limites de rolling upgrade |
+| DOC-02 / D02 | P1 | A | DR com backup/restauração de drafts, além de DB e Git |
+| DOC-06 / D06 | P2 | A | Runbook e ADR reconciliados com schema atual e check antidefasagem |
+| DOC-03 / D03 | P2 | B | Credencial de máquina na demo/dev e prova de handshake antes de anunciar conexão |
+| DOC-04 / D04 | P2 | B | Variável same-origin aplicada ao build correto, exemplos POSIX/PowerShell |
+| DOC-05 / D05 | P2 | B | Node mínimo alinhado ao lockfile e validado em instalação limpa |
+| DOC-12 / D12 | P2 | B | Receita GitOps com origem e workspace do operador explícitos |
+| DOC-14 / D14 | P2 | B | Isolamento de rede sem cortar o canal de controle do agente |
+| DOC-07 / D07 | P2 | C | OpenAPI/README coerentes com browser, API, máquina e modos de autenticação |
+| DOC-08 / D08 | P2 | C | Cancelamento por estado, efeitos e erros documentados no OpenAPI/MCP |
+| DOC-09 / D09 | P2 | C | Rerun descrito pelo pool de condições, sem revogação automática dos filhos |
+| DOC-10 / D10 | P2 | D | Capacidade/HA delimitadas por perfil medido, sem garantia ponta a ponta não comprovada |
+| DOC-13 / D13 | P3 | D | Status de I04, ciclo empresarial e marcos históricos reconciliados |
+| DOC-11 / D11 | P2 | E | Verify quick/full, gates explícitos e proteção contra regressão documental |
+
+Ordem recomendada: **A → B → C → D → E**. Cada etapa inclui testes pertinentes
+e regeneração do site; E consolida os gates, não adia a validação das anteriores.
+Aceite global: 14 achados com evidência de fechamento, receitas exercitadas em
+ambiente isolado/limpo, site sincronizado, CI verde e nenhuma pendência I05–I17
+promovida a entregue apenas por ajuste de texto. Ao fechar um DOC, remover sua
+linha daqui e registrar evidência em Entregue/Changelog, conforme a regra do topo.
+
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
 - **I05–I17:** perfil produtivo, execução durável, HA,
