@@ -84,19 +84,14 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ### Correções da auditoria documental — ciclo planejado em 2026-09-21
 
 Plano de execução: [reconciliação documental e receitas operacionais](plans/documentation-remediation-2026-09-21.md).
-Baseline auditada: `5318e78` / v0.2.33. Etapa A (DOC-01/DOC-02/DOC-06) entregue
-com evidência no §Entregue; **11 achados permanecem abertos**. Esta subseção é o
+Baseline auditada: `5318e78` / v0.2.33. Etapas A e B entregues
+com evidência no §Entregue; **6 achados permanecem abertos**. Esta subseção é o
 registro único do status de DOC-01–DOC-14; o plano detalha dependências e aceite.
 A decisão histórica de manutenção abaixo não elimina esta fila explicitamente
 solicitada. Não há mudança automática de status de I05–I17.
 
 | ID / achado | Prioridade | Etapa | Correção pendente |
 |---|---|---|---|
-| DOC-03 / D03 | P2 | B | Credencial de máquina na demo/dev e prova de handshake antes de anunciar conexão |
-| DOC-04 / D04 | P2 | B | Variável same-origin aplicada ao build correto, exemplos POSIX/PowerShell |
-| DOC-05 / D05 | P2 | B | Node mínimo alinhado ao lockfile e validado em instalação limpa |
-| DOC-12 / D12 | P2 | B | Receita GitOps com origem e workspace do operador explícitos |
-| DOC-14 / D14 | P2 | B | Isolamento de rede sem cortar o canal de controle do agente |
 | DOC-07 / D07 | P2 | C | OpenAPI/README coerentes com browser, API, máquina e modos de autenticação |
 | DOC-08 / D08 | P2 | C | Cancelamento por estado, efeitos e erros documentados no OpenAPI/MCP |
 | DOC-09 / D09 | P2 | C | Rerun descrito pelo pool de condições, sem revogação automática dos filhos |
@@ -104,7 +99,7 @@ solicitada. Não há mudança automática de status de I05–I17.
 | DOC-13 / D13 | P3 | D | Status de I04, ciclo empresarial e marcos históricos reconciliados |
 | DOC-11 / D11 | P2 | E | Verify quick/full, gates explícitos e proteção contra regressão documental |
 
-Ordem restante recomendada: **B → C → D → E**. Cada etapa inclui testes pertinentes
+Ordem restante recomendada: **C → D → E**. Cada etapa inclui testes pertinentes
 e regeneração do site; E consolida os gates, não adia a validação das anteriores.
 Aceite global: 14 achados com evidência de fechamento, receitas exercitadas em
 ambiente isolado/limpo, site sincronizado, CI verde e nenhuma pendência I05–I17
@@ -411,6 +406,40 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+## DOC-B — Bootstrap, identidade e demo reproduzíveis (2026-09-22)
+
+**DOC-03/DOC-04/DOC-05/DOC-12/DOC-14 entregues.** Implementação `c658b49`,
+guards finais `877e5ca`; [CI 35671539235](https://github.com/Dr0nj/regente/actions/runs/35671539235)
+com **nove jobs aprovados**, incluindo server/agent/app/browser, integração,
+Node mínimos e launcher PowerShell em Linux e Windows.
+[Evidência sanitizada](evidence/doc-b-877e5ca.json).
+
+- DOC-03: app/server/demo não orientam token humano no agente. Launcher emite
+  principal com ID/ambiente/capacidades, espera presença autenticada, e smoke
+  prova COMMAND/output/atribuição e recusa de token admin, claims divergentes e
+  revogado. Sem túnel automático; DB/workspace/processos/container próprios,
+  timeout, cleanup restrito e guard de porta ocupada com causa exata.
+- DOC-04: @origin chega ao build, não apenas npm ci; exemplos POSIX/PowerShell,
+  README/deploy/mensagem do instalador alinhados. Browser contra Go confirma
+  /api/auth/config na mesma origem, além dos testes de sessão existentes.
+- DOC-05: engines package/lock/docs `^20.19.0 || ^22.13.0 || >=24`, incluindo
+  requisito mais restrito do ESLint. Instalação engine-strict, lint e build nos
+  mínimos 20.19.0/22.13.0/24.0.0 aprovados; CI/release usam Node 24. Check compara
+  toda a toolchain lockada e rejeita fixtures com requisito abaixo do necessário.
+  Nenhuma dependência foi atualizada.
+- DOC-12: origem Git, branch, owner/repo e credencial protegida explícitos;
+  -github-repo sozinho não ativa sync. Smoke offline e origem local sintética
+  exercitam carregamento e execução sem tocar workspace Git remoto real.
+- DOC-14: removida recomendação inviável --network none em demo/VPS e saída do
+  script. Canal de controle e jobs compartilham rede; isolamento fino não foi
+  implementado nem declarado entregue. Docker não é garantia contra código hostil.
+
+Limites: Windows valida PowerShell 5.1 com agente nativo apenas para echo sintético;
+Linux valida PowerShell com agente Docker real. Não equivale a executar Docker
+Desktop no Windows. Dados privados não são artifacts; somente JSON sanitizado.
+Gates reutilizados em CI e release; site regenerado. Sem deploy produtivo e sem
+encerrar capacidades I05–I17. Restam seis DOC nas etapas C/D/E.
 
 ## DOC-A — Upgrade, recuperação e contrato de schema (2026-09-21)
 
@@ -1733,6 +1762,12 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-09-22 — DOC-B:** DOC-03/04/05/12/14 entregues: launcher autenticado e
+  local por padrão, COMMAND/recusas/revogação provados, same-origin no build,
+  engines incluindo lint, GitOps explícito e rede sem promessa de isolamento fino.
+  CI 35671539235 / `877e5ca` verde nos nove jobs; Linux/Docker, Windows/PowerShell,
+  Node mínimos e browser aprovados. Restam seis achados documentais.
 
 - **2026-09-21 — DOC-A:** DOC-01/DOC-02/DOC-06 entregues: upgrade/rollback
   delimitados, DR completo para drafts, restore seguro em novo alvo, drain restrito

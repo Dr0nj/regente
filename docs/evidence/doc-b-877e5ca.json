@@ -1,0 +1,129 @@
+{
+  "sha": "877e5ca6b346a6b00fd56b57812ced1c438a5446",
+  "run_url": "https://github.com/Dr0nj/regente/actions/runs/35671539235",
+  "status": "passed",
+  "scope": [
+    "DOC-03",
+    "DOC-04",
+    "DOC-05",
+    "DOC-12",
+    "DOC-14"
+  ],
+  "node_minima": [
+    "20.19.0",
+    "22.13.0",
+    "24.0.0"
+  ],
+  "jobs": [
+    {
+      "name": "server (Go)",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/35671539235/job/106568885148"
+    },
+    {
+      "name": "app (web)",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/35671539235/job/106568885316"
+    },
+    {
+      "name": "doc-recipes / toolchain minimum Node 20.19.0",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/35671539235/job/106568885347"
+    },
+    {
+      "name": "agent (Go)",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/35671539235/job/106568885350"
+    },
+    {
+      "name": "doc-recipes / PowerShell demo ubuntu-latest",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/35671539235/job/106568885403"
+    },
+    {
+      "name": "doc-recipes / PowerShell demo windows-latest",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/35671539235/job/106568885481"
+    },
+    {
+      "name": "integration / PostgreSQL, NATS, OIDC and migration recovery",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/35671539235/job/106568885536"
+    },
+    {
+      "name": "doc-recipes / toolchain minimum Node 24.0.0",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/35671539235/job/106568885575"
+    },
+    {
+      "name": "doc-recipes / toolchain minimum Node 22.13.0",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/35671539235/job/106568885665"
+    }
+  ],
+  "demo_profiles": [
+    {
+      "profile": "linux-offline",
+      "node": "v24.20.0",
+      "revokedTokenRejected": true,
+      "platform": "Unix",
+      "commandCompleted": true,
+      "authenticatedPresence": true,
+      "status": "passed",
+      "nativeSmoke": false,
+      "publicTunnel": false,
+      "gitFixture": false,
+      "mismatchedClaimsRejected": true,
+      "humanTokenRejected": true
+    },
+    {
+      "profile": "linux-git",
+      "node": "v24.20.0",
+      "revokedTokenRejected": true,
+      "platform": "Unix",
+      "commandCompleted": true,
+      "authenticatedPresence": true,
+      "status": "passed",
+      "nativeSmoke": false,
+      "publicTunnel": false,
+      "gitFixture": true,
+      "mismatchedClaimsRejected": true,
+      "humanTokenRejected": true
+    },
+    {
+      "profile": "windows-offline",
+      "publicTunnel": false,
+      "platform": "Win32NT",
+      "commandCompleted": true,
+      "authenticatedPresence": true,
+      "mismatchedClaimsRejected": true,
+      "revokedTokenRejected": true,
+      "gitFixture": false,
+      "node": "v24.20.0",
+      "status": "passed",
+      "nativeSmoke": true,
+      "humanTokenRejected": true
+    },
+    {
+      "profile": "windows-git",
+      "publicTunnel": false,
+      "platform": "Win32NT",
+      "commandCompleted": true,
+      "authenticatedPresence": true,
+      "mismatchedClaimsRejected": true,
+      "revokedTokenRejected": true,
+      "gitFixture": true,
+      "node": "v24.20.0",
+      "status": "passed",
+      "nativeSmoke": true,
+      "humanTokenRejected": true
+    }
+  ],
+  "limits": [
+    "Windows CI exercises a native synthetic COMMAND, not Docker Desktop.",
+    "Linux CI exercises the real Docker agent with host networking.",
+    "No public tunnel or real workload repository is used.",
+    "No job-only egress isolation or hostile-code containment is claimed.",
+    "Toolchain dependencies were not upgraded; declared engines include the linter."
+  ]
+}
