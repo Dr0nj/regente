@@ -19,7 +19,11 @@ try {
   $portNumber = $listener.LocalEndpoint.Port
   $env:REGENTE_GIT_SOURCE = 'https://example.invalid/must-not-clone'
   $rejected = $false
-  try { & $launcher -Smoke -NativeSmoke -Port $portNumber } catch { $rejected = $true }
+  try { & $launcher -Smoke -NativeSmoke -Port $portNumber } catch {
+    $cause = $_.Exception.GetBaseException()
+    if ($cause -isnot [Net.Sockets.SocketException] -or $cause.SocketErrorCode -ne [Net.Sockets.SocketError]::AddressAlreadyInUse) { throw }
+    $rejected = $true
+  }
   if (-not $rejected) { throw 'Occupied port was not refused.' }
   if ($env:REGENTE_GIT_SOURCE -ne 'https://example.invalid/must-not-clone') { throw 'Caller environment was not restored after failure.' }
   $client = [Net.Sockets.TcpClient]::new()

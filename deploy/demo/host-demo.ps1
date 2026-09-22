@@ -32,7 +32,7 @@ $srv = $null; $agent = $null; $containerOwned = $false; $imageOwned = $false
 $credential = $null; $base = ''; $headers = @{}
 $savedEnv = @{}
 # Nao herdar credenciais/configuracoes pessoais; restaurar o ambiente do chamador.
-Get-ChildItem Env: | Where-Object { $_.Name -match '^(REGENTE_|VITE_|OTEL_|GITHUB_TOKEN$|GH_TOKEN$)' } | ForEach-Object {
+@(Get-ChildItem Env:) | Where-Object { $_.Name -match '^(REGENTE_|VITE_|OTEL_|GITHUB_TOKEN$|GH_TOKEN$)' } | ForEach-Object {
   $savedEnv[$_.Name] = $_.Value
   [Environment]::SetEnvironmentVariable($_.Name, $null, 'Process')
 }
@@ -200,7 +200,7 @@ try {
   foreach ($owned in @($agent, $srv)) {
     if ($owned -and -not $owned.HasExited) { Stop-Process -Id $owned.Id -Force; $owned.WaitForExit() }
   }
-  Get-ChildItem Env: | Where-Object { $_.Name -match '^(REGENTE_|VITE_|OTEL_|GITHUB_TOKEN$|GH_TOKEN$)' } | ForEach-Object { [Environment]::SetEnvironmentVariable($_.Name, $null, 'Process') }
+  @(Get-ChildItem Env:) | Where-Object { $_.Name -match '^(REGENTE_|VITE_|OTEL_|GITHUB_TOKEN$|GH_TOKEN$)' } | ForEach-Object { [Environment]::SetEnvironmentVariable($_.Name, $null, 'Process') }
   foreach ($key in $savedEnv.Keys) { [Environment]::SetEnvironmentVariable($key, $savedEnv[$key], 'Process') }
   Write-Host "Stopped owned resources. Private data/logs retained at $runDir; do not publish that directory."
 }
