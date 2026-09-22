@@ -1,0 +1,72 @@
+name: Documentation recipes
+on:
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  node-minima:
+    name: toolchain minimum Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20.19.0', '22.13.0', '24.0.0']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Clean install, declared engines and POSIX build
+        working-directory: app
+        run: |
+          test ! -e .env && test ! -e .env.local && test ! -e .env.production
+          unset VITE_REGENTE_SERVER_URL VITE_REGENTE_TOKEN
+          npm ci --engine-strict
+          node ../scripts/check-doc-recipes.cjs
+          npm run lint
+          VITE_REGENTE_SERVER_URL=@origin npm run build
+  demo:
+    name: PowerShell demo ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Linux Docker agent, offline and explicit local Git origin
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: |
+          ./scripts/test-demo-guards.ps1
+          ./deploy/demo/host-demo.ps1 -Smoke -Port 0 -EvidencePath "$env:RUNNER_TEMP/demo-offline.json"
+          ./deploy/demo/host-demo.ps1 -Smoke -GitFixture -Port 0 -EvidencePath "$env:RUNNER_TEMP/demo-git.json"
+      - name: Windows PowerShell launcher, synthetic native agent
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          ./scripts/test-demo-guards.ps1
+          ./deploy/demo/host-demo.ps1 -Smoke -NativeSmoke -Port 0 -EvidencePath "$env:RUNNER_TEMP/demo-offline.json"
+          ./deploy/demo/host-demo.ps1 -Smoke -NativeSmoke -GitFixture -Port 0 -EvidencePath "$env:RUNNER_TEMP/demo-git.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: demo-evidence-${{ runner.os }}
+          path: |
+            ${{ runner.temp }}/demo-offline.json
+            ${{ runner.temp }}/demo-git.json
+          if-no-files-found: error

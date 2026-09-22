@@ -1,11 +1,12 @@
 # syntax=docker/dockerfile:1
 # Agente regente em CONTAINER DESCARTÁVEL (sandbox) — pra hospedar a demo e deixar
-# amigos criarem/executarem jobs sem dar acesso à sua máquina.
+# amigos de confianca executarem jobs com limites de recursos.
 #
 # Diferente da imagem do server (distroless), aqui a imagem final tem SHELL de
 # propósito: jobs COMMAND/SCRIPT rodam comandos shell DENTRO do container — que não
 # tem volumes do host montados, roda como usuário não-root e com limites de recurso
-# (ver deploy/demo/host-demo.ps1). Ou seja: os comandos dos amigos ficam presos aqui.
+# (ver deploy/demo/host-demo.ps1). Nao e fronteira contra codigo hostil:
+# jobs compartilham namespace de rede e credencial de maquina com o agente.
 #
 # Build com a pasta agent/ como CONTEXTO (evita subir app/node_modules e .git):
 #   docker build -f deploy/demo/Dockerfile.agent -t regente-agent agent/

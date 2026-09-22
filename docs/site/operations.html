@@ -127,13 +127,23 @@ Isolation comes from the <strong>workspace branch + state store + label</strong>
 </tr>
 </tbody>
 </table>
-<pre><code class="language-sh"># Prod example
+<pre><code class="language-sh"># Prod example: set PROD_DSN and GITHUB_TOKEN through the protected service
+# environment; replace owner/workspace with YOUR repository.
 regente-server -db-driver postgres -db &quot;$PROD_DSN&quot; \
-  -git-branch main -github-repo Dr0nj/regente-workspace
+  -git-source https://github.com/owner/workspace.git \
+  -git-branch main -github-repo owner/workspace
 # env_label is set through the UI (Settings → Environment) or seeded; it shows up in
 # /api/env and /metrics
 </code></pre>
-<p><strong>Promotion</strong> is a Git flow: a PR <code>dev → staging → main</code> in <code>regente-workspace</code> promotes the
+<p><code>-git-source</code> (or <code>REGENTE_GIT_SOURCE</code>) activates synchronization; <code>-github-repo</code>
+alone only supplies GitHub owner/repository metadata and does <strong>not</strong> select a
+Git source. Set the branch explicitly for each deployment (<code>REGENTE_GIT_BRANCH</code>
+is the environment equivalent). Private repositories require suitable credentials;
+use protected <code>GITHUB_TOKEN</code>, never a token embedded in the URL or command line.
+Use a repository owned by the operator; there is no factory workspace repository.
+With no flag or inherited <code>REGENTE_GIT_SOURCE</code>, the server runs <strong>offline</strong> against
+the local workspace. Empty source is not an implicit GitHub default.</p>
+<p><strong>Promotion</strong> is a Git flow: a PR <code>dev → staging → main</code> in your workspace repository promotes the
 definitions from one environment to the next (reviewable, auditable, revertible with
 <code>git revert</code>).</p>
 <p><strong>Per-environment observability:</strong> <code>/metrics</code> exposes <code>regente_env_info{env=&quot;PROD&quot;} 1</code>;

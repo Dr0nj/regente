@@ -21,7 +21,7 @@
 ```bash
 cd server && CGO_ENABLED=0 go build -o regente-server .
 # optional: build the UI so it is served alongside, single-origin (UI+API+WS on one port)
-(cd ../app && VITE_REGENTE_SERVER_URL=@origin npm ci && npm run build)
+(cd ../app && npm ci && VITE_REGENTE_SERVER_URL=@origin npm run build)
 sudo ./deploy/install-linux.sh          # detects ../app/dist and sets REGENTE_SPA_DIR itself
 sudo regente-configure                   # guided: strong token, GitHub PAT/repo, domain
 sudo systemctl restart regente-server

@@ -105,7 +105,8 @@ Deeper documents: [operations](docs/operations.md) · [DR and backup](docs/dr-ba
 ## 🚀 Try it in 5 minutes
 
 The fastest way to see it working — nothing to configure, nothing left behind. You need
-[Go 1.25+](https://go.dev/dl/), plus [Node 20+](https://nodejs.org) for the UI.
+[Go 1.25+](https://go.dev/dl/), plus Node.js: `^20.19.0 || ^22.13.0 || >=24` for the UI
+(Node 24 is the CI line; the requirement includes the lint toolchain).
 
 ```bash
 git clone https://github.com/Dr0nj/regente.git && cd regente
@@ -184,7 +185,7 @@ Every option below comes in two flavours:
 
 - **From a release** — `install.sh` downloads a ready-made bundle. **No Go and no Node needed on
   the machine.** This is the easy path.
-- **From source** — you build it yourself. Needs Go 1.25+, plus Node 18+ if you want the UI.
+- **From source** — you build it yourself. Needs Go 1.25+ and the Node.js range above if you want the UI.
 
 > **On Windows?** [`server/deploy/`](server/deploy) and [`agent/deploy/`](agent/deploy) each have
 > an `install-windows.ps1` that registers a Scheduled Task (starts at boot, restarts on failure).
@@ -217,7 +218,7 @@ sudo bash regente-install.sh
 
 # or from source (it builds the UI and wires it up on its own):
 cd server && CGO_ENABLED=0 go build -o regente-server .
-(cd ../app && VITE_REGENTE_SERVER_URL=@origin npm ci && npm run build)
+(cd ../app && npm ci && VITE_REGENTE_SERVER_URL=@origin npm run build)
 sudo ./deploy/install-linux.sh
 ```
 
@@ -453,7 +454,7 @@ check that the service is really up before they finish, and print the log if it 
 | `curl … install.sh` gives 404 | that release does not carry the file | check <https://github.com/Dr0nj/regente/releases>; install from source (Option 1/2) meanwhile |
 | The page never loads | port closed | first prove the server itself is up, on the machine: `curl http://127.0.0.1:8080/health`. If that answers, it is the network — reach it with `ssh -L 18080:127.0.0.1:8080 you@host`, or open the port in the firewall **and** the provider's security group |
 | The board is empty after installing | the daily has not run since the definitions arrived | `curl -H "Authorization: Bearer $TOKEN" .../api/definitions` — if they are listed, the daily simply has not run for today yet: `POST /api/daily/run`. If they are **not** listed, check `GET /api/git/status` (field `error`) and the log for `reload defs` (one invalid YAML fails the whole load) |
-| Installed from source, no UI, only API | the built SPA was not found | `cd app && VITE_REGENTE_SERVER_URL=@origin npm ci && npm run build`, then run the installer again (or pass `SPA_DIR=/full/path/to/app/dist`) |
+| Installed from source, no UI, only API | the built SPA was not found | `cd app && npm ci && VITE_REGENTE_SERVER_URL=@origin npm run build`, then run the installer again (or pass `SPA_DIR=/full/path/to/app/dist`) |
 | Design says sessions are disabled | no workspace repository configured | `sudo regente-configure` and point it at your repository — Design needs GitOps |
 | The git badge says `⚠ not connected` | wrong repository, missing PAT, or PAT without write access | PAT: paste it in Settings → GitHub (immediate). Repository/branch: `sudo regente-configure` |
 | Nothing runs and the log says `WAIT AGENT` | no agent with that capability is online | install an agent on a machine (previous section) |

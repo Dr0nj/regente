@@ -192,7 +192,8 @@ interactive API explorer at <code>/api-docs</code>, where you can send real requ
 <hr>
 <h2 id="-try-it-in-5-minutes">🚀 Try it in 5 minutes</h2>
 <p>The fastest way to see it working — nothing to configure, nothing left behind. You need
-<a href="https://go.dev/dl/">Go 1.25+</a>, plus <a href="https://nodejs.org">Node 20+</a> for the UI.</p>
+<a href="https://go.dev/dl/">Go 1.25+</a>, plus Node.js: <code>^20.19.0 || ^22.13.0 || &gt;=24</code> for the UI
+(Node 24 is the CI line; the requirement includes the lint toolchain).</p>
 <pre><code class="language-bash">git clone https://github.com/Dr0nj/regente.git &amp;&amp; cd regente
 (cd app &amp;&amp; npm ci &amp;&amp; VITE_REGENTE_SERVER_URL=@origin npm run build)
 cd server &amp;&amp; go run ./cmd/regente dev daily -addr :8686
@@ -261,7 +262,7 @@ starts at boot and comes back on its own after a crash, and its state lives in
 <ul>
 <li><strong>From a release</strong> — <code>install.sh</code> downloads a ready-made bundle. <strong>No Go and no Node needed on
 the machine.</strong> This is the easy path.</li>
-<li><strong>From source</strong> — you build it yourself. Needs Go 1.25+, plus Node 18+ if you want the UI.</li>
+<li><strong>From source</strong> — you build it yourself. Needs Go 1.25+ and the Node.js range above if you want the UI.</li>
 </ul>
 <blockquote>
 <p><strong>On Windows?</strong> <a href="https://github.com/Dr0nj/regente/tree/main/server/deploy"><code>server/deploy/</code></a> and <a href="https://github.com/Dr0nj/regente/tree/main/agent/deploy"><code>agent/deploy/</code></a> each have
@@ -288,7 +289,7 @@ sudo bash regente-install.sh
 
 # or from source (it builds the UI and wires it up on its own):
 cd server &amp;&amp; CGO_ENABLED=0 go build -o regente-server .
-(cd ../app &amp;&amp; VITE_REGENTE_SERVER_URL=@origin npm ci &amp;&amp; npm run build)
+(cd ../app &amp;&amp; npm ci &amp;&amp; VITE_REGENTE_SERVER_URL=@origin npm run build)
 sudo ./deploy/install-linux.sh
 </code></pre>
 <p>The installer ends by printing a health check and the next steps. If it says
@@ -524,7 +525,7 @@ check that the service is really up before they finish, and print the log if it 
 <tr>
 <td>Installed from source, no UI, only API</td>
 <td>the built SPA was not found</td>
-<td><code>cd app &amp;&amp; VITE_REGENTE_SERVER_URL=@origin npm ci &amp;&amp; npm run build</code>, then run the installer again (or pass <code>SPA_DIR=/full/path/to/app/dist</code>)</td>
+<td><code>cd app &amp;&amp; npm ci &amp;&amp; VITE_REGENTE_SERVER_URL=@origin npm run build</code>, then run the installer again (or pass <code>SPA_DIR=/full/path/to/app/dist</code>)</td>
 </tr>
 <tr>
 <td>Design says sessions are disabled</td>

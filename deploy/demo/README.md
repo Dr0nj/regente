@@ -1,109 +1,95 @@
-# Hosting a Regente demo for other people to try
+# Reproducible local demo
 
-The goal: a **public https link** where people log in and **create and run real jobs**, without
-you exposing your machine or your GitHub beyond what is needed.
-
-## How it works
-
-```
-  guests (browser)
-        │  https://<something>.trycloudflare.com
-        ▼
-  Cloudflare Tunnel  ──►  regente-server (your PC, :9091)
-                              │   • serves the built SPA   (same port → no CORS)
-                              │   • API + WebSocket        (same port)
-                              │   • GitOps DIRECT ──► YOUR workspace repo (-GitRepo)
-                              ▼
-                          agent in a Docker CONTAINER (disposable)
-                              • COMMAND/SCRIPT/HTTP jobs run IN HERE
-                              • no host volumes, non-root, cap-drop, CPU/RAM limits
-```
-
-Decisions behind this demo:
-
-- **Cloudflare Tunnel** — free, no account, no card. The link is ephemeral
-  (`*.trycloudflare.com`) and changes every time you start it — and you **never have to rebuild**
-  the frontend, because it uses `window.location.origin` (any tunnel URL works).
-- **Execution in an isolated Docker container** — jobs really run, but they are trapped in a
-  disposable container. Your guests' commands **never touch your machine or your files**.
-- **GitOps straight into your own workspace repository** — pass `-GitRepo owner/name` and the
-  jobs people create become commits directly on `main`. Simple and fluid (no PR in the middle).
-  See "Security" below. **Without `-GitRepo` the demo runs offline**: everything works, the
-  definitions just stay on local disk and nothing is pushed anywhere.
+The launcher builds a same-origin SPA and server, provisions a separate machine
+credential, and waits for authenticated agent presence. It **does not open a
+public tunnel**. Each run uses a new temporary DB/workspace, unique agent/container
+IDs and an eight-hour credential. It never kills servers by name or reuses a
+previous demo database or saved PAT.
 
 ## Requirements
 
-- **Go 1.25+** and **Node/npm** (to build the server and the frontend)
-- **Docker Desktop RUNNING** (for the sandbox agent)
-- **cloudflared** on the PATH: `winget install --id Cloudflare.cloudflared`
-- **Only if you use `-GitRepo`:** a **GitHub PAT** with **push** permission on that repository
-  (fine-grained: Contents = Read and write on it). The script reuses the token saved in
-  `%LOCALAPPDATA%\regente-lab\github-token.txt` if it exists; otherwise it asks.
+- Go 1.25+, Git and Node.js: `^20.19.0 || ^22.13.0 || >=24` (Node 24 in CI).
+- Windows PowerShell 5.1 or PowerShell 7.
+- A running **Linux Docker engine** (Docker Desktop on Windows), for guest jobs.
+  The native smoke below does not require Docker and is **not** a guest demo mode.
 
-## Start it
-
-From the repository root, in PowerShell:
+From the repository root:
 
 ```powershell
-.\deploy\demo\host-demo.ps1 -GitRepo <owner>/<your-workspace>   # or omit it to run offline
+.\deploy\demo\host-demo.ps1
+# Optional: YOUR workspace, with GITHUB_TOKEN supplied through a protected environment.
+# This permits direct commits to that real repository; do not use a production workspace.
+.\deploy\demo\host-demo.ps1 -GitRepo owner/demo-workspace -GitBranch main
 ```
 
-If you see **"running scripts is disabled on this system"** (the Windows default policy), use one
-of these — **neither needs admin rights**:
+If local execution policy blocks the script, use a per-process invocation:
 
 ```powershell
-# option A — just this once, changing nothing on the system:
-powershell -ExecutionPolicy Bypass -File .\deploy\demo\host-demo.ps1 -GitRepo <owner>/<repo>
-
-# option B — allow local scripts for your user permanently (run once):
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-.\deploy\demo\host-demo.ps1 -GitRepo <owner>/<repo>
+powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\demo\host-demo.ps1
 ```
 
-The script builds the frontend (`@origin`), builds and starts the server on `:9091` serving
-everything from one origin, builds and starts the agent in Docker, and opens the Cloudflare
-Tunnel. **Copy the `https://<...>.trycloudflare.com` link** it prints and send it to your guests.
+Open the printed localhost URL. Change the initial `admin / admin` password
+immediately; create individual operator/viewer accounts for trusted guests.
+Set jobs' **environment to `demo`** and target the printed agent ID. The issued
+scope is exactly `demo` + `COMMAND,SCRIPT,HTTP`; administrative or human tokens
+cannot authenticate as this agent. Credentials are passed through process/container
+environment, not printed or included in CLI arguments. Docker administrators and
+jobs in that container can inspect its environment: it is not a secrets boundary.
 
-Initial login: **admin / admin** (it forces a password change on first use).
+The default bind address is `127.0.0.1`. On Windows, Docker Desktop connects through
+`host.docker.internal`; if that installation cannot reach a loopback-bound host
+service, explicitly choose `-BindAddress 0.0.0.0` **only with a host firewall
+restricting access**. That exposes the listener to host interfaces; the launcher
+does not configure a firewall. The Linux laboratory uses host networking and
+loopback. Neither topology provides job-only network isolation.
 
-### Inviting people
+No Git source means **offline** local definitions. `-GitRepo` supplies an explicit
+HTTPS Git source as well as owner/repository metadata; `-github-repo` alone would
+not enable synchronization. The launcher does not read a saved PAT file. See
+[operations](../../docs/operations.md) for origin/branch/credentials.
 
-In **Settings → Users**, create one account per person and pick the role:
+Press Enter in the launcher to stop it. Its `finally` block revokes the credential,
+stops only captured process IDs and removes only its uniquely named container and
+image. Data/logs remain in the printed private temporary directory; do not publish
+that directory. A forced process termination or machine crash can bypass cleanup;
+use the exact run-specific resource names for manual cleanup, never a wildcard or
+`Get-Process regente-server | Stop-Process`.
 
-- **operator** — creates and runs jobs (what you want for people who will really try it out)
-- **viewer** — observes only (good for someone who will just give visual feedback)
-
-That way everyone logs in with their own account — do not share the admin one.
-
-## Stop it
-
-Close the `cloudflared` window (Ctrl+C) and run:
+## Automated smoke — no tunnel, no real workspace
 
 ```powershell
-docker rm -f regente-sandbox
-Get-Process regente-server -ErrorAction SilentlyContinue | Stop-Process -Force
+# Real Docker agent: fresh offline workspace, COMMAND dispatch/result, then cleanup.
+.\deploy\demo\host-demo.ps1 -Smoke -Port 0
+# Explicit Git origin: a synthetic LOCAL repository, never GitHub.
+.\deploy\demo\host-demo.ps1 -Smoke -GitFixture -Port 0
+# Windows without Docker: only the fixed synthetic echo job executes on this host.
+.\deploy\demo\host-demo.ps1 -Smoke -NativeSmoke -GitFixture -Port 0
 ```
 
-## Security — read this before inviting anyone
+`-NativeSmoke` is rejected without `-Smoke`. Smoke rejects `-GitRepo`, clears
+inherited Regente/Vite/telemetry/token configuration and restores the caller's
+environment afterward. It runs `npm ci`, builds with `@origin`, provisions the
+machine principal, verifies authenticated presence and a pinned COMMAND's actual
+output, tests rejected ID/environment/capability claims and administrative bearer,
+then revokes the credential and verifies removal/rejection. Every wait has a
+timeout and failure is nonzero. Only the sanitized `evidence.json` is suitable
+for sharing; private logs and DBs are not CI artifacts.
 
-You are exposing an orchestrator that **executes commands**. Mitigations already built in:
+CI runs the PowerShell launcher on Windows (native synthetic job) and Linux
+(real Docker agent), with offline and explicit local Git fixtures. The browser
+test separately loads the built SPA from Go and verifies same-origin login/API
+requests instead of silent localStorage mode.
 
-- Execution happens **inside the container** (no host mount, non-root, `--cap-drop ALL`,
-  `--security-opt no-new-privileges`, PID/CPU/RAM limits). Whatever your guests run stays in
-  there; `docker rm -f regente-sandbox` tears it down or recycles it.
-- **Per-person accounts** with RBAC (operator/viewer) instead of a shared admin.
-- A **random** API token per session (the script generates one on every run).
+## Security limits
 
-Things to keep in mind when you run it **with `-GitRepo`** (the demo then writes to that real
-repository):
+The container is non-root, has no host mounts, drops capabilities and limits
+CPU/RAM/PIDs. These reduce exposure; they **do not guarantee safety against hostile
+code**. Jobs and the agent share credentials and a network namespace.
 
-- Jobs people create **commit straight to `main`** in your workspace repository. If someone makes
-  a mess, it is a `git revert` in the repo. If you would rather review changes, swap
-  `-git-write-mode direct` for `pr-required` in the script (every change then becomes a PR for
-  you to approve — that needs a PAT with PR permission).
-- The container has outbound network access (HTTP and `COMMAND` jobs can reach the internet). To
-  cut that off, run the agent with `--network none` (but then HTTP/network jobs stop working).
-- The `trycloudflare.com` link is **public**: anyone with the URL sees the login screen. The
-  protection is the login and RBAC — only hand out accounts to people you trust.
+`--network none` disconnects WS/HTTP/SSE, dispatch and results, not only network
+jobs. This recipe does **not** implement job-only egress isolation. Only run jobs
+from people you trust. Do not mount the Docker socket, host directories or secrets.
 
-Invite a small number of people you trust, and shut the demo down when you are done.
+Public hosting is a separate deliberate deployment: first configure passwords,
+accounts, TLS, ingress and credential lifecycle using the
+[VPS guide](../vps/README.md). No tunnel or public resource is created automatically.

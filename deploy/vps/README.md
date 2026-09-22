@@ -127,10 +127,11 @@ Then, in **Settings → Users**, create one account per guest (`operator` create
 to approve). Guest jobs stay inside the container;
 `sudo systemctl stop regente-agent-sandbox` shuts it down.
 
-> The sandbox's network stays **on** (HTTP jobs work). To cut outbound network access, add
-> `--network none` to the `ExecStart` line of
-> `/etc/systemd/system/regente-agent-sandbox.service` and run
-> `systemctl daemon-reload && systemctl restart regente-agent-sandbox`.
+> The container's network stays **on**. `--network none` also disconnects the agent's
+> WS/HTTP/SSE control channel: dispatch and results stop, not just network jobs.
+> Jobs and the agent share a network namespace; job-only egress isolation is not
+> implemented by this recipe. Container limits/no host mounts are not a network
+> boundary or a guarantee against hostile jobs. Use trusted demo workloads only.
 
 ## Guided setup
 

@@ -35,6 +35,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  doc-recipes:
+    needs: version
+    if: needs.version.outputs.skip != 'true'
+    uses: ./.github/workflows/doc-recipes.yml
+    with:
+      ref: ${{ inputs.tag || github.sha }}
   integration:
     needs: version
     if: needs.version.outputs.skip != 'true'
@@ -89,7 +95,7 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
       - name: Build SPA (@origin)
         working-directory: app
         env:
@@ -207,7 +213,7 @@ jobs:
 
   publish:
     name: publish release
-    needs: [version, build, smoke, integration]
+    needs: [version, build, smoke, integration, doc-recipes]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

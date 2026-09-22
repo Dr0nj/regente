@@ -38,7 +38,7 @@ unit or a k8s manifest needs no arguments):
 | `-workspace` | `./workspace` | Path containing `definitions/` |
 | `-db` | `./regente.db` | SQLite file path, or the Postgres DSN |
 | `-db-driver` | `sqlite` | `sqlite` \| `postgres` |
-| `-api-token` | `dev-token` / `REGENTE_TOKEN` | Bearer token for the web UI and agents |
+| `-api-token` | `dev-token` / `REGENTE_TOKEN` | Administrative API bearer; **not** an agent credential or browser session |
 | `-spa-dir` | — | Serves the built UI on the same origin (single-origin) |
 | `-docs-dir` | — | Serves a generated docs site under `/docs` |
 | `-git-source` | — | Workspace repository URL (GitOps) |
@@ -51,6 +51,14 @@ unit or a k8s manifest needs no arguments):
 | `-backup` | — | One-shot mode: writes an online backup and exits |
 
 Run `./regente-server -h` for the full list.
+
+External agents require a separately provisioned machine credential from
+**Settings > Agents** or `POST /api/agents/tokens`. Match the issued ID,
+environment and capabilities exactly, set the agent's protected `REGENTE_TOKEN`
+environment and verify authenticated presence plus a synthetic COMMAND.
+The server's administrative bearer and human login sessions are rejected by agent
+transports. See [agent identity](../docs/agent-identity.md) and the
+[reproducible local demo](../deploy/demo/README.md).
 
 ## API
 

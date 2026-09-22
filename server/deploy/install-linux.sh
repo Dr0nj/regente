@@ -12,7 +12,7 @@
 #
 # Uso (do código-fonte):
 #   (cd .. && CGO_ENABLED=0 go build -o regente-server .)
-#   (cd ../../app && VITE_REGENTE_SERVER_URL=@origin npm ci && npm run build)   # p/ UI junto
+#   (cd ../../app && npm ci && VITE_REGENTE_SERVER_URL=@origin npm run build)   # p/ UI junto
 #   sudo ./install-linux.sh
 #   sudo $EDITOR /etc/regente/server.env      # REGENTE_TOKEN forte, GitOps…
 #   sudo systemctl restart regente-server
@@ -95,7 +95,7 @@ case "$WITH_UI" in
       fi
     else
       echo "WARNING: no built SPA found at $SPA_SRC — installing the API ONLY."
-      echo "         To serve the UI too: (cd app && VITE_REGENTE_SERVER_URL=@origin npm ci && npm run build), then reinstall"
+      echo "         To serve the UI too: (cd app && npm ci && VITE_REGENTE_SERVER_URL=@origin npm run build), then reinstall"
       echo "         (or point it explicitly:  sudo SPA_DIR=/path/to/app/dist $0 ),"
       echo "         or use the release one-liner (install.sh), which already ships the UI bundled."
     fi

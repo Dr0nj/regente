@@ -19,7 +19,12 @@ for (const mode of ["local", "hybrid", "oidc"]) {
     child.stderr.on("data", data => { output += data.toString(); });
     try {
       await expect.poll(async () => { try { return (await request.get(base + "/health")).status(); } catch { return 0; } }, { timeout: 20000 }).toBe(200);
+      const authConfig = page.waitForResponse(response => response.url() === base + "/api/auth/config" && response.status() === 200);
+      const apiOrigins = new Set<string>();
+      page.on("request", req => { if (new URL(req.url()).pathname.startsWith("/api/")) apiOrigins.add(new URL(req.url()).origin); });
       await page.goto(base);
+      await authConfig; // O SPA servido pelo Go nao pode cair em localStorage silencioso.
+      expect([...apiOrigins]).toEqual([base]);
       if (mode === "oidc") {
         await expect(page.getByRole("button", { name: "SSO is currently unavailable" })).toBeVisible();
         await expect(page.getByPlaceholder("Username", { exact: true })).toHaveCount(0);

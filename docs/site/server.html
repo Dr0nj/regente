@@ -123,7 +123,7 @@ unit or a k8s manifest needs no arguments):</p>
 <tr>
 <td><code>-api-token</code></td>
 <td><code>dev-token</code> / <code>REGENTE_TOKEN</code></td>
-<td>Bearer token for the web UI and agents</td>
+<td>Administrative API bearer; <strong>not</strong> an agent credential or browser session</td>
 </tr>
 <tr>
 <td><code>-spa-dir</code></td>
@@ -178,6 +178,13 @@ unit or a k8s manifest needs no arguments):</p>
 </tbody>
 </table>
 <p>Run <code>./regente-server -h</code> for the full list.</p>
+<p>External agents require a separately provisioned machine credential from
+<strong>Settings &gt; Agents</strong> or <code>POST /api/agents/tokens</code>. Match the issued ID,
+environment and capabilities exactly, set the agent's protected <code>REGENTE_TOKEN</code>
+environment and verify authenticated presence plus a synthetic COMMAND.
+The server's administrative bearer and human login sessions are rejected by agent
+transports. See <a href="agent-identity.html">agent identity</a> and the
+<a href="https://github.com/Dr0nj/regente/blob/main/deploy/demo/README.md">reproducible local demo</a>.</p>
 <h2 id="api">API</h2>
 <p>Every <code>/api/*</code> route requires <code>Authorization: Bearer &lt;token&gt;</code>.</p>
 <p>The <strong>contract lives in the binary</strong>: a running server serves the curated OpenAPI spec plus a
