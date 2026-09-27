@@ -101,19 +101,25 @@ allows). Hot path: the tick loads the pool ONCE per cycle (`CondIndex`).
 **C2 — OK applies the out-conditions.** Ending OK (for real) and **Set OK**
 (BUG-3/4) both apply out＋ and out− — in BOTH roles: as a producer it unblocks
 successors; as a consumer it **CONSUMES** its own in-condition (the out− armed
-by the arrow). A terminal NOTOK applies NOTHING.
+by the arrow). A terminal NOTOK does not apply these automatic out-conditions;
+explicit On/Do actions remain a separate source of pool changes.
 
 **C3 — Consumption = deletion on OK.** The old model's "consumption permanence"
-is now a natural consequence: rerunning a consumer that ended OK lands in WAIT
-COND, because its own OK deleted the in-condition. **Set OK + rerun = waiting**
-(the Set OK went to the pool and deleted it — the user's guiding scenario). A
-rerun after **NOTOK/CANCELLED** runs straight away (a failure does not consume;
-the condition is still in the pool).
+is now a natural consequence: rerunning a consumer whose OK deleted its required
+in-condition lands in WAIT COND **if that condition is still absent**.
+**Set OK + rerun = waiting** under the same conditions (the user's guiding
+scenario). Hand-authored inputs without `conditionsOutRemove` are not consumed
+on OK. A rerun after **NOTOK/CANCELLED** can proceed if the required conditions
+still exist and all other gates pass: failure itself does not consume them, but
+another consumer, operator or On/Do action may have changed the pool.
 
-**C4 — Rerun/cancel/delete/hold do NOT touch the pool.** No operator action on
-instances touches a condition; only OK/Set OK terminations (C2), On/Do actions
-and the operator THROUGH THE PANEL. Rerunning the PARENT creates a NEW condition
-on its next OK — that is what unblocks the child's rerun.
+**C4 - Rerun/cancel/delete/hold do NOT directly touch the pool.** Resetting a
+producer to WAITING does not revoke conditions it already published and does not
+reset descendants. Pool mutations come from OK/Set OK (C2), explicit On/Do
+actions, condition-management operations (panel/API/MCP), or external event
+ingestion. In particular, cancelling RUNNING evaluates NOTOK/exit=-1 On/Do rules,
+which may have their own effects. The producer's next OK applies its out-conditions
+again; recreating a consumed input can unblock a waiting consumer.
 
 **C5 — Force.** `Order Force` (Design) creates a new order that bypasses ONLY
 the scheduling — the C1 gate still applies (a copy of an already-consumed
@@ -131,7 +137,23 @@ have any kind of immutable condition"*.
 **C7 — JSON is never null.** Every list in the API (Explain's `blockers`, etc.)
 serializes as `[]`, never `null` (a nil slice breaks the frontend).
 
-## Boolean entry logic — AND/OR (CL)
+## Rerun examples (C1–C4, M1)
+
+Assume the frozen A→B orders use `A-TO-B`: A has out+, B has in and out-.
+
+| Sequence | Pool / next gate |
+|---|---|
+| A OK; B has not consumed; rerun A | `A-TO-B` remains. B is not reset or re-blocked just because A is WAITING. |
+| A OK; B OK (or Set OK); rerun B | B's out- removed `A-TO-B`; B waits while it is absent. A's next OK or an explicit condition addition can recreate it. |
+| A OK; B NOTOK; rerun B | B did not consume the input. If it still exists, the condition gate passes; the other gates still apply. |
+| B OK without out-; rerun B | No consumption was configured, so OK did not remove the input. Rerun evaluates the current pool normally. |
+
+These operations keep the order's frozen snapshot (M1). Editing today's live
+definition does not rewrite the existing order's inputs or outputs. Hold/delete
+does not restore a consumed input; Run Now and Order Force retain their distinct
+C5 behavior. API list results remain arrays, including empty arrays (C7).
+
+## Boolean entry logic - AND/OR (CL)
 
 > **Status: TOPIC CLOSED — CL-1…CL-6 delivered and validated.** CL-1 (the DNF
 > evaluator), CL-2 (the `$TIME` fallback + decoupling from the `windowFrom`

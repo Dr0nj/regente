@@ -80,10 +80,23 @@ the server sets the cookie. Cookie mutations require `X-CSRF-Token`, returned by
 login or `GET /api/auth/me`. Browser cookies cannot be used as API bearers. Query
 string tokens are no longer accepted.
 
+The static server `REGENTE_TOKEN` is an admin-equivalent API bearer only in
+local/hybrid mode. It is not a browser session or an agent credential. OIDC
+provider tokens are not accepted as Regente API bearers. Agents use separately
+issued [machine credentials](agent-identity.md) on their own transports.
+
+Public entry points include `/health`, `/livez`, `/readyz`, `/metrics`, `/api/env`,
+`/api/auth/config`, `/api/auth/login`, OIDC login/callback and `/api-docs`.
+Public login routes still enforce origin, credentials and mode policy. Signed
+quick actions validate their scoped link token; they do not grant general API access.
+The curated OpenAPI security declaration describes integration bearer calls,
+not the SPA cookie flow. The API explorer requires a non-browser API bearer.
+
 For events, call authenticated `POST /api/auth/event-ticket` and connect to
 `/ws/web?ticket=...` within 30 seconds. Each ticket can be used once; get a new one
 on reconnect. Sessions are checked before delivery and every second. Folder
-filtering remains tracked in I04.
+filtering, payload minimization and revocation follow the
+[web event authorization contract](web-events.md).
 
 ## Optional emergency access
 

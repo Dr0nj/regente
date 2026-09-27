@@ -154,3 +154,39 @@ func TestCancel_TerminalRejected(t *testing.T) {
 		t.Fatal("cancel de instance OK (terminal) deveria falhar")
 	}
 }
+
+// DOC-08/C4: o cancel não aplica out+/out-, mas o RUNNING avalia alertas e
+// On/Do explícito. WAITING/HELD não passam por esse caminho de falha.
+func TestCancel_AlertsAndActionsByState(t *testing.T) {
+	for _, status := range []domain.InstanceStatus{domain.StatusRunning, domain.StatusWaiting, domain.StatusHeld} {
+		t.Run(string(status), func(t *testing.T) {
+			s := schedWithEngines(t)
+			s.hub = &captureBus{}
+			s.alerts.SeedDefaults()
+			def := domain.JobDefinition{ID: "cancel-effects", JobType: "COMMAND",
+				ConditionsOutAdd: []string{"ONLY-OK"}, ConditionsOutRemove: []string{"INPUT"},
+				Actions: []domain.ActionRule{
+					{On: "result", Status: "NOTOK", Do: "set-condition", Condition: "FAILURE"},
+					{On: "exit", ExitCodes: "-1", Do: "set-condition", Condition: "KILLED"},
+				},
+			}
+			seedAc(t, s, "job", status, 1, nil, def)
+			if err := s.conditions.Set("INPUT", acDate, "test"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.Cancel("job"); err != nil {
+				t.Fatal(err)
+			}
+			if !s.conditions.Has("INPUT", acDate) || s.conditions.Has("ONLY-OK", acDate) {
+				t.Fatal("cancel aplicou out-conditions de OK")
+			}
+			want := status == domain.StatusRunning
+			if s.conditions.Has("FAILURE", acDate) != want || s.conditions.Has("KILLED", acDate) != want {
+				t.Fatal("On/Do não corresponde ao estado cancelado")
+			}
+			if n := alertCount(t, s); (want && n != 1) || (!want && n != 0) {
+				t.Fatalf("alertas=%d; RUNNING=%v", n, want)
+			}
+		})
+	}
+}

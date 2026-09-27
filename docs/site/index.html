@@ -363,7 +363,9 @@ server owns this date (see it in <code>GET /api/daily/status</code>); the UI nev
 computer's clock, so a browser in another timezone still sees the same day.</p>
 <blockquote>
 <p>⚠️ <strong><code>REGENTE_TOKEN</code> is admin-equivalent</strong> — it bypasses the login entirely. Generate a strong
-value and never leave it as <code>dev-token</code> or <code>change-me</code>. <code>regente-configure</code> generates one for
+value and never leave it as <code>dev-token</code> or <code>change-me</code>. This applies only in <code>local</code>/<code>hybrid</code>
+mode: the static bearer cannot bypass <code>oidc</code> mode. It is not a browser session or an agent
+credential. See <a href="authentication.html">authentication</a>. <code>regente-configure</code> generates one for
 you, and the server logs a loud warning at boot if it is still the example value.</p>
 </blockquote>
 <p><strong>If something is wrong with the workspace repository, the server still starts.</strong> A typo in the
@@ -616,8 +618,10 @@ Kubernetes Jobs. Each one is just a capability, never the foundation.</li>
 <li><strong>SSH, agentless</strong> — a remote command straight from the server, with streamed output.</li>
 <li><strong>A built-in SERVER-AGENT</strong> — every server ships with a default <code>HTTP</code>/<code>REST</code> agent, so API
 calls run from the server itself with no external agent to install.</li>
-<li><strong>Cancel really kills</strong> — cancelling a RUNNING job aborts the process on the agent (the whole
-process tree), and the job ends NOTOK without an automatic retry.</li>
+<li><strong>State-aware cancellation</strong> — RUNNING sends a best-effort kill signal to the agent and
+finalizes NOTOK without automatic retry; a successful API response is not a remote kill
+acknowledgement. WAITING/HELD becomes CANCELLED; terminal states are rejected. Failure
+alerts and On/Do rules apply to the RUNNING path. See <a href="mcp.html#lifecycle-semantics">lifecycle details</a>.</li>
 <li><strong>Automatic retries</strong> on failure (honouring <code>retries</code>), and <strong>cyclic execution</strong> that re-arms
 itself every N minutes inside the window.</li>
 <li><strong>Confirm</strong> — a job that only runs after an operator releases it (not even Force bypasses it).</li>

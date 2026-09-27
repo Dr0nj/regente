@@ -70,7 +70,12 @@ A paridade não é a lista de features — é o comportamento nas bordas:
   entrada do sucessor **aguarda** por ela, e uma saída negativa **consome** (deleta) —
   o que modela fan-in com consumo, como no modelo clássico. A entrada aceita **lógica E/OU
   real** (grupos com operador de topo) e o token `$TIME` ("condição OU horário");
-  rerun do pai desfaz o OK e quem depende **volta a aguardar** um término novo.
+  rerun do pai **não remove condições publicadas nem reseta descendentes**.
+  O rerun do consumidor espera se a condição exigida estiver ausente (por exemplo,
+  consumida pelo seu OK/Set OK anterior); o próximo OK do pai pode recriá-la.
+  Um consumidor que falhou não consumiu a entrada e pode seguir se ela ainda
+  existir e os demais gates forem satisfeitos. Ver
+  [regras C1–C7 do pool e snapshots congelados M1](conditions-events.md).
 - **Force com dois gestos** — "Run Now" destrava a instância existente (bypass de
   janela/deps/recursos; Confirm e agente nunca são bypassados); "Order Force" cria uma
   ordem nova fora do agendamento que **respeita** os gates de runtime.

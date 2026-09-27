@@ -24,12 +24,39 @@ info:
     evolves with the UI and is not a contract.
 
     ### Authentication
-    `Authorization: Bearer <token>` on everything under `/api`, except where
-    marked public. The token is either a session issued by the UI login **or**
-    the deployment's static token (`REGENTE_TOKEN`, equivalent to admin — the
-    same one the Go SDK `pkg/client` and the `regente ops` CLI use). Auth
-    errors: `401` for a missing/invalid token, `403` for insufficient
-    role/ACL. Error bodies are `text/plain` (raw message), not JSON.
+    The security declaration below models the **integration bearer transport**.
+    In `local` or `hybrid` mode, POST `/api/auth/login` with
+    `{"username":"...","password":"..."}` (omit `browser`, or set it false)
+    returns `{token,user}`. Send that token as `Authorization: Bearer <token>`.
+    The deployment's static `REGENTE_TOKEN` is also accepted as admin in those
+    modes. Neither ordinary password login nor the static token bypasses `oidc`
+    mode. Explicitly configured emergency access is a separate, audited,
+    15-minute recovery path, not a normal integration credential.
+
+    **Browser sessions are different:** login with `browser:true` returns an
+    empty JSON token and an HttpOnly, SameSite=Lax cookie (`regente_session` on
+    HTTP, `__Host-regente_session` with Secure on HTTPS). OIDC also uses cookies.
+    Cookie requests require an allowed origin and, except GET/HEAD/OPTIONS,
+    `X-CSRF-Token` from login or GET `/api/auth/me` (including POST/QUERY reads).
+    Never copy browser cookies into bearer headers, URLs or localStorage.
+    Browser session values are rejected as API bearers; query-string session
+    tokens are not accepted. The API explorer uses an API bearer, not SPA login.
+
+    **Machine credentials** are separately issued agent tokens, scoped to agent
+    ID/environment/capabilities and used only on agent transports. They are not
+    human API sessions; the server admin bearer cannot authenticate an agent.
+
+    **Public entry points** include `/health`, `/livez`, `/readyz`, `/metrics`,
+    `/api/env`, `/api/auth/config`, `/api/auth/login`, OIDC login/callback and
+    `/api-docs`. Login entry points still enforce their own policy. Signed quick
+    actions use their scoped link token, not anonymous authorization. Web events
+    use a 30-second, single-use ticket from authenticated POST
+    `/api/auth/event-ticket`; a ticket is not a reusable API credential.
+
+    Auth errors: `401` for missing/invalid credentials or a disallowed session
+    source; `403` for invalid transport/CSRF or insufficient role/ACL. Error
+    bodies are `text/plain` (raw message), not JSON. See the authentication,
+    agent identity and web event guides for the full policies.
 
     ### RBAC
     Reads respect the user's folder ACLs (admin sees everything). Lifecycle
@@ -213,7 +240,7 @@ paths:
               type: object
               required: [q]
               properties:
-                q: { type: string, description: The question, in natural language. }
+                q: { type: string, description: "The question, in natural language." }
             example: { q: "how many jobs failed today?" }
       responses:
         "200":
@@ -264,10 +291,9 @@ paths:
         The classic "Delete job": removes the instance from the screen and from
         the state store. Requires the job to be on HOLD — since RUNNING is not
         holdable, a job in execution is never deletable; any other status
-        becomes deletable by going through Hold first. The dependency-event
-        ledger stays intact: an OK consumption that was held remains spent (the
-        rerun of a clone stays in WAIT EVENT); an unconsumed reservation goes
-        back to the pool.
+        becomes deletable by going through Hold first. Deletion does not touch
+        the condition pool: consumed conditions remain absent and unconsumed
+        conditions remain available. There is no per-instance reservation.
       operationId: deleteInstance
       x-permission: operator/admin + write access on the instance's folder
       parameters: [{ $ref: "#/components/parameters/instanceId" }]
@@ -348,19 +374,44 @@ paths:
     post:
       tags: [Lifecycle]
       summary: Cancel — cancels the instance
-      description: Marks it CANCELLED (unconditionally) and closes finished_at.
+      description: |
+        RUNNING: sends a best-effort cancel signal to the assigned agent and
+        finalizes NOTOK (exitCode -1), without automatic retry. This evaluates
+        failure alerts and On/Do result=NOTOK and exit=-1 rules; such rules can
+        have their own side effects. A successful response is not proof that a
+        remote process stopped (for example, the agent may be offline).
+
+        WAITING or HELD: becomes CANCELLED; no execution is killed and this path
+        does not evaluate failure alerts/On/Do. Terminal states are rejected
+        with 409. Cancellation itself does not change the condition pool.
+        The returned status describes the cancel action, not a kill acknowledgement
+        or a guarantee against concurrent completion and configured On/Do actions.
       operationId: cancelInstance
       x-permission: operator/admin + write access on the instance's folder
       parameters: [{ $ref: "#/components/parameters/instanceId" }]
       responses:
         "200":
-          description: Cancelled.
+          description: Cancel action applied (NOTOK for RUNNING; CANCELLED for WAITING/HELD).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ActionResult" }
-              example: { id: "etl-sales_2026-07-10_a1b2", status: CANCELLED }
+              examples:
+                running:
+                  value: { id: "etl-sales_2026-07-10_a1b2", status: NOTOK }
+                pending:
+                  value: { id: "etl-sales_2026-07-10_a1b2", status: CANCELLED }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "500":
+          description: Instance lookup failed (currently includes an unknown ID).
+          content:
+            text/plain:
+              schema: { type: string }
+        "409":
+          description: Instance is not RUNNING, WAITING or HELD.
+          content:
+            text/plain:
+              schema: { type: string }
   /api/instances/{id}/rerun:
     post:
       tags: [Lifecycle]
@@ -369,8 +420,17 @@ paths:
         Clears started/finished/exitCode/output and goes back to WAITING. The
         `confirmed` flag SURVIVES the rerun (BUG-2): an already-confirmed job
         does not fall back to the CONFIRM gate. Pending alerts for the job are
-        marked as handled; the tick is nudged — with the gates satisfied, the
+        marked as handled; the tick is nudged - with the gates satisfied, the
         job goes in right away.
+
+        Rerun does NOT change the condition pool or reset descendants. A
+        producer's previously published condition remains available until it
+        is removed. A consumer whose OK/Set OK removed its input waits again
+        if that condition is still absent. NOTOK/CANCELLED does not consume
+        inputs; rerun can proceed only if they still exist and other gates pass.
+        Hand-authored inputs without out-remove are not consumed on OK.
+        The existing order keeps its frozen definition snapshot (M1).
+        Run Now's one-shot bypass is cleared; Order Force keeps its order mode.
       operationId: rerunInstance
       x-permission: operator/admin + write access on the instance's folder
       parameters: [{ $ref: "#/components/parameters/instanceId" }]
@@ -388,9 +448,9 @@ paths:
       tags: [Lifecycle]
       summary: Set OK — flips WAITING/NOTOK/CANCELLED → OK
       description: |
-        The classic "Set OK": marks it OK, publishes the dependency event and
-        MATERIALIZES the ConditionsOut — unblocking the on-success successors.
-        It also applies to WAITING (a job stuck on WAIT EVENT finishes OK right
+        The classic "Set OK": marks it OK and applies conditionsOutAdd and
+        conditionsOutRemove from the frozen order snapshot to the condition pool.
+        It also applies to WAITING (a job stuck on WAIT COND finishes OK right
         away, BUG-3). 400 if the instance is not in an eligible state (e.g.
         RUNNING).
       operationId: setOKInstance
@@ -813,7 +873,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: A login session OR the deployment's static token (REGENTE_TOKEN = admin).
+      description: Non-browser API login session, or static REGENTE_TOKEN (= admin) in local/hybrid mode. Not an HttpOnly browser session, OIDC provider token or agent machine credential. Static tokens do not bypass oidc mode.
   parameters:
     instanceId:
       name: id
@@ -834,12 +894,12 @@ components:
         text/plain:
           schema: { type: string }
     Unauthorized:
-      description: Missing or invalid token.
+      description: Missing/invalid credentials or session source rejected by the authentication mode.
       content:
         text/plain:
           schema: { type: string, example: unauthorized }
     Forbidden:
-      description: Insufficient role/ACL (writer, admin or write access on the folder).
+      description: Invalid session transport/CSRF, or insufficient role/ACL (writer, admin or folder write access).
       content:
         text/plain:
           schema: { type: string, example: forbidden }

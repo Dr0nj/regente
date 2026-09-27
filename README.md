@@ -298,7 +298,9 @@ server owns this date (see it in `GET /api/daily/status`); the UI never guesses 
 computer's clock, so a browser in another timezone still sees the same day.
 
 > ⚠️ **`REGENTE_TOKEN` is admin-equivalent** — it bypasses the login entirely. Generate a strong
-> value and never leave it as `dev-token` or `change-me`. `regente-configure` generates one for
+> value and never leave it as `dev-token` or `change-me`. This applies only in `local`/`hybrid`
+> mode: the static bearer cannot bypass `oidc` mode. It is not a browser session or an agent
+> credential. See [authentication](docs/authentication.md). `regente-configure` generates one for
 > you, and the server logs a loud warning at boot if it is still the example value.
 
 **If something is wrong with the workspace repository, the server still starts.** A typo in the
@@ -537,8 +539,10 @@ an import report and `# TODO-import` notes wherever a decision is needed. It **n
 - **SSH, agentless** — a remote command straight from the server, with streamed output.
 - **A built-in SERVER-AGENT** — every server ships with a default `HTTP`/`REST` agent, so API
   calls run from the server itself with no external agent to install.
-- **Cancel really kills** — cancelling a RUNNING job aborts the process on the agent (the whole
-  process tree), and the job ends NOTOK without an automatic retry.
+- **State-aware cancellation** — RUNNING sends a best-effort kill signal to the agent and
+  finalizes NOTOK without automatic retry; a successful API response is not a remote kill
+  acknowledgement. WAITING/HELD becomes CANCELLED; terminal states are rejected. Failure
+  alerts and On/Do rules apply to the RUNNING path. See [lifecycle details](docs/mcp.md#lifecycle-semantics).
 - **Automatic retries** on failure (honouring `retries`), and **cyclic execution** that re-arms
   itself every N minutes inside the window.
 - **Confirm** — a job that only runs after an operator releases it (not even Force bypasses it).

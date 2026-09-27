@@ -429,9 +429,9 @@ func (m *mcpServer) tools() []map[string]interface{} {
 		out = append(out,
 			instTool("hold_job", "Holds a job (classic Hold, any status except RUNNING) — becomes HELD; the original status is frozen and release restores it. DESTRUCTIVE ACTION — confirm with the operator first."),
 			instTool("release_job", "Releases a HELD job back to the ORIGINAL status frozen by the hold (classic Release; legacy holds fall back to WAITING). DESTRUCTIVE ACTION — confirm with the operator first."),
-			instTool("cancel_job", "Cancels a job for the day (becomes CANCELLED, terminal). DESTRUCTIVE ACTION — confirm with the operator first."),
+			instTool("cancel_job", "Cancels by state: RUNNING becomes NOTOK without automatic retry after a best-effort kill signal (not proof the remote process stopped); failure alerts and On/Do rules apply. WAITING/HELD becomes CANCELLED. Terminal states return an error. DESTRUCTIVE ACTION — confirm with the operator first."),
 			instTool("confirm_job", "Confirms a job waiting at the WAIT_CONFIRM gate (classic Confirm; def with confirm:true). DESTRUCTIVE ACTION — confirm with the operator first."),
-			instTool("rerun_job", "Reruns a job (back to WAITING). DESTRUCTIVE ACTION — confirm with the operator first."),
+			instTool("rerun_job", "Resets the order to WAITING without changing the condition pool or resetting descendants. A consumed input must be recreated; otherwise all current gates still apply. DESTRUCTIVE ACTION — confirm with the operator first."),
 			instTool("set_ok", "Marks a NOTOK/CANCELLED job as OK (Set OK), unblocking successors. DESTRUCTIVE ACTION — confirm with the operator first."),
 			map[string]interface{}{
 				"name":        "force_order",

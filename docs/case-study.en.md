@@ -71,8 +71,12 @@ Parity isn't the feature list — it's the behavior at the edges:
   condition, the successor's input **waits** for it, and a negative output **consumes**
   (deletes) it — which models fan-in with consumption, as in the classic model. The input
   accepts **real AND/OR logic** (groups with a top-level operator) and the `$TIME`
-  token ("condition OR time"); rerunning the parent undoes the OK and dependents
-  **go back to waiting** for a fresh completion.
+  token ("condition OR time"). Rerunning the parent **does not remove published
+  conditions or reset descendants**. A consumer rerun waits only if its required
+  condition is absent (for example, its previous OK/Set OK consumed it); the
+  parent's next OK can recreate it. A failed consumer did not consume the input
+  and can proceed if it still exists and the other gates pass. See
+  [the condition-pool rules C1–C7 and frozen snapshots M1](conditions-events.md).
 - **Force with two gestures** — "Run Now" unblocks the existing instance (bypasses
   window/deps/resources; Confirm and agent are never bypassed); "Order Force" creates
   a new order outside the schedule that **respects** the runtime gates.

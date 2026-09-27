@@ -199,17 +199,23 @@ allows). Hot path: the tick loads the pool ONCE per cycle (<code>CondIndex</code
 <p><strong>C2 — OK applies the out-conditions.</strong> Ending OK (for real) and <strong>Set OK</strong>
 (BUG-3/4) both apply out＋ and out− — in BOTH roles: as a producer it unblocks
 successors; as a consumer it <strong>CONSUMES</strong> its own in-condition (the out− armed
-by the arrow). A terminal NOTOK applies NOTHING.</p>
+by the arrow). A terminal NOTOK does not apply these automatic out-conditions;
+explicit On/Do actions remain a separate source of pool changes.</p>
 <p><strong>C3 — Consumption = deletion on OK.</strong> The old model's &quot;consumption permanence&quot;
-is now a natural consequence: rerunning a consumer that ended OK lands in WAIT
-COND, because its own OK deleted the in-condition. <strong>Set OK + rerun = waiting</strong>
-(the Set OK went to the pool and deleted it — the user's guiding scenario). A
-rerun after <strong>NOTOK/CANCELLED</strong> runs straight away (a failure does not consume;
-the condition is still in the pool).</p>
-<p><strong>C4 — Rerun/cancel/delete/hold do NOT touch the pool.</strong> No operator action on
-instances touches a condition; only OK/Set OK terminations (C2), On/Do actions
-and the operator THROUGH THE PANEL. Rerunning the PARENT creates a NEW condition
-on its next OK — that is what unblocks the child's rerun.</p>
+is now a natural consequence: rerunning a consumer whose OK deleted its required
+in-condition lands in WAIT COND <strong>if that condition is still absent</strong>.
+<strong>Set OK + rerun = waiting</strong> under the same conditions (the user's guiding
+scenario). Hand-authored inputs without <code>conditionsOutRemove</code> are not consumed
+on OK. A rerun after <strong>NOTOK/CANCELLED</strong> can proceed if the required conditions
+still exist and all other gates pass: failure itself does not consume them, but
+another consumer, operator or On/Do action may have changed the pool.</p>
+<p><strong>C4 - Rerun/cancel/delete/hold do NOT directly touch the pool.</strong> Resetting a
+producer to WAITING does not revoke conditions it already published and does not
+reset descendants. Pool mutations come from OK/Set OK (C2), explicit On/Do
+actions, condition-management operations (panel/API/MCP), or external event
+ingestion. In particular, cancelling RUNNING evaluates NOTOK/exit=-1 On/Do rules,
+which may have their own effects. The producer's next OK applies its out-conditions
+again; recreating a consumed input can unblock a waiting consumer.</p>
 <p><strong>C5 — Force.</strong> <code>Order Force</code> (Design) creates a new order that bypasses ONLY
 the scheduling — the C1 gate still applies (a copy of an already-consumed
 consumer is born in WAIT COND until someone recreates the condition). If the
@@ -223,7 +229,39 @@ waiting; added → the dependent runs right away). The user's rule: <em>&quot;we
 have any kind of immutable condition&quot;</em>.</p>
 <p><strong>C7 — JSON is never null.</strong> Every list in the API (Explain's <code>blockers</code>, etc.)
 serializes as <code>[]</code>, never <code>null</code> (a nil slice breaks the frontend).</p>
-<h2 id="boolean-entry-logic--andor-cl">Boolean entry logic — AND/OR (CL)</h2>
+<h2 id="rerun-examples-c1c4-m1">Rerun examples (C1–C4, M1)</h2>
+<p>Assume the frozen A→B orders use <code>A-TO-B</code>: A has out+, B has in and out-.</p>
+<table>
+<thead>
+<tr>
+<th>Sequence</th>
+<th>Pool / next gate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A OK; B has not consumed; rerun A</td>
+<td><code>A-TO-B</code> remains. B is not reset or re-blocked just because A is WAITING.</td>
+</tr>
+<tr>
+<td>A OK; B OK (or Set OK); rerun B</td>
+<td>B's out- removed <code>A-TO-B</code>; B waits while it is absent. A's next OK or an explicit condition addition can recreate it.</td>
+</tr>
+<tr>
+<td>A OK; B NOTOK; rerun B</td>
+<td>B did not consume the input. If it still exists, the condition gate passes; the other gates still apply.</td>
+</tr>
+<tr>
+<td>B OK without out-; rerun B</td>
+<td>No consumption was configured, so OK did not remove the input. Rerun evaluates the current pool normally.</td>
+</tr>
+</tbody>
+</table>
+<p>These operations keep the order's frozen snapshot (M1). Editing today's live
+definition does not rewrite the existing order's inputs or outputs. Hold/delete
+does not restore a consumed input; Run Now and Order Force retain their distinct
+C5 behavior. API list results remain arrays, including empty arrays (C7).</p>
+<h2 id="boolean-entry-logic---andor-cl">Boolean entry logic - AND/OR (CL)</h2>
 <blockquote>
 <p><strong>Status: TOPIC CLOSED — CL-1…CL-6 delivered and validated.</strong> CL-1 (the DNF
 evaluator), CL-2 (the <code>$TIME</code> fallback + decoupling from the <code>windowFrom</code>

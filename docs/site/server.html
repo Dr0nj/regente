@@ -186,7 +186,41 @@ The server's administrative bearer and human login sessions are rejected by agen
 transports. See <a href="agent-identity.html">agent identity</a> and the
 <a href="https://github.com/Dr0nj/regente/blob/main/deploy/demo/README.md">reproducible local demo</a>.</p>
 <h2 id="api">API</h2>
-<p>Every <code>/api/*</code> route requires <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+<p>Authentication depends on the caller, not just the <code>/api</code> prefix:</p>
+<table>
+<thead>
+<tr>
+<th>Caller</th>
+<th>Credential and policy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Browser UI</td>
+<td>HttpOnly, SameSite=Lax session cookie; HTTPS uses Secure <code>__Host-regente_session</code>, HTTP uses <code>regente_session</code>. Cookie requests except GET/HEAD/OPTIONS require <code>X-CSRF-Token</code> from login or <code>GET /api/auth/me</code> and an allowed origin.</td>
+</tr>
+<tr>
+<td>API / CLI / MCP</td>
+<td><code>Authorization: Bearer &lt;token&gt;</code> from non-browser <code>POST /api/auth/login</code> (<code>{username,password}</code>), or the admin-equivalent static <code>REGENTE_TOKEN</code>, in <code>local</code>/<code>hybrid</code> mode.</td>
+</tr>
+<tr>
+<td>External agent</td>
+<td>Separately issued machine token on agent transports, bound to ID, environment and capabilities; not a human/API credential.</td>
+</tr>
+</tbody>
+</table>
+<p><code>local</code> allows local passwords; <code>hybrid</code> also allows OIDC; <code>oidc</code> requires SSO
+and rejects ordinary local login and the static admin bearer. Explicit emergency
+access is a separately configured, audited 15-minute recovery path, not a routine
+integration bypass. Browser login adds <code>browser:true</code>, returns an empty JSON
+token and sets the cookie; never put that session in bearer headers, URLs or
+localStorage. OIDC provider tokens are not Regente API bearer tokens.</p>
+<p>Public entry points include <code>/health</code>, <code>/livez</code>, <code>/readyz</code>, <code>/metrics</code>, <code>/api/env</code>,
+<code>/api/auth/config</code>, <code>/api/auth/login</code>, OIDC login/callback and <code>/api-docs</code>.
+Signed quick actions validate their scoped link token. Web events require a
+30-second single-use ticket from authenticated <code>POST /api/auth/event-ticket</code>;
+browser callers need CSRF for that POST. See <a href="authentication.html">authentication</a>,
+<a href="agent-identity.html">agent identity</a> and <a href="web-events.html">web events</a>.</p>
 <p>The <strong>contract lives in the binary</strong>: a running server serves the curated OpenAPI spec plus a
 self-contained viewer at <strong><code>/api-docs</code></strong>, and the raw spec at <code>/api-docs/openapi.yaml</code> and
 <code>/api-docs/openapi.json</code> (importable into Postman, Insomnia or a code generator). To read it

@@ -131,8 +131,12 @@ canvas is sugar for a named condition (<code>A-TO-B</code>): the parent's OK <st
 condition, the successor's input <strong>waits</strong> for it, and a negative output <strong>consumes</strong>
 (deletes) it — which models fan-in with consumption, as in the classic model. The input
 accepts <strong>real AND/OR logic</strong> (groups with a top-level operator) and the <code>$TIME</code>
-token (&quot;condition OR time&quot;); rerunning the parent undoes the OK and dependents
-<strong>go back to waiting</strong> for a fresh completion.</li>
+token (&quot;condition OR time&quot;). Rerunning the parent <strong>does not remove published
+conditions or reset descendants</strong>. A consumer rerun waits only if its required
+condition is absent (for example, its previous OK/Set OK consumed it); the
+parent's next OK can recreate it. A failed consumer did not consume the input
+and can proceed if it still exists and the other gates pass. See
+<a href="conditions-events.html">the condition-pool rules C1–C7 and frozen snapshots M1</a>.</li>
 <li><strong>Force with two gestures</strong> — &quot;Run Now&quot; unblocks the existing instance (bypasses
 window/deps/resources; Confirm and agent are never bypassed); &quot;Order Force&quot; creates
 a new order outside the schedule that <strong>respects</strong> the runtime gates.</li>

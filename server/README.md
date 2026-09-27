@@ -62,7 +62,27 @@ transports. See [agent identity](../docs/agent-identity.md) and the
 
 ## API
 
-Every `/api/*` route requires `Authorization: Bearer <token>`.
+Authentication depends on the caller, not just the `/api` prefix:
+
+| Caller | Credential and policy |
+|---|---|
+| Browser UI | HttpOnly, SameSite=Lax session cookie; HTTPS uses Secure `__Host-regente_session`, HTTP uses `regente_session`. Cookie requests except GET/HEAD/OPTIONS require `X-CSRF-Token` from login or `GET /api/auth/me` and an allowed origin. |
+| API / CLI / MCP | `Authorization: Bearer <token>` from non-browser `POST /api/auth/login` (`{username,password}`), or the admin-equivalent static `REGENTE_TOKEN`, in `local`/`hybrid` mode. |
+| External agent | Separately issued machine token on agent transports, bound to ID, environment and capabilities; not a human/API credential. |
+
+`local` allows local passwords; `hybrid` also allows OIDC; `oidc` requires SSO
+and rejects ordinary local login and the static admin bearer. Explicit emergency
+access is a separately configured, audited 15-minute recovery path, not a routine
+integration bypass. Browser login adds `browser:true`, returns an empty JSON
+token and sets the cookie; never put that session in bearer headers, URLs or
+localStorage. OIDC provider tokens are not Regente API bearer tokens.
+
+Public entry points include `/health`, `/livez`, `/readyz`, `/metrics`, `/api/env`,
+`/api/auth/config`, `/api/auth/login`, OIDC login/callback and `/api-docs`.
+Signed quick actions validate their scoped link token. Web events require a
+30-second single-use ticket from authenticated `POST /api/auth/event-ticket`;
+browser callers need CSRF for that POST. See [authentication](../docs/authentication.md),
+[agent identity](../docs/agent-identity.md) and [web events](../docs/web-events.md).
 
 The **contract lives in the binary**: a running server serves the curated OpenAPI spec plus a
 self-contained viewer at **`/api-docs`**, and the raw spec at `/api-docs/openapi.yaml` and
