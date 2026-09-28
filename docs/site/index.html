@@ -64,6 +64,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
 <a href="web-events.html">Web event authorization</a>
 </nav>
 <main>
@@ -730,11 +731,14 @@ cd app &amp;&amp; npm install &amp;&amp; cp .env.example .env &amp;&amp; npm run
 <p>Dev login: <code>admin</code> / <code>admin</code>. Agent connections require a separate token issued in
 Settings → Agents; login sessions and the server API token are not accepted. See
 <a href="agent-authentication.html">agent authentication and upgrades</a>.</p>
-<p>Before pushing, run the same checks CI runs:</p>
-<pre><code class="language-bash">bash scripts/verify.sh
+<p>Before pushing, run the quick checks and read their explicit coverage report:</p>
+<pre><code class="language-bash">bash scripts/verify.sh --quick
 </code></pre>
-<p>That covers the server (build + vet + test), the agent (build + test) and the app (build). CI
-additionally gates on <code>staticcheck</code> and <code>npm run lint</code>, both of which must stay clean.</p>
+<p>Quick covers server/agent build, vet and tests, web lint/build, focused contracts,
+local documentation links and generated-site freshness. It lists the omitted
+gates. <code>bash scripts/verify.sh --full</code> requires Linux/amd64 and real dependencies;
+CI uses this same full runner and adds its Node/Windows matrix. See the
+<a href="verification.html">verification profiles and prerequisites</a>.</p>
 <p>If you touched anything on the installation path — the installers, the bundle, the GitOps
 bootstrap — run the installation smoke test too. It installs the built artifact on a real
 systemd Linux (in a container) and drives the whole operator circuit: install, a wrong

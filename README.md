@@ -660,14 +660,17 @@ Dev login: `admin` / `admin`. Agent connections require a separate token issued 
 Settings → Agents; login sessions and the server API token are not accepted. See
 [agent authentication and upgrades](docs/agent-authentication.md).
 
-Before pushing, run the same checks CI runs:
+Before pushing, run the quick checks and read their explicit coverage report:
 
 ```bash
-bash scripts/verify.sh
+bash scripts/verify.sh --quick
 ```
 
-That covers the server (build + vet + test), the agent (build + test) and the app (build). CI
-additionally gates on `staticcheck` and `npm run lint`, both of which must stay clean.
+Quick covers server/agent build, vet and tests, web lint/build, focused contracts,
+local documentation links and generated-site freshness. It lists the omitted
+gates. `bash scripts/verify.sh --full` requires Linux/amd64 and real dependencies;
+CI uses this same full runner and adds its Node/Windows matrix. See the
+[verification profiles and prerequisites](docs/verification.md).
 
 If you touched anything on the installation path — the installers, the bundle, the GitOps
 bootstrap — run the installation smoke test too. It installs the built artifact on a real

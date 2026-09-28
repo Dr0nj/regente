@@ -40,7 +40,15 @@ import (
 func main() {
 	repo := flag.String("repo", ".", "monorepo root (where README.md lives)")
 	out := flag.String("out", "docs/site", "output directory for the site")
+	check := flag.Bool("check", false, "validate local links and compare generated site without modifying it")
 	flag.Parse()
+	if *check {
+		if err := Check(*repo, *out); err != nil {
+			log.Fatalf("docsite: %v", err)
+		}
+		log.Print("docsite: source links, generated anchors and site freshness passed")
+		return
+	}
 	n, err := Build(*repo, *out)
 	if err != nil {
 		log.Fatalf("docsite: %v", err)
@@ -200,7 +208,7 @@ func collect(repoDir string) ([]page, error) {
 	}
 	entries, _ := os.ReadDir(repoDir)
 	for _, e := range entries {
-		if e.IsDir() && e.Name() != "docs" && !strings.HasPrefix(e.Name(), ".") {
+		if e.IsDir() && e.Name() != "docs" && !strings.HasPrefix(e.Name(), ".") && !ignoredSourceDir(e.Name()) {
 			if _, err := os.Stat(filepath.Join(repoDir, e.Name(), "README.md")); err == nil {
 				srcs = append(srcs, e.Name()+"/README.md")
 			}

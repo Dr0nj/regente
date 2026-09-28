@@ -10,86 +10,38 @@ jobs:
     uses: ./.github/workflows/doc-recipes.yml
     with:
       ref: ${{ github.sha }}
-  integration:
-    uses: ./.github/workflows/integration.yml
-    with:
-      ref: ${{ github.sha }}
-  server:
-    name: server (Go)
+  verify-full:
+    name: full verification (Linux)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: server
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-      - run: go build ./...
-      - run: go vet ./...
-      - name: staticcheck
-        run: go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...
-      # deadcode é INFORMATIVO (não falha o build): reporta funções inalcançáveis
-      # a partir dos mains+testes. pkg/ é API pública (jobs-as-code/SDK) — aparece
-      # como "morto" por não ter caller interno; ignorar essas linhas.
-      - name: deadcode (informativo)
-        run: go run golang.org/x/tools/cmd/deadcode@latest -test ./... || true
-      - run: go test ./...
-      # docs/site/ é build VERSIONADO (a doc abre sem subir server). Regenera e
-      # falha se estiver defasado — senão o site do repo mente sobre o markdown.
-      - name: docs site up to date
-        run: |
-          go run ./cmd/docsite -repo .. -out ../docs/site
-          if ! git -C .. diff --quiet -- docs/site; then
-            echo "::error::docs/site esta defasado. Rode: cd server && go run ./cmd/docsite -repo .. -out ../docs/site"
-            git -C .. --no-pager diff --stat -- docs/site
-            exit 1
-          fi
-
-  agent:
-    name: agent (Go)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: agent
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-      - run: go build ./...
-      - name: staticcheck
-        run: go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...
-      - run: go test ./...
-
-  app:
-    name: app (web)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: app
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-      - run: npm ci
-      # Gate ZERO: desde a catraca RH-4 as 4 regras react-hooks/react-refresh
-      # são 'error' (não mais 'warn'), então lint sujo REPROVA o build.
-      # Violação inevitável vai de eslint-disable ANOTADO com o motivo — nunca
-      # rebaixando a regra. Ver app/eslint.config.js e o §RH do roadmap.
-      - run: npm run lint
-      - run: npm run build
-        env:
-          VITE_REGENTE_SERVER_URL: '@origin'
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-      - name: Browser authentication against the real server
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Prepare browser prerequisites
+        working-directory: app
         run: |
-          go -C ../server build -o ../.integration/server-i03 .
-          npx playwright install --with-deps chromium
-          npx playwright test
+          npm ci --engine-strict
+          npx --no-install playwright install --with-deps chromium
+      # Mesmo runner local; cada família obrigatória precisa produzir evidência.
+      - name: Full verification
+        run: bash scripts/verify.sh --full
+      # Informativo; não compõe a condição de aprovação do perfil.
+      - name: deadcode (informativo)
+        continue-on-error: true
+        working-directory: server
+        run: go run golang.org/x/tools/cmd/deadcode@latest -test ./...
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-evidence
+          path: .integration/*/evidence/
+          include-hidden-files: true
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
