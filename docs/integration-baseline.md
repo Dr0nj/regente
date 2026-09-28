@@ -44,8 +44,9 @@ Go tests cover SQLite, while the full cluster profile runs on Linux/amd64.
 
 `baseline.json` and logs live in `.integration/<run-id>/evidence/`. The report records
 the exact SHA, dirty-checkout indicator, tool/platform versions, resolved images,
-test names, timings and outcomes. GitHub CI and Release upload that directory as
-`integration-evidence`, including on failure. A missing dependency, failed service,
+test names, timings and outcomes. The [full verification profile](verification.md)
+uploads it within `verification-evidence` in CI. The reusable integration workflow
+uploads `integration-evidence` for Release, including on failure. A missing dependency, failed service,
 skipped selected test or missing required test fails the gate. Local default
 `go test` may still skip optional external tests; it is **not** integration evidence.
 Release publication depends on integration success for its selected source ref.

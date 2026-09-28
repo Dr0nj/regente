@@ -19,7 +19,7 @@
 >
 > Documento vivo · revisão **2026-09-28** — o marco de manutenção de **2026-07-30**
 > descreve as trilhas originais. O ciclo enterprise iniciado em setembro está ativo:
-> I04 entregue; I05–I17 e os DOCs remanescentes seguem na §Backlog. Manutenção histórica
+> I04 e DOC-01–DOC-14 entregues; I05–I17 seguem na §Backlog. Manutenção histórica
 > não cancela incrementos explicitamente solicitados nem significa homologação produtiva.
 > Estratégia de arquitetura em [`architecture-future.md`](architecture-future.md);
 > apresentação de produto no [`../README.md`](../README.md).
@@ -82,26 +82,6 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > gente vai **fazendo crescer** — quando um item fecha, ele sai daqui e vira um tópico
 > detalhado em §✅ Entregue (+ linha no changelog). As caixinhas espalhadas nas seções de
 > baixo **não valem** como status (ver ⛔ REGRA DE STATUS no topo).
-
-### Correções da auditoria documental — ciclo planejado em 2026-09-21
-
-Plano de execução: [reconciliação documental e receitas operacionais](plans/documentation-remediation-2026-09-21.md).
-Baseline auditada: `5318e78` / v0.2.33. Etapas A, B, C e D entregues
-com evidência no §Entregue; **1 achado permanece aberto (DOC-11/E)**. Esta subseção é o
-registro único do status de DOC-01–DOC-14; o plano detalha dependências e aceite.
-A decisão histórica de manutenção abaixo não elimina esta fila explicitamente
-solicitada. Não há mudança automática de status de I05–I17.
-
-| ID / achado | Prioridade | Etapa | Correção pendente |
-|---|---|---|---|
-| DOC-11 / D11 | P2 | E | Verify quick/full, gates explícitos e proteção contra regressão documental |
-
-Próxima etapa: **E — DOC-11**. Cada etapa inclui testes pertinentes
-e regeneração do site; E consolida os gates, não adia a validação das anteriores.
-Aceite global: 14 achados com evidência de fechamento, receitas exercitadas em
-ambiente isolado/limpo, site sincronizado, CI verde e nenhuma pendência I05–I17
-promovida a entregue apenas por ajuste de texto. Ao fechar um DOC, remover sua
-linha daqui e registrar evidência em Entregue/Changelog, conforme a regra do topo.
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
@@ -404,6 +384,30 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+## DOC-E — Verificação explícita e fechamento da auditoria (2026-09-28)
+
+**DOC-11 entregue; 14/14 achados D01–D14 resolvidos.** Implementação
+`d1b92dc`, [CI 36472050622](https://github.com/Dr0nj/regente/actions/runs/36472050622)
+SUCCESS nos seis jobs. [Evidência e revisão por achado](evidence/doc-e-d1b92dc.json).
+[Plano executado e critérios](plans/documentation-remediation-2026-09-21.md).
+
+- Quick/default lista cobertura omitida; full Linux/amd64 exige oito gates e
+  falha com pré-requisito ausente, comando não-zero ou evidência incompleta.
+  CI usa o mesmo runner, com matriz Node/Windows adicional explícita.
+- Build/vet/test, staticcheck, lint/build, schema/engines/contratos, docsite,
+  browser, integração PostgreSQL/NATS/OIDC/recuperação e demos exercitados.
+- Docsite -check valida fontes/âncoras e compara todo o site gerado em diretório
+  isolado, sem reparar o checkout. Negativos de schema, links, HTML e gates
+  alteram somente fixtures. Estado operacional/artefatos não entram como fontes.
+- Full: oito gates PASS, checkout limpo, 412.862s; quatro cenários browser
+  sem skip/flaky; integração real em 158.382s. Draft completo preservado e
+  controle DB-only negativo em SQLite/PostgreSQL. Site a 22 páginas.
+- Revisão cruzada A–E confirma recuperação, identidade, receitas, auth,
+  cancelamento, rerun, garantias e status coerentes com evidência/código.
+  Não houve nova garantia de durabilidade/HA/capacidade. I05–I17 continuam abertos.
+- Scripts/CI mudaram: promoção à main usa release normal, com integração e
+  smoke systemd próprios. Sem implantação em instalação produtiva.
 
 ## DOC-D — Garantias públicas, evidência e status (2026-09-28)
 
@@ -1825,6 +1829,12 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > Entradas de junho/julho preservam o relato da época. Alegações de escala/HA
 > devem ser lidas com o [inventário revisado em 28/09/2026](capacity-guarantees.md);
 > marcos históricos de 100% não fecham os gates enterprise de setembro.
+
+- **2026-09-28 — DOC-E:** DOC-11 entregue em `d1b92dc`, quick/full explícitos
+  e CI compartilhado; oito gates e seis jobs aprovados no CI `36472050622`.
+  Checker documental somente leitura e negativos isolados. Revisão transversal
+  fecha 14/14 achados; I05–I17 permanecem abertos.
+  [Evidência](evidence/doc-e-d1b92dc.json).
 
 - **2026-09-28 — DOC-D:** DOC-10/13 entregues em `37ca611`: capacidade/HA
   delimitadas por evidência e status histórico/enterprise reconciliado. CI

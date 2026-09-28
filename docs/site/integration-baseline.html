@@ -106,8 +106,9 @@ Windows host is not needed when using the GitHub integration job; Windows native
 Go tests cover SQLite, while the full cluster profile runs on Linux/amd64.</p>
 <p><code>baseline.json</code> and logs live in <code>.integration/&lt;run-id&gt;/evidence/</code>. The report records
 the exact SHA, dirty-checkout indicator, tool/platform versions, resolved images,
-test names, timings and outcomes. GitHub CI and Release upload that directory as
-<code>integration-evidence</code>, including on failure. A missing dependency, failed service,
+test names, timings and outcomes. The <a href="verification.html">full verification profile</a>
+uploads it within <code>verification-evidence</code> in CI. The reusable integration workflow
+uploads <code>integration-evidence</code> for Release, including on failure. A missing dependency, failed service,
 skipped selected test or missing required test fails the gate. Local default
 <code>go test</code> may still skip optional external tests; it is <strong>not</strong> integration evidence.
 Release publication depends on integration success for its selected source ref.
