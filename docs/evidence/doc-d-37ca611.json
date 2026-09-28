@@ -1,0 +1,96 @@
+{
+  "sha": "37ca611a2ba6da4fac9de1a5ba38e00b9950a2e3",
+  "date": "2026-09-28",
+  "scope": [
+    "DOC-10",
+    "DOC-13"
+  ],
+  "status": "passed",
+  "run_url": "https://github.com/Dr0nj/regente/actions/runs/36428970774",
+  "jobs": [
+    {
+      "name": "agent (Go)",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/36428970774/job/108949930850"
+    },
+    {
+      "name": "app (web)",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/36428970774/job/108949931265"
+    },
+    {
+      "name": "doc-recipes / PowerShell demo ubuntu-latest",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/36428970774/job/108949931284"
+    },
+    {
+      "name": "doc-recipes / toolchain minimum Node 22.13.0",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/36428970774/job/108949931528"
+    },
+    {
+      "name": "doc-recipes / toolchain minimum Node 24.0.0",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/36428970774/job/108949931541"
+    },
+    {
+      "name": "doc-recipes / toolchain minimum Node 20.19.0",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/36428970774/job/108949931628"
+    },
+    {
+      "name": "integration / PostgreSQL, NATS, OIDC and migration recovery",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/36428970774/job/108949931643"
+    },
+    {
+      "name": "doc-recipes / PowerShell demo windows-latest",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/36428970774/job/108949931753"
+    },
+    {
+      "name": "server (Go)",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/36428970774/job/108949931838"
+    }
+  ],
+  "local": {
+    "environment": "Windows/amd64, Go 1.26.2, Node 20.19.4; temporary SQLite and HTTP test fixtures",
+    "tests": "go test ./cmd/docsite ./internal/scheduler ./internal/api ./internal/leader -count=1: passed",
+    "markdownFiles": 35,
+    "sitePages": 21,
+    "missingMarkdownLinks": 0,
+    "brokenSiteLinks": 0,
+    "generatedDifferences": 0,
+    "diffCheck": "passed"
+  },
+  "review": {
+    "baseline": "f067e48cdae900688ba7e6337145f3fee794806b",
+    "inventory": "docs/capacity-guarantees.md",
+    "operations": [
+      "materialization",
+      "query and seeded UI",
+      "dispatch and external effects"
+    ],
+    "status": "I04 delivered; July maintenance milestone historical; I05-I17 open",
+    "sources": [
+      "scheduler.startInstance",
+      "scheduler/enterprise_test.go",
+      "api/instances_scale_test.go",
+      "api/e2e_test.go",
+      "leader/leader.go",
+      "scheduler/ticklock.go",
+      "docs/evidence/i04-b6db081.json",
+      "docs/evidence/doc-c-94c120d.json"
+    ]
+  },
+  "limits": [
+    "Documentation and generated site only; no runtime change or production deployment.",
+    "No new capacity benchmark or HA fault-injection campaign performed.",
+    "Historical measurements retained as unreproduced reports where original raw logs, measured-run SHA and environment manifest were not recovered.",
+    "Conditional claims do not prove durable agent ACK, per-attempt fencing, recovery or exactly-once external effects.",
+    "CI remains its declared synthetic workload; no extrapolation to production executions/day.",
+    "DOC-11/E and I05-I17 remain open; external posts were not edited.",
+    "No binary release needed for this documentation-only increment."
+  ]
+}

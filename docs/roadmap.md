@@ -86,19 +86,17 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ### Correções da auditoria documental — ciclo planejado em 2026-09-21
 
 Plano de execução: [reconciliação documental e receitas operacionais](plans/documentation-remediation-2026-09-21.md).
-Baseline auditada: `5318e78` / v0.2.33. Etapas A, B e C entregues
-com evidência no §Entregue; **3 achados permanecem abertos**. Esta subseção é o
+Baseline auditada: `5318e78` / v0.2.33. Etapas A, B, C e D entregues
+com evidência no §Entregue; **1 achado permanece aberto (DOC-11/E)**. Esta subseção é o
 registro único do status de DOC-01–DOC-14; o plano detalha dependências e aceite.
 A decisão histórica de manutenção abaixo não elimina esta fila explicitamente
 solicitada. Não há mudança automática de status de I05–I17.
 
 | ID / achado | Prioridade | Etapa | Correção pendente |
 |---|---|---|---|
-| DOC-10 / D10 | P2 | D | Capacidade/HA delimitadas por perfil medido, sem garantia ponta a ponta não comprovada |
-| DOC-13 / D13 | P3 | D | Status de I04, ciclo empresarial e marcos históricos reconciliados |
 | DOC-11 / D11 | P2 | E | Verify quick/full, gates explícitos e proteção contra regressão documental |
 
-Ordem restante recomendada: **D → E**. Cada etapa inclui testes pertinentes
+Próxima etapa: **E — DOC-11**. Cada etapa inclui testes pertinentes
 e regeneração do site; E consolida os gates, não adia a validação das anteriores.
 Aceite global: 14 achados com evidência de fechamento, receitas exercitadas em
 ambiente isolado/limpo, site sincronizado, CI verde e nenhuma pendência I05–I17
@@ -406,6 +404,28 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+## DOC-D — Garantias públicas, evidência e status (2026-09-28)
+
+**DOC-10/DOC-13 entregues.** Implementação `37ca611`,
+[CI 36428970774](https://github.com/Dr0nj/regente/actions/runs/36428970774)
+SUCCESS nos nove jobs. [Evidência versionada](evidence/doc-d-37ca611.json).
+
+- DOC-10: [inventário de capacidade/HA](capacity-guarantees.md) separa criação de
+  instâncias, consulta/UI e execução. Relatos de junho/julho mantidos com fonte,
+  perfil conhecido e metadados ausentes explícitos; nenhuma nova medição inventada.
+  Claim, ACK durável, fencing, liderança e recuperação têm limites distintos.
+  README, case studies EN/PT, arquitetura, operações, SLOs e rascunhos locais
+  reconciliados; nenhum post externo editado.
+- DOC-13: manutenção/feature-complete limitados às trilhas históricas de julho;
+  I04 entregue em setembro, I05–I17 ainda abertos. README aponta ao status único.
+- Validação local: docsite/scheduler/API/leader PASS; 35 Markdown e 21 páginas,
+  links locais/âncoras sem erro, geração isolada sem diferenças e diff check limpo.
+  CI inclui servidor/agente, lint/build/browser, integração real PostgreSQL/NATS/OIDC,
+  Node mínimos e PowerShell Linux/Windows.
+- Escopo exclusivamente documental: sem mudança de runtime, deploy produtivo ou
+  homologação de carga/partição. `[no release]` dispensa binário novo. Treze dos
+  14 achados resolvidos; DOC-11/E e I05–I17 permanecem abertos.
 
 ## DOC-C — Autenticação e contratos de ciclo de vida (2026-09-27)
 
@@ -1805,6 +1825,12 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > Entradas de junho/julho preservam o relato da época. Alegações de escala/HA
 > devem ser lidas com o [inventário revisado em 28/09/2026](capacity-guarantees.md);
 > marcos históricos de 100% não fecham os gates enterprise de setembro.
+
+- **2026-09-28 — DOC-D:** DOC-10/13 entregues em `37ca611`: capacidade/HA
+  delimitadas por evidência e status histórico/enterprise reconciliado. CI
+  `36428970774` aprovado nos nove jobs, 21 páginas e links verificados.
+  [Evidência](evidence/doc-d-37ca611.json). Só DOC-11/E resta da auditoria;
+  I05–I17 não foram fechados. Entrega documental sem release binária.
 
 - **2026-09-27 — DOC-C:** DOC-07/08/09 entregues em `94c120d`: autenticação por
   transporte/modo, cancelamento por estado/efeitos e rerun pelo pool/snapshot.
