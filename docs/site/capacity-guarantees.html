@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capacity evidence and guarantee limits · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="capacity-guarantees.html" class="active">Capacity evidence and guarantee limits</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="web-events.html">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="capacity-evidence-and-guarantee-limits">Capacity evidence and guarantee limits</h1>
+<p>Reviewed on 2026-09-28 against source baseline <code>f067e48</code> (v0.2.36).
+This is an evidence inventory, not a new benchmark or production certification.
+The <a href="https://github.com/Dr0nj/regente/blob/main/docs/roadmap.md">roadmap</a> owns delivery status; the enterprise cycle still has
+I05–I17 open. A documentation correction does not close those gates.</p>
+<h2 id="three-different-operations">Three different operations</h2>
+<ul>
+<li><strong>Materialization:</strong> create instance rows for a daily. Rows do not prove that
+agents received work, completed it or committed its external effects.</li>
+<li><strong>Query and UI:</strong> read aggregates/pages and render a bounded visible subset of
+seeded records. This does not measure executor throughput.</li>
+<li><strong>Execution:</strong> dispatch, agent acceptance, work, results and external effects
+under a declared workload and failure model. Daily count alone cannot qualify it.</li>
+</ul>
+<h2 id="historical-observations-and-provenance">Historical observations and provenance</h2>
+<p>The numbers below are retained as historical reports, <strong>not reproduced in this
+review</strong>. Recoverable narrative and fixture code do not replace the original raw
+measurement, immutable run SHA and environment manifest. Those original artifacts
+were not located in the reviewed tracked evidence. This is not a finding that the
+numbers are false. Do not attribute these runs to the later VPS installation or
+combine measurements at different cardinalities into one end-to-end result.</p>
+<table>
+<thead>
+<tr>
+<th>Operation / report</th>
+<th>Date and recoverable source</th>
+<th>Profile known from the source</th>
+<th>Missing evidence / allowed interpretation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Daily materialization: 10k in 182ms, 100k in 1.7s, 1M in 17.4s (rounded to 17s in summaries)</td>
+<td>Roadmap P1, 2026-06-23; <a href="https://github.com/Dr0nj/regente/blob/main/server/internal/scheduler/enterprise_test.go">TestScale_BenchmarkN</a></td>
+<td>In-process SQLite scheduler fixture, synthetic enabled COMMAND definitions, RunDaily only; no agent fleet or execution measurement</td>
+<td>Original run SHA, raw log, hardware/OS/toolchain/storage manifest and repeat distribution unavailable. Historical row-creation timings only</td>
+</tr>
+<tr>
+<td>Read path: summary 51ms, filtered page of 500 in 18ms at 100k</td>
+<td>Roadmap P2, 2026-06-23; <a href="https://github.com/Dr0nj/regente/blob/main/server/internal/api/instances_scale_test.go">TestReadPath_Scale</a>, introduced in <code>ef2bce6</code></td>
+<td>SQLite HTTP test server; seeded rows across 100 folders and four statuses, aggregate and folder-page queries</td>
+<td>Code-introduction commit is not a measured-run SHA. Original raw samples and host manifest unavailable. No claim of 51ms at 1M or production p99</td>
+</tr>
+<tr>
+<td>ViewPoint: folder first page ~39ms at 1M records; later sidebar: 37 rendered rows</td>
+<td>Roadmap P3, 2026-06-24 (<code>e8e9e9e</code> implementation); UI-1 report, 2026-07-09; <a href="https://github.com/Dr0nj/regente/blob/main/server/tools/seed/main.go">seed utility</a></td>
+<td>Seeded 1M rows / 200 folders; bounded pages and virtualized display. P3 and UI-1 are different observations</td>
+<td>Browser/hardware, immutable capture, raw timing and exact measured-run SHA unavailable. Rendering 37 rows does not execute 1M jobs</td>
+</tr>
+<tr>
+<td>Failover ~1s in the architecture report; ~4s in the older SLO narrative</td>
+<td>Architecture milestone 2026-06-18 and historical SLO text</td>
+<td>Reports of two nodes with PostgreSQL; timing boundaries differ or are unspecified</td>
+<td>No common run manifest/raw trace recovered. Neither number is a guaranteed recovery time or evidence of partition safety</td>
+</tr>
+<tr>
+<td>~7.5k requests/s in the older SLO narrative</td>
+<td><a href="https://github.com/Dr0nj/regente/blob/main/server/internal/api/e2e_test.go">TestLoad_ReadyzConcurrent</a></td>
+<td>40 workers × 50 GET /readyz requests against an in-process test server</td>
+<td>Original run/date/SHA/host metadata unavailable. Readiness-probe traffic is not job throughput or whole-API availability</td>
+</tr>
+</tbody>
+</table>
+<p>The July 2026 case studies also retain dated code/test counts and a reported
+USD 5 VPS installation. Those are historical project facts, not current pricing,
+a capacity profile or evidence that the above measurements ran on that machine.</p>
+<h2 id="recoverable-integration-evidence">Recoverable integration evidence</h2>
+<p>The <a href="integration-baseline.html">integration baseline</a> defines a small, explicit
+profile: <strong>3 orders</strong>, at most <strong>3 concurrent commands across 2 agents</strong>, two
+Linux/amd64 control planes, PostgreSQL 17.6 and NATS. It exercises wiring,
+identity and selected restart/restore behavior; it does not qualify sustained
+throughput, partitions or all uncertain-effect windows.</p>
+<p>Versioned evidence includes <a href="https://github.com/Dr0nj/regente/blob/main/docs/evidence/i04-b6db081.json">I04</a> and
+<a href="https://github.com/Dr0nj/regente/blob/main/docs/evidence/doc-c-94c120d.json">DOC-C</a>, with tested revisions and CI references.
+I04's web-event authorization is delivered; it is independent of durable job
+dispatch. A green small-workload run cannot be extrapolated to 1M executions/day.</p>
+<h2 id="dispatch-and-ha-boundaries">Dispatch and HA boundaries</h2>
+<table>
+<thead>
+<tr>
+<th>Mechanism present in source</th>
+<th>What it establishes</th>
+<th>What it does not establish</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/Dr0nj/regente/blob/main/server/internal/scheduler/scheduler.go">Atomic claim in startInstance</a></td>
+<td>Conditional UPDATE from WAITING to RUNNING; competing claimers cannot both win that same state transition</td>
+<td>Durable agent acceptance, one execution across retries/reruns, or exactly-once external effects</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Dr0nj/regente/blob/main/server/internal/scheduler/agent_assignment.go">Machine assignment</a> and <a href="agent-identity.html">identity contract</a></td>
+<td>Work/result routing bound to the assigned authenticated machine</td>
+<td>Per-attempt fencing, durable dispatch/result ACK or safe resolution of an uncertain remote effect</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Dr0nj/regente/blob/main/server/internal/leader/leader.go">PostgreSQL advisory leadership</a></td>
+<td>One database session holds the leadership lock; internal scheduling follows local leadership state</td>
+<td>A fixed failover deadline, immediate loss detection under partition, or fencing of already executing agents</td>
+</tr>
+<tr>
+<td><a href="https://github.com/Dr0nj/regente/blob/main/server/internal/scheduler/ticklock.go">Per-tick lock</a></td>
+<td>Serializes protected overlapping ticks when configured</td>
+<td>End-to-end recovery or durable execution by itself</td>
+</tr>
+<tr>
+<td>Resource rebuild from RUNNING rows</td>
+<td>Reconstructs the leader's quota accounting from persisted state</td>
+<td>Proof of what a remote process actually completed during disconnection</td>
+</tr>
+</tbody>
+</table>
+<p>A crash between the database claim and delivery, or after a remote effect but
+before its result is recorded, leaves different uncertainty windows. Neither an
+atomic row update nor electing a new leader alone resolves them. There is no
+universal zero-loss/zero-duplication guarantee. Recovery must reconcile durable
+state with the external system; use operation-specific idempotency where supported.</p>
+<p>Durable acceptance/results, attempt fencing, recovery and partition qualification
+remain separate enterprise work (including I08–I12); capacity, soak and operational
+acceptance remain subject to I16/I17. These IDs describe open gates, not capabilities
+implemented by this review. See also <a href="operations.html">operations</a>,
+<a href="slos.html">SLO objectives</a> and <a href="dr-backup.html">backup scope</a>.</p>
+<h2 id="requirements-for-a-new-capacity-or-ha-claim">Requirements for a new capacity or HA claim</h2>
+<p>Record the immutable server/agent SHA, date, OS/architecture, CPU/RAM/storage,
+database/version/settings, topology/transports, command and fixture, warm-up and
+repetitions, raw logs and observed errors. Separate created rows, query latency,
+rendered rows, accepted attempts, completed commands and verified external effects.
+For execution, include peak ready/s, concurrency, duration/output distributions,
+retry/idempotency policy, failure injection and reconciliation results. Report
+percentiles over a defined sample/window and the applicable acceptance threshold.
+A proposed SLO or an unexecuted benchmark fixture is not a measured result.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

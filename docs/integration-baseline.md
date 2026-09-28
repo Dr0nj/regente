@@ -103,7 +103,7 @@ are regression budgets tied to current mechanisms or a future contract, not SLAs
 | Migration startup | 2-minute default total deadline; configurable for measured large backfills | I01; SQLite driver busy wait may add up to its configured busy timeout |
 | Presence propagation | Within 75s test deadline, allowing the current 5s announcement/15s TTL plus CI startup noise | I00 wiring test, not a low-latency SLA |
 | Dispatch durable ACK | Proposed ≤5s p99, separating a 2s default tick from network/storage budget | I08/I09 must implement and measure; current transport has no durable ACK |
-| Active agent credential revocation | ≤5s on both nodes; 1s revalidation and bounded DB query | I02 WS/HTTP/SSE machine identity matrix plus cross-process cluster measurement; human session revocation remains I04 |
+| Active agent credential revocation | ≤5s on both nodes; 1s revalidation and bounded DB query | I02 WS/HTTP/SSE machine identity matrix plus cross-process cluster measurement; human session revocation and folder-scoped web events are delivered in I04 ([contract](web-events.md), [evidence](evidence/i04-b6db081.json)) |
 | Reconciliation after recovery | Proposed ≤30s for the 3-order reference set, two 15s presence intervals | I10/I11; increase workload only with measured evidence |
 | Availability | Every scripted probe succeeds after startup/restart readiness; no monthly availability claim | I16 will measure sustained availability and approved outage budget |
 | RPO | Zero committed-order loss for the exact stopped-node/restore snapshots in this lab | I01 checks snapshot preservation; disaster RPO depends on WAL/backup cadence |

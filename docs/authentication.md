@@ -134,5 +134,9 @@ session reload and logout.
 
 ## Web events
 
+I04 was delivered on 2026-09-17; [versioned evidence](evidence/i04-b6db081.json)
+records its tested revision. This closes the web-event authorization scope, not
+the remaining enterprise qualification gates in the [roadmap](roadmap.md).
+
 See [Web event authorization](web-events.md) for folder isolation, live ACL changes,
 reconnection, environment filters and the event payload contract.

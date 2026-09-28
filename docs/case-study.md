@@ -1,7 +1,9 @@
 # Case study — Regente: um orquestrador de jobs classe enterprise, Git-nativo, do zero
 
-> **TL;DR.** **1.000.000 de jobs/dia rodando num VPS de US$5** — daily materializada em
-> 17s, summary do dia em 51ms. O Regente é um orquestrador de workloads batch no espírito
+> **TL;DR.** Um orquestrador Git-nativo com relatos históricos de materialização,
+> consulta e UI sobre grandes bases semeadas. Isso não comprova 1.000.000 de
+> execuções concluídas/dia nem essa capacidade num VPS de US$5.
+> O Regente é um orquestrador de workloads batch no espírito
 > dos orquestradores enterprise clássicos — daily imutável, dependências com condições,
 > calendários, recursos, Confirm, forecast — que eu construí **sozinho, do zero**, como
 > projeto pessoal: um monorepo Go + React com **Git como fonte de verdade** das
@@ -9,6 +11,11 @@
 > controle a agentes de IA via **MCP (22 tools)**. ~47k linhas de Go, ~24k de TypeScript,
 > 460 testes. Aberto sob Apache 2.0 — código em **github.com/Dr0nj/regente**,
 > documentação em **dr0nj.github.io/regente**.
+
+> Revisão editorial, 28/09/2026: feature-complete descreve as trilhas originais
+> de julho/2026. I04 entregue; I05–I17 continuam abertos no [roadmap](roadmap.md).
+> Números históricos não são garantias produtivas atuais. Ver
+> [evidências e limites](capacity-guarantees.md).
 
 ---
 
@@ -104,9 +111,12 @@ Onde dá pra ser melhor que os incumbentes sem inventar moda:
 - **Quick actions assinadas** em alertas (Slack/e-mail/PagerDuty) — rerun/confirm com um
   clique, com token expirável.
 
-## 5. Escala validada (não estimada)
+## 5. Relatos históricos de materialização, consulta e UI
 
-Cenário de 1M jobs/dia seedado e operado ao vivo:
+Relatos de junho/julho de 2026, não reproduzidos na revisão de 28/09/2026.
+O [inventário de evidências](capacity-guarantees.md) separa datas, fixtures
+disponíveis, metadados originais ausentes e limites de cada operação.
+São observações distintas sobre instances gravadas/semeadas, não benchmark de execução:
 
 - **Materialização da daily (write-path):** 1.000.000 de instances em **~17s**.
 - **Summary do dia (read-path):** **51ms @100k**, paginação keyset+offset.
@@ -121,8 +131,10 @@ estoura float32 acima de ~16,7M px — detalhe que só aparece com 1M de linhas)
 
 ## 6. Confiabilidade
 
-- **Claim atômico** por instância garante ≤1 execução mesmo com múltiplas vias de
-  dispatch (tick, force, retry) ou múltiplos nós.
+- **Claim atômico** permite um vencedor da mesma transição WAITING → RUNNING no
+  banco. Não fornece ACK durável do agente, fencing por tentativa nem efeitos
+  externos exatamente uma vez sob retry, crash ou partição. Ver
+  [limites de dispatch e HA](capacity-guarantees.md#dispatch-and-ha-boundaries).
 - **Panic-recovery** em todo ponto de entrada do scheduler; watchdog de RUNNING preso;
   self-monitoring (R7) que alerta pelos próprios canais do produto.
 - **Backup online** (`-backup` = VACUUM INTO), DR documentado, retenção/archives com GC.
@@ -186,7 +198,10 @@ verdade no container, aplica o conf real, prova o circuito com Host forjado (pro
 API autenticada, headers de hardening) e verifica que `deploy/vps` existe na máquina —
 exatamente a asserção que teria pego o primeiro furo antes de mim.
 
-## 9. O próximo passo: IA que não sai do perímetro *(roadmap, spec pronta)*
+## 9. Proposta histórica: IA no perímetro *(não entregue)*
+
+A proposta de julho/2026 não é a sequência atual de entrega. O [roadmap](roadmap.md)
+registra o ciclo enterprise ativo e a proposta AI-1 congelada.
 
 O público de orquestração enterprise vive em ambiente regulado — bancos, seguradoras,
 utilities — onde sysout, logs e dados de host **não podem sair do perímetro**. Todo
@@ -211,9 +226,9 @@ relatório errado, nunca um comando executado.
    do status vivo do pai quebra na primeira operação humana (rerun/cancel); condições
    nomeadas criadas e consumidas num pool — e congeladas na ordem — modelam o que o
    operador espera.
-5. **Escala é aditiva se o caminho quente for set-based desde o começo.** O mesmo código
-   que atende 10 jobs atende 1M — as otimizações foram de forma de acesso, não de
-   arquitetura.
+5. **Meça cada caminho separadamente.** Materialização set-based, paginação e
+   virtualização atacam gargalos diferentes; isoladamente não comprovam throughput
+   de execução nem recuperação sob falha.
 6. **Teste contra um oráculo, não contra a própria função.** As baterias de calendário
    pegaram divergências reais que testes espelho jamais veriam.
 7. **O que o teste não roda, apodrece.** Nove furos numa instalação que o smoke test
@@ -221,13 +236,14 @@ relatório errado, nunca um comando executado.
    é a fronteira da sua confiança; fora dela você não tem software testado, tem
    suposição com badge verde.
 
-## 11. Números do projeto
+## 11. Números históricos do projeto (julho de 2026)
 
 - **Código:** ~47k linhas Go (server+agent) · ~24k linhas TS/TSX (UI).
 - **Testes:** 460 funções de teste Go em 103 arquivos + validações E2E ao vivo.
 - **Executores:** COMMAND · SCRIPT · HTTP/REST · SSH agentless · DATABASE · FILE_WATCH
   · MFT · WASM · K8s · Lambda · Batch · Glue · Step Functions · Cloud Run.
-- **Escala:** 1M jobs/dia validado ao vivo (write 17s · summary 51ms · UI virtualizada).
+- **Relatos históricos de escala:** materialização de 1M instances (~17s), summary
+  a **100k** (51ms) e UI sobre registros semeados; sem volume de execuções/dia homologado.
 - **Deploy:** binário único (SQLite) → HA multi-nó (Postgres + leader election) →
   serverless portátil (tick externo) — instalado e operando num VPS público real.
 - **Interface:** UI React (Design/Monitoring), 17 temas, CLI, OpenAPI, MCP (22 tools).

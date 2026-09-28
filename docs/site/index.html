@@ -53,7 +53,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="operations.html">⚙️ Running in production — enterprise readiness</a>
 <a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
 <a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
-<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
 <a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
 <a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
 <a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
@@ -61,6 +61,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="agent-authentication.html">Agent authentication and upgrades</a>
 <a href="agent-identity.html">Agent identity and credential lifecycle</a>
 <a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
 <a href="web-events.html">Web event authorization</a>
@@ -83,11 +84,11 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
   </p>
   <p>
     <a href="https://github.com/Dr0nj/regente/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License: Apache 2.0" /></a>
-    <a href="https://github.com/Dr0nj/regente/blob/main/docs/roadmap.md"><img src="https://img.shields.io/badge/status-feature--complete-brightgreen.svg" alt="Status: feature complete" /></a>
+    <a href="https://github.com/Dr0nj/regente/blob/main/docs/roadmap.md"><img src="https://img.shields.io/badge/status-enterprise%20hardening-blue.svg" alt="Status: enterprise hardening" /></a>
   </p>
-  <p><sub><strong>Project status:</strong> feature-complete and maintained — every planned track is delivered.
-  There is no new-feature roadmap; maintenance covers security updates, a green CI and answering issues.
-  Need something that is not here? Open an issue — that is what reopens the roadmap.</sub></p>
+  <p><sub><strong>Project status:</strong> the original feature tracks reached their maintenance milestone in July 2026.
+  The enterprise hardening cycle is active; delivery and remaining qualification work are tracked in the
+  <a href="https://github.com/Dr0nj/regente/blob/main/docs/roadmap.md">roadmap</a>. Delivered features do not imply complete production qualification.</sub></p>
 </div>
 <hr>
 <h2 id="-what-it-is">🧭 What it is</h2>
@@ -680,8 +681,10 @@ scheduler HA, a pluggable <strong>secrets manager</strong>, opt-in <strong>SSO/O
 and audit forwarding to a SIEM.</li>
 <li><strong>Portable serverless</strong> — an external time trigger, a pluggable agent transport (WebSocket ·
 HTTP long-poll · SSE · NATS) and a distroless image that scales to zero, with no cloud lock-in.</li>
-<li><strong>Scale</strong> — validated end to end at enterprise volumes: the write path materializes 1M instances
-in 17s, and the UI was driven live against 1,000,000 jobs without ever downloading a whole day.</li>
+<li><strong>Scale mechanisms</strong> — batched materialization, paginated queries and a virtualized UI.
+Historical reports cover up to 1M stored instances, not 1M completed executions/day.
+See <a href="capacity-guarantees.html">capacity evidence and guarantee limits</a> for provenance,
+missing benchmark metadata and the separate execution qualification gate.</li>
 <li><strong>Observability</strong> — Prometheus metrics at <code>/metrics</code>, opt-in OpenTelemetry tracing, plus
 liveness and readiness probes.</li>
 <li><strong>Themes</strong> — 17 themes (13 dark, 4 light), applied instantly and remembered in the browser.</li>
@@ -705,8 +708,10 @@ liveness and readiness probes.</li>
 firewalls), receives dispatches, and returns the result and the output stream.</li>
 <li><strong>Pluggable state store:</strong> SQLite (the default — pure Go, zero infrastructure) or Postgres
 (HA and scale), same codebase, selected with <code>-db-driver</code>.</li>
-<li><strong>HA:</strong> with Postgres, several servers use <em>leader election</em> (an advisory lock) — only the
-leader materializes the daily; all of them serve the API.</li>
+<li><strong>HA mechanisms:</strong> with Postgres, several servers use <em>leader election</em> (an advisory lock) —
+the leader drives the internal scheduler; all of them serve the API. Atomic claims protect
+the WAITING → RUNNING transition. They do not guarantee delivery, recovery or exactly-once
+external effects; see <a href="capacity-guarantees.html#dispatch-and-ha-boundaries">guarantee limits</a>.</li>
 </ul>
 <p>Component details: <a href="server.html"><code>server/</code></a> · <a href="agent.html"><code>agent/</code></a> ·
 <a href="app.html"><code>app/</code></a>.</p>
@@ -748,7 +753,7 @@ first line is read, so a commit body may talk about the marker without triggerin
 (delivered, backlog and changelog). It is an internal working document, written in Portuguese,
 and it is deliberately kept out of the published documentation site.</p>
 <p>For the <strong>story of the project</strong> — the problem, the architectural bets, classic enterprise
-semantics at the edges, the scale validated at 1M jobs/day and the lessons learned — read the
+semantics at the edges, historical materialization/query/UI observations and the lessons learned — read the
 <strong><a href="case-study.en.html">case study</a></strong>.</p>
 <hr>
 <h2 id="-license">📄 License</h2>

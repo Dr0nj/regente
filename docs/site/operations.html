@@ -53,7 +53,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="operations.html" class="active">⚙️ Running in production — enterprise readiness</a>
 <a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
 <a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
-<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
 <a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
 <a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
 <a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
@@ -61,6 +61,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="agent-authentication.html">Agent authentication and upgrades</a>
 <a href="agent-identity.html">Agent identity and credential lifecycle</a>
 <a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
 <a href="web-events.html">Web event authorization</a>
@@ -94,6 +95,13 @@ start a new migrator alongside an unqualified old runtime.</p>
 <p><a href="https://github.com/Dr0nj/regente/blob/main/server/deploy/rolling-upgrade.sh"><code>rolling-upgrade.sh</code></a> rejects different binary
 bytes and requires an explicit disposable-DB acknowledgment. Its successful result
 is a same-binary drain observation, not certification of a version upgrade.</p>
+<h3 id="dispatch-and-failover-limits">Dispatch and failover limits</h3>
+<p>An atomic WAITING → RUNNING claim protects that database transition. It does not
+acknowledge durable receipt by the agent or fence attempts. A new leader and
+reconstructed quotas do not prove that disconnected work stopped or that an
+external effect was recorded exactly once. See the <a href="capacity-guarantees.html#dispatch-and-ha-boundaries">mechanism/evidence matrix</a>
+and the <a href="integration-baseline.html">small integration profile</a>; recovery and
+partition guarantees remain separate enterprise gates.</p>
 <h2 id="2-multiple-environments-dev--staging--prod">2. Multiple environments (Dev / Staging / Prod)</h2>
 <p>Each environment is an <strong>independent deployment</strong> — no magic flags inside a single process.
 Isolation comes from the <strong>workspace branch + state store + label</strong>:</p>

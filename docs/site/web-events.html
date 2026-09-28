@@ -53,7 +53,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="operations.html">⚙️ Running in production — enterprise readiness</a>
 <a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
 <a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
-<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
 <a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
 <a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
 <a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
@@ -61,6 +61,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="agent-authentication.html">Agent authentication and upgrades</a>
 <a href="agent-identity.html">Agent identity and credential lifecycle</a>
 <a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
 <a href="web-events.html" class="active">Web event authorization</a>
@@ -68,6 +69,8 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <main>
 <article>
 <h1 id="web-event-authorization">Web event authorization</h1>
+<p>I04 delivered on 2026-09-17; see <a href="https://github.com/Dr0nj/regente/blob/main/docs/evidence/i04-b6db081.json">tested revision and CI evidence</a>.
+The <a href="https://github.com/Dr0nj/regente/blob/main/docs/roadmap.md">roadmap</a> tracks remaining enterprise qualification separately.</p>
 <p>The web event connection uses a 30-second, single-use ticket issued by
 <code>POST /api/auth/event-ticket</code>. A reconnect obtains a new ticket. Browser origins
 must match the server origin or the configured <code>-app-url</code>; clients without an

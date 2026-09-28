@@ -17,9 +17,10 @@
 > no §Entregue e some uma linha no §Changelog. Ao **abrir** um item novo: só adicione no §Backlog.
 > Sem barras de progresso nem porcentagens — de propósito (confundem mais do que ajudam).
 >
-> Documento vivo · revisão **2026-07-30** — o projeto entrou em **modo manutenção**
-> ([§🧰 Modo manutenção](#-modo-manutenção-decidido-em-2026-07-30)); a §Backlog continua
-> valendo como registro do que está aberto, mas nada dela é compromisso de build.
+> Documento vivo · revisão **2026-09-28** — o marco de manutenção de **2026-07-30**
+> descreve as trilhas originais. O ciclo enterprise iniciado em setembro está ativo:
+> I04 entregue; I05–I17 e os DOCs remanescentes seguem na §Backlog. Manutenção histórica
+> não cancela incrementos explicitamente solicitados nem significa homologação produtiva.
 > Estratégia de arquitetura em [`architecture-future.md`](architecture-future.md);
 > apresentação de produto no [`../README.md`](../README.md).
 
@@ -38,7 +39,7 @@
 - **Resiliência operacional (R1–R7)** — supervisão, panic-recovery, health real, DR/backup, auto-SLO.
 - **Serverless portátil** — gatilho externo, transporte plugável (long-poll · SSE · NATS), WASM, adapters de nuvem, lock-por-tick, gatilho de daily dedicado.
 - **Enterprise readiness** — Postgres/HA, segurança (RBAC/SSO/mTLS/SIEM), operação, qualidade, backlog E1–E6.
-- **Escala enterprise (100k–1M/dia)** — write-path (1M/17s), read-path paginado, UI ViewPoint validada @1M.
+- **Materialização, consulta e UI em escala (histórico)** — relatos P1/P2/P3 de junho/julho de 2026 sobre até 1M registros; não homologam 1M execuções/dia. [Proveniência e limites](capacity-guarantees.md).
 - **Aprofundamento enterprise** — lifecycle da daily, On-Do, cyclic, CONFIRM, DATABASE, `%%` vars, CTM-1/2/3.
 - **Condições AND/OR (CL-1…CL-6)** — lógica booleana DNF na entrada (grupos E/OU + operador de topo), token `$TIME` (fallback "condição OU horário"), editor no drawer, linhas OR no canvas, imutabilidade M1 (`cond_logic` schemaV21). Tema Condições 100%.
 - **Diferenciais além do modelo clássico** — Explain/Diff/Blast/Dry Run/Neighborhood/RCA/Event log/NL-query + D-1…D-15.
@@ -52,9 +53,9 @@
 
 - **Fase Z — divulgação** — artefatos entregues 2026-07-13/28 (`docs/case-study.md` + os 4 posts) e **publicação FEITA em 2026-07-29** (artigo + post do perfil pessoal). Trilha fechada.
 
-**Itens ainda ABERTOS** (detalhe em [§🔜 Backlog](#-backlog-o-que-falta)) — desde **2026-07-30 o
-projeto está em [🧰 modo manutenção](#-modo-manutenção-decidido-em-2026-07-30)**, então nada aqui
-é compromisso de build:
+**Itens ainda ABERTOS** (detalhe em [§🔜 Backlog](#-backlog-o-que-falta)).
+A política de manutenção de 30/07 refere-se às trilhas antigas abaixo; a fila
+enterprise de setembro e a remediação documental têm escopo e aceite próprios:
 
 - **Fase V / V6** — **V1–V5 entregues** (install single-origin 3-formas · bundle+one-liner · config guiada · hospedagem enterprise nginx+TLS · agente sandbox). O deploy "1 caixa" 24/7 está pronto ponta a ponta; **V6** (docker-compose) era opcional desde 2026-07-11 e agora está **congelado**.
 - **V-LIVE-TEST / LT-3..LT-11** — campanha de teste da instância 24/7, **amarrada à vida do VPS** (é custo de mantê-lo no ar, não trabalho de produto).
@@ -63,10 +64,11 @@ projeto está em [🧰 modo manutenção](#-modo-manutenção-decidido-em-2026-0
 > ✅ **Validação em infra real — trilha FECHADA (2026-07-11):** os dois resíduos (secrets via provider · SSH
 > agente como serviço) foram validados AO VIVO. Detalhe em [§🧪 Validação em infra real](#-validação-em-infra-real).
 
-> 🏁 **Marco (2026-06-24):** **todas as trilhas estruturais em 100%**, incluindo **Escala enterprise (100k–1M/dia)
-> end-to-end**: write-path materializa **1M em 17s** (P1), read-path serve **summary 51ms / page 18ms @100k**
-> (P2), e a **UI por ViewPoint server-driven foi validada AO VIVO com 1.000.000 de jobs** (P3) — dashboard
-> instantâneo, folder aberta em ~39ms, lista virtualizada, sem nunca baixar o dia inteiro.
+> 🏁 **Marco histórico (2026-06-24):** fechamento das trilhas estruturais originais.
+> P1 reportou materialização de 1M em ~17s; P2 summary/page em 51ms/18ms **a 100k**;
+> P3 reportou UI sobre 1M registros semeados. Logs originais e manifesto completo
+> não foram recuperados nesta revisão. Não é homologação de execuções/dia nem
+> capacidade no VPS instalado posteriormente. [Inventário](capacity-guarantees.md).
 
 Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · 🔴 prioridade
 
@@ -113,8 +115,9 @@ próximas garantias. Não representa homologação empresarial completa.
 
 ### 🧰 Modo manutenção *(decidido em 2026-07-30)*
 
-> ⛔ **Nada na §Backlog é compromisso de build.** A lista continua sendo o registro honesto
-> do que está aberto — ela só deixou de ser uma fila de trabalho.
+> **Decisão histórica de 2026-07-30**, preservada abaixo no contexto da época.
+> O ciclo enterprise de setembro e os incrementos DOC solicitados posteriormente
+> são fila ativa com aceite próprio. O texto histórico não altera o status atual.
 
 **A decisão.** Todas as trilhas estruturais estão entregues e a Fase Z (publicação) fechou em
 2026-07-29. O que sobrou aberto — V6, LT-3..LT-11, AI-1 — não muda o que o projeto **prova**
@@ -998,7 +1001,9 @@ NÃO traduzidos DE PROPÓSITO:
 > idempotente, claim atômico, leader election, watchdog de stuck, retry persistido,
 > snapshot imutável) — matar o processo **não perde nada**. O gap é **liveness do
 > processo**: o servidor é tratado como se nunca fosse morrer. Um orquestrador crítico
-> tem que assumir morte e **voltar sozinho, sem perda**. Esta trilha fecha essa metade.
+> tem que assumir morte e recuperar estado. Esta trilha histórica implementou mecanismos
+> de supervisão/recuperação; não prova zero perda/duplicação de efeitos. Ver
+> [limites atuais e evidência](capacity-guarantees.md).
 
 ```
 ✅ Estado durável (SQLite/Postgres) · daily idempotente · claim atômico
@@ -1039,22 +1044,25 @@ NÃO traduzidos DE PROPÓSITO:
         capability já provado real no k8s
 ✅ ARCH-3 · lock-por-tick      → guarda de ticks SOBREPOSTOS no serverless: camada em-processo (atomic, sempre) +
         advisory lock cross-processo no Postgres (opt-in via -scheduler=external, chave distinta da liderança).
-        Higiene, não correção (o claim atômico já garante). Ver docs/architecture-future.md §4.
+        Serializa ticks; claim protege a transição no banco, sem ACK/fencing/recuperação durável. Ver ADR §4.
 ✅ ARCH-5 · gatilho de daily dedicado → POST /api/scheduler/daily (leader-gated, idempotente): um cron DIÁRIO
         separado do tick de dispatch materializa a diária, em vez de cada tick checar. Ver §4 do ADR.
 
-🚫 DECIDIDO NÃO FAZER (menção, sem pendência — não são gaps, são alternativas a algo que já funciona):
-   • Durable execution (Temporal/Restate) — contradiz a decisão-mãe (single-binary, zero-infra, anti-lock-in);
-     a corretude que ela dá (retomar fluxo pós-crash) o Regente já entrega por idempotência + claim atômico.
-   • Postgres-como-fila (River / SKIP LOCKED) — reescreveria o dispatch (hot path validado a 1M) por uma
-     alternativa ao claim atômico, que é primo do SKIP LOCKED e já cobre o caso. Sem ganho que pague a troca.
+🚫 ADOÇÃO DE BIBLIOTECAS RECUSADA HISTORICAMENTE (não equivale a fechar requisitos):
+   • Temporal/Restate — decisão de manter o core próprio; claim não fornece retomada segura pós-crash.
+   • River/SKIP LOCKED — adoção não escolhida; o relato de 1M mede materialização, não dispatch.
+   ACK, fencing, recuperação e qualificação HA seguem na fila enterprise de setembro.
 ```
 
 ## 🏢 Enterprise readiness
 
+> Inventário das implementações históricas de junho/julho. Não representa
+> homologação produtiva completa; I05–I17 permanecem na §Backlog. Materialização,
+> consulta e UI têm [limites e proveniência próprios](capacity-guarantees.md).
+
 ```
 ✅ Escala     → Postgres plugável + migrations ✔ · stateless (estado durável externo; só o líder agenda) ·
-                 **write-path 1M/dia** (P1: lote, 1M em 17s) ✓ · **read-path paginado/filtrado** (P2: /page +
+                 **materialização de 1M registros** (relato P1: lote, ~17s) ✓ · **read-path paginado/filtrado** (P2: /page +
                  /summary + `team` na instance, RBAC por conjunto — 51ms/18ms @100k) ✓ · **UI por ViewPoint
                  server-driven** (P3: ScaleMonitor, VALIDADO AO VIVO @1M) ✓ — ver §Escala enterprise
 ✅ HA         → leader election (advisory lock) ✔failover · hub distribuído (R5) ✔ · backup/DR (R6) ✔ ·
@@ -1072,6 +1080,11 @@ NÃO traduzidos DE PROPÓSITO:
 ```
 
 ## 📈 Escala enterprise (100k–1M jobs/dia)
+
+> **Registro histórico P1/P2/P3 e UI-1, junho/julho de 2026.** O título original
+> foi preservado para continuidade. Os números abaixo medem materialização,
+> consulta e UI; não homologam execuções/dia. Ver [proveniência, ambiente conhecido
+> e artefatos ausentes](capacity-guarantees.md). Não foram reproduzidos nesta revisão.
 
 > O orquestrador enterprise clássico roda rotineiramente 100k–1M+ jobs/dia; se a UI/engine engasga em 10k, nenhum
 > cliente grande adota. O estado durável (linhas) escala trivialmente — o que precisa escalar é
@@ -1788,6 +1801,10 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+> Entradas de junho/julho preservam o relato da época. Alegações de escala/HA
+> devem ser lidas com o [inventário revisado em 28/09/2026](capacity-guarantees.md);
+> marcos históricos de 100% não fecham os gates enterprise de setembro.
 
 - **2026-09-27 — DOC-C:** DOC-07/08/09 entregues em `94c120d`: autenticação por
   transporte/modo, cancelamento por estado/efeitos e rerun pelo pool/snapshot.

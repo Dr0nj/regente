@@ -1,4 +1,10 @@
-# Post LinkedIn — Fase Z (rascunhos prontos pra colar, PT + EN)
+# Post LinkedIn — Fase Z (histórico e rascunhos PT + EN)
+
+> Revisão local de 28/09/2026: a cópia da versão publicada em 29/07 permanece
+> histórica. Nenhum post externo foi editado. Rascunhos abaixo foram corrigidos
+> para separar materialização/consulta/UI de execução; ver
+> [evidências e limites](capacity-guarantees.md). AI-1 é proposta congelada, não
+> compromisso de próxima entrega; sequência atual somente no [roadmap](roadmap.md).
 
 > **Como usar:** a versão **principal** é pra publicar do **seu perfil pessoal** (post
 > pessoal tem 10–50x mais alcance orgânico que company page nova); a página Regente
@@ -79,12 +85,14 @@ sessão de design; nada roda sem publish (commit/PR).
 
 🔹 **Semântica de orquestrador enterprise clássico, de verdade** — daily imutável (snapshot congelado na ordem),
 carry-over honesto na virada (a ordem avança de dia preservando a data de origem),
-dependências como condições explícitas com lógica AND/OR real e consumo (rerun do pai
-volta a segurar quem depende dele), calendários com N-ésimo dia útil e shift, cyclic,
+dependências como condições explícitas com lógica AND/OR real e consumo (rerun do pai não remove
+condições publicadas nem redefine os filhos), calendários com N-ésimo dia útil e shift, cyclic,
 Confirm de operador, retry agendado durável.
 
-🔹 **Escala validada ao vivo** — 1.000.000 de jobs/dia: materialização em ~17s, summary
-em 51ms, UI virtualizada com 37 elementos no DOM para o dia inteiro.
+🔹 **Relatos históricos de escala** — materialização de 1M instances em ~17s, summary
+**a 100k** em 51ms e UI sobre 1M registros semeados com 37 linhas renderizadas.
+Medições distintas de junho/julho de 2026, sem logs/metadados originais recuperados
+nesta revisão; não homologam 1M execuções/dia nem essa capacidade num VPS.
 
 🔹 **Do VPS de US$5 ao HA** — um binário Go serve API + WebSocket + UI sobre SQLite;
 as mesmas flags viram HA multi-nó com Postgres e leader election, ou deploy serverless
@@ -94,7 +102,7 @@ com scheduler dirigido por cron externo.
 (22 tools): um agente de IA pode diagnosticar por que um job não rodou ("Why not?") e,
 com permissão, agir.
 
-🔹 **Próximo no roadmap: IA que não tira dado do perímetro** — um jobType `AI_AGENT`
+🔹 **Proposta histórica, não entregue: IA que não tira dado do perímetro** — um jobType `AI_AGENT`
 (spec pronta): a LLM roda **no mesmo host do agente** (Ollama/llama.cpp/vLLM), analisa
 sysout e logs ali mesmo e o server recebe só o veredito — nada sai da sua máquina, e é
 literal. A primeira fase é análise-only, sem tools: um prompt injetado no máximo gera
@@ -138,11 +146,13 @@ opens a design session; nothing runs without a publish (commit/PR).
 🔹 **Real classic-enterprise semantics** — immutable daily (snapshot frozen into the order),
 honest carry-over at day rollover (the order moves forward while keeping its original
 date), dependencies as explicit conditions with real AND/OR logic and consumption
-(rerunning a parent holds its dependents again), calendars with Nth-business-day and
+(rerunning a parent does not remove published conditions or reset descendants), calendars with Nth-business-day and
 shift, cyclic jobs, operator Confirm, durable scheduled retries.
 
-🔹 **Scale validated live** — 1,000,000 jobs/day: materialization in ~17s, summary in
-51ms, a virtualized UI holding the whole day with 37 DOM elements.
+🔹 **Historical scale reports** — 1M instances materialized in ~17s, a summary
+**at 100k** in 51ms, and a UI over 1M seeded records with 37 rendered rows.
+Separate June/July 2026 observations; original logs/run metadata were not recovered
+in this review. They do not qualify 1M executions/day or that capacity on a VPS.
 
 🔹 **From a $5 VPS to HA** — one Go binary serves API + WebSocket + UI over SQLite;
 the same flags turn into multi-node HA with Postgres and leader election, or a
@@ -152,7 +162,7 @@ serverless deploy driven by an external cron scheduler.
 (22 tools): an AI agent can diagnose why a job didn't run ("Why not?") and, with
 permission, act.
 
-🔹 **Next on the roadmap: AI that never leaves your perimeter** — an `AI_AGENT` job
+🔹 **Historical proposal, not delivered: AI that never leaves your perimeter** — an `AI_AGENT` job
 type (spec ready): the LLM runs **on the same host as the agent** (Ollama/llama.cpp/
 vLLM), analyzes sysout and logs right there, and the server only receives the verdict —
 your data never leaves your machine, literally. Phase one is analysis-only, no tools:
@@ -180,12 +190,12 @@ Construí do zero um orquestrador de jobs classe enterprise: **Regente**.
 
 Git como fonte de verdade (jobs em YAML, publish = commit/PR), daily imutável,
 dependências como condições com AND/OR real, calendários de dia útil, Confirm,
-forecast — e 1.000.000 de jobs/dia validado ao vivo (daily materializada em ~17s,
-UI virtualizada).
+forecast — com relatos históricos de materialização/consulta/UI sobre registros
+semeados, sem homologação de execuções/dia. Evidências e limites no case study.
 
 Um binário Go roda tudo num VPS de US$5; as mesmas flags viram HA com Postgres ou
 deploy serverless. O plano de controle é agent-native: 22 tools MCP para um agente de
-IA operar o dia com permissão. E o próximo passo do roadmap é o jobType `AI_AGENT`:
+IA operar o dia com permissão. A proposta histórica AI-1 é o jobType `AI_AGENT`, ainda não entregue:
 LLM local no host do agente analisando falhas sem nenhum dado sair do perímetro.
 
 ~47k linhas de Go, ~24k de TS, 460 testes. A parte difícil não foi o scheduler — foi a
@@ -203,12 +213,12 @@ I built an enterprise-class job orchestrator from scratch: **Regente**.
 
 Git as the source of truth (jobs in YAML, publish = commit/PR), immutable daily,
 dependencies as conditions with real AND/OR logic, business-day calendars, operator
-Confirm, forecast — and 1,000,000 jobs/day validated live (daily materialized in ~17s,
-virtualized UI).
+Confirm, forecast — with historical materialization/query/UI reports over seeded
+records, not qualified executions/day. Evidence and limits are in the case study.
 
 One Go binary runs everything on a $5 VPS; the same flags turn into HA with Postgres or
 a serverless deploy. The control plane is agent-native: 22 MCP tools so an AI agent can
-operate the day with permission. Next on the roadmap: an `AI_AGENT` job type — a local
+operate the day with permission. Historical proposal, not delivered: an `AI_AGENT` job type — a local
 LLM on the agent's host analyzing failures with zero data leaving your perimeter.
 
 ~47k lines of Go, ~24k of TS, 460 tests. The hard part wasn't the scheduler — it was
@@ -225,13 +235,12 @@ Full technical case study in the first comment.
 - **Perfil pessoal × página:** a versão principal é do PERFIL PESSOAL (a página com
   poucos seguidores quase não tem distribuição orgânica — os posts dela são vitrine,
   não alcance). A página reposta o post pessoal e pode seguir com a série de
-  mini-posts (1 feature + 1 vídeo curto: What-If · Explain "Why not?" · MCP · 1M ao
-  vivo · AI_AGENT quando entregue).
+  mini-posts (1 feature + 1 vídeo curto: What-If · Explain "Why not?" · MCP · materialização/UI sobre dados semeados · AI_AGENT quando entregue).
 - **Prints (já capturados, dia batch real de 16 jobs em 4 folders):** (1) Monitoring com
   o grafo — OK/FAIL/WAIT COND/WAIT AGENT/CONFIRM/HELD na mesma tela; (2) drawer
   "Why not?" com a condição que falta + o Root cause apontando o upstream NOTOK;
   (3) painel ENVIRONMENT CONDITIONS (o pool, com ODAT); (4) tema claro; (5) referência
-  de API em `/api-docs`. Capa do artigo: 1920×1080 com o board + os três números.
+  de API em `/api-docs`. Capa do artigo: 1920×1080 com o board; números só com operação, data e limite de evidência explícitos.
 - **Case study = ARTIGO no LinkedIn (decidido 2026-07-21):** publicar PRIMEIRO os
   artigos — PT = `docs/case-study.md` · EN = `docs/case-study.en.md`, ambos já em
   formato de artigo (sem tabelas; títulos `##` viram Heading, negrito e listas colam

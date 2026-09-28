@@ -1,7 +1,9 @@
 # Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch
 
-> **TL;DR.** **1,000,000 jobs/day running on a $5 VPS** — the daily materialized in 17s,
-> the day's summary in 51ms. Regente is a batch workload orchestrator in the spirit of
+> **TL;DR.** A Git-native batch orchestrator with historical measurements of
+> materialization, queries and UI over large seeded datasets. These do not establish
+> 1,000,000 completed executions/day or that capacity on a USD 5 VPS.
+> Regente is a batch workload orchestrator in the spirit of
 > the classic enterprise orchestrators — immutable daily, condition-based dependencies,
 > calendars, resources, Confirm, forecast — that I built **alone, from scratch**, as a
 > personal project: a Go + React monorepo with **Git as the source of truth** for
@@ -9,6 +11,11 @@
 > exposes the control plane to AI agents via **MCP (22 tools)**. ~47k lines of Go, ~24k
 > of TypeScript, 460 tests. Open under Apache 2.0 — code at
 > **github.com/Dr0nj/regente**, docs at **dr0nj.github.io/regente**.
+
+> Editorial review, 2026-09-28: the feature-complete milestone belongs to the
+> original July 2026 tracks. I04 web-event authorization is delivered; I05–I17
+> remain open in the [roadmap](roadmap.md). Historical numbers below are not
+> current production guarantees. See [evidence and limits](capacity-guarantees.md).
 
 ---
 
@@ -108,9 +115,12 @@ Where it can beat the incumbents without inventing gimmicks:
 - **Signed quick actions** in alerts (Slack/e-mail/PagerDuty) — one-click
   rerun/confirm with an expiring token.
 
-## 5. Scale validated (not estimated)
+## 5. Historical materialization, query and UI observations
 
-A 1M jobs/day scenario, seeded and operated live:
+Reports from June/July 2026, not reproduced in the 2026-09-28 review.
+The [evidence inventory](capacity-guarantees.md) separates dates, available
+fixtures, missing original run metadata and operation-specific limits.
+These are separate observations over stored/seeded instances, not an execution benchmark:
 
 - **Daily materialization (write-path):** 1,000,000 instances in **~17s**.
 - **Day summary (read-path):** **51ms @100k**, keyset+offset pagination.
@@ -126,8 +136,10 @@ virtualized sidebar with compressed height (the browser overflows float32 above
 
 ## 6. Reliability
 
-- **Atomic claim** per instance guarantees ≤1 execution even with multiple dispatch
-  paths (tick, force, retry) or multiple nodes.
+- **Atomic claim** permits only one winner of the same WAITING → RUNNING database
+  transition. It does not provide durable agent ACK, attempt fencing, or exactly-once
+  external effects across retries, crashes and partitions. See the
+  [dispatch and HA boundaries](capacity-guarantees.md#dispatch-and-ha-boundaries).
 - **Panic-recovery** at every scheduler entry point; a watchdog for stuck RUNNING;
   self-monitoring that alerts through the product's own channels.
 - **Online backup** (`-backup` = VACUUM INTO), documented DR, retention/archives
@@ -192,7 +204,10 @@ nginx in the container, applies the actual conf, proves the circuit with a forge
 (proxy, UI, authenticated API, hardening headers) and asserts that `deploy/vps` exists on
 the machine — precisely the assertion that would have caught the first hole before I did.
 
-## 9. Next up: AI that stays inside the perimeter *(roadmap, spec ready)*
+## 9. Historical proposal: AI inside the perimeter *(not delivered)*
+
+This July 2026 proposal is not the current delivery sequence. See the
+[roadmap](roadmap.md) for the active enterprise cycle and the frozen AI-1 proposal.
 
 The enterprise-orchestration audience lives in regulated environments — banks, insurers,
 utilities — where sysout, logs and host data **cannot leave the perimeter**. Every
@@ -217,9 +232,9 @@ injection can at worst produce a wrong report, never an executed command.
    from the parent's live status breaks at the first human operation (rerun/cancel);
    named conditions created and consumed in a pool — and frozen into the order —
    model what the operator expects.
-5. **Scale is additive if the hot path is set-based from the start.** The same code
-   that serves 10 jobs serves 1M — the optimizations were about access patterns, not
-   architecture.
+5. **Measure each access path separately.** Set-based materialization, pagination
+   and virtualization address different bottlenecks; none alone establishes
+   executor throughput or recovery under failure.
 6. **Test against an oracle, not against your own function.** The calendar suites
    caught real divergences that mirror tests would never see.
 7. **What your tests don't run, rots.** Nine holes in an install the smoke test called
@@ -227,13 +242,14 @@ injection can at worst produce a wrong report, never an executed command.
    suite is the boundary of your confidence; outside it you don't have tested software,
    you have an assumption wearing a green badge.
 
-## 11. Project numbers
+## 11. Historical project numbers (July 2026)
 
 - **Code:** ~47k lines of Go (server+agent) · ~24k lines of TS/TSX (UI).
 - **Tests:** 460 Go test functions across 103 files + live E2E validations.
 - **Executors:** COMMAND · SCRIPT · HTTP/REST · agentless SSH · DATABASE · FILE_WATCH
   · MFT · WASM · K8s · Lambda · Batch · Glue · Step Functions · Cloud Run.
-- **Scale:** 1M jobs/day validated live (write 17s · summary 51ms · virtualized UI).
+- **Historical scale reports:** 1M instance materialization (~17s), summary at
+  **100k** (51ms), and UI over seeded records; no qualified executions/day figure.
 - **Deploy:** single binary (SQLite) → multi-node HA (Postgres + leader election) →
   portable serverless (external tick) — installed and running on a real public VPS.
 - **Interface:** React UI (Design/Monitoring), 17 themes, CLI, OpenAPI, MCP (22 tools).

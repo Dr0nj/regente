@@ -14,11 +14,11 @@
   </p>
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License: Apache 2.0" /></a>
-    <a href="docs/roadmap.md"><img src="https://img.shields.io/badge/status-feature--complete-brightgreen.svg" alt="Status: feature complete" /></a>
+    <a href="docs/roadmap.md"><img src="https://img.shields.io/badge/status-enterprise%20hardening-blue.svg" alt="Status: enterprise hardening" /></a>
   </p>
-  <p><sub><strong>Project status:</strong> feature-complete and maintained — every planned track is delivered.
-  There is no new-feature roadmap; maintenance covers security updates, a green CI and answering issues.
-  Need something that is not here? Open an issue — that is what reopens the roadmap.</sub></p>
+  <p><sub><strong>Project status:</strong> the original feature tracks reached their maintenance milestone in July 2026.
+  The enterprise hardening cycle is active; delivery and remaining qualification work are tracked in the
+  <a href="docs/roadmap.md">roadmap</a>. Delivered features do not imply complete production qualification.</sub></p>
 </div>
 
 ---
@@ -601,8 +601,10 @@ an import report and `# TODO-import` notes wherever a decision is needed. It **n
   and audit forwarding to a SIEM.
 - **Portable serverless** — an external time trigger, a pluggable agent transport (WebSocket ·
   HTTP long-poll · SSE · NATS) and a distroless image that scales to zero, with no cloud lock-in.
-- **Scale** — validated end to end at enterprise volumes: the write path materializes 1M instances
-  in 17s, and the UI was driven live against 1,000,000 jobs without ever downloading a whole day.
+- **Scale mechanisms** — batched materialization, paginated queries and a virtualized UI.
+  Historical reports cover up to 1M stored instances, not 1M completed executions/day.
+  See [capacity evidence and guarantee limits](docs/capacity-guarantees.md) for provenance,
+  missing benchmark metadata and the separate execution qualification gate.
 - **Observability** — Prometheus metrics at `/metrics`, opt-in OpenTelemetry tracing, plus
   liveness and readiness probes.
 - **Themes** — 17 themes (13 dark, 4 light), applied instantly and remembered in the browser.
@@ -629,8 +631,10 @@ an import report and `# TODO-import` notes wherever a decision is needed. It **n
   firewalls), receives dispatches, and returns the result and the output stream.
 - **Pluggable state store:** SQLite (the default — pure Go, zero infrastructure) or Postgres
   (HA and scale), same codebase, selected with `-db-driver`.
-- **HA:** with Postgres, several servers use *leader election* (an advisory lock) — only the
-  leader materializes the daily; all of them serve the API.
+- **HA mechanisms:** with Postgres, several servers use *leader election* (an advisory lock) —
+  the leader drives the internal scheduler; all of them serve the API. Atomic claims protect
+  the WAITING → RUNNING transition. They do not guarantee delivery, recovery or exactly-once
+  external effects; see [guarantee limits](docs/capacity-guarantees.md#dispatch-and-ha-boundaries).
 
 Component details: [`server/`](server/README.md) · [`agent/`](agent/README.md) ·
 [`app/`](app/README.md).
@@ -690,7 +694,7 @@ All planning lives in **[`docs/roadmap.md`](docs/roadmap.md)** — the single so
 and it is deliberately kept out of the published documentation site.
 
 For the **story of the project** — the problem, the architectural bets, classic enterprise
-semantics at the edges, the scale validated at 1M jobs/day and the lessons learned — read the
+semantics at the edges, historical materialization/query/UI observations and the lessons learned — read the
 **[case study](docs/case-study.en.md)**.
 
 ---

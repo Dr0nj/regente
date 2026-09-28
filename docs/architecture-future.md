@@ -1,13 +1,15 @@
 # Future architecture — serverless, portable, no lock-in
 
-> Status: living document · Last revision: 2026-07-10
+> Historical design: 2026-07-10 · Evidence/status review: 2026-09-28
 > Scope: control plane (`server/`) + agent transport + executors.
 > Root decision: **"portable serverless" (a scale-to-zero container with state and trigger
 > externalized), not FaaS.**
 
 This document is the guiding ADR for Regente's evolution across three phases. It records the
 **why**, what has **already been applied in this repository**, and what is **design/R&D** for the
-next iterations. Each phase clearly marks what is production versus what is projected.
+next iterations. Applied mechanisms are not equivalent to production qualification.
+Current delivery status lives in the [roadmap](roadmap.md);
+[capacity and HA limits](capacity-guarantees.md) delimit the historical claims.
 
 ---
 
@@ -26,8 +28,9 @@ classic daemon with two pieces that fight serverless:
   always-on process.
 - A **persistent WebSocket** to agents and to the web — long-lived connections.
 
-Everything else is already serverless-ready: a stateless REST API, **state in Postgres**
-(pluggable dialect) and **configuration in Git**.
+The design externalizes database state to PostgreSQL and published definitions to Git.
+Unpublished design-session content still requires session directories; API replicas
+are not sufficient for durable draft failover. See [recovery scope](dr-backup.md).
 
 ### The reframe
 
@@ -146,18 +149,20 @@ over-investing in the wrong lock.
 **Classic track (daemon, `-scheduler=internal`):** N always-on nodes, one holds
 `pg_try_advisory_lock` and runs the ticker; the others are *hot standbys*. This is
 `G1 leader election` (`internal/leader`, `PgAdvisory`). It makes sense for on-prem/enterprise
-deployments of 2–3 fixed nodes. Failover ≈ the lock TTL when the leader dies.
+deployments of 2–3 fixed nodes. This is a session lock, not a fixed-TTL lease:
+transfer depends on PostgreSQL releasing the session and a successor polling.
+It does not fence an agent or guarantee recovery of external effects.
 
 **Serverless track (`-scheduler=external`, scale-to-zero):** the leadership advisory lock **does
 not map** — there is no long-lived process to *hold* the lock, and most of the time there are
 **zero** instances. The external cron fires `POST /api/scheduler/tick`, a container starts, runs
-`Tick()`, and dies. The defence against **double execution** does not come from leadership; it
-comes from **idempotency + an atomic claim**, both already in the code:
+`Tick()`, and dies. Concurrent scheduling uses the following database guards;
+these do not establish exactly-once execution or durable delivery:
 
 1. `Tick()` is idempotent — concurrent or overlapping ticks converge.
 2. The **atomic claim** in `startInstance` (`UPDATE … SET status='RUNNING' WHERE id=? AND
    status='WAITING'`, bail out on 0 rows) — a row-level correctness guard, independent of how
-   many instances are running. This is the real safety net.
+   many processes are running. It protects that state transition, not remote acceptance.
 3. The existence check when materializing the daily — idempotent across ticks.
 
 In other words: **in serverless, leader election stops being correctness and becomes an
@@ -166,16 +171,17 @@ optimization** (avoiding N nodes doing redundant scheduling). If you do need to 
 a **per-tick lock** — `pg_try_advisory_lock` acquired at the start of `Tick()` and released at the
 end, short scope — and **not** a long-lived leadership lock.
 
-**Summary:** `F1 Postgres` is the foundation of both tracks. `G1 advisory-lock` is HA for the
-**classic** track; serverless gets HA "for free" (stateless replicas + durable managed PG +
-idempotency + the atomic claim).
+**Scope:** PostgreSQL supports both tracks; leadership and per-tick/row guards
+coordinate database work. Neither track gains durable execution or partition safety
+automatically. See [capacity and HA evidence](capacity-guarantees.md) for the
+claim/ACK/fencing/recovery distinction and the remaining enterprise gates.
 
 **Per-tick lock (ARCH-3, ✅ applied 2026-07-10):** the mechanism designed above — serializing
 **overlapping** ticks with a short-scoped advisory lock — was implemented in
 `scheduler/ticklock.go`. Two layers: in-process (`atomic.Bool`, always on) plus a cross-process
 `pg_try_advisory_lock` on Postgres (a key distinct from leadership, opt-in via `EnableTickLock()`,
-switched on by `-scheduler=external`). It remains hygiene, not correctness — the atomic claim is
-the safety net.
+switched on by `-scheduler=external`). It serializes the protected tick scope;
+combined with atomic claims it still does not supply durable agent acknowledgment.
 
 ---
 
@@ -251,12 +257,12 @@ announcing the capability.** The core does not change.
 
 - **Durable execution (Temporal / Restate)** — replacing retry/tick/state-machine with a durable
   engine **contradicts this ADR's root decision** (single binary, zero infrastructure,
-  anti-lock-in): it would mean running one more cluster to babysit. And the correctness it buys
-  (resuming a flow after a crash without re-running steps) Regente **already gets** from
-  idempotency plus the atomic claim. Kept as an architectural reference, not as work.
-- **Postgres-as-a-queue** (`SKIP LOCKED`, e.g. River) — it would rewrite the dispatch (a hot path
-  validated at 1M) in favour of an alternative to the atomic claim, which **is a cousin** of
-  `SKIP LOCKED` and already covers the case. No gain that pays for the swap.
+  anti-lock-in): it would mean operating another service. This historical choice
+  did not implement equivalent durable execution. An atomic claim cannot establish
+  safe crash resumption; native ACK/fencing/recovery remains enterprise work.
+- **Postgres-as-a-queue** (`SKIP LOCKED`, e.g. River) — adopting that library was
+  historically declined. The 1M report measured materialization, not dispatch.
+  This technology choice does not close durable dispatch or recovery requirements.
 
 ---
 
@@ -269,8 +275,8 @@ announcing the capability.** The core does not change.
 | `POST /api/scheduler/tick` | 1 | ✅ applied |
 | Dockerfile + Knative + CronJob + deploy/README | 1 | ✅ applied · container e2e validated (2026-06-18) |
 | Distroless image without `git` on the PATH | 1 | ✅ storage migrated to go-git (pure Go); image back to `distroless/static:nonroot` |
-| Classic HA — advisory-lock leader election (`G1`) | 1 | ✅ applied · two nodes validated on real PG (failover ~1s, 2026-06-18) |
-| Serverless HA — idempotency + atomic claim | 1 | ✅ applied (correctness) |
+| Classic leadership — advisory lock (`G1`) | 1 | ✅ applied; historical two-node report, 2026-06-18; no guaranteed failover bound |
+| Serverless scheduling guards — idempotency + atomic claim | 1 | ✅ applied; no durable execution guarantee |
 | Per-tick lock (overlapping ticks, ARCH-3) | 1 | ✅ applied (2026-07-10; hygiene, not correctness) |
 | Dedicated daily trigger (`/api/scheduler/daily`, ARCH-5) | 1 | ✅ applied (2026-07-10) |
 | `Bus` interface (transport seam) | 2 | ✅ applied |
@@ -282,10 +288,11 @@ announcing the capability.** The core does not change.
 | Cloud adapters (AWS/GCP/k8s) by capability | 3 | ✅ applied (real k8s; AWS/GCP mocked + ADV-8) |
 | OpenTelemetry (OTLP tracing) | 3 | ✅ applied (opt-in) |
 | Durable execution (Temporal/Restate) | 3 | 🚫 decided against (contradicts the root decision) |
-| Postgres-as-a-queue (River/SKIP LOCKED) | 3 | 🚫 decided against (the atomic claim already covers it) |
+| Postgres-as-a-queue (River/SKIP LOCKED) | 3 | 🚫 library adoption declined historically; durable dispatch remains separate |
 
-**Rollout principle:** every phase is backward compatible. The defaults preserve the classic
-daemon; serverless is opt-in through a flag or the deployment.
+**Rollout principle:** serverless is opt-in; defaults preserve the classic daemon.
+Version/schema/protocol compatibility must be checked against the
+[upgrade matrix](upgrades.md); it is not guaranteed by this historical design.
 
 ---
 
