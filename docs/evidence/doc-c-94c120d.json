@@ -1,0 +1,94 @@
+{
+  "sha": "94c120d8c277ca40e40b7e4dcd3fc05a17ef0961",
+  "date": "2026-09-27",
+  "scope": [
+    "DOC-07",
+    "DOC-08",
+    "DOC-09"
+  ],
+  "status": "passed",
+  "run_url": "https://github.com/Dr0nj/regente/actions/runs/36359957411",
+  "jobs": [
+    {
+      "name": "agent (Go)",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/36359957411/job/108735036278"
+    },
+    {
+      "name": "server (Go)",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/36359957411/job/108735036388"
+    },
+    {
+      "name": "app (web)",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/36359957411/job/108735036412"
+    },
+    {
+      "name": "doc-recipes / PowerShell demo windows-latest",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/36359957411/job/108735036453"
+    },
+    {
+      "name": "doc-recipes / toolchain minimum Node 24.0.0",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/36359957411/job/108735036470"
+    },
+    {
+      "name": "integration / PostgreSQL, NATS, OIDC and migration recovery",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/36359957411/job/108735036477"
+    },
+    {
+      "name": "doc-recipes / toolchain minimum Node 20.19.0",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/36359957411/job/108735036493"
+    },
+    {
+      "name": "doc-recipes / toolchain minimum Node 22.13.0",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/36359957411/job/108735036499"
+    },
+    {
+      "name": "doc-recipes / PowerShell demo ubuntu-latest",
+      "status": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/36359957411/job/108735036549"
+    }
+  ],
+  "local": {
+    "environment": "Windows, Go; temporary SQLite and HTTP test servers",
+    "before": "go test ./internal/scheduler/ ./internal/api/ -count=1: passed",
+    "after": "go test ./internal/scheduler ./internal/api ./cmd/mcp ./cmd/docsite -count=1: passed",
+    "vet": "go vet ./internal/api ./internal/scheduler ./cmd/mcp ./cmd/docsite: passed",
+    "openapi": "npx --yes @apidevtools/swagger-cli@4.0.4 validate server/internal/api/openapi.yaml: valid (one-off deprecated tool, no dependency added)",
+    "sitePages": 20,
+    "missingMarkdownLinks": 0,
+    "brokenSiteLinks": 0,
+    "generatedHtmlDifferences": 0,
+    "diffCheck": "passed"
+  },
+  "integration_artifact_review": {
+    "artifact": "integration-evidence",
+    "profile": "synthetic-ci-v1",
+    "status": "passed",
+    "go": "go1.25.14 linux/amd64",
+    "human_identity_backends": ["sqlite", "postgres"],
+    "auth_modes": ["local", "hybrid", "oidc", "invalid"],
+    "verified_tests": ["TestHumanIdentity", "TestHumanIdentityOIDCState", "TestIntegrationOIDC_AuthCodeFlow", "TestAgentAuthRejectsHumanCredentials", "TestMachineIdentity", "TestWebEventAuthorization"],
+    "event_ticket_replay_and_revoke": "passed on sqlite and postgres",
+    "web_events_race": "passed"
+  },
+  "regressions": [
+    "Cancel API: RUNNING -> NOTOK/-1; WAITING/HELD -> CANCELLED; terminals -> 409; current missing-ID lookup -> 500",
+    "MCP preserves cancel statuses and errors; tool descriptions disclose state-dependent results",
+    "Scheduler: no automatic out-condition application by cancel; RUNNING evaluates failure alerts and result/exit On-Do rules; pending does not",
+    "HTTP rerun producer preserves pool and child state; consumer after Set OK waits if consumed; NOTOK follows current presence; no out-remove means no consumption; snapshots preserved",
+    "OpenAPI refs/security/cancel examples and quoted natural-language query description"
+  ],
+  "limits": [
+    "No scheduler/auth runtime semantics changed.",
+    "Cancel success is not remote process-stop acknowledgement; On-Do and concurrent completion may affect final state.",
+    "OpenAPI security declaration describes the curated integration bearer transport, with browser cookie/CSRF separately documented.",
+    "D/E and I05-I17 remain outside this delivery; no production deployment."
+  ]
+}

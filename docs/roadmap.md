@@ -84,22 +84,19 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ### Correções da auditoria documental — ciclo planejado em 2026-09-21
 
 Plano de execução: [reconciliação documental e receitas operacionais](plans/documentation-remediation-2026-09-21.md).
-Baseline auditada: `5318e78` / v0.2.33. Etapas A e B entregues
-com evidência no §Entregue; **6 achados permanecem abertos**. Esta subseção é o
+Baseline auditada: `5318e78` / v0.2.33. Etapas A, B e C entregues
+com evidência no §Entregue; **3 achados permanecem abertos**. Esta subseção é o
 registro único do status de DOC-01–DOC-14; o plano detalha dependências e aceite.
 A decisão histórica de manutenção abaixo não elimina esta fila explicitamente
 solicitada. Não há mudança automática de status de I05–I17.
 
 | ID / achado | Prioridade | Etapa | Correção pendente |
 |---|---|---|---|
-| DOC-07 / D07 | P2 | C | OpenAPI/README coerentes com browser, API, máquina e modos de autenticação |
-| DOC-08 / D08 | P2 | C | Cancelamento por estado, efeitos e erros documentados no OpenAPI/MCP |
-| DOC-09 / D09 | P2 | C | Rerun descrito pelo pool de condições, sem revogação automática dos filhos |
 | DOC-10 / D10 | P2 | D | Capacidade/HA delimitadas por perfil medido, sem garantia ponta a ponta não comprovada |
 | DOC-13 / D13 | P3 | D | Status de I04, ciclo empresarial e marcos históricos reconciliados |
 | DOC-11 / D11 | P2 | E | Verify quick/full, gates explícitos e proteção contra regressão documental |
 
-Ordem restante recomendada: **C → D → E**. Cada etapa inclui testes pertinentes
+Ordem restante recomendada: **D → E**. Cada etapa inclui testes pertinentes
 e regeneração do site; E consolida os gates, não adia a validação das anteriores.
 Aceite global: 14 achados com evidência de fechamento, receitas exercitadas em
 ambiente isolado/limpo, site sincronizado, CI verde e nenhuma pendência I05–I17
@@ -406,6 +403,35 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+## DOC-C — Autenticação e contratos de ciclo de vida (2026-09-27)
+
+**DOC-07/DOC-08/DOC-09 entregues.** Implementação `94c120d`,
+[CI 36359957411](https://github.com/Dr0nj/regente/actions/runs/36359957411)
+com **nove jobs aprovados**, incluindo browser local/hybrid/oidc e integração
+PostgreSQL/NATS/OIDC. [Evidência sanitizada](evidence/doc-c-94c120d.json).
+
+- DOC-07: OpenAPI/READMEs/auth/MCP distinguem cookie HttpOnly+CSRF, bearer API
+  não-browser e credencial de máquina, rotas públicas, modos e event-ticket.
+  O token estático não contorna oidc. A security da spec permanece explicitamente
+  curada para integração bearer, sem transformar a SPA inteira em API estável.
+- DOC-08: RUNNING → NOTOK/-1 sem retry, sinal best-effort e alertas/On-Do;
+  WAITING/HELD → CANCELLED; terminal → 409. API/MCP/README não prometem ACK de kill.
+  Testes reais de API, encaminhamento MCP e efeitos do scheduler cobrem a matriz.
+  Lookup de ID inexistente segue retornando 500 no gate ACL: limite documentado,
+  não normalização de erros ou mudança de semântica neste incremento.
+- DOC-09: C3/C4 e exemplos explicam consumo condicionado a out-remove, pool
+  remanescente e ação de outros atores. Rerun não revoga pool nem reseta filhos;
+  snapshot M1 preservado. Case study EN/PT, OpenAPI e MCP reconciliados.
+  Cinco cenários de HTTP+pool+Explain complementam as regressões de condições.
+- Validação independente OpenAPI corrigiu também flow-map com vírgula sem aspas
+  no campo q; guard focado impede regressão. Scheduler/API antes/depois,
+  MCP/docsite e go vet PASS. Site com 20 páginas regenerado, sem links quebrados ou
+  divergência de geração; CI completo verde.
+
+Sem mudança de runtime, de protocolo de cancelamento, de autenticação ou do
+pool. Sem deploy produtivo. Onze achados resolvidos; restam DOC-10/13 (D) e
+DOC-11 (E). Capacidades I05–I17 permanecem separadas.
 
 ## DOC-B — Bootstrap, identidade e demo reproduzíveis (2026-09-22)
 
@@ -1762,6 +1788,12 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-09-27 — DOC-C:** DOC-07/08/09 entregues em `94c120d`: autenticação por
+  transporte/modo, cancelamento por estado/efeitos e rerun pelo pool/snapshot.
+  Spec válida, regressões API/MCP/scheduler, site e links aprovados.
+  [CI 36359957411](https://github.com/Dr0nj/regente/actions/runs/36359957411)
+  verde nos nove jobs. Sem mudança de semântica runtime; restam três DOC em D/E.
 
 - **2026-09-22 — DOC-B:** DOC-03/04/05/12/14 entregues: launcher autenticado e
   local por padrão, COMMAND/recusas/revogação provados, same-origin no build,
