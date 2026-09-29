@@ -1,4 +1,6 @@
 <div align="center">
+
+Production deployments: follow the [production profile](docs/production-profile.md) for explicit environment/network scope, disabled legacy tokens and conversion steps.
   <img src="app/public/logo-r.png" width="92" alt="Regente" />
   <h1>Regente</h1>
   <p><strong>A Git-native workflow orchestrator with enterprise-class batch semantics.</strong></p>

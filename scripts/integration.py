@@ -105,6 +105,7 @@ def validate_test_events(output):
     required = {"TestMigrationRunbookContract", "TestPostgresMigrateAndCRUD", "TestMigrationSafety/postgres",
                 "TestMigrationSafety/sqlite", "TestIntegrationOIDC_AuthCodeFlow",
                 "TestMachineIdentity/sqlite", "TestMachineIdentity/postgres",
+                "TestProductionIdentity/sqlite", "TestProductionIdentity/postgres",
                 "TestHumanIdentity/sqlite", "TestHumanIdentity/postgres",
                 "TestWebEventAuthorization/sqlite", "TestWebEventAuthorization/postgres",
                 "TestWebEventDistributed/sqlite", "TestWebEventDistributed/postgres",
@@ -396,7 +397,7 @@ def main():
                    REGENTE_TEST_OIDC_USER="lab-user", REGENTE_TEST_OIDC_PASS="synthetic-password")
         output = command(["go", "test", "-json", "-count=1", "-timeout=5m",
                           "./server/internal/db", "./server/internal/api", "-run",
-                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials|TestHumanIdentity|TestWebEvent"],
+                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials|TestHumanIdentity|TestWebEvent|TestProductionIdentity"],
                          env=env, timeout=360, name="database-oidc-tests")
         validate_test_events(output)
         command(["go", "test", "-race", "-count=1", "-timeout=3m", "./server/internal/api", "-run", "^TestWebEvent"],

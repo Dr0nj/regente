@@ -36,6 +36,9 @@ func (s *server) getSettings(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&k, &v); err != nil {
 			continue
 		}
+		if strings.HasPrefix(k, "_runtime_") {
+			continue
+		}
 		// Nunca devolver segredos em claro; só sinaliza se estão setados.
 		if secretSettingKeys[k] {
 			if v != "" {
@@ -63,6 +66,12 @@ func (s *server) putSettings(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, 400, map[string]string{"error": "invalid JSON"})
 		return
+	}
+	for key := range body {
+		if strings.HasPrefix(key, "_runtime_") {
+			http.Error(w, "runtime policy is not editable through settings", http.StatusBadRequest)
+			return
+		}
 	}
 	// Snapshot dos valores atuais ANTES do write — é o "de" do diff de auditoria
 	// e o filtro de no-op (chave re-enviada com o mesmo valor não vira evento).

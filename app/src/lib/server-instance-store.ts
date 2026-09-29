@@ -564,7 +564,7 @@ export async function fetchInstanceOutput(id: string, attempt?: number): Promise
 /* ── Explain ("por que esse job não rodou?") ── */
 
 export interface ExplainBlocker {
-  kind: "WAIT_WINDOW" | "WINDOW_CLOSED" | "WAIT_CONFIRM" | "WAIT_DEP" | "BLOCKED_DEP" | "WAIT_CONDITION" | "WAIT_AGENT" | "WAIT_RESOURCE";
+  kind: "WAIT_WINDOW" | "WINDOW_CLOSED" | "WAIT_CONFIRM" | "WAIT_DEP" | "BLOCKED_DEP" | "WAIT_CONDITION" | "WAIT_AGENT" | "WAIT_RESOURCE" | "CONFIGURATION_BLOCKED";
   detail: string;
   upstream?: string;
   upstreamStatus?: string;

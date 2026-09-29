@@ -20,7 +20,7 @@ type webAccess struct {
 }
 
 func (s *server) webAccess(digest string) (*webAccess, error) {
-	if s.cfg.Token != "" && digest == auth.Digest(s.cfg.Token) {
+	if !s.cfg.RuntimePolicy.Production() && s.cfg.Token != "" && digest == auth.Digest(s.cfg.Token) {
 		if s.mode() != "local" && s.mode() != "hybrid" {
 			return nil, auth.ErrInvalidToken
 		}

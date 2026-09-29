@@ -83,17 +83,23 @@ type dispatchMsg struct {
 // Start registra o SERVER-AGENT no hub (dispatch) E na tabela `agents` (a tela
 // de Agentes e o seletor de pin do Design leem de lá) e sobe a goroutine executora.
 func Start(h *hub.Hub, database *db.DB, finish Finisher) *hub.Client {
+	return StartScoped(h, database, "", finish)
+}
+
+func StartScoped(h *hub.Hub, database *db.DB, environment string, finish Finisher) *hub.Client {
 	host, _ := os.Hostname()
 	c := &hub.Client{
-		ID:           ID,
-		Kind:         hub.ClientAgent,
-		Send:         make(chan []byte, 64),
-		Capabilities: []string{"HTTP", "REST"},
-		OS:           runtime.GOOS,
-		Arch:         runtime.GOARCH,
-		Host:         host,
-		Version:      "embedded",
-		Started:      time.Now().Format(time.RFC3339),
+		ID:             ID,
+		Kind:           hub.ClientAgent,
+		Environment:    environment,
+		StrictIdentity: environment != "",
+		Send:           make(chan []byte, 64),
+		Capabilities:   []string{"HTTP", "REST"},
+		OS:             runtime.GOOS,
+		Arch:           runtime.GOARCH,
+		Host:           host,
+		Version:        "embedded",
+		Started:        time.Now().Format(time.RFC3339),
 	}
 	h.Register(c)
 	upsertAgentRow(database, c)
@@ -144,9 +150,9 @@ func upsertAgentRow(database *db.DB, c *hub.Client) {
 	}
 	caps := strings.Join(c.Capabilities, ",")
 	res, err := database.Exec(
-		`UPDATE agents SET os=?, arch=?, host=?, version=?, capabilities=?, started_at=CURRENT_TIMESTAMP,
+		`UPDATE agents SET environment=?, os=?, arch=?, host=?, version=?, capabilities=?, started_at=CURRENT_TIMESTAMP,
 		        connected_at=CURRENT_TIMESTAMP, last_seen_at=CURRENT_TIMESTAMP WHERE id=?`,
-		c.OS, c.Arch, c.Host, c.Version, caps, c.ID,
+		c.Environment, c.OS, c.Arch, c.Host, c.Version, caps, c.ID,
 	)
 	if err != nil {
 		log.Printf("[server-agent] upsert agents row: %v", err)
@@ -154,9 +160,9 @@ func upsertAgentRow(database *db.DB, c *hub.Client) {
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		if _, err := database.Exec(
-			`INSERT INTO agents(id, os, arch, host, version, capabilities, started_at, connected_at, first_seen, last_seen_at, online)
-			 VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0)`,
-			c.ID, c.OS, c.Arch, c.Host, c.Version, caps,
+			`INSERT INTO agents(environment, id, os, arch, host, version, capabilities, started_at, connected_at, first_seen, last_seen_at, online)
+			 VALUES(?,?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0)`,
+			c.Environment, c.ID, c.OS, c.Arch, c.Host, c.Version, caps,
 		); err != nil {
 			log.Printf("[server-agent] insert agents row: %v", err)
 		}

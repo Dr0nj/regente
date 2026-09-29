@@ -19,12 +19,13 @@ import (
 type GateKind string
 
 const (
-	GateWindow       GateKind = "WAIT_WINDOW"    // ainda não chegou o horário agendado
-	GateWindowClosed GateKind = "WINDOW_CLOSED"  // a janela (WindowTo) já fechou hoje — não submete mais
-	GateConfirm      GateKind = "WAIT_CONFIRM"   // Control-M Confirm: aguarda liberação do operador
-	GateCondition    GateKind = "WAIT_CONDITION" // falta uma condição de entrada no pool (modelo único)
-	GateAgent        GateKind = "WAIT_AGENT"     // nenhum agente online com a capability (ou o pinado offline)
-	GateResource     GateKind = "WAIT_RESOURCE"  // recurso/quota indisponível (F15)
+	GateConfiguration GateKind = "CONFIGURATION_BLOCKED"
+	GateWindow        GateKind = "WAIT_WINDOW"    // ainda não chegou o horário agendado
+	GateWindowClosed  GateKind = "WINDOW_CLOSED"  // a janela (WindowTo) já fechou hoje — não submete mais
+	GateConfirm       GateKind = "WAIT_CONFIRM"   // Control-M Confirm: aguarda liberação do operador
+	GateCondition     GateKind = "WAIT_CONDITION" // falta uma condição de entrada no pool (modelo único)
+	GateAgent         GateKind = "WAIT_AGENT"     // nenhum agente online com a capability (ou o pinado offline)
+	GateResource      GateKind = "WAIT_RESOURCE"  // recurso/quota indisponível (F15)
 )
 
 // Blocker — um motivo ATIVO de uma instance WAITING não estar rodando. Carrega
@@ -67,6 +68,9 @@ type Explanation struct {
 // TODOS (Explain). A checagem de recurso é read-only (Shortfalls); a reserva
 // atômica (TryAcquire) fica no tick, depois deste gate passar.
 func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx CondIndex, now time.Time, shortCircuit bool) []Blocker {
+	if reason := s.RuntimePolicy.ExecutionError(def); reason != "" {
+		return []Blocker{{Kind: GateConfiguration, Detail: reason}}
+	}
 	var out []Blocker
 	// add anexa o bloqueio e devolve true quando o avaliador deve PARAR (short-circuit).
 	add := func(b Blocker) bool {
@@ -283,6 +287,11 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 	def, ok := defForInstance(r, defs)
 	if !ok {
 		ex.Summary = "No definition loaded — not materializable (def removed/disabled?)."
+		return ex, nil
+	}
+	if reason := s.RuntimePolicy.ExecutionError(def); reason != "" {
+		ex.Blockers = []Blocker{{Kind: GateConfiguration, Detail: reason}}
+		ex.Summary = reason
 		return ex, nil
 	}
 	// "Run Now" (forced sem force_mode) bypassa todos os gates menos Confirm e

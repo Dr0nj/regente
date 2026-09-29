@@ -128,6 +128,9 @@ condition STILL exists in the pool, the copy runs — a pure pool, with no
 per-instance lock (a deliberate change from the claims model). `Run Now`
 (Monitoring) bypasses C1 entirely; the bypass is NOT sticky (a rerun clears
 `forced` when `force_mode=''`).
+Production environment and control-plane execution policy are never bypassed by
+Force, Run Now or retry. Incompatible snapshots stay WAITING and Explain reports
+`CONFIGURATION_BLOCKED`; see [production profile](production-profile.md).
 
 **C6 — No immutable conditions.** The operator can delete or add ANY condition
 in the panel; the effect is immediate (deleted → the dependent goes back to

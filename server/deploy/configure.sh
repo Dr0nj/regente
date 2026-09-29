@@ -19,6 +19,12 @@ gen_token() {
 }
 current() { grep -E "^[[:space:]]*${1}=" "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- || true; }
 
+# O assistente legado não deve reintroduzir o token administrativo.
+if grep -Eq '^[[:space:]]*REGENTE_PROFILE=.*production' "$ENV_FILE"; then
+  echo "Production profile: edit the protected service environment using docs/production-profile.md. Guided development setup made no changes."
+  exit 1
+fi
+
 # Bracketed paste: com o terminal nesse modo, um `read` recebe
 # \e[200~<texto>\e[201~ — e com -s (silencioso) NADA disso aparece na tela. O
 # valor era gravado com o lixo junto, o systemd DESCARTAVA a linha inteira do

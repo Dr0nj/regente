@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Production profile · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="production-profile.html" class="active">Production profile</a>
+<a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
+<a href="web-events.html">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="production-profile">Production profile</h1>
+<p>The production profile is opt-in: set <code>REGENTE_PROFILE=production</code> (or
+<code>-profile production</code>). Development remains the default for existing installs.
+Production does not imply mandatory SSO: choose local, hybrid or oidc explicitly.
+Use oidc when SSO must be required; provider unavailability never enables normal
+password login. An explicitly configured emergency administrator is the exception.</p>
+<h2 id="configuration-contract">Configuration contract</h2>
+<p>Flags override environment variables. These requirements are checked before opening
+the database, cloning a workspace, registering agents or starting the scheduler.</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Production requirement</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>REGENTE_PROFILE</code> / <code>-profile</code></td>
+<td><code>production</code></td>
+</tr>
+<tr>
+<td><code>REGENTE_ENVIRONMENT</code> / <code>-environment</code></td>
+<td>Explicit scope, 1–64 letters/digits/dots/underscores/hyphens; first character alphanumeric</td>
+</tr>
+<tr>
+<td><code>REGENTE_TOKEN</code> / <code>-api-token</code></td>
+<td>Empty or unset; all legacy static admin tokens are forbidden</td>
+</tr>
+<tr>
+<td><code>REGENTE_DEMO_MODE</code> / <code>-demo-mode</code></td>
+<td>Off; environment booleans accept only 0 or 1</td>
+</tr>
+<tr>
+<td><code>REGENTE_NETWORK_BOUNDARY</code> / <code>-network-boundary</code></td>
+<td>Explicit <code>loopback</code>, <code>proxy</code> or <code>tls</code></td>
+</tr>
+<tr>
+<td><code>REGENTE_ADDR</code> / <code>-addr</code></td>
+<td>Explicit numeric IP and port, including brackets for IPv6</td>
+</tr>
+<tr>
+<td><code>REGENTE_APP_URL</code> / <code>-app-url</code></td>
+<td>Origin without credentials, query, fragment or application subpath</td>
+</tr>
+<tr>
+<td><code>REGENTE_AUTH_MODE</code> / <code>-auth-mode</code></td>
+<td><code>local</code> (default), <code>hybrid</code> or <code>oidc</code></td>
+</tr>
+<tr>
+<td><code>REGENTE_CONTROL_PLANE_EXECUTION</code> / <code>-control-plane-execution</code></td>
+<td><code>deny</code> (default), <code>http</code> or <code>http-ssh</code></td>
+</tr>
+<tr>
+<td><code>REGENTE_SERVER_AGENT</code> / <code>-server-agent</code></td>
+<td>Off by default under deny; enabled by http/http-ssh unless explicitly disabled</td>
+</tr>
+<tr>
+<td><code>REGENTE_BOOTSTRAP_USER</code></td>
+<td>Initial administrator name, default admin; used only for an empty user table</td>
+</tr>
+<tr>
+<td><code>REGENTE_BOOTSTRAP_PASSWORD</code></td>
+<td>Required on an empty user table; 12–72 bytes, no surrounding whitespace</td>
+</tr>
+</tbody>
+</table>
+<p>Local passwords must satisfy that length rule at login, creation and reset. The
+bootstrap never overwrites an existing account. Startup rejects active local
+accounts with invalid hashes or known development passwords. Old hashes cannot
+prove original password length: rotate existing local passwords before conversion.</p>
+<h3 id="network-boundaries">Network boundaries</h3>
+<table>
+<thead>
+<tr>
+<th>Boundary</th>
+<th>Listen address</th>
+<th>Public app URL</th>
+<th>Additional requirements</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>loopback</td>
+<td>Loopback IP only</td>
+<td>HTTP localhost/loopback</td>
+<td>Local access or SSH tunnel; no server TLS</td>
+</tr>
+<tr>
+<td>proxy</td>
+<td>Loopback IP only</td>
+<td>HTTPS</td>
+<td>Explicit loopback trusted proxies; TLS terminates at a colocated proxy</td>
+</tr>
+<tr>
+<td>tls</td>
+<td>Explicit numeric IP</td>
+<td>HTTPS</td>
+<td>Loadable certificate/key; optional client CA</td>
+</tr>
+</tbody>
+</table>
+<p>Trusting all proxy addresses is rejected. Proxy mode validates the configuration,
+not the external proxy's certificate, DNS or firewall. Configure and verify those
+before admitting traffic. For a proxy on another host, use the tls boundary and
+explicit trusted proxy addresses with TLS between proxy and server.</p>
+<p>Hybrid/oidc require an issuer, client ID, valid initial role and a callback at
+<code>&lt;app-origin&gt;/api/auth/oidc/callback</code>. The issuer must use HTTPS; loopback mode
+also accepts an HTTP loopback issuer for isolated rehearsals. Local mode rejects
+leftover OIDC issuer/client/callback settings. OIDC client secrets use the existing
+secret provider. See <a href="authentication.html">authentication</a>.</p>
+<h3 id="execution-and-environment-scope">Execution and environment scope</h3>
+<p>Each production database is bound to one environment. Jobs and machine credentials
+must match it exactly. Empty environment is never a wildcard. Provision agents
+with that environment and matching transport claims using user-session credentials.
+The display-only <code>env_label</code> setting does not authorize routing.</p>
+<p>Under deny, SERVER-AGENT is off and agentless SSH is blocked. The http policy
+allows the embedded HTTP/REST executor; http-ssh also allows agentless SSH on the
+server. External agents remain available under all three policies. This policy
+applies to scheduled runs, Force, Run Now and retries. Explain reports
+<code>CONFIGURATION_BLOCKED</code>; blocked orders retain their snapshots and stay WAITING.</p>
+<p>This is an execution boundary, not a multi-tenant API visibility filter. It does
+not provide the secrets lifecycle, process isolation or full mTLS hardening planned
+separately. Do not mix old binaries or differently configured nodes into the same
+production database or distributed bus.</p>
+<h2 id="clean-installation">Clean installation</h2>
+<p>Keep the service stopped and the port inaccessible while configuring a new install.
+The existing installer initially supplies development settings; replace them before
+first production startup. For local access through an SSH tunnel:</p>
+<pre><code class="language-dotenv">REGENTE_PROFILE=production
+REGENTE_ENVIRONMENT=prod
+REGENTE_NETWORK_BOUNDARY=loopback
+REGENTE_ADDR=127.0.0.1:8080
+REGENTE_APP_URL=http://127.0.0.1:8080
+REGENTE_AUTH_MODE=local
+REGENTE_TOKEN=
+REGENTE_DEMO_MODE=0
+REGENTE_SERVER_AGENT=0
+REGENTE_CONTROL_PLANE_EXECUTION=deny
+</code></pre>
+<p>Supply a unique bootstrap password through a protected service environment, never
+as a command-line argument. Start the service, log in, then remove
+<code>REGENTE_BOOTSTRAP_PASSWORD</code> from the environment. Restarts use the persisted
+account. Changing the bootstrap variable later does not reset its password.
+For mandatory SSO, configure oidc and your IdP first; arrange an authorized initial
+administrator or explicitly select the bootstrap account as the emergency user.</p>
+<p>Run <code>regente-server -check-config</code> with the same environment as the service.
+It validates static configuration and TLS files without touching the database or
+starting services. Success does not validate accounts, connectivity or permissions.
+A normal startup performs database binding and credential checks before services.
+Backup and migrate-only remain maintenance operations and do not start services.</p>
+<h2 id="convert-an-existing-installation">Convert an existing installation</h2>
+<ol>
+<li>Back up the database and configuration; stop scheduling new work and drain all
+RUNNING instances. Stop every node sharing the database. Conversion refuses a
+database with running instances; do not race an old node against conversion.</li>
+<li>While still in development, rotate active local passwords and replace admin
+scripts using REGENTE_TOKEN with user sessions. Provision scoped machine tokens
+under new agent IDs where the old principal's environment is empty or different.</li>
+<li>Publish definitions with the intended environment and executor. Existing orders
+keep frozen snapshots: finish, cancel or deliberately replace incompatible orders;
+editing a live definition does not rewrite their execution identity.</li>
+<li>Set the explicit production configuration, clear REGENTE_TOKEN, disable demo and
+choose the execution policy. Remove incompatible OIDC settings in local mode.
+For public access, configure proxy or tls and verify the external boundary.</li>
+<li>Run check-config, then start one node and inspect startup diagnostics. The first
+conversion binds the database to the environment and revokes existing sessions.
+Log in again, provision/reconnect agents and inspect Explain before releasing work.</li>
+<li>Start remaining nodes with the same profile/environment and intended policy.
+Verify a restart and an authorized scoped job before reopening scheduling.</li>
+</ol>
+<p>The binding survives restart and backup/restore. Omitting the profile or changing
+its environment refuses startup; it is not editable through the settings API.
+Rollback is an explicit recovery operation using the pre-conversion backup and
+configuration, after draining/stopping the cluster. Older binaries do not enforce
+this marker, so do not use a binary downgrade as a policy bypass.</p>
+<h2 id="validation-evidence">Validation evidence</h2>
+<p>The configuration matrix, real-binary clean startup/conversion/restart, password
+bootstrap, scheduler bypass rejection and scoped agent dispatch run in server tests.
+The integration gate additionally runs production identity checks on SQLite and
+Postgres. The release smoke exercises conversion and upgrade of the installed
+systemd service. See <a href="verification.html">verification</a> for commands and gate limits.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

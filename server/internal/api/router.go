@@ -17,6 +17,7 @@ import (
 	"github.com/Dr0nj/regente-server/internal/db"
 	"github.com/Dr0nj/regente-server/internal/hub"
 	"github.com/Dr0nj/regente-server/internal/oidc"
+	"github.com/Dr0nj/regente-server/internal/runtimeprofile"
 	"github.com/Dr0nj/regente-server/internal/scheduler"
 	"github.com/Dr0nj/regente-server/internal/storage"
 	"github.com/go-chi/chi/v5"
@@ -24,12 +25,13 @@ import (
 )
 
 type Config struct {
-	Store     *storage.FileStore
-	DB        *db.DB
-	Hub       *hub.Hub
-	Scheduler *scheduler.Scheduler
-	Token     string
-	Events    interface{ BroadcastWeb(string, interface{}) } // fan-out configurado; nil usa Hub
+	RuntimePolicy runtimeprofile.Config
+	Store         *storage.FileStore
+	DB            *db.DB
+	Hub           *hub.Hub
+	Scheduler     *scheduler.Scheduler
+	Token         string
+	Events        interface{ BroadcastWeb(string, interface{}) } // fan-out configurado; nil usa Hub
 	// R5 — presença cross-nó de agents (bus distribuído). nil = single-node/local:
 	// a frota mostra só os agents deste nó. Com o bus NATS, reflete o cluster inteiro.
 	Presence RemotePresence
@@ -447,7 +449,7 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		// Legacy token (env REGENTE_TOKEN / dev-token) → admin equivalente
-		if s.cfg.Token != "" && tok == s.cfg.Token && s.mode() != "oidc" && s.mode() != "invalid" && r.Header.Get("Authorization") != "" {
+		if !s.cfg.RuntimePolicy.Production() && s.cfg.Token != "" && tok == s.cfg.Token && s.mode() != "oidc" && s.mode() != "invalid" && r.Header.Get("Authorization") != "" {
 			ctx := auth.WithUser(r.Context(), &auth.User{
 				ID:       0,
 				Username: "system",

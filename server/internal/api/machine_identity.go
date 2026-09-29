@@ -45,6 +45,9 @@ func (s *server) machineAuth(r *http.Request) (*machinePrincipal, bool) {
  FROM agent_tokens t JOIN machine_principals p ON p.agent_id=t.agent_id
  WHERE t.token_hash=? AND t.revoked_at=0 AND t.expires_at>?`, tokenDigest(token), time.Now().UnixMilli()).Scan(
 		&p.CredentialID, &p.AgentID, &p.Environment, &p.Capabilities)
+	if err == nil && !s.cfg.RuntimePolicy.AllowsEnvironment(p.Environment) {
+		return nil, false
+	}
 	if err == nil {
 		_, _ = s.cfg.DB.ExecContext(ctx, `UPDATE agent_tokens SET last_used_at=CURRENT_TIMESTAMP WHERE id=?`, p.CredentialID)
 	}
@@ -52,6 +55,9 @@ func (s *server) machineAuth(r *http.Request) (*machinePrincipal, bool) {
 }
 
 func (s *server) machineValid(p *machinePrincipal) bool {
+	if !s.cfg.RuntimePolicy.AllowsEnvironment(p.Environment) {
+		return false
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	var n int
@@ -201,7 +207,7 @@ func (s *server) createAgentToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b tokenRequest
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&b) != nil || !b.validate() {
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&b) != nil || !b.validate() || !s.cfg.RuntimePolicy.AllowsEnvironment(b.Environment) {
 		http.Error(w, "agentId, environment, capabilities and expiresAt (within 365 days) are required; reserved IDs are forbidden", http.StatusBadRequest)
 		return
 	}
@@ -273,6 +279,10 @@ func (s *server) rotateAgentToken(w http.ResponseWriter, r *http.Request) {
  JOIN machine_principals p ON p.agent_id=t.agent_id WHERE t.id=?`, chi.URLParam(r, "id")).Scan(&req.Label, &req.AgentID, &req.Environment, &caps)
 	if err != nil {
 		http.Error(w, "could not load principal", http.StatusInternalServerError)
+		return
+	}
+	if !s.cfg.RuntimePolicy.AllowsEnvironment(req.Environment) {
+		http.Error(w, "credential environment does not match production", http.StatusBadRequest)
 		return
 	}
 	req.Capabilities = strings.Split(caps, ",")

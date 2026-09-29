@@ -90,6 +90,32 @@ if [ "$STAGE" = stage2 ]; then
   n_after="$(ls -1 /var/lib/regente/backups/ 2>/dev/null | wc -l)"
   [ "$n_before" = "$n_after" ] && ok "--no-backup não criou snapshot" || bad "--no-backup criou snapshot mesmo assim"
   wait_for 30 active || bad "o serviço não voltou depois do --no-backup"
+  head1 "Production profile: convert installed service and upgrade"
+  # Fixture sintética; nenhum segredo do operador entra neste ensaio.
+  login_token=$(curl -fsS -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin"}' "$BASE/api/auth/login" | jfield token)
+  curl -fsS -H "Authorization: Bearer $login_token" -H 'Content-Type: application/json' -d '{"current":"admin","next":"production-smoke-fixture"}' "$BASE/api/auth/change-password" >/dev/null || bad "password rotation failed"
+  systemctl stop regente-server
+  cat >> "$ENV_FILE" <<'PRODUCTION'
+REGENTE_PROFILE=production
+REGENTE_ENVIRONMENT=prod
+REGENTE_NETWORK_BOUNDARY=loopback
+REGENTE_ADDR=127.0.0.1:8080
+REGENTE_APP_URL=http://127.0.0.1:8080
+REGENTE_TOKEN=
+REGENTE_SERVER_AGENT=0
+REGENTE_CONTROL_PLANE_EXECUTION=deny
+PRODUCTION
+  systemctl start regente-server
+  wait_for 30 '[ "$(code "'"$BASE"'/health")" = 200 ]' || bad "production conversion did not start"
+  prod_token=$(curl -fsS -H 'Content-Type: application/json' -d '{"username":"admin","password":"production-smoke-fixture"}' "$BASE/api/auth/login" | jfield token)
+  [ -n "$prod_token" ] && ok "production login on installed service" || bad "production login failed"
+  legacy_status=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $login_token" "$BASE/api/users")
+  [ "$legacy_status" = 401 ] && ok "old session rejected" || bad "old session accepted"
+  REGENTE_BUNDLE=/root/bundle.tar.gz regente-update -f --no-backup > /tmp/update-production.log 2>&1 || bad "production upgrade failed"
+  wait_for 30 '[ "$(code "'"$BASE"'/health")" = 200 ]' || bad "production did not return after upgrade"
+  grep -q '^REGENTE_PROFILE=production' "$ENV_FILE" && ok "production configuration preserved by upgrade" || bad "production configuration lost"
+  prod_token=$(curl -fsS -H 'Content-Type: application/json' -d '{"username":"admin","password":"production-smoke-fixture"}' "$BASE/api/auth/login" | jfield token)
+  [ -n "$prod_token" ] && ok "production credentials survived upgrade" || bad "production credentials lost"
   echo
   [ "$fails" = 0 ] && { echo "SMOKE stage2 OK"; exit 0; } || { echo "SMOKE stage2: $fails falha(s)"; exit 1; }
 fi

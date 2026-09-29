@@ -1,5 +1,7 @@
 # Authentication: local, hybrid or SSO
 
+Production deployments: follow the [production profile](production-profile.md) for explicit environment/network scope, disabled legacy tokens and conversion steps.
+
 Regente supports personal installations and enterprise deployments with the same
 product. Choose with `-auth-mode` or `REGENTE_AUTH_MODE`:
 

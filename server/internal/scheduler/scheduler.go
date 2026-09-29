@@ -23,6 +23,7 @@ import (
 	"github.com/Dr0nj/regente-server/internal/db"
 	"github.com/Dr0nj/regente-server/internal/domain"
 	"github.com/Dr0nj/regente-server/internal/hub"
+	"github.com/Dr0nj/regente-server/internal/runtimeprofile"
 	"github.com/Dr0nj/regente-server/internal/storage"
 	"github.com/Dr0nj/regente-server/internal/telemetry"
 
@@ -36,10 +37,11 @@ type Settings struct {
 }
 
 type Scheduler struct {
-	store *storage.FileStore
-	db    *db.DB
-	hub   Bus
-	tick  time.Duration
+	RuntimePolicy runtimeprofile.Config
+	store         *storage.FileStore
+	db            *db.DB
+	hub           Bus
+	tick          time.Duration
 
 	mu         sync.Mutex
 	running    map[string]bool
@@ -1348,6 +1350,9 @@ func (s *Scheduler) tickOnce() {
 		if !ok {
 			continue
 		}
+		if s.RuntimePolicy.ExecutionError(def) != "" {
+			continue
+		}
 		// "Run Now" (forced sem force_mode) bypassa janela/condições/recursos
 		// — mas NÃO o agente: sem agente disponível, nem o forced é reivindicado
 		// (senão pisca RUNNING↔WAITING). Também NÃO bypassa o Confirm: no Control-M
@@ -1417,6 +1422,9 @@ func (s *Scheduler) tickOnce() {
 // próprio server) e DemoMode dispensa (mock-finish). Checado ANTES do claim.
 // ADV-2: def.Environment roteia — só conta agente do mesmo env (ou coringa).
 func (s *Scheduler) agentAvailable(def domain.JobDefinition) bool {
+	if s.RuntimePolicy.ExecutionError(def) != "" {
+		return false
+	}
 	if s.DemoMode || strings.EqualFold(def.JobType, "SSH") {
 		return true
 	}
@@ -1441,6 +1449,9 @@ func (s *Scheduler) maybeEmitNoAgent(id, jobType string) {
 }
 
 func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
+	if s.RuntimePolicy.ExecutionError(def) != "" {
+		return
+	}
 	s.mu.Lock()
 	if s.running[id] {
 		s.mu.Unlock()

@@ -39,6 +39,10 @@ func (s *server) authLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "SSO is required", http.StatusForbidden)
 		return
 	}
+	if s.cfg.RuntimePolicy.Production() && auth.ProductionPassword(req.Password) != nil {
+		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		return
+	}
 	tok, u, err := auth.Login(s.cfg.DB, req.Username, req.Password)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
@@ -119,6 +123,12 @@ func (s *server) authChangePassword(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	if s.cfg.RuntimePolicy.Production() {
+		if err := auth.ProductionPassword(req.Next); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 	if err := auth.ChangePassword(s.cfg.DB, u.ID, req.Current, req.Next, false); err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			http.Error(w, "current password incorrect", http.StatusUnauthorized)
@@ -156,6 +166,12 @@ func (s *server) createUser(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
+	}
+	if s.cfg.RuntimePolicy.Production() {
+		if err := auth.ProductionPassword(req.Password); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 	u, err := auth.CreateUser(s.cfg.DB, req.Username, req.Password, auth.Role(req.Role))
 	if err != nil {
@@ -205,6 +221,12 @@ func (s *server) resetUserPassword(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
+	}
+	if s.cfg.RuntimePolicy.Production() {
+		if err := auth.ProductionPassword(req.Next); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 	if err := auth.ChangePassword(s.cfg.DB, id, "", req.Next, true); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

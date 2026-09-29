@@ -63,6 +63,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="authentication.html">Authentication: local, hybrid or SSO</a>
 <a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="production-profile.html">Production profile</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
 <a href="verification.html">Verification profiles</a>
 <a href="web-events.html">Web event authorization</a>
@@ -224,7 +225,10 @@ consumer is born in WAIT COND until someone recreates the condition). If the
 condition STILL exists in the pool, the copy runs — a pure pool, with no
 per-instance lock (a deliberate change from the claims model). <code>Run Now</code>
 (Monitoring) bypasses C1 entirely; the bypass is NOT sticky (a rerun clears
-<code>forced</code> when <code>force_mode=''</code>).</p>
+<code>forced</code> when <code>force_mode=''</code>).
+Production environment and control-plane execution policy are never bypassed by
+Force, Run Now or retry. Incompatible snapshots stay WAITING and Explain reports
+<code>CONFIGURATION_BLOCKED</code>; see <a href="production-profile.html">production profile</a>.</p>
 <p><strong>C6 — No immutable conditions.</strong> The operator can delete or add ANY condition
 in the panel; the effect is immediate (deleted → the dependent goes back to
 waiting; added → the dependent runs right away). The user's rule: <em>&quot;we will not

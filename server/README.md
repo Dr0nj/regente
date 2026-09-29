@@ -1,5 +1,7 @@
 # regente-server
 
+Production deployments: follow the [production profile](../docs/production-profile.md) for explicit environment/network scope, disabled legacy tokens and conversion steps.
+
 The Go daemon: the control plane. It holds the scheduler, the REST API, the WebSocket hub and
 the GitOps layer.
 

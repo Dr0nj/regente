@@ -11,6 +11,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"log"
@@ -36,6 +37,7 @@ import (
 	"github.com/Dr0nj/regente-server/internal/hub"
 	"github.com/Dr0nj/regente-server/internal/leader"
 	"github.com/Dr0nj/regente-server/internal/oidc"
+	"github.com/Dr0nj/regente-server/internal/runtimeprofile"
 	"github.com/Dr0nj/regente-server/internal/scheduler"
 	"github.com/Dr0nj/regente-server/internal/secrets"
 	"github.com/Dr0nj/regente-server/internal/sectls"
@@ -58,6 +60,11 @@ var version = "dev"
 
 func main() {
 	var (
+		profile          = flag.String("profile", envOr("REGENTE_PROFILE", "development"), "Runtime profile: development | production")
+		environment      = flag.String("environment", os.Getenv("REGENTE_ENVIRONMENT"), "Production environment scope")
+		network          = flag.String("network-boundary", os.Getenv("REGENTE_NETWORK_BOUNDARY"), "Production boundary: loopback | proxy | tls")
+		controlPlane     = flag.String("control-plane-execution", os.Getenv("REGENTE_CONTROL_PLANE_EXECUTION"), "Production execution policy: deny | http | http-ssh")
+		checkConfig      = flag.Bool("check-config", false, "Validate static configuration and TLS files without opening the database or services")
 		addr             = flag.String("addr", envOr("REGENTE_ADDR", ":8080"), "HTTP listen address")
 		spaDir           = flag.String("spa-dir", envOr("REGENTE_SPA_DIR", ""), "Single-origin hosting: serve the built SPA from this directory (UI+API+WS on the same port). Empty = API only")
 		docsDir          = flag.String("docs-dir", envOr("REGENTE_DOCS_DIR", ""), "ADV-7: serve the docs site (cmd/docsite) at /docs on the same port. Empty = no docs")
@@ -134,12 +141,75 @@ func main() {
 		return
 	}
 
+	explicit := map[string]bool{}
+	flag.Visit(func(f *flag.Flag) { explicit[f.Name] = true })
+	tokenEnv, tokenSet := os.LookupEnv("REGENTE_TOKEN")
+	if tokenSet && !explicit["api-token"] {
+		*apiToken = tokenEnv
+	}
+	if *profile == "production" {
+		if *controlPlane == "" {
+			*controlPlane = "deny"
+		}
+		if !tokenSet && !explicit["api-token"] {
+			*apiToken = ""
+		}
+		if _, set := os.LookupEnv("REGENTE_SERVER_AGENT"); !set && !explicit["server-agent"] {
+			*serverAgent = *controlPlane != "deny"
+		}
+	}
+	policy := runtimeprofile.Config{Profile: *profile, Environment: *environment, Network: *network, ControlPlane: *controlPlane,
+		Addr: *addr, AppURL: *appURL, Token: *apiToken, AuthMode: *authMode, TLSCert: *tlsCert, TLSKey: *tlsKey, TLSClientCA: *tlsClientCA,
+		TrustedProxies: *trustedProxyCIDR, OIDCIssuer: *oidcIssuer, OIDCClientID: *oidcClientID, OIDCRedirect: *oidcRedirectURL,
+		OIDCRole: *oidcDefaultRole, Role: *role, Scheduler: *schedulerMode, Bus: *busMode, Demo: *demoMode, ServerAgent: *serverAgent}
+	serving := (*backupTo == "" && !*migrateOnly) || *checkConfig
+	var tlsCfg *tls.Config
+	var mtlsOn bool
+	mode, modeErr := auth.Mode(*authMode)
+	trustedProxies, tpErr := api.ParseTrustedProxies(*trustedProxyCIDR)
+	if serving {
+		if err := policy.Validate(); err != nil {
+			log.Fatalf("[config] %v", err)
+		}
+		if policy.Production() {
+			for key, name := range map[string]string{"REGENTE_SERVER_AGENT": "server-agent", "REGENTE_DEMO_MODE": "demo-mode"} {
+				if value, set := os.LookupEnv(key); set && !explicit[name] && value != "0" && value != "1" {
+					log.Fatalf("[config] %s must be 0 or 1", key)
+				}
+			}
+		}
+		if modeErr != nil {
+			log.Fatal("[config] invalid auth mode")
+		}
+		if tpErr != nil {
+			log.Fatal("[config] invalid trusted proxies")
+		}
+		if _, err := db.ParseDialect(*dbDriver); err != nil {
+			log.Fatal("[config] invalid database driver")
+		}
+		if *migrationTimeout <= 0 {
+			log.Fatal("[config] migration-timeout must be positive")
+		}
+		var tlsErr error
+		tlsCfg, mtlsOn, tlsErr = sectls.ServerTLS(*tlsCert, *tlsKey, *tlsClientCA)
+		if tlsErr != nil {
+			log.Fatal("[config] unable to load TLS certificate, key or client CA")
+		}
+	}
+	if *checkConfig {
+		log.Printf("[config] static configuration valid: profile=%s auth=%s server-agent=%t; database, accounts and reachability not checked", *profile, mode, *serverAgent)
+		return
+	}
+
 	dialect, err := db.ParseDialect(*dbDriver)
 	if err != nil {
 		log.Fatalf("db driver: %v", err)
 	}
 	database, err := db.Open(dialect, *dbPath)
 	if err != nil {
+		if policy.Production() {
+			log.Fatal("[config] database unavailable; check connection configuration and permissions")
+		}
 		log.Fatalf("db open: %v", err)
 	}
 	defer database.Close()
@@ -165,6 +235,16 @@ func main() {
 		return
 	}
 
+	if policy.Production() {
+		if err := auth.BootstrapProduction(database, envOr("REGENTE_BOOTSTRAP_USER", "admin"), os.Getenv("REGENTE_BOOTSTRAP_PASSWORD"), *emergencyUser); err != nil {
+			log.Fatalf("[config] %v", err)
+		}
+	}
+	if err := runtimeprofile.Bind(database, policy); err != nil {
+		log.Fatalf("[config] %v", err)
+	}
+	log.Printf("[config] profile=%s auth=%s server-agent=%t", *profile, mode, *serverAgent)
+
 	// I1 — tracing OTLP (opt-in). Sem endpoint, no-op (zero overhead).
 	otelShutdown, otelErr := telemetry.Init(context.Background(), *otelEndpoint, *otelService)
 	if otelErr != nil {
@@ -175,8 +255,10 @@ func main() {
 	defer func() { _ = otelShutdown(context.Background()) }()
 
 	// F11.10 — bootstrap admin if no users exist
-	if err := auth.Bootstrap(database); err != nil {
-		log.Fatalf("auth bootstrap: %v", err)
+	if !policy.Production() {
+		if err := auth.Bootstrap(database); err != nil {
+			log.Fatalf("auth bootstrap: %v", err)
+		}
 	}
 	_ = auth.PurgeExpiredSessions(database)
 
@@ -338,6 +420,7 @@ func main() {
 
 	sched := scheduler.New(store, database, theBus, time.Duration(*tickMs)*time.Millisecond)
 	sched.DemoMode = *demoMode
+	sched.RuntimePolicy = policy
 	if *demoMode {
 		log.Printf("[scheduler] DEMO MODE — no agent online, jobs are mock-finalized OK (do not use in production)")
 	}
@@ -348,7 +431,7 @@ func main() {
 	// tela de Agentes e é pinável no Design. Não sobe em demo-mode (lá tudo é
 	// mock — um agente real executaria HTTP de verdade no playground).
 	if *serverAgent && !*demoMode {
-		serveragent.Start(h, database, func(id string, st domain.InstanceStatus, exit int, out string) {
+		serveragent.StartScoped(h, database, policy.Environment, func(id string, st domain.InstanceStatus, exit int, out string) {
 			sched.FinishInstance(id, st, exit, out)
 		})
 		log.Printf("[agent] SERVER-AGENT embutido registrado (capabilities: HTTP/REST)")
@@ -513,10 +596,6 @@ func main() {
 
 	// A falha do IdP preserva a política; somente hybrid mantém senha normal.
 	var oidcProvider *oidc.Provider
-	mode, modeErr := auth.Mode(*authMode)
-	if modeErr != nil {
-		log.Fatal(modeErr)
-	}
 	if mode == "oidc" || mode == "hybrid" {
 		cfg := oidc.Config{
 			Issuer:       *oidcIssuer,
@@ -548,23 +627,19 @@ func main() {
 	// REGENTE_TOKEN é admin-equivalente (bypassa o login). Se ficou no valor de
 	// exemplo, avisa alto e claro: é o erro de segurança mais fácil de cometer
 	// numa instalação nova, e o único jeito de o operador perceber é no log.
-	switch strings.TrimSpace(*apiToken) {
-	case "dev-token", "change-me", "":
-		log.Printf("[security] WARNING: REGENTE_TOKEN is still the example value (%q). It is ADMIN-EQUIVALENT and bypasses the login — anyone who reaches this port owns this Regente. Fix it with: sudo regente-configure", *apiToken)
-	}
+	if !policy.Production() {
+		switch strings.TrimSpace(*apiToken) {
+		case "dev-token", "change-me", "":
+			log.Printf("[security] WARNING: REGENTE_TOKEN is still the example value (%q). It is ADMIN-EQUIVALENT and bypasses the login — anyone who reaches this port owns this Regente. Fix it with: sudo regente-configure", *apiToken)
+		}
 
+	}
 	// Segurança — de quem o server aceita X-Forwarded-For/X-Real-IP. Config
 	// ERRADA aqui é falha de segurança (audit forjável), então não cai em
 	// default silencioso: valor inválido derruba o boot.
-	trustedProxies, tpErr := api.ParseTrustedProxies(*trustedProxyCIDR)
-	if tpErr != nil {
-		log.Fatalf("[security] -trusted-proxies inválido (%q): %v", *trustedProxyCIDR, tpErr)
-	}
-	if strings.TrimSpace(*trustedProxyCIDR) != "" {
-		log.Printf("[security] trusted proxies: %v (X-Forwarded-For/X-Real-IP from anyone else is ignored)", trustedProxies)
-	}
 
 	router := api.NewRouter(api.Config{
+		RuntimePolicy: policy,
 		Store:         store,
 		DB:            database,
 		Hub:           h,
@@ -598,10 +673,6 @@ func main() {
 	}
 
 	// Segurança — TLS/mTLS opcional. Sem -tls-cert segue em HTTP plano.
-	tlsCfg, mtlsOn, tlsErr := sectls.ServerTLS(*tlsCert, *tlsKey, *tlsClientCA)
-	if tlsErr != nil {
-		log.Fatalf("[tls] %v", tlsErr)
-	}
 
 	// I1 — otelhttp instrumenta todas as rotas (latência/status por endpoint).
 	srv := &http.Server{Addr: *addr, Handler: otelhttp.NewHandler(router, "regente-server"), ReadHeaderTimeout: 10 * time.Second}

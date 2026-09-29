@@ -1403,6 +1403,7 @@ const BLOCKER_COLOR: Record<ExplainBlocker["kind"], string> = {
   WAIT_CONDITION:"var(--v2-status-waiting)",
   WAIT_AGENT:    "#38bdf8",
   WAIT_RESOURCE: "var(--v2-accent-brand)",
+  CONFIGURATION_BLOCKED: "var(--v2-status-failed)",
 };
 const BLOCKER_LABEL: Record<ExplainBlocker["kind"], string> = {
   WAIT_WINDOW:   "WINDOW",
@@ -1413,6 +1414,7 @@ const BLOCKER_LABEL: Record<ExplainBlocker["kind"], string> = {
   WAIT_CONDITION:"CONDITION",
   WAIT_AGENT:    "AGENT",
   WAIT_RESOURCE: "RESOURCE",
+  CONFIGURATION_BLOCKED: "PRODUCTION POLICY",
 };
 
 function ExplainPanel({ instanceId, status, onConfirm }: { instanceId: string; status: JobInstance["status"]; onConfirm: (id: string) => void }) {
