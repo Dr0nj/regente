@@ -19,7 +19,7 @@
 >
 > Documento vivo · revisão **2026-09-28** — o marco de manutenção de **2026-07-30**
 > descreve as trilhas originais. O ciclo enterprise iniciado em setembro está ativo:
-> I04 e DOC-01–DOC-14 entregues; I05–I17 seguem na §Backlog. Manutenção histórica
+> I04/I05 e DOC-01–DOC-14 entregues; I06–I17 seguem na §Backlog. Manutenção histórica
 > não cancela incrementos explicitamente solicitados nem significa homologação produtiva.
 > Estratégia de arquitetura em [`architecture-future.md`](architecture-future.md);
 > apresentação de produto no [`../README.md`](../README.md).
@@ -85,7 +85,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
-- **I05–I17:** perfil produtivo, execução durável, HA,
+- **I06–I17:** execução durável, HA,
   auditoria, capacidade, recuperação e piloto seguem na sequência enterprise.
 
 Escopo ativo deste ciclo: separar credenciais humanas de execução e preparar as
@@ -384,6 +384,28 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+## I05 — Perfil produtivo explícito (2026-09-29)
+
+Implementação `238b2b2`, ajuste de teste `efaf9a6`: [perfil e conversão](production-profile.md).
+[CI da implementação](https://github.com/Dr0nj/regente/actions/runs/36637981599)
+e [evidência](evidence/i05-efaf9a6.json). Seis jobs SUCCESS; full com oito gates PASS
+e identidade produtiva verificada em SQLite/Postgres.
+
+- Validação antes de serviços: ambiente/rede explícitos, token administrativo
+  legado e demo recusados; local/hybrid/oidc preservam a escolha de SSO.
+- Bootstrap sem admin/admin, política de senha e diagnóstico sem ecoar segredos.
+  Conversão exige drenar RUNNING, revoga sessões e vincula banco ao ambiente;
+  reinício sem profile/environment coerentes é recusado.
+- Execução no control plane desabilitada por padrão; http e http-ssh são opt-ins.
+  Scheduler, Run Now, Force e retry respeitam ambiente/política; Explain mostra
+  CONFIGURATION_BLOCKED, preservando snapshots. SERVER-AGENT tem escopo estrito.
+- Credenciais de máquina vazias/de outro ambiente recusadas em WS/poll/SSE;
+  criação/rotação e settings reservados protegidos. Matriz SQLite/Postgres.
+- Instalação limpa, conversão e restart ensaiados com binário real; smoke da
+  release ampliado para conversão/upgrade do serviço systemd instalado.
+- Guia, exemplo de configuração, guard do configurador e site a 23 páginas.
+  Não equivale a deploy produtivo nem fecha I13, HA ou capacidade.
 
 ## DOC-E — Verificação explícita e fechamento da auditoria (2026-09-28)
 
@@ -1081,7 +1103,7 @@ NÃO traduzidos DE PROPÓSITO:
 ## 🏢 Enterprise readiness
 
 > Inventário das implementações históricas de junho/julho. Não representa
-> homologação produtiva completa; I05–I17 permanecem na §Backlog. Materialização,
+> homologação produtiva completa; I06–I17 permanecem na §Backlog. Materialização,
 > consulta e UI têm [limites e proveniência próprios](capacity-guarantees.md).
 
 ```
@@ -1825,6 +1847,11 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-09-29 — I05:** perfil produtivo opt-in; validação de boot, credenciais e
+  fronteiras de rede/ambiente; política explícita para SERVER-AGENT/SSH, inclusive
+  Run Now/retry. Conversão/restart/bloqueios testados e guia publicado.
+  [Evidência](evidence/i05-efaf9a6.json). I06–I17 seguem abertos.
 
 > Entradas de junho/julho preservam o relato da época. Alegações de escala/HA
 > devem ser lidas com o [inventário revisado em 28/09/2026](capacity-guarantees.md);
