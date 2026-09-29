@@ -147,8 +147,7 @@ func TestProductionBoot(t *testing.T) {
 	legacyDB := filepath.Join(dir, "legacy.db")
 	legacy := []string{"-db", legacyDB, "-server-agent=false"}
 	stop = start(legacy)
-	login = request("POST", "/api/auth/login", "", map[string]string{"username": "admin", "password": "admin"}, 200)
-	token = fmt.Sprint(login["token"])
+	request("POST", "/api/auth/login", "", map[string]string{"username": "admin", "password": "admin"}, 200)
 	stop()
 	upgrade := append(append([]string{}, production...), "-db", legacyDB)
 	if out, err = invoke(upgrade); err == nil || !strings.Contains(string(out), "development password") {
