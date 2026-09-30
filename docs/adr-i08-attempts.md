@@ -79,6 +79,10 @@ All persisted contact timestamps and leaseUntil use UTC Unix milliseconds. Metad
 
 Prometheus gauges expose regente_execution_outbox by pending/leased/paused state and regente_execution_uncertain. regente_execution_deliveries_total counts durable delivery claims. No command or credential is a metric label.
 
+## Validation evidence
+
+[CI 36768683576](https://github.com/Dr0nj/regente/actions/runs/36768683576) at 7a6f522 passed all six jobs and eight full verification gates. The [recorded report](evidence/i08-7a6f522.json) includes 186 integration tests with I08 on SQLite/PostgreSQL, six existing browser scenarios without skips/flakiness, and restored schema 27. The attempt tests cover atomic failure, competing admission/results/cancellation, identity rejection and lease uncertainty. A real child process also exits without database Close after committed intent and claim; reopening preserves identity, outbox and lease/redelivery. The HTTP clients are synthetic v2 clients; the current agent binary remains v1.
+
 ## Upgrade and remaining work
 
 Schema 27 adds isolated tables without reconstructing identities for historical instance_runs or outputs. Legacy data is untouched. Older schema-26 binaries reject schema 27; rollback requires a verified compatible backup. The laboratory is disabled by default after upgrade.
