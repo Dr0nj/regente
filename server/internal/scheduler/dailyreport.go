@@ -53,11 +53,12 @@ type DailyReport struct {
 	LateStart bool `json:"lateStart"`
 	// Closed — nenhuma instance WAITING/RUNNING: o dia "fechou" (é o gatilho
 	// do push; informativo pro card da UI).
-	Closed      bool                 `json:"closed"`
-	Counts      DailyReportCounts    `json:"counts"`
-	Failures    []DailyReportFailure `json:"failures"`
-	SLABreaches []domain.SLABreach   `json:"slaBreaches"`
-	ReportSent  bool                 `json:"reportSent"` // push já foi (report_sent_at)
+	Materialization *DailyRun            `json:"materialization,omitempty"`
+	Closed          bool                 `json:"closed"`
+	Counts          DailyReportCounts    `json:"counts"`
+	Failures        []DailyReportFailure `json:"failures"`
+	SLABreaches     []domain.SLABreach   `json:"slaBreaches"`
+	ReportSent      bool                 `json:"reportSent"` // push já foi (report_sent_at)
 }
 
 // lateStartGrace — tolerância entre o horário configurado e o started_at real.
@@ -146,7 +147,11 @@ func (s *Scheduler) BuildDailyReport(date string) (*DailyReport, error) {
 	if errIter != nil {
 		return nil, errIter // report com contagem parcial mentiria no e-mail do dia
 	}
-	rep.Closed = rep.Counts.Waiting == 0 && rep.Counts.Running == 0
+	rep.Materialization, err = s.DailyRun(date)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+	rep.Closed = rep.Materialization != nil && !rep.Materialization.CanResume && rep.Counts.Waiting == 0 && rep.Counts.Running == 0
 
 	// Failures (NOTOK) — detalhe cap 100; o total exato já está em Counts.NotOK.
 	frows, err := s.db.Query(
@@ -250,7 +255,7 @@ func (s *Scheduler) maybeSendDailyReport() {
 	// Claim atômico: só quem transicionar NULL→now envia (1 por diária, mesmo
 	// com vários nós checando).
 	res, err := s.db.Exec(
-		`UPDATE daily_runs SET report_sent_at=CURRENT_TIMESTAMP WHERE order_date=? AND report_sent_at IS NULL`, date,
+		`UPDATE daily_runs SET report_sent_at=CURRENT_TIMESTAMP WHERE order_date=? AND report_sent_at IS NULL AND state IN ('completed','legacy')`, date,
 	)
 	if err != nil {
 		log.Printf("[scheduler] daily report %s: claim: %v", date, err)

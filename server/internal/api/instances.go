@@ -335,7 +335,8 @@ type instanceDetail struct {
 	// SnapshotDef — a JobDefinition congelada na ordem (JSON cru do domain, que
 	// o front consome como JobDefinition: mesmos json tags). Vazio em instance
 	// legada sem snapshot (o drawer cai na def viva só nesse caso).
-	SnapshotDef json.RawMessage `json:"snapshotDef,omitempty"`
+	SnapshotDef   json.RawMessage `json:"snapshotDef,omitempty"`
+	SnapshotError string          `json:"snapshotError,omitempty"`
 }
 
 // getInstance — GET /api/instances/{id}. Detalhe de UMA instance, incluindo o
@@ -374,9 +375,11 @@ func (s *server) getInstance(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var snap string
-	_ = s.cfg.DB.QueryRow(`SELECT COALESCE(definition_snapshot,'') FROM instances WHERE id=?`, id).Scan(&snap)
-	if snap != "" {
+	var snap, checksum string
+	_ = s.cfg.DB.QueryRow(`SELECT COALESCE(i.definition_snapshot,''),COALESCE(l.snapshot_checksum,'') FROM instances i LEFT JOIN daily_order_ledger l ON l.instance_id=i.id WHERE i.id=?`, id).Scan(&snap, &checksum)
+	if reason := scheduler.OrderSnapshotError(det.DefinitionID, snap, checksum); reason != "" {
+		det.SnapshotError = reason
+	} else if snap != "" {
 		var d domain.JobDefinition
 		if json.Unmarshal([]byte(snap), &d) == nil {
 			// Label/JobType já vêm das colunas congeladas (M1); reforço só p/
@@ -763,12 +766,36 @@ func (s *server) runDaily(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 409, map[string]string{"error": err.Error()})
 		return
 	}
-	// E1 — "hoje" é o dia na timezone de NEGÓCIO (settings.daily_timezone), o
-	// mesmo relógio da daily automática: rodar manualmente às 22h de SP com o
-	// server em UTC (01h do dia seguinte) NÃO pode materializar a diária de amanhã.
-	today := s.cfg.Scheduler.TodayDate()
-	created := s.cfg.Scheduler.RunDaily(today)
-	writeJSON(w, 200, map[string]interface{}{"orderDate": today, "created": created})
+	s.materializeDailyResponse(w, s.cfg.Scheduler.TodayDate())
+}
+func (s *server) resumeDaily(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		OrderDate string `json:"orderDate"`
+	}
+	if json.NewDecoder(r.Body).Decode(&body) != nil {
+		http.Error(w, "orderDate is required", 400)
+		return
+	}
+	run, err := s.cfg.Scheduler.DailyRun(body.OrderDate)
+	if err != nil {
+		http.Error(w, "Daily not found", 404)
+		return
+	}
+	if run.State == "legacy" {
+		http.Error(w, "Legacy daily has no frozen plan; it cannot be resumed", http.StatusConflict)
+		return
+	}
+	s.materializeDailyResponse(w, body.OrderDate)
+}
+func (s *server) materializeDailyResponse(w http.ResponseWriter, date string) {
+	run, created, err := s.cfg.Scheduler.MaterializeDaily(date)
+	resp := map[string]interface{}{"orderDate": date, "created": created, "run": run}
+	code := 200
+	if err != nil {
+		resp["error"] = err.Error()
+		code = 409
+	}
+	writeJSON(w, code, resp)
 }
 
 // dailyStatus — estado da daily pelo relógio de NEGÓCIO do servidor: última
@@ -784,8 +811,18 @@ func (s *server) dailyStatus(w http.ResponseWriter, r *http.Request) {
 	var lastDate string
 	var lastAt sql.NullTime
 	_ = s.cfg.DB.QueryRow(
-		`SELECT order_date, started_at FROM daily_runs ORDER BY order_date DESC LIMIT 1`,
+		`SELECT order_date, started_at FROM daily_runs WHERE state IN ('completed','legacy') ORDER BY order_date DESC LIMIT 1`,
 	).Scan(&lastDate, &lastAt)
+	run, runErr := s.cfg.Scheduler.DailyRun(s.cfg.Scheduler.TodayDate())
+	if runErr != nil && runErr != sql.ErrNoRows {
+		http.Error(w, "Unable to read daily state", 500)
+		return
+	}
+	pending, pendingErr := s.cfg.Scheduler.PendingDaily()
+	if pendingErr != nil && pendingErr != sql.ErrNoRows {
+		http.Error(w, "Unable to read pending daily", 500)
+		return
+	}
 	tzName, _ := s.cfg.Scheduler.DailyTimezone()
 	now := s.cfg.Scheduler.NowLocal()
 	resp := map[string]interface{}{
@@ -795,6 +832,8 @@ func (s *server) dailyStatus(w http.ResponseWriter, r *http.Request) {
 		"dailyAt":     s.cfg.Scheduler.DailyAt(),
 		"timezone":    tzName,
 		"lastRunDate": lastDate,
+		"run":         run,
+		"pending":     pending,
 		"serverNow":   now.Format(time.RFC3339),
 	}
 	// lateStart no rodapé do Monitoring (só quando há daily): reusa a fonte única

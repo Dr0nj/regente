@@ -99,7 +99,7 @@ A running server serves the same content live: the docs at `/docs` (with `-docs-
 interactive API explorer at `/api-docs`, where you can send real requests with your token.
 
 Deeper documents: [operations](docs/operations.md) · [DR and backup](docs/dr-backup.md) ·
-[SLOs](docs/slos.md) · [business time](docs/business-time.md) · [conditions spec](docs/conditions-events.md) ·
+[SLOs](docs/slos.md) · [business time](docs/business-time.md) · [daily recovery](docs/daily-recovery.md) · [conditions spec](docs/conditions-events.md) ·
 [MCP / AI agents](docs/mcp.md) · [future architecture](docs/architecture-future.md).
 
 ---

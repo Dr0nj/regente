@@ -415,3 +415,7 @@ cleared) · `api/holdall_delete_test.go` (general hold/delete — no claims) ·
 ## Business time (I06)
 
 Daily selection, schedule windows, retries and deadlines follow the [business-time contract](business-time.md). New order snapshots freeze an explicit IANA timezone and rollover; HH:MM before rollover belongs to the next calendar morning. Carry-over preserves ODAT and that temporal context. UTC instants are not reconstructed from the host timezone. Legacy orders without a recorded zone cannot evaluate wall-clock windows: Explain reports CONFIGURATION_BLOCKED and the operator must reorder under explicit settings (Run Now retains its documented bypass). Repeated DST hours use the first occurrence; gaps use the first valid instant after the gap.
+
+## Recoverable daily (I07)
+
+The [daily recovery contract](daily-recovery.md) defines planning, chunk/checkpoint atomicity and resume. Orders from an incomplete daily and orders with a present invalid snapshot are CONFIGURATION_BLOCKED, including Run Now. Missing legacy snapshots retain their documented compatibility; invalid snapshots never execute live definitions. Only completed/legacy daily records participate in PREV resolution.

@@ -227,6 +227,9 @@ func labelOf(def domain.JobDefinition) string {
 // Actions: as regras são as que valiam quando o job foi ordenado, não as atuais.
 // ok=false se a instance sumiu ou não tem snapshot (instances pré-snapshot).
 func (s *Scheduler) instanceContext(id string) (def domain.JobDefinition, orderDate string, attempt int, ok bool) {
+	if r, err := s.orderIntegrity(id); err != nil || integrityBlock(r) != "" {
+		return domain.JobDefinition{}, "", 0, false
+	}
 	var snapshot string
 	if err := s.db.QueryRow(
 		`SELECT COALESCE(definition_snapshot,''), order_date, COALESCE(attempts,1) FROM instances WHERE id=?`, id,

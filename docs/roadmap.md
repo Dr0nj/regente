@@ -85,7 +85,8 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
-- **I07–I17:** execução durável, HA,
+- **I07:** daily com plano/checkpoint persistidos e retomada implementada em `codex/i07-daily-checkpoint`; validação completa/publicação em andamento. [Contrato](daily-recovery.md).
+- **I08–I17:** execução durável, HA,
   auditoria, capacidade, recuperação e piloto seguem na sequência enterprise.
 
 Escopo ativo deste ciclo: separar credenciais humanas de execução e preparar as

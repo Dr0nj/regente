@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Business time · Regente Docs</title>
+<title>Daily recovery · Regente Docs</title>
 <style>
 :root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
 *{box-sizing:border-box}
@@ -61,9 +61,9 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="agent-authentication.html">Agent authentication and upgrades</a>
 <a href="agent-identity.html">Agent identity and credential lifecycle</a>
 <a href="authentication.html">Authentication: local, hybrid or SSO</a>
-<a href="business-time.html" class="active">Business time</a>
+<a href="business-time.html">Business time</a>
 <a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
-<a href="daily-recovery.html">Daily recovery</a>
+<a href="daily-recovery.html" class="active">Daily recovery</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="production-profile.html">Production profile</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
@@ -72,18 +72,20 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 </nav>
 <main>
 <article>
-<h1 id="business-time">Business time</h1>
-<p>Regente uses one injected clock and an explicit IANA business timezone. The default is UTC with a 00:00 rollover. The operating system and browser timezone do not select the active daily. Set daily_timezone and daily_at in Settings before ordering jobs.</p>
-<h2 id="calendar-contract">Calendar contract</h2>
-<p>A business date D starts at daily_at on calendar date D in the configured zone. Times before daily_at belong to calendar date D+1. With rollover 06:00, a 02:00 job for D runs on the following morning. A window whose end precedes its start continues across midnight. Equal start/end is a single boundary, not a 24-hour window.</p>
-<p>All instants are stored in UTC. New daily, Force Order and Order Folder snapshots freeze the timezone and rollover. Settings changes affect new orders and the active daily selection; existing orders retain their original timing context and ODAT. Carry-over advances the active order_date only; scheduling windows and SLA remain anchored to the original ODAT. Retry delays are elapsed durations, including delays longer than a day.</p>
-<h2 id="daylight-saving-transitions">Daylight saving transitions</h2>
-<p>A repeated wall time resolves to its first occurrence. A nonexistent wall time resolves to the first valid instant after the gap. The same resolver handles rollover, schedule, windows, forecast and SLA. Business days are calendar intervals, not fixed 24-hour durations. These are explicit product rules: Go time.Date does not guarantee a particular choice during a transition (<a href="https://pkg.go.dev/time#Date">Go documentation</a>).</p>
-<h2 id="existing-orders-and-upgrade">Existing orders and upgrade</h2>
-<p>Pre-I06 snapshots have no provable timezone. Their stored timestamps and ODAT remain unchanged. They are shown as legacy / timezone unknown. A legacy order requiring a wall-clock window is blocked with CONFIGURATION_BLOCKED; reorder it under explicit settings to obtain a frozen context. Legacy deadline SLAs cannot be reconstructed and are not recalculated; elapsed-duration SLAs still apply. Run Now retains its explicit operator bypass of schedule gates. No automatic timezone backfill invents historical evidence.</p>
-<p>Invalid timezone or rollover settings are rejected. Empty timezone on a new settings write is normalized to UTC. Existing invalid values block new materialization until corrected. Existing empty settings use the documented UTC default; review this setting before upgrading a server that previously relied on host-local time.</p>
-<p>Forecast and What-if project new orders using current settings and return their timezone and rollover. Monitoring displays each order's frozen zone. Offline browser mode remains a local simulation.</p>
-<p>Automatic startup does not backfill a missed daily before today's rollover; pending cycles resume their frozen plan under the <a href="daily-recovery.html">daily recovery contract</a>.</p>
+<h1 id="daily-recovery">Daily recovery</h1>
+<p>A daily is a persisted materialization cycle, separate from the execution of its jobs. New cycles progress through planning, materializing and completed. An error records failed, the last committed checkpoint and a diagnostic. A daily is completed only after reconciling its frozen plan with its order ledger.</p>
+<h2 id="frozen-source-and-atomic-chunks">Frozen source and atomic chunks</h2>
+<p>Before inserting orders, Regente stores the eligible plan, its target Git commit and a checksum. Git definitions are read from immutable commit objects; offline mode freezes the loaded definitions. Schedule/calendar eligibility and business time are frozen at planning. A later publication or settings change cannot replace the plan during recovery.</p>
+<p>Orders are inserted in chunks of up to 5,000. Each transaction includes the orders, their ordered events, ledger entries and checkpoint. Failure rolls the whole chunk back. Restart resumes from the last committed checkpoint, using the same plan. Database serialization and unique daily/ordinal and daily/definition ledger keys protect concurrent attempts. Force Order remains a distinct manual order.</p>
+<p>The plan is held in memory and persisted as one JSON payload. Chunked order writes do not constitute capacity qualification; large plans require the separate capacity validation described in <a href="capacity-guarantees.html">capacity guarantees</a>.</p>
+<h2 id="operation">Operation</h2>
+<p>GET /api/daily/status returns the current run and the oldest pending cycle, with state, commit, expected/inserted counts, checkpoint and error. lastRunDate/lastRunAt refer to the last completed or legacy cycle. Monitoring shows an incomplete daily and offers Resume daily to writers. POST /api/daily/resume with {&quot;orderDate&quot;:&quot;YYYY-MM-DD&quot;} resumes an existing cycle; it never replans it. Completed cycles are idempotent.</p>
+<p>The automatic scheduler recovers pending cycles before opening another daily, including a restart before rollover. A recovery failure prevents the next cycle from starting. A new empty workspace does not mark a day; loaded definitions that are all excluded by scheduling produce a legitimate empty plan. Carry-over updates and events are atomic, with its completion recorded in the same transaction.</p>
+<p>Orders created by an incomplete cycle remain WAITING with CONFIGURATION_BLOCKED in Explain, including Run Now. A missing or checksum-mismatched snapshot on a verified daily order also blocks execution. A corrupt order snapshot also blocks execution and never falls back to live code. Restore verified state or reorder the affected job after investigation. A corrupt plan stays failed and cannot be rebuilt silently from current definitions. Retention and daily report delivery do not treat incomplete materialization as completed.</p>
+<p>The ledger records ordering, not continued existence of an order. Deleting an order after its checkpoint does not make recovery recreate it.</p>
+<h2 id="upgrade">Upgrade</h2>
+<p>Schema 26 adds cycle metadata and the order ledger for SQLite and PostgreSQL. Verify a backup before upgrading. Older binaries reject this schema: rollback requires restoring a verified compatible backup.</p>
+<p>Historical daily rows become legacy, preserving their dates and timestamps. No expected count, completion proof or frozen plan is invented. They cannot be resumed as a new cycle; inspect and explicitly reorder missing jobs. An absent order snapshot retains documented legacy compatibility; a present invalid snapshot is corruption, not legacy.</p>
 </article>
 <footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
 </main>

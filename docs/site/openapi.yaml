@@ -597,6 +597,39 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/ExternalEvent" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/daily/run:
+    post:
+      tags: [Daily]
+      summary: Plan or resume the current business daily
+      operationId: runDaily
+      x-permission: admin or operator
+      responses:
+        "200": { description: Completed or already completed; returns orderDate, created and run. }
+        "409": { description: Incomplete materialization or invalid configuration; includes error and committed checkpoint when available. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/daily/resume:
+    post:
+      tags: [Daily]
+      summary: Resume an existing frozen daily plan
+      operationId: resumeDaily
+      x-permission: admin or operator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderDate]
+              properties:
+                orderDate: { type: string, format: date }
+      responses:
+        "200": { description: Resumed or already completed; returns orderDate, created and run. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: No persisted daily for this date. }
+        "409": { description: Legacy daily without a frozen plan or failed recovery. }
   /api/daily/status:
     get:
       tags: [Daily]
@@ -946,6 +979,8 @@ components:
           properties:
             label: { type: string, description: The job label frozen on the order. }
             jobType: { type: string, description: The job type (COMMAND/SCRIPT/...) frozen on the order. }
+            snapshotError: { type: string, description: Present invalid snapshots are blocked; live definitions are not substituted. }
+            snapshotDef: { type: object, additionalProperties: true, description: Frozen order definition; absent for legacy or invalid snapshots. }
             actionConfig:
               type: object
               additionalProperties: true
@@ -1042,18 +1077,35 @@ components:
       properties:
         id: { type: string }
         status: { type: string }
+    DailyMaterialization:
+      type: object
+      properties:
+        orderDate: { type: string, format: date }
+        state: { type: string, enum: [legacy, planning, materializing, completed, failed] }
+        commitSha: { type: string }
+        expected: { type: integer }
+        inserted: { type: integer }
+        checkpoint: { type: integer }
+        carried: { type: integer }
+        error: { type: string }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        canResume: { type: boolean }
     DailyStatus:
       type: object
       properties:
         orderDate: { type: string, format: date, description: '"Today" in the business timezone.' }
         dailyAt: { type: string, description: The configured time (HH:MM). }
         timezone: { type: string, description: Explicit IANA business timezone (settings.daily_timezone); default UTC. }
+        run: { $ref: "#/components/schemas/DailyMaterialization" }
+        pending: { $ref: "#/components/schemas/DailyMaterialization" }
         lastRunDate: { type: string, format: date }
         lastRunAt: { type: string }
         serverNow: { type: string, format: date-time }
     DailyReport:
       type: object
       properties:
+        materialization: { $ref: "#/components/schemas/DailyMaterialization" }
         date: { type: string, format: date }
         dailyAt: { type: string }
         timezone: { type: string }
@@ -1063,7 +1115,7 @@ components:
           description: Materialized >5 min after the configured time (the scheduler's punctuality SLO).
         closed:
           type: boolean
-          description: Nothing WAITING/RUNNING — the day closed (the push trigger).
+          description: Materialization completed or legacy and nothing WAITING/RUNNING — the day closed (the push trigger).
         counts: { $ref: "#/components/schemas/DailyReportCounts" }
         failures:
           type: array

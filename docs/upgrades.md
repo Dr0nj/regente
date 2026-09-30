@@ -16,6 +16,7 @@ The current schema and supported runtime range are maintained in the
 | Frozen schema 22 fixture → current runtime | Restore legacy snapshot to an isolated target, then migrate; data assertions in the mandatory lab | Every manually modified legacy installation is safe |
 | Schema 23 → current runtime | Migration tests preserve metadata but retire legacy machine secrets; [reissue credentials](agent-identity.md) | Old agents/tokens keep working |
 | Schema 24 → current runtime | Stop all old nodes; migrate together; human sessions revoked, federated identities need explicit linking; [authentication upgrade](authentication.md#upgrade-from-schema-24) | Old schema-24 binaries can restart against schema 25 |
+| Schema 25 → schema 26 | Stop old nodes; new daily cycles have frozen plans/checkpoints; historical cycles stay legacy; [daily recovery](daily-recovery.md). Restore a verified schema-25 backup to return to an older binary | Invented historical completion proof or an automatic downgrade |
 | Restart current build / same-build node drain | Restart tests and disposable same-binary drain drill | Cross-version rolling upgrade or end-to-end exactly-once effects |
 | Older/future/unknown binary against current DB | Range/history checks refuse unsupported schemas; tests simulate older migration sets and future history | Historical binaries predating these checks are safe to try |
 | Return after upgrade | Compatible binary only, or restore a verified pre-upgrade recovery set into a separate target | Copying a `.bak` binary reverses DB migrations |

@@ -22,7 +22,8 @@ REQUIRED_BROWSER = {"local: login policy and browser session",
                     "hybrid: login policy and browser session",
                     "oidc: login policy and browser session",
                     "I04: scoped frames and automatic reconnect after ACL change",
-                    "I06: frozen business timezone survives settings changes in Monitoring"}
+                    "I06: frozen business timezone survives settings changes in Monitoring",
+                    "I07: incomplete daily resumes its frozen plan in Monitoring"}
 
 
 def plan(mode):

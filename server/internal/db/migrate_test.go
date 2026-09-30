@@ -95,6 +95,7 @@ func TestMigrationSafety(t *testing.T) {
 				assertCount(t, d, `SELECT COUNT(*) FROM schema_migration_checksums WHERE provenance='legacy-adopted'`, 22)
 				assertCount(t, d, `SELECT COUNT(*) FROM agent_tokens WHERE label='fixture only' AND agent_id IS NULL AND token_hash LIKE 'retired:%'`, 1)
 				assertCount(t, d, `SELECT COUNT(*) FROM daily_runs WHERE finished_at IS NULL`, 1)
+				assertCount(t, d, `SELECT COUNT(*) FROM daily_runs WHERE state='legacy' AND plan_json='' AND expected_count=0`, 1)
 				assertCount(t, d, `SELECT COUNT(*) FROM design_sessions WHERE id='legacy-draft'`, 1)
 			})
 			t.Run("v23_credentials_require_explicit_reissue", func(t *testing.T) {

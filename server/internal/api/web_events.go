@@ -222,7 +222,7 @@ func (s *server) filterWebEvent(a *webAccess, environment *string, view *string,
 			return nil
 		}
 		out = projectFields(p, "id", "instanceId", "kind", "severity")
-	case "daily.started":
+	case "daily.started", "daily.changed":
 		// Data de negócio é global e pública aos usuários; totais/SHA não são.
 		out = projectFields(p, "orderDate")
 	case "settings.changed":

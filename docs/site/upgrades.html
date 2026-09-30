@@ -63,6 +63,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="authentication.html">Authentication: local, hybrid or SSO</a>
 <a href="business-time.html">Business time</a>
 <a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html">Daily recovery</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="production-profile.html">Production profile</a>
 <a href="upgrades.html" class="active">Upgrade and recovery compatibility</a>
@@ -107,6 +108,11 @@ a production rollout without a workload-specific rehearsal.</p>
 <td>Schema 24 → current runtime</td>
 <td>Stop all old nodes; migrate together; human sessions revoked, federated identities need explicit linking; <a href="authentication.html#upgrade-from-schema-24">authentication upgrade</a></td>
 <td>Old schema-24 binaries can restart against schema 25</td>
+</tr>
+<tr>
+<td>Schema 25 → schema 26</td>
+<td>Stop old nodes; new daily cycles have frozen plans/checkpoints; historical cycles stay legacy; <a href="daily-recovery.html">daily recovery</a>. Restore a verified schema-25 backup to return to an older binary</td>
+<td>Invented historical completion proof or an automatic downgrade</td>
 </tr>
 <tr>
 <td>Restart current build / same-build node drain</td>

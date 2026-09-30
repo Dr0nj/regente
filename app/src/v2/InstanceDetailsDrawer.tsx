@@ -155,12 +155,12 @@ export default function InstanceDetailsDrawer({
 
   // Cascata = a MESMA do dispatch (defForInstance): snapshot na instance >
   // snapshot da ordem no server > def viva (só instance pré-snapshot/seed antigo).
-  const actionConfig = instance.actionConfig ?? orderDetail?.actionConfig ?? definition?.actionConfig;
+  const actionConfig = orderDetail?.snapshotError ? undefined : instance.actionConfig ?? orderDetail?.actionConfig ?? definition?.actionConfig;
   const jobType = instance.jobType || orderDetail?.jobType || definition?.jobType || "—";
   // M1 — DEF CONGELADA da ordem: Schedule/Condições/General leem DAQUI, não da
   // def viva do Design. É o definition_snapshot (a foto que o dispatch executou);
   // a def viva entra só como fallback de instance legada sem snapshot.
-  const orderDef = orderDetail?.snapshotDef ?? definition;
+  const orderDef = orderDetail?.snapshotError ? undefined : orderDetail?.snapshotDef ?? definition;
   // BUG-5 — gate CONFIRM ativo (card violeta): as únicas ações são Hold e
   // Confirm; Cancel/Skip/Set OK/Chaos somem até o operador decidir. M1: lê o
   // confirmReq CONGELADO na ordem (coluna schemaV18); def viva só fallback.
@@ -342,6 +342,7 @@ export default function InstanceDetailsDrawer({
         <LogPanel instanceId={instance.id} status={status} />
       ) : (
         <div style={{ flex: 1, overflowY: "auto", padding: "12px", fontSize: 11 }}>
+          {orderDetail?.snapshotError && <div role="alert" style={{ color: "var(--v2-status-failed)", marginBottom: 8 }}>{orderDetail.snapshotError}</div>}
           {tab === "general" && <GeneralTab instance={instance} definition={orderDef} jobType={jobType} actionConfig={actionConfig} />}
           {tab === "output" && <OutputTab instance={instance} jobType={jobType} actionConfig={actionConfig} />}
           {tab === "stats" && <StatsTab instance={instance} />}
@@ -1097,7 +1098,7 @@ const SHIFT_LABEL: Record<string, string> = {
 
 function ScheduleTab({ definition, businessTime }: { definition?: JobDefinition; businessTime?: JobInstance["businessTime"] }) {
   if (!definition) {
-    return <Muted>Snapshot not available — this order's frozen schedule can't be shown (legacy instance without snapshot).</Muted>;
+    return <Muted>Snapshot not available — this order's frozen schedule can't be shown.</Muted>;
   }
   const s = definition.schedule;
   const window = `${s.windowFrom || "—"} → ${s.windowTo || "—"}`;

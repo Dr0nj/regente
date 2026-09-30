@@ -167,7 +167,7 @@ func (s *server) readyz(w http.ResponseWriter, r *http.Request) {
 	out["schedulerLastTickAgeSeconds"] = age
 	out["schedulerStale"] = stale
 	var lastDaily string
-	_ = s.cfg.DB.QueryRow(`SELECT COALESCE(MAX(order_date),'') FROM daily_runs`).Scan(&lastDaily)
+	_ = s.cfg.DB.QueryRow(`SELECT COALESCE(MAX(order_date),'') FROM daily_runs WHERE state IN ('completed','legacy')`).Scan(&lastDaily)
 	out["lastDaily"] = lastDaily
 
 	out["ready"] = ready

@@ -13,7 +13,7 @@ failed commands, missing evidence or an omitted mandatory gate cause failure.
 | Web lint and same-origin build | Installed dependencies | Clean engine-strict install | Declared Node minima |
 | Schema, engines/recipes, API contracts | Focused checks | Same checks plus real services | Node matrix and demo |
 | Markdown paths, generated anchors, site freshness | Yes | Yes | Same read-only checker |
-| Real browser: local/hybrid/OIDC login, scoped WebSocket and frozen business timezone | No | Yes | Chromium against real server |
+| Real browser: local/hybrid/OIDC login, scoped WebSocket, frozen business timezone and daily recovery | No | Yes | Chromium against real server |
 | PostgreSQL, NATS, OIDC, recovery and synthetic execution | No | Yes | Real containers; evidence required |
 | PowerShell demo: offline and Git fixture | No | Linux Docker smoke | Native Windows smoke |
 | Release installation in systemd | No | No | Separate release workflow |
@@ -66,7 +66,7 @@ bash scripts/verify.sh --full
 ```
 
 Full performs a fresh engine-strict npm install itself. It builds the server for
-browser tests, verifies all five required browser scenarios without skips or
+browser tests, verifies all six required browser scenarios without skips or
 flaky passes, runs [integration and recovery](integration-baseline.md), then
 executes the PowerShell demo smoke in both offline and Git-fixture modes. Demo
 reports must prove authenticated presence, completed execution, credential

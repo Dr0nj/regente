@@ -20,4 +20,4 @@ Invalid timezone or rollover settings are rejected. Empty timezone on a new sett
 
 Forecast and What-if project new orders using current settings and return their timezone and rollover. Monitoring displays each order's frozen zone. Offline browser mode remains a local simulation.
 
-Automatic startup does not backfill a missed daily before today's rollover; recovery of partial daily materialization belongs to a separate work item.
+Automatic startup does not backfill a missed daily before today's rollover; pending cycles resume their frozen plan under the [daily recovery contract](daily-recovery.md).

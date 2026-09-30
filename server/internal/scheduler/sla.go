@@ -35,7 +35,7 @@ func NewSLAEngine(db *db.DB, h *hub.Hub) *SLAEngine {
 // Chamado pelo tick do scheduler.
 func (e *SLAEngine) Evaluate(defs map[string]domain.JobDefinition, now time.Time) {
 	rows, err := e.db.Query(
-		`SELECT id, definition_id, COALESCE(NULLIF(carried_from,''), order_date), started_at, COALESCE(definition_snapshot,'') FROM instances
+		`SELECT id, definition_id, COALESCE(NULLIF(carried_from,''), order_date), started_at, COALESCE(definition_snapshot,''), COALESCE((SELECT snapshot_checksum FROM daily_order_ledger WHERE instance_id=instances.id),'') FROM instances
 		 WHERE status='RUNNING' AND started_at IS NOT NULL`,
 	)
 	if err != nil {
@@ -44,12 +44,12 @@ func (e *SLAEngine) Evaluate(defs map[string]domain.JobDefinition, now time.Time
 	defer rows.Close()
 
 	for rows.Next() {
-		var id, defID, orderDate, snapshot string
+		var id, defID, orderDate, snapshot, checksum string
 		var started time.Time
-		if err := rows.Scan(&id, &defID, &orderDate, &started, &snapshot); err != nil {
+		if err := rows.Scan(&id, &defID, &orderDate, &started, &snapshot, &checksum); err != nil {
 			continue
 		}
-		def, ok := defForInstance(instRow{DefID: defID, Snapshot: snapshot}, defs)
+		def, ok := defForInstance(instRow{DefID: defID, Snapshot: snapshot, SnapshotChecksum: checksum}, defs)
 		if !ok || def.SLA == nil {
 			continue
 		}

@@ -50,7 +50,7 @@ func (s *Scheduler) instanceOdate(id, fallback string) string {
 func (s *Scheduler) prevDaily(odate string) string {
 	var prev string
 	if err := s.db.QueryRow(
-		`SELECT COALESCE(MAX(order_date),'') FROM daily_runs WHERE order_date < ?`, odate,
+		`SELECT COALESCE(MAX(order_date),'') FROM daily_runs WHERE order_date < ? AND state IN ('completed','legacy')`, odate,
 	).Scan(&prev); err == nil && prev != "" {
 		return prev
 	}
@@ -89,4 +89,3 @@ func daysBetween(a, b string) int {
 	}
 	return int(tb.Sub(ta).Hours() / 24)
 }
-

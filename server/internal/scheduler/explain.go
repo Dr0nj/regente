@@ -68,6 +68,9 @@ type Explanation struct {
 // TODOS (Explain). A checagem de recurso é read-only (Shortfalls); a reserva
 // atômica (TryAcquire) fica no tick, depois deste gate passar.
 func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx CondIndex, now time.Time, shortCircuit bool) []Blocker {
+	if reason := integrityBlock(r); reason != "" {
+		return []Blocker{{Kind: GateConfiguration, Detail: reason}}
+	}
 	if reason := s.RuntimePolicy.ExecutionError(def); reason != "" {
 		return []Blocker{{Kind: GateConfiguration, Detail: reason}}
 	}
@@ -239,10 +242,8 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 	var r instRow
 	var forcedInt, confirmedInt int
 	err := s.db.QueryRow(
-		`SELECT id, definition_id, order_date, status, scheduled_at, started_at, carried_at,
-		        COALESCE(forced,0), COALESCE(force_mode,''), COALESCE(confirmed,0), COALESCE(carried_from,''), COALESCE(definition_snapshot,'')
-		 FROM instances WHERE id=?`, instanceID,
-	).Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.CarriedFrom, &r.Snapshot)
+		`SELECT i.id,i.definition_id,i.order_date,i.status,i.scheduled_at,i.started_at,i.carried_at,COALESCE(i.forced,0),COALESCE(i.force_mode,''),COALESCE(i.confirmed,0),COALESCE(i.carried_from,''),COALESCE(i.definition_snapshot,''),COALESCE(d.state,''),COALESCE(l.snapshot_checksum,'') FROM instances i LEFT JOIN daily_order_ledger l ON l.instance_id=i.id LEFT JOIN daily_runs d ON d.order_date=l.order_date WHERE i.id=?`, instanceID,
+	).Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.CarriedFrom, &r.Snapshot, &r.DailyState, &r.SnapshotChecksum)
 	if err != nil {
 		return Explanation{}, err
 	}
@@ -273,6 +274,11 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 		return ex, nil
 	}
 
+	if reason := integrityBlock(r); reason != "" {
+		ex.Blockers = []Blocker{{Kind: GateConfiguration, Detail: reason}}
+		ex.Summary = reason
+		return ex, nil
+	}
 	// WAITING: avalia os gates.
 	s.mu.Lock()
 	defs := make(map[string]domain.JobDefinition, len(s.defs))
