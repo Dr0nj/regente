@@ -227,7 +227,9 @@ def legacy_restore(dsn):
                          "(SELECT count(*) FROM daily_runs WHERE finished_at IS NULL)"])
     if result != "1|1|1|1":
         raise RuntimeError("Legacy backup/restore/upgrade did not preserve the fixture")
-    REPORT["legacy_restore"] = {"schema_from": 22, "schema_to": 25, "preserved_entities": 4,
+    schema_to = int(command(pg+["psql", "-U", "regente", "-d", "regente_legacy_restored", "-Atc",
+                                "SELECT max(version) FROM schema_migrations"]))
+    REPORT["legacy_restore"] = {"schema_from": 22, "schema_to": schema_to, "preserved_entities": 4,
                                 "seconds": round(time.monotonic()-start, 3)}
     # O binário real deve recusar schema futuro ANTES de criar o workspace/API.
     command(pg+["psql", "-U", "regente", "-d", "regente_legacy_restored", "-v", "ON_ERROR_STOP=1", "-c",
