@@ -19,7 +19,7 @@
 >
 > Documento vivo · revisão **2026-09-30** — o marco de manutenção de **2026-07-30**
 > descreve as trilhas originais. O ciclo enterprise iniciado em setembro está ativo:
-> I04/I05/I06 e DOC-01–DOC-14 entregues; I07–I17 seguem na §Backlog. Manutenção histórica
+> I04/I05/I06/I07 e DOC-01–DOC-14 entregues; I08–I17 seguem na §Backlog. Manutenção histórica
 > não cancela incrementos explicitamente solicitados nem significa homologação produtiva.
 > Estratégia de arquitetura em [`architecture-future.md`](architecture-future.md);
 > apresentação de produto no [`../README.md`](../README.md).
@@ -85,7 +85,6 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
-- **I07:** daily com plano/checkpoint persistidos e retomada implementada em `codex/i07-daily-checkpoint`; validação completa/publicação em andamento. [Contrato](daily-recovery.md).
 - **I08–I17:** execução durável, HA,
   auditoria, capacidade, recuperação e piloto seguem na sequência enterprise.
 
@@ -385,6 +384,15 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+## I07 — Daily com checkpoint e fonte imutável (2026-09-30)
+
+- Implementação `748c47b`: schema26 com ciclo, SHA alvo, plano/checksum, contagens e checkpoint duráveis. [Contrato](daily-recovery.md).
+- Chunks de até 5.000 com ordem/evento/ledger/checkpoint no mesmo commit; carry atômico; reconciliação antes de completed; resume idempotente após falha/restart, sem usar publicação posterior.
+- Fonte Git lida do commit imutável; ledger permite Force Order e Delete sem duplicação por recovery. Daily incompleta bloqueia execução inclusive Run Now. Corrupção/checksum/ausência de snapshot verificado bloqueiam runtime/Explain/On-Do/saídas de condições sem fallback vivo. Legado não recebe plano inventado.
+- API/UI exibem estado e retomada; auto recovery antes da próxima daily. Report/retention respeitam conclusão. Upgrade SQLite/PostgreSQL documentado.
+- CI `36757784228`: seis jobs SUCCESS, oito gates full PASS em 479,737s; integração SQLite/PostgreSQL 183 testes em 179,660s, I07 nos dois backends; seis cenários browser sem skip/flaky. [Evidência](evidence/i07-748c47b.json).
+- Plano inteiro em JSON/memória: chunks não homologam capacidade. I08–I17 seguem abertos.
 
 ## I06 — Relógio e data de negócio (2026-09-30)
 
@@ -1856,6 +1864,8 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-09-30 — I07:** daily com plano imutável, checkpoint e ledger; recuperação após falha/restart, corrupção bloqueada, status/resume API/UI, schema26. CI full SQLite/PostgreSQL e seis cenários browser aprovados. [Contrato](daily-recovery.md) · [Evidência](evidence/i07-748c47b.json). I08–I17 seguem abertos.
 
 - **2026-09-30 — I06:** relógio/data de negócio unificados com zona/rollover congelados por ordem; API, scheduler, projeções e UI validados em SQLite/Postgres e browser. [Contrato](business-time.md) · [Evidência](evidence/i06-ff34705.json). I07–I17 seguem abertos.
 
