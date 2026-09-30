@@ -58,6 +58,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
 <a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
 <a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
 <a href="agent-authentication.html">Agent authentication and upgrades</a>
 <a href="agent-identity.html">Agent identity and credential lifecycle</a>
 <a href="authentication.html">Authentication: local, hybrid or SSO</a>
@@ -202,6 +203,11 @@ are outside this baseline and are not claimed as executed.</p>
 <td><a href="daily-recovery.html">Daily recovery</a>; 5,001-order synthetic scenario, not capacity qualification</td>
 </tr>
 <tr>
+<td>Isolated attempts, atomic dispatch and result, concurrent admission/cancellation, restart and lease uncertainty</td>
+<td>TestI08AttemptIntegration on SQLite/Postgres; execution unit suite</td>
+<td>Opt-in development <a href="adr-i08-attempts.html">attempt laboratory</a>; synthetic v2 client only, legacy dispatch and conditions unchanged</td>
+</tr>
+<tr>
 <td>Distributed drafts and uncertain effects</td>
 <td>preserved synthetic fixtures</td>
 <td>Broader guarantees remain reserved for I10/I12</td>
@@ -316,7 +322,7 @@ at <code>af75c51</code> passed the complete-set/DB-only draft drills on SQLite a
 the same-binary drain and the schema-document contract. The
 <a href="https://github.com/Dr0nj/regente/blob/main/docs/evidence/doc-a-af75c51.json">recorded evidence</a> is synthetic laboratory evidence,
 not production or mixed-version qualification.</p>
-<p>Current runtime schema: <strong>26</strong>; supported range: <strong>[26,26]</strong>.</p>
+<p>Current runtime schema: <strong>27</strong>; supported range: <strong>[27,27]</strong>.</p>
 <p><code>TestMigrationRunbookContract</code> compares this current statement with the migration
 constants and an actual fresh database. Historical fixture versions below remain
 intentional. See the <a href="upgrades.html">compatibility matrix</a> before choosing binaries.</p>

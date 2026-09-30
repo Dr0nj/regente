@@ -14,13 +14,17 @@ failed commands, missing evidence or an omitted mandatory gate cause failure.
 | Schema, engines/recipes, API contracts | Focused checks | Same checks plus real services | Node matrix and demo |
 | Markdown paths, generated anchors, site freshness | Yes | Yes | Same read-only checker |
 | Real browser: local/hybrid/OIDC login, scoped WebSocket, frozen business timezone and daily recovery | No | Yes | Chromium against real server |
-| PostgreSQL, NATS, OIDC, recovery and synthetic execution | No | Yes | Real containers; evidence required |
+| PostgreSQL, NATS, OIDC, daily recovery, isolated v2 attempts and synthetic execution | No | Yes | Real containers; evidence required |
 | PowerShell demo: offline and Git fixture | No | Linux Docker smoke | Native Windows smoke |
 | Release installation in systemd | No | No | Separate release workflow |
 
 Go unit suites include optional external-service tests. Their skips in quick
 are **not** integration evidence. Full separately invokes the integration runner,
-which rejects skipped or missing required scenarios. Neither profile qualifies
+which rejects skipped or missing required scenarios, including both SQLite and
+PostgreSQL variants of `TestI08AttemptIntegration`. I08 also has execution unit
+tests for lost notifications, restart, stale output, delivery exhaustion and
+backpressure. These prove the development laboratory contract, not an agent
+journal or production execution durability. Neither profile qualifies
 production load, high availability or the open enterprise milestones; see
 [capacity and guarantees](capacity-guarantees.md).
 

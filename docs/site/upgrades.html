@@ -58,6 +58,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
 <a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
 <a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
 <a href="agent-authentication.html">Agent authentication and upgrades</a>
 <a href="agent-identity.html">Agent identity and credential lifecycle</a>
 <a href="authentication.html">Authentication: local, hybrid or SSO</a>
@@ -113,6 +114,11 @@ a production rollout without a workload-specific rehearsal.</p>
 <td>Schema 25 → schema 26</td>
 <td>Stop old nodes; new daily cycles have frozen plans/checkpoints; historical cycles stay legacy; <a href="daily-recovery.html">daily recovery</a>. Restore a verified schema-25 backup to return to an older binary</td>
 <td>Invented historical completion proof or an automatic downgrade</td>
+</tr>
+<tr>
+<td>Schema 26 → schema 27</td>
+<td>Stop old nodes; migrate together. New tables are for the opt-in development <a href="adr-i08-attempts.html">attempt laboratory</a>; production dispatch stays on v1. Restore a verified schema-26 recovery set to return to an older binary</td>
+<td>Production v2 execution, agent journal or mixed-version rolling compatibility</td>
 </tr>
 <tr>
 <td>Restart current build / same-build node drain</td>

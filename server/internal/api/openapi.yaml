@@ -901,8 +901,273 @@ paths:
           content:
             text/html:
               schema: { type: string }
+  /api/lab/orders:
+    post:
+      summary: Create an isolated laboratory order
+      tags: [Execution laboratory]
+      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires admin authentication.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LabOrderRequest" }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LabOrder" }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/lab/orders/{id}:
+    get:
+      summary: Read laboratory order identity
+      tags: [Execution laboratory]
+      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires admin authentication.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LabOrder" }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/lab/orders/{id}/attempts:
+    post:
+      summary: Atomically create attempt and dispatch intent
+      tags: [Execution laboratory]
+      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires admin authentication.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LabAttemptRequest" }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExecutionAttempt" }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/lab/orders/{id}/cancel:
+    post:
+      summary: Request or confirm laboratory cancellation
+      tags: [Execution laboratory]
+      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires admin authentication.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExecutionAttempt" }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/lab/executions/{id}:
+    get:
+      summary: Read durable attempt metadata
+      tags: [Execution laboratory]
+      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires admin authentication.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExecutionAttempt" }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/lab/executions/{id}/output:
+    get:
+      summary: Read output scoped to one execution
+      tags: [Execution laboratory]
+      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires admin authentication.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: after, in: query, required: false, schema: { type: integer, format: int64, minimum: 0, default: 0 }, description: Return up to 100 chunks after this committed sequence }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExecutionChunks" }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/lab/reconcile:
+    post:
+      summary: Record expired execution leases as uncertain
+      tags: [Execution laboratory]
+      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires admin authentication.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/agent/v2/poll:
+    get:
+      summary: Claim a durable assigned message
+      tags: [Execution laboratory]
+      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires a scoped machine credential with EXECUTION_V2 capability.
+      security: [{ machineAuth: [] }]
+      parameters:
+        - { name: id, in: query, required: true, schema: { type: string } }
+        - { name: env, in: query, required: true, allowEmptyValue: true, schema: { type: string } }
+        - { name: caps, in: query, required: true, schema: { type: string }, description: Exact provisioned capabilities including EXECUTION_V2 }
+        - { name: protocol, in: query, required: true, schema: { type: integer, enum: [2] } }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExecutionEnvelope" }
+        "204": { description: No eligible message. }
+        "426": { description: Protocol 2 is required. }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/agent/v2/ack:
+    post:
+      summary: Acknowledge acceptance, start, contact or cancellation
+      tags: [Execution laboratory]
+      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires a scoped machine credential with EXECUTION_V2 capability.
+      security: [{ machineAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExecutionAck" }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExecutionReceipt" }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/agent/v2/result:
+    post:
+      summary: Commit an identified result with compare-and-swap
+      tags: [Execution laboratory]
+      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires a scoped machine credential with EXECUTION_V2 capability.
+      security: [{ machineAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExecutionResult" }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExecutionReceipt" }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/agent/v2/output:
+    post:
+      summary: Append sequenced output to one identified execution
+      tags: [Execution laboratory]
+      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires a scoped machine credential with EXECUTION_V2 capability.
+      security: [{ machineAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExecutionOutput" }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExecutionReceipt" }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+
 components:
   securitySchemes:
+    machineAuth:
+      type: http
+      scheme: bearer
+      description: Scoped machine credential issued for an agent/environment/capabilities; human tokens are rejected.
     bearerAuth:
       type: http
       scheme: bearer
@@ -937,6 +1202,100 @@ components:
         text/plain:
           schema: { type: string, example: forbidden }
   schemas:
+    LabOrderRequest:
+      type: object
+      additionalProperties: false
+      required: [sourceInstanceId, idempotencyKey]
+      properties:
+        sourceInstanceId: { type: string }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 128 }
+    LabOrder:
+      type: object
+      properties:
+        id: { type: string }
+        sourceInstanceId: { type: string }
+        state: { type: string }
+        currentExecution: { type: string }
+        attempt: { type: integer }
+        fence: { type: integer, format: int64 }
+    LabAttemptRequest:
+      type: object
+      additionalProperties: false
+      required: [agentId, idempotencyKey, intent]
+      properties:
+        agentId: { type: string }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 128 }
+        intent: { type: string, enum: [start, retry, rerun] }
+    ExecutionAttempt:
+      type: object
+      properties:
+        executionId: { type: string }
+        orderId: { type: string }
+        attempt: { type: integer }
+        fence: { type: integer, format: int64 }
+        agentId: { type: string }
+        state: { type: string, enum: [dispatch_pending, dispatching, accepted, running, cancel_requested, uncertain, succeeded, failed, cancelled] }
+        leaseUntil: { type: integer, format: int64, description: UTC Unix milliseconds. }
+        acceptedAt: { type: integer, format: int64 }
+        startedAt: { type: integer, format: int64 }
+        finishedAt: { type: integer, format: int64 }
+    ExecutionIdentity:
+      type: object
+      required: [protocol, executionId, fence]
+      properties:
+        protocol: { type: integer, enum: [2] }
+        executionId: { type: string }
+        fence: { type: integer, format: int64 }
+    ExecutionAck:
+      allOf:
+        - { $ref: '#/components/schemas/ExecutionIdentity' }
+        - type: object
+          required: [kind]
+          properties:
+            kind: { type: string, enum: [accepted, started, heartbeat, cancelled] }
+    ExecutionResult:
+      allOf:
+        - { $ref: '#/components/schemas/ExecutionIdentity' }
+        - type: object
+          required: [exitCode, output]
+          properties:
+            exitCode: { type: integer }
+            output: { type: string, description: At most 5 MiB in UTF-8 bytes. }
+    ExecutionOutput:
+      allOf:
+        - { $ref: '#/components/schemas/ExecutionIdentity' }
+        - type: object
+          required: [seq, chunk]
+          properties:
+            seq: { type: integer, format: int64, minimum: 1 }
+            chunk: { type: string, minLength: 1 }
+    ExecutionReceipt:
+      type: object
+      properties:
+        accepted: { type: boolean }
+        duplicate: { type: boolean }
+        executionId: { type: string }
+    ExecutionEnvelope:
+      type: object
+      properties:
+        protocol: { type: integer, enum: [2] }
+        kind: { type: string, enum: [dispatch, cancel] }
+        messageId: { type: string }
+        executionId: { type: string }
+        orderId: { type: string }
+        attempt: { type: integer }
+        agentId: { type: string }
+        fence: { type: integer, format: int64 }
+        idempotencyKey: { type: string }
+        definition: { type: object, description: Frozen definition present only on dispatch. }
+    ExecutionChunks:
+      type: array
+      items:
+        type: object
+        properties:
+          seq: { type: integer, format: int64 }
+          chunk: { type: string }
+
     BusinessTime:
       type: object
       required: [timezone, dailyAt]

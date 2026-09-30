@@ -15,6 +15,7 @@ import (
 	"github.com/Dr0nj/regente-server/internal/auth"
 	"github.com/Dr0nj/regente-server/internal/bus"
 	"github.com/Dr0nj/regente-server/internal/db"
+	"github.com/Dr0nj/regente-server/internal/execution"
 	"github.com/Dr0nj/regente-server/internal/hub"
 	"github.com/Dr0nj/regente-server/internal/oidc"
 	"github.com/Dr0nj/regente-server/internal/runtimeprofile"
@@ -25,6 +26,7 @@ import (
 )
 
 type Config struct {
+	ExecutionLab  bool // I08: opt-in development; recusado em production.
 	RuntimePolicy runtimeprofile.Config
 	Store         *storage.FileStore
 	DB            *db.DB
@@ -81,6 +83,7 @@ type RemotePresence interface {
 func init() { chi.RegisterMethod("QUERY") }
 
 type server struct {
+	attempts    *execution.Engine
 	cfg         Config
 	agentBroker *agentBroker  // Fase 2 — transporte HTTP long-poll (nil se sem hub)
 	pings       *pingRegistry // ping ativo de agentes (round-trip ping/pong)
@@ -89,6 +92,13 @@ type server struct {
 // NewRouter monta o router principal (REST + WS).
 func NewRouter(cfg Config) http.Handler {
 	s := &server{cfg: cfg, pings: newPingRegistry()}
+	if cfg.ExecutionLab && !cfg.RuntimePolicy.Production() {
+		if cfg.Scheduler != nil {
+			s.attempts = execution.New(cfg.DB, cfg.Scheduler.Now)
+		} else {
+			s.attempts = execution.New(cfg.DB, nil)
+		}
+	}
 	if cfg.Hub != nil {
 		s.agentBroker = newAgentBroker(cfg.Hub)
 	}
@@ -161,6 +171,15 @@ func NewRouter(cfg Config) http.Handler {
 		r.With(s.requireWriterMW).Delete("/folders/{name}", s.deleteFolder)
 		r.With(s.requireWriterMW).Post("/folders/{name}/archive", s.archiveFolder)
 		r.With(s.requireWriterMW).Put("/folders/{name}/layout", s.setFolderLayout) // UI-3: override de grade por folder
+
+		// I08: API administrativa de laboratório, isolada de instances/condições.
+		r.Post("/lab/orders", s.labCreateOrder)
+		r.Get("/lab/orders/{id}", s.labOrder)
+		r.Post("/lab/orders/{id}/attempts", s.labStart)
+		r.Post("/lab/orders/{id}/cancel", s.labCancel)
+		r.Get("/lab/executions/{id}", s.labAttempt)
+		r.Get("/lab/executions/{id}/output", s.labOutput)
+		r.Post("/lab/reconcile", s.labReconcile)
 
 		// Instances (runtime)
 		r.Get("/instances", s.listInstances)
@@ -336,6 +355,10 @@ func NewRouter(cfg Config) http.Handler {
 
 	// Fase 2 — transporte HTTP long-poll p/ agentes (auth própria por agent token).
 	// Fora do grupo /api (que exige sessão/legacy), como o /ws/agent.
+	r.Get("/api/agent/v2/poll", s.executionPoll)
+	r.Post("/api/agent/v2/ack", s.executionAck)
+	r.Post("/api/agent/v2/result", s.executionResult)
+	r.Post("/api/agent/v2/output", s.executionOutput)
 	r.Get("/api/agent/poll", s.agentPoll)
 	// ARCH-4 — transporte SSE: stream de dispatch por push imediato (mesmo broker;
 	// resultados voltam pelos POSTs abaixo, iguais ao long-poll).

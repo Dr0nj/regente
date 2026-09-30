@@ -108,6 +108,7 @@ def validate_test_events(output):
                 "TestProductionIdentity/sqlite", "TestProductionIdentity/postgres",
                 "TestI06BusinessTimeIntegration/sqlite", "TestI06BusinessTimeIntegration/postgres",
                 "TestI07DailyRecoveryIntegration/sqlite", "TestI07DailyRecoveryIntegration/postgres",
+                "TestI08AttemptIntegration/sqlite", "TestI08AttemptIntegration/postgres",
                 "TestHumanIdentity/sqlite", "TestHumanIdentity/postgres",
                 "TestWebEventAuthorization/sqlite", "TestWebEventAuthorization/postgres",
                 "TestWebEventDistributed/sqlite", "TestWebEventDistributed/postgres",
@@ -399,7 +400,7 @@ def main():
                    REGENTE_TEST_OIDC_USER="lab-user", REGENTE_TEST_OIDC_PASS="synthetic-password")
         output = command(["go", "test", "-json", "-count=1", "-timeout=5m",
                           "./server/internal/db", "./server/internal/api", "-run",
-                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials|TestHumanIdentity|TestWebEvent|TestProductionIdentity|TestI06BusinessTimeIntegration|TestI07DailyRecoveryIntegration"],
+                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials|TestHumanIdentity|TestWebEvent|TestProductionIdentity|TestI06BusinessTimeIntegration|TestI07DailyRecoveryIntegration|TestI08AttemptIntegration"],
                          env=env, timeout=360, name="database-oidc-tests")
         validate_test_events(output)
         command(["go", "test", "-race", "-count=1", "-timeout=3m", "./server/internal/api", "-run", "^TestWebEvent"],

@@ -64,6 +64,7 @@ func main() {
 		environment      = flag.String("environment", os.Getenv("REGENTE_ENVIRONMENT"), "Production environment scope")
 		network          = flag.String("network-boundary", os.Getenv("REGENTE_NETWORK_BOUNDARY"), "Production boundary: loopback | proxy | tls")
 		controlPlane     = flag.String("control-plane-execution", os.Getenv("REGENTE_CONTROL_PLANE_EXECUTION"), "Production execution policy: deny | http | http-ssh")
+		executionLab     = flag.Bool("execution-lab", envOr("REGENTE_EXECUTION_LAB", "") == "1", "I08 development laboratory for protocol v2 attempts; unavailable in production")
 		checkConfig      = flag.Bool("check-config", false, "Validate static configuration and TLS files without opening the database or services")
 		addr             = flag.String("addr", envOr("REGENTE_ADDR", ":8080"), "HTTP listen address")
 		spaDir           = flag.String("spa-dir", envOr("REGENTE_SPA_DIR", ""), "Single-origin hosting: serve the built SPA from this directory (UI+API+WS on the same port). Empty = API only")
@@ -161,13 +162,16 @@ func main() {
 	policy := runtimeprofile.Config{Profile: *profile, Environment: *environment, Network: *network, ControlPlane: *controlPlane,
 		Addr: *addr, AppURL: *appURL, Token: *apiToken, AuthMode: *authMode, TLSCert: *tlsCert, TLSKey: *tlsKey, TLSClientCA: *tlsClientCA,
 		TrustedProxies: *trustedProxyCIDR, OIDCIssuer: *oidcIssuer, OIDCClientID: *oidcClientID, OIDCRedirect: *oidcRedirectURL,
-		OIDCRole: *oidcDefaultRole, Role: *role, Scheduler: *schedulerMode, Bus: *busMode, Demo: *demoMode, ServerAgent: *serverAgent}
+		OIDCRole: *oidcDefaultRole, Role: *role, Scheduler: *schedulerMode, Bus: *busMode, Demo: *demoMode, ServerAgent: *serverAgent, ExecutionLab: *executionLab}
 	serving := (*backupTo == "" && !*migrateOnly) || *checkConfig
 	var tlsCfg *tls.Config
 	var mtlsOn bool
 	mode, modeErr := auth.Mode(*authMode)
 	trustedProxies, tpErr := api.ParseTrustedProxies(*trustedProxyCIDR)
 	if serving {
+		if value, set := os.LookupEnv("REGENTE_EXECUTION_LAB"); set && !explicit["execution-lab"] && value != "0" && value != "1" {
+			log.Fatal("[config] REGENTE_EXECUTION_LAB must be 0 or 1")
+		}
 		if err := policy.Validate(); err != nil {
 			log.Fatalf("[config] %v", err)
 		}
@@ -640,6 +644,7 @@ func main() {
 
 	router := api.NewRouter(api.Config{
 		RuntimePolicy: policy,
+		ExecutionLab:  *executionLab,
 		Store:         store,
 		DB:            database,
 		Hub:           h,

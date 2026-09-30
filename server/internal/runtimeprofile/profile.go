@@ -21,7 +21,7 @@ type Config struct {
 	TLSCert, TLSKey, TLSClientCA, TrustedProxies     string
 	OIDCIssuer, OIDCClientID, OIDCRedirect, OIDCRole string
 	Role, Scheduler, Bus                             string
-	Demo, ServerAgent                                bool
+	Demo, ServerAgent, ExecutionLab                  bool
 }
 
 func (c Config) Production() bool { return c.Profile == "production" }
@@ -36,6 +36,9 @@ func loopback(host string) bool {
 	return host == "localhost" || (err == nil && ip.IsLoopback())
 }
 func (c Config) Validate() error {
+	if c.ExecutionLab && c.Production() {
+		return errors.New("execution-lab is unavailable in production; I09/I10 are required")
+	}
 	if c.Profile != "development" && !c.Production() {
 		return errors.New("profile must be development or production")
 	}

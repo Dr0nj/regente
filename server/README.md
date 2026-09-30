@@ -50,6 +50,7 @@ unit or a k8s manifest needs no arguments):
 | `-role` | `all` | `all` \| `api` \| `scheduler` |
 | `-auth-mode` | `local` | `local` (password) \| `hybrid` (password + SSO) \| `oidc` (SSO required); see [authentication](../docs/authentication.md) |
 | `-bus` | `hub` | `hub` (local) \| `nats` (distributed multi-node hub) |
+| `-execution-lab` | `false` / `REGENTE_EXECUTION_LAB=0` | Opt-in isolated v2 attempt laboratory; production rejects it; see [contract](../docs/adr-i08-attempts.md) |
 | `-backup` | — | One-shot mode: writes an online backup and exits |
 
 Run `./regente-server -h` for the full list.

@@ -470,6 +470,7 @@ var sqliteMigrations = []migration{
 	{version: 24, sql: schemaV24()},
 	{version: 25, sql: schemaV25("DATETIME")},
 	{version: 26, sql: schemaV26()},
+	{version: 27, sql: schemaV27()},
 }
 
 var pgMigrations = []migration{
@@ -499,6 +500,7 @@ var pgMigrations = []migration{
 	{version: 24, sql: schemaV24()},
 	{version: 25, sql: schemaV25("TIMESTAMPTZ")},
 	{version: 26, sql: schemaV26()},
+	{version: 27, sql: schemaV27()},
 }
 
 // schemaV23 — ST-1 (Statistics honesta, 2026-08-05): a EXECUÇÃO vira linha

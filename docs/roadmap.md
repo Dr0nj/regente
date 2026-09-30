@@ -85,7 +85,9 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
-- **I08–I17:** execução durável, HA,
+- **I08:** contrato durável de tentativa no servidor em implementação e validação;
+  [laboratório development opt-in](adr-i08-attempts.md), sem ativação produtiva ou fechamento de E04.
+- **I09–I17:** journal do agente, efeitos recuperáveis, HA,
   auditoria, capacidade, recuperação e piloto seguem na sequência enterprise.
 
 Escopo ativo deste ciclo: separar credenciais humanas de execução e preparar as

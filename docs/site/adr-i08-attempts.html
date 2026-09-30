@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADR: Durable attempt contract in the I08 laboratory · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html" class="active">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="business-time.html">Business time</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html">Daily recovery</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="production-profile.html">Production profile</a>
+<a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
+<a href="web-events.html">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="adr-durable-attempt-contract-in-the-i08-laboratory">ADR: Durable attempt contract in the I08 laboratory</h1>
+<p>Status: implemented for development laboratory validation. Production activation is unavailable until I09 and I10 integrate the agent journal, effects and executor paths. E04 remains open.</p>
+<h2 id="context-and-decision">Context and decision</h2>
+<p>The existing runtime assigns an agent before transmission, but instanceId is reused across retries and reruns. Its transport delivery is not durable acceptance, and result/output do not identify a particular attempt. I08 introduces a server contract with durable identities and transactional dispatch intent.</p>
+<p>The laboratory uses separate lab_orders, execution_attempts, execution_outbox, execution_output and execution_events tables. A laboratory order copies a verified order snapshot and has its own ID. Creating or completing it never changes the source instance, condition pool, legacy statistics, retries or On/Do actions. This boundary is necessary while journal and recovered effects are unfinished.</p>
+<p>Each attempt freezes executionId, attempt number, assigned agent, fencing generation and idempotency key. An order row lock serializes all transitions. Attempt creation, current-order identity, planned event and dispatch outbox are one commit. Queue admission also takes a database queue lock to enforce the global pending limit across nodes. SQLite and PostgreSQL share the transaction contract.</p>
+<h2 id="state-machine">State machine</h2>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Attempt state</th>
+<th>Order state / outbox</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Start</td>
+<td>dispatch_pending</td>
+<td>active; dispatch pending</td>
+</tr>
+<tr>
+<td>Poll claims message</td>
+<td>dispatching</td>
+<td>dispatch leased; transmission does not imply acceptance</td>
+</tr>
+<tr>
+<td>Agent persists acceptance and sends ACK</td>
+<td>accepted</td>
+<td>dispatch acked; execution lease begins</td>
+</tr>
+<tr>
+<td>Agent reports start</td>
+<td>running</td>
+<td>same execution and fence; lease renewed</td>
+</tr>
+<tr>
+<td>Matching result is committed</td>
+<td>succeeded / failed</td>
+<td>same terminal order result; all attempt messages acked</td>
+</tr>
+<tr>
+<td>Cancel before any delivery</td>
+<td>cancelled</td>
+<td>cancelled; dispatch cancelled</td>
+</tr>
+<tr>
+<td>Cancel after possible delivery</td>
+<td>cancel_requested</td>
+<td>uncertain; durable cancel message</td>
+</tr>
+<tr>
+<td>Agent confirms cancellation</td>
+<td>cancelled</td>
+<td>cancelled; messages acked</td>
+</tr>
+<tr>
+<td>Accepted/running/cancel lease expires</td>
+<td>uncertain</td>
+<td>uncertain; no new attempt automatically</td>
+</tr>
+<tr>
+<td>Delivery retry limit reached</td>
+<td>uncertain</td>
+<td>dispatch paused; no new attempt automatically</td>
+</tr>
+<tr>
+<td>Verified late result for current uncertain attempt</td>
+<td>succeeded / failed</td>
+<td>terminal result recorded</td>
+</tr>
+<tr>
+<td>Explicit retry/rerun after proven terminal state</td>
+<td>new dispatch_pending attempt</td>
+<td>new executionId and higher attempt/fence</td>
+</tr>
+</tbody>
+</table>
+<p>Lease expiration does not prove that a process stopped. Heartbeats can renew contact without erasing an uncertain outcome. Unknown outcomes cannot be rerun by the laboratory API. Operator resolution and external-effect reconciliation belong to I10. Retry is allowed after failed; rerun after succeeded, failed or confirmed cancelled. A pending cancellation does not authorize another execution. A result may win a race with a cancellation request; a confirmed cancellation is terminal and rejects subsequent results.</p>
+<h2 id="outbox-and-acknowledgements">Outbox and acknowledgements</h2>
+<p>HTTP pull claims durable messages for the authenticated assigned agent. Claim commits before response transmission. Losing a response or notification does not lose the record: expired delivery claims become eligible again. Redelivery keeps the same messageId, executionId, fencing and idempotency key. The execution fence increases only for a new attempt, not a transmission retry.</p>
+<p>Defaults: 1,000 unresolved attempts (including accepted and uncertain work), 30-second delivery lease, five-minute execution lease, ten delivery attempts. Retry delay is persisted and increases to at most five minutes. Exhaustion records uncertainty instead of reporting execution failure. Queue backpressure returns 429 without creating a partial attempt. Each unresolved attempt has at most one dispatch and one reserved cancellation message, so cancellation remains available when admission is full. Terminal attempts release admission capacity. Pending cancellation messages remain recoverable after restart. Notifications are optional hints; the database is authoritative. Current Core NATS and legacy hub paths do not carry v2 work.</p>
+<p>Acceptance ACK closes dispatch delivery only after its durable transaction. Results are matched by executionId + authenticated agent + fence and committed by compare-and-swap with current order identity. Same-content duplicates return a duplicate receipt; conflicting repeats return 409. Result, order state, event and outbox acknowledgement commit together. The receipt is sent only after the commit.</p>
+<p>Output uses executionId and a monotonic sequence, not the attempt currently visible on an instance. Duplicate sequence/content is acknowledged without appending; changed content, gaps, wrong agent/fence or new chunks from an old terminal attempt are rejected. Previously committed duplicate chunks can still be acknowledged after rerun. The per-attempt byte limit is persisted at 5 MiB and survives restart. Output and final result text remain separate records.</p>
+<h2 id="protocol-and-coexistence">Protocol and coexistence</h2>
+<p>Version 2 currently has only the HTTP laboratory transport. Poll handshake requires protocol=2 plus the provisioned id/env/caps claims and EXECUTION_V2 capability. Agent ID in result/output bodies is forbidden; the server derives identity from the machine credential. Payloads include protocol, kind, messageId, executionId, orderId, attempt, agentId, fence and idempotencyKey. Dispatch includes the frozen definition.</p>
+<table>
+<thead>
+<tr>
+<th>Pair</th>
+<th>Supported behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Existing server and v1 agent</td>
+<td>Existing WS/HTTP/SSE/NATS runtime; no new durability claim</td>
+</tr>
+<tr>
+<td>I08 server, laboratory disabled, v1 agent</td>
+<td>Same v1 runtime</td>
+</tr>
+<tr>
+<td>I08 server, laboratory enabled, synthetic v2 client</td>
+<td>Isolated HTTP contract; durable server receipt only</td>
+</tr>
+<tr>
+<td>I08 server and current v1 agent on v2 endpoint</td>
+<td>Rejected: protocol/capability mismatch</td>
+</tr>
+<tr>
+<td>Production profile with laboratory flag</td>
+<td>Startup rejected; handlers also refuse laboratory access</td>
+</tr>
+<tr>
+<td>I08 server and future I09 agent</td>
+<td>Must negotiate v2 and persist acceptance/result before enabling integration; not yet qualified</td>
+</tr>
+</tbody>
+</table>
+<p>The server cannot promise execution deduplication without the I09 journal. Arbitrary scripts do not provide exactly-once external effects. Server receipt durability, agent effect durability and recovered business effects are separate acceptance gates.</p>
+<h2 id="api-and-operation">API and operation</h2>
+<p>Enable only on a disposable development installation with -execution-lab or REGENTE_EXECUTION_LAB=1. The existing agent binary is not a v2 executor. Use synthetic clients and isolated machine credentials.</p>
+<p>Administrative endpoints require admin authentication:</p>
+<ul>
+<li>POST /api/lab/orders: sourceInstanceId and idempotencyKey; copies a verified snapshot.</li>
+<li>GET /api/lab/orders/{id}: current identity/state.</li>
+<li>POST /api/lab/orders/{id}/attempts: agentId, idempotencyKey and intent (start/retry/rerun).</li>
+<li>POST /api/lab/orders/{id}/cancel: cancellation according to the state matrix.</li>
+<li>GET /api/lab/executions/{id}: attempt identity/state and contact timestamps.</li>
+<li>GET /api/lab/executions/{id}/output?after=0: at most 100 sequenced chunks; empty arrays are [].</li>
+<li>POST /api/lab/reconcile: expire execution leases into uncertainty. Poll also runs reconciliation.</li>
+</ul>
+<p>Machine endpoints use scoped machine Bearer credentials:</p>
+<ul>
+<li>GET /api/agent/v2/poll?id=...&amp;env=...&amp;caps=COMMAND,EXECUTION_V2&amp;protocol=2: message or 204.</li>
+<li>POST /api/agent/v2/ack: protocol, executionId, fence and kind (accepted/started/heartbeat/cancelled).</li>
+<li>POST /api/agent/v2/result: protocol, executionId, fence, exitCode and output.</li>
+<li>POST /api/agent/v2/output: protocol, executionId, fence, seq and chunk.</li>
+</ul>
+<p>All persisted contact timestamps and leaseUntil use UTC Unix milliseconds. Metadata reads do not expose command snapshots or final output; output has its authenticated endpoint. Unknown fields and trailing JSON are rejected. Storage failure returns 503 without claiming receipt; retry the same identity/key. Result conflicts return 409, output limits 413 and queue backpressure 429.</p>
+<p>Prometheus gauges expose regente_execution_outbox by pending/leased/paused state and regente_execution_uncertain. regente_execution_deliveries_total counts durable delivery claims. No command or credential is a metric label.</p>
+<h2 id="upgrade-and-remaining-work">Upgrade and remaining work</h2>
+<p>Schema 27 adds isolated tables without reconstructing identities for historical instance_runs or outputs. Legacy data is untouched. Older schema-26 binaries reject schema 27; rollback requires a verified compatible backup. The laboratory is disabled by default after upgrade.</p>
+<p>I09 must provide durable agent acceptance, dispatch deduplication and pending result journal. I10 must recover conditions/post-actions, uncertain outcomes, operator decisions and internal executors. Laboratory success does not close E04 or qualify HA, DR or capacity.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

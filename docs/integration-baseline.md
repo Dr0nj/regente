@@ -76,6 +76,7 @@ are outside this baseline and are not claimed as executed.
 | Same-binary PG drain | `same-binary-drain.log` | Owned processes, sampled liveness and leadership transfer; not mixed-version compatibility |
 | Current schema documented correctly | `TestMigrationRunbookContract` | Compares runbook to constants and migrated DB; rejects missing/duplicate/stale current statements |
 | Daily partial chunk/restart, source freezing and corrupt snapshot | TestI07DailyRecoveryIntegration on SQLite/Postgres | [Daily recovery](daily-recovery.md); 5,001-order synthetic scenario, not capacity qualification |
+| Isolated attempts, atomic dispatch and result, concurrent admission/cancellation, restart and lease uncertainty | TestI08AttemptIntegration on SQLite/Postgres; execution unit suite | Opt-in development [attempt laboratory](adr-i08-attempts.md); synthetic v2 client only, legacy dispatch and conditions unchanged |
 | Distributed drafts and uncertain effects | preserved synthetic fixtures | Broader guarantees remain reserved for I10/I12 |
 
 | Profile | Baseline support |
@@ -126,7 +127,7 @@ the same-binary drain and the schema-document contract. The
 [recorded evidence](evidence/doc-a-af75c51.json) is synthetic laboratory evidence,
 not production or mixed-version qualification.
 
-Current runtime schema: **26**; supported range: **[26,26]**.
+Current runtime schema: **27**; supported range: **[27,27]**.
 
 `TestMigrationRunbookContract` compares this current statement with the migration
 constants and an actual fresh database. Historical fixture versions below remain
