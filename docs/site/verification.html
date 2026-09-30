@@ -123,7 +123,7 @@ failed commands, missing evidence or an omitted mandatory gate cause failure.</p
 <td>Same read-only checker</td>
 </tr>
 <tr>
-<td>Real browser: local/hybrid/OIDC login and scoped WebSocket</td>
+<td>Real browser: local/hybrid/OIDC login, scoped WebSocket and frozen business timezone</td>
 <td>No</td>
 <td>Yes</td>
 <td>Chromium against real server</td>
@@ -184,7 +184,7 @@ cd ..
 bash scripts/verify.sh --full
 </code></pre>
 <p>Full performs a fresh engine-strict npm install itself. It builds the server for
-browser tests, verifies all four required browser scenarios without skips or
+browser tests, verifies all five required browser scenarios without skips or
 flaky passes, runs <a href="integration-baseline.html">integration and recovery</a>, then
 executes the PowerShell demo smoke in both offline and Git-fixture modes. Demo
 reports must prove authenticated presence, completed execution, credential

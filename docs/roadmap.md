@@ -17,9 +17,9 @@
 > no §Entregue e some uma linha no §Changelog. Ao **abrir** um item novo: só adicione no §Backlog.
 > Sem barras de progresso nem porcentagens — de propósito (confundem mais do que ajudam).
 >
-> Documento vivo · revisão **2026-09-28** — o marco de manutenção de **2026-07-30**
+> Documento vivo · revisão **2026-09-30** — o marco de manutenção de **2026-07-30**
 > descreve as trilhas originais. O ciclo enterprise iniciado em setembro está ativo:
-> I04/I05 e DOC-01–DOC-14 entregues; I06–I17 seguem na §Backlog. Manutenção histórica
+> I04/I05/I06 e DOC-01–DOC-14 entregues; I07–I17 seguem na §Backlog. Manutenção histórica
 > não cancela incrementos explicitamente solicitados nem significa homologação produtiva.
 > Estratégia de arquitetura em [`architecture-future.md`](architecture-future.md);
 > apresentação de produto no [`../README.md`](../README.md).
@@ -85,7 +85,6 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
-- **I06:** relógio/data de negócio implementados em `codex/i06-business-time`; em validação completa, ainda não publicado. Contrato: [business time](business-time.md).
 - **I07–I17:** execução durável, HA,
   auditoria, capacidade, recuperação e piloto seguem na sequência enterprise.
 
@@ -385,6 +384,14 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+## I06 — Relógio e data de negócio (2026-09-30)
+
+- Implementação `ff34705`: relógio injetável, zona IANA e rollover diário; padrão UTC/00:00 sem dependência do fuso do host. [Contrato](business-time.md).
+- Ordens congelam zona e rollover. Daily/Force Order, janelas noturnas, DST, cyclic/retry, carry, forecast/What-If, SLA, defaults da API e Monitoring compartilham o contrato e preservam ODAT.
+- Ordens legadas sem contexto temporal e com janela ficam bloqueadas até reordenação; instantes já persistidos permanecem válidos. A documentação descreve a atualização.
+- CI `36712249168`: seis jobs aprovados; full com oito gates em 387,619s; integração SQLite/Postgres com 180 testes em 153,717s; cinco cenários de browser sem skips ou flakiness. [Evidência](evidence/i06-ff34705.json).
+- I07–I17 permanecem abertos: esta entrega não homologa durabilidade, HA ou capacidade empresarial.
 
 ## I05 — Perfil produtivo explícito (2026-09-29)
 
@@ -1848,6 +1855,8 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-09-30 — I06:** relógio/data de negócio unificados com zona/rollover congelados por ordem; API, scheduler, projeções e UI validados em SQLite/Postgres e browser. [Contrato](business-time.md) · [Evidência](evidence/i06-ff34705.json). I07–I17 seguem abertos.
 
 - **2026-09-29 — I05:** perfil produtivo opt-in; validação de boot, credenciais e
   fronteiras de rede/ambiente; política explícita para SERVER-AGENT/SSH, inclusive
