@@ -11,7 +11,7 @@ set -euo pipefail
 SERVER="${SERVER:?set SERVER=ws://host:8080/ws/agent}"
 TOKEN="${TOKEN:?set TOKEN=rgta_... (Settings → Agents → Create token)}"
 ID="${ID:-$(hostname)}"
-CAPS="${CAPS:-COMMAND,SCRIPT,HTTP}"
+CAPS="${CAPS:-COMMAND,SCRIPT,HTTP,EXECUTION_V2}"
 RUN_USER="${RUN_USER:-${USER:-root}}"
 
 # Mesma normalização do install-agent.sh: aceita o endereço da UI (http://host:8080)
@@ -42,6 +42,8 @@ umask 077
 printf 'REGENTE_TOKEN=%s\n' "$TOKEN" > "$ENVFILE"
 chmod 0600 "$ENVFILE"
 
+install -d -m 0700 -o "$RUN_USER" /var/lib/regente-agent
+
 UNIT=/etc/systemd/system/regente-agent.service
 sed -e "s#__SERVER__#${SERVER}#g" \
     -e "s#__ID__#${ID}#g" \
@@ -50,7 +52,8 @@ sed -e "s#__SERVER__#${SERVER}#g" \
     "$(dirname "$0")/regente-agent.service" > "$UNIT"
 
 systemctl daemon-reload
-systemctl enable --now regente-agent
+systemctl enable regente-agent
+  systemctl restart regente-agent
 echo "OK — regente-agent installed and started (server: $SERVER). Logs: journalctl -u regente-agent -f"
 sleep 3
 if systemctl is-active --quiet regente-agent; then

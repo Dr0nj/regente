@@ -1,4 +1,4 @@
-// Package execution — contrato v2 do servidor, restrito ao laboratório I08.
+// Package execution — contrato v2 do servidor: laboratório I08 e runtime durável I10.
 package execution
 
 import (
@@ -30,7 +30,9 @@ type Engine struct {
 	ExecutionLease time.Duration
 	MaxDeliveries  int
 	// A notificação é apenas uma pista. A recuperação consulta sempre a outbox.
-	Notify func(string)
+	Notify     func(string)
+	Transition func(*db.Tx, Order, Attempt, string, *Result) error
+	Prepare    func(*db.Tx, Order, domain.JobDefinition) (domain.JobDefinition, error)
 }
 
 func New(d *db.DB, now func() time.Time) *Engine {
@@ -59,6 +61,7 @@ func (e *Engine) notify(id string) {
 }
 
 type Order struct {
+	Runtime          bool   `json:"runtime"`
 	ID               string `json:"id"`
 	SourceInstanceID string `json:"sourceInstanceId"`
 	State            string `json:"state"`
@@ -77,6 +80,10 @@ type Attempt struct {
 	AcceptedAt  int64  `json:"acceptedAt"`
 	StartedAt   int64  `json:"startedAt"`
 	FinishedAt  int64  `json:"finishedAt"`
+	LastContact int64  `json:"lastContact"`
+	Reason      string `json:"reason"`
+	ResolvedAt  int64  `json:"resolvedAt"`
+	ResolvedBy  string `json:"resolvedBy"`
 }
 type Identity struct {
 	Protocol    int    `json:"protocol"`
@@ -108,12 +115,18 @@ type Envelope struct {
 	Definition     *domain.JobDefinition `json:"definition,omitempty"`
 }
 type Receipt struct {
-	Accepted    bool   `json:"accepted"`
-	Duplicate   bool   `json:"duplicate"`
-	ExecutionID string `json:"executionId"`
+	Reconciled      bool   `json:"reconciled"`
+	Accepted        bool   `json:"accepted"`
+	Duplicate       bool   `json:"duplicate"`
+	ExecutionID     string `json:"executionId"`
+	State           string `json:"state"`
+	Current         bool   `json:"current"`
+	StartAuthorized bool   `json:"startAuthorized"`
 }
 
-func receipt(id string, duplicate bool) Receipt { return Receipt{true, duplicate, id} }
+func receipt(id string, duplicate bool) Receipt {
+	return Receipt{Accepted: true, Duplicate: duplicate, ExecutionID: id}
+}
 func resultChecksum(r Result) string {
 	b, _ := json.Marshal(struct {
 		Exit   int
@@ -123,4 +136,23 @@ func resultChecksum(r Result) string {
 }
 func terminal(state string) bool {
 	return state == "succeeded" || state == "failed" || state == "cancelled"
+}
+
+func phaseReceipt(o Order, a record, duplicate bool) Receipt {
+	r := receipt(a.ExecutionID, duplicate)
+	r.Reconciled = a.ResolvedAt != 0 && terminal(a.State)
+	r.State = a.State
+	r.Current = current(o, a)
+	r.StartAuthorized = r.Current && a.State == "running" && a.StartedAt != 0
+	return r
+}
+
+func (e *Engine) transition(tx *db.Tx, o Order, a Attempt, kind string, r *Result) error {
+	if o.Runtime {
+		if e.Transition == nil {
+			return ErrConflict
+		}
+		return e.Transition(tx, o, a, kind, r)
+	}
+	return nil
 }

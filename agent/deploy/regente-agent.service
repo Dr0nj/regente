@@ -9,7 +9,7 @@ Wants=network-online.target
 # via `ps`. O agente lê REGENTE_TOKEN do EnvironmentFile (modo 0600), mesmo
 # contrato do install-agent.sh das releases.
 EnvironmentFile=/etc/regente/agent.env
-ExecStart=/usr/local/bin/regente-agent -server __SERVER__ -id __ID__ -caps __CAPS__
+ExecStart=/usr/local/bin/regente-agent -server __SERVER__ -id __ID__ -caps __CAPS__ -transport v2 -journal /var/lib/regente-agent/journal.db
 Restart=always
 RestartSec=5
 # Rode como um usuário sem privilégios (ajuste conforme sua necessidade).

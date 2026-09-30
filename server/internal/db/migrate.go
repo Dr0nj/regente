@@ -12,8 +12,8 @@ import (
 )
 
 // Faixa do RUNTIME após aplicar upgrades conhecidos; 0..22 são entradas legadas.
-const MinSupportedSchema = 27
-const MaxSupportedSchema = 27
+const MinSupportedSchema = 28
+const MaxSupportedSchema = 28
 
 // Migrate tem prazo total limitado, incluindo espera pelo outro migrador.
 func Migrate(d *DB) error {

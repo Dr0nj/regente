@@ -116,6 +116,7 @@ const COL_GAP = 28; // gap horizontal entre folders
 const CANVAS_PADDING = 24;
 
 const INSTANCE_TO_UI_STATUS: Record<JobInstance["status"], JobNodeData["status"]> = {
+  UNCERTAIN: "UNCERTAIN",
   OK: "SUCCESS",
   NOTOK: "FAILED",
   RUNNING: "RUNNING",

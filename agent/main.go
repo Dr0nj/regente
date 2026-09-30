@@ -31,6 +31,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Dr0nj/regente-agent/journal"
 	"github.com/gorilla/websocket"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
@@ -39,7 +40,7 @@ import (
 
 // agentVersion — versão reportada na tela de Agentes (handshake). processStarted
 // marca o início do processo, pra calcular uptime no servidor/UI.
-const agentVersion = "0.1.0"
+var agentVersion = "dev"
 
 var processStarted = time.Now()
 
@@ -88,15 +89,45 @@ func main() {
 		agentID   = flag.String("id", hostnameOr("agent-local"), "Agent ID (unique)")
 		caps      = flag.String("caps", "COMMAND,SCRIPT,HTTP,REST,WASM,DATABASE,FILE_WATCH,FILE_TRANSFER,MFT", "Comma-separated capabilities advertised")
 		agentEnv  = flag.String("env", envOr("REGENTE_AGENT_ENV", ""), "Provisioned environment (exact match). Empty permits only unlabeled jobs")
-		transport = flag.String("transport", envOr("REGENTE_AGENT_TRANSPORT", "ws"), "Transport: ws (WebSocket) | http (long-poll) | sse (Server-Sent Events, immediate push) — the last two are serverless-friendly")
+		transport = flag.String("transport", envOr("REGENTE_AGENT_TRANSPORT", "ws"), "Transport: v2 (durable journal) | ws (WebSocket) | http (long-poll) | sse (Server-Sent Events, immediate push) — the last two are serverless-friendly")
 	)
+	tokenFile := flag.String("token-file", "", "Protected file containing the machine credential")
+	journalPath := flag.String("journal", envOr("REGENTE_AGENT_JOURNAL", ""), "Durable local journal path (required for v2)")
+	concurrency := flag.Int("concurrency", 4, "Maximum concurrent durable executions")
+	pending := flag.Int("max-pending", 1000, "Maximum unconfirmed durable executions")
+	showVersion := flag.Bool("version", false, "Print build version")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println(agentVersion)
+		return
+	}
+	if *tokenFile != "" {
+		raw, err := os.ReadFile(*tokenFile)
+		if err != nil || len(raw) > 16384 {
+			log.Fatal("cannot read protected machine credential file")
+		}
+		*token = strings.TrimSpace(string(raw))
+	}
+	mode := strings.ToLower(*transport)
+	if mode != "ws" && mode != "http" && mode != "sse" && mode != "v2" {
+		log.Fatal("unknown transport; use ws, http, sse or v2")
+	}
 	if strings.TrimSpace(*token) == "" {
 		log.Fatal("agent token required: create one in Settings > Agents and set -token or REGENTE_TOKEN")
 	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	if mode == "v2" {
+		if *concurrency < 1 || *concurrency > 256 || *pending < *concurrency || *pending > 1000 {
+			log.Fatal("durable limits require 1 <= concurrency <= 256 and concurrency <= max-pending <= 1000")
+		}
+		if err := runAgentV2(httpBase(*server), *token, *agentID, *caps+",EXECUTION_V2", *agentEnv, *journalPath, *concurrency, *pending, stop); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 
 	// Fase 2 — transporte HTTP long-poll: control plane stateless (scale-to-zero).
 	if strings.EqualFold(*transport, "http") {
@@ -464,7 +495,7 @@ func executeJob(ctx context.Context, jobType string, params map[string]interface
 	case "SCRIPT":
 		return runScript(ctx, params, timeoutSec, emit)
 	case "HTTP", "REST":
-		return runREST(params, timeoutSec)
+		return runRESTContext(ctx, params, timeoutSec, false)
 	case "FILE_WATCH", "FILEWATCH":
 		return runFileWatch(params, timeoutSec, emit)
 	case "FILE_TRANSFER", "MFT":
@@ -495,10 +526,19 @@ func executeJob(ctx context.Context, jobType string, params map[string]interface
 type streamWriter struct {
 	buf  *bytes.Buffer
 	emit func(string)
+	mu   sync.Mutex
 }
 
 func (w *streamWriter) Write(p []byte) (int, error) {
-	w.buf.Write(p)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	remaining := (5 << 20) - w.buf.Len()
+	if remaining > len(p) {
+		remaining = len(p)
+	}
+	if remaining > 0 {
+		w.buf.Write(p[:remaining])
+	}
 	if w.emit != nil {
 		w.emit(string(p))
 	}
@@ -544,6 +584,8 @@ func runScript(ctx context.Context, params map[string]interface{}, timeoutSec in
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(runCtx, name, argv...)
+	configureCancel(cmd)
+	cmd.WaitDelay = 5 * time.Second
 	var buf bytes.Buffer
 	sw := &streamWriter{buf: &buf, emit: emit}
 	cmd.Stdout = sw
@@ -551,7 +593,7 @@ func runScript(ctx context.Context, params map[string]interface{}, timeoutSec in
 	if cwd, ok := params["cwd"].(string); ok && cwd != "" {
 		cmd.Dir = cwd
 	}
-	err := cmd.Run()
+	err := runProcess(runCtx, cmd)
 	code := 0
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
@@ -599,7 +641,7 @@ func runCommand(ctx context.Context, params map[string]interface{}, timeoutSec i
 	if cwd, ok := params["cwd"].(string); ok && cwd != "" {
 		cmd.Dir = cwd
 	}
-	err := cmd.Run()
+	err := runProcess(runCtx, cmd)
 	code := 0
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
@@ -617,6 +659,9 @@ func runCommand(ctx context.Context, params map[string]interface{}, timeoutSec i
 //
 //	expectStatus ([]int opcional — se definido e não bater, vira falha).
 func runREST(params map[string]interface{}, timeoutSec int) (int, string) {
+	return runRESTContext(context.Background(), params, timeoutSec, false)
+}
+func runRESTContext(ctx context.Context, params map[string]interface{}, timeoutSec int, durable bool) (int, string) {
 	method, _ := params["method"].(string)
 	if method == "" {
 		method = "GET"
@@ -633,7 +678,7 @@ func runREST(params map[string]interface{}, timeoutSec int) (int, string) {
 		timeoutSec = 60
 	}
 	client := &http.Client{Timeout: time.Duration(timeoutSec) * time.Second}
-	req, err := http.NewRequest(strings.ToUpper(method), urlStr, body)
+	req, err := http.NewRequestWithContext(ctx, strings.ToUpper(method), urlStr, body)
 	if err != nil {
 		return -1, err.Error()
 	}
@@ -646,10 +691,16 @@ func runREST(params map[string]interface{}, timeoutSec int) (int, string) {
 	}
 	res, err := client.Do(req)
 	if err != nil {
+		if durable && ctx.Err() == nil {
+			return journal.UnknownExitCode, "HTTP request ended without a receipt; external effect outcome unknown"
+		}
 		return -1, err.Error()
 	}
 	defer res.Body.Close()
-	raw, _ := io.ReadAll(res.Body)
+	raw, readErr := io.ReadAll(io.LimitReader(res.Body, 5<<20))
+	if readErr != nil && durable && ctx.Err() == nil {
+		return journal.UnknownExitCode, "HTTP response was incomplete; external effect outcome unknown"
+	}
 	code := 0
 	if res.StatusCode >= 400 {
 		code = res.StatusCode
@@ -796,4 +847,20 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func runProcess(ctx context.Context, cmd *exec.Cmd) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	if err := journal.RecordProcess(ctx, cmd.Process.Pid); err != nil {
+		if cmd.Cancel != nil {
+			_ = cmd.Cancel()
+		} else {
+			_ = cmd.Process.Kill()
+		}
+		_ = cmd.Wait()
+		return err
+	}
+	return cmd.Wait()
 }

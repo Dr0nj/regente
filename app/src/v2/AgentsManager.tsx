@@ -43,7 +43,7 @@ export default function AgentsManager() {
   const [newLabel, setNewLabel] = useState("");
   const [newAgentId, setNewAgentId] = useState("");
   const [newEnvironment, setNewEnvironment] = useState("");
-  const [newCaps, setNewCaps] = useState("COMMAND");
+  const [newCaps, setNewCaps] = useState("COMMAND,SCRIPT,HTTP,EXECUTION_V2");
   const [validDays, setValidDays] = useState(90);
   const [tokenError, setTokenError] = useState("");
   const [justCreated, setJustCreated] = useState<string | null>(null);

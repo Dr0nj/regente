@@ -330,6 +330,7 @@ func (s *server) listInstances(w http.ResponseWriter, r *http.Request) {
 // não da def viva do Design (imutabilidade total). Payload só do detalhe (a
 // lista de escala não carrega nada disso).
 type instanceDetail struct {
+	DurableExecution bool `json:"durableExecution"`
 	instanceRow
 	ActionConfig map[string]interface{} `json:"actionConfig,omitempty"`
 	// SnapshotDef — a JobDefinition congelada na ordem (JSON cru do domain, que
@@ -359,7 +360,7 @@ func (s *server) getInstance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "instance not found", http.StatusNotFound)
 		return
 	}
-	det := instanceDetail{instanceRow: list[0]}
+	det := instanceDetail{instanceRow: list[0], DurableExecution: s.cfg.RuntimePolicy.Durable()}
 
 	if allowed, restrict := s.allowedTeams(r, det.OrderDate); restrict {
 		ok := false
@@ -531,6 +532,9 @@ func (s *server) holdInstance(w http.ResponseWriter, r *http.Request) {
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
+	if s.durableInstanceAction(w, r, id, "hold") {
+		return
+	}
 	// Hold geral (schemaV16): segura QUALQUER status exceto RUNNING (a execução
 	// já está no agente — não há o que segurar; cancele ou espere terminar) e o
 	// próprio HELD (idempotente). held_from_status congela o status original —
@@ -581,6 +585,9 @@ func (s *server) releaseInstance(w http.ResponseWriter, r *http.Request) {
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
+	if s.durableInstanceAction(w, r, id, "release") {
+		return
+	}
 	// Um job segurado por uma PAUSA DE FOLDER (hold_scope='folder') NÃO pode ser
 	// liberado individualmente — só o resume da folder inteira destrava (paridade
 	// Control-M "Hold folder" ⇒ "Release folder"). O Release individual só age em
@@ -620,6 +627,9 @@ func (s *server) releaseInstance(w http.ResponseWriter, r *http.Request) {
 func (s *server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !s.requireInstanceWrite(w, r, id) {
+		return
+	}
+	if s.durableInstanceAction(w, r, id, "delete") {
 		return
 	}
 	scope, err := s.instanceWebScope(id)
@@ -668,6 +678,9 @@ func (s *server) cancelInstance(w http.ResponseWriter, r *http.Request) {
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
+	if s.durableInstanceAction(w, r, id, "cancel") {
+		return
+	}
 	status, err := s.cfg.Scheduler.Cancel(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
@@ -683,6 +696,9 @@ func (s *server) cancelInstance(w http.ResponseWriter, r *http.Request) {
 func (s *server) confirmInstance(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !s.requireInstanceWrite(w, r, id) {
+		return
+	}
+	if s.durableInstanceAction(w, r, id, "confirm") {
 		return
 	}
 	res, err := s.cfg.DB.Exec(`UPDATE instances SET confirmed=1 WHERE id=? AND status IN (?,?)`,
@@ -706,6 +722,9 @@ func (s *server) confirmInstance(w http.ResponseWriter, r *http.Request) {
 func (s *server) rerunInstance(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !s.requireInstanceWrite(w, r, id) {
+		return
+	}
+	if s.durableInstanceAction(w, r, id, "rerun") {
 		return
 	}
 	// Modelo único de condições: rerun NÃO toca o pool — o gate re-avalia o que
@@ -747,6 +766,9 @@ func (s *server) rerunInstance(w http.ResponseWriter, r *http.Request) {
 func (s *server) setOKInstance(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !s.requireInstanceWrite(w, r, id) {
+		return
+	}
+	if s.durableInstanceAction(w, r, id, "set-ok") {
 		return
 	}
 	if err := s.cfg.Scheduler.SetOK(id); err != nil {
@@ -964,6 +986,9 @@ func (s *server) forceOrder(w http.ResponseWriter, r *http.Request) {
 func (s *server) forceRunInstance(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !s.requireInstanceWrite(w, r, id) {
+		return
+	}
+	if s.durableInstanceAction(w, r, id, "force") {
 		return
 	}
 	// BUG-1: force_mode='' explícito — um Run Now sobre uma cópia criada por

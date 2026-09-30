@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Durable agent journal · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="adr-i09-agent-journal.html" class="active">Durable agent journal</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="business-time.html">Business time</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html">Daily recovery</a>
+<a href="durable-execution.html">Durable execution and recovery</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="production-profile.html">Production profile</a>
+<a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
+<a href="web-events.html">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="durable-agent-journal">Durable agent journal</h1>
+<p>The protocol 2 agent uses a local SQLite journal with WAL and FULL synchronization. A committed acceptance precedes the server acceptance ACK. A committed start marker and a current server start authorization precede the executor. Output and results remain in the journal until an authenticated receipt for the same execution identity is received.</p>
+<p>Run with <code>regente-agent -transport v2 -server https://server.example -token ... -id worker -caps COMMAND -journal /var/lib/regente/agent.db</code>. Provision the exact job capabilities plus EXECUTION_V2. The journal belongs to one stable agent ID. Only one worker may own it, enforced by an OS file lock. Release builds report the release tag; source builds report dev. Never share a WAL database across hosts or copy it without its active WAL state.</p>
+<p>The worker defaults to four concurrent effects and 1000 unresolved journal entries. Configure -concurrency and -max-pending within the documented flag bounds. Full admission stops dispatch claims while retaining cancellation delivery. Output is capped at 5 MiB per execution. Confirmed content is compacted after seven days; identity fingerprints and tombstones remain to reject changed duplicates. Unconfirmed content is never compacted.</p>
+<p>A restart resumes an accepted execution that has no start marker. A persisted result is resent without executing again. A starting or running execution becomes uncertain, including when the process disappeared between a start marker and the actual effect. A PID is diagnostic evidence only. The worker does not infer that child processes or remote effects stopped when its process stopped. Reporting cancellation requires the executor to return; this does not roll back an external effect.</p>
+<p>Network failures preserve the journal and retry the same identities. Storage failures stop new effects and preserve files for recovery. Unknown journal versions, changed agent identities, corrupt envelopes and integrity failures block startup. Ephemeral agents must mount persistent local storage for the entire unresolved execution lifetime; an in-memory replacement cannot provide these guarantees.</p>
+<p>Protocol 2 uses the frozen definition's actionConfig field. Duplicate acceptance/start receipts include state, current and startAuthorized; a duplicate receipt from an old attempt never authorizes an effect. Agents report uncertain recovery through the authenticated ACK endpoint. The <a href="durable-execution.html">I10 runtime</a> applies this contract to real orders, including internal HTTP/REST and SSH executors. The isolated I08 laboratory remains development-only.</p>
+<p>See <a href="https://www.sqlite.org/pragma.html#pragma_synchronous">SQLite synchronization</a> and <a href="https://www.sqlite.org/wal.html">WAL constraints</a>. Arbitrary scripts and HTTP endpoints do not become exactly-once systems because the journal is durable.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

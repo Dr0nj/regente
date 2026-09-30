@@ -212,7 +212,7 @@ func TestI08AttemptIntegration(t *testing.T) {
 			machineRequest(t, disabled, "GET", "/api/lab/orders/"+o.ID, "test-token", nil, 404)
 			production := httptest.NewServer(NewRouter(Config{DB: d, Hub: h, Store: store, Token: "test-token", ExecutionLab: true, RuntimePolicy: runtimeprofile.Config{Profile: "production"}}))
 			defer production.Close()
-			machineRequest(t, production, "GET", "/api/agent/v2/poll", a.Token, nil, 404)
+			machineRequest(t, production, "GET", "/api/agent/v2/poll", a.Token, nil, 401)
 		})
 	}
 }

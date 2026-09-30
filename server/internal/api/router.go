@@ -92,11 +92,18 @@ type server struct {
 // NewRouter monta o router principal (REST + WS).
 func NewRouter(cfg Config) http.Handler {
 	s := &server{cfg: cfg, pings: newPingRegistry()}
-	if cfg.ExecutionLab && !cfg.RuntimePolicy.Production() {
+	if cfg.RuntimePolicy.Durable() || (cfg.ExecutionLab && !cfg.RuntimePolicy.Production()) {
 		if cfg.Scheduler != nil {
 			s.attempts = execution.New(cfg.DB, cfg.Scheduler.Now)
 		} else {
 			s.attempts = execution.New(cfg.DB, nil)
+		}
+	}
+	if cfg.RuntimePolicy.Durable() && cfg.Scheduler != nil {
+		if existing := cfg.Scheduler.DurableEngine(); existing != nil {
+			s.attempts = existing
+		} else {
+			cfg.Scheduler.AttachDurable(s.attempts)
 		}
 	}
 	if cfg.Hub != nil {
@@ -185,7 +192,10 @@ func NewRouter(cfg Config) http.Handler {
 		r.Get("/instances", s.listInstances)
 		r.Get("/instances/page", s.pageInstances)       // P2/escala: paginação por cursor
 		r.Get("/instances/summary", s.summaryInstances) // P2/escala: contadores agregados
-		r.Get("/instances/{id}", s.getInstance)         // detalhe: linha + action congelada da ordem (snapshot)
+		r.Get("/instances/{id}/executions", s.instanceExecutions)
+		r.With(s.requireWriterMW).Post("/executions/{id}/resolve", s.resolveExecution)
+		r.With(s.requireWriterMW).Post("/execution-effects/{id}/resolve", s.resolveExecutionEffect)
+		r.Get("/instances/{id}", s.getInstance) // detalhe: linha + action congelada da ordem (snapshot)
 		// D-5 — query estruturada composta (POST baseline; QUERY = progressive
 		// enhancement, o verbo IETF safe+idempotente com body — mesma handler).
 		r.Post("/instances/query", s.queryInstances)

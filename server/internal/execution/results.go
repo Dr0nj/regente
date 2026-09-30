@@ -6,7 +6,7 @@ import (
 )
 
 // Resultado + terminalidade + evento + ACK da outbox são uma transação.
-// Nenhum efeito de negócio legado roda aqui: a integração recuperável pertence a I10.
+// I10: efeitos de negócio locais e suas intenções fazem parte do mesmo commit.
 func (e *Engine) Complete(r Result) (Receipt, error) {
 	if len(r.Output) > MaxOutputBytes {
 		return Receipt{}, ErrOutputLimit
@@ -53,6 +53,12 @@ func (e *Engine) Complete(r Result) (Receipt, error) {
 		return Receipt{}, ErrConflict
 	}
 	if _, err = tx.Exec(`UPDATE execution_outbox SET state='acked',lease_until=0 WHERE execution_id=?`, a.ExecutionID); err != nil {
+		return Receipt{}, err
+	}
+	a.State = state
+	a.FinishedAt = now
+	a.LastContact = now
+	if err = e.transition(tx, o, a.Attempt, "result", &r); err != nil {
 		return Receipt{}, err
 	}
 	if err = event(tx, a.ExecutionID, "result_recorded", now); err != nil {

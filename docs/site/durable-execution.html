@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Durable execution and recovery · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="adr-i09-agent-journal.html">Durable agent journal</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="business-time.html">Business time</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html">Daily recovery</a>
+<a href="durable-execution.html" class="active">Durable execution and recovery</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="production-profile.html">Production profile</a>
+<a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
+<a href="web-events.html">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="durable-execution-and-recovery">Durable execution and recovery</h1>
+<p>Production uses protocol 2 and schema 28. Development defaults to legacy execution unless explicitly configured with REGENTE_EXECUTION_MODE=durable or -execution-mode durable. New Linux service installations select durable mode. A database bound to durable mode cannot switch back to legacy. The isolated I08 laboratory remains development-only and cannot start or cancel runtime orders.</p>
+<h2 id="upgrade-a-running-installation">Upgrade a running installation</h2>
+<ol>
+<li>With the previous server still running, prevent new orders/dispatch and drain every legacy RUNNING execution. Resolve externally interrupted operations before upgrading. The new server refuses durable binding while a legacy running order remains.</li>
+<li>Stop the server and agents. Save a complete verified recovery set: database, workspace, unpublished design sessions, configuration, credentials and every agent/internal executor journal with its WAL state. Use the documented database backup tools; a live file copy is insufficient.</li>
+<li>Upgrade the server and agents together. Schema 28 is an additive migration; the runtime accepts exactly schema 28. Existing development service configuration is preserved by installers: select durable mode explicitly when converting it. Production selects durable mode automatically and rejects legacy mode. Mixed old/new runtime binaries and schema downgrade are not supported.</li>
+<li>Provision each machine credential with the exact agent ID, environment and capabilities, including EXECUTION_V2. Start the agent with -transport v2 -journal PATH and the provisioned job capabilities. The agent adds EXECUTION_V2 to its handshake. Source binaries report dev; release binaries report their tag. v2 runtime polling requires protocol 2, journal version 1 and a build version. Production rejects v1 machine execution.</li>
+<li>Keep the same journal and stable agent ID across upgrades. Linux installers use /var/lib/regente-agent/journal.db, macOS uses /Library/Application Support/RegenteAgent/journal.db, and Windows uses ProgramData/RegenteAgent/journal.db with SYSTEM/Administrators ACLs. Linux credentials remain in a protected environment file; Windows uses -token-file with a protected credential file. An existing active service is restarted to load the new binary.</li>
+<li>Verify a synthetic job, fleet presence, Execution metadata, sysout and a controlled recovery before reopening dispatch. Restore the complete pre-upgrade set with its matching binary if rollback is necessary. Never point an older binary at schema 28 or delete a journal to make startup succeed.</li>
+</ol>
+<h2 id="what-is-committed">What is committed</h2>
+<p>A real order creates its current execution, monotonically increasing generation/fence and dispatch intent in one transaction. A committed agent acceptance precedes acceptance ACK. A local start marker plus current server start authorization precede external execution. The immutable daily snapshot, business timezone, ODAT and daily-completion gates remain authoritative. CONFIRM and configuration gates apply to Force Order; Run Now bypasses normal dependency/schedule/resource checks while recording actual resource holds, but cannot bypass configuration, snapshot integrity or an incomplete daily.</p>
+<p>A confirmed result commits instance state, attempt history, local variable updates, conditions and post-action intents together. Duplicate results are acknowledged without applying them again. A late result cannot finish a later generation. Retry budgets and cyclic schedules remain business state; execution identities never reset on rerun. A known failure may schedule a retry; an unknown outcome never does.</p>
+<p>Notify, run-job, runtime actions, SLA webhooks and global variable assignments have stable effect IDs. Run-job materialization and its receipt are one database transaction. External delivery claims are committed before sending and receipts are committed after completion. An expired claimed effect becomes uncertain and is never automatically repeated. Notification payloads/destinations are frozen privately; UI/API expose descriptors and reasons, not destination secrets. Partial delivery to several channels is uncertain as a whole; manually repeating can duplicate channels already delivered.</p>
+<p>Resource holds live in the database and survive unknown effects, restart and retry. Cross-node quota reads and deletion consult those holds. UNCERTAIN carries across daily rollover, cannot be overwritten by Hold/Set OK/Rerun/Delete, prevents archive of the unresolved day, and keeps the daily report open.</p>
+<h2 id="recover-an-unconfirmed-outcome">Recover an unconfirmed outcome</h2>
+<p>The Execution tab and GET /api/instances/{id}/executions show execution ID, attempt, fence, agent, acceptance/start/contact times, reason and post-actions. Output remains available per execution generation, including pending/uncertain chunks. Read access follows folder ACLs. Resolution requires a writer with access to the frozen instance folder.</p>
+<p>Verify the external operation and ensure it has stopped before recording succeeded, failed or cancelled. Supply a reason, current fence and stable idempotency key to POST /api/executions/{id}/resolve. The decision and actor are audited in the same transaction. The same key/content replays its receipt; conflicting decisions, stale identity or changed content are rejected. Resolution does not automatically rerun the job.</p>
+<p>For an uncertain/pending post-action, POST /api/execution-effects/{id}/resolve requires its current generation, reason, stable key and confirmation that the operation has stopped. Decisions are done, cancelled or retry. Retry additionally requires classification idempotent, verified-absent or duplicate-risk-accepted and explicit acceptance of duplicate risk. Both old workers and stale operator forms are fenced out. An unavailable run-job target remains pending until corrected or explicitly resolved; it consumes bounded admission.</p>
+<p>CLI equivalents:</p>
+<pre><code class="language-sh">regente ops executions INSTANCE -server URL -token SESSION
+regente ops resolve-execution EXECUTION -fence N -key REQUEST -decision failed -reason 'External operation stopped; evidence checked' -effect-stopped
+regente ops resolve-effect EFFECT -generation N -key REQUEST -decision retry -reason 'Destination deduplicates this effect ID' -classification idempotent -accept-duplicate-risk -effect-stopped
+</code></pre>
+<h2 id="limits-of-the-guarantee">Limits of the guarantee</h2>
+<p>The server outbox and local journal preserve identity and evidence; they cannot make arbitrary commands, remote systems or multi-channel notifications exactly once. A running agent that restarts reports uncertainty instead of replaying. HTTP/REST receipt loss, OpenSSH transport/deadline loss, and SSH exit status outside 0..254 remain uncertain. Windows OpenSSH can return UINT32_MAX on missing remote receipt. Mutating external adapters without a confirmed completion also preserve uncertainty on failure rather than using normal retry.</p>
+<p>Cancel acknowledges the local executor returning after a stop request; it does not undo remote work. Unix cancellation targets the local process group. Windows kills the direct process and bounds pipe waiting; descendant or remote completion requires operator verification. Timeout alone is not evidence that an external operation stopped.</p>
+<p>Journals use SQLite WAL/FULL on persistent local storage, one OS-locked owner per stable agent ID. Network/shared filesystems, journal sharing, ephemeral disks, agent replacement without its unresolved journal and storage devices that do not honor synchronization are outside this guarantee. The default bounds are four concurrent effects, 1000 unconfirmed journal entries and 5 MiB output per execution. Admission preserves cancellation. Confirmed journal contents compact after seven days while identity tombstones remain; unconfirmed contents never compact. Server execution/effect audit records currently have no automatic retention deletion; plan storage accordingly.</p>
+<p>The SERVER-AGENT HTTP/REST and SSH executors use the same journal/receipt contract under a stable node ID and persistent workspace runtime directory. Production still requires the explicit control-plane execution policy. This increment does not qualify distributed HA, shared-storage durability, capacity targets or a customer pilot; those remain separate roadmap items.</p>
+<p>See <a href="adr-i09-agent-journal.html">agent journal</a>, <a href="production-profile.html">production profile</a>, <a href="conditions-events.html">conditions</a>, <a href="business-time.html">business time</a>, <a href="daily-recovery.html">daily recovery</a> and <a href="integration-baseline.html">integration baseline</a>.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

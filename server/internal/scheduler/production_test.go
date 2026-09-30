@@ -1,8 +1,9 @@
 package scheduler
 
 import (
+	"encoding/json"
 	"github.com/Dr0nj/regente-server/internal/domain"
-	"github.com/Dr0nj/regente-server/internal/hub"
+	"github.com/Dr0nj/regente-server/internal/execution"
 	"github.com/Dr0nj/regente-server/internal/runtimeprofile"
 	"testing"
 	"time"
@@ -40,24 +41,30 @@ func TestProductionScopedDispatch(t *testing.T) {
 	s := newTestScheduler(t)
 	s.DemoMode = false
 	s.RuntimePolicy = runtimeprofile.Config{Profile: "production", Environment: "prod", ControlPlane: "deny"}
-	h := hub.New()
-	s.hub = h
-	c := &hub.Client{ID: "worker", Kind: hub.ClientAgent, Environment: "prod", StrictIdentity: true, Capabilities: []string{"COMMAND"}, Send: make(chan []byte, 4)}
-	h.Register(c)
-	defer h.Unregister(c)
-	def := domain.JobDefinition{ID: "job", Environment: "prod", JobType: "COMMAND"}
-	seedWaitingEx(t, s, "instance", time.Now().Add(-time.Hour), def)
-	s.startInstance("instance", def)
-	select {
-	case <-c.Send:
-	case <-time.After(3 * time.Second):
-		t.Fatal("dispatch autorizado não ocorreu")
-	}
-	var status string
-	if err := s.db.QueryRow("SELECT status FROM instances WHERE id='instance'").Scan(&status); err != nil {
+	s.AttachDurable(execution.New(s.db, s.Now))
+	if _, err := s.db.Exec("INSERT INTO machine_principals(agent_id,environment,capabilities) VALUES('worker','prod','COMMAND,EXECUTION_V2')"); err != nil {
 		t.Fatal(err)
 	}
-	if status != "RUNNING" {
-		t.Fatal(status)
+	if _, err := s.db.Exec("INSERT INTO agent_tokens(token_hash,label,agent_id,expires_at) VALUES('fixture','worker','worker',?)", time.Now().Add(time.Hour).UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	def := domain.JobDefinition{ID: "job", Environment: "prod", JobType: "COMMAND"}
+	seedWaitingEx(t, s, "instance", time.Now().Add(-time.Hour), def)
+	var raw string
+	s.db.QueryRow("SELECT definition_snapshot FROM instances WHERE id='instance'").Scan(&raw)
+	if err := json.Unmarshal([]byte(raw), &def); err != nil {
+		t.Fatal(err)
+	}
+	s.startInstance("instance", def)
+	msg, err := s.durable.Claim("worker")
+	if err != nil || msg == nil || msg.Protocol != 2 || msg.Definition.Environment != "prod" {
+		t.Fatal(msg, err)
+	}
+	var status string
+	if err = s.db.QueryRow("SELECT status FROM instances WHERE id='instance'").Scan(&status); err != nil || status != "RUNNING" {
+		t.Fatal(status, err)
+	}
+	if msg.ExecutionID == "" || msg.Fence != 1 {
+		t.Fatal("unfenced production dispatch")
 	}
 }

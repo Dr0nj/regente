@@ -83,6 +83,15 @@ func (s *server) deleteCalendar(w http.ResponseWriter, r *http.Request) {
 // === F15 — Resources ===
 
 func (s *server) listResources(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.Scheduler.DurableEngine() != nil {
+		out, err := s.cfg.Scheduler.DurableResourceSnapshot()
+		if err != nil {
+			executionError(w, err)
+			return
+		}
+		writeJSON(w, 200, out)
+		return
+	}
 	rt := s.cfg.Scheduler.Resources()
 	if rt == nil {
 		writeJSON(w, 200, []scheduler.ResourceState{})
@@ -105,7 +114,14 @@ func (s *server) setResourceCapacity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 400)
 		return
 	}
-	rt.SetCapacity(name, body.Capacity)
+	if s.cfg.Scheduler.DurableEngine() != nil {
+		if err := s.cfg.Scheduler.DurableResourceChange(name, body.Capacity, false); err != nil {
+			executionError(w, err)
+			return
+		}
+	} else {
+		rt.SetCapacity(name, body.Capacity)
+	}
 	writeJSON(w, 200, map[string]any{"name": name, "capacity": body.Capacity})
 }
 
@@ -117,6 +133,14 @@ func (s *server) deleteResource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := urlName(r, "name")
+	if s.cfg.Scheduler.DurableEngine() != nil {
+		if err := s.cfg.Scheduler.DurableResourceChange(name, 0, true); err != nil {
+			executionError(w, err)
+			return
+		}
+		w.WriteHeader(204)
+		return
+	}
 	if err := rt.Delete(name); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return

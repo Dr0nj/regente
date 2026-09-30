@@ -62,6 +62,7 @@ function parseTime(s?: string): number | undefined {
 }
 
 const STATUS_MAP: Record<string, InstanceStatus> = {
+  UNCERTAIN: "UNCERTAIN",
   WAITING: "WAITING",
   RUNNING: "RUNNING",
   OK: "OK",
@@ -728,6 +729,7 @@ export async function refreshFromServer(): Promise<void> {
 // (payload de escala): label/jobType/actionConfig da definition_snapshot, a
 // MESMA foto que o dispatch executa. É o que o drawer mostra em Action/Output.
 export interface InstanceOrderDetail {
+  durableExecution?: boolean;
   snapshotError?: string;
   label?: string;
   jobType?: string;

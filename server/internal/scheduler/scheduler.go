@@ -23,6 +23,7 @@ import (
 	"github.com/Dr0nj/regente-server/internal/businessclock"
 	"github.com/Dr0nj/regente-server/internal/db"
 	"github.com/Dr0nj/regente-server/internal/domain"
+	"github.com/Dr0nj/regente-server/internal/execution"
 	"github.com/Dr0nj/regente-server/internal/hub"
 	"github.com/Dr0nj/regente-server/internal/runtimeprofile"
 	"github.com/Dr0nj/regente-server/internal/storage"
@@ -38,11 +39,13 @@ type Settings struct {
 }
 
 type Scheduler struct {
-	RuntimePolicy runtimeprofile.Config
-	store         *storage.FileStore
-	db            *db.DB
-	hub           Bus
-	tick          time.Duration
+	RuntimePolicy   runtimeprofile.Config
+	durable         *execution.Engine
+	internalAgentID string
+	store           *storage.FileStore
+	db              *db.DB
+	hub             Bus
+	tick            time.Duration
 
 	dailyMu    sync.Mutex // só coordenação local; o checkpoint também é serializado no banco.
 	mu         sync.Mutex
@@ -493,6 +496,9 @@ func (s *Scheduler) RebuildResourcesFromRunning() (int, error) {
 	if s.resources == nil {
 		return 0, nil
 	}
+	if s.durable != nil {
+		return s.rebuildDurableResources()
+	}
 	rows, err := s.db.Query(`SELECT id, COALESCE(definition_snapshot,'') FROM instances WHERE status=?`, string(domain.StatusRunning))
 	if err != nil {
 		return 0, err
@@ -751,6 +757,8 @@ func keepActiveDays(def domain.JobDefinition, notokDefault bool) int {
 //	OK/CANCELLED/outros → não carrega (encerrado).
 func carryDecision(status string, retryPending bool, ageDays, activityAgeDays int, def domain.JobDefinition) carryPlan {
 	switch status {
+	case string(domain.StatusUncertain):
+		return carryPlan{carry: true, reason: "unresolved-execution"}
 	case string(domain.StatusRunning):
 		return carryPlan{carry: true, reason: "running"}
 	case string(domain.StatusHeld):
@@ -1032,6 +1040,13 @@ func statusRank(s string) int {
 const stuckRunningTimeout = 15 * time.Minute
 
 func (s *Scheduler) tickOnce() {
+	if s.durable != nil {
+		s.drainDurableEffects()
+		if _, err := s.durable.Reconcile(); err != nil {
+			log.Printf("[execution] reconcile: %v", err)
+			return
+		}
+	}
 	now := s.Now()
 	if s.validateBusinessTime() != nil {
 		return
@@ -1092,7 +1107,7 @@ func (s *Scheduler) tickOnce() {
 		// carregado na virada da daily (carried_at) re-arma o relógio: mede-se a
 		// staleness de max(started_at, carried_at), pra um RUNNING legítimo que
 		// atravessa a virada não ser reapado no instante em que aparece no novo dia.
-		if r.Status == string(domain.StatusRunning) && r.StartedAt.Valid {
+		if s.durable == nil && r.Status == string(domain.StatusRunning) && r.StartedAt.Valid {
 			anchor := r.StartedAt.Time
 			if r.CarriedAt.Valid && r.CarriedAt.Time.After(anchor) {
 				anchor = r.CarriedAt.Time
@@ -1161,7 +1176,7 @@ func (s *Scheduler) tickOnce() {
 		}
 		// Gates read-only passaram → reserva ATÔMICA do recurso (a única etapa com
 		// efeito colateral; o gate só fez Shortfalls read-only) e dispara.
-		if len(def.Resources) > 0 && s.resources != nil {
+		if s.durable == nil && len(def.Resources) > 0 && s.resources != nil {
 			if !s.resources.TryAcquire(r.ID, def.Resources) {
 				continue
 			}
@@ -1170,6 +1185,10 @@ func (s *Scheduler) tickOnce() {
 	}
 
 	// F19 — SLA evaluation per tick
+	if s.durable != nil {
+		s.evaluateDurableRunning(now)
+		return
+	}
 	if s.sla != nil {
 		defsByID := map[string]domain.JobDefinition{}
 		for _, d := range s.defs {
@@ -1190,6 +1209,10 @@ func (s *Scheduler) tickOnce() {
 // próprio server) e DemoMode dispensa (mock-finish). Checado ANTES do claim.
 // ADV-2: def.Environment roteia — só conta agente do mesmo env (ou coringa).
 func (s *Scheduler) agentAvailable(def domain.JobDefinition) bool {
+	if s.durable != nil {
+		_, err := s.durableAgent(def)
+		return err == nil
+	}
 	if s.RuntimePolicy.ExecutionError(def) != "" {
 		return false
 	}
@@ -1221,6 +1244,10 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 		return
 	}
 	if s.RuntimePolicy.ExecutionError(def) != "" {
+		return
+	}
+	if s.durable != nil || s.RuntimePolicy.Durable() {
+		s.startDurable(id, def)
 		return
 	}
 	s.mu.Lock()
@@ -1342,6 +1369,9 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 
 // FinishInstance — chamado pelo ws handler quando o agent publica "result".
 func (s *Scheduler) FinishInstance(id string, status domain.InstanceStatus, exitCode int, output string) {
+	if s.IsDurableInstance(id) {
+		return
+	}
 	// Guard idempotente: um resultado TARDIO/duplicado para uma instance que já
 	// é TERMINAL é ignorado. É o que blinda o cancel de um job RUNNING — o
 	// operador mata o processo, a instance vira NOTOK na hora (finishKilled), e o
@@ -1639,6 +1669,10 @@ func (s *Scheduler) maybeRetry(id, output string) bool {
 // hora, sem esperar o evento chegar. Preserva output original com prefixo de
 // auditoria.
 func (s *Scheduler) SetOK(id string) error {
+	if s.durable != nil {
+		_, err := s.DurableAction("operator", id, "set-ok")
+		return err
+	}
 	var status, output string
 	err := s.db.QueryRow(`SELECT status, COALESCE(output,'') FROM instances WHERE id=?`, id).Scan(&status, &output)
 	if err != nil {
@@ -1704,6 +1738,10 @@ func (s *Scheduler) isInstanceTerminal(id string) bool {
 //
 // Devolve o status resultante. Erro se a instance sumiu ou já é terminal.
 func (s *Scheduler) Cancel(id string) (domain.InstanceStatus, error) {
+	if s.durable != nil {
+		status, err := s.DurableAction("operator", id, "cancel")
+		return domain.InstanceStatus(status), err
+	}
 	var status, agentID string
 	if err := s.db.QueryRow(`SELECT status, COALESCE(agent_id,'') FROM instances WHERE id=?`, id).Scan(&status, &agentID); err != nil {
 		return "", fmt.Errorf("instance %s not found", id)
@@ -1898,7 +1936,7 @@ func (s *Scheduler) ForceOrder(defID string) (string, error) {
 		s.emitEvent(id, "submitted", "operator", "force waiting on gate: "+blockers[0].Detail)
 		return id, nil
 	}
-	if len(def.Resources) > 0 && s.resources != nil {
+	if s.durable == nil && len(def.Resources) > 0 && s.resources != nil {
 		if !s.resources.TryAcquire(id, def.Resources) {
 			return id, nil // recurso indisponível — o tick re-tenta
 		}

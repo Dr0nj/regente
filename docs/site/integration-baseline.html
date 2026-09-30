@@ -59,12 +59,14 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
 <a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
 <a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="adr-i09-agent-journal.html">Durable agent journal</a>
 <a href="agent-authentication.html">Agent authentication and upgrades</a>
 <a href="agent-identity.html">Agent identity and credential lifecycle</a>
 <a href="authentication.html">Authentication: local, hybrid or SSO</a>
 <a href="business-time.html">Business time</a>
 <a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
 <a href="daily-recovery.html">Daily recovery</a>
+<a href="durable-execution.html">Durable execution and recovery</a>
 <a href="integration-baseline.html" class="active">Integration baseline and migration runbook</a>
 <a href="production-profile.html">Production profile</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
@@ -208,9 +210,29 @@ are outside this baseline and are not claimed as executed.</p>
 <td>Opt-in development <a href="adr-i08-attempts.html">attempt laboratory</a>; synthetic v2 client only, legacy dispatch and conditions unchanged</td>
 </tr>
 <tr>
-<td>Distributed drafts and uncertain effects</td>
+<td>Agent journal restart, lost receipts, real runtime results and operator API/CLI</td>
+<td>TestI09RealAgentJournalLostReceiptAndUncertainRestart and TestI10RealAgentRuntimeLostReceiptAndUncertainRestart, SQLite/Postgres; TestI10OperatorAPIAndCLIContracts</td>
+<td>Actual agent process killed/restarted; identity, sysout, RBAC and audited decisions</td>
+</tr>
+<tr>
+<td>Atomic runtime conditions, retry, resource holds, On/Do and external uncertainty</td>
+<td>TestI10PostgresRuntimeContracts and SQLite scheduler suite</td>
+<td>Fault-injected transactions, restart, real OpenSSH and internal HTTP; unknown effects are never automatically repeated</td>
+</tr>
+<tr>
+<td>Real server SIGKILL while an agent executes</td>
+<td>durable_process_recovery report, SQLite/Postgres</td>
+<td>Actual server and agent binaries; result_pending journal during downtime, one non-idempotent effect, current identity and condition preserved</td>
+</tr>
+<tr>
+<td>Browser execution recovery</td>
+<td>I10 browser scenario</td>
+<td>Actual server restart and audited resolution from Execution tab; no mocked API</td>
+</tr>
+<tr>
+<td>Distributed drafts</td>
 <td>preserved synthetic fixtures</td>
-<td>Broader guarantees remain reserved for I10/I12</td>
+<td>Broader guarantees remain reserved for I12</td>
 </tr>
 </tbody>
 </table>
@@ -231,8 +253,8 @@ are outside this baseline and are not claimed as executed.</p>
 <td>Full laboratory; separate process restart; no fencing/partition guarantee</td>
 </tr>
 <tr>
-<td>Server and agent from same SHA, WS transport</td>
-<td>Full cluster run; HTTP/SSE remain covered by API/agent tests</td>
+<td>Server and agent from same SHA, legacy WS and durable v2</td>
+<td>Legacy cluster plus v2 real-process recovery; HTTP/SSE covered by API/agent tests</td>
 </tr>
 <tr>
 <td>Other PostgreSQL versions, mixed binaries, arm64 cluster, external IdPs</td>
@@ -277,7 +299,7 @@ are regression budgets tied to current mechanisms or a future contract, not SLAs
 <tr>
 <td>Dispatch durable ACK</td>
 <td>Proposed ≤5s p99, separating a 2s default tick from network/storage budget</td>
-<td>I08/I09 must implement and measure; current transport has no durable ACK</td>
+<td>Protocol 2 implements durable acceptance/result receipts; p99 latency is not qualified by the functional recovery fixtures</td>
 </tr>
 <tr>
 <td>Active agent credential revocation</td>
@@ -287,7 +309,7 @@ are regression budgets tied to current mechanisms or a future contract, not SLAs
 <tr>
 <td>Reconciliation after recovery</td>
 <td>Proposed ≤30s for the 3-order reference set, two 15s presence intervals</td>
-<td>I10/I11; increase workload only with measured evidence</td>
+<td>I10 functional recovery records measured fixture times; I11 HA/partition guarantees remain separate</td>
 </tr>
 <tr>
 <td>Availability</td>
@@ -322,7 +344,7 @@ at <code>af75c51</code> passed the complete-set/DB-only draft drills on SQLite a
 the same-binary drain and the schema-document contract. The
 <a href="https://github.com/Dr0nj/regente/blob/main/docs/evidence/doc-a-af75c51.json">recorded evidence</a> is synthetic laboratory evidence,
 not production or mixed-version qualification.</p>
-<p>Current runtime schema: <strong>27</strong>; supported range: <strong>[27,27]</strong>.</p>
+<p>Current runtime schema: <strong>28</strong>; supported range: <strong>[28,28]</strong>.</p>
 <p><code>TestMigrationRunbookContract</code> compares this current statement with the migration
 constants and an actual fresh database. Historical fixture versions below remain
 intentional. See the <a href="upgrades.html">compatibility matrix</a> before choosing binaries.</p>

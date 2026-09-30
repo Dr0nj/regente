@@ -30,6 +30,7 @@ type DailyReportCounts struct {
 	Waiting   int `json:"waiting"`
 	Running   int `json:"running"`
 	Held      int `json:"held"`
+	Uncertain int `json:"uncertain"`
 	Cancelled int `json:"cancelled"`
 	Carried   int `json:"carried"` // vieram de diárias anteriores (carry-over)
 }
@@ -136,6 +137,8 @@ func (s *Scheduler) BuildDailyReport(date string) (*DailyReport, error) {
 			rep.Counts.Waiting = n
 		case string(domain.StatusRunning):
 			rep.Counts.Running = n
+		case string(domain.StatusUncertain):
+			rep.Counts.Uncertain = n
 		case string(domain.StatusHeld):
 			rep.Counts.Held = n
 		case string(domain.StatusCancelled):
@@ -151,7 +154,7 @@ func (s *Scheduler) BuildDailyReport(date string) (*DailyReport, error) {
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
-	rep.Closed = rep.Materialization != nil && !rep.Materialization.CanResume && rep.Counts.Waiting == 0 && rep.Counts.Running == 0
+	rep.Closed = rep.Materialization != nil && !rep.Materialization.CanResume && rep.Counts.Waiting == 0 && rep.Counts.Running == 0 && rep.Counts.Uncertain == 0
 
 	// Failures (NOTOK) — detalhe cap 100; o total exato já está em Counts.NotOK.
 	frows, err := s.db.Query(
@@ -234,8 +237,8 @@ func (s *Scheduler) maybeSendDailyReport() {
 	due := false
 	var open int
 	if err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM instances WHERE order_date=? AND status IN (?,?)`,
-		date, string(domain.StatusWaiting), string(domain.StatusRunning),
+		`SELECT COUNT(*) FROM instances WHERE order_date=? AND status IN (?,?,?)`,
+		date, string(domain.StatusWaiting), string(domain.StatusRunning), string(domain.StatusUncertain),
 	).Scan(&open); err == nil && open == 0 {
 		due = true // a daily FECHOU
 	}
@@ -299,9 +302,9 @@ func (s *Scheduler) sendDailyReport(rep *DailyReport, channelsCSV string) {
 	if rep.LateStart {
 		late = " · LATE START"
 	}
-	msg := fmt.Sprintf("Daily %s %s: %d ordered · %d OK · %d NOTOK · %d waiting · %d running · %d cancelled · %d carried%s",
+	msg := fmt.Sprintf("Daily %s %s: %d ordered · %d OK · %d NOTOK · %d waiting · %d running · %d uncertain · %d cancelled · %d carried%s",
 		rep.Date, verdict, rep.Counts.Ordered, rep.Counts.OK, rep.Counts.NotOK,
-		rep.Counts.Waiting, rep.Counts.Running, rep.Counts.Cancelled, rep.Counts.Carried, late)
+		rep.Counts.Waiting, rep.Counts.Running, rep.Counts.Uncertain, rep.Counts.Cancelled, rep.Counts.Carried, late)
 	if len(rep.Failures) > 0 {
 		names := make([]string, 0, 5)
 		for i, f := range rep.Failures {

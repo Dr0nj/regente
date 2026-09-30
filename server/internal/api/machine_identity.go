@@ -91,6 +91,10 @@ func (s *server) machineHandshake(w http.ResponseWriter, r *http.Request) (*mach
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return nil, false
 	}
+	if s.cfg.RuntimePolicy.Durable() && !strings.HasPrefix(r.URL.Path, "/api/agent/v2/") {
+		http.Error(w, "durable protocol 2 with a persistent journal is required", http.StatusUpgradeRequired)
+		return nil, false
+	}
 	if !p.matches(r) {
 		http.Error(w, "agent identity or scope mismatch", http.StatusForbidden)
 		return nil, false
@@ -139,7 +143,7 @@ func closeMachineStream(w http.ResponseWriter, c *hub.Client) func() {
 
 // Atribuição atual, não fencing de tentativa: executionId pertence a I08–I10.
 func (s *server) machineOwns(p *machinePrincipal, instanceID string) bool {
-	if instanceID == "" || !s.machineValid(p) {
+	if instanceID == "" || !s.machineValid(p) || (s.cfg.Scheduler != nil && s.cfg.Scheduler.IsDurableInstance(instanceID)) {
 		return false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -162,7 +166,7 @@ var machineName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 var machineCap = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,31}$`)
 
 func (b *tokenRequest) validate() bool {
-	if !machineName.MatchString(b.AgentID) || strings.EqualFold(b.AgentID, "SERVER-AGENT") ||
+	if !machineName.MatchString(b.AgentID) || strings.EqualFold(b.AgentID, "SERVER-AGENT") || strings.HasPrefix(strings.ToUpper(b.AgentID), "SERVER-AGENT.") ||
 		strings.HasPrefix(strings.ToLower(b.AgentID), "web-") || len(b.Label) > 256 {
 		return false
 	}

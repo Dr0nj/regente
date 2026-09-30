@@ -21,10 +21,14 @@ type Config struct {
 	TLSCert, TLSKey, TLSClientCA, TrustedProxies     string
 	OIDCIssuer, OIDCClientID, OIDCRedirect, OIDCRole string
 	Role, Scheduler, Bus                             string
+	ExecutionMode                                    string
 	Demo, ServerAgent, ExecutionLab                  bool
 }
 
 func (c Config) Production() bool { return c.Profile == "production" }
+func (c Config) Durable() bool {
+	return c.ExecutionMode == "durable" || ((c.ExecutionMode == "" || c.ExecutionMode == "auto") && c.Production())
+}
 
 var environmentPattern = regexp.MustCompile("^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 
@@ -36,8 +40,17 @@ func loopback(host string) bool {
 	return host == "localhost" || (err == nil && ip.IsLoopback())
 }
 func (c Config) Validate() error {
+	if c.ExecutionMode != "" && c.ExecutionMode != "auto" && c.ExecutionMode != "legacy" && c.ExecutionMode != "durable" {
+		return errors.New("execution-mode must be auto, legacy or durable")
+	}
+	if c.Production() && !c.Durable() {
+		return errors.New("production requires durable execution")
+	}
+	if c.Durable() && c.Demo {
+		return errors.New("durable execution forbids demo mode")
+	}
 	if c.ExecutionLab && c.Production() {
-		return errors.New("execution-lab is unavailable in production; I09/I10 are required")
+		return errors.New("execution-lab is unavailable in production; use the durable runtime")
 	}
 	if c.Profile != "development" && !c.Production() {
 		return errors.New("profile must be development or production")
@@ -182,6 +195,26 @@ func Bind(d *db.DB, c Config) error {
 			return errors.New("database production environment conflict")
 		}
 		if _, err = tx.Exec("DELETE FROM sessions"); err != nil {
+			return err
+		}
+	}
+	var executionMode string
+	err = tx.QueryRow("SELECT value FROM settings WHERE key='_execution_mode'").Scan(&executionMode)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if executionMode == "durable" && !c.Durable() {
+		return errors.New("database is bound to durable execution; downgrade is refused")
+	}
+	if c.Durable() && executionMode != "durable" {
+		var legacy int
+		if err = tx.QueryRow("SELECT COUNT(*) FROM instances i LEFT JOIN runtime_orders r ON r.instance_id=i.id WHERE i.status='RUNNING' AND r.instance_id IS NULL").Scan(&legacy); err != nil {
+			return err
+		}
+		if legacy != 0 {
+			return errors.New("drain legacy running instances before enabling durable execution")
+		}
+		if _, err = tx.Exec("INSERT INTO settings(key,value) VALUES('_execution_mode','durable') ON CONFLICT(key) DO UPDATE SET value=excluded.value"); err != nil {
 			return err
 		}
 	}

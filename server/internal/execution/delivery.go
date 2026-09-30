@@ -6,13 +6,19 @@ import (
 
 // Claim só entrega mensagens atribuídas ao agente. O commit antecede qualquer envio.
 // Redelivery mantém executionId, fencing e chave; timeout do claim não prova aceite.
-func (e *Engine) Claim(agent string) (*Envelope, error) {
+func (e *Engine) Claim(agent string) (*Envelope, error) { return e.ClaimCapacity(agent, true) }
+func (e *Engine) ClaimCapacity(agent string, available bool) (*Envelope, error) {
 	if agent == "" {
 		return nil, ErrInvalid
 	}
 	now := e.now()
 	// Os candidatos são apenas pistas; todos são revalidados sob o lock da ordem.
-	rows, err := e.DB.Query(`SELECT b.id FROM execution_outbox b JOIN execution_attempts a ON a.execution_id=b.execution_id WHERE a.agent_id=? AND b.state IN ('pending','leased') AND b.next_at<=? AND b.lease_until<=? ORDER BY b.created_at,b.id LIMIT 32`, agent, now, now)
+	rows, err := e.DB.Query(`SELECT b.id FROM execution_outbox b JOIN execution_attempts a ON a.execution_id=b.execution_id WHERE a.agent_id=? AND b.state IN ('pending','leased') AND b.next_at<=? AND b.lease_until<=? AND (?=1 OR b.kind='cancel') ORDER BY CASE WHEN b.kind='cancel' THEN 0 ELSE 1 END,b.created_at,b.id LIMIT 32`, agent, now, now, func() int {
+		if available {
+			return 1
+		}
+		return 0
+	}())
 	if err != nil {
 		return nil, err
 	}
@@ -71,10 +77,15 @@ func (e *Engine) claimOne(id, agent string, now int64) (*Envelope, error) {
 		if _, err = tx.Exec(`UPDATE execution_outbox SET state='paused' WHERE id=?`, id); err != nil {
 			return nil, err
 		}
-		if _, err = tx.Exec(`UPDATE execution_attempts SET state='uncertain' WHERE execution_id=?`, exec); err != nil {
+		if _, err = tx.Exec(`UPDATE execution_attempts SET state='uncertain',reason='delivery limit exhausted; acceptance unknown' WHERE execution_id=?`, exec); err != nil {
 			return nil, err
 		}
 		if _, err = tx.Exec(`UPDATE lab_orders SET state='uncertain' WHERE id=?`, o.ID); err != nil {
+			return nil, err
+		}
+		a.State = "uncertain"
+		a.Reason = "delivery limit exhausted; acceptance unknown"
+		if err = e.transition(tx, o, a.Attempt, "uncertain", nil); err != nil {
 			return nil, err
 		}
 		if err = event(tx, exec, "delivery_uncertain", now); err != nil {
@@ -107,7 +118,13 @@ func (e *Engine) claimOne(id, agent string, now int64) (*Envelope, error) {
 }
 
 func (e *Engine) Acknowledge(id Identity, kind string) (Receipt, error) {
-	if kind != "accepted" && kind != "started" && kind != "heartbeat" && kind != "cancelled" {
+	return e.AcknowledgeReason(id, kind, "")
+}
+func (e *Engine) AcknowledgeReason(id Identity, kind, reason string) (Receipt, error) {
+	if len(reason) > 2000 {
+		return Receipt{}, ErrInvalid
+	}
+	if kind != "accepted" && kind != "started" && kind != "heartbeat" && kind != "cancelled" && kind != "uncertain" && kind != "status" {
 		return Receipt{}, ErrInvalid
 	}
 	tx, err := e.begin()
@@ -122,8 +139,14 @@ func (e *Engine) Acknowledge(id Identity, kind string) (Receipt, error) {
 	if !identityOK(a, id) {
 		return Receipt{}, ErrConflict
 	}
+	if kind == "status" {
+		return phaseReceipt(o, a, true), nil
+	}
 	if (kind == "cancelled" && a.State == "cancelled") || (kind == "accepted" && a.AcceptedAt != 0) || (kind == "started" && a.StartedAt != 0) {
-		return receipt(a.ExecutionID, true), nil
+		return phaseReceipt(o, a, true), nil
+	}
+	if kind == "uncertain" && terminal(a.State) {
+		return phaseReceipt(o, a, true), nil
 	}
 	if !current(o, a) || terminal(a.State) {
 		return Receipt{}, ErrConflict
@@ -132,9 +155,22 @@ func (e *Engine) Acknowledge(id Identity, kind string) (Receipt, error) {
 	next := a.State
 	dup := false
 	switch kind {
+	case "uncertain":
+		next = "uncertain"
+		a.Reason = reason
+		if a.Reason == "" {
+			a.Reason = "agent reported an unresolved effect"
+		}
+		if _, err = tx.Exec(`UPDATE lab_orders SET state='uncertain' WHERE id=?`, o.ID); err != nil {
+			return Receipt{}, err
+		}
+		if _, err = tx.Exec(`UPDATE execution_outbox SET state='paused',lease_until=0 WHERE execution_id=? AND state IN ('pending','leased')`, a.ExecutionID); err != nil {
+			return Receipt{}, err
+		}
+
 	case "accepted":
 		if a.AcceptedAt != 0 {
-			return receipt(a.ExecutionID, true), nil
+			return phaseReceipt(o, a, true), nil
 		}
 		if a.State != "dispatching" && a.State != "uncertain" && a.State != "cancel_requested" {
 			return Receipt{}, ErrConflict
@@ -150,7 +186,7 @@ func (e *Engine) Acknowledge(id Identity, kind string) (Receipt, error) {
 		}
 	case "started":
 		if a.StartedAt != 0 {
-			return receipt(a.ExecutionID, true), nil
+			return phaseReceipt(o, a, true), nil
 		}
 		if a.AcceptedAt == 0 || a.State == "dispatch_pending" || a.State == "dispatching" {
 			return Receipt{}, ErrConflict
@@ -188,10 +224,21 @@ func (e *Engine) Acknowledge(id Identity, kind string) (Receipt, error) {
 		}
 	}
 	leaseUntil := now + e.ExecutionLease.Milliseconds()
-	if terminal(next) {
+	if terminal(next) || next == "uncertain" {
 		leaseUntil = 0
 	}
-	if _, err = tx.Exec(`UPDATE execution_attempts SET state=?,lease_until=? WHERE execution_id=? AND state=?`, next, leaseUntil, a.ExecutionID, a.State); err != nil {
+	if _, err = tx.Exec(`UPDATE execution_attempts SET state=?,lease_until=?,last_contact=?,reason=? WHERE execution_id=? AND state=?`, next, leaseUntil, now, a.Reason, a.ExecutionID, a.State); err != nil {
+		return Receipt{}, err
+	}
+	a.State = next
+	a.LastContact = now
+	if kind == "started" {
+		a.StartedAt = now
+	}
+	if kind == "accepted" {
+		a.AcceptedAt = now
+	}
+	if err = e.transition(tx, o, a.Attempt, kind, nil); err != nil {
 		return Receipt{}, err
 	}
 	if kind != "heartbeat" {
@@ -203,11 +250,19 @@ func (e *Engine) Acknowledge(id Identity, kind string) (Receipt, error) {
 		return Receipt{}, err
 	}
 	e.notify(a.ExecutionID)
-	return receipt(a.ExecutionID, dup), nil
+	a.State = next
+	if kind == "started" {
+		a.StartedAt = now
+	}
+	return phaseReceipt(o, a, dup), nil
 }
 
 // Cancel antes de qualquer entrega é definitivo. Após entrega, espera ACK/resultado.
-func (e *Engine) Cancel(orderID string) (Attempt, error) {
+func (e *Engine) Cancel(orderID string) (Attempt, error) { return e.CancelFor(orderID, "operator") }
+func (e *Engine) CancelFor(orderID, actor string) (Attempt, error) {
+	if actor == "" {
+		return Attempt{}, ErrInvalid
+	}
 	tx, err := e.begin()
 	if err != nil {
 		return Attempt{}, err
@@ -262,6 +317,13 @@ func (e *Engine) Cancel(orderID string) (Attempt, error) {
 		return Attempt{}, err
 	}
 	if _, err = tx.Exec(`UPDATE lab_orders SET state=? WHERE id=?`, orderState, o.ID); err != nil {
+		return Attempt{}, err
+	}
+	a.State = state
+	if err = e.transition(tx, o, a.Attempt, state, nil); err != nil {
+		return Attempt{}, err
+	}
+	if _, err = tx.Exec("INSERT INTO execution_decisions(request_key,execution_id,actor,decision,reason,created_at) VALUES(?,?,?,'cancel_requested','operator requested cancellation',?) ON CONFLICT(request_key) DO NOTHING", "cancel:"+a.ExecutionID, a.ExecutionID, actor, now); err != nil {
 		return Attempt{}, err
 	}
 	if err = event(tx, a.ExecutionID, "cancel_requested", now); err != nil {
@@ -319,10 +381,15 @@ func (e *Engine) expire(id string, now int64) (bool, error) {
 	if !current(o, a) || terminal(a.State) || a.State == "uncertain" || a.LeaseUntil == 0 || a.LeaseUntil > now {
 		return false, nil
 	}
-	if _, err = tx.Exec(`UPDATE execution_attempts SET state='uncertain' WHERE execution_id=? AND state=?`, id, a.State); err != nil {
+	if _, err = tx.Exec(`UPDATE execution_attempts SET state='uncertain',reason='execution lease expired; effect outcome unknown' WHERE execution_id=? AND state=?`, id, a.State); err != nil {
 		return false, err
 	}
 	if _, err = tx.Exec(`UPDATE lab_orders SET state='uncertain' WHERE id=? AND current_execution=? AND fence=?`, o.ID, id, a.Fence); err != nil {
+		return false, err
+	}
+	a.State = "uncertain"
+	a.Reason = "execution lease expired; effect outcome unknown"
+	if err = e.transition(tx, o, a.Attempt, "uncertain", nil); err != nil {
 		return false, err
 	}
 	if err = event(tx, id, "lease_uncertain", now); err != nil {

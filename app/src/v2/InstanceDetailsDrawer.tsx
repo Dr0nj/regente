@@ -21,6 +21,7 @@ import {
 } from "@/lib/runtime-bridge";
 import { injectFailure, fetchPerfForecast, fetchJobStats, type PerfForecast, type JobStats, type RunSample } from "@/lib/differentials-api";
 import { isServerMode } from "@/lib/server-client";
+import ExecutionPanel from "./ExecutionPanel";
 import ForecastPanel from "./ForecastPanel";
 import { toast } from "./Toast";
 import { useResizablePanel, ResizeHandle } from "./resizable";
@@ -56,6 +57,7 @@ export interface InstanceActionHandlers {
 }
 
 const STATUS_COLOR: Record<JobInstance["status"], string> = {
+  UNCERTAIN: "var(--v2-status-waiting)",
   OK: "var(--v2-status-ok)",
   NOTOK: "var(--v2-status-failed)",
   RUNNING: "var(--v2-status-running)",
@@ -65,6 +67,7 @@ const STATUS_COLOR: Record<JobInstance["status"], string> = {
 };
 
 const STATUS_LABEL: Record<JobInstance["status"], string> = {
+  UNCERTAIN: "UNCERTAIN",
   OK: "OK",
   NOTOK: "NOT OK",
   RUNNING: "RUNNING",
@@ -104,8 +107,9 @@ interface ActionButton {
 }
 
 /* ── Abas ── */
-type Tab = "general" | "output" | "logs" | "stats" | "schedule" | "deps" | "neighborhood" | "whynot";
+type Tab = "execution" | "general" | "output" | "logs" | "stats" | "schedule" | "deps" | "neighborhood" | "whynot";
 const TAB_LABEL: Record<Tab, string> = {
+  execution: "Execution",
   general: "General",
   output: "Output",
   logs: "Logs",
@@ -115,7 +119,7 @@ const TAB_LABEL: Record<Tab, string> = {
   neighborhood: "Neighborhood",
   whynot: "Why not?",
 };
-const TAB_ORDER: Tab[] = ["general", "output", "logs", "stats", "schedule", "deps", "neighborhood", "whynot"];
+const TAB_ORDER: Tab[] = ["general", "execution", "output", "logs", "stats", "schedule", "deps", "neighborhood", "whynot"];
 
 export default function InstanceDetailsDrawer({
   instance,
@@ -189,7 +193,7 @@ export default function InstanceDetailsDrawer({
     // Hold GERAL (2026-07-16): qualquer status exceto RUNNING (execução já no
     // agente) e o próprio HOLD; o Release restaura o status original (heldFrom).
     { label: "Hold",    onClick: () => handlers.onHold(instance.id),    tone: "neutral" as const,
-      show: status !== "RUNNING" && status !== "HOLD",
+      show: status !== "RUNNING" && status !== "UNCERTAIN" && status !== "HOLD",
       title: "Holds the job, freezing its current status — Release restores exactly what it was" },
     // Job segurado por uma PAUSA DE FOLDER (schemaV14) não pode ser liberado
     // individualmente — só o Retomar da folder destrava. Botão desabilitado
@@ -215,8 +219,8 @@ export default function InstanceDetailsDrawer({
     // e finaliza NOTOK sem retry. Um job WAITING não "cancela" — se resolve
     // (Set OK/Skip); daí Cancel é exclusivo de RUNNING.
     { label: "Cancel",  onClick: () => handlers.onCancel(instance.id),  tone: "danger"  as const,
-      show: status === "RUNNING",
-      title: "Kills the running process on the agent and ends the job with an error (NOTOK)" },
+      show: status === "RUNNING" || status === "UNCERTAIN",
+      title: "Requests cancellation; the job remains unresolved until the agent acknowledges stopping. External effects are not rolled back." },
     { label: "Skip",    onClick: () => handlers.onSkip(instance.id),    tone: "neutral" as const,
       show: (status === "WAITING" || status === "HOLD") && !waitConfirm },
     // Set OK direto na espera: um job WAITING pode ser dado como OK na hora (sem
@@ -226,7 +230,7 @@ export default function InstanceDetailsDrawer({
       show: status === "NOTOK" || status === "CANCELLED" || (status === "WAITING" && !waitConfirm) },
     { label: "Rerun",   onClick: () => handlers.onRerun(instance.id),   tone: "primary" as const, show: status === "NOTOK" },
     { label: "💥 Chaos", onClick: chaosInject, tone: "danger" as const,
-      show: isServerMode() && !waitConfirm && (status === "WAITING" || status === "RUNNING" || status === "HOLD") },
+      show: isServerMode() && !!orderDetail && !orderDetail.durableExecution && !waitConfirm && (status === "WAITING" || status === "RUNNING" || status === "HOLD") },
   ]).filter((a) => a.show);
 
   const { width, onMouseDown, reset } = useResizablePanel({
@@ -343,6 +347,7 @@ export default function InstanceDetailsDrawer({
       ) : (
         <div style={{ flex: 1, overflowY: "auto", padding: "12px", fontSize: 11 }}>
           {orderDetail?.snapshotError && <div role="alert" style={{ color: "var(--v2-status-failed)", marginBottom: 8 }}>{orderDetail.snapshotError}</div>}
+          {tab === "execution" && <ExecutionPanel key={instance.id} instanceId={instance.id} />}
           {tab === "general" && <GeneralTab instance={instance} definition={orderDef} jobType={jobType} actionConfig={actionConfig} />}
           {tab === "output" && <OutputTab instance={instance} jobType={jobType} actionConfig={actionConfig} />}
           {tab === "stats" && <StatsTab instance={instance} />}

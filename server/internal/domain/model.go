@@ -285,6 +285,7 @@ type SLABreach struct {
 type InstanceStatus string
 
 const (
+	StatusUncertain InstanceStatus = "UNCERTAIN"
 	StatusWaiting   InstanceStatus = "WAITING"
 	StatusRunning   InstanceStatus = "RUNNING"
 	StatusOK        InstanceStatus = "OK"

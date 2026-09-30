@@ -32,7 +32,12 @@ var outputGCBatch = 10_000
 
 // AppendOutput — wrapper público: a API (WS/HTTP do agente) e o executor SSH
 // registram um chunk de sysout da execução. Ver appendOutput.
-func (s *Scheduler) AppendOutput(instanceID, chunk string) { s.appendOutput(instanceID, chunk) }
+func (s *Scheduler) AppendOutput(instanceID, chunk string) {
+	if s.IsDurableInstance(instanceID) {
+		return
+	}
+	s.appendOutput(instanceID, chunk)
+}
 
 // appendOutput grava um chunk de stdout/stderr em instance_output, associado à
 // TENTATIVA corrente da instance (COALESCE(attempts,1) lido na própria INSERT ...

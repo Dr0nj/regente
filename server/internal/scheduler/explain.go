@@ -208,7 +208,15 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 
 	// 5) Recursos / quotas (F15) — read-only.
 	if len(def.Resources) > 0 && s.resources != nil {
-		for _, sf := range s.resources.Shortfalls(def.Resources) {
+		shortfalls := s.resources.Shortfalls(def.Resources)
+		if s.durable != nil {
+			var err error
+			shortfalls, err = s.durableShortfalls(r.ID, def.Resources)
+			if err != nil {
+				return []Blocker{{Kind: GateConfiguration, Detail: "durable resource storage unavailable"}}
+			}
+		}
+		for _, sf := range shortfalls {
 			if add(Blocker{
 				Kind: GateResource, Resource: sf.Name, Want: sf.Want, Used: sf.Used, Capacity: sf.Capacity,
 				Detail: fmt.Sprintf("resource '%s' unavailable (wants %d; used %d/%d)", sf.Name, sf.Want, sf.Used, sf.Capacity),

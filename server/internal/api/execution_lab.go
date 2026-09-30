@@ -80,6 +80,15 @@ func (s *server) labStart(w http.ResponseWriter, r *http.Request) {
 	if !s.labAdmin(w, r) {
 		return
 	}
+	o, err := s.attempts.Order(chi.URLParam(r, "id"))
+	if err != nil {
+		executionError(w, err)
+		return
+	}
+	if o.Runtime {
+		executionError(w, execution.ErrConflict)
+		return
+	}
 	var b struct {
 		Agent  string `json:"agentId"`
 		Key    string `json:"idempotencyKey"`
@@ -97,6 +106,15 @@ func (s *server) labStart(w http.ResponseWriter, r *http.Request) {
 }
 func (s *server) labCancel(w http.ResponseWriter, r *http.Request) {
 	if !s.labAdmin(w, r) {
+		return
+	}
+	o, err := s.attempts.Order(chi.URLParam(r, "id"))
+	if err != nil {
+		executionError(w, err)
+		return
+	}
+	if o.Runtime {
+		executionError(w, execution.ErrConflict)
 		return
 	}
 	a, err := s.attempts.Cancel(chi.URLParam(r, "id"))
@@ -150,7 +168,12 @@ func (s *server) labReconcile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) executionMachine(w http.ResponseWriter, r *http.Request, handshake bool) (*machinePrincipal, bool) {
-	if !s.labEnabled(w, r) {
+	if !s.cfg.RuntimePolicy.Durable() {
+		if !s.labEnabled(w, r) {
+			return nil, false
+		}
+	} else if s.attempts == nil {
+		http.Error(w, "durable runtime unavailable", http.StatusServiceUnavailable)
 		return nil, false
 	}
 	var p *machinePrincipal
@@ -186,7 +209,23 @@ func (s *server) executionPoll(w http.ResponseWriter, r *http.Request) {
 		executionError(w, err)
 		return
 	}
-	msg, err := s.attempts.Claim(p.AgentID)
+	if s.cfg.RuntimePolicy.Durable() {
+		if r.URL.Query().Get("journal") != "1" || r.URL.Query().Get("ver") == "" {
+			http.Error(w, "journal version 1 and agent version are required", http.StatusUpgradeRequired)
+			return
+		}
+		q := r.URL.Query()
+		if _, err := s.cfg.DB.Exec("INSERT INTO agents(id,os,arch,host,version,capabilities,started_at,connected_at,first_seen,last_seen_at,online) VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,1) ON CONFLICT(id) DO UPDATE SET os=excluded.os,arch=excluded.arch,host=excluded.host,version=excluded.version,capabilities=excluded.capabilities,last_seen_at=CURRENT_TIMESTAMP,online=1", p.AgentID, q.Get("os"), q.Get("arch"), q.Get("host"), q.Get("ver"), p.Capabilities); err != nil {
+			executionError(w, err)
+			return
+		}
+	}
+	available := r.URL.Query().Get("available")
+	if available != "" && available != "0" && available != "1" {
+		executionError(w, execution.ErrInvalid)
+		return
+	}
+	msg, err := s.attempts.ClaimCapacity(p.AgentID, available != "0")
 	if err != nil {
 		executionError(w, err)
 		return
@@ -210,13 +249,14 @@ func (s *server) executionAck(w http.ResponseWriter, r *http.Request) {
 	}
 	var b struct {
 		execution.Identity
-		Kind string `json:"kind"`
+		Kind   string `json:"kind"`
+		Reason string `json:"reason,omitempty"`
 	}
 	if !executionBody(w, r, &b) {
 		return
 	}
 	b.AgentID = p.AgentID
-	out, err := s.attempts.Acknowledge(b.Identity, b.Kind)
+	out, err := s.attempts.AcknowledgeReason(b.Identity, b.Kind, b.Reason)
 	if err != nil {
 		executionError(w, err)
 		return

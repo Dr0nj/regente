@@ -77,13 +77,17 @@ are outside this baseline and are not claimed as executed.
 | Current schema documented correctly | `TestMigrationRunbookContract` | Compares runbook to constants and migrated DB; rejects missing/duplicate/stale current statements |
 | Daily partial chunk/restart, source freezing and corrupt snapshot | TestI07DailyRecoveryIntegration on SQLite/Postgres | [Daily recovery](daily-recovery.md); 5,001-order synthetic scenario, not capacity qualification |
 | Isolated attempts, atomic dispatch and result, concurrent admission/cancellation, restart and lease uncertainty | TestI08AttemptIntegration on SQLite/Postgres; execution unit suite | Opt-in development [attempt laboratory](adr-i08-attempts.md); synthetic v2 client only, legacy dispatch and conditions unchanged |
-| Distributed drafts and uncertain effects | preserved synthetic fixtures | Broader guarantees remain reserved for I10/I12 |
+| Agent journal restart, lost receipts, real runtime results and operator API/CLI | TestI09RealAgentJournalLostReceiptAndUncertainRestart and TestI10RealAgentRuntimeLostReceiptAndUncertainRestart, SQLite/Postgres; TestI10OperatorAPIAndCLIContracts | Actual agent process killed/restarted; identity, sysout, RBAC and audited decisions |
+| Atomic runtime conditions, retry, resource holds, On/Do and external uncertainty | TestI10PostgresRuntimeContracts and SQLite scheduler suite | Fault-injected transactions, restart, real OpenSSH and internal HTTP; unknown effects are never automatically repeated |
+| Real server SIGKILL while an agent executes | durable_process_recovery report, SQLite/Postgres | Actual server and agent binaries; result_pending journal during downtime, one non-idempotent effect, current identity and condition preserved |
+| Browser execution recovery | I10 browser scenario | Actual server restart and audited resolution from Execution tab; no mocked API |
+| Distributed drafts | preserved synthetic fixtures | Broader guarantees remain reserved for I12 |
 
 | Profile | Baseline support |
 |---|---|
 | SQLite, one runtime node, local disk/WAL | Go tests on Windows and Linux; concurrent *upgrade* contention tested; not shared-file HA |
 | PostgreSQL 17.6, two Linux/amd64 nodes, NATS | Full laboratory; separate process restart; no fencing/partition guarantee |
-| Server and agent from same SHA, WS transport | Full cluster run; HTTP/SSE remain covered by API/agent tests |
+| Server and agent from same SHA, legacy WS and durable v2 | Legacy cluster plus v2 real-process recovery; HTTP/SSE covered by API/agent tests |
 | Other PostgreSQL versions, mixed binaries, arm64 cluster, external IdPs | Not qualified by this baseline |
 | Pre-runner binaries | Stop all nodes before first upgrade; they cannot enforce the new history checks |
 
@@ -105,9 +109,9 @@ are regression budgets tied to current mechanisms or a future contract, not SLAs
 |---|---|---|
 | Migration startup | 2-minute default total deadline; configurable for measured large backfills | I01; SQLite driver busy wait may add up to its configured busy timeout |
 | Presence propagation | Within 75s test deadline, allowing the current 5s announcement/15s TTL plus CI startup noise | I00 wiring test, not a low-latency SLA |
-| Dispatch durable ACK | Proposed ≤5s p99, separating a 2s default tick from network/storage budget | I08/I09 must implement and measure; current transport has no durable ACK |
+| Dispatch durable ACK | Proposed ≤5s p99, separating a 2s default tick from network/storage budget | Protocol 2 implements durable acceptance/result receipts; p99 latency is not qualified by the functional recovery fixtures |
 | Active agent credential revocation | ≤5s on both nodes; 1s revalidation and bounded DB query | I02 WS/HTTP/SSE machine identity matrix plus cross-process cluster measurement; human session revocation and folder-scoped web events are delivered in I04 ([contract](web-events.md), [evidence](evidence/i04-b6db081.json)) |
-| Reconciliation after recovery | Proposed ≤30s for the 3-order reference set, two 15s presence intervals | I10/I11; increase workload only with measured evidence |
+| Reconciliation after recovery | Proposed ≤30s for the 3-order reference set, two 15s presence intervals | I10 functional recovery records measured fixture times; I11 HA/partition guarantees remain separate |
 | Availability | Every scripted probe succeeds after startup/restart readiness; no monthly availability claim | I16 will measure sustained availability and approved outage budget |
 | RPO | Zero committed-order loss for the exact stopped-node/restore snapshots in this lab | I01 checks snapshot preservation; disaster RPO depends on WAL/backup cadence |
 | RTO | Restore and schema verification within the 20-minute CI job budget; report actual seconds | I16 must set a workload-sized RTO, including operator and infrastructure time |
@@ -127,7 +131,7 @@ the same-binary drain and the schema-document contract. The
 [recorded evidence](evidence/doc-a-af75c51.json) is synthetic laboratory evidence,
 not production or mixed-version qualification.
 
-Current runtime schema: **27**; supported range: **[27,27]**.
+Current runtime schema: **28**; supported range: **[28,28]**.
 
 `TestMigrationRunbookContract` compares this current statement with the migration
 constants and an actual fresh database. Historical fixture versions below remain

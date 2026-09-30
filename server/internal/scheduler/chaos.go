@@ -24,6 +24,9 @@ import (
 // e o resultado tardio não re-flipa o estado terminal do chaos... a menos que o
 // retry a tenha re-armado, que é o comportamento desejado do experimento).
 func (s *Scheduler) InjectFailure(id, actor string) error {
+	if s.durable != nil {
+		return fmt.Errorf("durable execution requires a real completion receipt; use a failure-producing test job")
+	}
 	var status string
 	if err := s.db.QueryRow(`SELECT status FROM instances WHERE id=?`, id).Scan(&status); err != nil {
 		return fmt.Errorf("instance %s not found", id)

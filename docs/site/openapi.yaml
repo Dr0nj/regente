@@ -905,7 +905,7 @@ paths:
     post:
       summary: Create an isolated laboratory order
       tags: [Execution laboratory]
-      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires admin authentication.
+      description: Development laboratory only; disabled by default and unavailable in production. Requires admin authentication; runtime orders cannot be mutated through this laboratory.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -930,7 +930,7 @@ paths:
     get:
       summary: Read laboratory order identity
       tags: [Execution laboratory]
-      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires admin authentication.
+      description: Development laboratory only; disabled by default and unavailable in production. Requires admin authentication; runtime orders cannot be mutated through this laboratory.
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
@@ -952,7 +952,7 @@ paths:
     post:
       summary: Atomically create attempt and dispatch intent
       tags: [Execution laboratory]
-      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires admin authentication.
+      description: Development laboratory only; disabled by default and unavailable in production. Requires admin authentication; runtime orders cannot be mutated through this laboratory.
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
@@ -979,7 +979,7 @@ paths:
     post:
       summary: Request or confirm laboratory cancellation
       tags: [Execution laboratory]
-      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires admin authentication.
+      description: Development laboratory only; disabled by default and unavailable in production. Requires admin authentication; runtime orders cannot be mutated through this laboratory.
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
@@ -1001,7 +1001,7 @@ paths:
     get:
       summary: Read durable attempt metadata
       tags: [Execution laboratory]
-      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires admin authentication.
+      description: Development laboratory only; disabled by default and unavailable in production. Requires admin authentication; runtime orders cannot be mutated through this laboratory.
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
@@ -1023,7 +1023,7 @@ paths:
     get:
       summary: Read output scoped to one execution
       tags: [Execution laboratory]
-      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires admin authentication.
+      description: Development laboratory only; disabled by default and unavailable in production. Requires admin authentication; runtime orders cannot be mutated through this laboratory.
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
@@ -1046,7 +1046,7 @@ paths:
     post:
       summary: Record expired execution leases as uncertain
       tags: [Execution laboratory]
-      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires admin authentication.
+      description: Development laboratory only; disabled by default and unavailable in production. Requires admin authentication; runtime orders cannot be mutated through this laboratory.
       security: [{ bearerAuth: [] }]
       responses:
         "200":
@@ -1062,14 +1062,17 @@ paths:
   /api/agent/v2/poll:
     get:
       summary: Claim a durable assigned message
-      tags: [Execution laboratory]
-      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires a scoped machine credential with EXECUTION_V2 capability.
+      tags: [Durable execution]
+      description: Durable runtime or opt-in development laboratory. Requires a scoped machine credential with EXECUTION_V2 capability.
       security: [{ machineAuth: [] }]
       parameters:
         - { name: id, in: query, required: true, schema: { type: string } }
         - { name: env, in: query, required: true, allowEmptyValue: true, schema: { type: string } }
         - { name: caps, in: query, required: true, schema: { type: string }, description: Exact provisioned capabilities including EXECUTION_V2 }
         - { name: protocol, in: query, required: true, schema: { type: integer, enum: [2] } }
+        - { name: journal, in: query, required: true, schema: { type: integer, enum: [1] }, description: Durable journal schema version. }
+        - { name: ver, in: query, schema: { type: string }, description: Agent build version; release binaries report their actual tag. }
+        - { name: available, in: query, schema: { type: integer, enum: [0, 1], default: 1 }, description: Zero requests control messages only when journal admission is full. }
       responses:
         "200":
           description: Committed laboratory receipt or authenticated data.
@@ -1089,8 +1092,8 @@ paths:
   /api/agent/v2/ack:
     post:
       summary: Acknowledge acceptance, start, contact or cancellation
-      tags: [Execution laboratory]
-      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires a scoped machine credential with EXECUTION_V2 capability.
+      tags: [Durable execution]
+      description: Durable runtime or opt-in development laboratory. Requires a scoped machine credential with EXECUTION_V2 capability.
       security: [{ machineAuth: [] }]
       requestBody:
         required: true
@@ -1114,8 +1117,8 @@ paths:
   /api/agent/v2/result:
     post:
       summary: Commit an identified result with compare-and-swap
-      tags: [Execution laboratory]
-      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires a scoped machine credential with EXECUTION_V2 capability.
+      tags: [Durable execution]
+      description: Durable runtime or opt-in development laboratory. Requires a scoped machine credential with EXECUTION_V2 capability.
       security: [{ machineAuth: [] }]
       requestBody:
         required: true
@@ -1139,8 +1142,8 @@ paths:
   /api/agent/v2/output:
     post:
       summary: Append sequenced output to one identified execution
-      tags: [Execution laboratory]
-      description: Development laboratory only; disabled by default and unavailable in production. I09/I10 integration is not qualified. Requires a scoped machine credential with EXECUTION_V2 capability.
+      tags: [Durable execution]
+      description: Durable runtime or opt-in development laboratory. Requires a scoped machine credential with EXECUTION_V2 capability.
       security: [{ machineAuth: [] }]
       requestBody:
         required: true
@@ -1161,6 +1164,68 @@ paths:
         "413": { description: Output limit exceeded. }
         "429": { description: Unresolved attempt admission is full. }
         "503": { description: No durable receipt; retry the same identity and key. }
+
+  /api/instances/{id}/executions:
+    get:
+      summary: Read current and historical execution identities and post-actions
+      tags: [Durable execution]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Folder-scoped metadata; legacy instances return empty arrays. Private effect payloads are omitted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  order: { $ref: '#/components/schemas/LabOrder' }
+                  attempts: { type: array, items: { $ref: '#/components/schemas/ExecutionAttempt' } }
+                  effects: { type: array, items: { $ref: '#/components/schemas/ExecutionEffect' } }
+        "401": { description: Authentication required. }
+        "404": { description: Instance missing or outside read scope. }
+        "503": { description: Storage unavailable. }
+  /api/executions/{id}/resolve:
+    post:
+      summary: Record an audited verified outcome without automatic retry
+      tags: [Durable execution]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExecutionResolution' }
+      responses:
+        "200": { description: Committed execution receipt or identical idempotency replay. }
+        "400": { description: Evidence or stopped confirmation missing. }
+        "401": { description: Authentication required. }
+        "403": { description: Writer role and frozen folder write access required. }
+        "404": { description: Runtime execution missing. }
+        "409": { description: Stale fence, changed key content or conflicting terminal outcome. }
+        "503": { description: No durable receipt; retry the same request key. }
+  /api/execution-effects/{id}/resolve:
+    post:
+      summary: Resolve a post-action with current generation and evidence
+      tags: [Durable execution]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EffectResolution' }
+      responses:
+        "200": { description: Audited post-action decision or identical request replay. }
+        "400": { description: Required evidence, generation, stopped confirmation or retry risk acknowledgement missing. }
+        "401": { description: Authentication required. }
+        "403": { description: Writer role and frozen folder write access required. }
+        "404": { description: Effect missing. }
+        "409": { description: Stale generation, effect currently claimed or conflicting request key. }
+        "503": { description: No durable receipt; retry the same request key. }
 
 components:
   securitySchemes:
@@ -1226,6 +1291,41 @@ components:
         agentId: { type: string }
         idempotencyKey: { type: string, minLength: 1, maxLength: 128 }
         intent: { type: string, enum: [start, retry, rerun] }
+    ExecutionResolution:
+      type: object
+      additionalProperties: false
+      required: [fence, idempotencyKey, decision, reason, effectStopped]
+      properties:
+        fence: { type: integer, format: int64, minimum: 1 }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 128 }
+        decision: { type: string, enum: [succeeded, failed, cancelled] }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+        effectStopped: { type: boolean, enum: [true] }
+    EffectResolution:
+      type: object
+      additionalProperties: false
+      required: [generation, idempotencyKey, decision, reason, effectStopped]
+      properties:
+        generation: { type: integer, minimum: 0 }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 128 }
+        decision: { type: string, enum: [done, cancelled, retry] }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+        effectStopped: { type: boolean, enum: [true] }
+        classification: { type: string, enum: [idempotent, verified-absent, duplicate-risk-accepted], description: Required for retry. }
+        duplicateRiskAccepted: { type: boolean, description: Must be true for retry. }
+    ExecutionEffect:
+      type: object
+      properties:
+        id: { type: string }
+        executionId: { type: string }
+        kind: { type: string }
+        state: { type: string, enum: [pending, claimed, uncertain, done, cancelled] }
+        generation: { type: integer }
+        reason: { type: string }
+        createdAt: { type: integer, format: int64 }
+        leaseUntil: { type: integer, format: int64 }
+        resolvedAt: { type: integer, format: int64 }
+        resolvedBy: { type: string }
     ExecutionAttempt:
       type: object
       properties:
@@ -1239,6 +1339,10 @@ components:
         acceptedAt: { type: integer, format: int64 }
         startedAt: { type: integer, format: int64 }
         finishedAt: { type: integer, format: int64 }
+        lastContact: { type: integer, format: int64 }
+        reason: { type: string }
+        resolvedAt: { type: integer, format: int64 }
+        resolvedBy: { type: string }
     ExecutionIdentity:
       type: object
       required: [protocol, executionId, fence]
@@ -1252,7 +1356,8 @@ components:
         - type: object
           required: [kind]
           properties:
-            kind: { type: string, enum: [accepted, started, heartbeat, cancelled] }
+            kind: { type: string, enum: [accepted, started, heartbeat, cancelled, uncertain, status] }
+            reason: { type: string, maxLength: 2000 }
     ExecutionResult:
       allOf:
         - { $ref: '#/components/schemas/ExecutionIdentity' }
@@ -1275,6 +1380,10 @@ components:
         accepted: { type: boolean }
         duplicate: { type: boolean }
         executionId: { type: string }
+        state: { type: string }
+        current: { type: boolean }
+        reconciled: { type: boolean, description: A terminal audited decision supersedes local pending evidence; acknowledge without replaying it. }
+        startAuthorized: { type: boolean, description: True only for the current running attempt. Required before starting any effect; duplicate ACK alone does not authorize execution. }
     ExecutionEnvelope:
       type: object
       properties:
@@ -1315,7 +1424,7 @@ components:
         orderDate: { type: string, format: date }
         status:
           type: string
-          enum: [WAITING, RUNNING, OK, NOTOK, HELD, CANCELLED]
+          enum: [WAITING, RUNNING, UNCERTAIN, OK, NOTOK, HELD, CANCELLED]
         scheduledAt: { type: string, format: date-time }
         startedAt: { type: string, format: date-time, nullable: true }
         finishedAt: { type: string, format: date-time, nullable: true }
@@ -1338,6 +1447,7 @@ components:
           properties:
             label: { type: string, description: The job label frozen on the order. }
             jobType: { type: string, description: The job type (COMMAND/SCRIPT/...) frozen on the order. }
+            durableExecution: { type: boolean, description: True for an instance governed by the durable runtime. }
             snapshotError: { type: string, description: Present invalid snapshots are blocked; live definitions are not substituted. }
             snapshotDef: { type: object, additionalProperties: true, description: Frozen order definition; absent for legacy or invalid snapshots. }
             actionConfig:
@@ -1474,7 +1584,7 @@ components:
           description: Materialized >5 min after the configured time (the scheduler's punctuality SLO).
         closed:
           type: boolean
-          description: Materialization completed or legacy and nothing WAITING/RUNNING — the day closed (the push trigger).
+          description: Materialization completed or legacy and nothing WAITING/RUNNING/UNCERTAIN — the day closed (the push trigger).
         counts: { $ref: "#/components/schemas/DailyReportCounts" }
         failures:
           type: array
@@ -1493,6 +1603,7 @@ components:
         waiting: { type: integer }
         running: { type: integer }
         held: { type: integer }
+        uncertain: { type: integer }
         cancelled: { type: integer }
         carried: { type: integer, description: Came from earlier dailies (carry-over). }
     DailyReportFailure:

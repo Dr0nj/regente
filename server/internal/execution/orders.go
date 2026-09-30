@@ -16,11 +16,11 @@ type record struct {
 	outputBytes, lastSeq int64
 }
 
-const attemptSelect = `SELECT execution_id,order_id,attempt,fence,agent_id,state,lease_until,accepted_at,started_at,finished_at,result_checksum,output_bytes,last_output_seq FROM execution_attempts WHERE execution_id=?`
+const attemptSelect = `SELECT execution_id,order_id,attempt,fence,agent_id,state,lease_until,accepted_at,started_at,finished_at,result_checksum,output_bytes,last_output_seq,last_contact,reason,resolved_at,resolved_by FROM execution_attempts WHERE execution_id=?`
 
 func scanAttempt(row *sql.Row) (record, error) {
 	var a record
-	err := row.Scan(&a.ExecutionID, &a.OrderID, &a.Attempt.Attempt, &a.Fence, &a.AgentID, &a.State, &a.LeaseUntil, &a.AcceptedAt, &a.StartedAt, &a.FinishedAt, &a.resultHash, &a.outputBytes, &a.lastSeq)
+	err := row.Scan(&a.ExecutionID, &a.OrderID, &a.Attempt.Attempt, &a.Fence, &a.AgentID, &a.State, &a.LeaseUntil, &a.AcceptedAt, &a.StartedAt, &a.FinishedAt, &a.resultHash, &a.outputBytes, &a.lastSeq, &a.LastContact, &a.Reason, &a.ResolvedAt, &a.ResolvedBy)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = ErrNotFound
 	}
@@ -32,14 +32,14 @@ func (e *Engine) Attempt(id string) (Attempt, error) {
 }
 func scanOrder(row *sql.Row) (Order, error) {
 	var o Order
-	err := row.Scan(&o.ID, &o.SourceInstanceID, &o.State, &o.CurrentExecution, &o.Attempt, &o.Fence)
+	err := row.Scan(&o.ID, &o.SourceInstanceID, &o.State, &o.CurrentExecution, &o.Attempt, &o.Fence, &o.Runtime)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = ErrNotFound
 	}
 	return o, err
 }
 
-const orderSelect = `SELECT id,source_instance_id,state,current_execution,attempt_number,fence FROM lab_orders WHERE id=?`
+const orderSelect = `SELECT id,source_instance_id,state,current_execution,attempt_number,fence,runtime FROM lab_orders WHERE id=?`
 
 func (e *Engine) Order(id string) (Order, error) { return scanOrder(e.DB.QueryRow(orderSelect, id)) }
 func lockOrder(tx *db.Tx, id string) (Order, error) {
@@ -162,7 +162,7 @@ func (e *Engine) Start(orderID, agent, key, intent string) (Attempt, error) {
 		return Attempt{}, err
 	}
 	var pending int
-	if err = tx.QueryRow(`SELECT COUNT(*) FROM execution_attempts WHERE state NOT IN ('succeeded','failed','cancelled')`).Scan(&pending); err != nil {
+	if err = tx.QueryRow(`SELECT (SELECT COUNT(*) FROM execution_attempts WHERE state NOT IN ('succeeded','failed','cancelled'))+(SELECT COUNT(*) FROM execution_effects WHERE state NOT IN ('done','cancelled'))`).Scan(&pending); err != nil {
 		return Attempt{}, err
 	}
 	if pending >= e.MaxPending {
@@ -177,11 +177,18 @@ func (e *Engine) Start(orderID, agent, key, intent string) (Attempt, error) {
 		return Attempt{}, ErrInvalid
 	}
 	var machineEnv string
-	if err = tx.QueryRow(`SELECT environment,capabilities FROM machine_principals WHERE agent_id=?`, agent).Scan(&machineEnv, &caps); err != nil {
+	var internal bool
+	if err = tx.QueryRow(`SELECT environment,capabilities,internal FROM machine_principals WHERE agent_id=?`, agent).Scan(&machineEnv, &caps, &internal); err != nil {
 		return Attempt{}, ErrInvalid
 	}
-	if env != machineEnv || !slices.Contains(strings.Split(caps, ","), Capability) || !slices.Contains(strings.Split(caps, ","), strings.ToUpper(def.JobType)) || (def.AgentID != "" && def.AgentID != agent) {
+	if env != machineEnv || !slices.Contains(strings.Split(caps, ","), Capability) || !slices.Contains(strings.Split(caps, ","), strings.ToUpper(def.JobType)) || (def.AgentID != "" && def.AgentID != agent && !(o.Runtime && internal && def.AgentID == "SERVER-AGENT")) {
 		return Attempt{}, ErrConflict
+	}
+	if o.Runtime && e.Prepare != nil {
+		def, err = e.Prepare(tx, o, def)
+		if err != nil {
+			return Attempt{}, err
+		}
 	}
 	id, err := newID()
 	if err != nil {
@@ -200,6 +207,13 @@ func (e *Engine) Start(orderID, agent, key, intent string) (Attempt, error) {
 		return Attempt{}, err
 	}
 	if _, err = tx.Exec(`UPDATE lab_orders SET current_execution=?,attempt_number=?,fence=?,state='active' WHERE id=?`, id, number, fence, orderID); err != nil {
+		return Attempt{}, err
+	}
+	o.CurrentExecution = id
+	o.Attempt = number
+	o.Fence = fence
+	o.State = "active"
+	if err = e.transition(tx, o, Attempt{ExecutionID: id, OrderID: orderID, Attempt: number, Fence: fence, AgentID: agent, State: "dispatch_pending"}, "planned", nil); err != nil {
 		return Attempt{}, err
 	}
 	if err = event(tx, id, "planned", now); err != nil {

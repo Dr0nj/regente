@@ -34,6 +34,7 @@ import (
 	"github.com/Dr0nj/regente-server/internal/bus"
 	"github.com/Dr0nj/regente-server/internal/db"
 	"github.com/Dr0nj/regente-server/internal/domain"
+	"github.com/Dr0nj/regente-server/internal/execution"
 	"github.com/Dr0nj/regente-server/internal/hub"
 	"github.com/Dr0nj/regente-server/internal/leader"
 	"github.com/Dr0nj/regente-server/internal/oidc"
@@ -44,6 +45,7 @@ import (
 	"github.com/Dr0nj/regente-server/internal/serveragent"
 	"github.com/Dr0nj/regente-server/internal/storage"
 	"github.com/Dr0nj/regente-server/internal/telemetry"
+	"path/filepath"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
@@ -64,6 +66,7 @@ func main() {
 		environment      = flag.String("environment", os.Getenv("REGENTE_ENVIRONMENT"), "Production environment scope")
 		network          = flag.String("network-boundary", os.Getenv("REGENTE_NETWORK_BOUNDARY"), "Production boundary: loopback | proxy | tls")
 		controlPlane     = flag.String("control-plane-execution", os.Getenv("REGENTE_CONTROL_PLANE_EXECUTION"), "Production execution policy: deny | http | http-ssh")
+		executionMode    = flag.String("execution-mode", envOr("REGENTE_EXECUTION_MODE", "auto"), "Execution contract: auto (durable in production), durable or legacy (development only)")
 		executionLab     = flag.Bool("execution-lab", envOr("REGENTE_EXECUTION_LAB", "") == "1", "I08 development laboratory for protocol v2 attempts; unavailable in production")
 		checkConfig      = flag.Bool("check-config", false, "Validate static configuration and TLS files without opening the database or services")
 		addr             = flag.String("addr", envOr("REGENTE_ADDR", ":8080"), "HTTP listen address")
@@ -162,7 +165,7 @@ func main() {
 	policy := runtimeprofile.Config{Profile: *profile, Environment: *environment, Network: *network, ControlPlane: *controlPlane,
 		Addr: *addr, AppURL: *appURL, Token: *apiToken, AuthMode: *authMode, TLSCert: *tlsCert, TLSKey: *tlsKey, TLSClientCA: *tlsClientCA,
 		TrustedProxies: *trustedProxyCIDR, OIDCIssuer: *oidcIssuer, OIDCClientID: *oidcClientID, OIDCRedirect: *oidcRedirectURL,
-		OIDCRole: *oidcDefaultRole, Role: *role, Scheduler: *schedulerMode, Bus: *busMode, Demo: *demoMode, ServerAgent: *serverAgent, ExecutionLab: *executionLab}
+		OIDCRole: *oidcDefaultRole, Role: *role, Scheduler: *schedulerMode, Bus: *busMode, Demo: *demoMode, ServerAgent: *serverAgent, ExecutionLab: *executionLab, ExecutionMode: *executionMode}
 	serving := (*backupTo == "" && !*migrateOnly) || *checkConfig
 	var tlsCfg *tls.Config
 	var mtlsOn bool
@@ -425,6 +428,9 @@ func main() {
 	sched := scheduler.New(store, database, theBus, time.Duration(*tickMs)*time.Millisecond)
 	sched.DemoMode = *demoMode
 	sched.RuntimePolicy = policy
+	if policy.Durable() {
+		sched.AttachDurable(execution.New(database, sched.Now))
+	}
 	if *demoMode {
 		log.Printf("[scheduler] DEMO MODE — no agent online, jobs are mock-finalized OK (do not use in production)")
 	}
@@ -434,7 +440,7 @@ func main() {
 	// regente-agent externo. Registrado no hub como agente normal: aparece na
 	// tela de Agentes e é pinável no Design. Não sobe em demo-mode (lá tudo é
 	// mock — um agente real executaria HTTP de verdade no playground).
-	if *serverAgent && !*demoMode {
+	if !policy.Durable() && *serverAgent && !*demoMode {
 		serveragent.StartScoped(h, database, policy.Environment, func(id string, st domain.InstanceStatus, exit int, out string) {
 			sched.FinishInstance(id, st, exit, out)
 		})
@@ -533,6 +539,12 @@ func main() {
 	// CL (schemaV21): backfill one-time da coluna `cond_logic` congelada — entrada
 	// das linhas OR do grafo (CL-4). Guardado por meta_flags.
 	sched.MigrateCondLogicSnapshot()
+	if policy.Durable() {
+		allowSSH := !policy.Production() || policy.ControlPlane == "http-ssh"
+		if err := sched.StartDurableInternal(ctx, h, filepath.Join(*workspace, "runtime"), *nodeID, version, *serverAgent, allowSSH); err != nil {
+			log.Fatalf("[execution] durable internal worker: %v", err)
+		}
+	}
 
 	// Enterprise/Operação — reconciler de drift GitOps (opt-in). O git-poll já
 	// auto-sincroniza; este fecha o lado OPERACIONAL: quando runtime≠Git, alerta

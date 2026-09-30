@@ -133,3 +133,7 @@ bootstrap, scheduler bypass rejection and scoped agent dispatch run in server te
 The integration gate additionally runs production identity checks on SQLite and
 Postgres. The release smoke exercises conversion and upgrade of the installed
 systemd service. See [verification](verification.md) for commands and gate limits.
+
+## Durable execution upgrade
+
+Production selects REGENTE_EXECUTION_MODE=durable automatically and rejects legacy mode. Protocol 2 agents require a persistent local journal and EXECUTION_V2 in their exact provisioned capabilities. Schema 28 and the new agent/server binaries must be upgraded together after draining legacy executions. See the [durable execution runbook](durable-execution.md) for backup, rollback, uncertainty and operator resolution.

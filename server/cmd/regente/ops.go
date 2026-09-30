@@ -17,6 +17,9 @@ import (
 const opsUsage = `regente ops — operate a live Regente server (via the pkg/client SDK)
 
 Usage:
+  regente ops executions <instanceId>               inspect attempts and post-actions (JSON)
+  regente ops resolve-execution <executionId> -fence N -key K -decision succeeded|failed|cancelled -reason TEXT -effect-stopped
+  regente ops resolve-effect <effectId> -generation N -key K -decision done|cancelled|retry -reason TEXT -effect-stopped [-classification idempotent|verified-absent|duplicate-risk-accepted -accept-duplicate-risk]
   regente ops instances [-date D] [-status S,S] [-folder F,F] [-search X] [-late] [-group status|folder|definition] [-limit N] [-json]
   regente ops action <hold|release|cancel|rerun|set-ok|confirm> <instanceId>
   regente ops force <definitionId>
@@ -58,6 +61,12 @@ func cmdOps(args []string) error {
 	}
 	sub, rest := args[0], args[1:]
 	switch sub {
+	case "executions":
+		return opsExecutions(rest)
+	case "resolve-execution":
+		return opsResolve(rest, false)
+	case "resolve-effect":
+		return opsResolve(rest, true)
 	case "instances":
 		return opsInstances(rest)
 	case "action":

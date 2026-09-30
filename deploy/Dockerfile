@@ -7,8 +7,10 @@ FROM golang:1.25 AS build
 WORKDIR /src
 # Cache de deps: copia só o go.mod/go.sum do módulo server primeiro.
 COPY server/go.mod server/go.sum ./server/
+COPY agent/go.mod agent/go.sum ./agent/
 RUN cd server && go mod download
 COPY server/ ./server/
+COPY agent/journal/ ./agent/journal/
 RUN cd server && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/regente-server .
 # Diretório de trabalho do server (workspace GitOps + DB SQLite quando usada),
 # pré-criado para ser COPYado com a dona correta na imagem distroless (que não

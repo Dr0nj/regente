@@ -29,8 +29,9 @@ import (
 
 // AlertEngine avalia regras e persiste eventos disparados.
 type AlertEngine struct {
-	db  *db.DB
-	hub *hub.Hub
+	sinkSnapshot map[string]string
+	db           *db.DB
+	hub          *hub.Hub
 
 	mu        sync.Mutex
 	cooldowns map[string]time.Time // chave ruleID×workflowID -> último disparo (ephemeral)
@@ -471,11 +472,11 @@ func channelWanted(channelsCSV, ch string) bool {
 //	alert_smtp_password · alert_smtp_from · alert_smtp_to (CSV de destinatários)
 //
 // Sem host ou sem destinatário → no-op. Auth PLAIN só se houver username.
-func (e *AlertEngine) sendEmail(r AlertRule, ctx AlertContext, msg string) {
+func (e *AlertEngine) sendEmail(r AlertRule, ctx AlertContext, msg string) error {
 	host := e.setting("alert_smtp_host")
 	to := e.setting("alert_smtp_to")
 	if host == "" || to == "" {
-		return
+		return nil
 	}
 	recipients := []string{}
 	for _, a := range strings.Split(to, ",") {
@@ -484,7 +485,7 @@ func (e *AlertEngine) sendEmail(r AlertRule, ctx AlertContext, msg string) {
 		}
 	}
 	if len(recipients) == 0 {
-		return
+		return nil
 	}
 	from := e.setting("alert_smtp_from")
 	if from == "" {
@@ -505,9 +506,7 @@ func (e *AlertEngine) sendEmail(r AlertRule, ctx AlertContext, msg string) {
 	if user != "" {
 		auth = smtp.PlainAuth("", user, pass, host)
 	}
-	if err := smtp.SendMail(host+":"+port, auth, from, recipients, []byte(body)); err != nil {
-		log.Printf("[alerts] route email failed: %v", err)
-	}
+	return smtpSendWithDeadline(host+":"+port, host, auth, from, recipients, []byte(body))
 }
 
 // pagerDutyURL — endpoint da Events API v2 (var p/ permitir override em teste).
@@ -518,16 +517,16 @@ var pagerDutyURL = "https://events.pagerduty.com/v2/enqueue"
 //	alert_pagerduty_routing_key — integration/routing key do serviço.
 //
 // Sem key → no-op. dedup_key estável por regra+workflow agrupa re-disparos.
-func (e *AlertEngine) sendPagerDuty(r AlertRule, ctx AlertContext, msg string) {
+func (e *AlertEngine) sendPagerDuty(r AlertRule, ctx AlertContext, msg string) error {
 	key := e.setting("alert_pagerduty_routing_key")
 	if key == "" {
-		return
+		return nil
 	}
 	source := ctx.WorkflowName
 	if source == "" {
 		source = ctx.WorkflowID
 	}
-	postJSON(pagerDutyURL, map[string]any{
+	return postJSON(pagerDutyURL, map[string]any{
 		"routing_key":  key,
 		"event_action": "trigger",
 		"dedup_key":    fmt.Sprintf("regente-%s-%s", r.ID, ctx.WorkflowID),
@@ -555,6 +554,9 @@ func pagerDutySeverity(sev string) string {
 }
 
 func (e *AlertEngine) setting(key string) string {
+	if e.sinkSnapshot != nil {
+		return e.sinkSnapshot[key]
+	}
 	var v string
 	_ = e.db.QueryRow(`SELECT value FROM settings WHERE key=?`, key).Scan(&v)
 	return v
@@ -571,20 +573,27 @@ func slackText(severity, ruleName, msg, workflow string) string {
 	return fmt.Sprintf("%s *%s* — %s\n%s\nworkflow: `%s`", icon, strings.ToUpper(severity), ruleName, msg, workflow)
 }
 
-func postJSON(url string, payload map[string]any) {
+func postJSON(url string, payload map[string]any, keys ...string) error {
 	body, _ := json.Marshal(payload)
 	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
 	if err != nil {
-		return
+		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if len(keys) > 0 {
+		req.Header.Set("Idempotency-Key", keys[0])
+	}
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("[alerts] route webhook failed: %v", err)
-		return
+		return err
 	}
 	resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("notification HTTP status %d", resp.StatusCode)
+	}
+	return nil
 }
 
 /* ── Cooldown (ephemeral, in-memory) ──
