@@ -15,7 +15,10 @@ const readyTickStaleSeconds = 120.0
 
 func (s *server) metrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-	today := time.Now().Format("2006-01-02")
+	today := time.Now().UTC().Format("2006-01-02")
+	if s.cfg.Scheduler != nil {
+		today = s.cfg.Scheduler.TodayDate()
+	}
 
 	fmt.Fprintln(w, "# HELP regente_up 1 if the server is up.")
 	fmt.Fprintln(w, "# TYPE regente_up gauge")

@@ -52,10 +52,10 @@ func (s *Scheduler) recordRunStart(instanceID string) {
 func (s *Scheduler) recordRunEnd(instanceID string, status domain.InstanceStatus, exitCode int) {
 	_, err := s.db.Exec(
 		`UPDATE instance_runs
-		    SET finished_at=CURRENT_TIMESTAMP, status=?, exit_code=?,
+		    SET finished_at=?, status=?, exit_code=?,
 		        agent_id=(SELECT agent_id FROM instances WHERE id=?)
 		  WHERE id=(SELECT MAX(id) FROM instance_runs WHERE instance_id=? AND finished_at IS NULL)`,
-		string(status), exitCode, instanceID, instanceID,
+		s.Now(), string(status), exitCode, instanceID, instanceID,
 	)
 	if err != nil {
 		log.Printf("[scheduler] recordRunEnd %s: %v", instanceID, err)

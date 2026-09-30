@@ -21,7 +21,8 @@ CI_EXTRA = ("other Node minima", "native Windows PowerShell demo")
 REQUIRED_BROWSER = {"local: login policy and browser session",
                     "hybrid: login policy and browser session",
                     "oidc: login policy and browser session",
-                    "I04: scoped frames and automatic reconnect after ACL change"}
+                    "I04: scoped frames and automatic reconnect after ACL change",
+                    "I06: frozen business timezone survives settings changes in Monitoring"}
 
 
 def plan(mode):

@@ -411,3 +411,7 @@ cleared) · `api/holdall_delete_test.go` (general hold/delete — no claims) ·
    deleting in the panel blocks the child; Set OK+rerun waits; rerunning the
    parent unblocks it) — and **rebuild the server AND the frontend** before
    testing (a stale binary will fool you).
+
+## Business time (I06)
+
+Daily selection, schedule windows, retries and deadlines follow the [business-time contract](business-time.md). New order snapshots freeze an explicit IANA timezone and rollover; HH:MM before rollover belongs to the next calendar morning. Carry-over preserves ODAT and that temporal context. UTC instants are not reconstructed from the host timezone. Legacy orders without a recorded zone cannot evaluate wall-clock windows: Explain reports CONFIGURATION_BLOCKED and the operator must reorder under explicit settings (Run Now retains its documented bypass). Repeated DST hours use the first occurrence; gaps use the first valid instant after the gap.

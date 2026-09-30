@@ -247,6 +247,7 @@ export interface ActionRule {
  * or manually via "Run Now" (force/order).
  */
 export interface JobInstance {
+  businessTime?: { timezone: string; dailyAt: string };
   /** Unique instance ID */
   id: string;
   /** Reference to the parent definition */

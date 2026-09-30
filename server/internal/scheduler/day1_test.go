@@ -148,6 +148,7 @@ func TestDay1_OrdemManualCaiNaDiariaCorrente(t *testing.T) {
 func seedNotOKAt(t *testing.T, s *Scheduler, id, orderDate string, finished time.Time) {
 	t.Helper()
 	def := domain.JobDefinition{ID: id, JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true}}
+	def = s.freezeTime(def, s.BusinessCalendar())
 	snap, _ := json.Marshal(def)
 	if _, err := s.db.Exec(
 		`INSERT INTO instances(id, definition_id, order_date, status, scheduled_at, definition_snapshot, attempts, started_at, finished_at)

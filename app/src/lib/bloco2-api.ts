@@ -110,6 +110,7 @@ export interface ForecastJob {
   eligible: boolean; reason?: string; wave: number; wouldBreachSla: boolean;
 }
 export interface ForecastReport {
+  businessTime?: { timezone: string; dailyAt: string };
   orderDate: string; jobs: ForecastJob[]; peakResourceUsage?: Record<string, number>;
 }
 export async function getForecast(date?: string): Promise<ForecastReport> {

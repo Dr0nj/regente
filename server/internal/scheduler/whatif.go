@@ -24,6 +24,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/Dr0nj/regente-server/internal/businessclock"
 	"github.com/Dr0nj/regente-server/internal/domain"
 )
 
@@ -74,9 +75,10 @@ type WhatIfSummary struct {
 }
 
 type WhatIfReport struct {
-	OrderDate string        `json:"orderDate"`
-	Rows      []WhatIfRow   `json:"rows"`
-	Summary   WhatIfSummary `json:"summary"`
+	BusinessTime businessclock.Calendar `json:"businessTime"`
+	OrderDate    string                 `json:"orderDate"`
+	Rows         []WhatIfRow            `json:"rows"`
+	Summary      WhatIfSummary          `json:"summary"`
 }
 
 // projJob — resultado de uma projeção (baseline ou cenário) pra um job.
@@ -90,10 +92,14 @@ type projJob struct {
 // WhatIf — simula a diária de orderDate com e sem as mudanças.
 // durations = p50 REAL por definition (ms) — DayDurations (D-4); pode ser nil.
 func WhatIf(defs []domain.JobDefinition, calendars map[string]*domain.Calendar,
-	orderDate string, durations map[string]int64, changes []WhatIfChange) WhatIfReport {
+	orderDate string, durations map[string]int64, changes []WhatIfChange, contexts ...businessclock.Calendar) WhatIfReport {
+	calendar := businessclock.Default()
+	if len(contexts) > 0 {
+		calendar = contexts[0]
+	}
 
 	od, _ := time.Parse("2006-01-02", orderDate)
-	t0 := time.Date(od.Year(), od.Month(), od.Day(), 0, 0, 0, 0, time.Local)
+	t0 := calendar.Start(orderDate)
 	store := mapCalLookup(calendars)
 
 	// 1) Elegíveis do dia — MESMA regra do RunDaily/Forecast (fonte única).
@@ -186,10 +192,8 @@ func WhatIf(defs []domain.JobDefinition, calendars map[string]*domain.Calendar,
 			if hm == "" {
 				hm = d.Schedule.WindowFrom
 			}
-			if len(hm) == 5 {
-				hh, mm := 0, 0
-				_, _ = fmtScanHM(hm, &hh, &mm)
-				start = time.Date(od.Year(), od.Month(), od.Day(), hh, mm, 0, 0, time.Local)
+			if at := calendar.At(orderDate, hm); !at.IsZero() {
+				start = at
 			}
 			if depEnd.After(start) {
 				start = depEnd
@@ -206,6 +210,10 @@ func WhatIf(defs []domain.JobDefinition, calendars map[string]*domain.Calendar,
 				if c.Fail {
 					status = string(domain.StatusNotOK)
 				}
+			}
+			if end := calendar.WindowEnd(orderDate, d.Schedule.WindowFrom, d.Schedule.WindowTo); !end.IsZero() && start.After(end) {
+				out[id] = projJob{}
+				return out[id]
 			}
 			out[id] = projJob{runs: true, start: start, end: start.Add(dur), status: status}
 			return out[id]
@@ -249,13 +257,11 @@ func WhatIf(defs []domain.JobDefinition, calendars map[string]*domain.Calendar,
 		if !p.runs || d.SLA == nil || d.SLA.DeadlineHM == "" {
 			return false
 		}
-		hh, mm := 0, 0
-		_, _ = fmtScanHM(d.SLA.DeadlineHM, &hh, &mm)
-		deadline := time.Date(od.Year(), od.Month(), od.Day(), hh, mm, 0, 0, time.Local)
+		deadline := calendar.At(orderDate, d.SLA.DeadlineHM)
 		return p.end.After(deadline)
 	}
 
-	rep := WhatIfReport{OrderDate: orderDate, Rows: []WhatIfRow{}}
+	rep := WhatIfReport{BusinessTime: calendar, OrderDate: orderDate, Rows: []WhatIfRow{}}
 	for id, d := range byID {
 		b, sc := base[id], scen[id]
 		row := WhatIfRow{

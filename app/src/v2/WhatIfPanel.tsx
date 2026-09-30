@@ -33,10 +33,9 @@ function fmtDelta(ms: number): string {
   return `${sign}${Math.round(abs / 1000)}s`;
 }
 
-function fmtHM(iso?: string): string {
+function fmtHM(iso?: string, timezone = "UTC"): string {
   if (!iso) return "—";
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return new Intl.DateTimeFormat("en-GB", { timeZone: timezone, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false, timeZoneName: "shortOffset" }).format(new Date(iso));
 }
 
 const inputStyle: React.CSSProperties = {
@@ -179,7 +178,7 @@ export default function WhatIfPanel({
               <span>impacted <b style={{ color: report.summary.impacted > 0 ? "var(--v2-status-waiting)" : "var(--v2-text-primary)" }}>{report.summary.impacted}</b> of {report.summary.total}</span>
               <span>blocked <b style={{ color: report.summary.blocked > 0 ? "var(--v2-status-failed)" : "var(--v2-text-primary)" }}>{report.summary.blocked}</b></span>
               <span>new SLA breaches <b style={{ color: report.summary.newSlaBreaches > 0 ? "var(--v2-status-failed)" : "var(--v2-text-primary)" }}>{report.summary.newSlaBreaches}</b></span>
-              <span>daily end {fmtDelta(report.summary.makespanScenMs - report.summary.makespanBaseMs)}</span>
+              <span>daily end {fmtDelta(report.summary.makespanScenMs - report.summary.makespanBaseMs)} · {report.businessTime?.timezone ?? "UTC"} · rollover {report.businessTime?.dailyAt ?? "00:00"}</span>
             </div>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
               <thead>
@@ -203,10 +202,10 @@ export default function WhatIfPanel({
                         {r.changeInjected && <span title="job mutated in the scenario" style={{ marginLeft: 5, fontSize: 9, color: "var(--v2-accent-brand)", fontFamily: "var(--v2-font-mono)" }}>◈ scenario</span>}
                       </td>
                       <td style={{ padding: "5px 8px", fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-secondary)" }}>
-                        {r.baseRuns ? `${fmtHM(r.baseStart)}–${fmtHM(r.baseEnd)}` : "does not run"}
+                        {r.baseRuns ? `${fmtHM(r.baseStart, report.businessTime?.timezone)}–${fmtHM(r.baseEnd, report.businessTime?.timezone)}` : "does not run"}
                       </td>
                       <td style={{ padding: "5px 8px", fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-secondary)" }}>
-                        {r.scenRuns ? `${fmtHM(r.scenStart)}–${fmtHM(r.scenEnd)}${r.scenStatus === "NOTOK" ? " ✗" : ""}` : "does not run"}
+                        {r.scenRuns ? `${fmtHM(r.scenStart, report.businessTime?.timezone)}–${fmtHM(r.scenEnd, report.businessTime?.timezone)}${r.scenStatus === "NOTOK" ? " ✗" : ""}` : "does not run"}
                       </td>
                       <td style={{ padding: "5px 8px", fontFamily: "var(--v2-font-mono)", color: r.deltaMs > 0 ? "var(--v2-status-waiting)" : "var(--v2-text-secondary)" }}>
                         {r.baseRuns && r.scenRuns ? fmtDelta(r.deltaMs) : "—"}

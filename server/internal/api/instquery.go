@@ -222,7 +222,7 @@ func (s *server) allowedTeamsRange(r *http.Request, q structuredQuery) ([]string
 	case q.To != "":
 		sqlStr, args = "SELECT DISTINCT team FROM instances WHERE order_date <= ?", []any{q.To}
 	case q.Date == "":
-		sqlStr, args = "SELECT DISTINCT team FROM instances WHERE order_date=?", []any{time.Now().Format("2006-01-02")}
+		sqlStr, args = "SELECT DISTINCT team FROM instances WHERE order_date=?", []any{s.cfg.Scheduler.TodayDate()}
 	}
 	// Fail-closed como o allowedTeams de dia único: parcial só ESTREITA a visão.
 	var distinct []string

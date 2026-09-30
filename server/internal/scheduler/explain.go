@@ -71,6 +71,11 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 	if reason := s.RuntimePolicy.ExecutionError(def); reason != "" {
 		return []Blocker{{Kind: GateConfiguration, Detail: reason}}
 	}
+	if !(r.Forced && r.ForceMode != ForceModeOrder) {
+		if reason := temporalBlock(def, r); reason != "" {
+			return []Blocker{{Kind: GateConfiguration, Detail: reason}}
+		}
+	}
 	var out []Blocker
 	// add anexa o bloqueio e devolve true quando o avaliador deve PARAR (short-circuit).
 	add := func(b Blocker) bool {
@@ -95,7 +100,7 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 		// o scheduled_at JÁ é o WindowFrom (computeScheduledAt), então este teste
 		// basta e o carry-over segue intocado. Pulado quando o $TIME está na lógica.
 		if !timeInLogic && now.Before(r.ScheduledAt) {
-			if add(Blocker{Kind: GateWindow, Detail: "the scheduled time has not arrived yet (" + r.ScheduledAt.Format("15:04") + ")"}) {
+			if add(Blocker{Kind: GateWindow, Detail: "the scheduled time has not arrived yet (" + r.ScheduledAt.UTC().Format(time.RFC3339) + ")"}) {
 				return out
 			}
 		}
@@ -105,7 +110,7 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 		// Também pulado quando o $TIME está na lógica (o token cobre o início —
 		// e num Order Force o próprio $TIME usa esta trava, ver orderForceWindowStart).
 		if !timeInLogic && r.Forced && r.ForceMode == ForceModeOrder {
-			if ws, ok := orderForceWindowStart(def, r.OrderDate); ok && now.Before(ws) {
+			if ws, ok := orderForceWindowStart(def, r.Odate()); ok && now.Before(ws) {
 				if add(Blocker{Kind: GateWindow, Detail: "the execution window opens at " + def.Schedule.WindowFrom}) {
 					return out
 				}
@@ -113,14 +118,9 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 		}
 		// 1b) Janela fechou (Control-M time window): passou de WindowTo, não submete
 		// mais hoje. A instance morre na virada da daily (WAITING nunca-rodou).
-		if hh, mm, okW := parseHHMM(def.Schedule.WindowTo); okW {
-			if t, err := time.Parse("2006-01-02", r.OrderDate); err == nil {
-				windowEnd := time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.Local)
-				if now.After(windowEnd) {
-					if add(Blocker{Kind: GateWindowClosed, Detail: "the execution window closed at " + def.Schedule.WindowTo}) {
-						return out
-					}
-				}
+		if windowEnd := orderWindowEnd(def, r.Odate()); !windowEnd.IsZero() && now.After(windowEnd) {
+			if add(Blocker{Kind: GateWindowClosed, Detail: "the execution window closed at " + windowEnd.Format(time.RFC3339)}) {
+				return out
 			}
 		}
 	}
@@ -154,7 +154,7 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 		// trava explícita do gate 1a (WindowFrom × order_date).
 		timeReady := !now.Before(r.ScheduledAt)
 		if r.Forced && r.ForceMode == ForceModeOrder {
-			if ws, ok := orderForceWindowStart(def, r.OrderDate); ok {
+			if ws, ok := orderForceWindowStart(def, r.Odate()); ok {
 				timeReady = !now.Before(ws)
 			}
 		}
@@ -225,15 +225,12 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 // forçado fura a janela que o Order Force respeita. ok=false quando a def não tem
 // WindowFrom válido (sem janela = sem trava).
 func orderForceWindowStart(def domain.JobDefinition, orderDate string) (time.Time, bool) {
-	hh, mm, okW := parseHHMM(def.Schedule.WindowFrom)
-	if !okW {
+	c, ok := frozenCalendar(def)
+	if !ok {
 		return time.Time{}, false
 	}
-	t, err := time.Parse("2006-01-02", orderDate)
-	if err != nil {
-		return time.Time{}, false
-	}
-	return time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.Local), true
+	t := c.At(orderDate, def.Schedule.WindowFrom)
+	return t, !t.IsZero()
 }
 
 // Explain monta a explicação de uma instance: para WAITING, roda gateInstance em
@@ -308,7 +305,7 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 		return ex, nil
 	}
 
-	blockers := s.gateInstance(r, def, nil, time.Now(), false)
+	blockers := s.gateInstance(r, def, nil, s.Now(), false)
 	if blockers == nil {
 		// gateInstance devolve nil quando não há bloqueio; o JSON precisa ser []
 		// (o front itera blockers direto — null quebrava a UI ao abrir o Explain

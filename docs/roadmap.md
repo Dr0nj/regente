@@ -85,7 +85,8 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
-- **I06–I17:** execução durável, HA,
+- **I06:** relógio/data de negócio implementados em `codex/i06-business-time`; em validação completa, ainda não publicado. Contrato: [business time](business-time.md).
+- **I07–I17:** execução durável, HA,
   auditoria, capacidade, recuperação e piloto seguem na sequência enterprise.
 
 Escopo ativo deste ciclo: separar credenciais humanas de execução e preparar as

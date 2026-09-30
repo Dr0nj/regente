@@ -71,16 +71,14 @@ const dailyReportFailureCap = 100
 // pontualidade da daily: usado pelo BuildDailyReport (card/report) e pelo
 // /api/daily/status (indicador do rodapé).
 func (s *Scheduler) IsDailyLate(date string, startedAt time.Time) bool {
-	hh, mm, ok := parseHHMM(s.DailyAt())
-	if !ok {
+	calendar := s.BusinessCalendar()
+	if calendar.Validate() != nil {
 		return false
 	}
-	_, loc := s.DailyTimezone()
-	d, err := time.ParseInLocation("2006-01-02", date, loc)
-	if err != nil {
+	target := calendar.Start(date)
+	if target.IsZero() {
 		return false
 	}
-	target := time.Date(d.Year(), d.Month(), d.Day(), hh, mm, 0, 0, loc)
 	return startedAt.After(target.Add(lateStartGrace))
 }
 
@@ -210,7 +208,7 @@ func (s *Scheduler) maybeSendDailyReport() {
 		s.mu.Unlock()
 		return
 	}
-	s.lastReportCheck = time.Now()
+	s.lastReportCheck = s.Now()
 	s.mu.Unlock()
 
 	channels := strings.TrimSpace(s.setting("daily_report_channels"))

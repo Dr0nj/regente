@@ -121,6 +121,7 @@ export interface WhatIfRow {
 }
 
 export interface WhatIfReport {
+  businessTime?: { timezone: string; dailyAt: string };
   orderDate: string;
   rows: WhatIfRow[];
   summary: {

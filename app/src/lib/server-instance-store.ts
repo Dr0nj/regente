@@ -16,6 +16,7 @@ import { api, onServerEvent } from "@/lib/server-client";
 /* ── Server shape ── */
 
 interface ServerInstance {
+  businessTime?: { timezone: string; dailyAt: string };
   id: string;
   definitionId: string;
   team?: string;
@@ -100,6 +101,7 @@ function toWeb(s: ServerInstance): JobInstance {
     // usamos o team da instância, não o da definition viva (que pode nem existir).
     team: s.team || undefined,
     orderDate: s.orderDate,
+    businessTime: s.businessTime,
     createdAt: parseTime(s.scheduledAt) ?? Date.now(),
     scheduledAt: parseTime(s.scheduledAt) ?? Date.now(),
     startedAt: started,

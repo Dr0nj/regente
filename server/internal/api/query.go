@@ -18,7 +18,6 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"time"
 )
 
 // QueryIntent — a interpretação estruturada de um texto.
@@ -143,7 +142,7 @@ func (s *server) runQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	intent := parseQueryIntent(req.Q)
-	date := time.Now().Format("2006-01-02")
+	date := s.cfg.Scheduler.TodayDate()
 	allowed, restrict := s.allowedTeams(r, date)
 
 	// query estruturada base (dia atual + folder da intenção).

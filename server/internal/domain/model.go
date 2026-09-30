@@ -4,7 +4,10 @@
 // sobre a rede seguem exatamente esta estrutura.
 package domain
 
-import "time"
+import (
+	"github.com/Dr0nj/regente-server/internal/businessclock"
+	"time"
+)
 
 // EdgeCondition — condição de uma dependência upstream.
 type EdgeCondition string
@@ -113,15 +116,17 @@ type CalendarRef struct {
 // `Params` carrega parâmetros específicos do jobType (COMMAND/REST/...).
 // Schema por tipo é responsabilidade do agent/executor.
 type JobDefinition struct {
-	ID       string     `yaml:"id" json:"id"`
-	Label    string     `yaml:"label" json:"label"`
-	Team     string     `yaml:"team" json:"team"`
-	JobType  string     `yaml:"jobType" json:"jobType"`
-	Schedule Schedule   `yaml:"schedule" json:"schedule"`
-	Retries  int        `yaml:"retries,omitempty" json:"retries,omitempty"`
-	Timeout  int        `yaml:"timeout,omitempty" json:"timeout,omitempty"` // seconds
-	DryRun   bool       `yaml:"dryRun,omitempty" json:"dryRun,omitempty"`
-	Upstream []Upstream `yaml:"upstream,omitempty" json:"upstream,omitempty"`
+	// BusinessTime pertence ao snapshot da ordem; não é configuração YAML.
+	BusinessTime *businessclock.Calendar `yaml:"-" json:"_businessTime,omitempty"`
+	ID           string                  `yaml:"id" json:"id"`
+	Label        string                  `yaml:"label" json:"label"`
+	Team         string                  `yaml:"team" json:"team"`
+	JobType      string                  `yaml:"jobType" json:"jobType"`
+	Schedule     Schedule                `yaml:"schedule" json:"schedule"`
+	Retries      int                     `yaml:"retries,omitempty" json:"retries,omitempty"`
+	Timeout      int                     `yaml:"timeout,omitempty" json:"timeout,omitempty"` // seconds
+	DryRun       bool                    `yaml:"dryRun,omitempty" json:"dryRun,omitempty"`
+	Upstream     []Upstream              `yaml:"upstream,omitempty" json:"upstream,omitempty"`
 
 	// D-1 — espaçamento entre tentativas de retry, em MINUTOS. 0 = backoff curto
 	// (segundos, comportamento clássico). >0 = a próxima tentativa é AGENDADA via

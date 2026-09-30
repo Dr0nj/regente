@@ -37,8 +37,12 @@ type FolderOrder struct {
 // Erro só quando a folder não existe / não tem definition publicada — folder
 // inteiramente já ordenada devolve Ordered vazio e Skipped cheio, que é sucesso.
 func (s *Scheduler) OrderFolder(folder string) (FolderOrder, error) {
-	now := s.NowLocal()
-	date := s.BusinessDate(now)
+	calendar := s.BusinessCalendar()
+	if err := calendar.Validate(); err != nil {
+		return FolderOrder{}, err
+	}
+	now := s.Now()
+	date := calendar.BusinessDate(now)
 	res := FolderOrder{Folder: folder, OrderDate: date, Ordered: []string{}, Skipped: []string{}}
 
 	// Cópia das defs da folder sob lock (o slice s.defs é trocado pelo reload).
@@ -84,6 +88,7 @@ func (s *Scheduler) OrderFolder(folder string) (FolderOrder, error) {
 			res.Skipped = append(res.Skipped, def.ID)
 			continue
 		}
+		def = s.freezeTime(def, calendar)
 		snap, err := json.Marshal(def)
 		if err != nil {
 			log.Printf("[order-folder] %s: snapshot: %v", def.ID, err)
@@ -144,7 +149,7 @@ func (s *Scheduler) insertForcedChunk(date, commitSHA string, chunk []pendingIns
 		return nil
 	}
 	defer insStmt.Close()
-	evtStmt, err := tx.Prepare(`INSERT INTO instance_events(instance_id, kind, actor, message) VALUES(?,?,?,?)`)
+	evtStmt, err := tx.Prepare(`INSERT INTO instance_events(instance_id, kind, actor, message, ts) VALUES(?,?,?,?,?)`)
 	if err != nil {
 		_ = tx.Rollback()
 		log.Printf("[order-folder] %s: prepare event: %v", date, err)
@@ -163,7 +168,7 @@ func (s *Scheduler) insertForcedChunk(date, commitSHA string, chunk []pendingIns
 			log.Printf("[order-folder] insert %s: %v", p.id, err)
 			continue
 		}
-		if _, err := evtStmt.Exec(p.id, "force-ordered", "operator", msg); err != nil {
+		if _, err := evtStmt.Exec(p.id, "force-ordered", "operator", msg, s.Now()); err != nil {
 			log.Printf("[order-folder] event %s: %v", p.id, err)
 		}
 		created = append(created, p.id)

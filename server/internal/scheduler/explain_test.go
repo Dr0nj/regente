@@ -14,6 +14,7 @@ const exDate = "2026-06-24"
 // seedWaitingEx insere uma instance WAITING com scheduled_at e def (snapshot) dados.
 func seedWaitingEx(t *testing.T, s *Scheduler, id string, schedAt time.Time, def domain.JobDefinition) {
 	t.Helper()
+	def = s.freezeTime(def, s.BusinessCalendar())
 	snap, _ := json.Marshal(def)
 	if _, err := s.db.Exec(
 		`INSERT INTO instances(id, definition_id, order_date, status, scheduled_at, definition_snapshot) VALUES(?,?,?,?,?,?)`,
@@ -94,6 +95,7 @@ func TestExplain_OrderForceRespectsWindow(t *testing.T) {
 	orderDate := future.Format("2006-01-02")
 	def := domain.JobDefinition{ID: "of", JobType: "COMMAND",
 		Schedule: domain.Schedule{Enabled: true, WindowFrom: future.Format("15:04")}}
+	def = s.freezeTime(def, s.BusinessCalendar())
 	snap, _ := json.Marshal(def)
 	// Order Force: forced=1, force_mode='order', scheduled_at=now (fora do agendamento).
 	if _, err := s.db.Exec(
@@ -199,6 +201,7 @@ func TestExplain_TerminalAndForced(t *testing.T) {
 	def := domain.JobDefinition{ID: "t", JobType: "COMMAND", Schedule: domain.Schedule{Enabled: true}}
 
 	// Forçada → runnable bypassando gates.
+	def = s.freezeTime(def, s.BusinessCalendar())
 	snap, _ := json.Marshal(def)
 	if _, err := s.db.Exec(
 		`INSERT INTO instances(id, definition_id, order_date, status, scheduled_at, forced, definition_snapshot) VALUES(?,?,?,?,?,1,?)`,

@@ -71,7 +71,7 @@ class VerificationTests(unittest.TestCase):
 
     def test_browser_requires_real_mandatory_scenarios(self):
         def fixture():
-            return {"stats": {"expected": 4, "skipped": 0, "unexpected": 0, "flaky": 0},
+            return {"stats": {"expected": len(verify.REQUIRED_BROWSER), "skipped": 0, "unexpected": 0, "flaky": 0},
                     "suites": [{"specs": [{"title": title, "tests": [{"status": "expected", "results": [{"status": "passed"}]}]} for title in verify.REQUIRED_BROWSER]}]}
         verify.validate_browser(fixture())
         for key in ("skipped", "unexpected", "flaky"):

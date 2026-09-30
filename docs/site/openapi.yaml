@@ -904,12 +904,19 @@ components:
         text/plain:
           schema: { type: string, example: forbidden }
   schemas:
+    BusinessTime:
+      type: object
+      required: [timezone, dailyAt]
+      properties:
+        timezone: { type: string, description: Frozen IANA timezone. }
+        dailyAt: { type: string, description: Frozen rollover in HH:MM. }
     Instance:
       type: object
       description: |
         One instance in the daily (an IMMUTABLE snapshot of the order —
         team/dryRun and friends freeze at the moment the job is ordered).
       properties:
+        businessTime: { $ref: "#/components/schemas/BusinessTime" }
         id: { type: string }
         definitionId: { type: string }
         team: { type: string, description: The folder (frozen on the order). }
@@ -1040,7 +1047,7 @@ components:
       properties:
         orderDate: { type: string, format: date, description: '"Today" in the business timezone.' }
         dailyAt: { type: string, description: The configured time (HH:MM). }
-        timezone: { type: string, description: IANA (settings.daily_timezone); empty means the server's local clock. }
+        timezone: { type: string, description: Explicit IANA business timezone (settings.daily_timezone); default UTC. }
         lastRunDate: { type: string, format: date }
         lastRunAt: { type: string }
         serverNow: { type: string, format: date-time }
@@ -1098,6 +1105,7 @@ components:
     ForecastReport:
       type: object
       properties:
+        businessTime: { $ref: "#/components/schemas/BusinessTime" }
         orderDate: { type: string, format: date }
         jobs:
           type: array

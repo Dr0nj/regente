@@ -73,16 +73,9 @@ const STATUS_LABEL: Record<JobInstance["status"], string> = {
   CANCELLED: "CANCELLED",
 };
 
-function fmtTime(ms?: number): string {
-  if (!ms) return "—";
-  const d = new Date(ms);
-  const time = d.toLocaleTimeString("en-GB", { hour12: false });
-  // Instances carregadas pela virada (carry-over) têm timestamps de OUTROS
-  // dias: fora de hoje, a hora sozinha engana — prefixa dd/MM.
-  if (d.toDateString() !== new Date().toDateString()) {
-    return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")} ${time}`;
-  }
-  return time;
+function fmtTime(ms?: number, timezone = "UTC"): string {
+  if (ms == null) return "—";
+  return new Intl.DateTimeFormat("en-GB", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZoneName: "shortOffset" }).format(new Date(ms));
 }
 
 function fmtDuration(ms?: number): string {
@@ -352,7 +345,7 @@ export default function InstanceDetailsDrawer({
           {tab === "general" && <GeneralTab instance={instance} definition={orderDef} jobType={jobType} actionConfig={actionConfig} />}
           {tab === "output" && <OutputTab instance={instance} jobType={jobType} actionConfig={actionConfig} />}
           {tab === "stats" && <StatsTab instance={instance} />}
-          {tab === "schedule" && <ScheduleTab definition={orderDef} />}
+          {tab === "schedule" && <ScheduleTab definition={orderDef} businessTime={instance.businessTime} />}
           {tab === "deps" && <DepsTab definition={orderDef} triggers={triggers} allDefs={allDefs} />}
           {tab === "neighborhood" && (
             <>
@@ -498,10 +491,11 @@ function GeneralTab({ instance, definition, jobType, actionConfig }: {
       </Section>
 
       <Section title="Timeline">
-        <Field label="Ordered"    value={fmtTime(instance.createdAt)} />
-        <Field label="Scheduled"  value={fmtTime(instance.scheduledAt)} />
-        <Field label="Started"    value={fmtTime(instance.startedAt)} />
-        <Field label="Completed"  value={fmtTime(instance.completedAt)} />
+        <Field label="Business timezone" value={instance.businessTime ? `${instance.businessTime.timezone} · rollover ${instance.businessTime.dailyAt}` : "Legacy: zone unknown · timestamps shown in UTC"} />
+        <Field label="Ordered"    value={fmtTime(instance.createdAt, instance.businessTime?.timezone)} />
+        <Field label="Scheduled"  value={fmtTime(instance.scheduledAt, instance.businessTime?.timezone)} />
+        <Field label="Started"    value={fmtTime(instance.startedAt, instance.businessTime?.timezone)} />
+        <Field label="Completed"  value={fmtTime(instance.completedAt, instance.businessTime?.timezone)} />
         <Field label="Duration"   value={fmtDuration(instance.durationMs)} />
         <Field label="Attempts"   value={`${instance.attempts} / ${instance.retries + 1}`} />
       </Section>
@@ -819,7 +813,7 @@ function ServerOutputTab({ instance, jobType, actionConfig }: {
           />
         )}
         {agentId && <Field label="Agent" value={agentId} mono />}
-        {instance.completedAt != null && <Field label="Completed" value={fmtTime(instance.completedAt)} />}
+        {instance.completedAt != null && <Field label="Completed" value={fmtTime(instance.completedAt, instance.businessTime?.timezone)} />}
         {finished && instance.durationMs != null && <Field label="Duration" value={fmtDuration(instance.durationMs)} />}
       </Section>
     </>
@@ -896,7 +890,7 @@ function LocalOutputTab({ instance, jobType, actionConfig }: {
           />
         )}
         {agentId && <Field label="Agent" value={agentId} mono />}
-        {instance.completedAt != null && <Field label="Completed" value={fmtTime(instance.completedAt)} />}
+        {instance.completedAt != null && <Field label="Completed" value={fmtTime(instance.completedAt, instance.businessTime?.timezone)} />}
         {finished && instance.durationMs != null && <Field label="Duration" value={fmtDuration(instance.durationMs)} />}
       </Section>
     </>
@@ -1101,7 +1095,7 @@ const SHIFT_LABEL: Record<string, string> = {
   "prev-businessday": "Roll to previous business day",
 };
 
-function ScheduleTab({ definition }: { definition?: JobDefinition }) {
+function ScheduleTab({ definition, businessTime }: { definition?: JobDefinition; businessTime?: JobInstance["businessTime"] }) {
   if (!definition) {
     return <Muted>Snapshot not available — this order's frozen schedule can't be shown (legacy instance without snapshot).</Muted>;
   }
@@ -1129,6 +1123,7 @@ function ScheduleTab({ definition }: { definition?: JobDefinition }) {
       </Section>
 
       <Section title="Runtime window">
+        <Field label="Business timezone" value={businessTime ? `${businessTime.timezone} · rollover ${businessTime.dailyAt}` : "Legacy: zone unknown"} />
         <Field label="Run at" value={s.runAt || "—"} mono />
         <Field label="Window (from → to)" value={window} mono />
         <Field label="Cyclic" value={s.cyclic ? `every ${s.intervalMin ?? "?"} min${s.cyclicMaxRuns ? `, max ${s.cyclicMaxRuns} runs` : ""}` : "no"} tone={s.cyclic ? "var(--v2-accent-brand)" : undefined} />

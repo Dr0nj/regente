@@ -213,6 +213,10 @@ func (s *server) listSLABreaches(w http.ResponseWriter, r *http.Request) {
 // === F21 — Forecast ===
 
 func (s *server) getForecast(w http.ResponseWriter, r *http.Request) {
+	if err := s.cfg.Scheduler.BusinessCalendar().Validate(); err != nil {
+		writeJSON(w, 409, map[string]string{"error": err.Error()})
+		return
+	}
 	date := r.URL.Query().Get("date")
 	if date == "" {
 		date = s.cfg.Scheduler.TodayDate() // DAY-1: a diária corrente (vira no daily_at)
@@ -225,7 +229,7 @@ func (s *server) getForecast(w http.ResponseWriter, r *http.Request) {
 			cals[list[i].Name] = &list[i]
 		}
 	}
-	report := scheduler.Forecast(defs, cals, date)
+	report := scheduler.Forecast(defs, cals, date, s.cfg.Scheduler.BusinessCalendar())
 	writeJSON(w, 200, report)
 }
 
@@ -233,9 +237,13 @@ func (s *server) getForecast(w http.ResponseWriter, r *http.Request) {
 // gating do RunDaily por dia (via IsScheduledOn). `from` default = hoje; `days`
 // default = 7, clamp [1,366]. Devolve um ForecastReport por dia.
 func (s *server) getForecastRange(w http.ResponseWriter, r *http.Request) {
+	if err := s.cfg.Scheduler.BusinessCalendar().Validate(); err != nil {
+		writeJSON(w, 409, map[string]string{"error": err.Error()})
+		return
+	}
 	from := r.URL.Query().Get("from")
 	if from == "" {
-		from = time.Now().Format("2006-01-02")
+		from = s.cfg.Scheduler.TodayDate()
 	}
 	days := 7
 	if v := r.URL.Query().Get("days"); v != "" {
@@ -251,7 +259,7 @@ func (s *server) getForecastRange(w http.ResponseWriter, r *http.Request) {
 			cals[list[i].Name] = &list[i]
 		}
 	}
-	writeJSON(w, 200, scheduler.ForecastRange(defs, cals, from, days))
+	writeJSON(w, 200, scheduler.ForecastRange(defs, cals, from, days, s.cfg.Scheduler.BusinessCalendar()))
 }
 
 // === F22 — Analytics ===

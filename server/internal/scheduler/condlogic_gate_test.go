@@ -21,6 +21,7 @@ func todayStr() string { return time.Now().Format("2006-01-02") }
 // testar o piso de janela contra o token $TIME).
 func seedWaitingAt(t *testing.T, s *Scheduler, id, orderDate string, schedAt time.Time, def domain.JobDefinition) {
 	t.Helper()
+	def = s.freezeTime(def, s.BusinessCalendar())
 	snap, _ := json.Marshal(def)
 	if _, err := s.db.Exec(
 		`INSERT INTO instances(id, definition_id, order_date, status, scheduled_at, definition_snapshot) VALUES(?,?,?,?,?,?)`,
@@ -172,6 +173,7 @@ func TestCondLogic_Gate_TimeFallback(t *testing.T) {
 	// (c) TETO: WindowTo no passado → WINDOW_CLOSED mesmo com $TIME.
 	defTo := logicDef("U", logic, []string{"C1"})
 	defTo.Schedule.WindowTo = "00:01"
+	defTo = s.freezeTime(defTo, s.BusinessCalendar())
 	seedWaitingAt(t, s, "U-1", today, past, defTo)
 	if ex = explainOf(t, s, "U-1"); hasKind(ex.Blockers, GateWindowClosed) == nil {
 		t.Fatalf("WindowTo passado deveria fechar (WINDOW_CLOSED) mesmo com $TIME: %+v", ex.Blockers)
@@ -191,6 +193,7 @@ func TestCondLogic_Gate_TimeTokenRespectsOrderForceWindow(t *testing.T) {
 	}}
 	seedOrderForce := func(id string, def domain.JobDefinition, orderDate string) {
 		t.Helper()
+		def = s.freezeTime(def, s.BusinessCalendar())
 		snap, _ := json.Marshal(def)
 		if _, err := s.db.Exec(
 			`INSERT INTO instances(id, definition_id, order_date, status, scheduled_at, forced, force_mode, definition_snapshot) VALUES(?,?,?,?,?,1,?,?)`,
