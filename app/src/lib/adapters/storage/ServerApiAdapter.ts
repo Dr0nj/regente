@@ -237,7 +237,7 @@ export class ServerApiAdapter implements StoragePort {
       { method: "POST", body: JSON.stringify(payload) },
     );
     // F13.2 — server may wrap response as {definition, git: PRResult}
-    let saved: ServerDefinition | null = null;
+    let saved: ServerDefinition | null;
     let git: unknown = null;
     if (resp && typeof resp === "object" && "definition" in resp) {
       saved = (resp as { definition: ServerDefinition }).definition;

@@ -384,6 +384,12 @@ domínio**, não o binário.
 
 # ✅ Entregue *(tracking por tópico)*
 
+## Compatibilidade do grupo npm e lint (2026-10-01)
+
+Atualizações do grupo app-npm incorporadas com TypeScript~6.0.3 dentro do peer >=4.8.4 <6.1.0 de typescript-eslint. Lockfile regenerado de instalação limpa, mantendo bindings Linux/macOS/Windows e o range Node20.19/22.13/24. ESLint atualizado expôs duas inicializações descartadas: removidas sem mudar valores finais ou caminhos da UI. npm ci --engine-strict, lint e build passaram localmente; CI completo e matriz verificam browser e demos. Dependabot ignora TypeScript>=6.1 enquanto o peer do lint exige <6.1; rever esse limite ao atualizar o lint.
+
+
+
 ## Toolchain Go1.26 e dependências alinhadas (2026-10-01)
 
 O grupo server-go requer Go1.26. Módulos server/agent e workspace alinhados em1.26.0; CI, integração, doc-recipes, Pages, release e builders OCI usam1.26; pré-requisitos de source/demo/verificação atualizados. go mod tidy standalone e go work sync reconciliam o grafo compartilhado de journal. Staticcheck2026.1 fixado por suporte oficial Go1.26, sem desabilitar regras. Build/vet/regressão completa server+agent e staticcheck passaram localmente; CI completo cobre SQLite/PostgreSQL, browser e demos. Sem migração de schema ou mudança das garantias de execução.
@@ -1888,6 +1894,8 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-10-01:** Correção do PR23: grupo npm compatível com TypeScript6, lockfile limpo e lint sem bypass.
 
 - **2026-10-01:** Correção do PR25: Go1.26 coordenado nos módulos/workspace/CI/OCI/docs, staticcheck2026.1 e grafo de dependências sincronizado.
 
