@@ -36,7 +36,7 @@ func draftETag(s *storage.DesignSession) string {
 func (s *server) draftMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.Sessions == nil {
-			http.Error(w, "design sessions not configured", 503)
+			http.Error(w, "design sessions not configured", http.StatusServiceUnavailable)
 			return
 		}
 		sid := chi.URLParam(r, "sid")
@@ -47,12 +47,12 @@ func (s *server) draftMiddleware(next http.Handler) http.Handler {
 				if receiptErr == nil {
 					u, _ := auth.FromContext(r.Context())
 					if actorFromCtx(r) != closed.Actor && (u == nil || !u.Role.CanAdmin()) {
-						http.Error(w, "forbidden: draft belongs to another user", 403)
+						http.Error(w, "forbidden: draft belongs to another user", http.StatusForbidden)
 						return
 					}
 					expected := r.Header.Get("If-Match")
 					if expected == "" {
-						http.Error(w, "If-Match draft revision is required", 428)
+						http.Error(w, "If-Match draft revision is required", http.StatusPreconditionRequired)
 						return
 					}
 					previous := *closed
@@ -68,7 +68,7 @@ func (s *server) draftMiddleware(next http.Handler) http.Handler {
 							return
 						}
 						if !can {
-							http.Error(w, "forbidden: folder access revoked", 403)
+							http.Error(w, "forbidden: folder access revoked", http.StatusForbidden)
 							return
 						}
 					}
@@ -87,7 +87,7 @@ func (s *server) draftMiddleware(next http.Handler) http.Handler {
 		u, _ := auth.FromContext(r.Context())
 		actor := actorFromCtx(r)
 		if actor != meta.Actor && (u == nil || !u.Role.CanAdmin()) {
-			http.Error(w, "forbidden: draft belongs to another user", 403)
+			http.Error(w, "forbidden: draft belongs to another user", http.StatusForbidden)
 			return
 		}
 		mutation := r.Method != http.MethodGet && r.Method != http.MethodHead
@@ -119,7 +119,7 @@ func (s *server) draftMiddleware(next http.Handler) http.Handler {
 						return
 					}
 					if !can {
-						http.Error(w, "forbidden: folder access revoked", 403)
+						http.Error(w, "forbidden: folder access revoked", http.StatusForbidden)
 						return
 					}
 				}
@@ -133,7 +133,7 @@ func (s *server) draftMiddleware(next http.Handler) http.Handler {
 					return
 				}
 				if !can {
-					http.Error(w, "forbidden: folder access revoked", 403)
+					http.Error(w, "forbidden: folder access revoked", http.StatusForbidden)
 					return
 				}
 			}
@@ -182,7 +182,7 @@ func (s *server) draftMiddleware(next http.Handler) http.Handler {
 func (s *server) exportDraft(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())
 	if u == nil || !u.Role.CanAdmin() {
-		http.Error(w, "forbidden: admin only", 403)
+		http.Error(w, "forbidden: admin only", http.StatusForbidden)
 		return
 	}
 	sess, ok := s.sessionFromURL(w, r)
@@ -199,11 +199,11 @@ func (s *server) exportDraft(w http.ResponseWriter, r *http.Request) {
 func (s *server) importDraft(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())
 	if u == nil || !u.Role.CanAdmin() {
-		http.Error(w, "forbidden: admin only", 403)
+		http.Error(w, "forbidden: admin only", http.StatusForbidden)
 		return
 	}
 	if s.cfg.Sessions == nil {
-		http.Error(w, "design sessions not configured", 503)
+		http.Error(w, "design sessions not configured", http.StatusServiceUnavailable)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 24<<20)

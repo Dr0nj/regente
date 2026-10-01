@@ -359,7 +359,7 @@ func (s *server) publishDesignSession(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		} else if u == nil || !u.Role.CanAdmin() {
-			http.Error(w, "forbidden: repository-wide draft changes require admin review", 403)
+			http.Error(w, "forbidden: repository-wide draft changes require admin review", http.StatusForbidden)
 			return
 		}
 	}

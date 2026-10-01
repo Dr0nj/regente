@@ -400,7 +400,7 @@ func TestI12DraftContracts(t *testing.T) {
 				i12RequestAs(t, srvB, "GET", ep+"/definitions", "", ownerToken, nil, 200)
 				i12RequestAs(t, srvB, "POST", ep+"/definitions", v, ownerToken, i12Definition("revoked"), 403)
 				i12RequestAs(t, srvB, "POST", ep+"/publish", v, ownerToken, map[string]any{}, 403)
-				_, v = i12Request(t, srvB, "POST", ep+"/definitions", v, i12Definition("admin reviewed"), 200)
+				i12Request(t, srvB, "POST", ep+"/definitions", v, i12Definition("admin reviewed"), 200)
 				var actor string
 				if err = database.QueryRow("SELECT actor FROM design_draft_audit WHERE session_id=? ORDER BY revision DESC LIMIT 1", owned.ID).Scan(&actor); err != nil || actor != "system" {
 					t.Fatal("admin override unaudited", actor, err)
