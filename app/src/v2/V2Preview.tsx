@@ -61,7 +61,7 @@ import { fetchUnacknowledgedCount } from "@/lib/alerts-api";
 import { GitStatusBadge } from "./GitStatusBadge";
 import { PRBannerHost } from "./PRBannerHost";
 import { PublishButton } from "./PublishButton";
-import { getDesignSessionId, setDesignSessionId, onDesignSessionChange, onDesignSessionConflict } from "@/lib/server-client";
+import { getDesignSessionId, setDesignSessionId, onDesignSessionChange, onDesignSessionConflict, onDraftRevisionConflict } from "@/lib/server-client";
 import { getDesignSession, getDesignSessionStatus, bulkSessionDefinitions, createDesignSession, openSessionFolder, createSessionFolder, listDesignSessions, deleteDesignSession, type DesignSession, type SessionStatus, type PublishResult } from "@/lib/design-session-api";
 import { toast, ToastHost } from "./Toast";
 import { getGitInfo, commitUrl } from "@/lib/git-info";
@@ -231,7 +231,9 @@ function V2PreviewInner() {
   // sessionId === null → picker de folders (FolderManagerDialog) quando entrar em Design.
   // sessionId !== null → habilita PublishButton, e a UI de Design opera no clone.
   const [designSessionId, setDesignSessionIdState] = useState<string | null>(getDesignSessionId());
-  const [designSessionNewFolders, setDesignSessionNewFolders] = useState<string[]>([]);
+  const [draftRevisionConflict, setDraftRevisionConflict] = useState<string | null>(null);
+ useEffect(() => onDraftRevisionConflict((sid) => setDraftRevisionConflict(sid)), []);
+ const [designSessionNewFolders, setDesignSessionNewFolders] = useState<string[]>([]);
   // P2 (2026-04-26): folders no escopo da session (folders ∪ newFolders).
   // null = sem session (nenhum filtro aplicado por session); Set vazio é estado
   // transitório enquanto carrega — também não filtra (segurança contra esconder tudo).
@@ -254,6 +256,7 @@ function V2PreviewInner() {
   []);
   // P2: quando entra em session, busca detalhes e popula sessionFolders.
   useEffect(() => {
+ if (!authed && isServerMode()) return;
     if (!designSessionId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- lifecycle de session P2; limpa o escopo de folders no ramo sem-session (estado transitório); ver roadmap §RH
       setActiveFolders(null);
@@ -286,7 +289,7 @@ function V2PreviewInner() {
         setDesignSessionNewFolders([]);
       });
     return () => { cancel = true; };
-  }, [designSessionId]);
+  }, [designSessionId, authed]);
   // P8: polling 30s do drift status enquanto session ativa.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- lifecycle de session P8; zera o drift status quando não há session (estado transitório); ver roadmap §RH
@@ -1944,6 +1947,12 @@ function V2PreviewInner() {
           />
         )}
 
+        {mode === "design" && draftRevisionConflict === designSessionId && draftRevisionConflict && (
+          <div role="alert" data-testid="draft-revision-conflict" style={{ position: "absolute", top: 8, left: 16, right: 16, zIndex: 50, padding: "12px 16px", background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-accent-brand)", color: "var(--v2-text-primary)" }}>
+            Draft changed elsewhere. Saving is paused. Copy any unsaved edits before reloading.
+            <button onClick={() => window.location.reload()} style={{ marginLeft: 12 }}>Reload shared draft</button>
+          </div>
+        )}
         {/* Job-as-code — editor YAML cobre o palco do Design (linha luxo + guia do schema). */}
         {mode === "design" && codeMode && designSessionId && (
           <Suspense fallback={null}>

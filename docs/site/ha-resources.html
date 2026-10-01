@@ -70,6 +70,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="ha-resources.html" class="active">Shared resources and scheduler leadership</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="production-profile.html">Production profile</a>
+<a href="shared-drafts.html">Shared Design drafts</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
 <a href="verification.html">Verification profiles</a>
 <a href="web-events.html">Web event authorization</a>
@@ -130,12 +131,12 @@ Agents with matching identity/environment/capabilities are selected by unresolve
 load, then ID. This is deterministic work-conserving ordering, not a promise of
 weighted tenant fairness or starvation freedom for large resource requests.</p>
 <h2 id="upgrade-and-validation">Upgrade and validation</h2>
-<p>Schema 29 adds execution ownership to existing holds using the recorded current
+<p>Schema 30 adds execution ownership to existing holds using the recorded current
 attempt, the leadership term registry and shared agent capacity. Unlinked legacy
 holds remain reserved with an empty owner for diagnosis. Upgrade all control-plane
-binaries together; the supported runtime schema is exactly 29. Restore a complete
+binaries together; the supported runtime schema is exactly 30. Restore a complete
 pre-upgrade backup with its matching binary for rollback. Do not run an older
-server against schema 29 or remove an agent journal to reset uncertain work.</p>
+server against schema 30 or remove an agent journal to reset uncertain work.</p>
 <p>The mandatory integration runner exercises SQLite/PostgreSQL reservation contracts,
 concurrent admission, retry ownership, cancellation/uncertainty, reconstruction,
 agent limits and FIFO eligibility. PostgreSQL tests terminate the leader backend

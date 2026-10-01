@@ -11,7 +11,7 @@
 //     são totalmente ortogonais (Opção B já entregue na Etapa 2).
 //
 // Persistência/ciclo de vida (P3/P6/P7 + recuperação de draft 2026-07-02):
-//   - sessions persistem em DB (design_sessions) + clone no disco; Restore() no boot;
+//   - I12: conteúdo/base/revisões persistem no DB; clones são cache reconstruível;
 //   - GC por TTL remove só sessions LIMPAS — Dirty() (trabalho não publicado) é
 //     imune a remoção automática (GC e sweepCleanIdle);
 //   - Create varre sessions limpas idle do actor (auto-descarte de esquecidas);
@@ -34,18 +34,25 @@ import (
 	"github.com/Dr0nj/regente-server/internal/db"
 )
 
-// DesignSession representa um workspace de edição efêmero.
+// DesignSession é um draft versionado; Path/Store/Git são cache local.
 type DesignSession struct {
-	ID         string     `json:"id"`
-	Actor      string     `json:"actor"`
-	Folders    []string   `json:"folders"`              // folders existentes que o usuário abriu
-	NewFolders []string   `json:"newFolders,omitempty"` // folders criados durante a sessão (força PR)
-	BaseSHA    string     `json:"baseSha"`              // sha do HEAD no momento do clone
-	CreatedAt  time.Time  `json:"createdAt"`
-	LastTouch  time.Time  `json:"lastTouch"`
-	Path       string     `json:"-"` // sessions/<sid>/
-	Store      *FileStore `json:"-"`
-	Git        *GitOps    `json:"-"`
+	Undo             json.RawMessage `json:"-"`
+	Revision         int64           `json:"revision"`
+	State            string          `json:"state"`
+	RecoveryRequired bool            `json:"recoveryRequired,omitempty"`
+	sharedDirty      bool
+	scoped           bool
+	publication      string
+	ID               string     `json:"id"`
+	Actor            string     `json:"actor"`
+	Folders          []string   `json:"folders"`              // folders existentes que o usuário abriu
+	NewFolders       []string   `json:"newFolders,omitempty"` // folders criados durante a sessão (força PR)
+	BaseSHA          string     `json:"baseSha"`              // sha do HEAD no momento do clone
+	CreatedAt        time.Time  `json:"createdAt"`
+	LastTouch        time.Time  `json:"lastTouch"`
+	Path             string     `json:"-"` // sessions/<sid>/
+	Store            *FileStore `json:"-"`
+	Git              *GitOps    `json:"-"`
 }
 
 // SessionManager gerencia o ciclo de vida das design sessions.
@@ -71,6 +78,9 @@ type SessionManager struct {
 // db é opcional; se != nil, sessions são persistidas em design_sessions e
 // restauradas no boot via Restore().
 func NewSessionManager(root, source, branch, token string, gh *GitHubClient, db *db.DB) *SessionManager {
+	if branch == "" {
+		branch = "main"
+	}
 	return &SessionManager{
 		root:   root,
 		source: source,
@@ -90,7 +100,7 @@ func (m *SessionManager) SetToken(token string) {
 }
 
 // Restore lê design_sessions do DB e recria items para sessions cujo Path
-// ainda existe no disco. Sessions sem disco são removidas do DB.
+// pode ser migrado neste nó. Sem disco, preserva metadata para recuperação.
 // Idempotente. Sem-op se db==nil.
 //
 // P6 (2026-04-26).
@@ -98,82 +108,29 @@ func (m *SessionManager) Restore() error {
 	if m.db == nil {
 		return nil
 	}
-	rows, err := m.db.Query(`SELECT id, actor, folders_json, new_folders_json, base_sha, path, created_at, last_touch FROM design_sessions`)
+	sessions, err := m.ListShared("")
 	if err != nil {
-		return fmt.Errorf("design_sessions query: %w", err)
+		return err
 	}
-	defer rows.Close()
-
-	restored, dropped := 0, 0
-	for rows.Next() {
-		var sid, actor, foldersJSON, newFoldersJSON, baseSHA, path string
-		var createdAt, lastTouch time.Time
-		if err := rows.Scan(&sid, &actor, &foldersJSON, &newFoldersJSON, &baseSHA, &path, &createdAt, &lastTouch); err != nil {
-			log.Printf("[design-restore] scan error: %v", err)
-			continue
-		}
-		// Verifica disco — sem .git, é lixo.
-		if _, statErr := os.Stat(filepath.Join(path, ".git")); statErr != nil {
-			log.Printf("[design-restore] dropping session=%s (path missing: %s)", sid, path)
-			if _, delErr := m.db.Exec(`DELETE FROM design_sessions WHERE id=?`, sid); delErr != nil {
-				log.Printf("[design-restore] db delete %s failed: %v", sid, delErr)
+	for _, s := range sessions {
+		if s.Revision == 0 {
+			if err = m.migrateLegacy(s); err != nil {
+				log.Printf("[draft-restore] session=%s preserved: %v", s.ID, err)
 			}
-			dropped++
-			continue
 		}
-		var folders, newFolders []string
-		_ = json.Unmarshal([]byte(foldersJSON), &folders)
-		_ = json.Unmarshal([]byte(newFoldersJSON), &newFolders)
-
-		git := NewGitOps(path, m.source, m.branch)
-		if m.token != "" {
-			git.InjectToken(m.token)
-		}
-		store := NewFileStore(path, false)
-
-		sess := &DesignSession{
-			ID: sid, Actor: actor,
-			Folders: folders, NewFolders: newFolders,
-			BaseSHA:   baseSHA,
-			CreatedAt: createdAt, LastTouch: lastTouch,
-			Path: path, Store: store, Git: git,
-		}
-		m.mu.Lock()
-		m.items[sid] = sess
-		m.mu.Unlock()
-		restored++
 	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("design_sessions iteration (restored %d): %w", restored, err)
-	}
-	log.Printf("[design-restore] restored=%d dropped=%d", restored, dropped)
 	return nil
 }
 
-// persist grava/atualiza a session no DB. Sem-op se db==nil. Erros logados.
-func (m *SessionManager) persist(s *DesignSession) {
-	if m.db == nil || s == nil {
+// Chamadas legadas; requests scoped são confirmados atomicamente pelo middleware.
+func (m *SessionManager) PersistSession(s *DesignSession) {
+	if s == nil || s.scoped {
 		return
 	}
-	foldersJSON, _ := json.Marshal(s.Folders)
-	newFoldersJSON, _ := json.Marshal(s.NewFolders)
-	_, err := m.db.Exec(
-		`INSERT INTO design_sessions (id, actor, folders_json, new_folders_json, base_sha, path, created_at, last_touch)
-		 VALUES (?,?,?,?,?,?,?,?)
-		 ON CONFLICT(id) DO UPDATE SET
-		   folders_json=excluded.folders_json,
-		   new_folders_json=excluded.new_folders_json,
-		   last_touch=excluded.last_touch`,
-		s.ID, s.Actor, string(foldersJSON), string(newFoldersJSON), s.BaseSHA, s.Path, s.CreatedAt, s.LastTouch,
-	)
-	if err != nil {
-		log.Printf("[design-persist] %s failed: %v", s.ID, err)
+	if err := m.Checkpoint(s, s.Actor, "save"); err != nil {
+		log.Printf("[draft-persist] %s: %v", s.ID, err)
 	}
 }
-
-// PersistSession é wrapper público de persist (callers fora do pacote precisam
-// após `AddNewFolder` etc.). P6 (2026-04-26).
-func (m *SessionManager) PersistSession(s *DesignSession) { m.persist(s) }
 
 // removePersisted apaga a row do DB. Sem-op se db==nil.
 func (m *SessionManager) removePersisted(sid string) {
@@ -256,13 +213,33 @@ func (m *SessionManager) gcSweep() {
 		}
 	}
 	m.mu.Unlock()
+	if m.db != nil {
+		all, err := m.ListShared("")
+		if err != nil {
+			log.Printf("[draft-gc] %v", err)
+			return
+		}
+		expired = nil
+		for _, s := range all {
+			if now.Sub(s.LastTouch) > ttl {
+				expired = append(expired, s)
+			}
+		}
+	}
 	for _, s := range expired {
+		if m.db != nil {
+			current, err := m.Metadata(s.ID)
+			if err != nil || now.Sub(current.LastTouch) <= ttl {
+				continue
+			}
+			s = current
+		}
 		idle := now.Sub(s.LastTouch)
 		if s.Dirty() {
 			log.Printf("[design-gc] keeping dirty session=%s idle=%s (unpublished work)", s.ID, idle.Round(time.Second))
 			continue
 		}
-		if err := m.Delete(s.ID); err == nil {
+		if err := m.deleteIdle(s); err == nil {
 			log.Printf("[design-gc] removed session=%s idle=%s", s.ID, idle.Round(time.Second))
 		}
 	}
@@ -283,7 +260,26 @@ func (m *SessionManager) sweepCleanIdle(actor string, minIdle time.Duration) {
 		}
 	}
 	m.mu.Unlock()
+	if m.db != nil {
+		all, err := m.ListShared(actor)
+		if err != nil {
+			return
+		}
+		candidates = nil
+		for _, s := range all {
+			if now.Sub(s.LastTouch) > minIdle {
+				candidates = append(candidates, s)
+			}
+		}
+	}
 	for _, s := range candidates {
+		if m.db != nil {
+			current, err := m.Metadata(s.ID)
+			if err != nil || now.Sub(current.LastTouch) <= minIdle {
+				continue
+			}
+			s = current
+		}
 		if s.Dirty() {
 			continue
 		}
@@ -299,7 +295,7 @@ func (m *SessionManager) sweepCleanIdle(actor string, minIdle time.Duration) {
 // newFolders[] = folders novos a serem criados (força PR no publish, Etapa 5).
 //
 // O clone é completo (não filtra por folder) — filtragem é responsabilidade
-// do frontend. Backend só garante que sessions não interferem entre si nem
+// do frontend e da ACL de leitura do backend. Sessions não interferem entre si nem
 // na daily.
 func (m *SessionManager) Create(actor string, folders, newFolders []string) (*DesignSession, error) {
 	if m.source == "" {
@@ -346,14 +342,21 @@ func (m *SessionManager) Create(actor string, folders, newFolders []string) (*De
 	// session workspace antes de qualquer save; publish detectará e forçará PR).
 	for _, nf := range newFolders {
 		if err := store.CreateFolder(nf); err != nil {
-			log.Printf("[session %s] pre-create newFolder %q failed: %v", sid, nf, err)
+			_ = os.RemoveAll(sessionPath)
+			return nil, fmt.Errorf("create draft folder %q: %w", nf, err)
 		}
 	}
 
 	m.mu.Lock()
 	m.items[sid] = sess
 	m.mu.Unlock()
-	m.persist(sess) // P6
+	if err := m.insertDraft(sess, "create"); err != nil {
+		m.mu.Lock()
+		delete(m.items, sid)
+		m.mu.Unlock()
+		_ = os.RemoveAll(sessionPath)
+		return nil, err
+	}
 
 	log.Printf("[session %s] created actor=%s base=%s folders=%v new=%v", sid, actor, short7(st.SHA), folders, newFolders)
 	return sess, nil
@@ -361,6 +364,10 @@ func (m *SessionManager) Create(actor string, folders, newFolders []string) (*De
 
 // Get retorna a session ou (nil,false).
 func (m *SessionManager) Get(sid string) (*DesignSession, bool) {
+	if m.db != nil {
+		s, _, err := m.Open(sid)
+		return s, err == nil
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s, ok := m.items[sid]
@@ -386,6 +393,13 @@ func (m *SessionManager) List(filterActor string) []*DesignSession {
 
 // Delete remove a session do mapa e apaga o diretório do disco.
 func (m *SessionManager) Delete(sid string) error {
+	if m.db != nil {
+		s, err := m.Metadata(sid)
+		if err != nil {
+			return err
+		}
+		return m.DeleteRevision(s, s.Actor)
+	}
 	m.mu.Lock()
 	sess, ok := m.items[sid]
 	if !ok {
@@ -406,6 +420,12 @@ func (m *SessionManager) Delete(sid string) error {
 // Em erro de leitura do repo, assume suja — o custo de proteger uma session
 // vazia é um clone órfão; o custo de descartar uma suja é trabalho perdido.
 func (s *DesignSession) Dirty() bool {
+	if s.Git == nil {
+		return s.sharedDirty || s.RecoveryRequired
+	}
+	if head, err := s.Git.HeadSHA(); err != nil || head != s.BaseSHA {
+		return true
+	}
 	clean, err := s.Git.IsClean()
 	if err != nil {
 		return true
@@ -525,7 +545,7 @@ func (m *SessionManager) Publish(sid, commitMsg string, writeMode WriteMode) (*P
 func newSessionID(actor string) string {
 	var buf [4]byte
 	_, _ = rand.Read(buf[:])
-	return fmt.Sprintf("%s-%d-%s", SafeBranchName(actor), time.Now().Unix(), hex.EncodeToString(buf[:]))
+	return fmt.Sprintf("%s-%d-%s", strings.NewReplacer("/", "-", ".", "-").Replace(SafeBranchName(actor)), time.Now().Unix(), hex.EncodeToString(buf[:]))
 }
 
 func short7(sha string) string {

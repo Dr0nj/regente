@@ -70,6 +70,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="ha-resources.html">Shared resources and scheduler leadership</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="production-profile.html">Production profile</a>
+<a href="shared-drafts.html">Shared Design drafts</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
 <a href="verification.html">Verification profiles</a>
 <a href="web-events.html">Web event authorization</a>
@@ -93,7 +94,7 @@ for a coherent recovery set. Account for in-flight agents and external effects.<
 <tbody>
 <tr>
 <td>SQLite snapshot / PG dump or PITR</td>
-<td>Orders, users, credentials, settings, history, <strong>draft metadata</strong></td>
+<td>Orders, users, credentials, settings, history, <strong>durable draft content/revisions/receipts and legacy metadata</strong></td>
 <td>Consistent DB backup and tested restoration</td>
 </tr>
 <tr>
@@ -108,8 +109,8 @@ for a coherent recovery set. Account for in-flight agents and external effects.<
 </tr>
 <tr>
 <td><code>sessions/</code>, including hidden <code>.git</code> and untracked files</td>
-<td><strong>Unpublished draft content</strong></td>
-<td>Separate filesystem archive from the same quiesced recovery point</td>
+<td>Legacy drafts not yet migrated; reconstructible caches for migrated drafts</td>
+<td>Preserve legacy clones/verified exports until shared content is verified</td>
 </tr>
 <tr>
 <td>Environment/config, secret provider, keys/certificates, service unit</td>
@@ -133,11 +134,12 @@ not <code>-workspace</code> or <code>-db</code>. The standard systemd unit uses
 <code>WorkingDirectory=/var/lib/regente</code>; drafts normally live in
 <code>/var/lib/regente/sessions</code>. Inspect the actual unit and <code>design_sessions.path</code>;
 custom deployments may use a different layout.</p>
-<p>On boot, <code>SessionManager.Restore</code> requires each recorded path to contain <code>.git</code>.
-If missing, it drops that session's metadata row. Restore files <strong>before first
-application startup</strong> against the recovered DB. Preserve the working directory
-and recorded path layout, including absolute paths if present. Do not repair
-paths by ad-hoc SQL; rehearse relocation separately.</p>
+<p>Schema 30 makes new/migrated <a href="shared-drafts.html">Design drafts</a> durable in the DB.
+Each node reconstructs its own cache; absent paths never delete shared metadata.
+Boot migrates only a verified legacy clone inside that node's session root and
+retains its original copy. Missing/foreign clones remain recovery-required. Restore
+legacy files before opening those drafts, using the original working directory/path
+layout. Do not repair paths by ad-hoc SQL; rehearse relocation separately.</p>
 <table>
 <thead>
 <tr>
@@ -148,19 +150,19 @@ paths by ad-hoc SQL; rehearse relocation separately.</p>
 <tbody>
 <tr>
 <td>Refresh / navigation</td>
-<td>Existing session metadata and files</td>
+<td>Same authenticated draft and editing revision</td>
 </tr>
 <tr>
-<td>Process restart on same disk</td>
-<td>Same DB, working directory and intact session paths</td>
+<td>Process restart or another node</td>
+<td>Shared DB, compatible build and same Git source/branch; cache reconstructs</td>
 </tr>
 <tr>
 <td>Container/disk loss</td>
-<td>Restore DB <strong>and</strong> files/configuration recovery set</td>
+<td>DB backup includes migrated/new content; external config/workspace remain separate</td>
 </tr>
 <tr>
-<td>Another node / HA failover</td>
-<td>Shared DB is insufficient for local drafts; no distributed-draft guarantee</td>
+<td>Unmigrated legacy draft</td>
+<td>Original clone/path layout or verified export; metadata alone lacks content</td>
 </tr>
 </tbody>
 </table>
@@ -170,7 +172,7 @@ paths by ad-hoc SQL; rehearse relocation separately.</p>
 plane. Record versions, Git commit, DB history, service working directory,
 session paths, owner and permissions in a private manifest.</li>
 <li>Snapshot the DB as below. Never copy only a live SQLite <code>.db</code> and ignore WAL.</li>
-<li>Archive session/workspace directories, including hidden and untracked files.
+<li>Archive legacy session/workspace directories, including hidden and untracked files.
 Explicitly record when no sessions exist; do not silently omit paths referenced
 by the DB. Retain required external configuration.</li>
 <li>Verify archive contents/hashes and restore in isolation. Backup command success
@@ -199,7 +201,8 @@ service owner so opening DB/WAL does not change ownership:</p>
 <pre><code class="language-sh">REGENTE_BIN=/usr/local/bin/regente-server REGENTE_DB_DRIVER=sqlite \
   REGENTE_DB=/var/lib/regente/regente.db ./server/deploy/backup.sh &quot;$RECOVERY_DIR&quot;
 </code></pre>
-<p>DB consistency does not make independently copied draft files consistent.
+<p>A consistent schema-30 DB snapshot includes committed shared draft revisions.
+DB consistency does not make independently copied <strong>legacy</strong> draft files consistent.
 Periodic online DB backups supplement, not replace, complete recovery sets.</p>
 <h3 id="postgresql">PostgreSQL</h3>
 <pre><code class="language-sh">REGENTE_DB_DRIVER=postgres REGENTE_DB=&quot;$SOURCE_DSN&quot; \
@@ -229,7 +232,7 @@ REGENTE_DB_DRIVER=sqlite REGENTE_DB=/isolated/recovered.db \
   ./server/deploy/restore.sh /private/recovery/regente-TIMESTAMP.db
 </code></pre>
 <ol start="3">
-<li>Restore the trusted filesystem archive into an <strong>empty isolated layout</strong>,
+<li>Restore required legacy/workspace filesystem archives into an <strong>empty isolated layout</strong>,
 recreating the original working directory and recorded paths. Inspect before
 extraction. Standard layout on the isolated host:
 <code>tar -C /var/lib/regente -xzf /private/recovery/files.tar.gz</code>.
@@ -245,10 +248,13 @@ writes/effects since the snapshot deliberately switch deployment targets and
 resume agents/ordering. Migration may require users to log in again.</li>
 </ol>
 <p>The mandatory Linux integration laboratory exercises actual SQLite/PG backups,
-tarred unpublished sessions, a new restored DB and a restored process. A separate
-<strong>DB-only</strong> target demonstrates that missing draft files are not recovered. See
-<code>draft_recovery</code> in <code>baseline.json</code>. These synthetic same-layout drills do not
-prove distributed draft durability.</p>
+a new restored DB and restarted processes. Both the complete-set and <strong>DB-only</strong>
+targets must preserve actual unpublished content and dirty status without the old
+session cache. It also edits on node A, opens/edits on B, rejects a stale A write
+and restarts A without its original session disk. See <code>draft_recovery</code> in
+<code>baseline.json</code>. Legacy migration and missing-clone preservation are covered by
+<code>TestI12DraftContracts</code>. These are synthetic recovery contracts, not workload-sized
+RPO/RTO, shared-file SQLite HA or general partition qualification.</p>
 </article>
 <footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
 </main>

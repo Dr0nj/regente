@@ -79,11 +79,19 @@ func Bootstrap(db *db.DB) error {
 	if err != nil {
 		return err
 	}
-	if _, err := db.Exec(
-		"INSERT INTO users(username,password_hash,role,must_change_pw) VALUES(?,?,?,1)",
+	result, err := db.Exec(
+		"INSERT INTO users(username,password_hash,role,must_change_pw) SELECT ?,?,?,1 WHERE NOT EXISTS (SELECT 1 FROM users) ON CONFLICT(username) DO NOTHING",
 		"admin", string(hash), string(RoleAdmin),
-	); err != nil {
+	)
+	if err != nil {
 		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return nil
 	}
 	log.Println("[auth] bootstrap: created default user admin/admin (must change password)")
 	return nil

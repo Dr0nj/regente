@@ -10,6 +10,9 @@ export interface DesignSession {
   folders: string[];
   newFolders?: string[];
   baseSha: string;
+  revision: number;
+  state: "legacy" | "active" | "publishing" | "published";
+  recoveryRequired?: boolean;
   createdAt: string;
   lastTouch: string;
   /** true = working tree do clone tem trabalho não publicado (list/get). */

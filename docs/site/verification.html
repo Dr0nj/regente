@@ -70,6 +70,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="ha-resources.html">Shared resources and scheduler leadership</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="production-profile.html">Production profile</a>
+<a href="shared-drafts.html">Shared Design drafts</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
 <a href="verification.html" class="active">Verification profiles</a>
 <a href="web-events.html">Web event authorization</a>
@@ -128,7 +129,7 @@ failed commands, missing evidence or an omitted mandatory gate cause failure.</p
 <td>Same read-only checker</td>
 </tr>
 <tr>
-<td>Real browser: local/hybrid/OIDC login, scoped WebSocket, frozen business timezone and daily recovery</td>
+<td>Real browser: local/hybrid/OIDC login, scoped WebSocket, frozen business timezone, daily/execution recovery and shared draft conflict/restart</td>
 <td>No</td>
 <td>Yes</td>
 <td>Chromium against real server</td>
@@ -193,7 +194,7 @@ cd ..
 bash scripts/verify.sh --full
 </code></pre>
 <p>Full performs a fresh engine-strict npm install itself. It builds the server for
-browser tests, verifies all six required browser scenarios without skips or
+browser tests, verifies all eight required browser scenarios without skips or
 flaky passes, runs <a href="integration-baseline.html">integration and recovery</a>, then
 executes the PowerShell demo smoke in both offline and Git-fixture modes. Demo
 reports must prove authenticated presence, completed execution, credential

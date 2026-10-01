@@ -89,6 +89,9 @@ func (s *FileStore) List() ([]domain.JobDefinition, error) {
 
 // Save grava a definition e, opcionalmente, faz commit git.
 func (s *FileStore) Save(def domain.JobDefinition) error {
+	if err := validDefinitionPath(def.Team, def.ID); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if def.ID == "" || def.Team == "" {
@@ -118,6 +121,9 @@ func (s *FileStore) Save(def domain.JobDefinition) error {
 
 // Delete remove a definition do disco (e opcionalmente commita).
 func (s *FileStore) Delete(team, id string) error {
+	if err := validDefinitionPath(team, id); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	path := filepath.Join(s.definitionsDir(), team, id+".yaml")
@@ -226,7 +232,9 @@ func (s *FileStore) CreateFolder(name string) error {
 	// sentinel file mantém o folder rastreável pelo git
 	stub := filepath.Join(dir, ".regente-folder.yaml")
 	if _, err := os.Stat(stub); os.IsNotExist(err) {
-		_ = os.WriteFile(stub, []byte("# regente folder marker\nname: "+name+"\n"), 0o644)
+		if err := os.WriteFile(stub, []byte("# regente folder marker\nname: "+name+"\n"), 0o644); err != nil {
+			return err
+		}
 		if s.gitCommit {
 			s.commit(stub, fmt.Sprintf("regente: create folder %s", name))
 		}
@@ -364,6 +372,9 @@ func (s *FileStore) ArchiveFolder(name string) error {
 }
 
 func validFolderName(name string) error {
+	if !safeDraftPath(name) {
+		return fmt.Errorf("invalid folder name")
+	}
 	if name == "" || strings.ContainsAny(name, "/\\") || strings.HasPrefix(name, ".") {
 		return fmt.Errorf("invalid folder name")
 	}
@@ -382,4 +393,14 @@ func (s *FileStore) commit(path, msg string) {
 			fmt.Fprintf(os.Stderr, "[storage] git %s: %s (err=%v)\n", strings.Join(c[1:], " "), string(out), err)
 		}
 	}
+}
+
+func validDefinitionPath(team, id string) error {
+	if err := validFolderName(team); err != nil {
+		return err
+	}
+	if !safeDraftPath(id) || strings.Contains(id, "/") {
+		return fmt.Errorf("invalid definition id")
+	}
+	return nil
 }

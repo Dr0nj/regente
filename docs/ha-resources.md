@@ -66,12 +66,12 @@ weighted tenant fairness or starvation freedom for large resource requests.
 
 ## Upgrade and validation
 
-Schema 29 adds execution ownership to existing holds using the recorded current
+Schema 30 adds execution ownership to existing holds using the recorded current
 attempt, the leadership term registry and shared agent capacity. Unlinked legacy
 holds remain reserved with an empty owner for diagnosis. Upgrade all control-plane
-binaries together; the supported runtime schema is exactly 29. Restore a complete
+binaries together; the supported runtime schema is exactly 30. Restore a complete
 pre-upgrade backup with its matching binary for rollback. Do not run an older
-server against schema 29 or remove an agent journal to reset uncertain work.
+server against schema 30 or remove an agent journal to reset uncertain work.
 
 The mandatory integration runner exercises SQLite/PostgreSQL reservation contracts,
 concurrent admission, retry ownership, cancellation/uncertainty, reconstruction,

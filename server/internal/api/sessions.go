@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/Dr0nj/regente-server/internal/auth"
 	"github.com/Dr0nj/regente-server/internal/domain"
@@ -28,6 +29,9 @@ import (
 // === Helpers ===
 
 func (s *server) sessionFromURL(w http.ResponseWriter, r *http.Request) (*storage.DesignSession, bool) {
+	if sess, ok := r.Context().Value(draftContextKey{}).(*storage.DesignSession); ok {
+		return sess, true
+	}
 	if s.cfg.Sessions == nil {
 		http.Error(w, "design sessions not configured (no GitOps)", http.StatusServiceUnavailable)
 		return nil, false
@@ -87,6 +91,8 @@ func (s *server) createDesignSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
+	w.Header().Set("ETag", draftETag(sess))
+	w.Header().Set("X-Draft-Version", fmt.Sprint(sess.Revision))
 	writeJSON(w, 201, sess)
 }
 
@@ -100,7 +106,11 @@ func (s *server) listDesignSessions(w http.ResponseWriter, r *http.Request) {
 	if u, ok := auth.FromContext(r.Context()); ok && u != nil && u.Role.CanAdmin() {
 		filter = ""
 	}
-	items := s.cfg.Sessions.List(filter)
+	items, err := s.cfg.Sessions.ListShared(filter)
+	if err != nil {
+		draftError(w, err)
+		return
+	}
 	out := make([]sessionView, 0, len(items))
 	for _, sess := range items {
 		out = append(out, toSessionView(sess))
@@ -139,9 +149,13 @@ func (s *server) deleteDesignSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not configured", http.StatusServiceUnavailable)
 		return
 	}
-	sid := chi.URLParam(r, "sid")
-	if err := s.cfg.Sessions.Delete(sid); err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+	sess, ok := s.sessionFromURL(w, r)
+	if !ok {
+		return
+	}
+	sid := sess.ID
+	if err := s.cfg.Sessions.DeleteRevision(sess, actorFromCtx(r)); err != nil {
+		draftError(w, err)
 		return
 	}
 	massUndo.clear(sid) // CTM-3: undo morre com a session
@@ -161,7 +175,19 @@ func (s *server) listSessionFolders(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, 200, f)
+	u, _ := auth.FromContext(r.Context())
+	filtered := make([]storage.FolderInfo, 0, len(f))
+	for _, folder := range f {
+		can, e := auth.CanReadFolder(s.cfg.DB, u, folder.Name)
+		if e != nil {
+			draftError(w, e)
+			return
+		}
+		if can {
+			filtered = append(filtered, folder)
+		}
+	}
+	writeJSON(w, 200, filtered)
 }
 
 // GET /api/design/sessions/{sid}/definitions
@@ -175,7 +201,19 @@ func (s *server) listSessionDefinitions(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, 200, defs)
+	u, _ := auth.FromContext(r.Context())
+	filtered := make([]domain.JobDefinition, 0, len(defs))
+	for _, def := range defs {
+		can, e := auth.CanReadFolder(s.cfg.DB, u, def.Team)
+		if e != nil {
+			draftError(w, e)
+			return
+		}
+		if can {
+			filtered = append(filtered, def)
+		}
+	}
+	writeJSON(w, 200, filtered)
 }
 
 // === Write endpoints (mutate session workspace; NO push — Etapa 4) ===
@@ -308,6 +346,23 @@ func (s *server) publishDesignSession(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	u, _ := auth.FromContext(r.Context())
+	paths, err := sess.Git.ChangedDraftPaths(sess.BaseSHA)
+	if err != nil {
+		draftError(w, err)
+		return
+	}
+	for _, path := range paths {
+		parts := strings.Split(path, "/")
+		if len(parts) > 2 && parts[0] == "definitions" {
+			if !s.requireFolderWrite(w, r, parts[1]) {
+				return
+			}
+		} else if u == nil || !u.Role.CanAdmin() {
+			http.Error(w, "forbidden: repository-wide draft changes require admin review", 403)
+			return
+		}
+	}
 	var req struct {
 		Message string `json:"message"`
 	}
@@ -332,6 +387,9 @@ func (s *server) publishDesignSession(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+	} else {
+		draftError(w, err)
+		return
 	}
 	// D-10 Policy as Code — gate do publish: valida o working set contra o
 	// policies.yaml DO CLONE da session (política + jobs promovem juntos).
@@ -351,9 +409,9 @@ func (s *server) publishDesignSession(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	res, err := s.cfg.Sessions.Publish(sess.ID, req.Message, s.cfg.WriteMode)
+	res, err := s.cfg.Sessions.PublishSession(sess, req.Message, s.cfg.WriteMode, actorFromCtx(r))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+		draftError(w, err)
 		return
 	}
 	// P4 (2026-04-26) — empty publish: nada para fazer, mantém session viva
@@ -380,7 +438,10 @@ func (s *server) publishDesignSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// Limpa session após publish bem-sucedido.
-	_ = s.cfg.Sessions.Delete(sess.ID)
+	if err := s.cfg.Sessions.DeleteRevision(sess, actorFromCtx(r)); err != nil {
+		draftError(w, err)
+		return
+	}
 	massUndo.clear(sess.ID)  // CTM-3: undo morre com a session
 	if len(violations) > 0 { // enforcement=warn: publicou, mas avisa
 		writeJSON(w, 200, struct {

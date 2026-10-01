@@ -61,7 +61,9 @@ export async function archiveFolder(name: string): Promise<void> {
 // UI-3 — grava (ou limpa, com null/{}) o override de grade da folder.
 export async function setFolderLayout(name: string, layout: FolderLayout | null): Promise<void> {
   if (!isServerMode()) return;
-  await api(`/api/folders/${encodeURIComponent(name)}/layout`, {
+  const sid=getDesignSessionId();
+  const path = sid ? `/api/design/sessions/${encodeURIComponent(sid)}/folders/${encodeURIComponent(name)}/layout` : `/api/folders/${encodeURIComponent(name)}/layout`;
+  await api(path, {
     method: "PUT",
     body: JSON.stringify(layout ?? {}),
   });

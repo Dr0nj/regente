@@ -13,7 +13,7 @@
 | `install-windows.ps1` | A Scheduled Task (boot + automatic restart) on Windows. |
 | `configure.sh` | Guided setup, installed as `regente-configure`. |
 | `update.sh` | Upgrade in one command, installed as `regente-update`: database snapshot, latest release, restart. |
-| `backup.sh` · `restore.sh` | Database-only snapshots/recovery; drafts/configuration require separate backup. |
+| `backup.sh` · `restore.sh` | Database-only snapshots/recovery; legacy drafts/workspace/configuration require separate backup. |
 | `chaos-ha.sh` · `rolling-upgrade.sh` | Laboratory failover / same-binary drain, not mixed-version qualification. |
 
 ## Linux (systemd)
@@ -39,8 +39,8 @@ journalctl -u regente-server -f
 > `curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install.sh -o regente-install.sh && sudo bash regente-install.sh`.
 
 Kill the process (`sudo systemctl kill -s SIGKILL regente-server`, or `kill -9`) and it comes back
-according to the supervisor policy. Recovery of DB state and local draft files depends on
-their persistent volumes; reconcile interrupted execution separately.
+according to the supervisor policy. Recovery of shared draft content depends on the DB; legacy draft files depend on
+their original volumes or verified exports; reconcile interrupted execution separately.
 
 ## Windows (Scheduled Task)
 
@@ -64,7 +64,7 @@ gets restarted) + `cronjob.yaml` (the external trigger for `-scheduler=external`
 
 `backup.sh` and `restore.sh` cover the **database only**: SQLite (`-backup` = an online
 `VACUUM INTO`) and Postgres (`pg_dump`/`pg_restore`). Restore into a new target, with all
-writers stopped; restore drafts/configuration before startup. The full runbook is in
+writers stopped; restore legacy drafts/configuration before startup. The full runbook is in
 [`../../docs/dr-backup.md`](../../docs/dr-backup.md).
 
 Before using `regente-update`, read the [compatibility matrix](../../docs/upgrades.md).

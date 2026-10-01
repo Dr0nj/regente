@@ -24,6 +24,7 @@ import (
 
 	"github.com/Dr0nj/regente-server/internal/auth"
 	"github.com/Dr0nj/regente-server/internal/domain"
+	"github.com/Dr0nj/regente-server/internal/storage"
 )
 
 // ── Undo stack (in-memory, por session) ─────────────────────────────────────
@@ -31,7 +32,7 @@ import (
 type massUndoEntry struct {
 	At     time.Time              `json:"at"`
 	Label  string                 `json:"label"`
-	Before []domain.JobDefinition `json:"-"`
+	Before []domain.JobDefinition `json:"before"`
 	IDs    []string               `json:"ids"`
 }
 
@@ -666,7 +667,7 @@ func (s *server) massUpdateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Apply && applied > 0 {
-		massUndo.push(sess.ID, massUndoEntry{
+		draftUndoPush(sess, massUndoEntry{
 			At:     time.Now(),
 			Label:  req.Operation.Op,
 			Before: before,
@@ -680,7 +681,7 @@ func (s *server) massUpdateSession(w http.ResponseWriter, r *http.Request) {
 		"changed":   len(items),
 		"applied":   req.Apply,
 		"items":     items,
-		"undoDepth": massUndo.depth(sess.ID),
+		"undoDepth": draftUndoDepth(sess),
 	})
 }
 
@@ -690,7 +691,7 @@ func (s *server) massUpdateUndo(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	entry, found := massUndo.pop(sess.ID)
+	entry, found := draftUndoPop(sess)
 	if !found {
 		http.Error(w, "nothing to undo in this session", http.StatusNotFound)
 		return
@@ -720,6 +721,41 @@ func (s *server) massUpdateUndo(w http.ResponseWriter, r *http.Request) {
 		"ok":        resp.Ok,
 		"failed":    resp.Failed,
 		"results":   resp.Results,
-		"undoDepth": massUndo.depth(sess.ID),
+		"undoDepth": draftUndoDepth(sess),
 	})
+}
+
+// I12: undo faz parte do snapshot/CAS; rollback do request não consome a pilha.
+func draftUndoDepth(s *storage.DesignSession) int {
+	if s.Revision == 0 {
+		return massUndo.depth(s.ID)
+	}
+	var stack []massUndoEntry
+	_ = json.Unmarshal(s.Undo, &stack)
+	return len(stack)
+}
+func draftUndoPush(s *storage.DesignSession, e massUndoEntry) {
+	if s.Revision == 0 {
+		massUndo.push(s.ID, e)
+		return
+	}
+	var stack []massUndoEntry
+	_ = json.Unmarshal(s.Undo, &stack)
+	stack = append(stack, e)
+	if len(stack) > massUndoCap {
+		stack = stack[len(stack)-massUndoCap:]
+	}
+	s.Undo, _ = json.Marshal(stack)
+}
+func draftUndoPop(s *storage.DesignSession) (massUndoEntry, bool) {
+	if s.Revision == 0 {
+		return massUndo.pop(s.ID)
+	}
+	var stack []massUndoEntry
+	if json.Unmarshal(s.Undo, &stack) != nil || len(stack) == 0 {
+		return massUndoEntry{}, false
+	}
+	last := stack[len(stack)-1]
+	s.Undo, _ = json.Marshal(stack[:len(stack)-1])
+	return last, true
 }

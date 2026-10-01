@@ -70,6 +70,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="ha-resources.html">Shared resources and scheduler leadership</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="production-profile.html">Production profile</a>
+<a href="shared-drafts.html">Shared Design drafts</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
 <a href="verification.html">Verification profiles</a>
 <a href="web-events.html">Web event authorization</a>
@@ -77,15 +78,15 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <main>
 <article>
 <h1 id="durable-execution-and-recovery">Durable execution and recovery</h1>
-<p>Production uses protocol 2 and schema 29. Development defaults to legacy execution unless explicitly configured with REGENTE_EXECUTION_MODE=durable or -execution-mode durable. New Linux service installations select durable mode. A database bound to durable mode cannot switch back to legacy. The isolated I08 laboratory remains development-only and cannot start or cancel runtime orders.</p>
+<p>Production uses protocol 2 and schema 30. Development defaults to legacy execution unless explicitly configured with REGENTE_EXECUTION_MODE=durable or -execution-mode durable. New Linux service installations select durable mode. A database bound to durable mode cannot switch back to legacy. The isolated I08 laboratory remains development-only and cannot start or cancel runtime orders.</p>
 <h2 id="upgrade-a-running-installation">Upgrade a running installation</h2>
 <ol>
 <li>With the previous server still running, prevent new orders/dispatch and drain every legacy RUNNING execution. Resolve externally interrupted operations before upgrading. The new server refuses durable binding while a legacy running order remains.</li>
 <li>Stop the server and agents. Save a complete verified recovery set: database, workspace, unpublished design sessions, configuration, credentials and every agent/internal executor journal with its WAL state. Use the documented database backup tools; a live file copy is insufficient.</li>
-<li>Upgrade the server and agents together. Schema 29 is an additive migration; the runtime accepts exactly schema 29. Existing development service configuration is preserved by installers: select durable mode explicitly when converting it. Production selects durable mode automatically and rejects legacy mode. Mixed old/new runtime binaries and schema downgrade are not supported.</li>
+<li>Upgrade the server and agents together. Schema 30 is an additive migration; the runtime accepts exactly schema 30. Existing development service configuration is preserved by installers: select durable mode explicitly when converting it. Production selects durable mode automatically and rejects legacy mode. Mixed old/new runtime binaries and schema downgrade are not supported.</li>
 <li>Provision each machine credential with the exact agent ID, environment and capabilities, including EXECUTION_V2. Start the agent with -transport v2 -journal PATH and the provisioned job capabilities. The agent adds EXECUTION_V2 to its handshake. Source binaries report dev; release binaries report their tag. v2 runtime polling requires protocol 2, journal version 1 and a build version. Production rejects v1 machine execution.</li>
 <li>Keep the same journal and stable agent ID across upgrades. Linux installers use /var/lib/regente-agent/journal.db, macOS uses /Library/Application Support/RegenteAgent/journal.db, and Windows uses ProgramData/RegenteAgent/journal.db with SYSTEM/Administrators ACLs. Linux credentials remain in a protected environment file; Windows uses -token-file with a protected credential file. An existing active service is restarted to load the new binary.</li>
-<li>Verify a synthetic job, fleet presence, Execution metadata, sysout and a controlled recovery before reopening dispatch. Restore the complete pre-upgrade set with its matching binary if rollback is necessary. Never point an older binary at schema 29 or delete a journal to make startup succeed.</li>
+<li>Verify a synthetic job, fleet presence, Execution metadata, sysout and a controlled recovery before reopening dispatch. Restore the complete pre-upgrade set with its matching binary if rollback is necessary. Never point an older binary at schema 30 or delete a journal to make startup succeed.</li>
 </ol>
 <h2 id="what-is-committed">What is committed</h2>
 <p>A real order creates its current execution, monotonically increasing generation/fence and dispatch intent in one transaction. A committed agent acceptance precedes acceptance ACK. A local start marker plus current server start authorization precede external execution. The immutable daily snapshot, business timezone, ODAT and daily-completion gates remain authoritative. CONFIRM and configuration gates apply to Force Order; Run Now bypasses normal dependency/schedule/resource checks while recording actual resource holds, but cannot bypass configuration, snapshot integrity or an incomplete daily.</p>
@@ -108,7 +109,7 @@ regente ops resolve-effect EFFECT -generation N -key REQUEST -decision retry -re
 <p>The SERVER-AGENT HTTP/REST and SSH executors use the same journal/receipt contract under a stable node ID and persistent workspace runtime directory. Production still requires the explicit control-plane execution policy. This increment does not qualify distributed HA, shared-storage durability, capacity targets or a customer pilot; those remain separate roadmap items.</p>
 <p>See <a href="adr-i09-agent-journal.html">agent journal</a>, <a href="production-profile.html">production profile</a>, <a href="conditions-events.html">conditions</a>, <a href="business-time.html">business time</a>, <a href="daily-recovery.html">daily recovery</a> and <a href="integration-baseline.html">integration baseline</a>.</p>
 <h2 id="shared-quotas-and-leadership-i11">Shared quotas and leadership (I11)</h2>
-<p>See <a href="ha-resources.html">shared resources and leadership</a> for reservation ownership, failover, agent admission limits, queue policy and schema 29 upgrade. Quota reduction does not stop active effects; disconnected or UNCERTAIN executions retain their reservations.</p>
+<p>See <a href="ha-resources.html">shared resources and leadership</a> for reservation ownership, failover, agent admission limits, queue policy and schema 30 upgrade. Quota reduction does not stop active effects; disconnected or UNCERTAIN executions retain their reservations.</p>
 </article>
 <footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
 </main>

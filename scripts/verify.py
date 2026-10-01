@@ -18,7 +18,8 @@ OMITTED_QUICK = ("staticcheck (both Go modules)", "clean npm install",
                  "real browser", "PostgreSQL/NATS/OIDC and recovery",
                  "PowerShell/Docker demo")
 CI_EXTRA = ("other Node minima", "native Windows PowerShell demo")
-REQUIRED_BROWSER = {"local: login policy and browser session",
+REQUIRED_BROWSER = {"I12: shared draft resumes after restart and rejects stale browser edits",
+                    "local: login policy and browser session",
                     "hybrid: login policy and browser session",
                     "oidc: login policy and browser session",
                     "I04: scoped frames and automatic reconnect after ACL change",

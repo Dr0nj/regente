@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shared Design drafts · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="adr-i09-agent-journal.html">Durable agent journal</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="business-time.html">Business time</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html">Daily recovery</a>
+<a href="durable-execution.html">Durable execution and recovery</a>
+<a href="ha-resources.html">Shared resources and scheduler leadership</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="production-profile.html">Production profile</a>
+<a href="shared-drafts.html" class="active">Shared Design drafts</a>
+<a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
+<a href="web-events.html">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="shared-design-drafts">Shared Design drafts</h1>
+<p>Schema 30 stores each draft revision in SQLite/PostgreSQL, including its Git base,
+working files, native Git objects, folder metadata and Mass Update undo stack.
+An acknowledged edit has committed its snapshot and audit records in one database
+transaction. Local session directories are reconstructible caches. Opening a draft
+on another node requires the same database, Git source/branch and compatible build;
+reading preserved content does not require a new clone or a reachable Git remote.
+PostgreSQL is the supported shared database for multiple hosts. SQLite coverage is
+single-host recovery and concurrency testing, not shared-file HA qualification.</p>
+<h2 id="ownership-and-editing-conflicts">Ownership and editing conflicts</h2>
+<p>A draft belongs to its recorded actor. Other users cannot read, edit, publish or
+discard it; an administrator can intervene and the acting identity is audited.
+Folder read/write permissions are rechecked. Read endpoints filter inaccessible
+folders; publication requires current write access to all opened/new folders.
+Exports include the repository base and therefore require an administrator.</p>
+<p>Create/get/content responses include a numeric <code>revision</code> in session metadata and
+an <code>ETag</code> such as <code>&quot;3&quot;</code>. Every mutation of an existing durable draft must send
+<code>If-Match: &quot;3&quot;</code>. Missing revisions return <strong>428</strong>; stale revisions return <strong>409</strong>.
+This includes definition forms, delete, folders/layout, CODE, bulk, Mass Update,
+undo, publication and discard. CODE/bulk still report partial item results, but the
+accepted result is saved as a single revision before its HTTP success is sent.</p>
+<p>The browser orders its own draft requests and sends the revision automatically.
+Status polling does not advance its editing revision. A conflict pauses further
+writes and keeps the editor open. Copy any unapplied edits, then explicitly reload
+the shared draft before saving again. The server never silently retries a stale
+write against a newer revision. Undo participates in the same snapshot/CAS and
+survives node changes/restarts; it is limited to the last ten Mass Updates.</p>
+<h2 id="publication-and-recovery">Publication and recovery</h2>
+<p>Publication first checks the Git branch against the recorded base. If it advanced,
+<strong>409</strong> preserves the draft. Review both versions: open a fresh session on the latest
+base, copy/apply the reviewed changes through CODE or the forms, and publish that
+session. Retain the old draft/export until the reviewed publication is confirmed.
+There is no automatic force push, rebase or overwrite of another draft.</p>
+<p>Before pushing, the prepared commit is durably recorded and the draft enters
+<code>publishing</code>. New edits/discard are blocked. A retry uses that same commit after a
+restart; a commit already present in the remote ancestry is recognized. Pull request
+retries look up the session's unique head branch before creating another PR. A
+publication receipt remains in the database after the session closes, so a repeated
+publish can return its original result after a lost HTTP response. This does not
+promise exactly-once GitHub/network effects or availability during a partition.</p>
+<p>If a failed push is proven absent from the remote, an explicit
+<code>POST /api/design/sessions/{sid}/publication/cancel</code> with the current <code>If-Match</code>
+releases the draft for editing. If publication already reached Git, retry publication
+to recover its receipt. When the remote cannot be read, retain the pending state and
+export; never infer that an uncertain publication failed.</p>
+<h2 id="legacy-migration-and-exportimport">Legacy migration and export/import</h2>
+<p>Schema migration preserves old metadata as <code>state=legacy</code>, <code>revision=0</code>. Boot/open
+only migrates a clone whose resolved path is inside that node's actual session root.
+It verifies the origin, base/HEAD, paths, object hashes and reconstructibility before
+committing a shared snapshot. The original clone is retained. Missing/foreign or
+unsupported clones remain listed with <code>recoveryRequired=true</code>; they are never
+deleted merely because another node lacks their disk. Content access reports <strong>503</strong>
+until recovery is possible. Restart the matching node with its original clone and
+configuration, or recover a verified administrative export. Preserve the original
+DB/files set before upgrading; <code>-migrate-only</code> does not import filesystem drafts.</p>
+<p>Administrative endpoints:</p>
+<table>
+<thead>
+<tr>
+<th>Method/path</th>
+<th>Contract</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /api/design/sessions/{sid}/export</code></td>
+<td>Portable JSON envelope with format, actor, revision, compressed payload and SHA-256 checksum</td>
+</tr>
+<tr>
+<td><code>POST /api/design/sessions/import</code></td>
+<td>Submit that envelope; verifies checksum, source/branch, Git objects and paths; creates a new draft owned by the importing administrator</td>
+</tr>
+</tbody>
+</table>
+<p>Import never replaces an existing draft. Verify its actual content/base/dirty status
+on another node before manually retiring old copies. Export files and DB backups
+contain repository history and draft content: protect them as sensitive artifacts.
+No PAT or <code>.git/config</code> is copied into the snapshot; credentials remain supplied by
+the server's secret provider.</p>
+<h2 id="backup-and-limits">Backup and limits</h2>
+<p>A consistent DB backup now includes migrated/new draft content, revision history,
+undo and publication receipts. The mandatory laboratory restores actual unpublished
+content into a different database/process with no original session directory, in
+both SQLite and PostgreSQL. Legacy drafts still need their original clones or a
+verified export. Published/local-only workspace changes and external configuration
+remain separate artifacts: follow the <a href="dr-backup.html">complete recovery guide</a>.</p>
+<p>Snapshots use native go-git; the server does not require the Git executable. Each
+revision is a full compressed snapshot, bounded to <strong>16 MiB compressed</strong> and
+<strong>64 MiB expanded serialized payload</strong>. Oversized, unsafe-path, symlink/special-file
+snapshots fail explicitly while preserving the previous durable revision/original
+legacy clone. Supported files are portable regular files and their modes. Revision
+history remains until explicit discard/successful close; audit and publication
+receipts survive close. There is no automatic history retention or claimed
+throughput for large repositories. Measure DB growth, request cost and workload
+limits in I16; broader DR/partition/pilot qualification remains open.</p>
+<p>Upgrade all nodes together: the current runtime accepts exactly schema 30. Restore
+a verified pre-upgrade recovery set with its matching binary for rollback; do not
+point an older binary at the upgraded database.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

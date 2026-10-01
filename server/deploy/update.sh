@@ -157,7 +157,7 @@ if [ "$NEWVER" = "$CURRENT" ] && [ "$FORCE" = 0 ]; then
   exit 0
 fi
 echo "== version: $CURRENT -> $NEWVER"
-echo "== IMPORTANT: database snapshot only; drafts/configuration need separate backup."
+echo "== IMPORTANT: database snapshot only; legacy drafts/workspace/configuration need separate backup."
 echo "== Compatibility is not inferred from version numbers. See https://dr0nj.github.io/regente/upgrades.html before proceeding."
 
 # ── 2. backup do banco (default; --no-backup pula) ───────────────────────────

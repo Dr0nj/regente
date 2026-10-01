@@ -277,25 +277,29 @@ func NewRouter(cfg Config) http.Handler {
 
 		// === Design sessions (Etapa 3+4+5 do realinhamento, 2026-04-26) ===
 		r.Get("/design/sessions", s.listDesignSessions)
+		r.With(s.requireWriterMW).Post("/design/sessions/import", s.importDraft)
+		r.With(s.draftMiddleware).Get("/design/sessions/{sid}/export", s.exportDraft)
+		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/publication/cancel", s.cancelDraftPublication)
 		r.With(s.requireWriterMW).Post("/design/sessions", s.createDesignSession)
-		r.Get("/design/sessions/{sid}", s.getDesignSession)
-		r.Get("/design/sessions/{sid}/status", s.getDesignSessionStatus)
-		r.With(s.requireWriterMW).Delete("/design/sessions/{sid}", s.deleteDesignSession)
-		r.Get("/design/sessions/{sid}/folders", s.listSessionFolders)
-		r.Get("/design/sessions/{sid}/definitions", s.listSessionDefinitions)
-		r.With(s.requireWriterMW).Post("/design/sessions/{sid}/definitions", s.saveSessionDefinition)
-		r.With(s.requireWriterMW).Delete("/design/sessions/{sid}/definitions/{team}/{id}", s.deleteSessionDefinition)
-		r.With(s.requireWriterMW).Post("/design/sessions/{sid}/folders", s.createSessionFolder)
-		r.With(s.requireWriterMW).Post("/design/sessions/{sid}/folders/open", s.openSessionFolder)
-		r.With(s.requireWriterMW).Post("/design/sessions/{sid}/publish", s.publishDesignSession)
+		r.With(s.draftMiddleware).Get("/design/sessions/{sid}", s.getDesignSession)
+		r.With(s.draftMiddleware).Get("/design/sessions/{sid}/status", s.getDesignSessionStatus)
+		r.With(s.requireWriterMW, s.draftMiddleware).Delete("/design/sessions/{sid}", s.deleteDesignSession)
+		r.With(s.draftMiddleware).Get("/design/sessions/{sid}/folders", s.listSessionFolders)
+		r.With(s.draftMiddleware).Get("/design/sessions/{sid}/definitions", s.listSessionDefinitions)
+		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/definitions", s.saveSessionDefinition)
+		r.With(s.requireWriterMW, s.draftMiddleware).Delete("/design/sessions/{sid}/definitions/{team}/{id}", s.deleteSessionDefinition)
+		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/folders", s.createSessionFolder)
+		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/folders/open", s.openSessionFolder)
+		r.With(s.requireWriterMW, s.draftMiddleware).Put("/design/sessions/{sid}/folders/{name}/layout", s.setSessionFolderLayout)
+		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/publish", s.publishDesignSession)
 		// F11.8 — bulk em definitions DA SESSION (move-folder/patch/delete)
-		r.With(s.requireWriterMW).Post("/design/sessions/{sid}/bulk", s.bulkSessionDefinitions)
+		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/bulk", s.bulkSessionDefinitions)
 		// Job-as-code — o working set como YAML multi-doc (modo código do Design)
-		r.Get("/design/sessions/{sid}/code", s.getSessionCode)
-		r.With(s.requireWriterMW).Post("/design/sessions/{sid}/code", s.applySessionCode)
+		r.With(s.draftMiddleware).Get("/design/sessions/{sid}/code", s.getSessionCode)
+		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/code", s.applySessionCode)
 		// CTM-3 — Mass Update rico (critério/regex → preview → apply → undo)
-		r.With(s.requireWriterMW).Post("/design/sessions/{sid}/massupdate", s.massUpdateSession)
-		r.With(s.requireWriterMW).Post("/design/sessions/{sid}/massupdate/undo", s.massUpdateUndo)
+		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/massupdate", s.massUpdateSession)
+		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/massupdate/undo", s.massUpdateUndo)
 
 		// === Bloco 2 — Control-M parity ===
 		// F14 Calendars
@@ -458,11 +462,11 @@ func (s *server) cors(next http.Handler) http.Handler {
 		if origin := r.Header.Get("Origin"); origin != "" && s.allowedOrigin(r) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
-			w.Header().Set("Access-Control-Expose-Headers", "X-CSRF-Token")
+			w.Header().Set("Access-Control-Expose-Headers", "X-CSRF-Token, ETag, X-Draft-Version")
 			w.Header().Add("Vary", "Origin")
 		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-CSRF-Token")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-CSRF-Token, If-Match")
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusNoContent)
 			return

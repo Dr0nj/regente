@@ -72,7 +72,7 @@ are outside this baseline and are not claimed as executed.
 | PG dump/restore | `restored-schema.log`, `legacy-restored-upgrade.log`, report | Different databases; legacy v22 restored then upgraded; current runtime and completed orders preserved |
 | Real OIDC authorization-code flow | `TestIntegrationOIDC_AuthCodeFlow` | Keycloak discovery, login, callback and protected API; not I03 security qualification |
 | Distributed agents and execution | cluster report, node/agent logs | Both agents visible from both nodes; jobs pinned to each node complete; repeat Order Folder does not reexecute effects |
-| Complete draft recovery vs DB-only control, SQLite and PG | `draft_recovery` report; real backup/restore scripts, tar and restarted processes | Unpublished content and dirty status verified with same relative path layout; DB-only recovery loses missing drafts; not distributed durability |
+| Shared draft recovery, SQLite and PG | `draft_recovery` report; real backup/restore scripts and separate server processes | Node A/B edit and stale-write rejection; restart without cache; DB-only restore preserves content/dirty status |
 | Same-binary PG drain | `same-binary-drain.log` | Owned processes, sampled liveness and leadership transfer; not mixed-version compatibility |
 | Current schema documented correctly | `TestMigrationRunbookContract` | Compares runbook to constants and migrated DB; rejects missing/duplicate/stale current statements |
 | Daily partial chunk/restart, source freezing and corrupt snapshot | TestI07DailyRecoveryIntegration on SQLite/Postgres | [Daily recovery](daily-recovery.md); 5,001-order synthetic scenario, not capacity qualification |
@@ -81,7 +81,7 @@ are outside this baseline and are not claimed as executed.
 | Atomic runtime conditions, retry, resource holds, On/Do and external uncertainty | TestI10PostgresRuntimeContracts and SQLite scheduler suite | Fault-injected transactions, restart, real OpenSSH and internal HTTP; unknown effects are never automatically repeated |
 | Real server SIGKILL while an agent executes | durable_process_recovery report, SQLite/Postgres | Actual server and agent binaries; result_pending journal during downtime, one non-idempotent effect, current identity and condition preserved |
 | Browser execution recovery | I10 browser scenario | Actual server restart and audited resolution from Execution tab; no mocked API |
-| Distributed drafts | preserved synthetic fixtures | Broader guarantees remain reserved for I12 |
+| Draft content/CAS/ownership/publication recovery | TestI12DraftContracts, SQLite/Postgres; I12 browser | Forms/CODE/bulk/Mass Update/undo/layout, concurrent writes, Git conflict, legacy migration, export/import and publication receipt |
 
 | Profile | Baseline support |
 |---|---|
@@ -125,13 +125,13 @@ capacity and business acceptance stay open until then.
 
 ## Current runtime schema contract
 
-DOC-A recovery extension: [CI 35639790032](https://github.com/Dr0nj/regente/actions/runs/35639790032)
+Historical DOC-A recovery extension (before shared draft storage): [CI 35639790032](https://github.com/Dr0nj/regente/actions/runs/35639790032)
 at `af75c51` passed the complete-set/DB-only draft drills on SQLite and PostgreSQL,
 the same-binary drain and the schema-document contract. The
 [recorded evidence](evidence/doc-a-af75c51.json) is synthetic laboratory evidence,
 not production or mixed-version qualification.
 
-Current runtime schema: **29**; supported range: **[29,29]**.
+Current runtime schema: **30**; supported range: **[30,30]**.
 
 `TestMigrationRunbookContract` compares this current statement with the migration
 constants and an actual fresh database. Historical fixture versions below remain
@@ -141,7 +141,8 @@ intentional. See the [compatibility matrix](upgrades.md) before choosing binarie
 
 1. Record the source/target binary versions and schema history. Stop old control
    planes, quiesce writes and retain definitions plus draft directories separately
-   from the database. Draft content is not yet guaranteed by shared metadata.
+   from the database for unmigrated legacy drafts. Schema 30 stores verified shared
+   content in the DB; missing legacy clones remain recovery-required.
 2. Take and verify a backup using [the backup guide](dr-backup.md). Never copy only
    the live SQLite `.db` while ignoring WAL. For PostgreSQL, use `pg_dump -Fc` or
    the established PITR procedure. Confirm restoration on an isolated target.

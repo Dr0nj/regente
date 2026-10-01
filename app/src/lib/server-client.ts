@@ -48,6 +48,8 @@ export function setAuthToken(token: string | null): void {
   // fila que segurava o "_connected" DEPOIS do login — board vazio até o F5.
   if (prev === next && !next) return;
   authRevision += 1;
+  draftVersions.clear();
+  blockedDrafts.clear();
   browserAuthenticated = !!next;
   sessionSignal = !!next;
   if (!next) csrfToken = "";
@@ -192,13 +194,41 @@ export interface ApiError extends Error {
   body?: unknown;
 }
 
-export async function api<T = unknown>(
-  path: string,
-  init: RequestInit = {},
-): Promise<T> {
+const draftVersions = new Map<string, string>();
+const draftQueues = new Map<string, Promise<unknown>>();
+const blockedDrafts = new Set<string>();
+type DraftConflictListener = (sid: string) => void;
+const draftConflictListeners = new Set<DraftConflictListener>();
+export function onDraftRevisionConflict(fn: DraftConflictListener): () => void {
+  draftConflictListeners.add(fn);
+  return () => { draftConflictListeners.delete(fn); };
+}
+
+export async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
+  const match = /^\/api\/design\/sessions\/([^/?]+)(?:\/|$)/.exec(path);
+  const sid = match && match[1] !== "import" ? decodeURIComponent(match[1]) : null;
+  if (!sid) return apiRequest<T>(path, init);
+  // A fila só ordena requests desta aba; o CAS do servidor arbitra os nós.
+  const previous = draftQueues.get(sid) ?? Promise.resolve();
+  const task = previous.catch(() => {}).then(() => apiRequest<T>(path, init, sid));
+  draftQueues.set(sid, task);
+  try { return await task; } finally { if (draftQueues.get(sid) === task) draftQueues.delete(sid); }
+}
+
+async function apiRequest<T = unknown>(path: string, init: RequestInit = {}, sid: string | null = null): Promise<T> {
   if (!SERVER_URL) throw new Error("server mode disabled");
   const requestAuthRevision = authRevision;
   const headers = new Headers(init.headers ?? {});
+  const mutation = (init.method ?? "GET").toUpperCase() !== "GET";
+  if (sid && mutation) {
+    if (blockedDrafts.has(sid)) throw Object.assign(new Error("Draft changed elsewhere. Copy unsaved edits, then reload before saving."), { status: 409 });
+    if (!draftVersions.has(sid)) {
+      // Lifecycle operations on an unopened draft need its current metadata.
+      await apiRequest('/api/design/sessions/' + encodeURIComponent(sid), {}, sid);
+    }
+    const version = draftVersions.get(sid);
+    if (version) headers.set("If-Match", version);
+  }
   const bearer = getAuthToken();
   if (bearer) headers.set("Authorization", `Bearer ${bearer}`);
   if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
@@ -210,6 +240,20 @@ export async function api<T = unknown>(
   if (csrf && requestAuthRevision === authRevision) { csrfToken = csrf; browserAuthenticated = true; }
   if (res.status === 401 && requestAuthRevision === authRevision) {
     emitAuth("unauthorized");
+  }
+  if (sid && res.status === 409 && requestAuthRevision === authRevision) {
+    blockedDrafts.add(sid);
+    for (const fn of draftConflictListeners) fn(sid);
+  }
+  if (res.ok && sid && requestAuthRevision === authRevision) {
+    const version = res.headers.get("ETag");
+    const previous = draftVersions.get(sid);
+    // Uma leitura de fundo não pode autorizar um editor ainda baseado no conteúdo antigo.
+    if (!mutation && version && previous && version !== previous) {
+      blockedDrafts.add(sid);
+      for (const fn of draftConflictListeners) fn(sid);
+    }
+    if (version && (mutation || !previous)) draftVersions.set(sid, version);
   }
   if (!res.ok) {
     // O body só pode ser lido uma vez. Se tentarmos res.json() e falhar,
@@ -238,7 +282,11 @@ export async function api<T = unknown>(
   }
   if (res.status === 204) return undefined as T;
   const ctype = res.headers.get("content-type") ?? "";
-  if (ctype.includes("application/json")) return (await res.json()) as T;
+  if (ctype.includes("application/json")) {
+    const result = await res.json();
+    if (requestAuthRevision === authRevision && path === "/api/design/sessions" && mutation && result?.id && res.headers.get("ETag")) draftVersions.set(result.id, res.headers.get("ETag")!);
+    return result as T;
+  }
   return (await res.text()) as unknown as T;
 }
 

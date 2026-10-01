@@ -50,11 +50,11 @@ def free_port():
         return sock.getsockname()[1]
 
 
-def request(url, method="GET", data=None, token=ADMIN):
+def request(url, method="GET", data=None, token=ADMIN, extra_headers=None):
     raw = None if data is None else json.dumps(data).encode()
     req = urllib.request.Request(url, data=raw, method=method,
                                  headers={"Authorization": "Bearer " + token,
-                                          "Content-Type": "application/json"})
+                                          "Content-Type": "application/json", **(extra_headers or {})})
     with urllib.request.urlopen(req, timeout=10, context=TLS_CONTEXT) as response:
         return json.load(response)
 
@@ -117,6 +117,7 @@ def validate_test_events(output):
                 "TestI10PostgresRuntimeContracts/operation-protection", "TestI10PostgresRuntimeContracts/effect-audit",
                 "TestI10PostgresRuntimeContracts/internal-http", "TestI10PostgresRuntimeContracts/runtime-sla",
                 "TestI10PostgresRuntimeContracts/internal-ssh",
+                "TestI12PreparedPRRetryAndGC", "TestI12DraftContracts/sqlite", "TestI12DraftContracts/postgres",
                 "TestI11MigrationPreservesHolds/sqlite", "TestI11MigrationPreservesHolds/postgres",
                 "TestI11PostgresLeadershipFencing", "TestI11PostgresTermWaitsForTransaction", "TestI11PostgresContracts/concurrent-reservations",
                 "TestI11PostgresContracts/follower-receipt", "TestI11PostgresContracts/unknown-capacity",
@@ -301,17 +302,45 @@ def draft_recovery(env, dsn):
                       "jobType": "COMMAND", "schedule": {"enabled": False},
                       "actionConfig": {"command": "echo never-dispatched"}}
         endpoint = "/api/design/sessions/" + sid
-        request(base + endpoint + "/definitions", "POST", definition)
+        request(base + endpoint + "/definitions", "POST", definition,
+                extra_headers={"If-Match": '"' + str(session["revision"]) + '"'})
         expected = request(base + endpoint + "/definitions")
         if not request(base + endpoint)["dirty"]:
             raise RuntimeError("Synthetic draft is not dirty")
-        stop_process(proc)  # DB e arquivos pertencem ao mesmo ponto quiescente.
+        node_b = folder / "node-b"
+        node_b.mkdir()
+        proc_b, base_b = launch(driver, original, node_b, "draft-" + driver + "-node-b")
+        if request(base_b + endpoint + "/definitions") != expected:
+            raise RuntimeError("Node B without node A disk lost shared draft")
+        current = request(base_b + endpoint)
+        stale = '"' + str(current["revision"]) + '"'
+        definition["label"] = "Synthetic node B edit"
+        request(base_b + endpoint + "/definitions", "POST", definition, extra_headers={"If-Match": stale})
+        try:
+            request(base + endpoint + "/definitions", "POST", definition, extra_headers={"If-Match": stale})
+            raise RuntimeError("Stale node A write overwrote node B")
+        except urllib.error.HTTPError as error:
+            if error.code != 409:
+                raise
+        expected = request(base_b + endpoint + "/definitions")
+        stop_process(proc)
+        cache = (source / "sessions").resolve()
+        if not cache.is_relative_to(RUN.resolve()):
+            raise RuntimeError("Unsafe synthetic cache path")
+        shutil.rmtree(cache)
+        cache.mkdir()
+        restarted = folder / "restarted-a"
+        restarted.mkdir()
+        proc_a, base_a = launch(driver, original, restarted, "draft-" + driver + "-restart-a")
+        if request(base_a + endpoint + "/definitions") != expected:
+            raise RuntimeError("Restarted node A lost shared draft")
+        stop_process(proc_a)
+        stop_process(proc_b)  # Backup do conteúdo durável no mesmo ponto quiescente.
+
         archive = folder / "files.tar.gz"
         command(["tar", "-czf", str(archive), "-C", str(source), "sessions", "workspace"])
         files = {str(p.relative_to(source)): hashlib.sha256(p.read_bytes()).hexdigest()
                  for p in (source / "sessions").rglob("*") if p.is_file()}
-        if not any("/.git/" in p for p in files):
-            raise RuntimeError("Recovery set is missing session .git files")
         if driver == "sqlite":
             backups = folder / "backups"
             command(["sh", str(ROOT / "server/deploy/backup.sh"), str(backups)],
@@ -346,14 +375,12 @@ def draft_recovery(env, dsn):
             proc, base = launch(driver, target, target_dir, "draft-" + driver + "-" + label)
             sessions = request(base + "/api/design/sessions")
             found = [item for item in sessions if item["id"] == sid]
-            if complete:
-                if len(found) != 1 or not found[0]["dirty"] or request(base + endpoint + "/definitions") != expected:
-                    raise RuntimeError("Complete recovery lost unpublished content or dirty state")
-            elif found or (target_dir / "sessions" / sid).exists():
-                raise RuntimeError("DB-only control unexpectedly recovered unpublished draft")
+            if len(found) != 1 or not found[0]["dirty"] or request(base + endpoint + "/definitions") != expected:
+                raise RuntimeError("Recovery lost durable draft content or dirty state: " + label)
             stop_process(proc)
         REPORT["draft_recovery"][driver] = {"complete_set_preserved_content": True,
-            "db_only_did_not_recover_content": True, "archived_files": len(files),
+            "db_only_preserved_content": True, "cross_node_without_disk": True,
+            "restart_without_cache": True, "stale_write_rejected": True, "archived_files": len(files),
             "seconds": round(time.monotonic() - start, 3)}
 
 
@@ -574,8 +601,8 @@ def main():
                    REGENTE_TEST_OIDC_CLIENT_SECRET="synthetic-client-secret",
                    REGENTE_TEST_OIDC_USER="lab-user", REGENTE_TEST_OIDC_PASS="synthetic-password")
         output = command(["go", "test", "-json", "-count=1", "-timeout=5m",
-                          "./server/internal/db", "./server/internal/api", "./server/internal/scheduler", "./server/internal/leader", "./agent/journal", "-run",
-                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials|TestHumanIdentity|TestWebEvent|TestProductionIdentity|TestI06BusinessTimeIntegration|TestI07DailyRecoveryIntegration|TestI08AttemptIntegration|TestI09|TestI10|TestI11"],
+                          "./server/internal/db", "./server/internal/api", "./server/internal/storage", "./server/internal/scheduler", "./server/internal/leader", "./agent/journal", "-run",
+                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials|TestHumanIdentity|TestWebEvent|TestProductionIdentity|TestI06BusinessTimeIntegration|TestI07DailyRecoveryIntegration|TestI08AttemptIntegration|TestI09|TestI10|TestI11|TestI12"],
                          env=env, timeout=360, name="database-oidc-tests")
         validate_test_events(output)
         command(["go", "test", "-race", "-count=1", "-timeout=3m", "./server/internal/api", "-run", "^TestWebEvent"],

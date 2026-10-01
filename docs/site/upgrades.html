@@ -70,6 +70,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="ha-resources.html">Shared resources and scheduler leadership</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="production-profile.html">Production profile</a>
+<a href="shared-drafts.html">Shared Design drafts</a>
 <a href="upgrades.html" class="active">Upgrade and recovery compatibility</a>
 <a href="verification.html">Verification profiles</a>
 <a href="web-events.html">Web event authorization</a>
@@ -122,6 +123,11 @@ a production rollout without a workload-specific rehearsal.</p>
 <td>Schema 26 → schema 27</td>
 <td>Stop old nodes; migrate together. New tables are for the opt-in development <a href="adr-i08-attempts.html">attempt laboratory</a>; production dispatch stays on v1. Restore a verified schema-26 recovery set to return to an older binary</td>
 <td>Production v2 execution, agent journal or mixed-version rolling compatibility</td>
+</tr>
+<tr>
+<td>Schema 29 → schema 30</td>
+<td>Stop all nodes; migrate together; verify/import legacy clones on their original node. New/migrated drafts and publication receipts are shared DB state; <a href="shared-drafts.html">draft recovery</a></td>
+<td>Automatic recovery of absent legacy content or mixed-version rolling compatibility</td>
 </tr>
 <tr>
 <td>Restart current build / same-build node drain</td>

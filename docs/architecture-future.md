@@ -29,8 +29,9 @@ classic daemon with two pieces that fight serverless:
 - A **persistent WebSocket** to agents and to the web — long-lived connections.
 
 The design externalizes database state to PostgreSQL and published definitions to Git.
-Unpublished design-session content still requires session directories; API replicas
-are not sufficient for durable draft failover. See [recovery scope](dr-backup.md).
+Schema 30 stores new/migrated Design drafts in the shared DB, with revision CAS and
+reconstructible local caches. Unmigrated legacy clones still require preservation.
+See [shared drafts](shared-drafts.md) and [recovery scope](dr-backup.md).
 
 ### The reframe
 

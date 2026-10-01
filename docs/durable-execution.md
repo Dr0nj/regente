@@ -1,15 +1,15 @@
 # Durable execution and recovery
 
-Production uses protocol 2 and schema 29. Development defaults to legacy execution unless explicitly configured with REGENTE_EXECUTION_MODE=durable or -execution-mode durable. New Linux service installations select durable mode. A database bound to durable mode cannot switch back to legacy. The isolated I08 laboratory remains development-only and cannot start or cancel runtime orders.
+Production uses protocol 2 and schema 30. Development defaults to legacy execution unless explicitly configured with REGENTE_EXECUTION_MODE=durable or -execution-mode durable. New Linux service installations select durable mode. A database bound to durable mode cannot switch back to legacy. The isolated I08 laboratory remains development-only and cannot start or cancel runtime orders.
 
 ## Upgrade a running installation
 
 1. With the previous server still running, prevent new orders/dispatch and drain every legacy RUNNING execution. Resolve externally interrupted operations before upgrading. The new server refuses durable binding while a legacy running order remains.
 2. Stop the server and agents. Save a complete verified recovery set: database, workspace, unpublished design sessions, configuration, credentials and every agent/internal executor journal with its WAL state. Use the documented database backup tools; a live file copy is insufficient.
-3. Upgrade the server and agents together. Schema 29 is an additive migration; the runtime accepts exactly schema 29. Existing development service configuration is preserved by installers: select durable mode explicitly when converting it. Production selects durable mode automatically and rejects legacy mode. Mixed old/new runtime binaries and schema downgrade are not supported.
+3. Upgrade the server and agents together. Schema 30 is an additive migration; the runtime accepts exactly schema 30. Existing development service configuration is preserved by installers: select durable mode explicitly when converting it. Production selects durable mode automatically and rejects legacy mode. Mixed old/new runtime binaries and schema downgrade are not supported.
 4. Provision each machine credential with the exact agent ID, environment and capabilities, including EXECUTION_V2. Start the agent with -transport v2 -journal PATH and the provisioned job capabilities. The agent adds EXECUTION_V2 to its handshake. Source binaries report dev; release binaries report their tag. v2 runtime polling requires protocol 2, journal version 1 and a build version. Production rejects v1 machine execution.
 5. Keep the same journal and stable agent ID across upgrades. Linux installers use /var/lib/regente-agent/journal.db, macOS uses /Library/Application Support/RegenteAgent/journal.db, and Windows uses ProgramData/RegenteAgent/journal.db with SYSTEM/Administrators ACLs. Linux credentials remain in a protected environment file; Windows uses -token-file with a protected credential file. An existing active service is restarted to load the new binary.
-6. Verify a synthetic job, fleet presence, Execution metadata, sysout and a controlled recovery before reopening dispatch. Restore the complete pre-upgrade set with its matching binary if rollback is necessary. Never point an older binary at schema 29 or delete a journal to make startup succeed.
+6. Verify a synthetic job, fleet presence, Execution metadata, sysout and a controlled recovery before reopening dispatch. Restore the complete pre-upgrade set with its matching binary if rollback is necessary. Never point an older binary at schema 30 or delete a journal to make startup succeed.
 
 ## What is committed
 
@@ -51,4 +51,4 @@ See [agent journal](adr-i09-agent-journal.md), [production profile](production-p
 
 ## Shared quotas and leadership (I11)
 
-See [shared resources and leadership](ha-resources.md) for reservation ownership, failover, agent admission limits, queue policy and schema 29 upgrade. Quota reduction does not stop active effects; disconnected or UNCERTAIN executions retain their reservations.
+See [shared resources and leadership](ha-resources.md) for reservation ownership, failover, agent admission limits, queue policy and schema 30 upgrade. Quota reduction does not stop active effects; disconnected or UNCERTAIN executions retain their reservations.

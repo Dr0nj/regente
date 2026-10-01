@@ -70,6 +70,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="ha-resources.html">Shared resources and scheduler leadership</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="production-profile.html">Production profile</a>
+<a href="shared-drafts.html">Shared Design drafts</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
 <a href="verification.html">Verification profiles</a>
 <a href="web-events.html">Web event authorization</a>
@@ -104,8 +105,9 @@ always-on process.</li>
 <li>A <strong>persistent WebSocket</strong> to agents and to the web — long-lived connections.</li>
 </ul>
 <p>The design externalizes database state to PostgreSQL and published definitions to Git.
-Unpublished design-session content still requires session directories; API replicas
-are not sufficient for durable draft failover. See <a href="dr-backup.html">recovery scope</a>.</p>
+Schema 30 stores new/migrated Design drafts in the shared DB, with revision CAS and
+reconstructible local caches. Unmigrated legacy clones still require preservation.
+See <a href="shared-drafts.html">shared drafts</a> and <a href="dr-backup.html">recovery scope</a>.</p>
 <h3 id="the-reframe">The reframe</h3>
 <p><code>serverless</code> ≠ FaaS. There is a spectrum:</p>
 <table>

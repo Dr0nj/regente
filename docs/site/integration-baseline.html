@@ -70,6 +70,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="ha-resources.html">Shared resources and scheduler leadership</a>
 <a href="integration-baseline.html" class="active">Integration baseline and migration runbook</a>
 <a href="production-profile.html">Production profile</a>
+<a href="shared-drafts.html">Shared Design drafts</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
 <a href="verification.html">Verification profiles</a>
 <a href="web-events.html">Web event authorization</a>
@@ -186,9 +187,9 @@ are outside this baseline and are not claimed as executed.</p>
 <td>Both agents visible from both nodes; jobs pinned to each node complete; repeat Order Folder does not reexecute effects</td>
 </tr>
 <tr>
-<td>Complete draft recovery vs DB-only control, SQLite and PG</td>
-<td><code>draft_recovery</code> report; real backup/restore scripts, tar and restarted processes</td>
-<td>Unpublished content and dirty status verified with same relative path layout; DB-only recovery loses missing drafts; not distributed durability</td>
+<td>Shared draft recovery, SQLite and PG</td>
+<td><code>draft_recovery</code> report; real backup/restore scripts and separate server processes</td>
+<td>Node A/B edit and stale-write rejection; restart without cache; DB-only restore preserves content/dirty status</td>
 </tr>
 <tr>
 <td>Same-binary PG drain</td>
@@ -231,9 +232,9 @@ are outside this baseline and are not claimed as executed.</p>
 <td>Actual server restart and audited resolution from Execution tab; no mocked API</td>
 </tr>
 <tr>
-<td>Distributed drafts</td>
-<td>preserved synthetic fixtures</td>
-<td>Broader guarantees remain reserved for I12</td>
+<td>Draft content/CAS/ownership/publication recovery</td>
+<td>TestI12DraftContracts, SQLite/Postgres; I12 browser</td>
+<td>Forms/CODE/bulk/Mass Update/undo/layout, concurrent writes, Git conflict, legacy migration, export/import and publication receipt</td>
 </tr>
 </tbody>
 </table>
@@ -340,12 +341,12 @@ retention, topology/platforms and backup constraints. No volume is inferred from
 a prospective organization. The resulting profile replaces the synthetic one;
 capacity and business acceptance stay open until then.</p>
 <h2 id="current-runtime-schema-contract">Current runtime schema contract</h2>
-<p>DOC-A recovery extension: <a href="https://github.com/Dr0nj/regente/actions/runs/35639790032">CI 35639790032</a>
+<p>Historical DOC-A recovery extension (before shared draft storage): <a href="https://github.com/Dr0nj/regente/actions/runs/35639790032">CI 35639790032</a>
 at <code>af75c51</code> passed the complete-set/DB-only draft drills on SQLite and PostgreSQL,
 the same-binary drain and the schema-document contract. The
 <a href="https://github.com/Dr0nj/regente/blob/main/docs/evidence/doc-a-af75c51.json">recorded evidence</a> is synthetic laboratory evidence,
 not production or mixed-version qualification.</p>
-<p>Current runtime schema: <strong>29</strong>; supported range: <strong>[29,29]</strong>.</p>
+<p>Current runtime schema: <strong>30</strong>; supported range: <strong>[30,30]</strong>.</p>
 <p><code>TestMigrationRunbookContract</code> compares this current statement with the migration
 constants and an actual fresh database. Historical fixture versions below remain
 intentional. See the <a href="upgrades.html">compatibility matrix</a> before choosing binaries.</p>
@@ -353,7 +354,8 @@ intentional. See the <a href="upgrades.html">compatibility matrix</a> before cho
 <ol>
 <li>Record the source/target binary versions and schema history. Stop old control
 planes, quiesce writes and retain definitions plus draft directories separately
-from the database. Draft content is not yet guaranteed by shared metadata.</li>
+from the database for unmigrated legacy drafts. Schema 30 stores verified shared
+content in the DB; missing legacy clones remain recovery-required.</li>
 <li>Take and verify a backup using <a href="dr-backup.html">the backup guide</a>. Never copy only
 the live SQLite <code>.db</code> while ignoring WAL. For PostgreSQL, use <code>pg_dump -Fc</code> or
 the established PITR procedure. Confirm restoration on an isolated target.</li>

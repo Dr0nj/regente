@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -155,4 +156,33 @@ func (c *GitHubClient) CreatePR(head, base, title, body string) (*PullRequest, e
 		return nil, fmt.Errorf("decode PR: %w", err)
 	}
 	return &pr, nil
+}
+
+// FindPR resolve retry/crash por head único, incluindo PR já fechada/merged.
+func (c *GitHubClient) FindPR(head, base string) (*PullRequest, error) {
+	values := url.Values{"head": {c.owner + ":" + head}, "base": {base}, "state": {"all"}, "per_page": {"100"}}
+	endpoint := fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls?%s", c.owner, c.repo, values.Encode())
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	response, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != 200 {
+		return nil, fmt.Errorf("GitHub PR lookup failed: HTTP %d", response.StatusCode)
+	}
+	var prs []PullRequest
+	if err = json.NewDecoder(response.Body).Decode(&prs); err != nil {
+		return nil, err
+	}
+	if len(prs) == 0 {
+		return nil, nil
+	}
+	return &prs[0], nil
 }

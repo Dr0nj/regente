@@ -14,7 +14,7 @@ DB="${REGENTE_DB:?set REGENTE_DB to a NEW isolated restore target}"
 umask 077
 
 [ -e "$SRC" ] || { echo "backup not found: $SRC" >&2; exit 1; }
-echo "[restore] DATABASE ONLY. Stop all writers; restore draft files/configuration before application startup."
+echo "[restore] DATABASE ONLY. Stop all writers; restore legacy draft files and external configuration before application startup."
 
 case "$DRIVER" in
   postgres|postgresql|pg)
@@ -40,4 +40,4 @@ case "$DRIVER" in
     ;;
 esac
 
-echo "[restore] DB restored; restore draft paths/config first, then verify schema with a compatible binary and inspect recovered content."
+echo "[restore] DB restored; restore legacy draft paths/config first, then verify schema with a compatible binary and inspect recovered content."
