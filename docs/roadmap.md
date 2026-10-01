@@ -19,7 +19,7 @@
 >
 > Documento vivo · revisão **2026-09-30** — o marco de manutenção de **2026-07-30**
 > descreve as trilhas originais. O ciclo enterprise iniciado em setembro está ativo:
-> I04/I05/I06/I07/I08 e DOC-01–DOC-14 entregues; I09–I17 seguem na §Backlog. Manutenção histórica
+> I04/I05/I06/I07/I08/I09/I10, E04 e DOC-01–DOC-14 entregues; I11–I17 seguem na §Backlog. Manutenção histórica
 > não cancela incrementos explicitamente solicitados nem significa homologação produtiva.
 > Estratégia de arquitetura em [`architecture-future.md`](architecture-future.md);
 > apresentação de produto no [`../README.md`](../README.md).
@@ -85,8 +85,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
-- **I09–I17:** journal do agente, efeitos recuperáveis, HA,
-  auditoria, capacidade, recuperação e piloto seguem na sequência enterprise.
+- **I11–I17:** HA, auditoria, capacidade, recuperação e piloto seguem na sequência enterprise.
 
 Escopo ativo deste ciclo: separar credenciais humanas de execução e preparar as
 próximas garantias. Não representa homologação empresarial completa.
@@ -385,6 +384,16 @@ domínio**, não o binário.
 
 # ✅ Entregue *(tracking por tópico)*
 
+## I09/I10 — Journal, runtime e efeitos duráveis; E04 fechado (2026-09-30)
+
+- Implementação `c0193ef`, head validado `4358047`: schema28 liga a ordem real à tentativa com fencing, dispatch outbox e journal v2. [Journal](adr-i09-agent-journal.md) · [Operação e atualização](durable-execution.md).
+- Agente persiste aceite, marcador de início, chunks e resultado antes de ACK/efeito. Reenvia com identidade estável, deduplica dispatch e conserva tombstones. WAL/FULL, lock do sistema operacional, versionamento, corrupção/disco fail-closed, limites de fila/concorrência e compactação apenas confirmada.
+- Resultado, histórico, variáveis locais, condições e intenções On/Do no mesmo commit; pós-ações externas com identidade, geração e estado recuperáveis. Receipt perdido ou lease vencida conserva UNCERTAIN e nunca autoriza repetir o efeito automaticamente. Retry/rerun preservam gerações monotônicas; quotas persistentes, carry e relatório respeitam incerteza.
+- API/SDK/CLI e aba Execution mostram identidade, agente, aceite, contato, sysout e razão. Resolução exige fence/generation atuais, evidência de parada, motivo e idempotency key; decisão/ator auditados, RBAC por folder e CAS concorrente. Cancel confirmado conserva sysout e exitCode=-1, sem retry automático nem rollback remoto.
+- SERVER-AGENT HTTP/REST e OpenSSH usam o mesmo journal/receipt sob node ID estável. Production exige protocolo2; development legado continua explícito. Instaladores selecionam v2/journal persistente, protegem credenciais e reiniciam serviço no upgrade; banco durável não volta ao modo legado.
+- CI `36794665074`: seis jobs SUCCESS, oito gates full PASS em493,985s;225 testes de integração em214,059s; I09/I10 SQLite/PostgreSQL, nove cenários runtime PG, API/CLI/RBAC e OpenSSH real. Sete browser sem skip/flaky. Processo real SIGKILL do servidor nos dois bancos: resultado permaneceu no journal, mesma identidade/uma tentativa, efeito contado uma vez e condição recuperada. [Evidência](evidence/i09-i10-4358047.json).
+- **E04 fechado no contrato integrado I08–I10.** Entrega com repetição controlada/deduplicação não equivale a exactly-once externo. HA distribuído, DR/capacidade empresarial e piloto permanecem I11–I17; storage compartilhado/efêmero e efeito remoto após cancel requerem as verificações documentadas.
+
 ## I08 — Tentativas duráveis no laboratório do servidor (2026-09-30)
 
 - Core `460a7ec`, head validado `7a6f522`: schema27 com ordens isoladas, execução, fencing/lease, outbox, output e eventos. [ADR/contrato](adr-i08-attempts.md).
@@ -393,7 +402,7 @@ domínio**, não o binário.
 - Cancel antes de delivery é definitivo; após possível entrega fica pendente/incerto. Lease vencida/retry esgotado não autoriza nova execução; retry/rerun somente após terminal comprovado.
 - API administrativa isolada e HTTP machine v2 com handshake/capability EXECUTION_V2; flag opt-in development, production rejeita. Runtime/agente v1 e condições/On-Do legados preservados.
 - CI `36768683576`: seis jobs SUCCESS; oito gates full PASS em 469,012s; integração com 186 testes em 181,685s, I08 SQLite/PostgreSQL; seis cenários browser sem skip/flaky. Processo real termina sem Close após intent/claim e recupera identidade/outbox/lease. [Evidência](evidence/i08-7a6f522.json).
-- **Fronteira:** laboratório apenas. Journal do agente e efeitos/executores ficam para I09/I10; E04 continua aberto. Sem homologação de HA/DR/capacidade.
+- **Fronteira histórica do I08:** laboratório apenas. Journal, runtime e efeitos foram integrados em I09/I10, fechando E04 (ver entrega acima). Sem homologação de HA/DR/capacidade.
 
 ## I07 — Daily com checkpoint e fonte imutável (2026-09-30)
 
@@ -632,7 +641,7 @@ restore v22→24 preservou as quatro entidades (credencial como registro aposent
 restore atual preservou 3 ordens. Sem claim de capacidade ou SLA empresarial.
 
 Limite: atribuição da instância atual; fencing por executionId, efeitos tardios
-entre tentativas e entrega durável permanecem I08–I10. Revogar acesso não desfaz
+entre tentativas e entrega durável foram integrados em I08–I10 (ver entregas acima). Revogar acesso não desfaz
 efeitos de comandos já iniciados. Guia: [agent-identity.md](agent-identity.md).
 [Relatório por SHA](evidence/i02-ba12019.json).
 
@@ -1874,6 +1883,8 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-09-30 — I09/I10 e E04:** journal v2 e runtime real schema28, conclusão/condições atômicas, pós-ações recuperáveis, UNCERTAIN/resolução auditada, executores internos e instaladores persistentes. CI full SQLite/PostgreSQL, servidor SIGKILL e sete browser aprovados. [Contrato](durable-execution.md) · [Evidência](evidence/i09-i10-4358047.json). I11–I17 permanecem abertos.
 
 - **2026-09-30 — I08:** contrato durável de tentativa e dispatch outbox atômica, fencing/CAS/result/output deduplicados, cancel/uncertainty/backpressure e API v2 isolada. CI full SQLite/PostgreSQL aprovado. [Contrato](adr-i08-attempts.md) · [Evidência](evidence/i08-7a6f522.json). Apenas laboratório development; I09–I17 e E04 seguem abertos.
 
