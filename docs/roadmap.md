@@ -19,7 +19,7 @@
 >
 > Documento vivo · revisão **2026-10-01** — o marco de manutenção de **2026-07-30**
 > descreve as trilhas originais. O ciclo enterprise iniciado em setembro está ativo:
-> I04/I05/I06/I07/I08/I09/I10, E04 e DOC-01–DOC-14 entregues; I11–I17 seguem na §Backlog. Manutenção histórica
+> I04/I05/I06/I07/I08/I09/I10/I11, E04 e DOC-01–DOC-14 entregues; I12–I17 seguem na §Backlog. Manutenção histórica
 > não cancela incrementos explicitamente solicitados nem significa homologação produtiva.
 > Estratégia de arquitetura em [`architecture-future.md`](architecture-future.md);
 > apresentação de produto no [`../README.md`](../README.md).
@@ -85,7 +85,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
-- **I11–I17:** HA, auditoria, capacidade, recuperação e piloto seguem na sequência enterprise.
+- **I12–I17:** auditoria, capacidade, recuperação e piloto seguem na sequência enterprise.
 
 Escopo ativo deste ciclo: separar credenciais humanas de execução e preparar as
 próximas garantias. Não representa homologação empresarial completa.
@@ -383,6 +383,16 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+## I11 — Quotas e liderança consistentes no HA durável (2026-10-01)
+
+- Schema29 identifica o dono executionId de cada reserva, publica termo/backend de liderança e capacidade/presença autenticada do agente. Quota, reserva, admissão e conclusão usam transações compartilhadas; caches não autorizam execução.
+- Advisory lock de sessão e termo verificado em pg_locks bloqueiam decisão do líder obsoleto. FOR SHARE mantém a ordem entre transações autorizadas e publicação do termo sucessor. Daily/carry, admission e claims de pós-ações usam o gate; followers recebem resultados e ações humanas autenticadas.
+- Reconciliação verifica snapshots e restaura reserva faltante; divergência bloqueia e hold órfão/incerto é conservado. Retry conhecido transfere dono atomicamente; recibo antigo não libera nova tentativa. Quota reduzida não cancela efeito em curso; Run Now conserva bypass explícito sem ultrapassar limites de agente.
+- Agent protocol2 anuncia slots/pending/available em qualquer nó, inclusive follower; presença stale em15s. Fila considera elegíveis por scheduled_at/created_at/id; sem promessa de fairness ponderada ou starvation universal. Explain/API refletem o banco. [Contrato e upgrade](ha-resources.md).
+- CI [36868662449](https://github.com/Dr0nj/regente/actions/runs/36868662449), head f95f856: seis jobs SUCCESS, oito gates full em540,167s;243 testes de integração em240,056s; sete browser sem skips/flaky. PostgreSQL real prova concorrência, termo obsoleto e espera do commit. Dois servers/agente no follower: quota1, redução0, DB/NATS interrompidos, líder SIGKILL, mesma identidade e duas ações isoladas contadas uma vez cada. [Evidência](evidence/i11-f95f856.json).
+- Patch gRPC1.83.2 da PR27 incorporado conforme piso de manutenção de dependência com alerta. I12–I17 continuam abertos; sem homologação geral de partição, capacidade, DR ou piloto.
+
 
 ## Compatibilidade do grupo npm e lint (2026-10-01)
 
@@ -1894,6 +1904,8 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-10-01 — I11:** reservas executionId, gate de termo PostgreSQL, capacidade compartilhada de agentes, reconciliação conservadora e Explain consistente. Migração29 e full CI com HA real aprovados; patch gRPC1.83.2. [Contrato](ha-resources.md) · [Evidência](evidence/i11-f95f856.json). I12–I17 seguem backlog.
 
 - **2026-10-01:** Correção do PR23: grupo npm compatível com TypeScript6, lockfile limpo e lint sem bypass.
 

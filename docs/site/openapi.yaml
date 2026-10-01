@@ -1073,6 +1073,8 @@ paths:
         - { name: journal, in: query, required: true, schema: { type: integer, enum: [1] }, description: Durable journal schema version. }
         - { name: ver, in: query, schema: { type: string }, description: Agent build version; release binaries report their actual tag. }
         - { name: available, in: query, schema: { type: integer, enum: [0, 1], default: 1 }, description: Zero requests control messages only when journal admission is full. }
+        - { name: slots, in: query, schema: { type: integer, minimum: 1, maximum: 10000, default: 1 }, description: Durable runtime concurrency admission limit advertised to all nodes. }
+        - { name: pendingLimit, in: query, schema: { type: integer, minimum: 1, maximum: 100000, default: 1 }, description: Durable runtime journal pending limit; unresolved attempts count against both limits. }
       responses:
         "200":
           description: Committed laboratory receipt or authenticated data.
