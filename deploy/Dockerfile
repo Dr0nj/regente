@@ -3,7 +3,7 @@
 # container: Knative, Cloud Run, Fly Machines, App Runner, Container Apps, ECS…).
 # Build a partir da raiz do repo:  docker build -f deploy/Dockerfile -t regente-server .
 
-FROM golang:1.25 AS build
+FROM golang:1.26 AS build
 WORKDIR /src
 # Cache de deps: copia só o go.mod/go.sum do módulo server primeiro.
 COPY server/go.mod server/go.sum ./server/

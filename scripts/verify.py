@@ -140,7 +140,7 @@ class Verifier:
             self.command(["go", "build", "./..."], cwd)
             self.command(["go", "vet", "./..."], cwd)
             if self.mode == "full":
-                self.command(["go", "run", "honnef.co/go/tools/cmd/staticcheck@2025.1.1", "./..."], cwd)
+                self.command(["go", "run", "honnef.co/go/tools/cmd/staticcheck@2026.1", "./..."], cwd)
             self.command(["go", "test", "-count=1", "./..."], cwd)
         elif name == "web":
             if self.mode == "full":

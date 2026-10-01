@@ -100,13 +100,13 @@ failed commands, missing evidence or an omitted mandatory gate cause failure.</p
 <td>Server and agent build, vet, tests</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>Go 1.25</td>
+<td>Go 1.26</td>
 </tr>
 <tr>
 <td>Staticcheck, both Go modules</td>
 <td>No</td>
 <td>Yes</td>
-<td>Pinned 2025.1.1</td>
+<td>Pinned 2026.1</td>
 </tr>
 <tr>
 <td>Web lint and same-origin build</td>
@@ -175,7 +175,7 @@ python scripts/verify.py --full --plan
 checks. It does not run staticcheck, a clean dependency install, browser tests,
 real service/recovery integration or demo smoke. Do not report it as full CI.</p>
 <h2 id="full-on-linuxamd64">Full on Linux/amd64</h2>
-<p>Use an isolated checkout on Linux/amd64 with Python 3.10+, Go 1.25, Node 24,
+<p>Use an isolated checkout on Linux/amd64 with Python 3.10+, Go 1.26, Node 24,
 npm/npx, Git, Bash, tar, OpenSSL, PowerShell 7 and Docker with Compose v2 and a
 running daemon. Docker and network access are needed for service images, Go/npm
 dependencies and the demo build. Use synthetic data only. Port allocations and

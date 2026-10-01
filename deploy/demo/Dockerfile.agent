@@ -11,7 +11,7 @@
 # Build com a pasta agent/ como CONTEXTO (evita subir app/node_modules e .git):
 #   docker build -f deploy/demo/Dockerfile.agent -t regente-agent agent/
 
-FROM golang:1.25-alpine AS build
+FROM golang:1.26-alpine AS build
 WORKDIR /src
 # Cache de deps: só o go.mod/go.sum do módulo agent primeiro.
 COPY go.mod go.sum ./

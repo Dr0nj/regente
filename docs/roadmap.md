@@ -17,7 +17,7 @@
 > no §Entregue e some uma linha no §Changelog. Ao **abrir** um item novo: só adicione no §Backlog.
 > Sem barras de progresso nem porcentagens — de propósito (confundem mais do que ajudam).
 >
-> Documento vivo · revisão **2026-09-30** — o marco de manutenção de **2026-07-30**
+> Documento vivo · revisão **2026-10-01** — o marco de manutenção de **2026-07-30**
 > descreve as trilhas originais. O ciclo enterprise iniciado em setembro está ativo:
 > I04/I05/I06/I07/I08/I09/I10, E04 e DOC-01–DOC-14 entregues; I11–I17 seguem na §Backlog. Manutenção histórica
 > não cancela incrementos explicitamente solicitados nem significa homologação produtiva.
@@ -383,6 +383,11 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+## Toolchain Go1.26 e dependências alinhadas (2026-10-01)
+
+O grupo server-go requer Go1.26. Módulos server/agent e workspace alinhados em1.26.0; CI, integração, doc-recipes, Pages, release e builders OCI usam1.26; pré-requisitos de source/demo/verificação atualizados. go mod tidy standalone e go work sync reconciliam o grafo compartilhado de journal. Staticcheck2026.1 fixado por suporte oficial Go1.26, sem desabilitar regras. Build/vet/regressão completa server+agent e staticcheck passaram localmente; CI completo cobre SQLite/PostgreSQL, browser e demos. Sem migração de schema ou mudança das garantias de execução.
+
 
 ## I09/I10 — Journal, runtime e efeitos duráveis; E04 fechado (2026-09-30)
 
@@ -1883,6 +1888,9 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-10-01:** Correção do PR25: Go1.26 coordenado nos módulos/workspace/CI/OCI/docs, staticcheck2026.1 e grafo de dependências sincronizado.
+
 
 - **2026-09-30 — I09/I10 e E04:** journal v2 e runtime real schema28, conclusão/condições atômicas, pós-ações recuperáveis, UNCERTAIN/resolução auditada, executores internos e instaladores persistentes. CI full SQLite/PostgreSQL, servidor SIGKILL e sete browser aprovados. [Contrato](durable-execution.md) · [Evidência](evidence/i09-i10-4358047.json). I11–I17 permanecem abertos.
 

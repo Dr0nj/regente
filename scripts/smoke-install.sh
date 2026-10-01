@@ -12,7 +12,7 @@
 #   bash scripts/smoke-install.sh --build                  # builda do checkout e testa
 #   bash scripts/smoke-install.sh --bundle X.tar.gz --agent ./regente-agent
 #
-# Requisitos: docker. Com --build também Go 1.25+ e Node 18+.
+# Requisitos: docker. Com --build também Go 1.26+ e Node 18+.
 set -euo pipefail
 
 # Git Bash/MSYS reescreve caminhos estilo Unix nos argumentos de programas

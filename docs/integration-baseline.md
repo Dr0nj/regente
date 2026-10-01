@@ -14,7 +14,7 @@ rejected. Total lab time was 111.455s on that runner; this is not a capacity res
 
 ## Run the mandatory laboratory
 
-Use a disposable Linux/amd64 machine with Git, Go 1.25+, Python 3.10+, OpenSSL, Docker Engine
+Use a disposable Linux/amd64 machine with Git, Go 1.26+, Python 3.10+, OpenSSL, Docker Engine
 and Compose v2. Allow registry/module downloads and approximately 8 GiB RAM for
 the development IdP, compiler and processes. No Python packages are required.
 

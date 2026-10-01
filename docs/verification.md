@@ -8,8 +8,8 @@ failed commands, missing evidence or an omitted mandatory gate cause failure.
 | Check | Quick | Full | Additional CI coverage |
 |---|---|---|---|
 | Runner negative tests | Yes | Yes | Same runner |
-| Server and agent build, vet, tests | Yes | Yes | Go 1.25 |
-| Staticcheck, both Go modules | No | Yes | Pinned 2025.1.1 |
+| Server and agent build, vet, tests | Yes | Yes | Go 1.26 |
+| Staticcheck, both Go modules | No | Yes | Pinned 2026.1 |
 | Web lint and same-origin build | Installed dependencies | Clean engine-strict install | Declared Node minima |
 | Schema, engines/recipes, API contracts | Focused checks | Same checks plus real services | Node matrix and demo |
 | Markdown paths, generated anchors, site freshness | Yes | Yes | Same read-only checker |
@@ -48,7 +48,7 @@ real service/recovery integration or demo smoke. Do not report it as full CI.
 
 ## Full on Linux/amd64
 
-Use an isolated checkout on Linux/amd64 with Python 3.10+, Go 1.25, Node 24,
+Use an isolated checkout on Linux/amd64 with Python 3.10+, Go 1.26, Node 24,
 npm/npx, Git, Bash, tar, OpenSSL, PowerShell 7 and Docker with Compose v2 and a
 running daemon. Docker and network access are needed for service images, Go/npm
 dependencies and the demo build. Use synthetic data only. Port allocations and

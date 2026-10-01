@@ -107,7 +107,7 @@ Deeper documents: [operations](docs/operations.md) · [DR and backup](docs/dr-ba
 ## 🚀 Try it in 5 minutes
 
 The fastest way to see it working — nothing to configure, nothing left behind. You need
-[Go 1.25+](https://go.dev/dl/), plus Node.js: `^20.19.0 || ^22.13.0 || >=24` for the UI
+[Go 1.26+](https://go.dev/dl/), plus Node.js: `^20.19.0 || ^22.13.0 || >=24` for the UI
 (Node 24 is the CI line; the requirement includes the lint toolchain).
 
 ```bash
@@ -187,7 +187,7 @@ Every option below comes in two flavours:
 
 - **From a release** — `install.sh` downloads a ready-made bundle. **No Go and no Node needed on
   the machine.** This is the easy path.
-- **From source** — you build it yourself. Needs Go 1.25+ and the Node.js range above if you want the UI.
+- **From source** — you build it yourself. Needs Go 1.26+ and the Node.js range above if you want the UI.
 
 > **On Windows?** [`server/deploy/`](server/deploy) and [`agent/deploy/`](agent/deploy) each have
 > an `install-windows.ps1` that registers a Scheduled Task (starts at boot, restarts on failure).

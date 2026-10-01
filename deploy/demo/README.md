@@ -8,7 +8,7 @@ previous demo database or saved PAT.
 
 ## Requirements
 
-- Go 1.25+, Git and Node.js: `^20.19.0 || ^22.13.0 || >=24` (Node 24 in CI).
+- Go 1.26+, Git and Node.js: `^20.19.0 || ^22.13.0 || >=24` (Node 24 in CI).
 - Windows PowerShell 5.1 or PowerShell 7.
 - A running **Linux Docker engine** (Docker Desktop on Windows), for guest jobs.
   The native smoke below does not require Docker and is **not** a guest demo mode.
