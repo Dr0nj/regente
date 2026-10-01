@@ -494,7 +494,7 @@ func TestI12DraftContracts(t *testing.T) {
 						t.Fatal(err)
 					}
 				} else {
-					if _, err = database.Exec("CREATE FUNCTION i12_reject_snapshot() RETURNS trigger LANGUAGE plpgsql AS $ BEGIN RAISE EXCEPTION 'synthetic unavailable'; END $"); err != nil {
+					if _, err = database.Exec("CREATE FUNCTION i12_reject_snapshot() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic unavailable'; END; $$"); err != nil {
 						t.Fatal(err)
 					}
 					if _, err = database.Exec("CREATE TRIGGER i12_reject_snapshot BEFORE INSERT ON design_draft_versions FOR EACH ROW EXECUTE FUNCTION i12_reject_snapshot()"); err != nil {
