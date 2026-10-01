@@ -85,6 +85,7 @@ export const JOB_TYPES: Record<JobType, JobTypeConfig> = {
 /* ── Status ──────────────────────────────────────────────── */
 
 export type JobStatus =
+  | "UNCERTAIN"
   | "SUCCESS"
   | "RUNNING"
   | "FAILED"
@@ -101,6 +102,7 @@ export interface StatusConfig {
 }
 
 export const STATUS_MAP: Record<JobStatus, StatusConfig> = {
+  UNCERTAIN: { label: "Uncertain", variant: "waiting", dotColor: "bg-[#f59e0b]", glowClass: "node-glow-inactive" },
   SUCCESS:  { label: "Success",  variant: "success",  dotColor: "bg-[#11C76F]", glowClass: "node-glow-success"  },
   RUNNING:  { label: "Running",  variant: "running",  dotColor: "bg-[#22d3ee]", glowClass: "node-glow-running"  },
   FAILED:   { label: "Failed",   variant: "failed",   dotColor: "bg-[#ef4444]", glowClass: "node-glow-failed"   },

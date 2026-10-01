@@ -21,6 +21,7 @@
  */
 export type InstanceStatus =
   | "WAITING"
+  | "UNCERTAIN"
   | "RUNNING"
   | "OK"
   | "NOTOK"
@@ -31,6 +32,7 @@ export const INSTANCE_STATUS_CONFIG: Record<
   InstanceStatus,
   { label: string; color: string; dotColor: string; glowClass: string }
 > = {
+  UNCERTAIN: { label: "Uncertain", color: "text-orange-400", dotColor: "bg-orange-400", glowClass: "node-glow-inactive" },
   WAITING:   { label: "Waiting",   color: "text-amber-400",   dotColor: "bg-amber-400",   glowClass: "node-glow-waiting" },
   RUNNING:   { label: "Running",   color: "text-cyan-400",    dotColor: "bg-cyan-400",    glowClass: "node-glow-running" },
   OK:        { label: "OK",        color: "text-emerald-400", dotColor: "bg-emerald-400", glowClass: "node-glow-success" },
@@ -247,6 +249,7 @@ export interface ActionRule {
  * or manually via "Run Now" (force/order).
  */
 export interface JobInstance {
+  businessTime?: { timezone: string; dailyAt: string };
   /** Unique instance ID */
   id: string;
   /** Reference to the parent definition */

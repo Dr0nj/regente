@@ -39,7 +39,10 @@ var (
 )
 
 // eventRec — um evento decidido, aguardando o INSERT em lote.
-type eventRec struct{ instanceID, kind, actor, message string }
+type eventRec struct {
+	instanceID, kind, actor, message string
+	at                               time.Time
+}
 
 // StartEventQueue liga a fila assíncrona (idempotente). Chamar ANTES de servir
 // tráfego; o writer respeita o ciclo de vida quit/wg do Scheduler (Stop() drena).
@@ -121,14 +124,14 @@ func (s *Scheduler) eventWriter(ch chan eventRec) {
 // ao emitEvent clássico).
 func (s *Scheduler) writeEventBatch(batch []eventRec) {
 	var sb strings.Builder
-	sb.WriteString(`INSERT INTO instance_events(instance_id, kind, actor, message) VALUES `)
-	args := make([]any, 0, len(batch)*4)
+	sb.WriteString(`INSERT INTO instance_events(instance_id, kind, actor, message, ts) VALUES `)
+	args := make([]any, 0, len(batch)*5)
 	for i, rec := range batch {
 		if i > 0 {
 			sb.WriteByte(',')
 		}
-		sb.WriteString("(?,?,?,?)")
-		args = append(args, rec.instanceID, rec.kind, rec.actor, rec.message)
+		sb.WriteString("(?,?,?,?,?)")
+		args = append(args, rec.instanceID, rec.kind, rec.actor, rec.message, rec.at)
 	}
 	if _, err := s.db.Exec(sb.String(), args...); err != nil {
 		log.Printf("[scheduler] event batch (%d eventos): %v", len(batch), err)

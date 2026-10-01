@@ -16,6 +16,7 @@ import { api, onServerEvent } from "@/lib/server-client";
 /* ── Server shape ── */
 
 interface ServerInstance {
+  businessTime?: { timezone: string; dailyAt: string };
   id: string;
   definitionId: string;
   team?: string;
@@ -61,6 +62,7 @@ function parseTime(s?: string): number | undefined {
 }
 
 const STATUS_MAP: Record<string, InstanceStatus> = {
+  UNCERTAIN: "UNCERTAIN",
   WAITING: "WAITING",
   RUNNING: "RUNNING",
   OK: "OK",
@@ -100,6 +102,7 @@ function toWeb(s: ServerInstance): JobInstance {
     // usamos o team da instância, não o da definition viva (que pode nem existir).
     team: s.team || undefined,
     orderDate: s.orderDate,
+    businessTime: s.businessTime,
     createdAt: parseTime(s.scheduledAt) ?? Date.now(),
     scheduledAt: parseTime(s.scheduledAt) ?? Date.now(),
     startedAt: started,
@@ -436,6 +439,7 @@ function ensureWs(): void {
       // A daily rodou = o dia de negócio VIROU (DAY-1). O board tem que trocar
       // de dia junto, não só recarregar o dia velho.
       case "daily.started":
+      case "daily.changed":
         refreshAcrossDayFlip("daily");
         break;
       // WS (re)conectou ("_connected") ou o token acabou de mudar ("_resync",
@@ -564,7 +568,7 @@ export async function fetchInstanceOutput(id: string, attempt?: number): Promise
 /* ── Explain ("por que esse job não rodou?") ── */
 
 export interface ExplainBlocker {
-  kind: "WAIT_WINDOW" | "WINDOW_CLOSED" | "WAIT_CONFIRM" | "WAIT_DEP" | "BLOCKED_DEP" | "WAIT_CONDITION" | "WAIT_AGENT" | "WAIT_RESOURCE";
+  kind: "WAIT_WINDOW" | "WINDOW_CLOSED" | "WAIT_CONFIRM" | "WAIT_DEP" | "BLOCKED_DEP" | "WAIT_CONDITION" | "WAIT_AGENT" | "WAIT_RESOURCE" | "CONFIGURATION_BLOCKED";
   detail: string;
   upstream?: string;
   upstreamStatus?: string;
@@ -725,6 +729,8 @@ export async function refreshFromServer(): Promise<void> {
 // (payload de escala): label/jobType/actionConfig da definition_snapshot, a
 // MESMA foto que o dispatch executa. É o que o drawer mostra em Action/Output.
 export interface InstanceOrderDetail {
+  durableExecution?: boolean;
+  snapshotError?: string;
   label?: string;
   jobType?: string;
   actionConfig?: Record<string, unknown>;
@@ -735,10 +741,10 @@ export interface InstanceOrderDetail {
 
 export async function fetchInstanceDetail(id: string): Promise<InstanceOrderDetail | null> {
   try {
-    const s = await api<ServerInstance & { snapshotDef?: JobDefinition }>(`/api/instances/${encodeURIComponent(id)}`);
+    const s = await api<ServerInstance & { snapshotDef?: JobDefinition; snapshotError?: string }>(`/api/instances/${encodeURIComponent(id)}`);
     if (!s?.id) return null;
     applyInstance(s); // o espelho ganha a linha mais rica de carona
-    return { label: s.label, jobType: s.jobType, actionConfig: s.actionConfig, snapshotDef: s.snapshotDef };
+    return { label: s.label, jobType: s.jobType, actionConfig: s.actionConfig, snapshotDef: s.snapshotDef, snapshotError: s.snapshotError };
   } catch (err) {
     console.warn("[server-instances] fetchInstanceDetail failed", err);
     return null;

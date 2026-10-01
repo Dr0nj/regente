@@ -1,42 +1,44 @@
-# 🎯 Control plane SLOs — regente-server
+# Control plane SLO objectives — regente-server
 
-> Service-level objectives for Regente's "brain", each tied to a **metric** (`/metrics`), a
-> **probe** (`/livez` · `/readyz`) and an **automatic alert** (R7, `-selfmon`). This is how the
-> orchestrator watches itself.
+Reviewed 2026-09-28. These are **engineering objectives and observation signals**,
+not measured service guarantees or production acceptance. The operations owner
+must approve a workload, measurement window, outage budget and recovery drill.
+[Capacity evidence and limits](capacity-guarantees.md) distinguishes historical
+reports from the current small [integration profile](integration-baseline.md).
 
-| # | SLO | Target | Signal (metric/probe) | Alert (R7) |
-|---|-----|--------|-----------------------|------------|
-| 1 | **API availability** | ≥ 99.9% of `GET /readyz` = 200 | `/readyz` (gate = DB reachable) | `db-unreachable` |
-| 2 | **Failover time** (leader dies → new leader) | ≤ 10 s | `regente_is_leader` (changes) | `leader-flapping` (if it changes too often) |
-| 3 | **Scheduling freshness** (loop alive) | tick < 90 s | `regente_scheduler_last_tick_age_seconds` | `tick-stalled` |
-| 4 | **Execution capacity** (agent fleet) | no unplanned drops | `regente_agents_online` | `agents-drop` |
-| 5 | **Process liveness** | automatic restart if it hangs | `/livez` + `livenessProbe` | (R1 supervisor) |
-| 6 | **RPO/RTO (DR)** | RPO ≤ backup interval · RTO ≤ minutes | R6 backup (`-backup`/`pg_dump`) | runbook [`dr-backup.md`](dr-backup.md) |
+| Dimension | Proposed objective / interpretation | Signal | Qualification limit |
+|---|---|---|---|
+| Readiness availability | Historical objective: >=99.9% successful probes over an agreed window | GET /readyz, db-unreachable alert | A successful probe is not whole-API or job availability; no measured monthly guarantee |
+| Leadership transfer | Historical objective: <=10s after leader loss | regente_is_leader, leader-flapping | Measure detection plus acquisition under the declared topology; not an execution recovery deadline |
+| Scheduling freshness | Alert when tick age exceeds 90s | regente_scheduler_last_tick_age_seconds, tick-stalled | Loop freshness does not establish dispatch latency or successful external effects |
+| Agent fleet presence | Investigate unexpected online-agent drops | regente_agents_online, agents-drop | Presence is not throughput, concurrency capacity or durable acceptance |
+| Process liveness | Supervisor restarts failed processes; configured probe may trigger restart | /livez, systemd/Windows Service/orchestrator | Restart=always restarts exited processes; it alone does not detect every live-but-hung process |
+| Recovery | Set RPO/RTO from the complete backup set and measured drill | DB/WAL/backup age, restore logs, data comparison | No universal minutes-to-recover target; drafts and external configuration matter |
 
-## How each SLO is observed and defended
+## Leadership and execution are different measurements
 
-- **1. Availability** — `/readyz` only answers 200 when the DB is reachable (hard gate). The
-  k8s `readinessProbe` takes the pod out of rotation on a violation; R7 raises
-  `db-unreachable`.
-- **2. Failover** — only the leader runs the daily and the dispatch; when it dies the advisory
-  lock is released and another node takes over. **Measured at ~4 s** in the real two-node
-  validation. `regente_is_leader` lets you alert on `changes()` in Prometheus (flapping) on top
-  of R7's native alert.
-- **3. Freshness** — every node stamps `lastTick` each cycle; the age is exposed both in the
-  gauge and in `/readyz`. Past 90 s, R7 raises `tick-stalled` (jobs may not be getting
-  promoted).
-- **4. Capacity** — a drop in `regente_agents_online` against the baseline raises `agents-drop`.
-- **5. Liveness** — `/livez` answers for as long as the process serves; the supervisor (systemd
-  `Restart=always` / Windows Service / `livenessProbe`) restarts a hung process.
-- **6. DR** — online backup (`-backup` = `VACUUM INTO` on SQLite; `pg_dump`/PITR on Postgres);
-  restore validated by the runbook drill (`/readyz` 200 + `/api/env` after the restore).
+PostgreSQL leadership uses a session advisory lock. A successor can acquire it
+when PostgreSQL releases the old session's lock and the successor polls. Network
+failure detection and database availability affect this interval. The old ~1s
+and ~4s observations lack a recovered common run manifest; they are historical
+reports, not a bound. An atomic claim does not provide durable agent ACK, attempt
+fencing or exactly-once external effects. See the
+[mechanism matrix](capacity-guarantees.md#dispatch-and-ha-boundaries).
 
-## Continuous verification
+## Verification scope
 
-- **Unit/integration** — `go test ./...` (covers `/readyz`, the mTLS handshake, RBAC, selfmon
-  evaluation, a backup round-trip, **HTTP E2E** and a **load smoke test** at ~7.5k req/s
-  locally).
-- **Chaos/HA** — `server/deploy/chaos-ha.sh` automates it: two nodes on the same Postgres →
-  exactly one leader → kill the leader → check the failover.
-- **Real load** — for production volume (10k+ jobs/day, p99), running `hey`/`k6` against a real
-  deployment is still an open quality item.
+- Go unit/API tests exercise probes, self-monitoring, backup and concurrency.
+  TestLoad_ReadyzConcurrent sends 2,000 readiness requests with 40 workers to an
+  in-process HTTP server. The historical ~7.5k req/s report is not a job benchmark.
+- The [integration baseline](integration-baseline.md) exercises three synthetic
+  orders on two agents and selected restart/restore cases with PostgreSQL/NATS.
+  Its lab deadlines and preserved snapshots do not establish a production SLO.
+- The legacy [chaos-ha.sh](../server/deploy/chaos-ha.sh) laboratory checks
+  leadership transfer in its specific setup. It is not a partition, durable
+  result or external-effect qualification suite.
+- A restore drill must compare the relevant data and unpublished content in an
+  isolated recovery set; /readyz and /api/env alone cannot prove recovery completeness.
+  Follow [DR and backup](dr-backup.md).
+
+Sustained capacity, soak, failure recovery and business acceptance remain subject
+to the enterprise gates in the [roadmap](roadmap.md), including I16/I17.

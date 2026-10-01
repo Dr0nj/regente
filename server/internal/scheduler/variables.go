@@ -331,7 +331,10 @@ func InterpolateParams(params map[string]interface{}, ctx VarContext) map[string
 
 // BuildContext monta um VarContext a partir do def + runtime info.
 func BuildContext(def domain.JobDefinition, instanceID, orderDate string, parentExitCode *int, parentOutput string) VarContext {
-	now := time.Now()
+	return BuildContextAt(def, instanceID, orderDate, parentExitCode, parentOutput, time.Now().UTC())
+}
+
+func BuildContextAt(def domain.JobDefinition, instanceID, orderDate string, parentExitCode *int, parentOutput string, now time.Time) VarContext {
 	rt := map[string]string{
 		"order_date":  orderDate,
 		"instance_id": instanceID,

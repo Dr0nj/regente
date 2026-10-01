@@ -15,8 +15,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/Dr0nj/regente-server/internal/db"
@@ -37,7 +35,7 @@ func NewSLAEngine(db *db.DB, h *hub.Hub) *SLAEngine {
 // Chamado pelo tick do scheduler.
 func (e *SLAEngine) Evaluate(defs map[string]domain.JobDefinition, now time.Time) {
 	rows, err := e.db.Query(
-		`SELECT id, definition_id, order_date, started_at FROM instances
+		`SELECT id, definition_id, COALESCE(NULLIF(carried_from,''), order_date), started_at, COALESCE(definition_snapshot,''), COALESCE((SELECT snapshot_checksum FROM daily_order_ledger WHERE instance_id=instances.id),'') FROM instances
 		 WHERE status='RUNNING' AND started_at IS NOT NULL`,
 	)
 	if err != nil {
@@ -46,12 +44,12 @@ func (e *SLAEngine) Evaluate(defs map[string]domain.JobDefinition, now time.Time
 	defer rows.Close()
 
 	for rows.Next() {
-		var id, defID, orderDate string
+		var id, defID, orderDate, snapshot, checksum string
 		var started time.Time
-		if err := rows.Scan(&id, &defID, &orderDate, &started); err != nil {
+		if err := rows.Scan(&id, &defID, &orderDate, &started, &snapshot, &checksum); err != nil {
 			continue
 		}
-		def, ok := defs[defID]
+		def, ok := defForInstance(instRow{DefID: defID, Snapshot: snapshot, SnapshotChecksum: checksum}, defs)
 		if !ok || def.SLA == nil {
 			continue
 		}
@@ -61,22 +59,15 @@ func (e *SLAEngine) Evaluate(defs map[string]domain.JobDefinition, now time.Time
 			if now.Sub(started) > limit {
 				e.recordBreach(id, defID, "duration", def.SLA.Severity,
 					fmt.Sprintf("running for %s, expected ≤ %dmin", now.Sub(started).Round(time.Second), def.SLA.ExpectedDurationMin),
-					def.SLA.WebhookURL)
+					def.SLA.WebhookURL, now)
 			}
 		}
 		// deadline breach
-		if def.SLA.DeadlineHM != "" {
-			parts := strings.Split(def.SLA.DeadlineHM, ":")
-			if len(parts) == 2 {
-				hh, _ := strconv.Atoi(parts[0])
-				mm, _ := strconv.Atoi(parts[1])
-				od, _ := time.Parse("2006-01-02", orderDate)
-				deadline := time.Date(od.Year(), od.Month(), od.Day(), hh, mm, 0, 0, time.Local)
-				if now.After(deadline) {
-					e.recordBreach(id, defID, "deadline", def.SLA.Severity,
-						fmt.Sprintf("not finished by deadline %s", def.SLA.DeadlineHM),
-						def.SLA.WebhookURL)
-				}
+		if c, valid := frozenCalendar(def); valid && def.SLA.DeadlineHM != "" {
+			deadline := c.At(orderDate, def.SLA.DeadlineHM)
+			if !deadline.IsZero() && now.After(deadline) {
+				e.recordBreach(id, defID, "deadline", def.SLA.Severity,
+					fmt.Sprintf("not finished by deadline %s (%s)", def.SLA.DeadlineHM, c.Timezone), def.SLA.WebhookURL, now)
 			}
 		}
 	}
@@ -86,7 +77,7 @@ func (e *SLAEngine) Evaluate(defs map[string]domain.JobDefinition, now time.Time
 	}
 }
 
-func (e *SLAEngine) recordBreach(instanceID, defID, kind, severity, msg, webhook string) {
+func (e *SLAEngine) recordBreach(instanceID, defID, kind, severity, msg, webhook string, now time.Time) {
 	if severity == "" {
 		severity = "warning"
 	}
@@ -102,7 +93,7 @@ func (e *SLAEngine) recordBreach(instanceID, defID, kind, severity, msg, webhook
 	id, err := e.db.InsertID(
 		`INSERT INTO sla_breaches(instance_id, definition_id, kind, severity, message, detected_at, notified)
 		 VALUES(?,?,?,?,?,?,?)`,
-		instanceID, defID, kind, severity, msg, time.Now(), 0,
+		instanceID, defID, kind, severity, msg, now.UTC(), 0,
 	)
 	if err != nil {
 		return
@@ -121,7 +112,7 @@ func (e *SLAEngine) recordBreach(instanceID, defID, kind, severity, msg, webhook
 			"kind":       kind,
 			"severity":   severity,
 			"message":    msg,
-			"timestamp":  time.Now().Format(time.RFC3339),
+			"timestamp":  now.UTC().Format(time.RFC3339),
 		})
 		_, _ = e.db.Exec(`UPDATE sla_breaches SET notified=1 WHERE id=?`, id)
 	}

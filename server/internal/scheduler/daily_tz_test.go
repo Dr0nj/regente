@@ -75,23 +75,22 @@ func TestDailyTimezone_TodayDateNaTimezoneDeNegocio(t *testing.T) {
 	}
 }
 
-// Nome IANA inválido não pode parar a daily: loga e cai no relógio local do
-// server (comportamento clássico). Corrigir o setting recarrega o cache.
-func TestDailyTimezone_InvalidoCaiNoLocal(t *testing.T) {
+// Nome inválido bloqueia materialização, sem fallback no relógio do host.
+func TestDailyTimezone_InvalidoBloqueia(t *testing.T) {
 	s := newTestScheduler(t)
 	setSetting(t, s, "daily_timezone", "Nao/Existe")
 	name, loc := s.DailyTimezone()
-	if name != "Nao/Existe" || loc != time.Local {
-		t.Fatalf("tz inválida deveria reportar o nome configurado com loc local, veio %q %v", name, loc)
+	if name != "Nao/Existe" || s.validateBusinessTime() == nil {
+		t.Fatalf("tz inválida deve bloquear materialização, veio %q %v", name, loc)
 	}
 	// Corrige o setting → o cache por nome recarrega pro certo.
 	setSetting(t, s, "daily_timezone", "America/Sao_Paulo")
 	if _, loc = s.DailyTimezone(); loc.String() != "America/Sao_Paulo" {
 		t.Fatalf("corrigir o setting deveria recarregar a location, veio %v", loc)
 	}
-	// Vazio = local (default do produto).
+	// Vazio usa o default explícito UTC.
 	setSetting(t, s, "daily_timezone", "")
-	if name, loc = s.DailyTimezone(); name != "" || loc != time.Local {
-		t.Fatalf("setting vazio deveria ser local, veio %q %v", name, loc)
+	if name, loc = s.DailyTimezone(); name != "UTC" || loc != time.UTC {
+		t.Fatalf("setting vazio deve ser UTC, veio %q %v", name, loc)
 	}
 }

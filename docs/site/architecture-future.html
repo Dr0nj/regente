@@ -53,30 +53,40 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="operations.html">⚙️ Running in production — enterprise readiness</a>
 <a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
 <a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
-<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
 <a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
 <a href="architecture-future.html" class="active">Future architecture — serverless, portable, no lock-in</a>
 <a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
 <a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="adr-i09-agent-journal.html">Durable agent journal</a>
 <a href="agent-authentication.html">Agent authentication and upgrades</a>
 <a href="agent-identity.html">Agent identity and credential lifecycle</a>
 <a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="business-time.html">Business time</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html">Daily recovery</a>
+<a href="durable-execution.html">Durable execution and recovery</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="production-profile.html">Production profile</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
 <a href="web-events.html">Web event authorization</a>
 </nav>
 <main>
 <article>
 <h1 id="future-architecture--serverless-portable-no-lock-in">Future architecture — serverless, portable, no lock-in</h1>
 <blockquote>
-<p>Status: living document · Last revision: 2026-07-10
+<p>Historical design: 2026-07-10 · Evidence/status review: 2026-09-28
 Scope: control plane (<code>server/</code>) + agent transport + executors.
 Root decision: <strong>&quot;portable serverless&quot; (a scale-to-zero container with state and trigger
 externalized), not FaaS.</strong></p>
 </blockquote>
 <p>This document is the guiding ADR for Regente's evolution across three phases. It records the
 <strong>why</strong>, what has <strong>already been applied in this repository</strong>, and what is <strong>design/R&amp;D</strong> for the
-next iterations. Each phase clearly marks what is production versus what is projected.</p>
+next iterations. Applied mechanisms are not equivalent to production qualification.
+Current delivery status lives in the <a href="https://github.com/Dr0nj/regente/blob/main/docs/roadmap.md">roadmap</a>;
+<a href="capacity-guarantees.html">capacity and HA limits</a> delimit the historical claims.</p>
 <hr>
 <h2 id="1-context-and-problem">1. Context and problem</h2>
 <p>We want Regente to be:</p>
@@ -92,8 +102,9 @@ classic daemon with two pieces that fight serverless:</p>
 always-on process.</li>
 <li>A <strong>persistent WebSocket</strong> to agents and to the web — long-lived connections.</li>
 </ul>
-<p>Everything else is already serverless-ready: a stateless REST API, <strong>state in Postgres</strong>
-(pluggable dialect) and <strong>configuration in Git</strong>.</p>
+<p>The design externalizes database state to PostgreSQL and published definitions to Git.
+Unpublished design-session content still requires session directories; API replicas
+are not sufficient for durable draft failover. See <a href="dr-backup.html">recovery scope</a>.</p>
 <h3 id="the-reframe">The reframe</h3>
 <p><code>serverless</code> ≠ FaaS. There is a spectrum:</p>
 <table>
@@ -250,16 +261,18 @@ over-investing in the wrong lock.</p>
 <p><strong>Classic track (daemon, <code>-scheduler=internal</code>):</strong> N always-on nodes, one holds
 <code>pg_try_advisory_lock</code> and runs the ticker; the others are <em>hot standbys</em>. This is
 <code>G1 leader election</code> (<code>internal/leader</code>, <code>PgAdvisory</code>). It makes sense for on-prem/enterprise
-deployments of 2–3 fixed nodes. Failover ≈ the lock TTL when the leader dies.</p>
+deployments of 2–3 fixed nodes. This is a session lock, not a fixed-TTL lease:
+transfer depends on PostgreSQL releasing the session and a successor polling.
+It does not fence an agent or guarantee recovery of external effects.</p>
 <p><strong>Serverless track (<code>-scheduler=external</code>, scale-to-zero):</strong> the leadership advisory lock <strong>does
 not map</strong> — there is no long-lived process to <em>hold</em> the lock, and most of the time there are
 <strong>zero</strong> instances. The external cron fires <code>POST /api/scheduler/tick</code>, a container starts, runs
-<code>Tick()</code>, and dies. The defence against <strong>double execution</strong> does not come from leadership; it
-comes from <strong>idempotency + an atomic claim</strong>, both already in the code:</p>
+<code>Tick()</code>, and dies. Concurrent scheduling uses the following database guards;
+these do not establish exactly-once execution or durable delivery:</p>
 <ol>
 <li><code>Tick()</code> is idempotent — concurrent or overlapping ticks converge.</li>
 <li>The <strong>atomic claim</strong> in <code>startInstance</code> (<code>UPDATE … SET status='RUNNING' WHERE id=? AND status='WAITING'</code>, bail out on 0 rows) — a row-level correctness guard, independent of how
-many instances are running. This is the real safety net.</li>
+many processes are running. It protects that state transition, not remote acceptance.</li>
 <li>The existence check when materializing the daily — idempotent across ticks.</li>
 </ol>
 <p>In other words: <strong>in serverless, leader election stops being correctness and becomes an
@@ -267,15 +280,16 @@ optimization</strong> (avoiding N nodes doing redundant scheduling). If you do n
 <strong>overlapping</strong> ticks (a cron that fires twice, or long ticks that cross), the right mechanism is
 a <strong>per-tick lock</strong> — <code>pg_try_advisory_lock</code> acquired at the start of <code>Tick()</code> and released at the
 end, short scope — and <strong>not</strong> a long-lived leadership lock.</p>
-<p><strong>Summary:</strong> <code>F1 Postgres</code> is the foundation of both tracks. <code>G1 advisory-lock</code> is HA for the
-<strong>classic</strong> track; serverless gets HA &quot;for free&quot; (stateless replicas + durable managed PG +
-idempotency + the atomic claim).</p>
+<p><strong>Scope:</strong> PostgreSQL supports both tracks; leadership and per-tick/row guards
+coordinate database work. Neither track gains durable execution or partition safety
+automatically. See <a href="capacity-guarantees.html">capacity and HA evidence</a> for the
+claim/ACK/fencing/recovery distinction and the remaining enterprise gates.</p>
 <p><strong>Per-tick lock (ARCH-3, ✅ applied 2026-07-10):</strong> the mechanism designed above — serializing
 <strong>overlapping</strong> ticks with a short-scoped advisory lock — was implemented in
 <code>scheduler/ticklock.go</code>. Two layers: in-process (<code>atomic.Bool</code>, always on) plus a cross-process
 <code>pg_try_advisory_lock</code> on Postgres (a key distinct from leadership, opt-in via <code>EnableTickLock()</code>,
-switched on by <code>-scheduler=external</code>). It remains hygiene, not correctness — the atomic claim is
-the safety net.</p>
+switched on by <code>-scheduler=external</code>). It serializes the protected tick scope;
+combined with atomic claims it still does not supply durable agent acknowledgment.</p>
 <hr>
 <h2 id="5-phase-2--pluggable-agent-transport-busport---seam--long-poll--sse--nats-applied">5. Phase 2 — pluggable agent transport (BusPort)  ✅ seam + long-poll + SSE + NATS applied</h2>
 <p><strong>Goal:</strong> the WebSocket hub is the last piece that requires persistence. Abstract the transport
@@ -345,12 +359,12 @@ scheduler.</li>
 <ul>
 <li><strong>Durable execution (Temporal / Restate)</strong> — replacing retry/tick/state-machine with a durable
 engine <strong>contradicts this ADR's root decision</strong> (single binary, zero infrastructure,
-anti-lock-in): it would mean running one more cluster to babysit. And the correctness it buys
-(resuming a flow after a crash without re-running steps) Regente <strong>already gets</strong> from
-idempotency plus the atomic claim. Kept as an architectural reference, not as work.</li>
-<li><strong>Postgres-as-a-queue</strong> (<code>SKIP LOCKED</code>, e.g. River) — it would rewrite the dispatch (a hot path
-validated at 1M) in favour of an alternative to the atomic claim, which <strong>is a cousin</strong> of
-<code>SKIP LOCKED</code> and already covers the case. No gain that pays for the swap.</li>
+anti-lock-in): it would mean operating another service. This historical choice
+did not implement equivalent durable execution. An atomic claim cannot establish
+safe crash resumption; native ACK/fencing/recovery remains enterprise work.</li>
+<li><strong>Postgres-as-a-queue</strong> (<code>SKIP LOCKED</code>, e.g. River) — adopting that library was
+historically declined. The 1M report measured materialization, not dispatch.
+This technology choice does not close durable dispatch or recovery requirements.</li>
 </ul>
 <hr>
 <h2 id="7-status-and-decisions">7. Status and decisions</h2>
@@ -389,14 +403,14 @@ validated at 1M) in favour of an alternative to the atomic claim, which <strong>
 <td>✅ storage migrated to go-git (pure Go); image back to <code>distroless/static:nonroot</code></td>
 </tr>
 <tr>
-<td>Classic HA — advisory-lock leader election (<code>G1</code>)</td>
+<td>Classic leadership — advisory lock (<code>G1</code>)</td>
 <td>1</td>
-<td>✅ applied · two nodes validated on real PG (failover ~1s, 2026-06-18)</td>
+<td>✅ applied; historical two-node report, 2026-06-18; no guaranteed failover bound</td>
 </tr>
 <tr>
-<td>Serverless HA — idempotency + atomic claim</td>
+<td>Serverless scheduling guards — idempotency + atomic claim</td>
 <td>1</td>
-<td>✅ applied (correctness)</td>
+<td>✅ applied; no durable execution guarantee</td>
 </tr>
 <tr>
 <td>Per-tick lock (overlapping ticks, ARCH-3)</td>
@@ -456,12 +470,13 @@ validated at 1M) in favour of an alternative to the atomic claim, which <strong>
 <tr>
 <td>Postgres-as-a-queue (River/SKIP LOCKED)</td>
 <td>3</td>
-<td>🚫 decided against (the atomic claim already covers it)</td>
+<td>🚫 library adoption declined historically; durable dispatch remains separate</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Rollout principle:</strong> every phase is backward compatible. The defaults preserve the classic
-daemon; serverless is opt-in through a flag or the deployment.</p>
+<p><strong>Rollout principle:</strong> serverless is opt-in; defaults preserve the classic daemon.
+Version/schema/protocol compatibility must be checked against the
+<a href="upgrades.html">upgrade matrix</a>; it is not guaranteed by this historical design.</p>
 <hr>
 <h2 id="8-references">8. References</h2>
 <ul>

@@ -90,6 +90,63 @@ if [ "$STAGE" = stage2 ]; then
   n_after="$(ls -1 /var/lib/regente/backups/ 2>/dev/null | wc -l)"
   [ "$n_before" = "$n_after" ] && ok "--no-backup não criou snapshot" || bad "--no-backup criou snapshot mesmo assim"
   wait_for 30 active || bad "o serviço não voltou depois do --no-backup"
+  head1 "Production profile: convert installed service and upgrade"
+  # Fixture sintética; nenhum segredo do operador entra neste ensaio.
+  login_token=$(curl -fsS -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin"}' "$BASE/api/auth/login" | jfield token)
+  curl -fsS -H "Authorization: Bearer $login_token" -H 'Content-Type: application/json' -d '{"current":"admin","next":"production-smoke-fixture"}' "$BASE/api/auth/change-password" >/dev/null || bad "password rotation failed"
+  systemctl stop regente-server
+  cat >> "$ENV_FILE" <<'PRODUCTION'
+REGENTE_PROFILE=production
+REGENTE_ENVIRONMENT=prod
+REGENTE_NETWORK_BOUNDARY=loopback
+REGENTE_ADDR=127.0.0.1:8080
+REGENTE_APP_URL=http://127.0.0.1:8080
+REGENTE_TOKEN=
+REGENTE_SERVER_AGENT=0
+REGENTE_CONTROL_PLANE_EXECUTION=deny
+PRODUCTION
+  systemctl start regente-server
+  wait_for 30 '[ "$(code "'"$BASE"'/health")" = 200 ]' || bad "production conversion did not start"
+  prod_token=$(curl -fsS -H 'Content-Type: application/json' -d '{"username":"admin","password":"production-smoke-fixture"}' "$BASE/api/auth/login" | jfield token)
+  [ -n "$prod_token" ] && ok "production login on installed service" || bad "production login failed"
+  legacy_status=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $login_token" "$BASE/api/users")
+  [ "$legacy_status" = 401 ] && ok "old session rejected" || bad "old session accepted"
+  REGENTE_BUNDLE=/root/bundle.tar.gz regente-update -f --no-backup > /tmp/update-production.log 2>&1 || bad "production upgrade failed"
+  wait_for 30 '[ "$(code "'"$BASE"'/health")" = 200 ]' || bad "production did not return after upgrade"
+  grep -q '^REGENTE_PROFILE=production' "$ENV_FILE" && ok "production configuration preserved by upgrade" || bad "production configuration lost"
+  prod_token=$(curl -fsS -H 'Content-Type: application/json' -d '{"username":"admin","password":"production-smoke-fixture"}' "$BASE/api/auth/login" | jfield token)
+  [ -n "$prod_token" ] && ok "production credentials survived upgrade" || bad "production credentials lost"
+  head1 "Production protocol 2: execute through a persistent journal"
+  prod_expiry="$(date -u -d '+1 day' +%Y-%m-%dT%H:%M:%SZ)"
+  prod_machine=$(curl -fsS -H "Authorization: Bearer $prod_token" -H 'Content-Type: application/json' \
+    -d "{\"agentId\":\"smoke-production\",\"environment\":\"prod\",\"capabilities\":[\"COMMAND\",\"EXECUTION_V2\"],\"expiresAt\":\"$prod_expiry\"}" "$BASE/api/agents/tokens" | jfield token)
+  case "$prod_machine" in rgta_*) ok "production scoped machine credential" ;; *) bad "production machine credential missing";exit 1 ;; esac
+  umask 077
+  printf '%s' "$prod_machine" > /var/lib/regente-agent/production-credential.txt
+  /usr/local/bin/regente-agent -server "$BASE" -id smoke-production -caps COMMAND -env prod -transport v2 \
+    -journal /var/lib/regente-agent/production-smoke.db -token-file /var/lib/regente-agent/production-credential.txt >/tmp/production-agent.log 2>&1 &
+  prod_agent_pid=$!
+  prod_definition_status=$(curl -sS --max-time 10 -o /tmp/production-definition-response.json -w '%{http_code}' \
+    -H "Authorization: Bearer $prod_token" -H 'Content-Type: application/json' \
+    -d '{"id":"production-journal","label":"Production journal smoke","team":"ops","jobType":"COMMAND","environment":"prod","agentId":"smoke-production","actionConfig":{"command":"echo production-journal-ok"},"schedule":{"enabled":false}}' "$BASE/api/definitions") \
+    || { bad "production definition request failed"; kill "$prod_agent_pid" 2>/dev/null || true; exit 1; }
+  if [ "$prod_definition_status" != 200 ]; then
+    bad "production definition failed (HTTP $prod_definition_status)"
+    cat /tmp/production-definition-response.json
+    kill "$prod_agent_pid" 2>/dev/null || true
+    exit 1
+  fi
+  prod_instance=$(curl -fsS -X POST -H "Authorization: Bearer $prod_token" "$BASE/api/definitions/production-journal/force" | jfield instanceId) \
+    || { bad "production Force Order failed"; kill "$prod_agent_pid" 2>/dev/null || true; exit 1; }
+  [ -n "$prod_instance" ] || { bad "production Force Order returned no instance"; kill "$prod_agent_pid" 2>/dev/null || true; exit 1; }
+  wait_for 45 'curl -fsS -H "Authorization: Bearer $prod_token" "$BASE/api/instances/$prod_instance" | grep -q '\''"status":"OK"'\''' || bad "production durable execution failed"
+  curl -fsS -H "Authorization: Bearer $prod_token" "$BASE/api/instances/$prod_instance/executions" | grep -q '"state":"succeeded"' \
+    && ok "production execution has durable succeeded receipt" || bad "production receipt missing"
+  curl -fsS -H "Authorization: Bearer $prod_token" "$BASE/api/instances/$prod_instance/output" | grep -q production-journal-ok \
+    && ok "production journal output survived receipt" || bad "production output missing"
+  legacy_machine_status=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $prod_machine" "$BASE/api/agent/poll?id=smoke-production&env=prod&caps=COMMAND,EXECUTION_V2")
+  [ "$legacy_machine_status" = 426 ] && ok "production v1 execution rejected" || bad "production accepted legacy machine transport"
+  kill "$prod_agent_pid" 2>/dev/null || true
   echo
   [ "$fails" = 0 ] && { echo "SMOKE stage2 OK"; exit 0; } || { echo "SMOKE stage2: $fails falha(s)"; exit 1; }
 fi
@@ -182,15 +239,17 @@ head1 "5) Agente instalado como serviço e job executando de verdade"
 # O bearer administrativo só emite a credencial; o serviço usa token de máquina.
 agent_expiry="$(date -u -d "+1 day" +%Y-%m-%dT%H:%M:%SZ)"
 agent_token="$(api -X POST -H 'Content-Type: application/json' \
-  -d "{\"label\":\"smoke-agent\",\"agentId\":\"smoke-agent\",\"environment\":\"\",\"capabilities\":[\"COMMAND\",\"SCRIPT\",\"HTTP\"],\"expiresAt\":\"$agent_expiry\"}" "$BASE/api/agents/tokens" | jfield token)"
+  -d "{\"label\":\"smoke-agent\",\"agentId\":\"smoke-agent\",\"environment\":\"\",\"capabilities\":[\"COMMAND\",\"SCRIPT\",\"HTTP\",\"EXECUTION_V2\"],\"expiresAt\":\"$agent_expiry\"}" "$BASE/api/agents/tokens" | jfield token)"
 case "$agent_token" in
   rgta_*) ok "credencial dedicada de agente emitida" ;;
   *) bad "não foi possível emitir credencial do agente"; exit 1 ;;
 esac
-SERVER="http://127.0.0.1:$PORT" TOKEN="$agent_token" ID=smoke-agent CAPS=COMMAND,SCRIPT,HTTP \
+SERVER="http://127.0.0.1:$PORT" TOKEN="$agent_token" ID=smoke-agent CAPS=COMMAND,SCRIPT,HTTP,EXECUTION_V2 \
   bash /root/agent-deploy/install-linux.sh > /tmp/agent.log 2>&1 || { echo "installer do agente falhou:"; cat /tmp/agent.log; fails=$((fails+1)); }
 grep -q 'ws://127.0.0.1:8080/ws/agent' /etc/systemd/system/regente-agent.service \
   && ok "URL da UI normalizada para o endpoint do agente" || bad "a URL do agente não foi normalizada"
+grep -q -- '-transport v2 -journal /var/lib/regente-agent/journal.db' /etc/systemd/system/regente-agent.service \
+  && ok "agente instalado com journal durável persistente" || bad "agente sem protocolo v2/journal persistente"
 # A checagem é na ExecStart, não no arquivo inteiro: a unit MENCIONA a palavra
 # "token" num comentário explicando justamente que ele não vai por ali.
 if grep -E '^ExecStart=.*-token' /etc/systemd/system/regente-agent.service >/dev/null; then

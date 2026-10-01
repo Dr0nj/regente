@@ -1,0 +1,113 @@
+{
+  "date": "2026-09-29",
+  "implementation": "238b2b2ac25cec35b02f6d7ead283f2781ab8c41",
+  "validatedSha": "efaf9a606bf8e29646e2f9d88cd6604731301c6e",
+  "ci": {
+    "url": "https://github.com/Dr0nj/regente/actions/runs/36637981599",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "name": "full verification (Linux)",
+        "conclusion": "success"
+      },
+      {
+        "name": "doc-recipes / PowerShell demo windows-latest",
+        "conclusion": "success"
+      },
+      {
+        "name": "doc-recipes / toolchain minimum Node 20.19.0",
+        "conclusion": "success"
+      },
+      {
+        "name": "doc-recipes / PowerShell demo ubuntu-latest",
+        "conclusion": "success"
+      },
+      {
+        "name": "doc-recipes / toolchain minimum Node 24.0.0",
+        "conclusion": "success"
+      },
+      {
+        "name": "doc-recipes / toolchain minimum Node 22.13.0",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "verification": {
+    "mode": "full",
+    "status": "passed",
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "required_gates": [
+      "runner",
+      "server",
+      "agent",
+      "web",
+      "docs",
+      "browser",
+      "integration",
+      "demo"
+    ],
+    "gates": [
+      {
+        "gate": "runner",
+        "status": "passed"
+      },
+      {
+        "gate": "server",
+        "status": "passed"
+      },
+      {
+        "gate": "agent",
+        "status": "passed"
+      },
+      {
+        "gate": "web",
+        "status": "passed"
+      },
+      {
+        "gate": "docs",
+        "status": "passed"
+      },
+      {
+        "gate": "browser",
+        "status": "passed"
+      },
+      {
+        "gate": "integration",
+        "status": "passed"
+      },
+      {
+        "gate": "demo",
+        "status": "passed"
+      }
+    ],
+    "omitted": [],
+    "ci_matrix_additions": [
+      "other Node minima",
+      "native Windows PowerShell demo"
+    ],
+    "release_install_smoke": "separate release workflow, not part of verification",
+    "sha": "efaf9a606bf8e29646e2f9d88cd6604731301c6e",
+    "dirty": false,
+    "integration_evidence": ".integration/312381dd38ed/evidence",
+    "seconds": 451.266
+  },
+  "integration": {
+    "status": "passed",
+    "sha": "efaf9a606bf8e29646e2f9d88cd6604731301c6e",
+    "seconds": 173.209,
+    "productionTests": [
+      "TestProductionIdentity",
+      "TestProductionIdentity/postgres",
+      "TestProductionIdentity/sqlite"
+    ],
+    "passedTestCount": 177
+  },
+  "local": {
+    "quick": "passed",
+    "bootConversionRestart": "passed",
+    "staticcheck": "passed",
+    "bashSyntax": "passed"
+  },
+  "releaseSmoke": "required by main release; not run by branch CI",
+  "scope": "Opt-in production profile; no live production deployment or new HA/capacity guarantee"
+}

@@ -34,9 +34,9 @@ marked **destructiveHint**:
 |---|---|---|
 | `hold_job` | holds a job in any status except RUNNING → HELD, freezing the original status (classic Hold) | `POST /api/instances/{id}/hold` |
 | `release_job` | releases a HELD job back to the **original** status frozen by the hold (Release) | `POST /api/instances/{id}/release` |
-| `cancel_job` | cancels a job for the day (→ CANCELLED) | `POST /api/instances/{id}/cancel` |
+| `cancel_job` | RUNNING → NOTOK without retry (best-effort kill); WAITING/HELD → CANCELLED; terminal → error | `POST /api/instances/{id}/cancel` |
 | `confirm_job` | confirms a job sitting at the WAIT_CONFIRM gate (classic Confirm) | `POST /api/instances/{id}/confirm` |
-| `rerun_job` | re-runs a job (→ WAITING) | `POST /api/instances/{id}/rerun` |
+| `rerun_job` | resets the order to WAITING; does not change the condition pool or reset descendants | `POST /api/instances/{id}/rerun` |
 | `set_ok` | marks NOTOK/CANCELLED as OK and unblocks the successors | `POST /api/instances/{id}/set-ok` |
 | `force_order` | orders and runs a **definition** right now, outside the schedule | `POST /api/definitions/{id}/force` |
 | `pause_folder` | pauses a whole workflow: every job of the folder for the day (any status except RUNNING, carry-over included) → HELD, state preserved | `POST /api/folders/{name}/pause` |
@@ -79,10 +79,37 @@ didn't the job closing-2026-06-24 run?"*, *"if I cancel PIX_SEND right now, what
 release it"*, *"mark the closing job as OK and unblock the successors"*, *"force etl-sales now"*,
 *"the file arrived: set the condition SALES_FILE_OK"*.
 
+## Lifecycle semantics
+
+| State before `cancel_job` | Result | Effects |
+|---|---|---|
+| RUNNING | NOTOK, exit code -1; no automatic retry | Best-effort signal to the assigned agent; failure alerts and On/Do `result=NOTOK` / `exit=-1` rules are evaluated. |
+| WAITING or HELD | CANCELLED | No kill, no failure-alert/On/Do evaluation on this path. |
+| OK, NOTOK or CANCELLED | Error (HTTP 409) | No new cancellation. |
+
+A successful cancel response is **not proof that the remote process stopped**:
+an offline agent may not receive the signal. Configured On/Do actions may have
+their own effects; the response describes the cancellation action, not a kill
+acknowledgement or a lock against concurrent completion. MCP preserves the API
+result; it does not translate every success into CANCELLED.
+
+`rerun_job` resets only that order to WAITING, clears its execution result and
+marks pending alerts handled. It does not remove published conditions, restore
+consumed inputs or reset children. A consumer whose OK/Set OK consumed an input
+waits if it is still absent; after failure it can proceed if the input remains
+and all gates pass. The order keeps its frozen definition snapshot. See
+[conditions C1–C7 and M1](conditions-events.md).
+
 ## Security posture
 
 - **Read-only by default.** Writes require `-allow-writes` on the server **and** human approval
   in the MCP client on every call (two locks).
 - **Deterministic.** The tools return what the scheduler already computed (gating, the
   dependency graph, frozen snapshots). The LLM narrates — it never decides scheduling.
-- The token is the same API Bearer token; give it only the role (RBAC) the use case needs.
+- Use a non-browser API login bearer with only the role (RBAC) the use case needs.
+  In local/hybrid mode, `POST /api/auth/login` with `{username,password}` (no
+  `browser:true`) returns it. The static `REGENTE_TOKEN` is admin-equivalent in
+  those modes; it does not bypass oidc mode. Browser cookies, OIDC provider tokens
+  and agent machine credentials are not MCP API bearers. Explicit emergency
+  access is a 15-minute recovery path, not a normal integration strategy. See
+  [authentication](authentication.md).

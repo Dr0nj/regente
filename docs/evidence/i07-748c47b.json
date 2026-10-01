@@ -1,0 +1,63 @@
+{
+  "date": "2026-09-30",
+  "implementation": "748c47bc02ee474716624dbc93358345e7e32d6f",
+  "ci": "https://github.com/Dr0nj/regente/actions/runs/36757784228",
+  "status": "passed",
+  "jobs": 6,
+  "verification": {
+    "mode": "full",
+    "seconds": 479.737,
+    "gates": [
+      {
+        "gate": "runner",
+        "status": "passed"
+      },
+      {
+        "gate": "server",
+        "status": "passed"
+      },
+      {
+        "gate": "agent",
+        "status": "passed"
+      },
+      {
+        "gate": "web",
+        "status": "passed"
+      },
+      {
+        "gate": "docs",
+        "status": "passed"
+      },
+      {
+        "gate": "browser",
+        "status": "passed"
+      },
+      {
+        "gate": "integration",
+        "status": "passed"
+      },
+      {
+        "gate": "demo",
+        "status": "passed"
+      }
+    ]
+  },
+  "integration": {
+    "seconds": 179.66,
+    "passedTests": 183,
+    "i07Tests": [
+      "TestI07DailyRecoveryIntegration",
+      "TestI07DailyRecoveryIntegration/postgres",
+      "TestI07DailyRecoveryIntegration/sqlite"
+    ]
+  },
+  "browser": {
+    "startTime": "2026-09-30T18:24:05.200Z",
+    "duration": 11430.678,
+    "expected": 6,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "scope": "Daily materialization recovery; does not qualify execution delivery, HA, DR or capacity."
+}

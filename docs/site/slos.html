@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>🎯 Control plane SLOs — regente-server · Regente Docs</title>
+<title>Control plane SLO objectives — regente-server · Regente Docs</title>
 <style>
 :root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
 *{box-sizing:border-box}
@@ -53,109 +53,107 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="operations.html">⚙️ Running in production — enterprise readiness</a>
 <a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
 <a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
-<a href="slos.html" class="active">🎯 Control plane SLOs — regente-server</a>
+<a href="slos.html" class="active">Control plane SLO objectives — regente-server</a>
 <a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
 <a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
 <a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
 <a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="adr-i09-agent-journal.html">Durable agent journal</a>
 <a href="agent-authentication.html">Agent authentication and upgrades</a>
 <a href="agent-identity.html">Agent identity and credential lifecycle</a>
 <a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="business-time.html">Business time</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html">Daily recovery</a>
+<a href="durable-execution.html">Durable execution and recovery</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="production-profile.html">Production profile</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
 <a href="web-events.html">Web event authorization</a>
 </nav>
 <main>
 <article>
-<h1 id="-control-plane-slos--regente-server">🎯 Control plane SLOs — regente-server</h1>
-<blockquote>
-<p>Service-level objectives for Regente's &quot;brain&quot;, each tied to a <strong>metric</strong> (<code>/metrics</code>), a
-<strong>probe</strong> (<code>/livez</code> · <code>/readyz</code>) and an <strong>automatic alert</strong> (R7, <code>-selfmon</code>). This is how the
-orchestrator watches itself.</p>
-</blockquote>
+<h1 id="control-plane-slo-objectives--regente-server">Control plane SLO objectives — regente-server</h1>
+<p>Reviewed 2026-09-28. These are <strong>engineering objectives and observation signals</strong>,
+not measured service guarantees or production acceptance. The operations owner
+must approve a workload, measurement window, outage budget and recovery drill.
+<a href="capacity-guarantees.html">Capacity evidence and limits</a> distinguishes historical
+reports from the current small <a href="integration-baseline.html">integration profile</a>.</p>
 <table>
 <thead>
 <tr>
-<th>#</th>
-<th>SLO</th>
-<th>Target</th>
-<th>Signal (metric/probe)</th>
-<th>Alert (R7)</th>
+<th>Dimension</th>
+<th>Proposed objective / interpretation</th>
+<th>Signal</th>
+<th>Qualification limit</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>1</td>
-<td><strong>API availability</strong></td>
-<td>≥ 99.9% of <code>GET /readyz</code> = 200</td>
-<td><code>/readyz</code> (gate = DB reachable)</td>
-<td><code>db-unreachable</code></td>
+<td>Readiness availability</td>
+<td>Historical objective: &gt;=99.9% successful probes over an agreed window</td>
+<td>GET /readyz, db-unreachable alert</td>
+<td>A successful probe is not whole-API or job availability; no measured monthly guarantee</td>
 </tr>
 <tr>
-<td>2</td>
-<td><strong>Failover time</strong> (leader dies → new leader)</td>
-<td>≤ 10 s</td>
-<td><code>regente_is_leader</code> (changes)</td>
-<td><code>leader-flapping</code> (if it changes too often)</td>
+<td>Leadership transfer</td>
+<td>Historical objective: &lt;=10s after leader loss</td>
+<td>regente_is_leader, leader-flapping</td>
+<td>Measure detection plus acquisition under the declared topology; not an execution recovery deadline</td>
 </tr>
 <tr>
-<td>3</td>
-<td><strong>Scheduling freshness</strong> (loop alive)</td>
-<td>tick &lt; 90 s</td>
-<td><code>regente_scheduler_last_tick_age_seconds</code></td>
-<td><code>tick-stalled</code></td>
+<td>Scheduling freshness</td>
+<td>Alert when tick age exceeds 90s</td>
+<td>regente_scheduler_last_tick_age_seconds, tick-stalled</td>
+<td>Loop freshness does not establish dispatch latency or successful external effects</td>
 </tr>
 <tr>
-<td>4</td>
-<td><strong>Execution capacity</strong> (agent fleet)</td>
-<td>no unplanned drops</td>
-<td><code>regente_agents_online</code></td>
-<td><code>agents-drop</code></td>
+<td>Agent fleet presence</td>
+<td>Investigate unexpected online-agent drops</td>
+<td>regente_agents_online, agents-drop</td>
+<td>Presence is not throughput, concurrency capacity or durable acceptance</td>
 </tr>
 <tr>
-<td>5</td>
-<td><strong>Process liveness</strong></td>
-<td>automatic restart if it hangs</td>
-<td><code>/livez</code> + <code>livenessProbe</code></td>
-<td>(R1 supervisor)</td>
+<td>Process liveness</td>
+<td>Supervisor restarts failed processes; configured probe may trigger restart</td>
+<td>/livez, systemd/Windows Service/orchestrator</td>
+<td>Restart=always restarts exited processes; it alone does not detect every live-but-hung process</td>
 </tr>
 <tr>
-<td>6</td>
-<td><strong>RPO/RTO (DR)</strong></td>
-<td>RPO ≤ backup interval · RTO ≤ minutes</td>
-<td>R6 backup (<code>-backup</code>/<code>pg_dump</code>)</td>
-<td>runbook <a href="dr-backup.html"><code>dr-backup.md</code></a></td>
+<td>Recovery</td>
+<td>Set RPO/RTO from the complete backup set and measured drill</td>
+<td>DB/WAL/backup age, restore logs, data comparison</td>
+<td>No universal minutes-to-recover target; drafts and external configuration matter</td>
 </tr>
 </tbody>
 </table>
-<h2 id="how-each-slo-is-observed-and-defended">How each SLO is observed and defended</h2>
+<h2 id="leadership-and-execution-are-different-measurements">Leadership and execution are different measurements</h2>
+<p>PostgreSQL leadership uses a session advisory lock. A successor can acquire it
+when PostgreSQL releases the old session's lock and the successor polls. Network
+failure detection and database availability affect this interval. The old ~1s
+and ~4s observations lack a recovered common run manifest; they are historical
+reports, not a bound. An atomic claim does not provide durable agent ACK, attempt
+fencing or exactly-once external effects. See the
+<a href="capacity-guarantees.html#dispatch-and-ha-boundaries">mechanism matrix</a>.</p>
+<h2 id="verification-scope">Verification scope</h2>
 <ul>
-<li><strong>1. Availability</strong> — <code>/readyz</code> only answers 200 when the DB is reachable (hard gate). The
-k8s <code>readinessProbe</code> takes the pod out of rotation on a violation; R7 raises
-<code>db-unreachable</code>.</li>
-<li><strong>2. Failover</strong> — only the leader runs the daily and the dispatch; when it dies the advisory
-lock is released and another node takes over. <strong>Measured at ~4 s</strong> in the real two-node
-validation. <code>regente_is_leader</code> lets you alert on <code>changes()</code> in Prometheus (flapping) on top
-of R7's native alert.</li>
-<li><strong>3. Freshness</strong> — every node stamps <code>lastTick</code> each cycle; the age is exposed both in the
-gauge and in <code>/readyz</code>. Past 90 s, R7 raises <code>tick-stalled</code> (jobs may not be getting
-promoted).</li>
-<li><strong>4. Capacity</strong> — a drop in <code>regente_agents_online</code> against the baseline raises <code>agents-drop</code>.</li>
-<li><strong>5. Liveness</strong> — <code>/livez</code> answers for as long as the process serves; the supervisor (systemd
-<code>Restart=always</code> / Windows Service / <code>livenessProbe</code>) restarts a hung process.</li>
-<li><strong>6. DR</strong> — online backup (<code>-backup</code> = <code>VACUUM INTO</code> on SQLite; <code>pg_dump</code>/PITR on Postgres);
-restore validated by the runbook drill (<code>/readyz</code> 200 + <code>/api/env</code> after the restore).</li>
+<li>Go unit/API tests exercise probes, self-monitoring, backup and concurrency.
+TestLoad_ReadyzConcurrent sends 2,000 readiness requests with 40 workers to an
+in-process HTTP server. The historical ~7.5k req/s report is not a job benchmark.</li>
+<li>The <a href="integration-baseline.html">integration baseline</a> exercises three synthetic
+orders on two agents and selected restart/restore cases with PostgreSQL/NATS.
+Its lab deadlines and preserved snapshots do not establish a production SLO.</li>
+<li>The legacy <a href="https://github.com/Dr0nj/regente/blob/main/server/deploy/chaos-ha.sh">chaos-ha.sh</a> laboratory checks
+leadership transfer in its specific setup. It is not a partition, durable
+result or external-effect qualification suite.</li>
+<li>A restore drill must compare the relevant data and unpublished content in an
+isolated recovery set; /readyz and /api/env alone cannot prove recovery completeness.
+Follow <a href="dr-backup.html">DR and backup</a>.</li>
 </ul>
-<h2 id="continuous-verification">Continuous verification</h2>
-<ul>
-<li><strong>Unit/integration</strong> — <code>go test ./...</code> (covers <code>/readyz</code>, the mTLS handshake, RBAC, selfmon
-evaluation, a backup round-trip, <strong>HTTP E2E</strong> and a <strong>load smoke test</strong> at ~7.5k req/s
-locally).</li>
-<li><strong>Chaos/HA</strong> — <code>server/deploy/chaos-ha.sh</code> automates it: two nodes on the same Postgres →
-exactly one leader → kill the leader → check the failover.</li>
-<li><strong>Real load</strong> — for production volume (10k+ jobs/day, p99), running <code>hey</code>/<code>k6</code> against a real
-deployment is still an open quality item.</li>
-</ul>
+<p>Sustained capacity, soak, failure recovery and business acceptance remain subject
+to the enterprise gates in the <a href="https://github.com/Dr0nj/regente/blob/main/docs/roadmap.md">roadmap</a>, including I16/I17.</p>
 </article>
 <footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
 </main>

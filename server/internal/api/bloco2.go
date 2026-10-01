@@ -83,6 +83,15 @@ func (s *server) deleteCalendar(w http.ResponseWriter, r *http.Request) {
 // === F15 — Resources ===
 
 func (s *server) listResources(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.Scheduler.DurableEngine() != nil {
+		out, err := s.cfg.Scheduler.DurableResourceSnapshot()
+		if err != nil {
+			executionError(w, err)
+			return
+		}
+		writeJSON(w, 200, out)
+		return
+	}
 	rt := s.cfg.Scheduler.Resources()
 	if rt == nil {
 		writeJSON(w, 200, []scheduler.ResourceState{})
@@ -105,7 +114,14 @@ func (s *server) setResourceCapacity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 400)
 		return
 	}
-	rt.SetCapacity(name, body.Capacity)
+	if s.cfg.Scheduler.DurableEngine() != nil {
+		if err := s.cfg.Scheduler.DurableResourceChange(name, body.Capacity, false); err != nil {
+			executionError(w, err)
+			return
+		}
+	} else {
+		rt.SetCapacity(name, body.Capacity)
+	}
 	writeJSON(w, 200, map[string]any{"name": name, "capacity": body.Capacity})
 }
 
@@ -117,6 +133,14 @@ func (s *server) deleteResource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := urlName(r, "name")
+	if s.cfg.Scheduler.DurableEngine() != nil {
+		if err := s.cfg.Scheduler.DurableResourceChange(name, 0, true); err != nil {
+			executionError(w, err)
+			return
+		}
+		w.WriteHeader(204)
+		return
+	}
 	if err := rt.Delete(name); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -213,6 +237,10 @@ func (s *server) listSLABreaches(w http.ResponseWriter, r *http.Request) {
 // === F21 — Forecast ===
 
 func (s *server) getForecast(w http.ResponseWriter, r *http.Request) {
+	if err := s.cfg.Scheduler.BusinessCalendar().Validate(); err != nil {
+		writeJSON(w, 409, map[string]string{"error": err.Error()})
+		return
+	}
 	date := r.URL.Query().Get("date")
 	if date == "" {
 		date = s.cfg.Scheduler.TodayDate() // DAY-1: a diária corrente (vira no daily_at)
@@ -225,7 +253,7 @@ func (s *server) getForecast(w http.ResponseWriter, r *http.Request) {
 			cals[list[i].Name] = &list[i]
 		}
 	}
-	report := scheduler.Forecast(defs, cals, date)
+	report := scheduler.Forecast(defs, cals, date, s.cfg.Scheduler.BusinessCalendar())
 	writeJSON(w, 200, report)
 }
 
@@ -233,9 +261,13 @@ func (s *server) getForecast(w http.ResponseWriter, r *http.Request) {
 // gating do RunDaily por dia (via IsScheduledOn). `from` default = hoje; `days`
 // default = 7, clamp [1,366]. Devolve um ForecastReport por dia.
 func (s *server) getForecastRange(w http.ResponseWriter, r *http.Request) {
+	if err := s.cfg.Scheduler.BusinessCalendar().Validate(); err != nil {
+		writeJSON(w, 409, map[string]string{"error": err.Error()})
+		return
+	}
 	from := r.URL.Query().Get("from")
 	if from == "" {
-		from = time.Now().Format("2006-01-02")
+		from = s.cfg.Scheduler.TodayDate()
 	}
 	days := 7
 	if v := r.URL.Query().Get("days"); v != "" {
@@ -251,7 +283,7 @@ func (s *server) getForecastRange(w http.ResponseWriter, r *http.Request) {
 			cals[list[i].Name] = &list[i]
 		}
 	}
-	writeJSON(w, 200, scheduler.ForecastRange(defs, cals, from, days))
+	writeJSON(w, 200, scheduler.ForecastRange(defs, cals, from, days, s.cfg.Scheduler.BusinessCalendar()))
 }
 
 // === F22 — Analytics ===

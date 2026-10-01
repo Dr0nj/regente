@@ -102,3 +102,7 @@ Verified baseline: [CI 34629928244](https://github.com/Dr0nj/regente/actions/run
 SHA `ba12019c7458b88a9348434df27b8f6cc8b2262d`, clean checkout. All four jobs passed,
 including both database variants of the identity matrix. Cross-process revocation
 took 1.017s; the full lab took 87.956s. [Recorded evidence](https://github.com/Dr0nj/regente/blob/main/docs/evidence/i02-ba12019.json).
+
+## Protocol 2 runtime
+
+Provision EXECUTION_V2 together with the exact job capabilities when installing the current durable agent. Polling uses the same immutable agent/environment/capability claims and active credential validation. Acceptance, start authorization, output, result and cancel receipts carry execution ID and fence. Version 1 cannot report output/results for durable orders. See [execution recovery](durable-execution.md) and [journal contract](adr-i09-agent-journal.md). Revocation prevents authenticated receipts; it does not roll back external work already initiated.

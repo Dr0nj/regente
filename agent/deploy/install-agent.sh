@@ -35,7 +35,7 @@ else URL="https://github.com/$REPO/releases/download/$VERSION/$ASSET"; fi
 
 # Config: env → prompt (só se houver terminal) → erro.
 SERVER="${SERVER:-}"; TOKEN="${TOKEN:-}"
-ID="${ID:-$(hostname)}"; CAPS="${CAPS:-COMMAND,SCRIPT,HTTP}"
+ID="${ID:-$(hostname)}"; CAPS="${CAPS:-COMMAND,SCRIPT,HTTP,EXECUTION_V2}"
 RUN_USER="${RUN_USER:-${SUDO_USER:-root}}"
 if [ -z "$SERVER" ] || [ -z "$TOKEN" ]; then
   if [ -t 0 ]; then
@@ -82,6 +82,7 @@ if [ "$GOOS" = linux ]; then
   umask 077
   printf 'REGENTE_TOKEN=%s\n' "$TOKEN" > "$ENVFILE"
   chmod 0600 "$ENVFILE"
+  install -d -m 0700 -o "$RUN_USER" /var/lib/regente-agent
   UNIT=/etc/systemd/system/regente-agent.service
   cat > "$UNIT" <<EOF
 [Unit]
@@ -92,7 +93,7 @@ StartLimitIntervalSec=0
 
 [Service]
 EnvironmentFile=$ENVFILE
-ExecStart=$BIN -server $SERVER -id $ID -caps $CAPS
+ExecStart=$BIN -server $SERVER -id $ID -caps $CAPS -transport v2 -journal /var/lib/regente-agent/journal.db
 Restart=always
 RestartSec=5
 User=$RUN_USER
@@ -102,7 +103,8 @@ NoNewPrivileges=true
 WantedBy=multi-user.target
 EOF
   systemctl daemon-reload
-  systemctl enable --now regente-agent
+  systemctl enable regente-agent
+  systemctl restart regente-agent
   echo ""
   echo "OK — regente-agent is up (systemd, Restart=always, starts at boot as '$RUN_USER')."
   # Prova que conectou de verdade, em vez de "instalou" e um loop de reconnect silencioso.
@@ -116,6 +118,7 @@ EOF
   echo "Logs:  journalctl -u regente-agent -f"
   echo "Stop:  sudo systemctl stop regente-agent"
 else
+  install -d -m 0700 /Library/Application\ Support/RegenteAgent
   PLIST=/Library/LaunchDaemons/com.regente.agent.plist
   cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -129,6 +132,8 @@ else
     <string>-server</string><string>$SERVER</string>
     <string>-id</string><string>$ID</string>
     <string>-caps</string><string>$CAPS</string>
+    <string>-transport</string><string>v2</string>
+    <string>-journal</string><string>/Library/Application Support/RegenteAgent/journal.db</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict><key>REGENTE_TOKEN</key><string>$TOKEN</string></dict>

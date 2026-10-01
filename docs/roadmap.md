@@ -17,9 +17,10 @@
 > no §Entregue e some uma linha no §Changelog. Ao **abrir** um item novo: só adicione no §Backlog.
 > Sem barras de progresso nem porcentagens — de propósito (confundem mais do que ajudam).
 >
-> Documento vivo · revisão **2026-07-30** — o projeto entrou em **modo manutenção**
-> ([§🧰 Modo manutenção](#-modo-manutenção-decidido-em-2026-07-30)); a §Backlog continua
-> valendo como registro do que está aberto, mas nada dela é compromisso de build.
+> Documento vivo · revisão **2026-10-01** — o marco de manutenção de **2026-07-30**
+> descreve as trilhas originais. O ciclo enterprise iniciado em setembro está ativo:
+> I04/I05/I06/I07/I08/I09/I10, E04 e DOC-01–DOC-14 entregues; I11–I17 seguem na §Backlog. Manutenção histórica
+> não cancela incrementos explicitamente solicitados nem significa homologação produtiva.
 > Estratégia de arquitetura em [`architecture-future.md`](architecture-future.md);
 > apresentação de produto no [`../README.md`](../README.md).
 
@@ -38,7 +39,7 @@
 - **Resiliência operacional (R1–R7)** — supervisão, panic-recovery, health real, DR/backup, auto-SLO.
 - **Serverless portátil** — gatilho externo, transporte plugável (long-poll · SSE · NATS), WASM, adapters de nuvem, lock-por-tick, gatilho de daily dedicado.
 - **Enterprise readiness** — Postgres/HA, segurança (RBAC/SSO/mTLS/SIEM), operação, qualidade, backlog E1–E6.
-- **Escala enterprise (100k–1M/dia)** — write-path (1M/17s), read-path paginado, UI ViewPoint validada @1M.
+- **Materialização, consulta e UI em escala (histórico)** — relatos P1/P2/P3 de junho/julho de 2026 sobre até 1M registros; não homologam 1M execuções/dia. [Proveniência e limites](capacity-guarantees.md).
 - **Aprofundamento enterprise** — lifecycle da daily, On-Do, cyclic, CONFIRM, DATABASE, `%%` vars, CTM-1/2/3.
 - **Condições AND/OR (CL-1…CL-6)** — lógica booleana DNF na entrada (grupos E/OU + operador de topo), token `$TIME` (fallback "condição OU horário"), editor no drawer, linhas OR no canvas, imutabilidade M1 (`cond_logic` schemaV21). Tema Condições 100%.
 - **Diferenciais além do modelo clássico** — Explain/Diff/Blast/Dry Run/Neighborhood/RCA/Event log/NL-query + D-1…D-15.
@@ -52,9 +53,9 @@
 
 - **Fase Z — divulgação** — artefatos entregues 2026-07-13/28 (`docs/case-study.md` + os 4 posts) e **publicação FEITA em 2026-07-29** (artigo + post do perfil pessoal). Trilha fechada.
 
-**Itens ainda ABERTOS** (detalhe em [§🔜 Backlog](#-backlog-o-que-falta)) — desde **2026-07-30 o
-projeto está em [🧰 modo manutenção](#-modo-manutenção-decidido-em-2026-07-30)**, então nada aqui
-é compromisso de build:
+**Itens ainda ABERTOS** (detalhe em [§🔜 Backlog](#-backlog-o-que-falta)).
+A política de manutenção de 30/07 refere-se às trilhas antigas abaixo; a fila
+enterprise de setembro e a remediação documental têm escopo e aceite próprios:
 
 - **Fase V / V6** — **V1–V5 entregues** (install single-origin 3-formas · bundle+one-liner · config guiada · hospedagem enterprise nginx+TLS · agente sandbox). O deploy "1 caixa" 24/7 está pronto ponta a ponta; **V6** (docker-compose) era opcional desde 2026-07-11 e agora está **congelado**.
 - **V-LIVE-TEST / LT-3..LT-11** — campanha de teste da instância 24/7, **amarrada à vida do VPS** (é custo de mantê-lo no ar, não trabalho de produto).
@@ -63,10 +64,11 @@ projeto está em [🧰 modo manutenção](#-modo-manutenção-decidido-em-2026-0
 > ✅ **Validação em infra real — trilha FECHADA (2026-07-11):** os dois resíduos (secrets via provider · SSH
 > agente como serviço) foram validados AO VIVO. Detalhe em [§🧪 Validação em infra real](#-validação-em-infra-real).
 
-> 🏁 **Marco (2026-06-24):** **todas as trilhas estruturais em 100%**, incluindo **Escala enterprise (100k–1M/dia)
-> end-to-end**: write-path materializa **1M em 17s** (P1), read-path serve **summary 51ms / page 18ms @100k**
-> (P2), e a **UI por ViewPoint server-driven foi validada AO VIVO com 1.000.000 de jobs** (P3) — dashboard
-> instantâneo, folder aberta em ~39ms, lista virtualizada, sem nunca baixar o dia inteiro.
+> 🏁 **Marco histórico (2026-06-24):** fechamento das trilhas estruturais originais.
+> P1 reportou materialização de 1M em ~17s; P2 summary/page em 51ms/18ms **a 100k**;
+> P3 reportou UI sobre 1M registros semeados. Logs originais e manifesto completo
+> não foram recuperados nesta revisão. Não é homologação de execuções/dia nem
+> capacidade no VPS instalado posteriormente. [Inventário](capacity-guarantees.md).
 
 Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · 🔴 prioridade
 
@@ -81,43 +83,18 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > detalhado em §✅ Entregue (+ linha no changelog). As caixinhas espalhadas nas seções de
 > baixo **não valem** como status (ver ⛔ REGRA DE STATUS no topo).
 
-### Correções da auditoria documental — ciclo planejado em 2026-09-21
-
-Plano de execução: [reconciliação documental e receitas operacionais](plans/documentation-remediation-2026-09-21.md).
-Baseline auditada: `5318e78` / v0.2.33. Etapas A e B entregues
-com evidência no §Entregue; **6 achados permanecem abertos**. Esta subseção é o
-registro único do status de DOC-01–DOC-14; o plano detalha dependências e aceite.
-A decisão histórica de manutenção abaixo não elimina esta fila explicitamente
-solicitada. Não há mudança automática de status de I05–I17.
-
-| ID / achado | Prioridade | Etapa | Correção pendente |
-|---|---|---|---|
-| DOC-07 / D07 | P2 | C | OpenAPI/README coerentes com browser, API, máquina e modos de autenticação |
-| DOC-08 / D08 | P2 | C | Cancelamento por estado, efeitos e erros documentados no OpenAPI/MCP |
-| DOC-09 / D09 | P2 | C | Rerun descrito pelo pool de condições, sem revogação automática dos filhos |
-| DOC-10 / D10 | P2 | D | Capacidade/HA delimitadas por perfil medido, sem garantia ponta a ponta não comprovada |
-| DOC-13 / D13 | P3 | D | Status de I04, ciclo empresarial e marcos históricos reconciliados |
-| DOC-11 / D11 | P2 | E | Verify quick/full, gates explícitos e proteção contra regressão documental |
-
-Ordem restante recomendada: **C → D → E**. Cada etapa inclui testes pertinentes
-e regeneração do site; E consolida os gates, não adia a validação das anteriores.
-Aceite global: 14 achados com evidência de fechamento, receitas exercitadas em
-ambiente isolado/limpo, site sincronizado, CI verde e nenhuma pendência I05–I17
-promovida a entregue apenas por ajuste de texto. Ao fechar um DOC, remover sua
-linha daqui e registrar evidência em Entregue/Changelog, conforme a regra do topo.
-
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
-- **I05–I17:** perfil produtivo, execução durável, HA,
-  auditoria, capacidade, recuperação e piloto seguem na sequência enterprise.
+- **I11–I17:** HA, auditoria, capacidade, recuperação e piloto seguem na sequência enterprise.
 
 Escopo ativo deste ciclo: separar credenciais humanas de execução e preparar as
 próximas garantias. Não representa homologação empresarial completa.
 
 ### 🧰 Modo manutenção *(decidido em 2026-07-30)*
 
-> ⛔ **Nada na §Backlog é compromisso de build.** A lista continua sendo o registro honesto
-> do que está aberto — ela só deixou de ser uma fila de trabalho.
+> **Decisão histórica de 2026-07-30**, preservada abaixo no contexto da época.
+> O ciclo enterprise de setembro e os incrementos DOC solicitados posteriormente
+> são fila ativa com aceite próprio. O texto histórico não altera o status atual.
 
 **A decisão.** Todas as trilhas estruturais estão entregues e a Fase Z (publicação) fechou em
 2026-07-29. O que sobrou aberto — V6, LT-3..LT-11, AI-1 — não muda o que o projeto **prova**
@@ -407,6 +384,145 @@ domínio**, não o binário.
 
 # ✅ Entregue *(tracking por tópico)*
 
+## Compatibilidade do grupo npm e lint (2026-10-01)
+
+Atualizações do grupo app-npm incorporadas com TypeScript~6.0.3 dentro do peer >=4.8.4 <6.1.0 de typescript-eslint. Lockfile regenerado de instalação limpa, mantendo bindings Linux/macOS/Windows e o range Node20.19/22.13/24. ESLint atualizado expôs duas inicializações descartadas: removidas sem mudar valores finais ou caminhos da UI. npm ci --engine-strict, lint e build passaram localmente; CI completo e matriz verificam browser e demos. TypeScript7 permanece fora até suporte do lint.
+
+
+## I09/I10 — Journal, runtime e efeitos duráveis; E04 fechado (2026-09-30)
+
+- Implementação `c0193ef`, head validado `4358047`: schema28 liga a ordem real à tentativa com fencing, dispatch outbox e journal v2. [Journal](adr-i09-agent-journal.md) · [Operação e atualização](durable-execution.md).
+- Agente persiste aceite, marcador de início, chunks e resultado antes de ACK/efeito. Reenvia com identidade estável, deduplica dispatch e conserva tombstones. WAL/FULL, lock do sistema operacional, versionamento, corrupção/disco fail-closed, limites de fila/concorrência e compactação apenas confirmada.
+- Resultado, histórico, variáveis locais, condições e intenções On/Do no mesmo commit; pós-ações externas com identidade, geração e estado recuperáveis. Receipt perdido ou lease vencida conserva UNCERTAIN e nunca autoriza repetir o efeito automaticamente. Retry/rerun preservam gerações monotônicas; quotas persistentes, carry e relatório respeitam incerteza.
+- API/SDK/CLI e aba Execution mostram identidade, agente, aceite, contato, sysout e razão. Resolução exige fence/generation atuais, evidência de parada, motivo e idempotency key; decisão/ator auditados, RBAC por folder e CAS concorrente. Cancel confirmado conserva sysout e exitCode=-1, sem retry automático nem rollback remoto.
+- SERVER-AGENT HTTP/REST e OpenSSH usam o mesmo journal/receipt sob node ID estável. Production exige protocolo2; development legado continua explícito. Instaladores selecionam v2/journal persistente, protegem credenciais e reiniciam serviço no upgrade; banco durável não volta ao modo legado.
+- CI `36794665074`: seis jobs SUCCESS, oito gates full PASS em493,985s;225 testes de integração em214,059s; I09/I10 SQLite/PostgreSQL, nove cenários runtime PG, API/CLI/RBAC e OpenSSH real. Sete browser sem skip/flaky. Processo real SIGKILL do servidor nos dois bancos: resultado permaneceu no journal, mesma identidade/uma tentativa, efeito contado uma vez e condição recuperada. [Evidência](evidence/i09-i10-4358047.json).
+- **E04 fechado no contrato integrado I08–I10.** Entrega com repetição controlada/deduplicação não equivale a exactly-once externo. HA distribuído, DR/capacidade empresarial e piloto permanecem I11–I17; storage compartilhado/efêmero e efeito remoto após cancel requerem as verificações documentadas.
+
+## I08 — Tentativas duráveis no laboratório do servidor (2026-09-30)
+
+- Core `460a7ec`, head validado `7a6f522`: schema27 com ordens isoladas, execução, fencing/lease, outbox, output e eventos. [ADR/contrato](adr-i08-attempts.md).
+- Tentativa, geração atual, evento e intenção de dispatch no mesmo commit. Claim/reenvio com identidade estável, ACK durável, limite global de tentativas não terminais, cancel reservado e métricas.
+- Resultado/output validam agente autenticado + executionId + fence; CAS e checksum reconhecem duplicatas sem alterar tentativa atual. Sequência e limite de output persistem no restart.
+- Cancel antes de delivery é definitivo; após possível entrega fica pendente/incerto. Lease vencida/retry esgotado não autoriza nova execução; retry/rerun somente após terminal comprovado.
+- API administrativa isolada e HTTP machine v2 com handshake/capability EXECUTION_V2; flag opt-in development, production rejeita. Runtime/agente v1 e condições/On-Do legados preservados.
+- CI `36768683576`: seis jobs SUCCESS; oito gates full PASS em 469,012s; integração com 186 testes em 181,685s, I08 SQLite/PostgreSQL; seis cenários browser sem skip/flaky. Processo real termina sem Close após intent/claim e recupera identidade/outbox/lease. [Evidência](evidence/i08-7a6f522.json).
+- **Fronteira histórica do I08:** laboratório apenas. Journal, runtime e efeitos foram integrados em I09/I10, fechando E04 (ver entrega acima). Sem homologação de HA/DR/capacidade.
+
+## I07 — Daily com checkpoint e fonte imutável (2026-09-30)
+
+- Implementação `748c47b`: schema26 com ciclo, SHA alvo, plano/checksum, contagens e checkpoint duráveis. [Contrato](daily-recovery.md).
+- Chunks de até 5.000 com ordem/evento/ledger/checkpoint no mesmo commit; carry atômico; reconciliação antes de completed; resume idempotente após falha/restart, sem usar publicação posterior.
+- Fonte Git lida do commit imutável; ledger permite Force Order e Delete sem duplicação por recovery. Daily incompleta bloqueia execução inclusive Run Now. Corrupção/checksum/ausência de snapshot verificado bloqueiam runtime/Explain/On-Do/saídas de condições sem fallback vivo. Legado não recebe plano inventado.
+- API/UI exibem estado e retomada; auto recovery antes da próxima daily. Report/retention respeitam conclusão. Upgrade SQLite/PostgreSQL documentado.
+- CI `36757784228`: seis jobs SUCCESS, oito gates full PASS em 479,737s; integração SQLite/PostgreSQL 183 testes em 179,660s, I07 nos dois backends; seis cenários browser sem skip/flaky. [Evidência](evidence/i07-748c47b.json).
+- Plano inteiro em JSON/memória: chunks não homologam capacidade. I08–I17 seguem abertos.
+
+## I06 — Relógio e data de negócio (2026-09-30)
+
+- Implementação `ff34705`: relógio injetável, zona IANA e rollover diário; padrão UTC/00:00 sem dependência do fuso do host. [Contrato](business-time.md).
+- Ordens congelam zona e rollover. Daily/Force Order, janelas noturnas, DST, cyclic/retry, carry, forecast/What-If, SLA, defaults da API e Monitoring compartilham o contrato e preservam ODAT.
+- Ordens legadas sem contexto temporal e com janela ficam bloqueadas até reordenação; instantes já persistidos permanecem válidos. A documentação descreve a atualização.
+- CI `36712249168`: seis jobs aprovados; full com oito gates em 387,619s; integração SQLite/Postgres com 180 testes em 153,717s; cinco cenários de browser sem skips ou flakiness. [Evidência](evidence/i06-ff34705.json).
+- I07–I17 permanecem abertos: esta entrega não homologa durabilidade, HA ou capacidade empresarial.
+
+## I05 — Perfil produtivo explícito (2026-09-29)
+
+Implementação `238b2b2`, ajuste de teste `efaf9a6`: [perfil e conversão](production-profile.md).
+[CI da implementação](https://github.com/Dr0nj/regente/actions/runs/36637981599)
+e [evidência](evidence/i05-efaf9a6.json). Seis jobs SUCCESS; full com oito gates PASS
+e identidade produtiva verificada em SQLite/Postgres.
+
+- Validação antes de serviços: ambiente/rede explícitos, token administrativo
+  legado e demo recusados; local/hybrid/oidc preservam a escolha de SSO.
+- Bootstrap sem admin/admin, política de senha e diagnóstico sem ecoar segredos.
+  Conversão exige drenar RUNNING, revoga sessões e vincula banco ao ambiente;
+  reinício sem profile/environment coerentes é recusado.
+- Execução no control plane desabilitada por padrão; http e http-ssh são opt-ins.
+  Scheduler, Run Now, Force e retry respeitam ambiente/política; Explain mostra
+  CONFIGURATION_BLOCKED, preservando snapshots. SERVER-AGENT tem escopo estrito.
+- Credenciais de máquina vazias/de outro ambiente recusadas em WS/poll/SSE;
+  criação/rotação e settings reservados protegidos. Matriz SQLite/Postgres.
+- Instalação limpa, conversão e restart ensaiados com binário real; smoke da
+  release ampliado para conversão/upgrade do serviço systemd instalado.
+- Guia, exemplo de configuração, guard do configurador e site a 23 páginas.
+  Não equivale a deploy produtivo nem fecha I13, HA ou capacidade.
+
+## DOC-E — Verificação explícita e fechamento da auditoria (2026-09-28)
+
+**DOC-11 entregue; 14/14 achados D01–D14 resolvidos.** Implementação
+`d1b92dc`, [CI 36472050622](https://github.com/Dr0nj/regente/actions/runs/36472050622)
+SUCCESS nos seis jobs. [Evidência e revisão por achado](evidence/doc-e-d1b92dc.json).
+[Plano executado e critérios](plans/documentation-remediation-2026-09-21.md).
+
+- Quick/default lista cobertura omitida; full Linux/amd64 exige oito gates e
+  falha com pré-requisito ausente, comando não-zero ou evidência incompleta.
+  CI usa o mesmo runner, com matriz Node/Windows adicional explícita.
+- Build/vet/test, staticcheck, lint/build, schema/engines/contratos, docsite,
+  browser, integração PostgreSQL/NATS/OIDC/recuperação e demos exercitados.
+- Docsite -check valida fontes/âncoras e compara todo o site gerado em diretório
+  isolado, sem reparar o checkout. Negativos de schema, links, HTML e gates
+  alteram somente fixtures. Estado operacional/artefatos não entram como fontes.
+- Full: oito gates PASS, checkout limpo, 412.862s; quatro cenários browser
+  sem skip/flaky; integração real em 158.382s. Draft completo preservado e
+  controle DB-only negativo em SQLite/PostgreSQL. Site a 22 páginas.
+- Revisão cruzada A–E confirma recuperação, identidade, receitas, auth,
+  cancelamento, rerun, garantias e status coerentes com evidência/código.
+  Não houve nova garantia de durabilidade/HA/capacidade. I05–I17 continuam abertos.
+- Scripts/CI mudaram: promoção à main usa release normal, com integração e
+  smoke systemd próprios. Sem implantação em instalação produtiva.
+
+## DOC-D — Garantias públicas, evidência e status (2026-09-28)
+
+**DOC-10/DOC-13 entregues.** Implementação `37ca611`,
+[CI 36428970774](https://github.com/Dr0nj/regente/actions/runs/36428970774)
+SUCCESS nos nove jobs. [Evidência versionada](evidence/doc-d-37ca611.json).
+
+- DOC-10: [inventário de capacidade/HA](capacity-guarantees.md) separa criação de
+  instâncias, consulta/UI e execução. Relatos de junho/julho mantidos com fonte,
+  perfil conhecido e metadados ausentes explícitos; nenhuma nova medição inventada.
+  Claim, ACK durável, fencing, liderança e recuperação têm limites distintos.
+  README, case studies EN/PT, arquitetura, operações, SLOs e rascunhos locais
+  reconciliados; nenhum post externo editado.
+- DOC-13: manutenção/feature-complete limitados às trilhas históricas de julho;
+  I04 entregue em setembro, I05–I17 ainda abertos. README aponta ao status único.
+- Validação local: docsite/scheduler/API/leader PASS; 35 Markdown e 21 páginas,
+  links locais/âncoras sem erro, geração isolada sem diferenças e diff check limpo.
+  CI inclui servidor/agente, lint/build/browser, integração real PostgreSQL/NATS/OIDC,
+  Node mínimos e PowerShell Linux/Windows.
+- Escopo exclusivamente documental: sem mudança de runtime, deploy produtivo ou
+  homologação de carga/partição. `[no release]` dispensa binário novo. Treze dos
+  14 achados resolvidos; DOC-11/E e I05–I17 permanecem abertos.
+
+## DOC-C — Autenticação e contratos de ciclo de vida (2026-09-27)
+
+**DOC-07/DOC-08/DOC-09 entregues.** Implementação `94c120d`,
+[CI 36359957411](https://github.com/Dr0nj/regente/actions/runs/36359957411)
+com **nove jobs aprovados**, incluindo browser local/hybrid/oidc e integração
+PostgreSQL/NATS/OIDC. [Evidência sanitizada](evidence/doc-c-94c120d.json).
+
+- DOC-07: OpenAPI/READMEs/auth/MCP distinguem cookie HttpOnly+CSRF, bearer API
+  não-browser e credencial de máquina, rotas públicas, modos e event-ticket.
+  O token estático não contorna oidc. A security da spec permanece explicitamente
+  curada para integração bearer, sem transformar a SPA inteira em API estável.
+- DOC-08: RUNNING → NOTOK/-1 sem retry, sinal best-effort e alertas/On-Do;
+  WAITING/HELD → CANCELLED; terminal → 409. API/MCP/README não prometem ACK de kill.
+  Testes reais de API, encaminhamento MCP e efeitos do scheduler cobrem a matriz.
+  Lookup de ID inexistente segue retornando 500 no gate ACL: limite documentado,
+  não normalização de erros ou mudança de semântica neste incremento.
+- DOC-09: C3/C4 e exemplos explicam consumo condicionado a out-remove, pool
+  remanescente e ação de outros atores. Rerun não revoga pool nem reseta filhos;
+  snapshot M1 preservado. Case study EN/PT, OpenAPI e MCP reconciliados.
+  Cinco cenários de HTTP+pool+Explain complementam as regressões de condições.
+- Validação independente OpenAPI corrigiu também flow-map com vírgula sem aspas
+  no campo q; guard focado impede regressão. Scheduler/API antes/depois,
+  MCP/docsite e go vet PASS. Site com 20 páginas regenerado, sem links quebrados ou
+  divergência de geração; CI completo verde.
+
+Sem mudança de runtime, de protocolo de cancelamento, de autenticação ou do
+pool. Sem deploy produtivo. Onze achados resolvidos; restam DOC-10/13 (D) e
+DOC-11 (E). Capacidades I05–I17 permanecem separadas.
+
 ## DOC-B — Bootstrap, identidade e demo reproduzíveis (2026-09-22)
 
 **DOC-03/DOC-04/DOC-05/DOC-12/DOC-14 entregues.** Implementação `c658b49`,
@@ -530,7 +646,7 @@ restore v22→24 preservou as quatro entidades (credencial como registro aposent
 restore atual preservou 3 ordens. Sem claim de capacidade ou SLA empresarial.
 
 Limite: atribuição da instância atual; fencing por executionId, efeitos tardios
-entre tentativas e entrega durável permanecem I08–I10. Revogar acesso não desfaz
+entre tentativas e entrega durável foram integrados em I08–I10 (ver entregas acima). Revogar acesso não desfaz
 efeitos de comandos já iniciados. Guia: [agent-identity.md](agent-identity.md).
 [Relatório por SHA](evidence/i02-ba12019.json).
 
@@ -972,7 +1088,9 @@ NÃO traduzidos DE PROPÓSITO:
 > idempotente, claim atômico, leader election, watchdog de stuck, retry persistido,
 > snapshot imutável) — matar o processo **não perde nada**. O gap é **liveness do
 > processo**: o servidor é tratado como se nunca fosse morrer. Um orquestrador crítico
-> tem que assumir morte e **voltar sozinho, sem perda**. Esta trilha fecha essa metade.
+> tem que assumir morte e recuperar estado. Esta trilha histórica implementou mecanismos
+> de supervisão/recuperação; não prova zero perda/duplicação de efeitos. Ver
+> [limites atuais e evidência](capacity-guarantees.md).
 
 ```
 ✅ Estado durável (SQLite/Postgres) · daily idempotente · claim atômico
@@ -1013,22 +1131,25 @@ NÃO traduzidos DE PROPÓSITO:
         capability já provado real no k8s
 ✅ ARCH-3 · lock-por-tick      → guarda de ticks SOBREPOSTOS no serverless: camada em-processo (atomic, sempre) +
         advisory lock cross-processo no Postgres (opt-in via -scheduler=external, chave distinta da liderança).
-        Higiene, não correção (o claim atômico já garante). Ver docs/architecture-future.md §4.
+        Serializa ticks; claim protege a transição no banco, sem ACK/fencing/recuperação durável. Ver ADR §4.
 ✅ ARCH-5 · gatilho de daily dedicado → POST /api/scheduler/daily (leader-gated, idempotente): um cron DIÁRIO
         separado do tick de dispatch materializa a diária, em vez de cada tick checar. Ver §4 do ADR.
 
-🚫 DECIDIDO NÃO FAZER (menção, sem pendência — não são gaps, são alternativas a algo que já funciona):
-   • Durable execution (Temporal/Restate) — contradiz a decisão-mãe (single-binary, zero-infra, anti-lock-in);
-     a corretude que ela dá (retomar fluxo pós-crash) o Regente já entrega por idempotência + claim atômico.
-   • Postgres-como-fila (River / SKIP LOCKED) — reescreveria o dispatch (hot path validado a 1M) por uma
-     alternativa ao claim atômico, que é primo do SKIP LOCKED e já cobre o caso. Sem ganho que pague a troca.
+🚫 ADOÇÃO DE BIBLIOTECAS RECUSADA HISTORICAMENTE (não equivale a fechar requisitos):
+   • Temporal/Restate — decisão de manter o core próprio; claim não fornece retomada segura pós-crash.
+   • River/SKIP LOCKED — adoção não escolhida; o relato de 1M mede materialização, não dispatch.
+   ACK, fencing, recuperação e qualificação HA seguem na fila enterprise de setembro.
 ```
 
 ## 🏢 Enterprise readiness
 
+> Inventário das implementações históricas de junho/julho. Não representa
+> homologação produtiva completa; I06–I17 permanecem na §Backlog. Materialização,
+> consulta e UI têm [limites e proveniência próprios](capacity-guarantees.md).
+
 ```
 ✅ Escala     → Postgres plugável + migrations ✔ · stateless (estado durável externo; só o líder agenda) ·
-                 **write-path 1M/dia** (P1: lote, 1M em 17s) ✓ · **read-path paginado/filtrado** (P2: /page +
+                 **materialização de 1M registros** (relato P1: lote, ~17s) ✓ · **read-path paginado/filtrado** (P2: /page +
                  /summary + `team` na instance, RBAC por conjunto — 51ms/18ms @100k) ✓ · **UI por ViewPoint
                  server-driven** (P3: ScaleMonitor, VALIDADO AO VIVO @1M) ✓ — ver §Escala enterprise
 ✅ HA         → leader election (advisory lock) ✔failover · hub distribuído (R5) ✔ · backup/DR (R6) ✔ ·
@@ -1046,6 +1167,11 @@ NÃO traduzidos DE PROPÓSITO:
 ```
 
 ## 📈 Escala enterprise (100k–1M jobs/dia)
+
+> **Registro histórico P1/P2/P3 e UI-1, junho/julho de 2026.** O título original
+> foi preservado para continuidade. Os números abaixo medem materialização,
+> consulta e UI; não homologam execuções/dia. Ver [proveniência, ambiente conhecido
+> e artefatos ausentes](capacity-guarantees.md). Não foram reproduzidos nesta revisão.
 
 > O orquestrador enterprise clássico roda rotineiramente 100k–1M+ jobs/dia; se a UI/engine engasga em 10k, nenhum
 > cliente grande adota. O estado durável (linhas) escala trivialmente — o que precisa escalar é
@@ -1762,6 +1888,44 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-10-01:** Correção do PR23: grupo npm compatível com TypeScript6, lockfile limpo e lint sem bypass.
+
+
+- **2026-09-30 — I09/I10 e E04:** journal v2 e runtime real schema28, conclusão/condições atômicas, pós-ações recuperáveis, UNCERTAIN/resolução auditada, executores internos e instaladores persistentes. CI full SQLite/PostgreSQL, servidor SIGKILL e sete browser aprovados. [Contrato](durable-execution.md) · [Evidência](evidence/i09-i10-4358047.json). I11–I17 permanecem abertos.
+
+- **2026-09-30 — I08:** contrato durável de tentativa e dispatch outbox atômica, fencing/CAS/result/output deduplicados, cancel/uncertainty/backpressure e API v2 isolada. CI full SQLite/PostgreSQL aprovado. [Contrato](adr-i08-attempts.md) · [Evidência](evidence/i08-7a6f522.json). Apenas laboratório development; I09–I17 e E04 seguem abertos.
+
+- **2026-09-30 — I07:** daily com plano imutável, checkpoint e ledger; recuperação após falha/restart, corrupção bloqueada, status/resume API/UI, schema26. CI full SQLite/PostgreSQL e seis cenários browser aprovados. [Contrato](daily-recovery.md) · [Evidência](evidence/i07-748c47b.json). I08–I17 seguem abertos.
+
+- **2026-09-30 — I06:** relógio/data de negócio unificados com zona/rollover congelados por ordem; API, scheduler, projeções e UI validados em SQLite/Postgres e browser. [Contrato](business-time.md) · [Evidência](evidence/i06-ff34705.json). I07–I17 seguem abertos.
+
+- **2026-09-29 — I05:** perfil produtivo opt-in; validação de boot, credenciais e
+  fronteiras de rede/ambiente; política explícita para SERVER-AGENT/SSH, inclusive
+  Run Now/retry. Conversão/restart/bloqueios testados e guia publicado.
+  [Evidência](evidence/i05-efaf9a6.json). I06–I17 seguem abertos.
+
+> Entradas de junho/julho preservam o relato da época. Alegações de escala/HA
+> devem ser lidas com o [inventário revisado em 28/09/2026](capacity-guarantees.md);
+> marcos históricos de 100% não fecham os gates enterprise de setembro.
+
+- **2026-09-28 — DOC-E:** DOC-11 entregue em `d1b92dc`, quick/full explícitos
+  e CI compartilhado; oito gates e seis jobs aprovados no CI `36472050622`.
+  Checker documental somente leitura e negativos isolados. Revisão transversal
+  fecha 14/14 achados; I05–I17 permanecem abertos.
+  [Evidência](evidence/doc-e-d1b92dc.json).
+
+- **2026-09-28 — DOC-D:** DOC-10/13 entregues em `37ca611`: capacidade/HA
+  delimitadas por evidência e status histórico/enterprise reconciliado. CI
+  `36428970774` aprovado nos nove jobs, 21 páginas e links verificados.
+  [Evidência](evidence/doc-d-37ca611.json). Só DOC-11/E resta da auditoria;
+  I05–I17 não foram fechados. Entrega documental sem release binária.
+
+- **2026-09-27 — DOC-C:** DOC-07/08/09 entregues em `94c120d`: autenticação por
+  transporte/modo, cancelamento por estado/efeitos e rerun pelo pool/snapshot.
+  Spec válida, regressões API/MCP/scheduler, site e links aprovados.
+  [CI 36359957411](https://github.com/Dr0nj/regente/actions/runs/36359957411)
+  verde nos nove jobs. Sem mudança de semântica runtime; restam três DOC em D/E.
 
 - **2026-09-22 — DOC-B:** DOC-03/04/05/12/14 entregues: launcher autenticado e
   local por padrão, COMMAND/recusas/revogação provados, same-origin no build,

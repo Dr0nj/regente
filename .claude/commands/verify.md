@@ -1,7 +1,15 @@
 ---
-description: Roda o verify local (server + agent + app), espelhando a CI.
+description: Executa verificação com cobertura explícita (quick ou full)
 ---
-Rode `bash scripts/verify.sh` a partir da raiz do repositório e reporte o resultado.
 
-Se algo falhar: mostre o trecho relevante do erro, diagnostique a causa e proponha
-a correção. NÃO mascare a falha (não comente teste, não relaxe asserção) só para "passar".
+Leia [o contrato de verificação](../../docs/verification.md).
+
+Execute `bash scripts/verify.sh --quick` por padrão; no Windows,
+`python scripts/verify.py --quick`. Se o pedido exigir full, execute
+`bash scripts/verify.sh --full` em Linux/amd64 com os pré-requisitos documentados.
+Nunca substitua full por quick silenciosamente.
+
+Informe perfil, resultado, gates omitidos e caminho do relatório. Falha ou
+pré-requisito ausente não é sucesso. Corrija a causa e execute novamente o gate
+pertinente; não mascare saída, remova gate ou apresente skip como aprovação.
+CI acrescenta matriz Node/Windows; release e smoke systemd têm resultado próprio.

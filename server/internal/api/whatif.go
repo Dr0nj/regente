@@ -16,6 +16,10 @@ import (
 // impacto downstream. Sem requireWriter de propósito — é consulta, como o
 // /forecast; o corpo só existe porque o cenário é estruturado.
 func (s *server) whatIf(w http.ResponseWriter, r *http.Request) {
+	if err := s.cfg.Scheduler.BusinessCalendar().Validate(); err != nil {
+		writeJSON(w, 409, map[string]string{"error": err.Error()})
+		return
+	}
 	var req struct {
 		Date     string                   `json:"date"`
 		Changes  []scheduler.WhatIfChange `json:"changes"`
@@ -46,7 +50,7 @@ func (s *server) whatIf(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	durations := s.cfg.Scheduler.DayDurations(req.Date, lookback)
-	writeJSON(w, 200, scheduler.WhatIf(defs, cals, req.Date, durations, req.Changes))
+	writeJSON(w, 200, scheduler.WhatIf(defs, cals, req.Date, durations, req.Changes, s.cfg.Scheduler.BusinessCalendar()))
 }
 
 // jobStats — GET /api/analytics/jobstats?defId=… (ADV-3 Statistics).

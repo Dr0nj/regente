@@ -43,15 +43,17 @@ cd server && go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...
 cd server && go run ./cmd/docsite -repo .. -out ../docs/site
 ```
 
-**3 workflows**, todos disparando na `main`:
+**Workflows**:
 
-- **`ci.yml`** — server (build · vet · **staticcheck** · deadcode informativo ·
-  test · **docs/site atualizado**), agent (build · staticcheck · test), app
-  (`npm ci` · **lint** · build). Também roda em PR.
+- **`ci.yml`** — executa `scripts/verify.sh --full` no Linux: build/vet/test,
+  staticcheck, lint/build, docs, browser, integração real e demo PowerShell.
+  Reutiliza `doc-recipes.yml` para mínimos Node e demo nativa Windows.
+  Roda em main, branches codex e PR. Deadcode é informativo.
+- **`integration.yml`** e **`doc-recipes.yml`** — workflows reutilizáveis.
 - **`pages.yml`** — publica `docs/site/` no GitHub Pages (push que toca doc).
-- **`release.yml`** — **TODO push na `main` publica release**, com
-  `scripts/smoke-install.sh` (instala num systemd real em container) como portão.
-  Pra pular: `[no release]` no **assunto** do commit.
+- **`release.yml`** — push na main publica release, condicionado à integração
+  e a `scripts/smoke-install.sh` em systemd real. Para pular: `[no release]`
+  no assunto do commit; não usar para esconder mudança de comportamento.
 
 ## Convenções
 
@@ -81,8 +83,10 @@ cd server && go run ./cmd/docsite -repo .. -out ../docs/site
   `go test ./server/... ./agent/...` ou targeted `go test ./server/internal/<pkg>/...` **sem
   `cd`/`go -C`**. ⚠ `go build ./...` PURO não funciona da raiz (a raiz não é módulo) — use
   `./server/...` / `./agent/...`. Os comandos por-módulo da CI seguem funcionando.
-- **`scripts/verify.sh`** — equivalente local da CI (server build+vet+test · agent build+test ·
-  app build). `bash scripts/verify.sh`. Slash: **`/verify`**.
+- **`scripts/verify.sh`** — `--quick` (default) lista gates omitidos; `--full` exige
+  Linux/amd64 e dependências reais, falhando se faltar gate/evidência. CI usa o
+  mesmo full; matriz Node/Windows e release são adicionais. No Windows,
+  `python scripts/verify.py --quick`. Ver [contrato](docs/verification.md). Slash: **`/verify`**.
 - **`/new-migration <desc>`** — scaffold de `schemaVN` lembrando de registrar nas DUAS slices
   (`sqliteMigrations` E `pgMigrations`).
 - **`.claude/settings.suggested.json`** — TEMPLATE inerte (o Claude Code não carrega). Para ATIVAR

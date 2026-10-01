@@ -1,5 +1,8 @@
 # Web event authorization
 
+I04 delivered on 2026-09-17; see [tested revision and CI evidence](evidence/i04-b6db081.json).
+The [roadmap](roadmap.md) tracks remaining enterprise qualification separately.
+
 The web event connection uses a 30-second, single-use ticket issued by
 `POST /api/auth/event-ticket`. A reconnect obtains a new ticket. Browser origins
 must match the server origin or the configured `-app-url`; clients without an

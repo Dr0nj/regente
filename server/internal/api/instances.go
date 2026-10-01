@@ -10,24 +10,26 @@ import (
 	"time"
 
 	"github.com/Dr0nj/regente-server/internal/auth"
+	"github.com/Dr0nj/regente-server/internal/businessclock"
 	"github.com/Dr0nj/regente-server/internal/domain"
 	"github.com/Dr0nj/regente-server/internal/scheduler"
 	"github.com/go-chi/chi/v5"
 )
 
 type instanceRow struct {
-	ID           string     `json:"id"`
-	DefinitionID string     `json:"definitionId"`
-	Team         string     `json:"team,omitempty"`
-	OrderDate    string     `json:"orderDate"`
-	Status       string     `json:"status"`
-	ScheduledAt  time.Time  `json:"scheduledAt"`
-	StartedAt    *time.Time `json:"startedAt,omitempty"`
-	FinishedAt   *time.Time `json:"finishedAt,omitempty"`
-	AgentID      string     `json:"agentId,omitempty"`
-	ExitCode     int        `json:"exitCode,omitempty"`
-	Output       string     `json:"output,omitempty"`
-	Forced       bool       `json:"forced,omitempty"`
+	BusinessTime *businessclock.Calendar `json:"businessTime,omitempty"`
+	ID           string                  `json:"id"`
+	DefinitionID string                  `json:"definitionId"`
+	Team         string                  `json:"team,omitempty"`
+	OrderDate    string                  `json:"orderDate"`
+	Status       string                  `json:"status"`
+	ScheduledAt  time.Time               `json:"scheduledAt"`
+	StartedAt    *time.Time              `json:"startedAt,omitempty"`
+	FinishedAt   *time.Time              `json:"finishedAt,omitempty"`
+	AgentID      string                  `json:"agentId,omitempty"`
+	ExitCode     int                     `json:"exitCode,omitempty"`
+	Output       string                  `json:"output,omitempty"`
+	Forced       bool                    `json:"forced,omitempty"`
 	// ForceMode — COMO a ordem foi forçada (schemaV15): "" = "Run Now" (bypass
 	// total de uma instance existente, SEM marca visual — é só nudge de execução)
 	// vs "order" = "Order Force" (ordem NOVA colocada na mão pelo operador →
@@ -78,7 +80,7 @@ const instanceCols = `id, definition_id, COALESCE(team,''), order_date, status, 
 	COALESCE(hold_scope,''), COALESCE(held_from_status,''),
 	COALESCE(label,''), COALESCE(job_type,''), COALESCE(confirm_req,0),
 	COALESCE(environment,''), COALESCE(pinned_agent,''), COALESCE(conds_in,''), COALESCE(conds_out_add,''),
-	COALESCE(resources,''), COALESCE(cond_logic,'')`
+	COALESCE(resources,''), COALESCE(cond_logic,''), COALESCE(definition_snapshot,'')`
 
 // scanInstances materializa as linhas. CRÍTICO: propaga rows.Err() e qualquer
 // erro de Scan em vez de engolir e devolver lista PARCIAL. Um erro de leitura no
@@ -92,14 +94,14 @@ func scanInstances(rows *sql.Rows) ([]instanceRow, error) {
 		var ir instanceRow
 		var startedAt, finishedAt sql.NullTime
 		var forcedInt, confirmedInt, dryRunInt, confirmReqInt int
-		var condsIn, condsOutAdd, resources, condLogic string
+		var condsIn, condsOutAdd, resources, condLogic, snapshot string
 		if err := rows.Scan(
 			&ir.ID, &ir.DefinitionID, &ir.Team, &ir.OrderDate, &ir.Status, &ir.ScheduledAt,
 			&startedAt, &finishedAt,
 			&ir.AgentID, &ir.ExitCode, &ir.Output, &forcedInt, &ir.ForceMode,
 			&ir.CarriedFrom, &confirmedInt, &ir.CycleRuns, &dryRunInt, &ir.HoldScope, &ir.HeldFromStatus,
 			&ir.Label, &ir.JobType, &confirmReqInt,
-			&ir.Environment, &ir.PinnedAgent, &condsIn, &condsOutAdd, &resources, &condLogic,
+			&ir.Environment, &ir.PinnedAgent, &condsIn, &condsOutAdd, &resources, &condLogic, &snapshot,
 		); err != nil {
 			return nil, err
 		}
@@ -115,6 +117,12 @@ func scanInstances(rows *sql.Rows) ([]instanceRow, error) {
 		ir.Confirmed = confirmedInt == 1
 		ir.DryRun = dryRunInt == 1
 		ir.ConfirmReq = confirmReqInt == 1
+		var temporal struct {
+			BusinessTime *businessclock.Calendar `json:"_businessTime"`
+		}
+		_ = json.Unmarshal([]byte(snapshot), &temporal)
+		ir.BusinessTime = temporal.BusinessTime
+		ir.ScheduledAt = ir.ScheduledAt.UTC()
 		ir.CondsIn = decodeConds(condsIn)
 		ir.CondsOutAdd = decodeConds(condsOutAdd)
 		ir.Resources = decodeResources(resources)
@@ -184,7 +192,7 @@ func (s *server) parseInstanceQuery(r *http.Request) instanceQuery {
 	}
 	if q.date == "" {
 		// DAY-1 — default é a data de NEGÓCIO do server (vira no daily_at), nunca
-		// time.Now(): o dia da tela e o dia que a daily materializou têm que ser o
+		// s.cfg.Scheduler.Now(): o dia da tela e o dia que a daily materializou têm que ser o
 		// MESMO, senão a ordem existe no banco e some do board.
 		q.date = s.cfg.Scheduler.TodayDate()
 	}
@@ -322,12 +330,14 @@ func (s *server) listInstances(w http.ResponseWriter, r *http.Request) {
 // não da def viva do Design (imutabilidade total). Payload só do detalhe (a
 // lista de escala não carrega nada disso).
 type instanceDetail struct {
+	DurableExecution bool `json:"durableExecution"`
 	instanceRow
 	ActionConfig map[string]interface{} `json:"actionConfig,omitempty"`
 	// SnapshotDef — a JobDefinition congelada na ordem (JSON cru do domain, que
 	// o front consome como JobDefinition: mesmos json tags). Vazio em instance
 	// legada sem snapshot (o drawer cai na def viva só nesse caso).
-	SnapshotDef json.RawMessage `json:"snapshotDef,omitempty"`
+	SnapshotDef   json.RawMessage `json:"snapshotDef,omitempty"`
+	SnapshotError string          `json:"snapshotError,omitempty"`
 }
 
 // getInstance — GET /api/instances/{id}. Detalhe de UMA instance, incluindo o
@@ -350,7 +360,7 @@ func (s *server) getInstance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "instance not found", http.StatusNotFound)
 		return
 	}
-	det := instanceDetail{instanceRow: list[0]}
+	det := instanceDetail{instanceRow: list[0], DurableExecution: s.cfg.RuntimePolicy.Durable()}
 
 	if allowed, restrict := s.allowedTeams(r, det.OrderDate); restrict {
 		ok := false
@@ -366,9 +376,11 @@ func (s *server) getInstance(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var snap string
-	_ = s.cfg.DB.QueryRow(`SELECT COALESCE(definition_snapshot,'') FROM instances WHERE id=?`, id).Scan(&snap)
-	if snap != "" {
+	var snap, checksum string
+	_ = s.cfg.DB.QueryRow(`SELECT COALESCE(i.definition_snapshot,''),COALESCE(l.snapshot_checksum,'') FROM instances i LEFT JOIN daily_order_ledger l ON l.instance_id=i.id WHERE i.id=?`, id).Scan(&snap, &checksum)
+	if reason := scheduler.OrderSnapshotError(det.DefinitionID, snap, checksum); reason != "" {
+		det.SnapshotError = reason
+	} else if snap != "" {
 		var d domain.JobDefinition
 		if json.Unmarshal([]byte(snap), &d) == nil {
 			// Label/JobType já vêm das colunas congeladas (M1); reforço só p/
@@ -520,6 +532,9 @@ func (s *server) holdInstance(w http.ResponseWriter, r *http.Request) {
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
+	if s.durableInstanceAction(w, r, id, "hold") {
+		return
+	}
 	// Hold geral (schemaV16): segura QUALQUER status exceto RUNNING (a execução
 	// já está no agente — não há o que segurar; cancele ou espere terminar) e o
 	// próprio HELD (idempotente). held_from_status congela o status original —
@@ -570,6 +585,9 @@ func (s *server) releaseInstance(w http.ResponseWriter, r *http.Request) {
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
+	if s.durableInstanceAction(w, r, id, "release") {
+		return
+	}
 	// Um job segurado por uma PAUSA DE FOLDER (hold_scope='folder') NÃO pode ser
 	// liberado individualmente — só o resume da folder inteira destrava (paridade
 	// Control-M "Hold folder" ⇒ "Release folder"). O Release individual só age em
@@ -609,6 +627,9 @@ func (s *server) releaseInstance(w http.ResponseWriter, r *http.Request) {
 func (s *server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !s.requireInstanceWrite(w, r, id) {
+		return
+	}
+	if s.durableInstanceAction(w, r, id, "delete") {
 		return
 	}
 	scope, err := s.instanceWebScope(id)
@@ -657,6 +678,9 @@ func (s *server) cancelInstance(w http.ResponseWriter, r *http.Request) {
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
+	if s.durableInstanceAction(w, r, id, "cancel") {
+		return
+	}
 	status, err := s.cfg.Scheduler.Cancel(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
@@ -672,6 +696,9 @@ func (s *server) cancelInstance(w http.ResponseWriter, r *http.Request) {
 func (s *server) confirmInstance(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !s.requireInstanceWrite(w, r, id) {
+		return
+	}
+	if s.durableInstanceAction(w, r, id, "confirm") {
 		return
 	}
 	res, err := s.cfg.DB.Exec(`UPDATE instances SET confirmed=1 WHERE id=? AND status IN (?,?)`,
@@ -695,6 +722,9 @@ func (s *server) confirmInstance(w http.ResponseWriter, r *http.Request) {
 func (s *server) rerunInstance(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !s.requireInstanceWrite(w, r, id) {
+		return
+	}
+	if s.durableInstanceAction(w, r, id, "rerun") {
 		return
 	}
 	// Modelo único de condições: rerun NÃO toca o pool — o gate re-avalia o que
@@ -738,6 +768,9 @@ func (s *server) setOKInstance(w http.ResponseWriter, r *http.Request) {
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
+	if s.durableInstanceAction(w, r, id, "set-ok") {
+		return
+	}
 	if err := s.cfg.Scheduler.SetOK(id); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -751,12 +784,40 @@ func (s *server) setOKInstance(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) runDaily(w http.ResponseWriter, r *http.Request) {
-	// E1 — "hoje" é o dia na timezone de NEGÓCIO (settings.daily_timezone), o
-	// mesmo relógio da daily automática: rodar manualmente às 22h de SP com o
-	// server em UTC (01h do dia seguinte) NÃO pode materializar a diária de amanhã.
-	today := s.cfg.Scheduler.TodayDate()
-	created := s.cfg.Scheduler.RunDaily(today)
-	writeJSON(w, 200, map[string]interface{}{"orderDate": today, "created": created})
+	if err := s.cfg.Scheduler.BusinessCalendar().Validate(); err != nil {
+		writeJSON(w, 409, map[string]string{"error": err.Error()})
+		return
+	}
+	s.materializeDailyResponse(w, s.cfg.Scheduler.TodayDate())
+}
+func (s *server) resumeDaily(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		OrderDate string `json:"orderDate"`
+	}
+	if json.NewDecoder(r.Body).Decode(&body) != nil {
+		http.Error(w, "orderDate is required", 400)
+		return
+	}
+	run, err := s.cfg.Scheduler.DailyRun(body.OrderDate)
+	if err != nil {
+		http.Error(w, "Daily not found", 404)
+		return
+	}
+	if run.State == "legacy" {
+		http.Error(w, "Legacy daily has no frozen plan; it cannot be resumed", http.StatusConflict)
+		return
+	}
+	s.materializeDailyResponse(w, body.OrderDate)
+}
+func (s *server) materializeDailyResponse(w http.ResponseWriter, date string) {
+	run, created, err := s.cfg.Scheduler.MaterializeDaily(date)
+	resp := map[string]interface{}{"orderDate": date, "created": created, "run": run}
+	code := 200
+	if err != nil {
+		resp["error"] = err.Error()
+		code = 409
+	}
+	writeJSON(w, code, resp)
 }
 
 // dailyStatus — estado da daily pelo relógio de NEGÓCIO do servidor: última
@@ -765,11 +826,25 @@ func (s *server) runDaily(w http.ResponseWriter, r *http.Request) {
 // do rodapé do Monitoring — o front NÃO persiste mais isso em localStorage em
 // server mode.
 func (s *server) dailyStatus(w http.ResponseWriter, r *http.Request) {
+	if err := s.cfg.Scheduler.BusinessCalendar().Validate(); err != nil {
+		writeJSON(w, 409, map[string]string{"error": err.Error()})
+		return
+	}
 	var lastDate string
 	var lastAt sql.NullTime
 	_ = s.cfg.DB.QueryRow(
-		`SELECT order_date, started_at FROM daily_runs ORDER BY order_date DESC LIMIT 1`,
+		`SELECT order_date, started_at FROM daily_runs WHERE state IN ('completed','legacy') ORDER BY order_date DESC LIMIT 1`,
 	).Scan(&lastDate, &lastAt)
+	run, runErr := s.cfg.Scheduler.DailyRun(s.cfg.Scheduler.TodayDate())
+	if runErr != nil && runErr != sql.ErrNoRows {
+		http.Error(w, "Unable to read daily state", 500)
+		return
+	}
+	pending, pendingErr := s.cfg.Scheduler.PendingDaily()
+	if pendingErr != nil && pendingErr != sql.ErrNoRows {
+		http.Error(w, "Unable to read pending daily", 500)
+		return
+	}
 	tzName, _ := s.cfg.Scheduler.DailyTimezone()
 	now := s.cfg.Scheduler.NowLocal()
 	resp := map[string]interface{}{
@@ -779,6 +854,8 @@ func (s *server) dailyStatus(w http.ResponseWriter, r *http.Request) {
 		"dailyAt":     s.cfg.Scheduler.DailyAt(),
 		"timezone":    tzName,
 		"lastRunDate": lastDate,
+		"run":         run,
+		"pending":     pending,
 		"serverNow":   now.Format(time.RFC3339),
 	}
 	// lateStart no rodapé do Monitoring (só quando há daily): reusa a fonte única
@@ -854,7 +931,7 @@ func (s *server) diffDaily(w http.ResponseWriter, r *http.Request) {
 // Idempotente e leader-guarded; seguro chamar com frequência.
 func (s *server) schedulerTick(w http.ResponseWriter, r *http.Request) {
 	s.cfg.Scheduler.Tick()
-	writeJSON(w, 200, map[string]interface{}{"ok": true, "at": time.Now().UTC().Format(time.RFC3339)})
+	writeJSON(w, 200, map[string]interface{}{"ok": true, "at": s.cfg.Scheduler.Now().UTC().Format(time.RFC3339)})
 }
 
 // schedulerDaily — ARCH-5: gatilho de daily DEDICADO. Materializa a diária de
@@ -865,7 +942,7 @@ func (s *server) schedulerTick(w http.ResponseWriter, r *http.Request) {
 func (s *server) schedulerDaily(w http.ResponseWriter, r *http.Request) {
 	s.cfg.Scheduler.RunDailyIfDue()
 	writeJSON(w, 200, map[string]interface{}{
-		"ok": true, "orderDate": s.cfg.Scheduler.TodayDate(), "at": time.Now().UTC().Format(time.RFC3339),
+		"ok": true, "orderDate": s.cfg.Scheduler.TodayDate(), "at": s.cfg.Scheduler.Now().UTC().Format(time.RFC3339),
 	})
 }
 
@@ -911,6 +988,9 @@ func (s *server) forceRunInstance(w http.ResponseWriter, r *http.Request) {
 	if !s.requireInstanceWrite(w, r, id) {
 		return
 	}
+	if s.durableInstanceAction(w, r, id, "force") {
+		return
+	}
 	// BUG-1: force_mode='' explícito — um Run Now sobre uma cópia criada por
 	// "Order Force" (force_mode='order', que RESPEITA os gates de runtime e pode
 	// estar presa em WAIT EVENT) converte a instance pro modo bypass TOTAL. Sem
@@ -918,7 +998,7 @@ func (s *server) forceRunInstance(w http.ResponseWriter, r *http.Request) {
 	// continuava aguardando evento mesmo depois do Run Now.
 	res, err := s.cfg.DB.Exec(
 		`UPDATE instances SET status=?, forced=1, force_mode='', held_from_status='', scheduled_at=? WHERE id=? AND status IN (?,?)`,
-		string(domain.StatusWaiting), time.Now(), id,
+		string(domain.StatusWaiting), s.cfg.Scheduler.Now(), id,
 		string(domain.StatusWaiting), string(domain.StatusHeld),
 	)
 	if err != nil {

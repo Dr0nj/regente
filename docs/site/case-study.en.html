@@ -53,24 +53,34 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="operations.html">⚙️ Running in production — enterprise readiness</a>
 <a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
 <a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
-<a href="slos.html">🎯 Control plane SLOs — regente-server</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
 <a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
 <a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
 <a href="case-study.en.html" class="active">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
 <a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="adr-i09-agent-journal.html">Durable agent journal</a>
 <a href="agent-authentication.html">Agent authentication and upgrades</a>
 <a href="agent-identity.html">Agent identity and credential lifecycle</a>
 <a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="business-time.html">Business time</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html">Daily recovery</a>
+<a href="durable-execution.html">Durable execution and recovery</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="production-profile.html">Production profile</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
 <a href="web-events.html">Web event authorization</a>
 </nav>
 <main>
 <article>
 <h1 id="case-study--regente-an-enterprise-class-git-native-job-orchestrator-from-scratch">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</h1>
 <blockquote>
-<p><strong>TL;DR.</strong> <strong>1,000,000 jobs/day running on a $5 VPS</strong> — the daily materialized in 17s,
-the day's summary in 51ms. Regente is a batch workload orchestrator in the spirit of
+<p><strong>TL;DR.</strong> A Git-native batch orchestrator with historical measurements of
+materialization, queries and UI over large seeded datasets. These do not establish
+1,000,000 completed executions/day or that capacity on a USD 5 VPS.
+Regente is a batch workload orchestrator in the spirit of
 the classic enterprise orchestrators — immutable daily, condition-based dependencies,
 calendars, resources, Confirm, forecast — that I built <strong>alone, from scratch</strong>, as a
 personal project: a Go + React monorepo with <strong>Git as the source of truth</strong> for
@@ -78,6 +88,12 @@ definitions. It scales from that single binary up to multi-node HA with Postgres
 exposes the control plane to AI agents via <strong>MCP (22 tools)</strong>. ~47k lines of Go, ~24k
 of TypeScript, 460 tests. Open under Apache 2.0 — code at
 <strong>github.com/Dr0nj/regente</strong>, docs at <strong>dr0nj.github.io/regente</strong>.</p>
+</blockquote>
+<blockquote>
+<p>Editorial review, 2026-09-28: the feature-complete milestone belongs to the
+original July 2026 tracks. I04 web-event authorization is delivered; I05–I17
+remain open in the <a href="https://github.com/Dr0nj/regente/blob/main/docs/roadmap.md">roadmap</a>. Historical numbers below are not
+current production guarantees. See <a href="capacity-guarantees.html">evidence and limits</a>.</p>
 </blockquote>
 <hr>
 <h2 id="1-the-problem">1. The problem</h2>
@@ -131,8 +147,12 @@ canvas is sugar for a named condition (<code>A-TO-B</code>): the parent's OK <st
 condition, the successor's input <strong>waits</strong> for it, and a negative output <strong>consumes</strong>
 (deletes) it — which models fan-in with consumption, as in the classic model. The input
 accepts <strong>real AND/OR logic</strong> (groups with a top-level operator) and the <code>$TIME</code>
-token (&quot;condition OR time&quot;); rerunning the parent undoes the OK and dependents
-<strong>go back to waiting</strong> for a fresh completion.</li>
+token (&quot;condition OR time&quot;). Rerunning the parent <strong>does not remove published
+conditions or reset descendants</strong>. A consumer rerun waits only if its required
+condition is absent (for example, its previous OK/Set OK consumed it); the
+parent's next OK can recreate it. A failed consumer did not consume the input
+and can proceed if it still exists and the other gates pass. See
+<a href="conditions-events.html">the condition-pool rules C1–C7 and frozen snapshots M1</a>.</li>
 <li><strong>Force with two gestures</strong> — &quot;Run Now&quot; unblocks the existing instance (bypasses
 window/deps/resources; Confirm and agent are never bypassed); &quot;Order Force&quot; creates
 a new order outside the schedule that <strong>respects</strong> the runtime gates.</li>
@@ -163,8 +183,11 @@ by the binary itself.</li>
 <li><strong>Signed quick actions</strong> in alerts (Slack/e-mail/PagerDuty) — one-click
 rerun/confirm with an expiring token.</li>
 </ul>
-<h2 id="5-scale-validated-not-estimated">5. Scale validated (not estimated)</h2>
-<p>A 1M jobs/day scenario, seeded and operated live:</p>
+<h2 id="5-historical-materialization-query-and-ui-observations">5. Historical materialization, query and UI observations</h2>
+<p>Reports from June/July 2026, not reproduced in the 2026-09-28 review.
+The <a href="capacity-guarantees.html">evidence inventory</a> separates dates, available
+fixtures, missing original run metadata and operation-specific limits.
+These are separate observations over stored/seeded instances, not an execution benchmark:</p>
 <ul>
 <li><strong>Daily materialization (write-path):</strong> 1,000,000 instances in <strong>~17s</strong>.</li>
 <li><strong>Day summary (read-path):</strong> <strong>51ms @100k</strong>, keyset+offset pagination.</li>
@@ -179,8 +202,10 @@ virtualized sidebar with compressed height (the browser overflows float32 above
 ~16.7M px — a detail that only shows up with 1M rows).</p>
 <h2 id="6-reliability">6. Reliability</h2>
 <ul>
-<li><strong>Atomic claim</strong> per instance guarantees ≤1 execution even with multiple dispatch
-paths (tick, force, retry) or multiple nodes.</li>
+<li><strong>Atomic claim</strong> permits only one winner of the same WAITING → RUNNING database
+transition. It does not provide durable agent ACK, attempt fencing, or exactly-once
+external effects across retries, crashes and partitions. See the
+<a href="capacity-guarantees.html#dispatch-and-ha-boundaries">dispatch and HA boundaries</a>.</li>
 <li><strong>Panic-recovery</strong> at every scheduler entry point; a watchdog for stuck RUNNING;
 self-monitoring that alerts through the product's own channels.</li>
 <li><strong>Online backup</strong> (<code>-backup</code> = VACUUM INTO), documented DR, retention/archives
@@ -238,7 +263,9 @@ kept running: the operator reinstalls, sees &quot;ok&quot; on screen, and nothin
 nginx in the container, applies the actual conf, proves the circuit with a forged Host
 (proxy, UI, authenticated API, hardening headers) and asserts that <code>deploy/vps</code> exists on
 the machine — precisely the assertion that would have caught the first hole before I did.</p>
-<h2 id="9-next-up-ai-that-stays-inside-the-perimeter-roadmap-spec-ready">9. Next up: AI that stays inside the perimeter <em>(roadmap, spec ready)</em></h2>
+<h2 id="9-historical-proposal-ai-inside-the-perimeter-not-delivered">9. Historical proposal: AI inside the perimeter <em>(not delivered)</em></h2>
+<p>This July 2026 proposal is not the current delivery sequence. See the
+<a href="https://github.com/Dr0nj/regente/blob/main/docs/roadmap.md">roadmap</a> for the active enterprise cycle and the frozen AI-1 proposal.</p>
 <p>The enterprise-orchestration audience lives in regulated environments — banks, insurers,
 utilities — where sysout, logs and host data <strong>cannot leave the perimeter</strong>. Every
 &quot;AI-powered&quot; scheduler on the market ships that data to a cloud API; Regente's next job
@@ -261,9 +288,9 @@ in a sleep.</li>
 from the parent's live status breaks at the first human operation (rerun/cancel);
 named conditions created and consumed in a pool — and frozen into the order —
 model what the operator expects.</li>
-<li><strong>Scale is additive if the hot path is set-based from the start.</strong> The same code
-that serves 10 jobs serves 1M — the optimizations were about access patterns, not
-architecture.</li>
+<li><strong>Measure each access path separately.</strong> Set-based materialization, pagination
+and virtualization address different bottlenecks; none alone establishes
+executor throughput or recovery under failure.</li>
 <li><strong>Test against an oracle, not against your own function.</strong> The calendar suites
 caught real divergences that mirror tests would never see.</li>
 <li><strong>What your tests don't run, rots.</strong> Nine holes in an install the smoke test called
@@ -271,13 +298,14 @@ green — every one of them exactly where it wasn't looking. The boundary of you
 suite is the boundary of your confidence; outside it you don't have tested software,
 you have an assumption wearing a green badge.</li>
 </ol>
-<h2 id="11-project-numbers">11. Project numbers</h2>
+<h2 id="11-historical-project-numbers-july-2026">11. Historical project numbers (July 2026)</h2>
 <ul>
 <li><strong>Code:</strong> ~47k lines of Go (server+agent) · ~24k lines of TS/TSX (UI).</li>
 <li><strong>Tests:</strong> 460 Go test functions across 103 files + live E2E validations.</li>
 <li><strong>Executors:</strong> COMMAND · SCRIPT · HTTP/REST · agentless SSH · DATABASE · FILE_WATCH
 · MFT · WASM · K8s · Lambda · Batch · Glue · Step Functions · Cloud Run.</li>
-<li><strong>Scale:</strong> 1M jobs/day validated live (write 17s · summary 51ms · virtualized UI).</li>
+<li><strong>Historical scale reports:</strong> 1M instance materialization (~17s), summary at
+<strong>100k</strong> (51ms), and UI over seeded records; no qualified executions/day figure.</li>
 <li><strong>Deploy:</strong> single binary (SQLite) → multi-node HA (Postgres + leader election) →
 portable serverless (external tick) — installed and running on a real public VPS.</li>
 <li><strong>Interface:</strong> React UI (Design/Monitoring), 17 themes, CLI, OpenAPI, MCP (22 tools).</li>

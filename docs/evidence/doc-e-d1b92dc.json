@@ -1,0 +1,217 @@
+{
+  "stage": "DOC-E",
+  "date": "2026-09-28",
+  "implementation_sha": "d1b92dc0cda7d9a4a3386816900d65de3122449d",
+  "ci": {
+    "id": 36472050622,
+    "url": "https://github.com/Dr0nj/regente/actions/runs/36472050622",
+    "conclusion": "success",
+    "jobs": 6
+  },
+  "verification": {
+    "mode": "full",
+    "status": "passed",
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "required_gates": [
+      "runner",
+      "server",
+      "agent",
+      "web",
+      "docs",
+      "browser",
+      "integration",
+      "demo"
+    ],
+    "gates": [
+      {
+        "gate": "runner",
+        "status": "passed"
+      },
+      {
+        "gate": "server",
+        "status": "passed"
+      },
+      {
+        "gate": "agent",
+        "status": "passed"
+      },
+      {
+        "gate": "web",
+        "status": "passed"
+      },
+      {
+        "gate": "docs",
+        "status": "passed"
+      },
+      {
+        "gate": "browser",
+        "status": "passed"
+      },
+      {
+        "gate": "integration",
+        "status": "passed"
+      },
+      {
+        "gate": "demo",
+        "status": "passed"
+      }
+    ],
+    "omitted": [],
+    "ci_matrix_additions": [
+      "other Node minima",
+      "native Windows PowerShell demo"
+    ],
+    "release_install_smoke": "separate release workflow, not part of verification",
+    "sha": "d1b92dc0cda7d9a4a3386816900d65de3122449d",
+    "dirty": false,
+    "integration_evidence": ".integration/920c76a1d98f/evidence",
+    "seconds": 412.862
+  },
+  "browser": {
+    "startTime": "2026-09-28T19:28:12.135Z",
+    "duration": 9666.695,
+    "expected": 4,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "integration": {
+    "sha": "d1b92dc0cda7d9a4a3386816900d65de3122449d",
+    "status": "passed",
+    "seconds": 158.382,
+    "profile": "synthetic-ci-v1",
+    "draft_recovery": {
+      "sqlite": {
+        "complete_set_preserved_content": true,
+        "db_only_did_not_recover_content": true,
+        "archived_files": 10,
+        "seconds": 0.878
+      },
+      "postgres": {
+        "complete_set_preserved_content": true,
+        "db_only_did_not_recover_content": true,
+        "archived_files": 10,
+        "seconds": 1.812
+      }
+    },
+    "passed_test_count": 174
+  },
+  "negative_checks": [
+    "schema incorreto/ausente/duplicado/range",
+    "engines incompatíveis",
+    "link Markdown/referência/imagem/âncora inválido",
+    "HTML obsoleto/ausente/extra",
+    "gate obrigatório omitido/duplicado/reordenado/skipped",
+    "browser incompleto/flaky/skipped",
+    "demo sem efeito/recusas ou com túnel",
+    "full em plataforma incompatível/dependência ausente"
+  ],
+  "cross_review": [
+    {
+      "id": "DOC-01",
+      "topic": "Upgrade/compatibilidade/rollback",
+      "source": "docs/upgrades.md",
+      "prior_evidence": "docs/evidence/doc-a-af75c51.json",
+      "finding": "Migrações, restore legado e drain de mesmo binário; sem par misto qualificado."
+    },
+    {
+      "id": "DOC-02",
+      "topic": "DR e drafts",
+      "source": "docs/dr-backup.md",
+      "prior_evidence": "docs/evidence/doc-a-af75c51.json",
+      "finding": "Conjunto completo recupera conteúdo; DB-only não recupera, SQLite e PostgreSQL."
+    },
+    {
+      "id": "DOC-03",
+      "topic": "Identidade de máquina",
+      "source": "docs/agent-identity.md",
+      "prior_evidence": "docs/evidence/doc-b-877e5ca.json",
+      "finding": "Demo Linux/Windows: presença autenticada, COMMAND e recusas/revogação."
+    },
+    {
+      "id": "DOC-04",
+      "topic": "Same-origin",
+      "source": "app/README.md",
+      "prior_evidence": "docs/evidence/doc-b-877e5ca.json",
+      "finding": "Receita @origin e browser real contra SPA servida pelo Go."
+    },
+    {
+      "id": "DOC-05",
+      "topic": "Node/toolchain",
+      "source": "app/package.json",
+      "prior_evidence": "docs/evidence/doc-b-877e5ca.json",
+      "finding": "Engines/lockfile e mínimos 20.19.0,22.13.0,24.0.0 aprovados."
+    },
+    {
+      "id": "DOC-06",
+      "topic": "Schema corrente",
+      "source": "docs/integration-baseline.md",
+      "prior_evidence": "docs/evidence/doc-a-af75c51.json",
+      "finding": "TestMigrationRunbookContract com negativos e história preservada."
+    },
+    {
+      "id": "DOC-07",
+      "topic": "Auth por transporte/modo",
+      "source": "docs/authentication.md",
+      "prior_evidence": "docs/evidence/doc-c-94c120d.json",
+      "finding": "Contratos API e browser local/hybrid/oidc; identidade real nos dois backends."
+    },
+    {
+      "id": "DOC-08",
+      "topic": "Cancelamento",
+      "source": "server/internal/api/openapi.yaml",
+      "prior_evidence": "docs/evidence/doc-c-94c120d.json",
+      "finding": "Regressões API/MCP/scheduler; sinal remoto best-effort sem ACK físico alegado."
+    },
+    {
+      "id": "DOC-09",
+      "topic": "Rerun",
+      "source": "docs/conditions-events.md",
+      "prior_evidence": "docs/evidence/doc-c-94c120d.json",
+      "finding": "Pool atual, out-remove e snapshot M1; regressões HTTP/scheduler."
+    },
+    {
+      "id": "DOC-10",
+      "topic": "Capacidade/HA",
+      "source": "docs/capacity-guarantees.md",
+      "prior_evidence": "docs/evidence/doc-d-37ca611.json",
+      "finding": "Revisão editorial source-driven preserva limites e metadados ausentes; sem novo benchmark."
+    },
+    {
+      "id": "DOC-11",
+      "topic": "Verify/CI",
+      "source": "docs/verification.md",
+      "prior_evidence": null,
+      "finding": "Full compartilhado, quick explícito, negativos e checker somente leitura."
+    },
+    {
+      "id": "DOC-12",
+      "topic": "GitOps explícito",
+      "source": "docs/operations.md",
+      "prior_evidence": "docs/evidence/doc-b-877e5ca.json",
+      "finding": "Git local sintético e offline exercitados pelo launcher, sem origem implícita."
+    },
+    {
+      "id": "DOC-13",
+      "topic": "Status público",
+      "source": "docs/roadmap.md",
+      "prior_evidence": "docs/evidence/doc-d-37ca611.json",
+      "finding": "I04 entregue; I05–I17 abertos; marcos de julho identificados como históricos."
+    },
+    {
+      "id": "DOC-14",
+      "topic": "Rede jobs/agente",
+      "source": "deploy/demo/README.md",
+      "prior_evidence": "docs/evidence/doc-b-877e5ca.json",
+      "finding": "Demo mantém canal/dispatch/resultados; job-only egress explicitamente ausente."
+    }
+  ],
+  "limits": [
+    "Sem deploy produtivo",
+    "Sem nova homologação de volume ou HA",
+    "I05–I17 permanecem abertos",
+    "Checagens OpenAPI focadas; não validação integral da norma",
+    "URLs externas não acessadas pelo docsite; fragmentos GitHub fora do check",
+    "Release/systemd têm gates separados"
+  ]
+}

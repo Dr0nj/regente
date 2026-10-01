@@ -12,6 +12,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/Dr0nj/regente-server/internal/businessclock"
 	"github.com/Dr0nj/regente-server/internal/domain"
 )
 
@@ -28,13 +29,18 @@ type ForecastJob struct {
 }
 
 type ForecastReport struct {
-	OrderDate string         `json:"orderDate"`
-	Jobs      []ForecastJob  `json:"jobs"`
-	Resources map[string]int `json:"peakResourceUsage,omitempty"`
+	BusinessTime businessclock.Calendar `json:"businessTime"`
+	OrderDate    string                 `json:"orderDate"`
+	Jobs         []ForecastJob          `json:"jobs"`
+	Resources    map[string]int         `json:"peakResourceUsage,omitempty"`
 }
 
 // Forecast simula execution para `orderDate`.
-func Forecast(defs []domain.JobDefinition, calendars map[string]*domain.Calendar, orderDate string) ForecastReport {
+func Forecast(defs []domain.JobDefinition, calendars map[string]*domain.Calendar, orderDate string, contexts ...businessclock.Calendar) ForecastReport {
+	calendar := businessclock.Default()
+	if len(contexts) > 0 {
+		calendar = contexts[0]
+	}
 	od, _ := time.Parse("2006-01-02", orderDate)
 
 	// 1. Filtrar elegíveis — MESMA regra do RunDaily (fonte única): enabled +
@@ -96,22 +102,26 @@ func Forecast(defs []domain.JobDefinition, calendars map[string]*domain.Calendar
 
 	// 3. Estimar tempos (assume 5min se sla.expectedDurationMin não setado)
 	jobs := []ForecastJob{}
-	startBase := time.Date(od.Year(), od.Month(), od.Day(), 6, 0, 0, 0, time.Local)
+	startBase := calendar.Start(orderDate)
 	for id, e := range entries {
 		dur := 5
 		if e.def.SLA != nil && e.def.SLA.ExpectedDurationMin > 0 {
 			dur = e.def.SLA.ExpectedDurationMin
 		}
 		w := wave[id]
-		start := startBase.Add(time.Duration(w*dur) * time.Minute)
+		e.def.BusinessTime = &calendar
+		start := computeScheduledAt(e.def, orderDate)
+		if waveStart := startBase.Add(time.Duration(w*dur) * time.Minute); waveStart.After(start) {
+			start = waveStart
+		}
+		if end := orderWindowEnd(e.def, orderDate); !end.IsZero() && start.After(end) {
+			e.eligible = false
+			e.reason = "execution window closed"
+		}
 		end := start.Add(time.Duration(dur) * time.Minute)
 		breach := false
 		if e.def.SLA != nil && e.def.SLA.DeadlineHM != "" {
-			// só sinaliza se end > deadline
-			// (parsing simples: HH:MM no mesmo dia)
-			hh, mm := 0, 0
-			_, _ = fmtScanHM(e.def.SLA.DeadlineHM, &hh, &mm)
-			deadline := time.Date(od.Year(), od.Month(), od.Day(), hh, mm, 0, 0, time.Local)
+			deadline := calendar.At(orderDate, e.def.SLA.DeadlineHM)
 			breach = end.After(deadline)
 		}
 		jobs = append(jobs, ForecastJob{
@@ -150,7 +160,7 @@ func Forecast(defs []domain.JobDefinition, calendars map[string]*domain.Calendar
 			}
 		}
 	}
-	return ForecastReport{OrderDate: orderDate, Jobs: jobs, Resources: peak}
+	return ForecastReport{BusinessTime: calendar, OrderDate: orderDate, Jobs: jobs, Resources: peak}
 }
 
 // mapCalLookup adapta um mapa nome→calendar ao calLookup que IsScheduledOn usa
@@ -192,7 +202,7 @@ func scheduleReason(d domain.JobDefinition, date time.Time) string {
 // a visão "≥1 semana à frente" do Control-M. Cada dia passa pela MESMA regra de
 // gating do RunDaily (via Forecast → IsScheduledOn): calendars, frequência,
 // meses, deps (ondas topológicas) e pico de recursos. days é limitado a [1,366].
-func ForecastRange(defs []domain.JobDefinition, calendars map[string]*domain.Calendar, from string, days int) []ForecastReport {
+func ForecastRange(defs []domain.JobDefinition, calendars map[string]*domain.Calendar, from string, days int, contexts ...businessclock.Calendar) []ForecastReport {
 	if days < 1 {
 		days = 1
 	}
@@ -206,17 +216,7 @@ func ForecastRange(defs []domain.JobDefinition, calendars map[string]*domain.Cal
 	out := make([]ForecastReport, 0, days)
 	for i := 0; i < days; i++ {
 		od := start.AddDate(0, 0, i).Format("2006-01-02")
-		out = append(out, Forecast(defs, calendars, od))
+		out = append(out, Forecast(defs, calendars, od, contexts...))
 	}
 	return out
-}
-
-// helper minimal sscanf "HH:MM"
-func fmtScanHM(s string, hh, mm *int) (int, error) {
-	if len(s) < 4 {
-		return 0, nil
-	}
-	*hh = int(s[0]-'0')*10 + int(s[1]-'0')
-	*mm = int(s[3]-'0')*10 + int(s[4]-'0')
-	return 2, nil
 }

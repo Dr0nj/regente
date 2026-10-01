@@ -28,6 +28,12 @@ func includesOutput(r *http.Request) bool {
 // Resposta: {attempts, attempt, text, complete, exitCode?}.
 func (s *server) getInstanceOutput(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	if !s.executionReadAllowed(w, r, id) {
+		return
+	}
+	if s.durableOutput(w, r, id) {
+		return
+	}
 
 	var status, consolidated string
 	var exit sql.NullInt64

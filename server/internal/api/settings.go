@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Dr0nj/regente-server/internal/audit"
+	"github.com/Dr0nj/regente-server/internal/businessclock"
 )
 
 // secretSettingKeys — chaves cujo VALOR nunca sai do server: o GET devolve só
@@ -34,6 +35,9 @@ func (s *server) getSettings(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var k, v string
 		if err := rows.Scan(&k, &v); err != nil {
+			continue
+		}
+		if strings.HasPrefix(k, "_runtime_") {
 			continue
 		}
 		// Nunca devolver segredos em claro; só sinaliza se estão setados.
@@ -63,6 +67,35 @@ func (s *server) putSettings(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, 400, map[string]string{"error": "invalid JSON"})
 		return
+	}
+	for key, value := range body {
+		if key == "daily_timezone" {
+			value = strings.TrimSpace(value)
+			if value == "" {
+				value = "UTC"
+			}
+			body[key] = value
+			c := businessclock.Default()
+			c.Timezone = value
+			if err := c.Validate(); err != nil {
+				writeJSON(w, 400, map[string]string{"error": err.Error()})
+				return
+			}
+		}
+		if key == "daily_at" {
+			value = strings.TrimSpace(value)
+			body[key] = value
+			c := businessclock.Default()
+			c.DailyAt = value
+			if err := c.Validate(); err != nil {
+				writeJSON(w, 400, map[string]string{"error": err.Error()})
+				return
+			}
+		}
+		if strings.HasPrefix(key, "_runtime_") {
+			http.Error(w, "runtime policy is not editable through settings", http.StatusBadRequest)
+			return
+		}
 	}
 	// Snapshot dos valores atuais ANTES do write — é o "de" do diff de auditoria
 	// e o filtro de no-op (chave re-enviada com o mesmo valor não vira evento).

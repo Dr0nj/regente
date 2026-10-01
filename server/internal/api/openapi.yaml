@@ -24,12 +24,39 @@ info:
     evolves with the UI and is not a contract.
 
     ### Authentication
-    `Authorization: Bearer <token>` on everything under `/api`, except where
-    marked public. The token is either a session issued by the UI login **or**
-    the deployment's static token (`REGENTE_TOKEN`, equivalent to admin — the
-    same one the Go SDK `pkg/client` and the `regente ops` CLI use). Auth
-    errors: `401` for a missing/invalid token, `403` for insufficient
-    role/ACL. Error bodies are `text/plain` (raw message), not JSON.
+    The security declaration below models the **integration bearer transport**.
+    In `local` or `hybrid` mode, POST `/api/auth/login` with
+    `{"username":"...","password":"..."}` (omit `browser`, or set it false)
+    returns `{token,user}`. Send that token as `Authorization: Bearer <token>`.
+    The deployment's static `REGENTE_TOKEN` is also accepted as admin in those
+    modes. Neither ordinary password login nor the static token bypasses `oidc`
+    mode. Explicitly configured emergency access is a separate, audited,
+    15-minute recovery path, not a normal integration credential.
+
+    **Browser sessions are different:** login with `browser:true` returns an
+    empty JSON token and an HttpOnly, SameSite=Lax cookie (`regente_session` on
+    HTTP, `__Host-regente_session` with Secure on HTTPS). OIDC also uses cookies.
+    Cookie requests require an allowed origin and, except GET/HEAD/OPTIONS,
+    `X-CSRF-Token` from login or GET `/api/auth/me` (including POST/QUERY reads).
+    Never copy browser cookies into bearer headers, URLs or localStorage.
+    Browser session values are rejected as API bearers; query-string session
+    tokens are not accepted. The API explorer uses an API bearer, not SPA login.
+
+    **Machine credentials** are separately issued agent tokens, scoped to agent
+    ID/environment/capabilities and used only on agent transports. They are not
+    human API sessions; the server admin bearer cannot authenticate an agent.
+
+    **Public entry points** include `/health`, `/livez`, `/readyz`, `/metrics`,
+    `/api/env`, `/api/auth/config`, `/api/auth/login`, OIDC login/callback and
+    `/api-docs`. Login entry points still enforce their own policy. Signed quick
+    actions use their scoped link token, not anonymous authorization. Web events
+    use a 30-second, single-use ticket from authenticated POST
+    `/api/auth/event-ticket`; a ticket is not a reusable API credential.
+
+    Auth errors: `401` for missing/invalid credentials or a disallowed session
+    source; `403` for invalid transport/CSRF or insufficient role/ACL. Error
+    bodies are `text/plain` (raw message), not JSON. See the authentication,
+    agent identity and web event guides for the full policies.
 
     ### RBAC
     Reads respect the user's folder ACLs (admin sees everything). Lifecycle
@@ -213,7 +240,7 @@ paths:
               type: object
               required: [q]
               properties:
-                q: { type: string, description: The question, in natural language. }
+                q: { type: string, description: "The question, in natural language." }
             example: { q: "how many jobs failed today?" }
       responses:
         "200":
@@ -264,10 +291,9 @@ paths:
         The classic "Delete job": removes the instance from the screen and from
         the state store. Requires the job to be on HOLD — since RUNNING is not
         holdable, a job in execution is never deletable; any other status
-        becomes deletable by going through Hold first. The dependency-event
-        ledger stays intact: an OK consumption that was held remains spent (the
-        rerun of a clone stays in WAIT EVENT); an unconsumed reservation goes
-        back to the pool.
+        becomes deletable by going through Hold first. Deletion does not touch
+        the condition pool: consumed conditions remain absent and unconsumed
+        conditions remain available. There is no per-instance reservation.
       operationId: deleteInstance
       x-permission: operator/admin + write access on the instance's folder
       parameters: [{ $ref: "#/components/parameters/instanceId" }]
@@ -348,19 +374,44 @@ paths:
     post:
       tags: [Lifecycle]
       summary: Cancel — cancels the instance
-      description: Marks it CANCELLED (unconditionally) and closes finished_at.
+      description: |
+        RUNNING: sends a best-effort cancel signal to the assigned agent and
+        finalizes NOTOK (exitCode -1), without automatic retry. This evaluates
+        failure alerts and On/Do result=NOTOK and exit=-1 rules; such rules can
+        have their own side effects. A successful response is not proof that a
+        remote process stopped (for example, the agent may be offline).
+
+        WAITING or HELD: becomes CANCELLED; no execution is killed and this path
+        does not evaluate failure alerts/On/Do. Terminal states are rejected
+        with 409. Cancellation itself does not change the condition pool.
+        The returned status describes the cancel action, not a kill acknowledgement
+        or a guarantee against concurrent completion and configured On/Do actions.
       operationId: cancelInstance
       x-permission: operator/admin + write access on the instance's folder
       parameters: [{ $ref: "#/components/parameters/instanceId" }]
       responses:
         "200":
-          description: Cancelled.
+          description: Cancel action applied (NOTOK for RUNNING; CANCELLED for WAITING/HELD).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ActionResult" }
-              example: { id: "etl-sales_2026-07-10_a1b2", status: CANCELLED }
+              examples:
+                running:
+                  value: { id: "etl-sales_2026-07-10_a1b2", status: NOTOK }
+                pending:
+                  value: { id: "etl-sales_2026-07-10_a1b2", status: CANCELLED }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "500":
+          description: Instance lookup failed (currently includes an unknown ID).
+          content:
+            text/plain:
+              schema: { type: string }
+        "409":
+          description: Instance is not RUNNING, WAITING or HELD.
+          content:
+            text/plain:
+              schema: { type: string }
   /api/instances/{id}/rerun:
     post:
       tags: [Lifecycle]
@@ -369,8 +420,17 @@ paths:
         Clears started/finished/exitCode/output and goes back to WAITING. The
         `confirmed` flag SURVIVES the rerun (BUG-2): an already-confirmed job
         does not fall back to the CONFIRM gate. Pending alerts for the job are
-        marked as handled; the tick is nudged — with the gates satisfied, the
+        marked as handled; the tick is nudged - with the gates satisfied, the
         job goes in right away.
+
+        Rerun does NOT change the condition pool or reset descendants. A
+        producer's previously published condition remains available until it
+        is removed. A consumer whose OK/Set OK removed its input waits again
+        if that condition is still absent. NOTOK/CANCELLED does not consume
+        inputs; rerun can proceed only if they still exist and other gates pass.
+        Hand-authored inputs without out-remove are not consumed on OK.
+        The existing order keeps its frozen definition snapshot (M1).
+        Run Now's one-shot bypass is cleared; Order Force keeps its order mode.
       operationId: rerunInstance
       x-permission: operator/admin + write access on the instance's folder
       parameters: [{ $ref: "#/components/parameters/instanceId" }]
@@ -388,9 +448,9 @@ paths:
       tags: [Lifecycle]
       summary: Set OK — flips WAITING/NOTOK/CANCELLED → OK
       description: |
-        The classic "Set OK": marks it OK, publishes the dependency event and
-        MATERIALIZES the ConditionsOut — unblocking the on-success successors.
-        It also applies to WAITING (a job stuck on WAIT EVENT finishes OK right
+        The classic "Set OK": marks it OK and applies conditionsOutAdd and
+        conditionsOutRemove from the frozen order snapshot to the condition pool.
+        It also applies to WAITING (a job stuck on WAIT COND finishes OK right
         away, BUG-3). 400 if the instance is not in an eligible state (e.g.
         RUNNING).
       operationId: setOKInstance
@@ -537,6 +597,39 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/ExternalEvent" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/daily/run:
+    post:
+      tags: [Daily]
+      summary: Plan or resume the current business daily
+      operationId: runDaily
+      x-permission: admin or operator
+      responses:
+        "200": { description: Completed or already completed; returns orderDate, created and run. }
+        "409": { description: Incomplete materialization or invalid configuration; includes error and committed checkpoint when available. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/daily/resume:
+    post:
+      tags: [Daily]
+      summary: Resume an existing frozen daily plan
+      operationId: resumeDaily
+      x-permission: admin or operator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderDate]
+              properties:
+                orderDate: { type: string, format: date }
+      responses:
+        "200": { description: Resumed or already completed; returns orderDate, created and run. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: No persisted daily for this date. }
+        "409": { description: Legacy daily without a frozen plan or failed recovery. }
   /api/daily/status:
     get:
       tags: [Daily]
@@ -808,12 +901,342 @@ paths:
           content:
             text/html:
               schema: { type: string }
+  /api/lab/orders:
+    post:
+      summary: Create an isolated laboratory order
+      tags: [Execution laboratory]
+      description: Development laboratory only; disabled by default and unavailable in production. Requires admin authentication; runtime orders cannot be mutated through this laboratory.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LabOrderRequest" }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LabOrder" }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/lab/orders/{id}:
+    get:
+      summary: Read laboratory order identity
+      tags: [Execution laboratory]
+      description: Development laboratory only; disabled by default and unavailable in production. Requires admin authentication; runtime orders cannot be mutated through this laboratory.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LabOrder" }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/lab/orders/{id}/attempts:
+    post:
+      summary: Atomically create attempt and dispatch intent
+      tags: [Execution laboratory]
+      description: Development laboratory only; disabled by default and unavailable in production. Requires admin authentication; runtime orders cannot be mutated through this laboratory.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LabAttemptRequest" }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExecutionAttempt" }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/lab/orders/{id}/cancel:
+    post:
+      summary: Request or confirm laboratory cancellation
+      tags: [Execution laboratory]
+      description: Development laboratory only; disabled by default and unavailable in production. Requires admin authentication; runtime orders cannot be mutated through this laboratory.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExecutionAttempt" }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/lab/executions/{id}:
+    get:
+      summary: Read durable attempt metadata
+      tags: [Execution laboratory]
+      description: Development laboratory only; disabled by default and unavailable in production. Requires admin authentication; runtime orders cannot be mutated through this laboratory.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExecutionAttempt" }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/lab/executions/{id}/output:
+    get:
+      summary: Read output scoped to one execution
+      tags: [Execution laboratory]
+      description: Development laboratory only; disabled by default and unavailable in production. Requires admin authentication; runtime orders cannot be mutated through this laboratory.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: after, in: query, required: false, schema: { type: integer, format: int64, minimum: 0, default: 0 }, description: Return up to 100 chunks after this committed sequence }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExecutionChunks" }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/lab/reconcile:
+    post:
+      summary: Record expired execution leases as uncertain
+      tags: [Execution laboratory]
+      description: Development laboratory only; disabled by default and unavailable in production. Requires admin authentication; runtime orders cannot be mutated through this laboratory.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/agent/v2/poll:
+    get:
+      summary: Claim a durable assigned message
+      tags: [Durable execution]
+      description: Durable runtime or opt-in development laboratory. Requires a scoped machine credential with EXECUTION_V2 capability.
+      security: [{ machineAuth: [] }]
+      parameters:
+        - { name: id, in: query, required: true, schema: { type: string } }
+        - { name: env, in: query, required: true, allowEmptyValue: true, schema: { type: string } }
+        - { name: caps, in: query, required: true, schema: { type: string }, description: Exact provisioned capabilities including EXECUTION_V2 }
+        - { name: protocol, in: query, required: true, schema: { type: integer, enum: [2] } }
+        - { name: journal, in: query, required: true, schema: { type: integer, enum: [1] }, description: Durable journal schema version. }
+        - { name: ver, in: query, schema: { type: string }, description: Agent build version; release binaries report their actual tag. }
+        - { name: available, in: query, schema: { type: integer, enum: [0, 1], default: 1 }, description: Zero requests control messages only when journal admission is full. }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExecutionEnvelope" }
+        "204": { description: No eligible message. }
+        "426": { description: Protocol 2 is required. }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/agent/v2/ack:
+    post:
+      summary: Acknowledge acceptance, start, contact or cancellation
+      tags: [Durable execution]
+      description: Durable runtime or opt-in development laboratory. Requires a scoped machine credential with EXECUTION_V2 capability.
+      security: [{ machineAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExecutionAck" }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExecutionReceipt" }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/agent/v2/result:
+    post:
+      summary: Commit an identified result with compare-and-swap
+      tags: [Durable execution]
+      description: Durable runtime or opt-in development laboratory. Requires a scoped machine credential with EXECUTION_V2 capability.
+      security: [{ machineAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExecutionResult" }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExecutionReceipt" }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+  /api/agent/v2/output:
+    post:
+      summary: Append sequenced output to one identified execution
+      tags: [Durable execution]
+      description: Durable runtime or opt-in development laboratory. Requires a scoped machine credential with EXECUTION_V2 capability.
+      security: [{ machineAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExecutionOutput" }
+      responses:
+        "200":
+          description: Committed laboratory receipt or authenticated data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExecutionReceipt" }
+        "400": { description: Invalid body, sequence or key. }
+        "401": { description: Authentication failed. }
+        "403": { description: Role or machine scope mismatch. }
+        "404": { description: Laboratory disabled or record missing. }
+        "409": { description: State, identity, fencing or content conflict. }
+        "413": { description: Output limit exceeded. }
+        "429": { description: Unresolved attempt admission is full. }
+        "503": { description: No durable receipt; retry the same identity and key. }
+
+  /api/instances/{id}/executions:
+    get:
+      summary: Read current and historical execution identities and post-actions
+      tags: [Durable execution]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Folder-scoped metadata; legacy instances return empty arrays. Private effect payloads are omitted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  order: { $ref: '#/components/schemas/LabOrder' }
+                  attempts: { type: array, items: { $ref: '#/components/schemas/ExecutionAttempt' } }
+                  effects: { type: array, items: { $ref: '#/components/schemas/ExecutionEffect' } }
+        "401": { description: Authentication required. }
+        "404": { description: Instance missing or outside read scope. }
+        "503": { description: Storage unavailable. }
+  /api/executions/{id}/resolve:
+    post:
+      summary: Record an audited verified outcome without automatic retry
+      tags: [Durable execution]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExecutionResolution' }
+      responses:
+        "200": { description: Committed execution receipt or identical idempotency replay. }
+        "400": { description: Evidence or stopped confirmation missing. }
+        "401": { description: Authentication required. }
+        "403": { description: Writer role and frozen folder write access required. }
+        "404": { description: Runtime execution missing. }
+        "409": { description: Stale fence, changed key content or conflicting terminal outcome. }
+        "503": { description: No durable receipt; retry the same request key. }
+  /api/execution-effects/{id}/resolve:
+    post:
+      summary: Resolve a post-action with current generation and evidence
+      tags: [Durable execution]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EffectResolution' }
+      responses:
+        "200": { description: Audited post-action decision or identical request replay. }
+        "400": { description: Required evidence, generation, stopped confirmation or retry risk acknowledgement missing. }
+        "401": { description: Authentication required. }
+        "403": { description: Writer role and frozen folder write access required. }
+        "404": { description: Effect missing. }
+        "409": { description: Stale generation, effect currently claimed or conflicting request key. }
+        "503": { description: No durable receipt; retry the same request key. }
+
 components:
   securitySchemes:
+    machineAuth:
+      type: http
+      scheme: bearer
+      description: Scoped machine credential issued for an agent/environment/capabilities; human tokens are rejected.
     bearerAuth:
       type: http
       scheme: bearer
-      description: A login session OR the deployment's static token (REGENTE_TOKEN = admin).
+      description: Non-browser API login session, or static REGENTE_TOKEN (= admin) in local/hybrid mode. Not an HttpOnly browser session, OIDC provider token or agent machine credential. Static tokens do not bypass oidc mode.
   parameters:
     instanceId:
       name: id
@@ -834,29 +1257,174 @@ components:
         text/plain:
           schema: { type: string }
     Unauthorized:
-      description: Missing or invalid token.
+      description: Missing/invalid credentials or session source rejected by the authentication mode.
       content:
         text/plain:
           schema: { type: string, example: unauthorized }
     Forbidden:
-      description: Insufficient role/ACL (writer, admin or write access on the folder).
+      description: Invalid session transport/CSRF, or insufficient role/ACL (writer, admin or folder write access).
       content:
         text/plain:
           schema: { type: string, example: forbidden }
   schemas:
+    LabOrderRequest:
+      type: object
+      additionalProperties: false
+      required: [sourceInstanceId, idempotencyKey]
+      properties:
+        sourceInstanceId: { type: string }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 128 }
+    LabOrder:
+      type: object
+      properties:
+        id: { type: string }
+        sourceInstanceId: { type: string }
+        state: { type: string }
+        currentExecution: { type: string }
+        attempt: { type: integer }
+        fence: { type: integer, format: int64 }
+    LabAttemptRequest:
+      type: object
+      additionalProperties: false
+      required: [agentId, idempotencyKey, intent]
+      properties:
+        agentId: { type: string }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 128 }
+        intent: { type: string, enum: [start, retry, rerun] }
+    ExecutionResolution:
+      type: object
+      additionalProperties: false
+      required: [fence, idempotencyKey, decision, reason, effectStopped]
+      properties:
+        fence: { type: integer, format: int64, minimum: 1 }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 128 }
+        decision: { type: string, enum: [succeeded, failed, cancelled] }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+        effectStopped: { type: boolean, enum: [true] }
+    EffectResolution:
+      type: object
+      additionalProperties: false
+      required: [generation, idempotencyKey, decision, reason, effectStopped]
+      properties:
+        generation: { type: integer, minimum: 0 }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 128 }
+        decision: { type: string, enum: [done, cancelled, retry] }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+        effectStopped: { type: boolean, enum: [true] }
+        classification: { type: string, enum: [idempotent, verified-absent, duplicate-risk-accepted], description: Required for retry. }
+        duplicateRiskAccepted: { type: boolean, description: Must be true for retry. }
+    ExecutionEffect:
+      type: object
+      properties:
+        id: { type: string }
+        executionId: { type: string }
+        kind: { type: string }
+        state: { type: string, enum: [pending, claimed, uncertain, done, cancelled] }
+        generation: { type: integer }
+        reason: { type: string }
+        createdAt: { type: integer, format: int64 }
+        leaseUntil: { type: integer, format: int64 }
+        resolvedAt: { type: integer, format: int64 }
+        resolvedBy: { type: string }
+    ExecutionAttempt:
+      type: object
+      properties:
+        executionId: { type: string }
+        orderId: { type: string }
+        attempt: { type: integer }
+        fence: { type: integer, format: int64 }
+        agentId: { type: string }
+        state: { type: string, enum: [dispatch_pending, dispatching, accepted, running, cancel_requested, uncertain, succeeded, failed, cancelled] }
+        leaseUntil: { type: integer, format: int64, description: UTC Unix milliseconds. }
+        acceptedAt: { type: integer, format: int64 }
+        startedAt: { type: integer, format: int64 }
+        finishedAt: { type: integer, format: int64 }
+        lastContact: { type: integer, format: int64 }
+        reason: { type: string }
+        resolvedAt: { type: integer, format: int64 }
+        resolvedBy: { type: string }
+    ExecutionIdentity:
+      type: object
+      required: [protocol, executionId, fence]
+      properties:
+        protocol: { type: integer, enum: [2] }
+        executionId: { type: string }
+        fence: { type: integer, format: int64 }
+    ExecutionAck:
+      allOf:
+        - { $ref: '#/components/schemas/ExecutionIdentity' }
+        - type: object
+          required: [kind]
+          properties:
+            kind: { type: string, enum: [accepted, started, heartbeat, cancelled, uncertain, status] }
+            reason: { type: string, maxLength: 2000 }
+    ExecutionResult:
+      allOf:
+        - { $ref: '#/components/schemas/ExecutionIdentity' }
+        - type: object
+          required: [exitCode, output]
+          properties:
+            exitCode: { type: integer }
+            output: { type: string, description: At most 5 MiB in UTF-8 bytes. }
+    ExecutionOutput:
+      allOf:
+        - { $ref: '#/components/schemas/ExecutionIdentity' }
+        - type: object
+          required: [seq, chunk]
+          properties:
+            seq: { type: integer, format: int64, minimum: 1 }
+            chunk: { type: string, minLength: 1 }
+    ExecutionReceipt:
+      type: object
+      properties:
+        accepted: { type: boolean }
+        duplicate: { type: boolean }
+        executionId: { type: string }
+        state: { type: string }
+        current: { type: boolean }
+        reconciled: { type: boolean, description: A terminal audited decision supersedes local pending evidence; acknowledge without replaying it. }
+        startAuthorized: { type: boolean, description: True only for the current running attempt. Required before starting any effect; duplicate ACK alone does not authorize execution. }
+    ExecutionEnvelope:
+      type: object
+      properties:
+        protocol: { type: integer, enum: [2] }
+        kind: { type: string, enum: [dispatch, cancel] }
+        messageId: { type: string }
+        executionId: { type: string }
+        orderId: { type: string }
+        attempt: { type: integer }
+        agentId: { type: string }
+        fence: { type: integer, format: int64 }
+        idempotencyKey: { type: string }
+        definition: { type: object, description: Frozen definition present only on dispatch. }
+    ExecutionChunks:
+      type: array
+      items:
+        type: object
+        properties:
+          seq: { type: integer, format: int64 }
+          chunk: { type: string }
+
+    BusinessTime:
+      type: object
+      required: [timezone, dailyAt]
+      properties:
+        timezone: { type: string, description: Frozen IANA timezone. }
+        dailyAt: { type: string, description: Frozen rollover in HH:MM. }
     Instance:
       type: object
       description: |
         One instance in the daily (an IMMUTABLE snapshot of the order —
         team/dryRun and friends freeze at the moment the job is ordered).
       properties:
+        businessTime: { $ref: "#/components/schemas/BusinessTime" }
         id: { type: string }
         definitionId: { type: string }
         team: { type: string, description: The folder (frozen on the order). }
         orderDate: { type: string, format: date }
         status:
           type: string
-          enum: [WAITING, RUNNING, OK, NOTOK, HELD, CANCELLED]
+          enum: [WAITING, RUNNING, UNCERTAIN, OK, NOTOK, HELD, CANCELLED]
         scheduledAt: { type: string, format: date-time }
         startedAt: { type: string, format: date-time, nullable: true }
         finishedAt: { type: string, format: date-time, nullable: true }
@@ -879,6 +1447,9 @@ components:
           properties:
             label: { type: string, description: The job label frozen on the order. }
             jobType: { type: string, description: The job type (COMMAND/SCRIPT/...) frozen on the order. }
+            durableExecution: { type: boolean, description: True for an instance governed by the durable runtime. }
+            snapshotError: { type: string, description: Present invalid snapshots are blocked; live definitions are not substituted. }
+            snapshotDef: { type: object, additionalProperties: true, description: Frozen order definition; absent for legacy or invalid snapshots. }
             actionConfig:
               type: object
               additionalProperties: true
@@ -975,18 +1546,35 @@ components:
       properties:
         id: { type: string }
         status: { type: string }
+    DailyMaterialization:
+      type: object
+      properties:
+        orderDate: { type: string, format: date }
+        state: { type: string, enum: [legacy, planning, materializing, completed, failed] }
+        commitSha: { type: string }
+        expected: { type: integer }
+        inserted: { type: integer }
+        checkpoint: { type: integer }
+        carried: { type: integer }
+        error: { type: string }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        canResume: { type: boolean }
     DailyStatus:
       type: object
       properties:
         orderDate: { type: string, format: date, description: '"Today" in the business timezone.' }
         dailyAt: { type: string, description: The configured time (HH:MM). }
-        timezone: { type: string, description: IANA (settings.daily_timezone); empty means the server's local clock. }
+        timezone: { type: string, description: Explicit IANA business timezone (settings.daily_timezone); default UTC. }
+        run: { $ref: "#/components/schemas/DailyMaterialization" }
+        pending: { $ref: "#/components/schemas/DailyMaterialization" }
         lastRunDate: { type: string, format: date }
         lastRunAt: { type: string }
         serverNow: { type: string, format: date-time }
     DailyReport:
       type: object
       properties:
+        materialization: { $ref: "#/components/schemas/DailyMaterialization" }
         date: { type: string, format: date }
         dailyAt: { type: string }
         timezone: { type: string }
@@ -996,7 +1584,7 @@ components:
           description: Materialized >5 min after the configured time (the scheduler's punctuality SLO).
         closed:
           type: boolean
-          description: Nothing WAITING/RUNNING — the day closed (the push trigger).
+          description: Materialization completed or legacy and nothing WAITING/RUNNING/UNCERTAIN — the day closed (the push trigger).
         counts: { $ref: "#/components/schemas/DailyReportCounts" }
         failures:
           type: array
@@ -1015,6 +1603,7 @@ components:
         waiting: { type: integer }
         running: { type: integer }
         held: { type: integer }
+        uncertain: { type: integer }
         cancelled: { type: integer }
         carried: { type: integer, description: Came from earlier dailies (carry-over). }
     DailyReportFailure:
@@ -1038,6 +1627,7 @@ components:
     ForecastReport:
       type: object
       properties:
+        businessTime: { $ref: "#/components/schemas/BusinessTime" }
         orderDate: { type: string, format: date }
         jobs:
           type: array

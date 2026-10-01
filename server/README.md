@@ -1,5 +1,7 @@
 # regente-server
 
+Production deployments: follow the [production profile](../docs/production-profile.md) for explicit environment/network scope, disabled legacy tokens and conversion steps.
+
 The Go daemon: the control plane. It holds the scheduler, the REST API, the WebSocket hub and
 the GitOps layer.
 
@@ -48,6 +50,7 @@ unit or a k8s manifest needs no arguments):
 | `-role` | `all` | `all` \| `api` \| `scheduler` |
 | `-auth-mode` | `local` | `local` (password) \| `hybrid` (password + SSO) \| `oidc` (SSO required); see [authentication](../docs/authentication.md) |
 | `-bus` | `hub` | `hub` (local) \| `nats` (distributed multi-node hub) |
+| `-execution-lab` | `false` / `REGENTE_EXECUTION_LAB=0` | Opt-in isolated v2 attempt laboratory; production rejects it; see [contract](../docs/adr-i08-attempts.md) |
 | `-backup` | — | One-shot mode: writes an online backup and exits |
 
 Run `./regente-server -h` for the full list.
@@ -62,7 +65,27 @@ transports. See [agent identity](../docs/agent-identity.md) and the
 
 ## API
 
-Every `/api/*` route requires `Authorization: Bearer <token>`.
+Authentication depends on the caller, not just the `/api` prefix:
+
+| Caller | Credential and policy |
+|---|---|
+| Browser UI | HttpOnly, SameSite=Lax session cookie; HTTPS uses Secure `__Host-regente_session`, HTTP uses `regente_session`. Cookie requests except GET/HEAD/OPTIONS require `X-CSRF-Token` from login or `GET /api/auth/me` and an allowed origin. |
+| API / CLI / MCP | `Authorization: Bearer <token>` from non-browser `POST /api/auth/login` (`{username,password}`), or the admin-equivalent static `REGENTE_TOKEN`, in `local`/`hybrid` mode. |
+| External agent | Separately issued machine token on agent transports, bound to ID, environment and capabilities; not a human/API credential. |
+
+`local` allows local passwords; `hybrid` also allows OIDC; `oidc` requires SSO
+and rejects ordinary local login and the static admin bearer. Explicit emergency
+access is a separately configured, audited 15-minute recovery path, not a routine
+integration bypass. Browser login adds `browser:true`, returns an empty JSON
+token and sets the cookie; never put that session in bearer headers, URLs or
+localStorage. OIDC provider tokens are not Regente API bearer tokens.
+
+Public entry points include `/health`, `/livez`, `/readyz`, `/metrics`, `/api/env`,
+`/api/auth/config`, `/api/auth/login`, OIDC login/callback and `/api-docs`.
+Signed quick actions validate their scoped link token. Web events require a
+30-second single-use ticket from authenticated `POST /api/auth/event-ticket`;
+browser callers need CSRF for that POST. See [authentication](../docs/authentication.md),
+[agent identity](../docs/agent-identity.md) and [web events](../docs/web-events.md).
 
 The **contract lives in the binary**: a running server serves the curated OpenAPI spec plus a
 self-contained viewer at **`/api-docs`**, and the raw spec at `/api-docs/openapi.yaml` and

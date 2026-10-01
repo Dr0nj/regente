@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verification profiles · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="adr-i09-agent-journal.html">Durable agent journal</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="business-time.html">Business time</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html">Daily recovery</a>
+<a href="durable-execution.html">Durable execution and recovery</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="production-profile.html">Production profile</a>
+<a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html" class="active">Verification profiles</a>
+<a href="web-events.html">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="verification-profiles">Verification profiles</h1>
+<p>Run verification from the repository root. The default is <strong>quick</strong>: its success
+means only that the declared local checks passed. It prints the checks it did
+not run. <strong>Full</strong> requires Linux/amd64 and real dependencies; missing tools,
+failed commands, missing evidence or an omitted mandatory gate cause failure.</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Quick</th>
+<th>Full</th>
+<th>Additional CI coverage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Runner negative tests</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Same runner</td>
+</tr>
+<tr>
+<td>Server and agent build, vet, tests</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Go 1.25</td>
+</tr>
+<tr>
+<td>Staticcheck, both Go modules</td>
+<td>No</td>
+<td>Yes</td>
+<td>Pinned 2025.1.1</td>
+</tr>
+<tr>
+<td>Web lint and same-origin build</td>
+<td>Installed dependencies</td>
+<td>Clean engine-strict install</td>
+<td>Declared Node minima</td>
+</tr>
+<tr>
+<td>Schema, engines/recipes, API contracts</td>
+<td>Focused checks</td>
+<td>Same checks plus real services</td>
+<td>Node matrix and demo</td>
+</tr>
+<tr>
+<td>Markdown paths, generated anchors, site freshness</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Same read-only checker</td>
+</tr>
+<tr>
+<td>Real browser: local/hybrid/OIDC login, scoped WebSocket, frozen business timezone and daily recovery</td>
+<td>No</td>
+<td>Yes</td>
+<td>Chromium against real server</td>
+</tr>
+<tr>
+<td>PostgreSQL, NATS, OIDC, daily recovery, isolated v2 attempts and synthetic execution</td>
+<td>No</td>
+<td>Yes</td>
+<td>Real containers; evidence required</td>
+</tr>
+<tr>
+<td>PowerShell demo: offline and Git fixture</td>
+<td>No</td>
+<td>Linux Docker smoke</td>
+<td>Native Windows smoke</td>
+</tr>
+<tr>
+<td>Release installation in systemd</td>
+<td>No</td>
+<td>No</td>
+<td>Separate release workflow</td>
+</tr>
+</tbody>
+</table>
+<p>Go unit suites include optional external-service tests. Their skips in quick
+are <strong>not</strong> integration evidence. Full separately invokes the integration runner,
+which rejects skipped or missing required scenarios, including both SQLite and
+PostgreSQL variants of <code>TestI08AttemptIntegration</code>. I08 also has execution unit
+tests for lost notifications, restart, stale output, delivery exhaustion and
+backpressure. These prove the development laboratory contract, not an agent
+journal or production execution durability. Neither profile qualifies
+production load, high availability or the open enterprise milestones; see
+<a href="capacity-guarantees.html">capacity and guarantees</a>.</p>
+<h2 id="quick">Quick</h2>
+<p>Requires Python 3.10+, Go compatible with the module directives, a
+<a href="app.html">Node version supported by the app</a>, npm, Git and installed app
+dependencies. From a clean checkout, install them with <code>cd app &amp;&amp; npm ci</code> first.</p>
+<pre><code class="language-bash">bash scripts/verify.sh --quick
+# Cross-platform entry point, including Windows:
+python scripts/verify.py --quick
+# Show coverage only; status is not_run, never a validation pass:
+python scripts/verify.py --full --plan
+</code></pre>
+<p>Quick runs server/agent build, vet and tests; web lint/build; and the documentation
+checks. It does not run staticcheck, a clean dependency install, browser tests,
+real service/recovery integration or demo smoke. Do not report it as full CI.</p>
+<h2 id="full-on-linuxamd64">Full on Linux/amd64</h2>
+<p>Use an isolated checkout on Linux/amd64 with Python 3.10+, Go 1.25, Node 24,
+npm/npx, Git, Bash, tar, OpenSSL, PowerShell 7 and Docker with Compose v2 and a
+running daemon. Docker and network access are needed for service images, Go/npm
+dependencies and the demo build. Use synthetic data only. Port allocations and
+owned-resource cleanup are handled by the existing fixture runners.</p>
+<p>Keep app <code>.env</code>, <code>.env.local</code>, <code>.env.production</code> and <code>.env.production.local</code>
+absent. The runner removes inherited Regente, Vite, OTel, Playwright and GitHub
+token variables from child processes. Local private configuration is not a test
+fixture.</p>
+<p>Install Chromium and its OS dependencies before running:</p>
+<pre><code class="language-bash">cd app
+npm ci --engine-strict
+npx --no-install playwright install --with-deps chromium
+cd ..
+bash scripts/verify.sh --full
+</code></pre>
+<p>Full performs a fresh engine-strict npm install itself. It builds the server for
+browser tests, verifies all six required browser scenarios without skips or
+flaky passes, runs <a href="integration-baseline.html">integration and recovery</a>, then
+executes the PowerShell demo smoke in both offline and Git-fixture modes. Demo
+reports must prove authenticated presence, completed execution, credential
+rejection and no public tunnel.</p>
+<p>Windows/macOS hosts must use a Linux VM or CI for full. Unsupported hosts fail
+before any gates execute; switching automatically to quick would hide missing
+coverage and is forbidden.</p>
+<h2 id="evidence-and-ci">Evidence and CI</h2>
+<p>Each execution writes logs and <code>verify.json</code> under
+<code>.integration/verify-&lt;id&gt;/evidence/</code>. The report records profile, revision, dirty
+checkout state, required gates, each completed/failed gate, omitted coverage and
+the integration evidence path. A nonzero exit is failure; a plan is not a run.
+A missing, duplicate, reordered, skipped or failed required gate cannot yield
+a successful report.</p>
+<p><a href="https://github.com/Dr0nj/regente/blob/main/.github/workflows/ci.yml">CI</a> runs the exact <code>--full</code> entry point on Linux.
+The reusable <a href="https://github.com/Dr0nj/regente/blob/main/.github/workflows/doc-recipes.yml">documentation recipe matrix</a>
+adds builds on the declared Node minima and native Windows PowerShell smoke.
+A local full pass covers the fixed Linux profile; the extra platform matrix
+still requires its own CI result. CI uploads <code>verification-evidence</code>, including
+integration evidence; browser failure traces are uploaded separately.</p>
+<p>Dead-code reporting is informational and is outside the pass condition.
+<a href="https://github.com/Dr0nj/regente/blob/main/.github/workflows/release.yml">Release</a> retains its separate integration and
+systemd installation smoke. A CI pass does not mean a release or installation
+has occurred.</p>
+<h2 id="documentation-regression-checks">Documentation regression checks</h2>
+<p>The documentation gate consolidates focused checks:</p>
+<ul>
+<li>Current schema and compatibility: <code>TestMigrationRunbookContract</code> in the DB
+suite compares the current runbook contract with runtime migrations. Negative
+fixtures reject wrong/missing/duplicate values while permitting dated history.</li>
+<li>Node engines and same-origin recipes: <code>node scripts/check-doc-recipes.cjs</code>
+checks the lockfile, supported range and canonical recipes, including negative
+in-memory engine fixtures.</li>
+<li>API contracts: the API suite checks documented routes, response contracts,
+references and selected examples. These are focused assertions, not a complete
+OpenAPI standards validator.</li>
+<li>Site and links: <code>go -C server run ./cmd/docsite -repo .. -out ../docs/site -check</code>
+parses Markdown links/images (including reference links and raw HTML), checks
+repository-local paths, builds the site in a temporary directory, checks its
+actual HTML anchors and compares every generated file. It detects missing,
+extra and stale files without repairing the checkout. CRLF/LF text differences
+are normalized; binary assets are compared unchanged. External URLs are not
+fetched, and GitHub-only Markdown fragment rendering is outside this check.</li>
+</ul>
+<p>To regenerate the versioned site after editing its sources:</p>
+<pre><code class="language-bash">go -C server run ./cmd/docsite -repo .. -out ../docs/site
+</code></pre>
+<p>Negative tests change only disposable fixtures: broken paths/reference links,
+missing images/anchors, stale/missing/extra HTML and omitted required gates.
+A successful negative test means the checker rejected its fixture for the
+expected reason. Product claims still require source review; a text search
+cannot prove HA, durability, cancellation or capacity guarantees.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

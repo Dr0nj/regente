@@ -1,5 +1,7 @@
 # Deploy — portable serverless
 
+Production deployments: follow the [production profile](../docs/production-profile.md) for explicit environment/network scope, disabled legacy tokens and conversion steps.
+
 Artifacts for running `regente-server` as a **scale-to-zero serverless container without vendor
 lock-in**. The full strategy lives in
 [`../docs/architecture-future.md`](../docs/architecture-future.md).

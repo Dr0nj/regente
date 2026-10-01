@@ -18,7 +18,20 @@ export function getLastDailyRun(): string | null {
 
 /* ── Daily status (fonte da verdade = relógio/DB do SERVER) ── */
 
+export interface DailyMaterialization {
+  orderDate: string; state: "legacy" | "planning" | "materializing" | "completed" | "failed";
+  commitSha: string; expected: number; inserted: number; checkpoint: number;
+  carried: number; error?: string; startedAt: string; finishedAt?: string; canResume: boolean;
+}
+
+export async function resumeDaily(orderDate: string): Promise<void> {
+  await api("/api/daily/resume", { method: "POST", body: JSON.stringify({ orderDate }) });
+  await refreshFromServer();
+}
+
 export interface DailyStatus {
+  run?: DailyMaterialization;
+  pending?: DailyMaterialization;
   orderDate: string;     // "hoje" NA timezone da daily (E1) — a data de negócio
   dailyAt: string;       // "HH:MM" configurado (settings.daily_at, default 00:00)
   timezone?: string;     // E1 — settings.daily_timezone (nome IANA); "" = relógio local do server

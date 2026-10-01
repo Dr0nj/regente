@@ -68,7 +68,7 @@ export function SettingsDialog({ onClose }: Props) {
   const [dailyAt, setDailyAt] = useState("");
   // E1 — timezone de NEGÓCIO da daily (settings.daily_timezone, nome IANA).
   // Vazio = relógio local do server. Nome inválido: o server loga e cai no local.
-  const [dailyTz, setDailyTz] = useState("");
+  const [dailyTz, setDailyTz] = useState("UTC");
   // ADV-5 — retenção/archives de instances (0/vazio = infinito) + diretório dos NDJSON.
   const [retentionDays, setRetentionDays] = useState("");
   const [archiveDir, setArchiveDir] = useState("");
@@ -78,7 +78,7 @@ export function SettingsDialog({ onClose }: Props) {
       setSettings(s);
       setEnvLabel(s.env_label ?? "");
       setDailyAt(s.daily_at ?? "");
-      setDailyTz(s.daily_timezone ?? "");
+      setDailyTz(s.daily_timezone || "UTC");
       setRetentionDays(s.instance_retention_days ?? "");
       setArchiveDir(s.archive_dir ?? "");
       setLoaded(true);
@@ -347,7 +347,7 @@ export function SettingsDialog({ onClose }: Props) {
                       list="regente-tz-suggestions"
                       value={dailyTz}
                       onChange={(e) => setDailyTz(e.target.value)}
-                      placeholder="server local clock"
+                      placeholder="UTC"
                       spellCheck={false}
                       style={{
                         width: "100%", padding: "6px 10px", fontSize: 13, fontFamily: "var(--v2-font-mono)",
@@ -363,11 +363,10 @@ export function SettingsDialog({ onClose }: Props) {
                   </div>
                 </div>
                 <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 4, display: "block", lineHeight: 1.5 }}>
-                  The server materializes the daily at this time, on the BUSINESS clock of the timezone
-                  (IANA name, e.g. <code>America/Sao_Paulo</code>; empty = the server's local clock —
-                  an invalid name falls back to local and is logged). The <code>order_date</code> is the day in that
-                  timezone: a server on UTC with business hours in SP crosses midnight at 03:00Z. Applies with no
-                  restart; if today's daily already ran, it takes effect tomorrow.
+                  Use an IANA timezone such as <code>America/Sao_Paulo</code> or <code>UTC</code> (the default).
+                  The business day starts at the rollover time. Earlier clock times belong to the following morning.
+                  New orders freeze these settings; existing orders keep their recorded timezone and rollover.
+                  Invalid values are rejected.
                 </span>
               </div>
 

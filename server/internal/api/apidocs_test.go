@@ -133,3 +133,80 @@ func TestOpenAPI_ServidoPublico(t *testing.T) {
 		}
 	}
 }
+
+// DOC-07/08: referências resolvíveis, security explícita e exemplos por estado.
+// Não substitui um validador OpenAPI completo nem os testes de runtime.
+func TestOpenAPI_DocumentedContracts(t *testing.T) {
+	raw, err := openAPIJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err = json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	var walk func(any)
+	walk = func(node any) {
+		switch n := node.(type) {
+		case map[string]any:
+			if ref, ok := n["$ref"].(string); ok {
+				if !strings.HasPrefix(ref, "#/") {
+					t.Fatalf("referência externa inesperada: %s", ref)
+				}
+				var target any = doc
+				for _, part := range strings.Split(strings.TrimPrefix(ref, "#/"), "/") {
+					m, ok := target.(map[string]any)
+					if !ok {
+						t.Fatalf("referência inválida: %s", ref)
+					}
+					target, ok = m[part]
+					if !ok {
+						t.Fatalf("referência ausente: %s", ref)
+					}
+				}
+			}
+			for _, child := range n {
+				walk(child)
+			}
+		case []any:
+			for _, child := range n {
+				walk(child)
+			}
+		}
+	}
+	walk(doc)
+	security := doc["security"].([]any)
+	if len(security) != 1 || security[0].(map[string]any)["bearerAuth"] == nil {
+		t.Fatal("contrato curado deve declarar bearer de integração")
+	}
+	schemes := doc["components"].(map[string]any)["securitySchemes"].(map[string]any)
+	if scheme := schemes["bearerAuth"].(map[string]any); scheme["type"] != "http" || scheme["scheme"] != "bearer" {
+		t.Fatal("security scheme inválido")
+	}
+	paths := doc["paths"].(map[string]any)
+	// Vírgula sem aspas num flow-map YAML inventava uma propriedade inválida.
+	query := paths["/api/query"].(map[string]any)["post"].(map[string]any)
+	qSchema := query["requestBody"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)["properties"].(map[string]any)["q"].(map[string]any)
+	if len(qSchema) != 2 || qSchema["description"] != "The question, in natural language." {
+		t.Fatalf("schema de q inválido: %v", qSchema)
+	}
+	for _, path := range []string{"/health", "/livez", "/readyz", "/metrics"} {
+		op := paths[path].(map[string]any)["get"].(map[string]any)
+		if sec, ok := op["security"].([]any); !ok || len(sec) != 0 {
+			t.Fatalf("probe %s não está público", path)
+		}
+	}
+	cancel := paths["/api/instances/{id}/cancel"].(map[string]any)["post"].(map[string]any)
+	responses := cancel["responses"].(map[string]any)
+	for _, code := range []string{"200", "401", "403", "409", "500"} {
+		if responses[code] == nil {
+			t.Errorf("cancel sem resposta %s", code)
+		}
+	}
+	examples := responses["200"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["examples"].(map[string]any)
+	for example, want := range map[string]string{"running": "NOTOK", "pending": "CANCELLED"} {
+		if got := examples[example].(map[string]any)["value"].(map[string]any)["status"]; got != want {
+			t.Errorf("%s: %v != %s", example, got, want)
+		}
+	}
+}

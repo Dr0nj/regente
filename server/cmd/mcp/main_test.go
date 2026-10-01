@@ -65,6 +65,68 @@ func contentOf(r rpcResp) (text string, isErr bool) {
 	return
 }
 
+// DOC-08: MCP repassa os estados/erros reais, não fabrica CANCELLED.
+func TestMCP_CancelStateResults(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		code       int
+	}{
+		{"running", `{"id":"job","status":"NOTOK"}`, 200},
+		{"waiting", `{"id":"job","status":"CANCELLED"}`, 200},
+		{"held", `{"id":"job","status":"CANCELLED"}`, 200},
+		{"terminal", "can only cancel RUNNING/WAITING/HELD", 409},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != "POST" || r.URL.Path != "/api/instances/job/cancel" || r.Header.Get("Authorization") != "Bearer t" {
+					t.Errorf("requisição incorreta: %s %s", r.Method, r.URL.Path)
+				}
+				w.WriteHeader(tc.code)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer ts.Close()
+			text, isErr := contentOf(toolsCall(newM(ts, true), "cancel_job", map[string]interface{}{"instanceId": "job"}))
+			if isErr != (tc.code != 200) {
+				t.Fatalf("isError=%v; HTTP=%d", isErr, tc.code)
+			}
+			if tc.code == 200 {
+				var got, want map[string]string
+				if err := json.Unmarshal([]byte(text), &got); err != nil {
+					t.Fatal(err)
+				}
+				if err := json.Unmarshal([]byte(tc.body), &want); err != nil {
+					t.Fatal(err)
+				}
+				if got["status"] != want["status"] || got["id"] != "job" {
+					t.Fatalf("resultado alterado: %s", text)
+				}
+			} else if !strings.Contains(text, tc.body) {
+				t.Fatalf("erro original perdido: %s", text)
+			}
+		})
+	}
+}
+
+func TestMCP_LifecycleDescriptions(t *testing.T) {
+	m := &mcpServer{allowWrites: true}
+	r, _ := m.handle(rpcReq{Method: "tools/list", ID: json.RawMessage(`1`)})
+	list := r.Result.(map[string]interface{})["tools"].([]map[string]interface{})
+	seen := map[string]string{}
+	for _, tool := range list {
+		seen[tool["name"].(string)] = tool["description"].(string)
+	}
+	for name, fragments := range map[string][]string{
+		"cancel_job": {"RUNNING", "NOTOK", "WAITING/HELD", "CANCELLED", "best-effort", "Terminal"},
+		"rerun_job":  {"WAITING", "without changing the condition pool", "descendants"},
+	} {
+		for _, fragment := range fragments {
+			if !strings.Contains(seen[name], fragment) {
+				t.Errorf("%s omite %q", name, fragment)
+			}
+		}
+	}
+}
+
 func TestMCP_Initialize(t *testing.T) {
 	m := &mcpServer{}
 	resp, notif := m.handle(rpcReq{Method: "initialize", ID: json.RawMessage(`1`),

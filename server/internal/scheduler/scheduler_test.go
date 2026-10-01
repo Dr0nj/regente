@@ -176,8 +176,8 @@ func TestDailyAt_FromSettings(t *testing.T) {
 	if _, err := s.db.Exec(`UPDATE settings SET value='25:99' WHERE key='daily_at'`); err != nil {
 		t.Fatalf("update setting: %v", err)
 	}
-	if got := s.DailyAt(); got != "00:00" {
-		t.Fatalf("valor inválido deve cair no default 00:00, veio %s", got)
+	if err := s.validateBusinessTime(); err == nil {
+		t.Fatal("valor inválido deve bloquear materialização")
 	}
 }
 

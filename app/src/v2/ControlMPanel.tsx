@@ -259,7 +259,7 @@ function SLAView() {
           {items.length === 0 && <tr><td colSpan={6} style={{ ...td, textAlign: "center", color: "var(--v2-status-ok)" }}>No SLA breaches. ✓</td></tr>}
           {items.map(b => (
             <tr key={b.id}>
-              <td style={td}>{new Date(b.detectedAt).toLocaleString()}</td>
+              <td style={td}>{new Date(b.detectedAt).toLocaleString("en-GB", { timeZone: "UTC", timeZoneName: "shortOffset" })}</td>
               <td style={td}>{b.defId}</td>
               <td style={{ ...td, fontFamily: "monospace", fontSize: 11 }}>{b.instanceId.slice(0, 8)}</td>
               <td style={td}>{b.kind}</td>
@@ -283,6 +283,7 @@ function ForecastView() {
   return (
     <div>
       <h3 style={{ marginTop: 0 }}>Forecast / Dry-run (F21)</h3>
+      {report && <p>Business timezone: {report.businessTime?.timezone ?? "UTC"} · rollover {report.businessTime?.dailyAt ?? "00:00"}</p>}
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inp} />
         <button onClick={run} style={btn}>Run forecast</button>
@@ -304,8 +305,8 @@ function ForecastView() {
                   <td style={td}>{j.label}</td>
                   <td style={td}>{j.team}</td>
                   <td style={{ ...td, color: j.eligible ? "var(--v2-status-ok)" : "var(--v2-text-muted)" }} title={j.reason}>{j.eligible ? "✓" : "skip"}</td>
-                  <td style={td}>{new Date(j.startAt).toLocaleTimeString()}</td>
-                  <td style={td}>{new Date(j.endAt).toLocaleTimeString()}</td>
+                  <td style={td}>{new Date(j.startAt).toLocaleString("en-GB", { timeZone: report.businessTime?.timezone ?? "UTC", timeZoneName: "shortOffset" })}</td>
+                  <td style={td}>{new Date(j.endAt).toLocaleString("en-GB", { timeZone: report.businessTime?.timezone ?? "UTC", timeZoneName: "shortOffset" })}</td>
                   <td style={{ ...td, color: j.wouldBreachSla ? "var(--v2-status-failed)" : "var(--v2-text-muted)" }}>{j.wouldBreachSla ? "BREACH" : "—"}</td>
                 </tr>
               ))}

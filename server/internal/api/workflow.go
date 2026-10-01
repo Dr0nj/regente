@@ -61,8 +61,8 @@ func (s *server) folderPauseResume(w http.ResponseWriter, r *http.Request, pause
 	//   - PAUSA:  ...status NOT IN (RUNNING,HELD)  → status=HELD, held_from_status=<original>, hold_scope='folder'
 	//   - RESUME: ...status=HELD AND scope=folder  → status=<original|WAITING>,  hold_scope=''
 	kind, msg := "paused", "workflow pause (folder "+folder+")"
-	whereSQL := ` WHERE team=? AND order_date=? AND status NOT IN (?,?)`
-	whereArgs := []any{folder, date, string(domain.StatusRunning), string(domain.StatusHeld)}
+	whereSQL := ` WHERE team=? AND order_date=? AND status NOT IN (?,?,?) AND NOT EXISTS(SELECT 1 FROM runtime_orders ro JOIN execution_attempts ea ON ea.order_id=ro.order_id WHERE ro.instance_id=instances.id AND ea.state NOT IN ('succeeded','failed','cancelled'))`
+	whereArgs := []any{folder, date, string(domain.StatusRunning), string(domain.StatusHeld), string(domain.StatusUncertain)}
 	updSQL := `UPDATE instances SET held_from_status=status, status=?, hold_scope='folder'`
 	updSetArgs := []any{string(domain.StatusHeld)}
 	if !pause {

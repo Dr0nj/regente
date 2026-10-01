@@ -15,7 +15,7 @@ param(
   [string]$Server,
   [string]$Token,
   [string]$Id      = $env:COMPUTERNAME,
-  [string]$Caps    = "COMMAND,SCRIPT,HTTP",
+  [string]$Caps    = "COMMAND,SCRIPT,HTTP,EXECUTION_V2",
   [string]$Repo    = "Dr0nj/regente",
   [string]$Version = "latest"
 )
@@ -56,10 +56,29 @@ $dstDir = "C:\Program Files\Regente"
 New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
 $exe = Join-Path $dstDir "regente-agent.exe"
 Write-Host "Downloading $asset ($Version)..."
-Invoke-WebRequest -Uri $url -OutFile $exe -UseBasicParsing
+
+$downloadPath = Join-Path $dstDir "regente-agent.next.exe"
+Invoke-WebRequest -Uri $url -OutFile $downloadPath -UseBasicParsing
+Stop-ScheduledTask -TaskName "RegenteAgent" -ErrorAction SilentlyContinue
+for ($attempt = 0; $attempt -lt 10; $attempt++) {
+  try { Move-Item -LiteralPath $downloadPath -Destination $exe -Force -ErrorAction Stop; break }
+  catch { if ($attempt -eq 9) { throw }; Start-Sleep -Seconds 1 }
+}
 
 # Tarefa Agendada: boot + SYSTEM + auto-restart (mesma config do install-windows.ps1).
-$argline   = "-server $Server -token $Token -id $Id -caps $Caps"
+# Journal e credencial persistentes: upgrade nunca os remove.
+$stateDir = Join-Path $env:ProgramData "RegenteAgent"
+New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
+& icacls $stateDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Cannot protect durable agent state directory" }
+$tokenPath = Join-Path $stateDir "credential.txt"
+[IO.File]::WriteAllText($tokenPath, $Token)
+$journalPath = Join-Path $stateDir "journal.db"
+foreach ($argument in @($Server, $Id, $Caps)) {
+  if ($argument -match '["\r\n]') { throw "Invalid agent argument" }
+}
+$argline = "-server `"$Server`" -token-file `"$tokenPath`" -id `"$Id`" -caps `"$Caps`" -transport v2 -journal `"$journalPath`""
+Stop-ScheduledTask -TaskName "RegenteAgent" -ErrorAction SilentlyContinue
 $action    = New-ScheduledTaskAction -Execute $exe -Argument $argline
 $trigger   = New-ScheduledTaskTrigger -AtStartup
 $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest

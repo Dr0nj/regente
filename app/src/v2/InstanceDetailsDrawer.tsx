@@ -21,6 +21,7 @@ import {
 } from "@/lib/runtime-bridge";
 import { injectFailure, fetchPerfForecast, fetchJobStats, type PerfForecast, type JobStats, type RunSample } from "@/lib/differentials-api";
 import { isServerMode } from "@/lib/server-client";
+import ExecutionPanel from "./ExecutionPanel";
 import ForecastPanel from "./ForecastPanel";
 import { toast } from "./Toast";
 import { useResizablePanel, ResizeHandle } from "./resizable";
@@ -56,6 +57,7 @@ export interface InstanceActionHandlers {
 }
 
 const STATUS_COLOR: Record<JobInstance["status"], string> = {
+  UNCERTAIN: "var(--v2-status-waiting)",
   OK: "var(--v2-status-ok)",
   NOTOK: "var(--v2-status-failed)",
   RUNNING: "var(--v2-status-running)",
@@ -65,6 +67,7 @@ const STATUS_COLOR: Record<JobInstance["status"], string> = {
 };
 
 const STATUS_LABEL: Record<JobInstance["status"], string> = {
+  UNCERTAIN: "UNCERTAIN",
   OK: "OK",
   NOTOK: "NOT OK",
   RUNNING: "RUNNING",
@@ -73,16 +76,9 @@ const STATUS_LABEL: Record<JobInstance["status"], string> = {
   CANCELLED: "CANCELLED",
 };
 
-function fmtTime(ms?: number): string {
-  if (!ms) return "—";
-  const d = new Date(ms);
-  const time = d.toLocaleTimeString("en-GB", { hour12: false });
-  // Instances carregadas pela virada (carry-over) têm timestamps de OUTROS
-  // dias: fora de hoje, a hora sozinha engana — prefixa dd/MM.
-  if (d.toDateString() !== new Date().toDateString()) {
-    return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")} ${time}`;
-  }
-  return time;
+function fmtTime(ms?: number, timezone = "UTC"): string {
+  if (ms == null) return "—";
+  return new Intl.DateTimeFormat("en-GB", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZoneName: "shortOffset" }).format(new Date(ms));
 }
 
 function fmtDuration(ms?: number): string {
@@ -111,8 +107,9 @@ interface ActionButton {
 }
 
 /* ── Abas ── */
-type Tab = "general" | "output" | "logs" | "stats" | "schedule" | "deps" | "neighborhood" | "whynot";
+type Tab = "execution" | "general" | "output" | "logs" | "stats" | "schedule" | "deps" | "neighborhood" | "whynot";
 const TAB_LABEL: Record<Tab, string> = {
+  execution: "Execution",
   general: "General",
   output: "Output",
   logs: "Logs",
@@ -122,7 +119,7 @@ const TAB_LABEL: Record<Tab, string> = {
   neighborhood: "Neighborhood",
   whynot: "Why not?",
 };
-const TAB_ORDER: Tab[] = ["general", "output", "logs", "stats", "schedule", "deps", "neighborhood", "whynot"];
+const TAB_ORDER: Tab[] = ["general", "execution", "output", "logs", "stats", "schedule", "deps", "neighborhood", "whynot"];
 
 export default function InstanceDetailsDrawer({
   instance,
@@ -162,12 +159,12 @@ export default function InstanceDetailsDrawer({
 
   // Cascata = a MESMA do dispatch (defForInstance): snapshot na instance >
   // snapshot da ordem no server > def viva (só instance pré-snapshot/seed antigo).
-  const actionConfig = instance.actionConfig ?? orderDetail?.actionConfig ?? definition?.actionConfig;
+  const actionConfig = orderDetail?.snapshotError ? undefined : instance.actionConfig ?? orderDetail?.actionConfig ?? definition?.actionConfig;
   const jobType = instance.jobType || orderDetail?.jobType || definition?.jobType || "—";
   // M1 — DEF CONGELADA da ordem: Schedule/Condições/General leem DAQUI, não da
   // def viva do Design. É o definition_snapshot (a foto que o dispatch executou);
   // a def viva entra só como fallback de instance legada sem snapshot.
-  const orderDef = orderDetail?.snapshotDef ?? definition;
+  const orderDef = orderDetail?.snapshotError ? undefined : orderDetail?.snapshotDef ?? definition;
   // BUG-5 — gate CONFIRM ativo (card violeta): as únicas ações são Hold e
   // Confirm; Cancel/Skip/Set OK/Chaos somem até o operador decidir. M1: lê o
   // confirmReq CONGELADO na ordem (coluna schemaV18); def viva só fallback.
@@ -196,7 +193,7 @@ export default function InstanceDetailsDrawer({
     // Hold GERAL (2026-07-16): qualquer status exceto RUNNING (execução já no
     // agente) e o próprio HOLD; o Release restaura o status original (heldFrom).
     { label: "Hold",    onClick: () => handlers.onHold(instance.id),    tone: "neutral" as const,
-      show: status !== "RUNNING" && status !== "HOLD",
+      show: status !== "RUNNING" && status !== "UNCERTAIN" && status !== "HOLD",
       title: "Holds the job, freezing its current status — Release restores exactly what it was" },
     // Job segurado por uma PAUSA DE FOLDER (schemaV14) não pode ser liberado
     // individualmente — só o Retomar da folder destrava. Botão desabilitado
@@ -222,8 +219,8 @@ export default function InstanceDetailsDrawer({
     // e finaliza NOTOK sem retry. Um job WAITING não "cancela" — se resolve
     // (Set OK/Skip); daí Cancel é exclusivo de RUNNING.
     { label: "Cancel",  onClick: () => handlers.onCancel(instance.id),  tone: "danger"  as const,
-      show: status === "RUNNING",
-      title: "Kills the running process on the agent and ends the job with an error (NOTOK)" },
+      show: status === "RUNNING" || status === "UNCERTAIN",
+      title: "Requests cancellation; the job remains unresolved until the agent acknowledges stopping. External effects are not rolled back." },
     { label: "Skip",    onClick: () => handlers.onSkip(instance.id),    tone: "neutral" as const,
       show: (status === "WAITING" || status === "HOLD") && !waitConfirm },
     // Set OK direto na espera: um job WAITING pode ser dado como OK na hora (sem
@@ -233,7 +230,7 @@ export default function InstanceDetailsDrawer({
       show: status === "NOTOK" || status === "CANCELLED" || (status === "WAITING" && !waitConfirm) },
     { label: "Rerun",   onClick: () => handlers.onRerun(instance.id),   tone: "primary" as const, show: status === "NOTOK" },
     { label: "💥 Chaos", onClick: chaosInject, tone: "danger" as const,
-      show: isServerMode() && !waitConfirm && (status === "WAITING" || status === "RUNNING" || status === "HOLD") },
+      show: isServerMode() && !!orderDetail && !orderDetail.durableExecution && !waitConfirm && (status === "WAITING" || status === "RUNNING" || status === "HOLD") },
   ]).filter((a) => a.show);
 
   const { width, onMouseDown, reset } = useResizablePanel({
@@ -349,10 +346,12 @@ export default function InstanceDetailsDrawer({
         <LogPanel instanceId={instance.id} status={status} />
       ) : (
         <div style={{ flex: 1, overflowY: "auto", padding: "12px", fontSize: 11 }}>
+          {orderDetail?.snapshotError && <div role="alert" style={{ color: "var(--v2-status-failed)", marginBottom: 8 }}>{orderDetail.snapshotError}</div>}
+          {tab === "execution" && <ExecutionPanel key={instance.id} instanceId={instance.id} />}
           {tab === "general" && <GeneralTab instance={instance} definition={orderDef} jobType={jobType} actionConfig={actionConfig} />}
           {tab === "output" && <OutputTab instance={instance} jobType={jobType} actionConfig={actionConfig} />}
           {tab === "stats" && <StatsTab instance={instance} />}
-          {tab === "schedule" && <ScheduleTab definition={orderDef} />}
+          {tab === "schedule" && <ScheduleTab definition={orderDef} businessTime={instance.businessTime} />}
           {tab === "deps" && <DepsTab definition={orderDef} triggers={triggers} allDefs={allDefs} />}
           {tab === "neighborhood" && (
             <>
@@ -498,10 +497,11 @@ function GeneralTab({ instance, definition, jobType, actionConfig }: {
       </Section>
 
       <Section title="Timeline">
-        <Field label="Ordered"    value={fmtTime(instance.createdAt)} />
-        <Field label="Scheduled"  value={fmtTime(instance.scheduledAt)} />
-        <Field label="Started"    value={fmtTime(instance.startedAt)} />
-        <Field label="Completed"  value={fmtTime(instance.completedAt)} />
+        <Field label="Business timezone" value={instance.businessTime ? `${instance.businessTime.timezone} · rollover ${instance.businessTime.dailyAt}` : "Legacy: zone unknown · timestamps shown in UTC"} />
+        <Field label="Ordered"    value={fmtTime(instance.createdAt, instance.businessTime?.timezone)} />
+        <Field label="Scheduled"  value={fmtTime(instance.scheduledAt, instance.businessTime?.timezone)} />
+        <Field label="Started"    value={fmtTime(instance.startedAt, instance.businessTime?.timezone)} />
+        <Field label="Completed"  value={fmtTime(instance.completedAt, instance.businessTime?.timezone)} />
         <Field label="Duration"   value={fmtDuration(instance.durationMs)} />
         <Field label="Attempts"   value={`${instance.attempts} / ${instance.retries + 1}`} />
       </Section>
@@ -819,7 +819,7 @@ function ServerOutputTab({ instance, jobType, actionConfig }: {
           />
         )}
         {agentId && <Field label="Agent" value={agentId} mono />}
-        {instance.completedAt != null && <Field label="Completed" value={fmtTime(instance.completedAt)} />}
+        {instance.completedAt != null && <Field label="Completed" value={fmtTime(instance.completedAt, instance.businessTime?.timezone)} />}
         {finished && instance.durationMs != null && <Field label="Duration" value={fmtDuration(instance.durationMs)} />}
       </Section>
     </>
@@ -896,7 +896,7 @@ function LocalOutputTab({ instance, jobType, actionConfig }: {
           />
         )}
         {agentId && <Field label="Agent" value={agentId} mono />}
-        {instance.completedAt != null && <Field label="Completed" value={fmtTime(instance.completedAt)} />}
+        {instance.completedAt != null && <Field label="Completed" value={fmtTime(instance.completedAt, instance.businessTime?.timezone)} />}
         {finished && instance.durationMs != null && <Field label="Duration" value={fmtDuration(instance.durationMs)} />}
       </Section>
     </>
@@ -1101,9 +1101,9 @@ const SHIFT_LABEL: Record<string, string> = {
   "prev-businessday": "Roll to previous business day",
 };
 
-function ScheduleTab({ definition }: { definition?: JobDefinition }) {
+function ScheduleTab({ definition, businessTime }: { definition?: JobDefinition; businessTime?: JobInstance["businessTime"] }) {
   if (!definition) {
-    return <Muted>Snapshot not available — this order's frozen schedule can't be shown (legacy instance without snapshot).</Muted>;
+    return <Muted>Snapshot not available — this order's frozen schedule can't be shown.</Muted>;
   }
   const s = definition.schedule;
   const window = `${s.windowFrom || "—"} → ${s.windowTo || "—"}`;
@@ -1129,6 +1129,7 @@ function ScheduleTab({ definition }: { definition?: JobDefinition }) {
       </Section>
 
       <Section title="Runtime window">
+        <Field label="Business timezone" value={businessTime ? `${businessTime.timezone} · rollover ${businessTime.dailyAt}` : "Legacy: zone unknown"} />
         <Field label="Run at" value={s.runAt || "—"} mono />
         <Field label="Window (from → to)" value={window} mono />
         <Field label="Cyclic" value={s.cyclic ? `every ${s.intervalMin ?? "?"} min${s.cyclicMaxRuns ? `, max ${s.cyclicMaxRuns} runs` : ""}` : "no"} tone={s.cyclic ? "var(--v2-accent-brand)" : undefined} />
@@ -1403,6 +1404,7 @@ const BLOCKER_COLOR: Record<ExplainBlocker["kind"], string> = {
   WAIT_CONDITION:"var(--v2-status-waiting)",
   WAIT_AGENT:    "#38bdf8",
   WAIT_RESOURCE: "var(--v2-accent-brand)",
+  CONFIGURATION_BLOCKED: "var(--v2-status-failed)",
 };
 const BLOCKER_LABEL: Record<ExplainBlocker["kind"], string> = {
   WAIT_WINDOW:   "WINDOW",
@@ -1413,6 +1415,7 @@ const BLOCKER_LABEL: Record<ExplainBlocker["kind"], string> = {
   WAIT_CONDITION:"CONDITION",
   WAIT_AGENT:    "AGENT",
   WAIT_RESOURCE: "RESOURCE",
+  CONFIGURATION_BLOCKED: "PRODUCTION POLICY",
 };
 
 function ExplainPanel({ instanceId, status, onConfirm }: { instanceId: string; status: JobInstance["status"]; onConfirm: (id: string) => void }) {

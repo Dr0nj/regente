@@ -45,9 +45,10 @@ export interface MonitoringJob {
   carriedFrom?: string;
 }
 
-type StatusFilter = "ALL" | "RUNNING" | "FAILED" | "SUCCESS" | "WAITING";
+type StatusFilter = "UNCERTAIN" | "ALL" | "RUNNING" | "FAILED" | "SUCCESS" | "WAITING";
 
 const STATUS_DOT: Record<JobNodeData["status"], string> = {
+  UNCERTAIN: "var(--v2-status-waiting)",
   SUCCESS: "var(--v2-status-ok)",
   RUNNING: "var(--v2-status-running)",
   FAILED: "var(--v2-status-failed)",
@@ -63,6 +64,7 @@ const OVERSCAN_PX = 240;     // margem de pré-render acima/abaixo do viewport
 const MAX_DISPLAY_H = 12_000_000; // teto físico da altura do scroller (ver header)
 
 const SERVER_STATUS_TO_UI: Record<string, JobNodeData["status"]> = {
+  UNCERTAIN: "UNCERTAIN",
   OK: "SUCCESS",
   NOTOK: "FAILED",
   RUNNING: "RUNNING",
@@ -72,6 +74,7 @@ const SERVER_STATUS_TO_UI: Record<string, JobNodeData["status"]> = {
   CANCELLED: "INACTIVE",
 };
 const FILTER_TO_SERVER: Record<Exclude<StatusFilter, "ALL">, string> = {
+ UNCERTAIN: "UNCERTAIN",
   RUNNING: "RUNNING",
   FAILED: "NOTOK",
   SUCCESS: "OK",
@@ -419,14 +422,16 @@ export default function MonitoringSidebarV2({
       const bs = win.summary.byStatus;
       return {
         ALL: win.summary.total,
-        RUNNING: bs.RUNNING ?? 0,
+        UNCERTAIN: bs.UNCERTAIN ?? 0,
+ RUNNING: bs.RUNNING ?? 0,
         FAILED: bs.NOTOK ?? 0,
         SUCCESS: bs.OK ?? 0,
         WAITING: bs.WAITING ?? 0,
       };
     }
-    const c = { ALL: jobs.length, RUNNING: 0, FAILED: 0, SUCCESS: 0, WAITING: 0 };
+    const c = { UNCERTAIN: 0, ALL: jobs.length, RUNNING: 0, FAILED: 0, SUCCESS: 0, WAITING: 0 };
     for (const j of jobs) {
+      if (j.status === "UNCERTAIN") c.UNCERTAIN++;
       if (j.status === "RUNNING") c.RUNNING++;
       else if (j.status === "FAILED") c.FAILED++;
       else if (j.status === "SUCCESS") c.SUCCESS++;
@@ -909,6 +914,7 @@ export default function MonitoringSidebarV2({
      ────────────────────────────────────────────────────────────── */
   if (railed) {
     const railStatuses = [
+      { key: "UNCERTAIN", color: "var(--v2-status-waiting)", label: "uncertain" },
       { key: "RUNNING", color: "var(--v2-status-running)", label: "running" },
       { key: "FAILED", color: "var(--v2-status-failed)", label: "failed" },
       { key: "SUCCESS", color: "var(--v2-status-ok)", label: "succeeded" },
@@ -1121,6 +1127,7 @@ export default function MonitoringSidebarV2({
         {(
           [
             { key: "ALL", label: "ALL", color: "var(--v2-text-secondary)" },
+            { key: "UNCERTAIN", label: "UNC", color: "var(--v2-status-waiting)" },
             { key: "RUNNING", label: "RUN", color: "var(--v2-status-running)" },
             { key: "FAILED", label: "FAIL", color: "var(--v2-status-failed)" },
             { key: "SUCCESS", label: "OK", color: "var(--v2-status-ok)" },

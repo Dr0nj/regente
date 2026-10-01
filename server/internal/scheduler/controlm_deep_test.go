@@ -166,6 +166,7 @@ func TestWindowClosed_Gate(t *testing.T) {
 		ID: "wc", JobType: "COMMAND",
 		Schedule: domain.Schedule{Enabled: true, WindowTo: "00:01"},
 	}
+	def = s.freezeTime(def, s.BusinessCalendar())
 	id := seedInst(t, s, "wc-1", today, string(domain.StatusWaiting), def)
 
 	for i := 0; i < 3; i++ {
@@ -231,15 +232,15 @@ func TestDateCalc_Offsets(t *testing.T) {
 	}}
 
 	cases := []struct{ in, want string }{
-		{"%%ODATE+3", "20260706"},                    // corridos: sex+3 = seg
-		{"%%ODATE-1", "20260702"},                    // ontem
-		{"%%ORDERDATE+1", "2026-07-04"},              // formato preservado
-		{"%%ODATE+1B", "20260706"},                   // útil: sex+1B pula o fim de semana
-		{"%%ODATE+3B", "20260708"},                   // sex+3B = qua
-		{"%%ODATE-1B", "20260702"},                   // -1B = quinta
-		{"${var.ODATE+2B}", "20260707"},              // sintaxe ${var.} também calcula
-		{"x_%%ODATE+2_y", "x_20260705_y"},            // separador claro termina o número
-		{"%%ODATE-bkp", "20260703-bkp"},              // sem offset (-bkp não é número): %%ODATE simples resolve
+		{"%%ODATE+3", "20260706"},         // corridos: sex+3 = seg
+		{"%%ODATE-1", "20260702"},         // ontem
+		{"%%ORDERDATE+1", "2026-07-04"},   // formato preservado
+		{"%%ODATE+1B", "20260706"},        // útil: sex+1B pula o fim de semana
+		{"%%ODATE+3B", "20260708"},        // sex+3B = qua
+		{"%%ODATE-1B", "20260702"},        // -1B = quinta
+		{"${var.ODATE+2B}", "20260707"},   // sintaxe ${var.} também calcula
+		{"x_%%ODATE+2_y", "x_20260705_y"}, // separador claro termina o número
+		{"%%ODATE-bkp", "20260703-bkp"},   // sem offset (-bkp não é número): %%ODATE simples resolve
 	}
 	for _, c := range cases {
 		if got := InterpolateString(c.in, ctx); got != c.want {

@@ -18,6 +18,7 @@ import type { JobNodeData, JobStatus } from "@/lib/job-config";
 type JobNodeV2 = Node<JobNodeData, "jobV2">;
 
 const STATUS_COLOR: Record<JobStatus, string> = {
+  UNCERTAIN: "var(--v2-status-waiting)",
   SUCCESS: "var(--v2-status-ok)",
   RUNNING: "var(--v2-status-running)",
   FAILED: "var(--v2-status-failed)",
@@ -26,6 +27,7 @@ const STATUS_COLOR: Record<JobStatus, string> = {
 };
 
 const STATUS_LABEL: Record<JobStatus, string> = {
+  UNCERTAIN: "UNCERTAIN",
   SUCCESS: "OK",
   RUNNING: "RUNNING",
   FAILED: "FAIL",

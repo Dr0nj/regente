@@ -19,6 +19,7 @@
 package scheduler
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -106,9 +107,16 @@ func (s *Scheduler) archiveGC() {
 
 // archiveDay escreve o NDJSON do dia (atômico) e remove as linhas do state store.
 func (s *Scheduler) archiveDay(day string) error {
+	if run, err := s.DailyRun(day); err == nil && run.CanResume {
+		return fmt.Errorf("daily %s is incomplete; retention deferred", day)
+	} else if err != nil && err != sql.ErrNoRows {
+		return err
+	}
 	// Segurança: nada RUNNING pode ser apagado do estado vivo.
 	var running int
-	_ = s.db.QueryRow(`SELECT COUNT(*) FROM instances WHERE order_date = ? AND status = 'RUNNING'`, day).Scan(&running)
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM instances i WHERE i.order_date=? AND (i.status IN ('RUNNING','UNCERTAIN') OR EXISTS(SELECT 1 FROM execution_effects e WHERE e.instance_id=i.id AND e.state NOT IN ('done','cancelled')))`, day).Scan(&running); err != nil {
+		return err
+	}
 	if running > 0 {
 		return fmt.Errorf("%d instance(s) RUNNING — day skipped", running)
 	}

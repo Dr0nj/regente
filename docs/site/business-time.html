@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Business time · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="adr-i09-agent-journal.html">Durable agent journal</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="business-time.html" class="active">Business time</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html">Daily recovery</a>
+<a href="durable-execution.html">Durable execution and recovery</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="production-profile.html">Production profile</a>
+<a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
+<a href="web-events.html">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="business-time">Business time</h1>
+<p>Regente uses one injected clock and an explicit IANA business timezone. The default is UTC with a 00:00 rollover. The operating system and browser timezone do not select the active daily. Set daily_timezone and daily_at in Settings before ordering jobs.</p>
+<h2 id="calendar-contract">Calendar contract</h2>
+<p>A business date D starts at daily_at on calendar date D in the configured zone. Times before daily_at belong to calendar date D+1. With rollover 06:00, a 02:00 job for D runs on the following morning. A window whose end precedes its start continues across midnight. Equal start/end is a single boundary, not a 24-hour window.</p>
+<p>All instants are stored in UTC. New daily, Force Order and Order Folder snapshots freeze the timezone and rollover. Settings changes affect new orders and the active daily selection; existing orders retain their original timing context and ODAT. Carry-over advances the active order_date only; scheduling windows and SLA remain anchored to the original ODAT. Retry delays are elapsed durations, including delays longer than a day.</p>
+<h2 id="daylight-saving-transitions">Daylight saving transitions</h2>
+<p>A repeated wall time resolves to its first occurrence. A nonexistent wall time resolves to the first valid instant after the gap. The same resolver handles rollover, schedule, windows, forecast and SLA. Business days are calendar intervals, not fixed 24-hour durations. These are explicit product rules: Go time.Date does not guarantee a particular choice during a transition (<a href="https://pkg.go.dev/time#Date">Go documentation</a>).</p>
+<h2 id="existing-orders-and-upgrade">Existing orders and upgrade</h2>
+<p>Pre-I06 snapshots have no provable timezone. Their stored timestamps and ODAT remain unchanged. They are shown as legacy / timezone unknown. A legacy order requiring a wall-clock window is blocked with CONFIGURATION_BLOCKED; reorder it under explicit settings to obtain a frozen context. Legacy deadline SLAs cannot be reconstructed and are not recalculated; elapsed-duration SLAs still apply. Run Now retains its explicit operator bypass of schedule gates. No automatic timezone backfill invents historical evidence.</p>
+<p>Invalid timezone or rollover settings are rejected. Empty timezone on a new settings write is normalized to UTC. Existing invalid values block new materialization until corrected. Existing empty settings use the documented UTC default; review this setting before upgrading a server that previously relied on host-local time.</p>
+<p>Forecast and What-if project new orders using current settings and return their timezone and rollover. Monitoring displays each order's frozen zone. Offline browser mode remains a local simulation.</p>
+<p>Automatic startup does not backfill a missed daily before today's rollover; pending cycles resume their frozen plan under the <a href="daily-recovery.html">daily recovery contract</a>.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

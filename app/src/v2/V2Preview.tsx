@@ -51,6 +51,7 @@ import {
 } from "@/lib/runtime-bridge";
 import { onServerEvent, isServerMode, isResyncEvent, onAuthEvent, setAuthToken, SERVER_URL } from "@/lib/server-client";
 import { fetchMe, loadCachedUser, type AuthUser } from "@/lib/auth-api";
+import { resumeDaily, type DailyMaterialization } from "@/lib/server-scheduler-runtime";
 import { getServerVersion } from "@/lib/version-api";
 import { LoginForm } from "./LoginForm";
 import { UserMenu } from "./UserMenu";
@@ -130,6 +131,9 @@ function V2PreviewInner() {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
   const [editingDef, setEditingDef] = useState<{ def: JobDefinition; isNew: boolean } | null>(null);
   const [lastDaily, setLastDaily] = useState<string | null>(getLastDailyRun());
+  const [dailyPending, setDailyPending] = useState<DailyMaterialization | null>(null);
+  const [dailyResumeBusy, setDailyResumeBusy] = useState(false);
+  const [dailyResumeError, setDailyResumeError] = useState("");
   const [dailyLate, setDailyLate] = useState<boolean>(false); // pontualidade da daily (rodapé)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
   // F11.8 — visibleFolders: null = all visible. Persisted in localStorage.
@@ -379,6 +383,7 @@ function V2PreviewInner() {
     void fetchDailyStatus().then((st) => {
       if (st?.lastRunAt) setLastDaily(normalizeDbTime(st.lastRunAt));
       setDailyLate(!!st?.lateStart);
+      setDailyPending(st?.pending ?? null);
     });
   }, []);
   useEffect(() => { refreshDailyStatus(); }, [refreshDailyStatus]);
@@ -394,7 +399,7 @@ function V2PreviewInner() {
     return onServerEvent((ev) => {
       // Daily rodou no server (auto ou manual) ou settings mudaram (daily_at):
       // atualiza o carimbo do rodapé pela fonte da verdade.
-      if (ev.event === "daily.started" || ev.event === "settings.changed") {
+      if (ev.event === "daily.started" || ev.event === "daily.changed" || ev.event === "settings.changed") {
         refreshDailyStatus();
       }
       // Agente conectou/desconectou: re-deriva os cards WAIT AGENT.
@@ -2250,6 +2255,16 @@ function V2PreviewInner() {
           <span style={{ opacity: 0.7 }}> instances · </span>
           <span style={{ color: "var(--v2-text-secondary)", fontWeight: 500 }}>{todayOrderDate()}</span>
         </span>
+        {dailyPending && (
+          <span role="status" style={{ color: "var(--v2-status-failed)" }} title={dailyResumeError || dailyPending.error || "Orders wait until daily materialization completes"}>
+            Daily {dailyPending.orderDate} incomplete · {dailyPending.state} · {dailyPending.inserted}/{dailyPending.expected}
+            {me?.role !== "viewer" && <button disabled={dailyResumeBusy} onClick={() => {
+              setDailyResumeBusy(true); setDailyResumeError("");
+              void resumeDaily(dailyPending.orderDate).catch((err: unknown) => setDailyResumeError(String(err))).finally(() => { setDailyResumeBusy(false); refreshDailyStatus(); });
+            }} style={{ marginLeft: 8 }}>{dailyResumeBusy ? "Resuming…" : "Resume daily"}</button>}
+            {dailyResumeError && <span role="alert"> {dailyResumeError}</span>}
+          </span>
+        )}
         {lastDaily && (
           <span>
             <span style={{ opacity: 0.7 }}>daily </span>

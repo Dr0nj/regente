@@ -1,0 +1,70 @@
+{
+  "date": "2026-09-30",
+  "implementation": "7a6f522f434daadb16071894120b2b87608a30c3",
+  "core": "460a7ec357bd315e2d6e8b4b7f225cab8b759c67",
+  "ci": "https://github.com/Dr0nj/regente/actions/runs/36768683576",
+  "status": "passed",
+  "jobs": 6,
+  "verification": {
+    "mode": "full",
+    "seconds": 469.012,
+    "gates": [
+      {
+        "gate": "runner",
+        "status": "passed"
+      },
+      {
+        "gate": "server",
+        "status": "passed"
+      },
+      {
+        "gate": "agent",
+        "status": "passed"
+      },
+      {
+        "gate": "web",
+        "status": "passed"
+      },
+      {
+        "gate": "docs",
+        "status": "passed"
+      },
+      {
+        "gate": "browser",
+        "status": "passed"
+      },
+      {
+        "gate": "integration",
+        "status": "passed"
+      },
+      {
+        "gate": "demo",
+        "status": "passed"
+      }
+    ]
+  },
+  "integration": {
+    "seconds": 181.685,
+    "passedTests": 186,
+    "i08Tests": [
+      "TestI08AttemptIntegration",
+      "TestI08AttemptIntegration/postgres",
+      "TestI08AttemptIntegration/sqlite"
+    ],
+    "legacyRestore": {
+      "schema_from": 22,
+      "schema_to": 27,
+      "preserved_entities": 4,
+      "seconds": 1.251
+    }
+  },
+  "browser": {
+    "startTime": "2026-09-30T19:56:20.902Z",
+    "duration": 11683.610999999999,
+    "expected": 6,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "scope": "Isolated development laboratory for the durable server attempt contract; no agent journal or production activation. I09/I10 and E04 remain open."
+}

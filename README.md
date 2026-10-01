@@ -1,4 +1,6 @@
 <div align="center">
+
+Production deployments: follow the [production profile](docs/production-profile.md) for explicit environment/network scope, disabled legacy tokens and conversion steps.
   <img src="app/public/logo-r.png" width="92" alt="Regente" />
   <h1>Regente</h1>
   <p><strong>A Git-native workflow orchestrator with enterprise-class batch semantics.</strong></p>
@@ -14,11 +16,11 @@
   </p>
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License: Apache 2.0" /></a>
-    <a href="docs/roadmap.md"><img src="https://img.shields.io/badge/status-feature--complete-brightgreen.svg" alt="Status: feature complete" /></a>
+    <a href="docs/roadmap.md"><img src="https://img.shields.io/badge/status-enterprise%20hardening-blue.svg" alt="Status: enterprise hardening" /></a>
   </p>
-  <p><sub><strong>Project status:</strong> feature-complete and maintained — every planned track is delivered.
-  There is no new-feature roadmap; maintenance covers security updates, a green CI and answering issues.
-  Need something that is not here? Open an issue — that is what reopens the roadmap.</sub></p>
+  <p><sub><strong>Project status:</strong> the original feature tracks reached their maintenance milestone in July 2026.
+  The enterprise hardening cycle is active; delivery and remaining qualification work are tracked in the
+  <a href="docs/roadmap.md">roadmap</a>. Delivered features do not imply complete production qualification.</sub></p>
 </div>
 
 ---
@@ -97,7 +99,7 @@ A running server serves the same content live: the docs at `/docs` (with `-docs-
 interactive API explorer at `/api-docs`, where you can send real requests with your token.
 
 Deeper documents: [operations](docs/operations.md) · [DR and backup](docs/dr-backup.md) ·
-[SLOs](docs/slos.md) · [conditions spec](docs/conditions-events.md) ·
+[SLOs](docs/slos.md) · [business time](docs/business-time.md) · [daily recovery](docs/daily-recovery.md) · [attempt laboratory](docs/adr-i08-attempts.md) · [conditions spec](docs/conditions-events.md) ·
 [MCP / AI agents](docs/mcp.md) · [future architecture](docs/architecture-future.md).
 
 ---
@@ -298,7 +300,9 @@ server owns this date (see it in `GET /api/daily/status`); the UI never guesses 
 computer's clock, so a browser in another timezone still sees the same day.
 
 > ⚠️ **`REGENTE_TOKEN` is admin-equivalent** — it bypasses the login entirely. Generate a strong
-> value and never leave it as `dev-token` or `change-me`. `regente-configure` generates one for
+> value and never leave it as `dev-token` or `change-me`. This applies only in `local`/`hybrid`
+> mode: the static bearer cannot bypass `oidc` mode. It is not a browser session or an agent
+> credential. See [authentication](docs/authentication.md). `regente-configure` generates one for
 > you, and the server logs a loud warning at boot if it is still the example value.
 
 **If something is wrong with the workspace repository, the server still starts.** A typo in the
@@ -537,8 +541,10 @@ an import report and `# TODO-import` notes wherever a decision is needed. It **n
 - **SSH, agentless** — a remote command straight from the server, with streamed output.
 - **A built-in SERVER-AGENT** — every server ships with a default `HTTP`/`REST` agent, so API
   calls run from the server itself with no external agent to install.
-- **Cancel really kills** — cancelling a RUNNING job aborts the process on the agent (the whole
-  process tree), and the job ends NOTOK without an automatic retry.
+- **State-aware cancellation** — RUNNING sends a best-effort kill signal to the agent and
+  finalizes NOTOK without automatic retry; a successful API response is not a remote kill
+  acknowledgement. WAITING/HELD becomes CANCELLED; terminal states are rejected. Failure
+  alerts and On/Do rules apply to the RUNNING path. See [lifecycle details](docs/mcp.md#lifecycle-semantics).
 - **Automatic retries** on failure (honouring `retries`), and **cyclic execution** that re-arms
   itself every N minutes inside the window.
 - **Confirm** — a job that only runs after an operator releases it (not even Force bypasses it).
@@ -597,8 +603,10 @@ an import report and `# TODO-import` notes wherever a decision is needed. It **n
   and audit forwarding to a SIEM.
 - **Portable serverless** — an external time trigger, a pluggable agent transport (WebSocket ·
   HTTP long-poll · SSE · NATS) and a distroless image that scales to zero, with no cloud lock-in.
-- **Scale** — validated end to end at enterprise volumes: the write path materializes 1M instances
-  in 17s, and the UI was driven live against 1,000,000 jobs without ever downloading a whole day.
+- **Scale mechanisms** — batched materialization, paginated queries and a virtualized UI.
+  Historical reports cover up to 1M stored instances, not 1M completed executions/day.
+  See [capacity evidence and guarantee limits](docs/capacity-guarantees.md) for provenance,
+  missing benchmark metadata and the separate execution qualification gate.
 - **Observability** — Prometheus metrics at `/metrics`, opt-in OpenTelemetry tracing, plus
   liveness and readiness probes.
 - **Themes** — 17 themes (13 dark, 4 light), applied instantly and remembered in the browser.
@@ -625,8 +633,10 @@ an import report and `# TODO-import` notes wherever a decision is needed. It **n
   firewalls), receives dispatches, and returns the result and the output stream.
 - **Pluggable state store:** SQLite (the default — pure Go, zero infrastructure) or Postgres
   (HA and scale), same codebase, selected with `-db-driver`.
-- **HA:** with Postgres, several servers use *leader election* (an advisory lock) — only the
-  leader materializes the daily; all of them serve the API.
+- **HA mechanisms:** with Postgres, several servers use *leader election* (an advisory lock) —
+  the leader drives the internal scheduler; all of them serve the API. Atomic claims protect
+  the WAITING → RUNNING transition. They do not guarantee delivery, recovery or exactly-once
+  external effects; see [guarantee limits](docs/capacity-guarantees.md#dispatch-and-ha-boundaries).
 
 Component details: [`server/`](server/README.md) · [`agent/`](agent/README.md) ·
 [`app/`](app/README.md).
@@ -652,14 +662,17 @@ Dev login: `admin` / `admin`. Agent connections require a separate token issued 
 Settings → Agents; login sessions and the server API token are not accepted. See
 [agent authentication and upgrades](docs/agent-authentication.md).
 
-Before pushing, run the same checks CI runs:
+Before pushing, run the quick checks and read their explicit coverage report:
 
 ```bash
-bash scripts/verify.sh
+bash scripts/verify.sh --quick
 ```
 
-That covers the server (build + vet + test), the agent (build + test) and the app (build). CI
-additionally gates on `staticcheck` and `npm run lint`, both of which must stay clean.
+Quick covers server/agent build, vet and tests, web lint/build, focused contracts,
+local documentation links and generated-site freshness. It lists the omitted
+gates. `bash scripts/verify.sh --full` requires Linux/amd64 and real dependencies;
+CI uses this same full runner and adds its Node/Windows matrix. See the
+[verification profiles and prerequisites](docs/verification.md).
 
 If you touched anything on the installation path — the installers, the bundle, the GitOps
 bootstrap — run the installation smoke test too. It installs the built artifact on a real
@@ -686,7 +699,7 @@ All planning lives in **[`docs/roadmap.md`](docs/roadmap.md)** — the single so
 and it is deliberately kept out of the published documentation site.
 
 For the **story of the project** — the problem, the architectural bets, classic enterprise
-semantics at the edges, the scale validated at 1M jobs/day and the lessons learned — read the
+semantics at the edges, historical materialization/query/UI observations and the lessons learned — read the
 **[case study](docs/case-study.en.md)**.
 
 ---

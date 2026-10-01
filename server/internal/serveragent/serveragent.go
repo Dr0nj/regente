@@ -28,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Dr0nj/regente-agent/journal"
 	"github.com/Dr0nj/regente-server/internal/db"
 	"github.com/Dr0nj/regente-server/internal/domain"
 	"github.com/Dr0nj/regente-server/internal/hub"
@@ -83,17 +84,23 @@ type dispatchMsg struct {
 // Start registra o SERVER-AGENT no hub (dispatch) E na tabela `agents` (a tela
 // de Agentes e o seletor de pin do Design leem de lá) e sobe a goroutine executora.
 func Start(h *hub.Hub, database *db.DB, finish Finisher) *hub.Client {
+	return StartScoped(h, database, "", finish)
+}
+
+func StartScoped(h *hub.Hub, database *db.DB, environment string, finish Finisher) *hub.Client {
 	host, _ := os.Hostname()
 	c := &hub.Client{
-		ID:           ID,
-		Kind:         hub.ClientAgent,
-		Send:         make(chan []byte, 64),
-		Capabilities: []string{"HTTP", "REST"},
-		OS:           runtime.GOOS,
-		Arch:         runtime.GOARCH,
-		Host:         host,
-		Version:      "embedded",
-		Started:      time.Now().Format(time.RFC3339),
+		ID:             ID,
+		Kind:           hub.ClientAgent,
+		Environment:    environment,
+		StrictIdentity: environment != "",
+		Send:           make(chan []byte, 64),
+		Capabilities:   []string{"HTTP", "REST"},
+		OS:             runtime.GOOS,
+		Arch:           runtime.GOARCH,
+		Host:           host,
+		Version:        "embedded",
+		Started:        time.Now().Format(time.RFC3339),
 	}
 	h.Register(c)
 	upsertAgentRow(database, c)
@@ -167,6 +174,12 @@ func upsertAgentRow(database *db.DB, c *hub.Client) {
 // expectStatus, inclusive o expectStatus escalar/CSV/lista do schema ADV-1),
 // para o job HTTP se comportar IGUAL rodando no agente externo ou no embutido.
 func runHTTP(ctx context.Context, params map[string]interface{}, timeoutSec int) (int, string) {
+	return runHTTPOutcome(ctx, params, timeoutSec, false)
+}
+func RunDurableHTTP(ctx context.Context, params map[string]interface{}, timeoutSec int) (int, string) {
+	return runHTTPOutcome(ctx, params, timeoutSec, true)
+}
+func runHTTPOutcome(ctx context.Context, params map[string]interface{}, timeoutSec int, durable bool) (int, string) {
 	method, _ := params["method"].(string)
 	if method == "" {
 		method = "GET"
@@ -197,10 +210,16 @@ func runHTTP(ctx context.Context, params map[string]interface{}, timeoutSec int)
 	}
 	res, err := client.Do(req)
 	if err != nil {
+		if durable && ctx.Err() == nil {
+			return journal.UnknownExitCode, "HTTP request ended without a receipt; external effect outcome unknown"
+		}
 		return -1, err.Error()
 	}
 	defer res.Body.Close()
-	raw, _ := io.ReadAll(res.Body)
+	raw, readErr := io.ReadAll(io.LimitReader(res.Body, 5<<20))
+	if readErr != nil && durable && ctx.Err() == nil {
+		return journal.UnknownExitCode, "HTTP response was incomplete; external effect outcome unknown"
+	}
 	code := 0
 	if res.StatusCode >= 400 {
 		code = res.StatusCode

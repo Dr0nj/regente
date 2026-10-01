@@ -116,6 +116,7 @@ const COL_GAP = 28; // gap horizontal entre folders
 const CANVAS_PADDING = 24;
 
 const INSTANCE_TO_UI_STATUS: Record<JobInstance["status"], JobNodeData["status"]> = {
+  UNCERTAIN: "UNCERTAIN",
   OK: "SUCCESS",
   NOTOK: "FAILED",
   RUNNING: "RUNNING",
@@ -164,7 +165,7 @@ function fmtRunRange(inst: JobInstance): string | undefined {
 /** Resumo curto do schedule estruturado para exibir no node do canvas. */
 function scheduleSummary(s: JobDefinition["schedule"]): string {
   const wd: Record<string, string> = { mon: "mon", tue: "tue", wed: "wed", thu: "thu", fri: "fri", sat: "sat", sun: "sun" };
-  let base = "";
+  let base: string;
   switch (s.frequency ?? "daily") {
     case "weekly": base = (s.daysOfWeek ?? []).map((d) => wd[d] ?? d).join(",") || "weekly"; break;
     case "monthly": base = "day " + ((s.daysOfMonth ?? []).map((d) => d === -1 ? "last" : d).join(",") || "?"); break;

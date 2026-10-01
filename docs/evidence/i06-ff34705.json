@@ -1,0 +1,63 @@
+{
+  "date": "2026-09-30",
+  "implementation": "ff34705c7b7d76518839dbc4c9c1fbe3dfaea300",
+  "ci": "https://github.com/Dr0nj/regente/actions/runs/36712249168",
+  "status": "passed",
+  "jobs": 6,
+  "verification": {
+    "mode": "full",
+    "seconds": 387.619,
+    "gates": [
+      {
+        "gate": "runner",
+        "status": "passed"
+      },
+      {
+        "gate": "server",
+        "status": "passed"
+      },
+      {
+        "gate": "agent",
+        "status": "passed"
+      },
+      {
+        "gate": "web",
+        "status": "passed"
+      },
+      {
+        "gate": "docs",
+        "status": "passed"
+      },
+      {
+        "gate": "browser",
+        "status": "passed"
+      },
+      {
+        "gate": "integration",
+        "status": "passed"
+      },
+      {
+        "gate": "demo",
+        "status": "passed"
+      }
+    ]
+  },
+  "integration": {
+    "seconds": 153.717,
+    "passedTests": 180,
+    "i06Tests": [
+      "TestI06BusinessTimeIntegration",
+      "TestI06BusinessTimeIntegration/postgres",
+      "TestI06BusinessTimeIntegration/sqlite"
+    ]
+  },
+  "browser": {
+    "startTime": "2026-09-30T12:05:46.768Z",
+    "duration": 10773.141,
+    "expected": 5,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "scope": "Business-time correctness; does not qualify enterprise durability, HA or capacity."
+}

@@ -19,12 +19,13 @@ import (
 type GateKind string
 
 const (
-	GateWindow       GateKind = "WAIT_WINDOW"    // ainda não chegou o horário agendado
-	GateWindowClosed GateKind = "WINDOW_CLOSED"  // a janela (WindowTo) já fechou hoje — não submete mais
-	GateConfirm      GateKind = "WAIT_CONFIRM"   // Control-M Confirm: aguarda liberação do operador
-	GateCondition    GateKind = "WAIT_CONDITION" // falta uma condição de entrada no pool (modelo único)
-	GateAgent        GateKind = "WAIT_AGENT"     // nenhum agente online com a capability (ou o pinado offline)
-	GateResource     GateKind = "WAIT_RESOURCE"  // recurso/quota indisponível (F15)
+	GateConfiguration GateKind = "CONFIGURATION_BLOCKED"
+	GateWindow        GateKind = "WAIT_WINDOW"    // ainda não chegou o horário agendado
+	GateWindowClosed  GateKind = "WINDOW_CLOSED"  // a janela (WindowTo) já fechou hoje — não submete mais
+	GateConfirm       GateKind = "WAIT_CONFIRM"   // Control-M Confirm: aguarda liberação do operador
+	GateCondition     GateKind = "WAIT_CONDITION" // falta uma condição de entrada no pool (modelo único)
+	GateAgent         GateKind = "WAIT_AGENT"     // nenhum agente online com a capability (ou o pinado offline)
+	GateResource      GateKind = "WAIT_RESOURCE"  // recurso/quota indisponível (F15)
 )
 
 // Blocker — um motivo ATIVO de uma instance WAITING não estar rodando. Carrega
@@ -67,6 +68,17 @@ type Explanation struct {
 // TODOS (Explain). A checagem de recurso é read-only (Shortfalls); a reserva
 // atômica (TryAcquire) fica no tick, depois deste gate passar.
 func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx CondIndex, now time.Time, shortCircuit bool) []Blocker {
+	if reason := integrityBlock(r); reason != "" {
+		return []Blocker{{Kind: GateConfiguration, Detail: reason}}
+	}
+	if reason := s.RuntimePolicy.ExecutionError(def); reason != "" {
+		return []Blocker{{Kind: GateConfiguration, Detail: reason}}
+	}
+	if !(r.Forced && r.ForceMode != ForceModeOrder) {
+		if reason := temporalBlock(def, r); reason != "" {
+			return []Blocker{{Kind: GateConfiguration, Detail: reason}}
+		}
+	}
 	var out []Blocker
 	// add anexa o bloqueio e devolve true quando o avaliador deve PARAR (short-circuit).
 	add := func(b Blocker) bool {
@@ -91,7 +103,7 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 		// o scheduled_at JÁ é o WindowFrom (computeScheduledAt), então este teste
 		// basta e o carry-over segue intocado. Pulado quando o $TIME está na lógica.
 		if !timeInLogic && now.Before(r.ScheduledAt) {
-			if add(Blocker{Kind: GateWindow, Detail: "the scheduled time has not arrived yet (" + r.ScheduledAt.Format("15:04") + ")"}) {
+			if add(Blocker{Kind: GateWindow, Detail: "the scheduled time has not arrived yet (" + r.ScheduledAt.UTC().Format(time.RFC3339) + ")"}) {
 				return out
 			}
 		}
@@ -101,7 +113,7 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 		// Também pulado quando o $TIME está na lógica (o token cobre o início —
 		// e num Order Force o próprio $TIME usa esta trava, ver orderForceWindowStart).
 		if !timeInLogic && r.Forced && r.ForceMode == ForceModeOrder {
-			if ws, ok := orderForceWindowStart(def, r.OrderDate); ok && now.Before(ws) {
+			if ws, ok := orderForceWindowStart(def, r.Odate()); ok && now.Before(ws) {
 				if add(Blocker{Kind: GateWindow, Detail: "the execution window opens at " + def.Schedule.WindowFrom}) {
 					return out
 				}
@@ -109,14 +121,9 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 		}
 		// 1b) Janela fechou (Control-M time window): passou de WindowTo, não submete
 		// mais hoje. A instance morre na virada da daily (WAITING nunca-rodou).
-		if hh, mm, okW := parseHHMM(def.Schedule.WindowTo); okW {
-			if t, err := time.Parse("2006-01-02", r.OrderDate); err == nil {
-				windowEnd := time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.Local)
-				if now.After(windowEnd) {
-					if add(Blocker{Kind: GateWindowClosed, Detail: "the execution window closed at " + def.Schedule.WindowTo}) {
-						return out
-					}
-				}
+		if windowEnd := orderWindowEnd(def, r.Odate()); !windowEnd.IsZero() && now.After(windowEnd) {
+			if add(Blocker{Kind: GateWindowClosed, Detail: "the execution window closed at " + windowEnd.Format(time.RFC3339)}) {
+				return out
 			}
 		}
 	}
@@ -150,7 +157,7 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 		// trava explícita do gate 1a (WindowFrom × order_date).
 		timeReady := !now.Before(r.ScheduledAt)
 		if r.Forced && r.ForceMode == ForceModeOrder {
-			if ws, ok := orderForceWindowStart(def, r.OrderDate); ok {
+			if ws, ok := orderForceWindowStart(def, r.Odate()); ok {
 				timeReady = !now.Before(ws)
 			}
 		}
@@ -201,7 +208,15 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 
 	// 5) Recursos / quotas (F15) — read-only.
 	if len(def.Resources) > 0 && s.resources != nil {
-		for _, sf := range s.resources.Shortfalls(def.Resources) {
+		shortfalls := s.resources.Shortfalls(def.Resources)
+		if s.durable != nil {
+			var err error
+			shortfalls, err = s.durableShortfalls(r.ID, def.Resources)
+			if err != nil {
+				return []Blocker{{Kind: GateConfiguration, Detail: "durable resource storage unavailable"}}
+			}
+		}
+		for _, sf := range shortfalls {
 			if add(Blocker{
 				Kind: GateResource, Resource: sf.Name, Want: sf.Want, Used: sf.Used, Capacity: sf.Capacity,
 				Detail: fmt.Sprintf("resource '%s' unavailable (wants %d; used %d/%d)", sf.Name, sf.Want, sf.Used, sf.Capacity),
@@ -221,15 +236,12 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 // forçado fura a janela que o Order Force respeita. ok=false quando a def não tem
 // WindowFrom válido (sem janela = sem trava).
 func orderForceWindowStart(def domain.JobDefinition, orderDate string) (time.Time, bool) {
-	hh, mm, okW := parseHHMM(def.Schedule.WindowFrom)
-	if !okW {
+	c, ok := frozenCalendar(def)
+	if !ok {
 		return time.Time{}, false
 	}
-	t, err := time.Parse("2006-01-02", orderDate)
-	if err != nil {
-		return time.Time{}, false
-	}
-	return time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.Local), true
+	t := c.At(orderDate, def.Schedule.WindowFrom)
+	return t, !t.IsZero()
 }
 
 // Explain monta a explicação de uma instance: para WAITING, roda gateInstance em
@@ -238,10 +250,8 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 	var r instRow
 	var forcedInt, confirmedInt int
 	err := s.db.QueryRow(
-		`SELECT id, definition_id, order_date, status, scheduled_at, started_at, carried_at,
-		        COALESCE(forced,0), COALESCE(force_mode,''), COALESCE(confirmed,0), COALESCE(carried_from,''), COALESCE(definition_snapshot,'')
-		 FROM instances WHERE id=?`, instanceID,
-	).Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.CarriedFrom, &r.Snapshot)
+		`SELECT i.id,i.definition_id,i.order_date,i.status,i.scheduled_at,i.started_at,i.carried_at,COALESCE(i.forced,0),COALESCE(i.force_mode,''),COALESCE(i.confirmed,0),COALESCE(i.carried_from,''),COALESCE(i.definition_snapshot,''),COALESCE(d.state,''),COALESCE(l.snapshot_checksum,'') FROM instances i LEFT JOIN daily_order_ledger l ON l.instance_id=i.id LEFT JOIN daily_runs d ON d.order_date=l.order_date WHERE i.id=?`, instanceID,
+	).Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.CarriedFrom, &r.Snapshot, &r.DailyState, &r.SnapshotChecksum)
 	if err != nil {
 		return Explanation{}, err
 	}
@@ -272,6 +282,11 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 		return ex, nil
 	}
 
+	if reason := integrityBlock(r); reason != "" {
+		ex.Blockers = []Blocker{{Kind: GateConfiguration, Detail: reason}}
+		ex.Summary = reason
+		return ex, nil
+	}
 	// WAITING: avalia os gates.
 	s.mu.Lock()
 	defs := make(map[string]domain.JobDefinition, len(s.defs))
@@ -283,6 +298,11 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 	def, ok := defForInstance(r, defs)
 	if !ok {
 		ex.Summary = "No definition loaded — not materializable (def removed/disabled?)."
+		return ex, nil
+	}
+	if reason := s.RuntimePolicy.ExecutionError(def); reason != "" {
+		ex.Blockers = []Blocker{{Kind: GateConfiguration, Detail: reason}}
+		ex.Summary = reason
 		return ex, nil
 	}
 	// "Run Now" (forced sem force_mode) bypassa todos os gates menos Confirm e
@@ -299,7 +319,7 @@ func (s *Scheduler) Explain(instanceID string) (Explanation, error) {
 		return ex, nil
 	}
 
-	blockers := s.gateInstance(r, def, nil, time.Now(), false)
+	blockers := s.gateInstance(r, def, nil, s.Now(), false)
 	if blockers == nil {
 		// gateInstance devolve nil quando não há bloqueio; o JSON precisa ser []
 		// (o front itera blockers direto — null quebrava a UI ao abrir o Explain

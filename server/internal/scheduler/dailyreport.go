@@ -30,6 +30,7 @@ type DailyReportCounts struct {
 	Waiting   int `json:"waiting"`
 	Running   int `json:"running"`
 	Held      int `json:"held"`
+	Uncertain int `json:"uncertain"`
 	Cancelled int `json:"cancelled"`
 	Carried   int `json:"carried"` // vieram de diárias anteriores (carry-over)
 }
@@ -53,11 +54,12 @@ type DailyReport struct {
 	LateStart bool `json:"lateStart"`
 	// Closed — nenhuma instance WAITING/RUNNING: o dia "fechou" (é o gatilho
 	// do push; informativo pro card da UI).
-	Closed      bool                 `json:"closed"`
-	Counts      DailyReportCounts    `json:"counts"`
-	Failures    []DailyReportFailure `json:"failures"`
-	SLABreaches []domain.SLABreach   `json:"slaBreaches"`
-	ReportSent  bool                 `json:"reportSent"` // push já foi (report_sent_at)
+	Materialization *DailyRun            `json:"materialization,omitempty"`
+	Closed          bool                 `json:"closed"`
+	Counts          DailyReportCounts    `json:"counts"`
+	Failures        []DailyReportFailure `json:"failures"`
+	SLABreaches     []domain.SLABreach   `json:"slaBreaches"`
+	ReportSent      bool                 `json:"reportSent"` // push já foi (report_sent_at)
 }
 
 // lateStartGrace — tolerância entre o horário configurado e o started_at real.
@@ -71,16 +73,14 @@ const dailyReportFailureCap = 100
 // pontualidade da daily: usado pelo BuildDailyReport (card/report) e pelo
 // /api/daily/status (indicador do rodapé).
 func (s *Scheduler) IsDailyLate(date string, startedAt time.Time) bool {
-	hh, mm, ok := parseHHMM(s.DailyAt())
-	if !ok {
+	calendar := s.BusinessCalendar()
+	if calendar.Validate() != nil {
 		return false
 	}
-	_, loc := s.DailyTimezone()
-	d, err := time.ParseInLocation("2006-01-02", date, loc)
-	if err != nil {
+	target := calendar.Start(date)
+	if target.IsZero() {
 		return false
 	}
-	target := time.Date(d.Year(), d.Month(), d.Day(), hh, mm, 0, 0, loc)
 	return startedAt.After(target.Add(lateStartGrace))
 }
 
@@ -137,6 +137,8 @@ func (s *Scheduler) BuildDailyReport(date string) (*DailyReport, error) {
 			rep.Counts.Waiting = n
 		case string(domain.StatusRunning):
 			rep.Counts.Running = n
+		case string(domain.StatusUncertain):
+			rep.Counts.Uncertain = n
 		case string(domain.StatusHeld):
 			rep.Counts.Held = n
 		case string(domain.StatusCancelled):
@@ -148,7 +150,11 @@ func (s *Scheduler) BuildDailyReport(date string) (*DailyReport, error) {
 	if errIter != nil {
 		return nil, errIter // report com contagem parcial mentiria no e-mail do dia
 	}
-	rep.Closed = rep.Counts.Waiting == 0 && rep.Counts.Running == 0
+	rep.Materialization, err = s.DailyRun(date)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+	rep.Closed = rep.Materialization != nil && !rep.Materialization.CanResume && rep.Counts.Waiting == 0 && rep.Counts.Running == 0 && rep.Counts.Uncertain == 0
 
 	// Failures (NOTOK) — detalhe cap 100; o total exato já está em Counts.NotOK.
 	frows, err := s.db.Query(
@@ -210,7 +216,7 @@ func (s *Scheduler) maybeSendDailyReport() {
 		s.mu.Unlock()
 		return
 	}
-	s.lastReportCheck = time.Now()
+	s.lastReportCheck = s.Now()
 	s.mu.Unlock()
 
 	channels := strings.TrimSpace(s.setting("daily_report_channels"))
@@ -231,8 +237,8 @@ func (s *Scheduler) maybeSendDailyReport() {
 	due := false
 	var open int
 	if err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM instances WHERE order_date=? AND status IN (?,?)`,
-		date, string(domain.StatusWaiting), string(domain.StatusRunning),
+		`SELECT COUNT(*) FROM instances WHERE order_date=? AND status IN (?,?,?)`,
+		date, string(domain.StatusWaiting), string(domain.StatusRunning), string(domain.StatusUncertain),
 	).Scan(&open); err == nil && open == 0 {
 		due = true // a daily FECHOU
 	}
@@ -252,7 +258,7 @@ func (s *Scheduler) maybeSendDailyReport() {
 	// Claim atômico: só quem transicionar NULL→now envia (1 por diária, mesmo
 	// com vários nós checando).
 	res, err := s.db.Exec(
-		`UPDATE daily_runs SET report_sent_at=CURRENT_TIMESTAMP WHERE order_date=? AND report_sent_at IS NULL`, date,
+		`UPDATE daily_runs SET report_sent_at=CURRENT_TIMESTAMP WHERE order_date=? AND report_sent_at IS NULL AND state IN ('completed','legacy')`, date,
 	)
 	if err != nil {
 		log.Printf("[scheduler] daily report %s: claim: %v", date, err)
@@ -296,9 +302,9 @@ func (s *Scheduler) sendDailyReport(rep *DailyReport, channelsCSV string) {
 	if rep.LateStart {
 		late = " · LATE START"
 	}
-	msg := fmt.Sprintf("Daily %s %s: %d ordered · %d OK · %d NOTOK · %d waiting · %d running · %d cancelled · %d carried%s",
+	msg := fmt.Sprintf("Daily %s %s: %d ordered · %d OK · %d NOTOK · %d waiting · %d running · %d uncertain · %d cancelled · %d carried%s",
 		rep.Date, verdict, rep.Counts.Ordered, rep.Counts.OK, rep.Counts.NotOK,
-		rep.Counts.Waiting, rep.Counts.Running, rep.Counts.Cancelled, rep.Counts.Carried, late)
+		rep.Counts.Waiting, rep.Counts.Running, rep.Counts.Uncertain, rep.Counts.Cancelled, rep.Counts.Carried, late)
 	if len(rep.Failures) > 0 {
 		names := make([]string, 0, 5)
 		for i, f := range rep.Failures {

@@ -15,8 +15,10 @@ import (
 	"github.com/Dr0nj/regente-server/internal/auth"
 	"github.com/Dr0nj/regente-server/internal/bus"
 	"github.com/Dr0nj/regente-server/internal/db"
+	"github.com/Dr0nj/regente-server/internal/execution"
 	"github.com/Dr0nj/regente-server/internal/hub"
 	"github.com/Dr0nj/regente-server/internal/oidc"
+	"github.com/Dr0nj/regente-server/internal/runtimeprofile"
 	"github.com/Dr0nj/regente-server/internal/scheduler"
 	"github.com/Dr0nj/regente-server/internal/storage"
 	"github.com/go-chi/chi/v5"
@@ -24,12 +26,14 @@ import (
 )
 
 type Config struct {
-	Store     *storage.FileStore
-	DB        *db.DB
-	Hub       *hub.Hub
-	Scheduler *scheduler.Scheduler
-	Token     string
-	Events    interface{ BroadcastWeb(string, interface{}) } // fan-out configurado; nil usa Hub
+	ExecutionLab  bool // I08: opt-in development; recusado em production.
+	RuntimePolicy runtimeprofile.Config
+	Store         *storage.FileStore
+	DB            *db.DB
+	Hub           *hub.Hub
+	Scheduler     *scheduler.Scheduler
+	Token         string
+	Events        interface{ BroadcastWeb(string, interface{}) } // fan-out configurado; nil usa Hub
 	// R5 — presença cross-nó de agents (bus distribuído). nil = single-node/local:
 	// a frota mostra só os agents deste nó. Com o bus NATS, reflete o cluster inteiro.
 	Presence RemotePresence
@@ -79,6 +83,7 @@ type RemotePresence interface {
 func init() { chi.RegisterMethod("QUERY") }
 
 type server struct {
+	attempts    *execution.Engine
 	cfg         Config
 	agentBroker *agentBroker  // Fase 2 — transporte HTTP long-poll (nil se sem hub)
 	pings       *pingRegistry // ping ativo de agentes (round-trip ping/pong)
@@ -87,6 +92,20 @@ type server struct {
 // NewRouter monta o router principal (REST + WS).
 func NewRouter(cfg Config) http.Handler {
 	s := &server{cfg: cfg, pings: newPingRegistry()}
+	if cfg.RuntimePolicy.Durable() || (cfg.ExecutionLab && !cfg.RuntimePolicy.Production()) {
+		if cfg.Scheduler != nil {
+			s.attempts = execution.New(cfg.DB, cfg.Scheduler.Now)
+		} else {
+			s.attempts = execution.New(cfg.DB, nil)
+		}
+	}
+	if cfg.RuntimePolicy.Durable() && cfg.Scheduler != nil {
+		if existing := cfg.Scheduler.DurableEngine(); existing != nil {
+			s.attempts = existing
+		} else {
+			cfg.Scheduler.AttachDurable(s.attempts)
+		}
+	}
 	if cfg.Hub != nil {
 		s.agentBroker = newAgentBroker(cfg.Hub)
 	}
@@ -160,11 +179,23 @@ func NewRouter(cfg Config) http.Handler {
 		r.With(s.requireWriterMW).Post("/folders/{name}/archive", s.archiveFolder)
 		r.With(s.requireWriterMW).Put("/folders/{name}/layout", s.setFolderLayout) // UI-3: override de grade por folder
 
+		// I08: API administrativa de laboratório, isolada de instances/condições.
+		r.Post("/lab/orders", s.labCreateOrder)
+		r.Get("/lab/orders/{id}", s.labOrder)
+		r.Post("/lab/orders/{id}/attempts", s.labStart)
+		r.Post("/lab/orders/{id}/cancel", s.labCancel)
+		r.Get("/lab/executions/{id}", s.labAttempt)
+		r.Get("/lab/executions/{id}/output", s.labOutput)
+		r.Post("/lab/reconcile", s.labReconcile)
+
 		// Instances (runtime)
 		r.Get("/instances", s.listInstances)
 		r.Get("/instances/page", s.pageInstances)       // P2/escala: paginação por cursor
 		r.Get("/instances/summary", s.summaryInstances) // P2/escala: contadores agregados
-		r.Get("/instances/{id}", s.getInstance)         // detalhe: linha + action congelada da ordem (snapshot)
+		r.Get("/instances/{id}/executions", s.instanceExecutions)
+		r.With(s.requireWriterMW).Post("/executions/{id}/resolve", s.resolveExecution)
+		r.With(s.requireWriterMW).Post("/execution-effects/{id}/resolve", s.resolveExecutionEffect)
+		r.Get("/instances/{id}", s.getInstance) // detalhe: linha + action congelada da ordem (snapshot)
 		// D-5 — query estruturada composta (POST baseline; QUERY = progressive
 		// enhancement, o verbo IETF safe+idempotente com body — mesma handler).
 		r.Post("/instances/query", s.queryInstances)
@@ -213,6 +244,7 @@ func NewRouter(cfg Config) http.Handler {
 
 		// Daily + Force (Control-M parity)
 		r.With(s.requireWriterMW).Post("/daily/run", s.runDaily)
+		r.With(s.requireWriterMW).Post("/daily/resume", s.resumeDaily)
 		r.With(s.requireWriterMW).Post("/definitions/{id}/force", s.forceOrder)
 		// Fase 1 (serverless) — tick sob demanda para cron externo (scheduler=external)
 		r.With(s.requireWriterMW).Post("/scheduler/tick", s.schedulerTick)
@@ -333,6 +365,10 @@ func NewRouter(cfg Config) http.Handler {
 
 	// Fase 2 — transporte HTTP long-poll p/ agentes (auth própria por agent token).
 	// Fora do grupo /api (que exige sessão/legacy), como o /ws/agent.
+	r.Get("/api/agent/v2/poll", s.executionPoll)
+	r.Post("/api/agent/v2/ack", s.executionAck)
+	r.Post("/api/agent/v2/result", s.executionResult)
+	r.Post("/api/agent/v2/output", s.executionOutput)
 	r.Get("/api/agent/poll", s.agentPoll)
 	// ARCH-4 — transporte SSE: stream de dispatch por push imediato (mesmo broker;
 	// resultados voltam pelos POSTs abaixo, iguais ao long-poll).
@@ -447,7 +483,7 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		// Legacy token (env REGENTE_TOKEN / dev-token) → admin equivalente
-		if s.cfg.Token != "" && tok == s.cfg.Token && s.mode() != "oidc" && s.mode() != "invalid" && r.Header.Get("Authorization") != "" {
+		if !s.cfg.RuntimePolicy.Production() && s.cfg.Token != "" && tok == s.cfg.Token && s.mode() != "oidc" && s.mode() != "invalid" && r.Header.Get("Authorization") != "" {
 			ctx := auth.WithUser(r.Context(), &auth.User{
 				ID:       0,
 				Username: "system",

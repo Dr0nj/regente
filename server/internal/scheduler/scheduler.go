@@ -20,9 +20,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Dr0nj/regente-server/internal/businessclock"
 	"github.com/Dr0nj/regente-server/internal/db"
 	"github.com/Dr0nj/regente-server/internal/domain"
+	"github.com/Dr0nj/regente-server/internal/execution"
 	"github.com/Dr0nj/regente-server/internal/hub"
+	"github.com/Dr0nj/regente-server/internal/runtimeprofile"
 	"github.com/Dr0nj/regente-server/internal/storage"
 	"github.com/Dr0nj/regente-server/internal/telemetry"
 
@@ -32,15 +35,19 @@ import (
 // Settings — configuração global (depois persistida em workspace/settings.yaml).
 type Settings struct {
 	DailyAt  string `json:"dailyAt" yaml:"dailyAt"`   // "HH:MM" (default 00:00 — meia-noite, ver memory/core/regente-product-model.md)
-	Timezone string `json:"timezone" yaml:"timezone"` // default America/Sao_Paulo
+	Timezone string `json:"timezone" yaml:"timezone"` // default UTC
 }
 
 type Scheduler struct {
-	store *storage.FileStore
-	db    *db.DB
-	hub   Bus
-	tick  time.Duration
+	RuntimePolicy   runtimeprofile.Config
+	durable         *execution.Engine
+	internalAgentID string
+	store           *storage.FileStore
+	db              *db.DB
+	hub             Bus
+	tick            time.Duration
 
+	dailyMu    sync.Mutex // só coordenação local; o checkpoint também é serializado no banco.
 	mu         sync.Mutex
 	running    map[string]bool
 	defs       []domain.JobDefinition
@@ -83,15 +90,8 @@ type Scheduler struct {
 	wg       sync.WaitGroup
 	stopOnce sync.Once
 
-	// === E1 (2026-07-07) — timezone da daily ===
-	// nowFn é o relógio-fonte, injetável nos testes (default time.Now); o "agora"
-	// de negócio é sempre nowFn().In(loc do settings.daily_timezone). tzName/tzLoc
-	// cacheiam o time.LoadLocation por NOME — mudar o setting recarrega no próximo
-	// uso, sem restart; nome inválido loga UMA vez e cai no relógio local.
-	nowFn  func() time.Time
-	tzMu   sync.Mutex
-	tzName string
-	tzLoc  *time.Location
+	// Relógio injetável; toda decisão temporal usa Now/BusinessCalendar.
+	nowFn func() time.Time
 
 	// E4 — fila assíncrona de eventos (nil = desligada, write síncrono).
 	// Ligada por StartEventQueue() no modo internal; ver eventqueue.go.
@@ -163,7 +163,7 @@ func New(store *storage.FileStore, db *db.DB, bus Bus, tick time.Duration) *Sche
 		tick:       tick,
 		running:    map[string]bool{},
 		noAgentAt:  map[string]time.Time{},
-		settings:   Settings{DailyAt: "00:00", Timezone: "America/Sao_Paulo"},
+		settings:   Settings{DailyAt: "00:00", Timezone: "UTC"},
 		quit:       make(chan struct{}),
 		nowFn:      time.Now,
 		slowFired:  map[string]bool{},
@@ -290,15 +290,19 @@ func (s *Scheduler) Calendars() *storage.CalendarStore { return s.calStore }
 func (s *Scheduler) Variables() *storage.VariableStore { return s.variables }
 
 // buildVarContext \u2014 BuildContext + globals injetados do VariableStore (F18).
-// orderDate vem da PR\u00d3PRIA instance (n\u00e3o de time.Now()): %%ODATE precisa ser a
+// orderDate vem da PR\u00d3PRIA instance (n\u00e3o de s.Now()): %%ODATE precisa ser a
 // data da ordem mesmo em rerun tardio ou instance carregada da di\u00e1ria anterior.
 func (s *Scheduler) buildVarContext(def domain.JobDefinition, instanceID string) VarContext {
-	orderDate := time.Now().Format("2006-01-02")
+	orderDate := s.TodayDate()
 	var od, localJSON string
-	if err := s.db.QueryRow(`SELECT order_date, COALESCE(local_vars,'') FROM instances WHERE id=?`, instanceID).Scan(&od, &localJSON); err == nil && od != "" {
+	if err := s.db.QueryRow(`SELECT COALESCE(NULLIF(carried_from,''), order_date), COALESCE(local_vars,'') FROM instances WHERE id=?`, instanceID).Scan(&od, &localJSON); err == nil && od != "" {
 		orderDate = od
 	}
-	ctx := BuildContext(def, instanceID, orderDate, nil, "")
+	calendar, ok := frozenCalendar(def)
+	if !ok {
+		calendar = businessclock.Default()
+	}
+	ctx := BuildContextAt(def, instanceID, orderDate, nil, "", s.Now().In(calendar.Location()))
 	// CTM-1 — vars locais da instance (%%SETLOCAL): escopo acima da definition,
 	// abaixo do runtime; visíveis SÓ pela própria instance.
 	if localJSON != "" {
@@ -413,7 +417,7 @@ func (s *Scheduler) Tick() {
 	// instante é exposta em /metrics e /livez; se parar de avançar (ticker morto
 	// no modo internal, ou cron parado no external), o monitor externo alerta.
 	s.mu.Lock()
-	s.lastTickAt = time.Now()
+	s.lastTickAt = s.Now()
 	s.mu.Unlock()
 	// R2 — panic-recovery: um panic na materialização da daily ou na avaliação de
 	// deps/dispatch NÃO pode derrubar o processo nem matar o loop de scheduling.
@@ -492,6 +496,9 @@ func (s *Scheduler) RebuildResourcesFromRunning() (int, error) {
 	if s.resources == nil {
 		return 0, nil
 	}
+	if s.durable != nil {
+		return s.rebuildDurableResources()
+	}
 	rows, err := s.db.Query(`SELECT id, COALESCE(definition_snapshot,'') FROM instances WHERE status=?`, string(domain.StatusRunning))
 	if err != nil {
 		return 0, err
@@ -546,7 +553,13 @@ func (s *Scheduler) currentCommitSHA() string {
 // Quando GitOps não está atachado (modo offline/dev), apenas reload local + sha vazio.
 func (s *Scheduler) dailySync() (sha string, err error) {
 	if s.git == nil {
-		s.reloadDefs()
+		defs, err := s.store.List()
+		if err != nil {
+			return "", fmt.Errorf("daily source load: %w", err)
+		}
+		s.mu.Lock()
+		s.defs = defs
+		s.mu.Unlock()
 		return "", nil
 	}
 	if err := s.git.SyncFromRemote(); err != nil {
@@ -570,14 +583,14 @@ func (s *Scheduler) emitEvent(instanceID, kind, actor, message string) {
 	// fila cheia degrada pro INSERT síncrono de sempre — nunca perde evento.
 	if ch := s.eventQueue(); ch != nil {
 		select {
-		case ch <- eventRec{instanceID, kind, actor, message}:
+		case ch <- eventRec{instanceID, kind, actor, message, s.Now()}:
 			return
 		default: // cheia (eventQueueCap pendentes) — degrada
 		}
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO instance_events(instance_id, kind, actor, message) VALUES(?,?,?,?)`,
-		instanceID, kind, actor, message,
+		`INSERT INTO instance_events(instance_id, kind, actor, message, ts) VALUES(?,?,?,?,?)`,
+		instanceID, kind, actor, message, s.Now(),
 	)
 	if err != nil {
 		log.Printf("[scheduler] emitEvent %s/%s: %v", instanceID, kind, err)
@@ -591,86 +604,19 @@ func (s *Scheduler) EmitEvent(instanceID, kind, actor, message string) {
 
 // DailyAt — horário efetivo da daily ("HH:MM"): settings.daily_at (configurável
 // em runtime pela UI/API, admin-only) com fallback no default do processo. O
-// relógio de referência é SEMPRE o do servidor (time.Now local) — o cliente não
+// relógio de referência é o Clock do scheduler; a zona é explícita — o cliente não
 // agenda nada em server mode.
-func (s *Scheduler) DailyAt() string {
-	var v string
-	if err := s.db.QueryRow(`SELECT value FROM settings WHERE key='daily_at'`).Scan(&v); err == nil {
-		v = strings.TrimSpace(v)
-		if _, _, ok := parseHHMM(v); ok {
-			return v
-		}
-		if v != "" {
-			log.Printf("[scheduler] settings daily_at %q invalid (expected HH:MM) — using %s", v, s.settings.DailyAt)
-		}
-	}
-	return s.settings.DailyAt
-}
+func (s *Scheduler) DailyAt() string { return s.BusinessCalendar().DailyAt }
 
-// DailyTimezone — E1: timezone de NEGÓCIO da daily (settings.daily_timezone,
-// nome IANA como "America/Sao_Paulo"). Vazio = relógio local do server
-// (comportamento clássico). Devolve o nome CONFIGURADO e a *time.Location
-// EFETIVA — nome inválido loga uma vez e cai no local, sem parar a daily.
-// O LoadLocation é cacheado por nome: editar o setting na UI recarrega no
-// próximo tick, sem restart.
+// DailyTimezone retorna sempre uma zona explícita; a validação bloqueia execução
+// com configuração inválida. Nunca consulta time.Local.
 func (s *Scheduler) DailyTimezone() (string, *time.Location) {
-	var name string
-	_ = s.db.QueryRow(`SELECT value FROM settings WHERE key='daily_timezone'`).Scan(&name)
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return "", time.Local
-	}
-	s.tzMu.Lock()
-	defer s.tzMu.Unlock()
-	if name == s.tzName && s.tzLoc != nil {
-		return name, s.tzLoc
-	}
-	loc, err := time.LoadLocation(name)
-	if err != nil {
-		// Cacheia o fallback pelo MESMO nome: sem isso o tick de 2s logaria isto
-		// centenas de vezes por minuto. Corrigir o setting muda o nome → recarrega.
-		log.Printf("[scheduler] settings daily_timezone %q invalid (%v) — using the server local clock", name, err)
-		loc = time.Local
-	}
-	s.tzName, s.tzLoc = name, loc
-	return name, loc
+	c := s.BusinessCalendar()
+	return c.Timezone, c.Location()
 }
-
-// NowLocal — E1: "agora" no relógio de negócio da daily. Toda decisão de
-// "hoje"/horário de daily parte daqui (nowFn é injetável nos testes).
-func (s *Scheduler) NowLocal() time.Time {
-	_, loc := s.DailyTimezone()
-	return s.nowFn().In(loc)
-}
-
-// BusinessDate — DAY-1: a DATA DE NEGÓCIO de um instante. O dia de negócio NÃO
-// vira à meia-noite: vira quando o relógio cruza `daily_at`, que é o único
-// momento em que a daily materializa um order_date novo. Com daily_at=15:00, o
-// dia D vai das 15:00 de D às 14:59 de D+1 — tudo que acontece nessa janela
-// (ordem forçada, Order Force, report, filtro da tela) pertence a D. Com
-// daily_at=00:00 (default) é idêntico à data-calendário, então o produto
-// instalado não muda de comportamento.
-//
-// `t` já deve estar na location de negócio (NowLocal / t.In(loc)).
-func (s *Scheduler) BusinessDate(t time.Time) string {
-	hh, mm, ok := parseHHMM(s.DailyAt())
-	if !ok {
-		return t.Format("2006-01-02")
-	}
-	boundary := time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, t.Location())
-	if t.Before(boundary) {
-		// Antes da virada: ainda é o dia de negócio ANTERIOR. AddDate no meio do
-		// dia (12:00) de propósito — recuar 24h cravado erra em DST.
-		return time.Date(t.Year(), t.Month(), t.Day(), 12, 0, 0, 0, t.Location()).
-			AddDate(0, 0, -1).Format("2006-01-02")
-	}
-	return t.Format("2006-01-02")
-}
-
-// TodayDate — E1 + DAY-1: a data de NEGÓCIO corrente, na timezone da daily. É o
-// order_date que uma ordem criada AGORA (auto ou manual) recebe, e o dia que a
-// tela pede. Fonte ÚNICA: o browser não calcula mais "hoje" sozinho.
-func (s *Scheduler) TodayDate() string { return s.BusinessDate(s.NowLocal()) }
+func (s *Scheduler) NowLocal() time.Time             { return s.Now().In(s.BusinessCalendar().Location()) }
+func (s *Scheduler) BusinessDate(t time.Time) string { return s.BusinessCalendar().BusinessDate(t) }
+func (s *Scheduler) TodayDate() string               { return s.BusinessDate(s.Now()) }
 
 // parseHHMM valida "HH:MM" (00:00–23:59).
 func parseHHMM(v string) (hh, mm int, ok bool) {
@@ -687,66 +633,50 @@ func parseHHMM(v string) (hh, mm int, ok bool) {
 }
 
 func (s *Scheduler) autoDailyIfDue() {
-	// E1 — o relógio de referência é o de NEGÓCIO (settings.daily_timezone; vazio
-	// = local do server): `today`, o horário-alvo e o order_date gravado derivam
-	// de `now` NESSA location. Server em UTC com negócio em America/Sao_Paulo
-	// cruza a meia-noite às 03:00Z e materializa com o order_date de SP.
-	now := s.NowLocal()
-	// DAY-1 — `today` é a data de NEGÓCIO, não a de calendário: com daily_at=15:00,
-	// às 02:00 de D+1 o dia corrente ainda é D (que já rodou) e a daily NÃO dispara;
-	// ela dispara exatamente quando o relógio cruza 15:00 e BusinessDate passa a D+1.
-	today := s.BusinessDate(now)
-
-	var started sql.NullString
-	err := s.db.QueryRow("SELECT started_at FROM daily_runs WHERE order_date=?", today).Scan(&started)
-	if err == nil {
-		return // já rodou hoje
-	}
-
-	hh, mm, ok := parseHHMM(s.DailyAt())
-	if !ok {
+	// Recupera antes de sincronizar Git, abrir outro dia ou executar GC.
+	if pending, err := s.PendingDaily(); err == nil {
+		if _, _, err = s.MaterializeDaily(pending.OrderDate); err != nil {
+			log.Printf("[scheduler] daily recovery: %v", err)
+			return
+		}
+		if s.BusinessCalendar().Validate() == nil {
+			s.auditGC()
+			s.outputGC()
+			s.archiveGC()
+		}
+	} else if err != sql.ErrNoRows {
+		log.Printf("[scheduler] daily state: %v", err)
 		return
 	}
-	// Guard preservado de propósito: quando o dia de negócio é o ANTERIOR ao de
-	// calendário (janela 00:00→daily_at), o alvo de hoje ainda não chegou. Sem
-	// isso, subir o server nessa janela com daily_runs vazio ressuscitaria uma
-	// diária velha (ou perdida) — comportamento clássico é pular o dia que passou.
-	dailyTime := time.Date(now.Year(), now.Month(), now.Day(), hh, mm, 0, 0, now.Location())
-	if now.Before(dailyTime) {
+	calendar := s.BusinessCalendar()
+	if calendar.Validate() != nil {
 		return
 	}
-	// Opção B (2026-04-26): sincroniza com Git ANTES de materializar.
-	// Se falhar, não marca daily_runs — próximo tick tenta de novo.
-	sha, err := s.dailySync()
-	if err != nil {
+	now := s.Now().In(calendar.Location())
+	today := calendar.BusinessDate(now)
+	if run, err := s.DailyRun(today); err == nil {
+		if !run.CanResume {
+			return
+		}
+	} else if err != sql.ErrNoRows {
+		return
+	}
+	// Não cria uma daily velha só porque o server iniciou antes do rollover.
+	if now.Before(calendar.Start(now.Format("2006-01-02"))) {
+		return
+	}
+	if _, err := s.dailySync(); err != nil {
 		log.Printf("[scheduler] daily %s skipped: %v", today, err)
 		return
 	}
-	if sha != "" {
-		log.Printf("[scheduler] daily %s: synced workspace to %s", today, short(sha))
-	}
-	// Sem NENHUMA definition carregada a daily não materializa nem marca o dia
-	// (ver RunDaily). Precisamos sair ANTES dos GCs: eles são janelas "1×/dia,
-	// logo após a daily", e com o dia não marcado o autoDailyIfDue volta aqui a
-	// cada tick — rodá-los a cada 30s seria bem pior que adiá-los até existir
-	// algum job. RunDaily continua sendo quem loga (1× por data).
-	s.mu.Lock()
-	ndefs := len(s.defs)
-	s.mu.Unlock()
-	if ndefs == 0 {
-		s.RunDaily(today)
+	if _, _, err := s.MaterializeDaily(today); err != nil {
+		if err != errNoDailyDefinitions {
+			log.Printf("[scheduler] daily %s incomplete: %v", today, err)
+		}
 		return
 	}
-	s.RunDaily(today)
-	// E2 — retenção de auditoria: 1×/dia, logo após a daily, só no líder (o
-	// caller já é leader-gated). Síncrono de propósito: roda em lotes curtos e
-	// uma goroutine solta escreveria no DB depois do teardown (o flake do TempDir).
 	s.auditGC()
-	// OL-1 — retenção PRÓPRIA do sysout (output_retention_days), separada da de
-	// auditoria: sysout tagarelo não deve viver o mesmo tempo que a trilha de
-	// auditoria. Mesma janela/leader-gate/lotes curtos que o auditGC.
 	s.outputGC()
-	// ADV-5 — archives/retention de instances: mesmo racional e mesma janela.
 	s.archiveGC()
 }
 
@@ -827,6 +757,8 @@ func keepActiveDays(def domain.JobDefinition, notokDefault bool) int {
 //	OK/CANCELLED/outros → não carrega (encerrado).
 func carryDecision(status string, retryPending bool, ageDays, activityAgeDays int, def domain.JobDefinition) carryPlan {
 	switch status {
+	case string(domain.StatusUncertain):
+		return carryPlan{carry: true, reason: "unresolved-execution"}
 	case string(domain.StatusRunning):
 		return carryPlan{carry: true, reason: "running"}
 	case string(domain.StatusHeld):
@@ -880,6 +812,10 @@ type carriedInstance struct {
 // uma instance não-carregada some do board sem isso, pois o carry só olha a
 // diária imediatamente anterior).
 func (s *Scheduler) carryOver(date string) (int, error) {
+	return s.carryOverWithCheckpoint(date, false)
+}
+
+func (s *Scheduler) carryOverWithCheckpoint(date string, checkpoint bool) (int, error) {
 	var prev string
 	if err := s.db.QueryRow(
 		`SELECT COALESCE(MAX(order_date),'') FROM instances WHERE order_date < ?`, date,
@@ -887,12 +823,16 @@ func (s *Scheduler) carryOver(date string) (int, error) {
 		return 0, fmt.Errorf("previous daily: %w", err)
 	}
 	if prev == "" {
-		return 0, nil // primeira daily do ambiente: nada a carregar
+		if checkpoint {
+			return 0, s.applyCarryDaily(date, nil, true)
+		}
+		return 0, nil
 	}
 
 	rows, err := s.db.Query(
 		`SELECT id, definition_id, status, COALESCE(carried_from,''),
-		        COALESCE(definition_snapshot,''), COALESCE(attempts,1), started_at, finished_at
+		        COALESCE(definition_snapshot,''), COALESCE(attempts,1), started_at, finished_at,
+        COALESCE((SELECT snapshot_checksum FROM daily_order_ledger WHERE instance_id=instances.id),'')
 		 FROM instances
 		 WHERE order_date=? AND status NOT IN (?,?)`,
 		prev, string(domain.StatusOK), string(domain.StatusCancelled),
@@ -908,37 +848,25 @@ func (s *Scheduler) carryOver(date string) (int, error) {
 	}
 	s.mu.Unlock()
 
-	_, loc := s.DailyTimezone()
-	// DAY-1 — a idade do carry compara LABELS de order_date, que são datas de
-	// NEGÓCIO. Um timestamp cru (finished_at/started_at) tem que ser convertido
-	// pela MESMA régua: com daily_at=15:00, um NOTOK às 02:00 de D+1 aconteceu no
-	// dia de negócio D, e datá-lo como D+1 daria a ele uma diária extra de vida.
-	// É isto que mantém keepActive/NOTOK/HELD exatamente com a vida de antes.
-	dayOf := func(t sql.NullTime) string {
-		if !t.Valid {
-			return ""
-		}
-		return s.BusinessDate(t.Time.In(loc))
-	}
-
 	var plan []carriedInstance
 	for rows.Next() {
-		var id, defID, status, from, snap string
+		var id, defID, status, from, snap, checksum string
 		var attempts int
 		var startedAt, finishedAt sql.NullTime
-		if rows.Scan(&id, &defID, &status, &from, &snap, &attempts, &startedAt, &finishedAt) != nil {
-			continue
+		if err := rows.Scan(&id, &defID, &status, &from, &snap, &attempts, &startedAt, &finishedAt, &checksum); err != nil {
+			rows.Close()
+			return 0, err
 		}
-		def, _ := defForInstance(instRow{DefID: defID, Snapshot: snap}, live)
+		def, _ := defForInstance(instRow{DefID: defID, Snapshot: snap, SnapshotChecksum: checksum}, live)
 		odate := from
 		if odate == "" { // nunca carregada: a origem é a diária de onde ela vem
 			odate = prev
 		}
 		// Última atividade: falha (NOTOK) ou última execução (retry pendente).
 		// Sem timestamp, a idade cai no ODAT (conservador: não estica vida).
-		activity := dayOf(finishedAt)
+		activity := activityDate(def, finishedAt)
 		if activity == "" {
-			activity = dayOf(startedAt)
+			activity = activityDate(def, startedAt)
 		}
 		if activity == "" {
 			activity = odate
@@ -960,10 +888,10 @@ func (s *Scheduler) carryOver(date string) (int, error) {
 		return 0, fmt.Errorf("iteration: %w", errIter)
 	}
 
-	if len(plan) == 0 {
+	if len(plan) == 0 && !checkpoint {
 		return 0, nil
 	}
-	if err := s.applyCarry(date, plan); err != nil {
+	if err := s.applyCarryDaily(date, plan, checkpoint); err != nil {
 		return 0, fmt.Errorf("apply: %w", err)
 	}
 	log.Printf("[scheduler] carry-over %s: %d instances brought from the %s daily", date, len(plan), prev)
@@ -972,20 +900,33 @@ func (s *Scheduler) carryOver(date string) (int, error) {
 
 // applyCarry grava as viradas numa transação: avança order_date, preserva o
 // ODAT (carried_from), re-arma o watchdog (carried_at) e registra o evento.
-func (s *Scheduler) applyCarry(date string, plan []carriedInstance) error {
+func (s *Scheduler) applyCarryDaily(date string, plan []carriedInstance, checkpoint bool) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
+	if checkpoint {
+		if _, err := tx.Exec(`UPDATE daily_runs SET checkpoint=checkpoint WHERE order_date=?`, date); err != nil {
+			return err
+		}
+		var done int
+		if err := tx.QueryRow(`SELECT carry_done FROM daily_runs WHERE order_date=?`, date).Scan(&done); err != nil {
+			return err
+		}
+		if done == 1 {
+			return nil
+		}
+	}
 	upd, err := tx.Prepare(
-		`UPDATE instances SET order_date=?, carried_from=?, carried_at=CURRENT_TIMESTAMP WHERE id=?`,
+		`UPDATE instances SET order_date=?, carried_from=?, carried_at=? WHERE id=?`,
 	)
 	if err != nil {
 		_ = tx.Rollback()
 		return err
 	}
 	defer upd.Close()
-	evt, err := tx.Prepare(`INSERT INTO instance_events(instance_id, kind, actor, message) VALUES(?,?,?,?)`)
+	evt, err := tx.Prepare(`INSERT INTO instance_events(instance_id, kind, actor, message, ts) VALUES(?,?,?,?,?)`)
 	if err != nil {
 		_ = tx.Rollback()
 		return err
@@ -993,210 +934,35 @@ func (s *Scheduler) applyCarry(date string, plan []carriedInstance) error {
 	defer evt.Close()
 
 	for _, c := range plan {
-		if _, err := upd.Exec(date, c.from, c.id); err != nil {
-			log.Printf("[scheduler] carry update %s: %v", c.id, err)
-			continue
+		if _, err := upd.Exec(date, c.from, s.Now(), c.id); err != nil {
+			return err
 		}
-		_, _ = evt.Exec(c.id, "carried", "scheduler",
-			fmt.Sprintf("carry-over to %s (%s, ODAT %s)", date, c.reason, c.from))
+		if _, err := evt.Exec(c.id, "carried", "scheduler",
+			fmt.Sprintf("carry-over to %s (%s, ODAT %s)", date, c.reason, c.from), s.Now()); err != nil {
+			return err
+		}
+	}
+	if checkpoint {
+		if _, err := tx.Exec(`UPDATE daily_runs SET carry_done=1,carried_count=?,state='materializing',last_error='' WHERE order_date=?`, len(plan), date); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
 
-// RunDaily materializa instances WAITING para todas as defs habilitadas.
-// Idempotente: se já existe instance para (def, date), é pulada.
-// Cada instance carrega o SHA do commit que originou as defs (Opção B).
-//
-// Escala (P1): em vez de O(N) round-trips (COUNT por def + INSERT autocommit por
-// linha + evento por instance), faz UMA query set-based de existência, decide o
-// gating em memória e grava em LOTE por transação com prepared statements — 1
-// commit por chunk em vez de 1 fsync por linha. Leva a daily de ~1k inst/s para
-// dezenas/centenas de milhares por segundo (ver TestScale_RunDaily).
-func (s *Scheduler) RunDaily(date string) int {
-	_, span := telemetry.Span(context.Background(), "scheduler.daily", attribute.String("order_date", date))
-	defer span.End()
-	s.mu.Lock()
-	defs := make([]domain.JobDefinition, len(s.defs))
-	copy(defs, s.defs)
-	s.mu.Unlock()
-
-	commitSHA := s.currentCommitSHA()
-
-	// 0) Ciclo de vida da daily (Control-M New Day): traz da diária anterior as
-	// instances que sobrevivem à virada (RUNNING/HELD/NOTOK-não-tratado/keepActive)
-	// AVANÇANDO seu order_date para hoje. BUG-12: a carregada NÃO conta como "já
-	// existe" — a fresca do dia entra junto (o passo 1 filtra carried_from).
-	// Idempotente (re-rodar não re-move). Falha no carry ABORTA a daily antes de
-	// marcar daily_runs → autoDailyIfDue re-tenta no próximo tick (carry parcial
-	// estranharia instances na diária velha, invisíveis pro board).
-	carried, err := s.carryOver(date)
-	if err != nil {
-		log.Printf("[scheduler] daily %s ABORTED (carry-over: %v) — retry on the next tick", date, err)
-		return 0
-	}
-
-	// 0b) Conjunto VAZIO de definitions não é uma daily — é quase sempre
-	// configuração pela metade: workspace ainda não clonado, GitOps conectando ou
-	// um YAML inválido derrubando o load inteiro. Marcar daily_runs aqui TRAVA o
-	// dia: o autoDailyIfDue vê a data já processada e não tenta mais, e o operador
-	// fica com o board vazio até a virada seguinte. Foi exatamente isso na primeira
-	// instalação em VPS — a daily correu antes do Git conectar, criou 0 e carimbou
-	// o dia. Sem marcar, o próximo tick materializa sozinho assim que as defs
-	// aparecerem. O carry-over ACIMA continua valendo: instances que atravessam a
-	// virada não dependem de haver definition carregada. (Instalação legitimamente
-	// vazia paga só este aviso, 1× por data.)
-	if len(defs) == 0 {
-		s.mu.Lock()
-		first := s.emptyDailyLoggedFor != date
-		s.emptyDailyLoggedFor = date
-		s.mu.Unlock()
-		if first {
-			log.Printf("[scheduler] daily %s NOT materialised: zero job definitions loaded — the day was NOT marked as done and the next tick retries. Check /api/git/status and the definitions load", date)
-		}
-		return 0
-	}
-
-	// 1) Existência em UMA query (set-based), não um COUNT(*) por def.
-	// BUG-12: instances CARREGADAS (carry-over, carried_from≠'') NÃO contam como
-	// "já existe" — um job trazido de outro dia (NOTOK em tratamento, RUNNING
-	// atravessando a virada, keepActive) não impede a ordem FRESCA de hoje de
-	// entrar, como no New Day do Control-M. Só a fresca do dia (carried_from='')
-	// bloqueia duplicata — re-rodar a daily segue idempotente.
-	//
-	// Erro (query/scan/iteração) ABORTA a daily: um set de existência INCOMPLETO
-	// faria o re-run materializar DUPLICATAS de tudo que ficou fora do set (antes,
-	// erro de query prosseguia com set VAZIO = duplicaria o dia inteiro). Sem
-	// daily_runs marcado, o autoDailyIfDue re-tenta no próximo tick.
-	existing := make(map[string]struct{})
-	rows, err := s.db.Query("SELECT definition_id FROM instances WHERE order_date=? AND COALESCE(carried_from,'')=''", date)
-	if err != nil {
-		log.Printf("[scheduler] daily %s ABORTED (existence: %v) — retry on the next tick", date, err)
-		return 0
-	}
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			log.Printf("[scheduler] daily %s ABORTED (existence/scan: %v) — retry on the next tick", date, err)
-			return 0
-		}
-		existing[id] = struct{}{}
-	}
-	errIter := rows.Err()
-	rows.Close()
-	if errIter != nil {
-		log.Printf("[scheduler] daily %s ABORTED (existence/iteration: %v) — retry on the next tick", date, errIter)
-		return 0
-	}
-
-	// 2) Gating (schedule + calendars) decidido em MEMÓRIA — sem tocar o banco.
-	var t time.Time
-	if s.calStore != nil {
-		t, _ = time.Parse("2006-01-02", date)
-	}
-	batch := make([]pendingInstance, 0, len(defs))
-	for _, d := range defs {
-		if !d.Schedule.Enabled {
-			continue
-		}
-		if _, dup := existing[d.ID]; dup {
-			continue
-		}
-		// Recorrência estruturada + calendars include/exclude (Control-M-like).
-		// Sem calStore atachado, cai no gating só por frequência.
-		if s.calStore != nil && !IsScheduledOn(d, t, s.calStore) {
-			continue
-		}
-		snap, _ := json.Marshal(d) // Fase A: congela a def no momento da ordem.
-		batch = append(batch, pendingInstance{
-			id: d.ID + "-" + date, defID: d.ID, team: d.Team,
-			scheduledAt: computeScheduledAt(d, date), snapshot: string(snap),
-			dryRun: d.DryRun,             // congela dryRun (ver pendingInstance).
-			mcols:  frozenMonitorCols(d), // M1: congela o resto do que o Monitoring exibe.
-		})
-	}
-
-	// 3) Grava em lote (transação + prepared statements, chunked).
-	created := s.insertDailyBatch(date, commitSHA, batch)
-
-	_, _ = s.db.Exec("INSERT OR REPLACE INTO daily_runs(order_date, started_at) VALUES(?, CURRENT_TIMESTAMP)", date)
-	s.hub.BroadcastWeb("daily.started", map[string]interface{}{"orderDate": date, "created": created, "carried": carried, "commitSha": commitSHA})
-	log.Printf("[scheduler] daily %s: %d instances created, %d carried (commit=%s)", date, created, carried, short(commitSHA))
-	return created
-}
-
-// insertDailyBatch grava as instances decididas em LOTE, uma transação por chunk
-// (dailyBatchChunk). Cada chunk é atômico; entre chunks, re-rodar é idempotente
-// (a existência set-based pula o que já entrou). Retorna o total inserido.
-func (s *Scheduler) insertDailyBatch(date, commitSHA string, batch []pendingInstance) int {
-	created := 0
-	for start := 0; start < len(batch); start += dailyBatchChunk {
-		end := min(start+dailyBatchChunk, len(batch))
-		created += s.insertDailyChunk(date, commitSHA, batch[start:end])
-	}
-	return created
-}
-
-// insertDailyChunk insere um chunk numa única transação com prepared statements
-// (instance + evento "ordered"). 1 commit por chunk — sem fsync por linha.
-func (s *Scheduler) insertDailyChunk(date, commitSHA string, chunk []pendingInstance) int {
-	if len(chunk) == 0 {
-		return 0
-	}
-	tx, err := s.db.Begin()
-	if err != nil {
-		log.Printf("[scheduler] daily %s: begin tx: %v", date, err)
-		return 0
-	}
-	insStmt, err := tx.Prepare(`INSERT INTO instances(id, definition_id, team, order_date, status, scheduled_at, definition_commit_sha, definition_snapshot, dry_run,
-		label, job_type, confirm_req, environment, pinned_agent, conds_in, conds_out_add, resources, cond_logic) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-	if err != nil {
-		_ = tx.Rollback()
-		log.Printf("[scheduler] daily %s: prepare insert: %v", date, err)
-		return 0
-	}
-	defer insStmt.Close()
-	evtStmt, err := tx.Prepare(`INSERT INTO instance_events(instance_id, kind, actor, message) VALUES(?,?,?,?)`)
-	if err != nil {
-		_ = tx.Rollback()
-		log.Printf("[scheduler] daily %s: prepare event: %v", date, err)
-		return 0
-	}
-	defer evtStmt.Close()
-
-	created := 0
-	for _, p := range chunk {
-		if _, err := insStmt.Exec(p.id, p.defID, p.team, date, string(domain.StatusWaiting), p.scheduledAt, commitSHA, p.snapshot, boolToInt(p.dryRun),
-			p.mcols.label, p.mcols.jobType, p.mcols.confirmReq, p.mcols.environment, p.mcols.pinned, p.mcols.condsIn, p.mcols.condsOutAdd, p.mcols.resources, p.mcols.condLogic); err != nil {
-			log.Printf("[scheduler] insert %s: %v", p.id, err)
-			continue
-		}
-		msg := fmt.Sprintf("daily order_date=%s scheduled=%s", date, p.scheduledAt.Format(time.RFC3339))
-		if commitSHA != "" {
-			msg += " commit=" + short(commitSHA)
-		}
-		_, _ = evtStmt.Exec(p.id, "ordered", "scheduler", msg)
-		created++
-	}
-	if err := tx.Commit(); err != nil {
-		log.Printf("[scheduler] daily %s: commit: %v", date, err)
-		return 0
-	}
-	return created
-}
-
 func computeScheduledAt(d domain.JobDefinition, date string) time.Time {
-	t, _ := time.Parse("2006-01-02", date)
-	// RunAt manda; sem RunAt, a janela (WindowFrom) segura o início — um job
-	// cyclic "a cada 10min das 08:00 às 18:00" começa às 08:00, não à meia-noite.
+	c, ok := frozenCalendar(d)
+	if !ok {
+		c = businessclock.Default()
+	}
 	at := d.Schedule.RunAt
 	if at == "" {
 		at = d.Schedule.WindowFrom
 	}
-	if hh, mm, ok := parseHHMM(at); ok {
-		return time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.Local)
+	if t := c.At(date, at); !t.IsZero() {
+		return t
 	}
-	return t // imediatamente
+	return c.Start(date)
 }
 
 type instRow struct {
@@ -1217,7 +983,9 @@ type instRow struct {
 	// HeldFrom — status congelado por um HOLD (schemaV16, hold geral): o hold
 	// vale pra qualquer status não-RUNNING; o release restaura este valor.
 	// Só tem significado quando Status=HELD ('' = hold legado, era WAITING).
-	HeldFrom string
+	HeldFrom         string
+	DailyState       string // preenchido pelo ledger; Force/legado não pertencem ao ciclo novo.
+	SnapshotChecksum string
 }
 
 // defForInstance devolve a definition CONGELADA no momento da ordem (snapshot),
@@ -1231,6 +999,9 @@ type instRow struct {
 // instances continuar valendo no modelo único (o OutAdd do pai vem da def
 // viva normalizada — ver applyConditionsOut).
 func defForInstance(r instRow, live map[string]domain.JobDefinition) (domain.JobDefinition, bool) {
+	if snapshotError(r) != "" {
+		return domain.JobDefinition{}, false
+	}
 	if r.Snapshot != "" {
 		var d domain.JobDefinition
 		if err := json.Unmarshal([]byte(r.Snapshot), &d); err == nil {
@@ -1269,15 +1040,25 @@ func statusRank(s string) int {
 const stuckRunningTimeout = 15 * time.Minute
 
 func (s *Scheduler) tickOnce() {
-	now := time.Now()
-	today := now.Format("2006-01-02")
+	if s.durable != nil {
+		s.drainDurableEffects()
+		if _, err := s.durable.Reconcile(); err != nil {
+			log.Printf("[execution] reconcile: %v", err)
+			return
+		}
+	}
+	now := s.Now()
+	if s.validateBusinessTime() != nil {
+		return
+	}
+	today := s.BusinessDate(now)
 
 	// Carrega TODAS as instances do dia (não só WAITING/RUNNING).
 	// evalDeps precisa enxergar pais OK/NOTOK para decidir corretamente.
 	rows, err := s.db.Query(
-		`SELECT id, definition_id, order_date, status, scheduled_at,
-		        started_at, carried_at, COALESCE(forced,0), COALESCE(force_mode,''), COALESCE(confirmed,0), COALESCE(carried_from,''), COALESCE(definition_snapshot,''), COALESCE(held_from_status,'')
-		 FROM instances WHERE order_date=?`,
+		`SELECT i.id, i.definition_id, i.order_date, i.status, i.scheduled_at,
+		 i.started_at,i.carried_at,COALESCE(i.forced,0),COALESCE(i.force_mode,''),COALESCE(i.confirmed,0),COALESCE(i.carried_from,''),COALESCE(i.definition_snapshot,''),COALESCE(i.held_from_status,''),COALESCE(d.state,''),COALESCE(l.snapshot_checksum,'')
+		 FROM instances i LEFT JOIN daily_order_ledger l ON l.instance_id=i.id LEFT JOIN daily_runs d ON d.order_date=l.order_date WHERE i.order_date=?`,
 		today,
 	)
 	if err != nil {
@@ -1287,7 +1068,7 @@ func (s *Scheduler) tickOnce() {
 	for rows.Next() {
 		var r instRow
 		var forcedInt, confirmedInt int
-		_ = rows.Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.CarriedFrom, &r.Snapshot, &r.HeldFrom)
+		_ = rows.Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.CarriedFrom, &r.Snapshot, &r.HeldFrom, &r.DailyState, &r.SnapshotChecksum)
 		r.Forced = forcedInt == 1
 		r.Confirmed = confirmedInt == 1
 		insts = append(insts, r)
@@ -1326,7 +1107,7 @@ func (s *Scheduler) tickOnce() {
 		// carregado na virada da daily (carried_at) re-arma o relógio: mede-se a
 		// staleness de max(started_at, carried_at), pra um RUNNING legítimo que
 		// atravessa a virada não ser reapado no instante em que aparece no novo dia.
-		if r.Status == string(domain.StatusRunning) && r.StartedAt.Valid {
+		if s.durable == nil && r.Status == string(domain.StatusRunning) && r.StartedAt.Valid {
 			anchor := r.StartedAt.Time
 			if r.CarriedAt.Valid && r.CarriedAt.Time.After(anchor) {
 				anchor = r.CarriedAt.Time
@@ -1344,8 +1125,15 @@ func (s *Scheduler) tickOnce() {
 		if now.Before(r.ScheduledAt) {
 			continue
 		}
+		if reason := integrityBlock(r); reason != "" {
+			s.maybeEmitWait(r.ID, Blocker{Kind: GateConfiguration, Detail: reason})
+			continue
+		}
 		def, ok := defForInstance(r, defs)
 		if !ok {
+			continue
+		}
+		if s.RuntimePolicy.ExecutionError(def) != "" {
 			continue
 		}
 		// "Run Now" (forced sem force_mode) bypassa janela/condições/recursos
@@ -1388,7 +1176,7 @@ func (s *Scheduler) tickOnce() {
 		}
 		// Gates read-only passaram → reserva ATÔMICA do recurso (a única etapa com
 		// efeito colateral; o gate só fez Shortfalls read-only) e dispara.
-		if len(def.Resources) > 0 && s.resources != nil {
+		if s.durable == nil && len(def.Resources) > 0 && s.resources != nil {
 			if !s.resources.TryAcquire(r.ID, def.Resources) {
 				continue
 			}
@@ -1397,6 +1185,10 @@ func (s *Scheduler) tickOnce() {
 	}
 
 	// F19 — SLA evaluation per tick
+	if s.durable != nil {
+		s.evaluateDurableRunning(now)
+		return
+	}
 	if s.sla != nil {
 		defsByID := map[string]domain.JobDefinition{}
 		for _, d := range s.defs {
@@ -1417,6 +1209,13 @@ func (s *Scheduler) tickOnce() {
 // próprio server) e DemoMode dispensa (mock-finish). Checado ANTES do claim.
 // ADV-2: def.Environment roteia — só conta agente do mesmo env (ou coringa).
 func (s *Scheduler) agentAvailable(def domain.JobDefinition) bool {
+	if s.durable != nil {
+		_, err := s.durableAgent(def)
+		return err == nil
+	}
+	if s.RuntimePolicy.ExecutionError(def) != "" {
+		return false
+	}
 	if s.DemoMode || strings.EqualFold(def.JobType, "SSH") {
 		return true
 	}
@@ -1428,7 +1227,7 @@ func (s *Scheduler) agentAvailable(def domain.JobDefinition) bool {
 func (s *Scheduler) maybeEmitNoAgent(id, jobType string) {
 	s.mu.Lock()
 	last, seen := s.noAgentAt[id]
-	now := time.Now()
+	now := s.Now()
 	if seen && now.Sub(last) < 5*time.Minute {
 		s.mu.Unlock()
 		return
@@ -1441,6 +1240,16 @@ func (s *Scheduler) maybeEmitNoAgent(id, jobType string) {
 }
 
 func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
+	if r, err := s.orderIntegrity(id); err != nil || integrityBlock(r) != "" {
+		return
+	}
+	if s.RuntimePolicy.ExecutionError(def) != "" {
+		return
+	}
+	if s.durable != nil || s.RuntimePolicy.Durable() {
+		s.startDurable(id, def)
+		return
+	}
 	s.mu.Lock()
 	if s.running[id] {
 		s.mu.Unlock()
@@ -1456,8 +1265,8 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 	// já terminal e o tick + AfterFunc disparavam em dobro → retries=2 rodava
 	// 5x em vez de 3.
 	res, err := s.db.Exec(
-		`UPDATE instances SET status=?, started_at=CURRENT_TIMESTAMP WHERE id=? AND status=?`,
-		string(domain.StatusRunning), id, string(domain.StatusWaiting),
+		`UPDATE instances SET status=?, started_at=? WHERE id=? AND status=?`,
+		string(domain.StatusRunning), s.Now(), id, string(domain.StatusWaiting),
 	)
 	claimed := false
 	if err == nil {
@@ -1482,7 +1291,7 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 	// startedAt no evento, mesmo racional do finishedAt (ver FinishInstance).
 	s.hub.BroadcastWeb("instance.changed", map[string]string{
 		"id": id, "status": string(domain.StatusRunning),
-		"startedAt": time.Now().UTC().Format(time.RFC3339),
+		"startedAt": s.Now().UTC().Format(time.RFC3339),
 	})
 
 	s.wg.Add(1)
@@ -1560,6 +1369,9 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 
 // FinishInstance — chamado pelo ws handler quando o agent publica "result".
 func (s *Scheduler) FinishInstance(id string, status domain.InstanceStatus, exitCode int, output string) {
+	if s.IsDurableInstance(id) {
+		return
+	}
 	// Guard idempotente: um resultado TARDIO/duplicado para uma instance que já
 	// é TERMINAL é ignorado. É o que blinda o cancel de um job RUNNING — o
 	// operador mata o processo, a instance vira NOTOK na hora (finishKilled), e o
@@ -1591,8 +1403,8 @@ func (s *Scheduler) FinishInstance(id string, status domain.InstanceStatus, exit
 		return
 	}
 	_, _ = s.db.Exec(
-		`UPDATE instances SET status=?, exit_code=?, output=?, finished_at=CURRENT_TIMESTAMP WHERE id=?`,
-		string(status), exitCode, output, id,
+		`UPDATE instances SET status=?, exit_code=?, output=?, finished_at=? WHERE id=?`,
+		string(status), exitCode, output, s.Now(), id,
 	)
 	// OL-1 — a instance terminou: re-abre o orçamento de sysout (a próxima ordem
 	// desta def é outra instance; o id não se reusa, mas mantém o mapa enxuto).
@@ -1616,7 +1428,7 @@ func (s *Scheduler) FinishInstance(id string, status domain.InstanceStatus, exit
 	// acabou de ser carimbado no UPDATE acima (mesmo relógio, precisão de ms).
 	s.hub.BroadcastWeb("instance.changed", map[string]interface{}{
 		"id": id, "status": string(status), "exitCode": exitCode,
-		"finishedAt": time.Now().UTC().Format(time.RFC3339),
+		"finishedAt": s.Now().UTC().Format(time.RFC3339),
 	})
 	// Phase 8 — avalia regras de alerta na transição terminal (retries já
 	// esgotados neste ponto). Best-effort; nunca quebra o fluxo de finish.
@@ -1668,17 +1480,15 @@ func (s *Scheduler) maybeCycle(id string) {
 			fmt.Sprintf("cycle ended: %d laps (max %d)", done, def.Schedule.CyclicMaxRuns))
 		return
 	}
-	next := time.Now().Add(time.Duration(def.Schedule.IntervalMin) * time.Minute)
-	if hh, mm, okW := parseHHMM(def.Schedule.WindowTo); okW {
-		if t, err := time.Parse("2006-01-02", orderDate); err == nil {
-			windowEnd := time.Date(t.Year(), t.Month(), t.Day(), hh, mm, 0, 0, time.Local)
-			if next.After(windowEnd) {
-				s.emitEvent(id, "cyclic-done", "scheduler",
-					fmt.Sprintf("cycle ended: window to %s closed (%d laps)", def.Schedule.WindowTo, done))
-				return
-			}
-		}
+	next := s.Now().Add(time.Duration(def.Schedule.IntervalMin) * time.Minute)
+	if end := orderWindowEnd(def, orderDate); !end.IsZero() && next.After(end) {
+		s.emitEvent(id, "cyclic-done", "scheduler", "cycle ended: execution window closed")
+		return
 	}
+	if def.Schedule.WindowTo != "" && def.BusinessTime == nil {
+		return
+	}
+
 	// Guard AND status='OK': se um operador agiu no meio (cancel/hold), não re-arma.
 	res, err := s.db.Exec(
 		`UPDATE instances SET status=?, scheduled_at=?, cycle_runs=?, attempts=1, exit_code=NULL, finished_at=NULL
@@ -1791,6 +1601,9 @@ func (s *Scheduler) buildAlertContext(id string, status domain.InstanceStatus) A
 // snapshot imutável). Retorna true se agendou retry (FinishInstance não finaliza).
 // O slot de resource NÃO é liberado entre tentativas (segue reservado).
 func (s *Scheduler) maybeRetry(id, output string) bool {
+	if r, err := s.orderIntegrity(id); err != nil || integrityBlock(r) != "" {
+		return false
+	}
 	var attempts int
 	var snapshot string
 	if err := s.db.QueryRow(`SELECT COALESCE(attempts,1), COALESCE(definition_snapshot,'') FROM instances WHERE id=?`, id).Scan(&attempts, &snapshot); err != nil {
@@ -1818,7 +1631,7 @@ func (s *Scheduler) maybeRetry(id, output string) bool {
 	// É o que torna "retry após 3 dias" confiável — uma goroutine dormindo 3 dias
 	// morreria no primeiro deploy.
 	if def.RetryDelayMin > 0 {
-		nextAt := time.Now().Add(time.Duration(def.RetryDelayMin) * time.Minute)
+		nextAt := s.Now().Add(time.Duration(def.RetryDelayMin) * time.Minute)
 		_, _ = s.db.Exec(
 			`UPDATE instances SET attempts=?, status=?, scheduled_at=?, exit_code=NULL, finished_at=NULL WHERE id=?`,
 			next, string(domain.StatusWaiting), nextAt, id,
@@ -1856,6 +1669,10 @@ func (s *Scheduler) maybeRetry(id, output string) bool {
 // hora, sem esperar o evento chegar. Preserva output original com prefixo de
 // auditoria.
 func (s *Scheduler) SetOK(id string) error {
+	if s.durable != nil {
+		_, err := s.DurableAction("operator", id, "set-ok")
+		return err
+	}
 	var status, output string
 	err := s.db.QueryRow(`SELECT status, COALESCE(output,'') FROM instances WHERE id=?`, id).Scan(&status, &output)
 	if err != nil {
@@ -1866,13 +1683,13 @@ func (s *Scheduler) SetOK(id string) error {
 	default:
 		return fmt.Errorf("instance %s is %s; Set OK only valid for WAITING/NOTOK/CANCELLED", id, status)
 	}
-	newOutput := "[set-ok by operator at " + time.Now().Format(time.RFC3339) + "]\n" + output
+	newOutput := "[set-ok by operator at " + s.Now().Format(time.RFC3339) + "]\n" + output
 	// Guarda pelo status LIDO: se o tick reivindicar a instance (WAITING→RUNNING)
 	// entre o SELECT e o UPDATE, não sobrescreve — o operador re-tenta vendo o
 	// estado novo.
 	res, err := s.db.Exec(
-		`UPDATE instances SET status=?, exit_code=0, output=?, finished_at=COALESCE(finished_at, CURRENT_TIMESTAMP) WHERE id=? AND status=?`,
-		string(domain.StatusOK), newOutput, id, status,
+		`UPDATE instances SET status=?, exit_code=0, output=?, finished_at=COALESCE(finished_at, ?) WHERE id=? AND status=?`,
+		string(domain.StatusOK), newOutput, s.Now(), id, status,
 	)
 	if err != nil {
 		return err
@@ -1921,6 +1738,10 @@ func (s *Scheduler) isInstanceTerminal(id string) bool {
 //
 // Devolve o status resultante. Erro se a instance sumiu ou já é terminal.
 func (s *Scheduler) Cancel(id string) (domain.InstanceStatus, error) {
+	if s.durable != nil {
+		status, err := s.DurableAction("operator", id, "cancel")
+		return domain.InstanceStatus(status), err
+	}
 	var status, agentID string
 	if err := s.db.QueryRow(`SELECT status, COALESCE(agent_id,'') FROM instances WHERE id=?`, id).Scan(&status, &agentID); err != nil {
 		return "", fmt.Errorf("instance %s not found", id)
@@ -1952,8 +1773,8 @@ func (s *Scheduler) signalCancel(agentID, id string) {
 func (s *Scheduler) finishKilled(id string) {
 	const out = "(cancelled by operator — process killed)"
 	res, err := s.db.Exec(
-		`UPDATE instances SET status=?, exit_code=-1, output=?, finished_at=CURRENT_TIMESTAMP WHERE id=? AND status=?`,
-		string(domain.StatusNotOK), out, id, string(domain.StatusRunning))
+		`UPDATE instances SET status=?, exit_code=-1, output=?, finished_at=? WHERE id=? AND status=?`,
+		string(domain.StatusNotOK), out, s.Now(), id, string(domain.StatusRunning))
 	if err != nil {
 		return
 	}
@@ -1986,8 +1807,8 @@ func (s *Scheduler) finishKilled(id string) {
 // saídas; um HELD idem).
 func (s *Scheduler) cancelPending(id string) (domain.InstanceStatus, error) {
 	if _, err := s.db.Exec(
-		`UPDATE instances SET status=?, held_from_status='', finished_at=CURRENT_TIMESTAMP WHERE id=?`,
-		string(domain.StatusCancelled), id); err != nil {
+		`UPDATE instances SET status=?, held_from_status='', finished_at=? WHERE id=?`,
+		string(domain.StatusCancelled), s.Now(), id); err != nil {
 		return "", err
 	}
 	s.emitEvent(id, "cancelled", "operator", "manual cancel")
@@ -2012,27 +1833,21 @@ func (s *Scheduler) applyConditionsOut(id, actor string) {
 	if s.conditions == nil {
 		return
 	}
-	var defID, odate, snapshot string
-	_ = s.db.QueryRow(
-		`SELECT definition_id, `+odateExpr+`, COALESCE(definition_snapshot,'') FROM instances WHERE id=?`, id,
-	).Scan(&defID, &odate, &snapshot)
-	var def domain.JobDefinition
-	if snapshot != "" {
-		var snap domain.JobDefinition
-		if json.Unmarshal([]byte(snapshot), &snap) == nil && snap.ID != "" {
-			def = snap
-		}
+	var odate string
+	if err := s.db.QueryRow(`SELECT `+odateExpr+` FROM instances WHERE id=?`, id).Scan(&odate); err != nil {
+		return
 	}
-	if def.ID == "" { // legado sem snapshot: def viva, melhor esforço
-		s.mu.Lock()
-		for _, d := range s.defs {
-			if d.ID == defID {
-				def = d
-				break
-			}
-		}
-		s.mu.Unlock()
+	r, err := s.orderIntegrity(id)
+	if err != nil || integrityBlock(r) != "" {
+		return
 	}
+	s.mu.Lock()
+	live := make(map[string]domain.JobDefinition, len(s.defs))
+	for _, d := range s.defs {
+		live[d.ID] = d
+	}
+	s.mu.Unlock()
+	def, _ := defForInstance(r, live)
 	if def.ID != "" {
 		s.conditions.ApplyOutcomes(def, odate, actor, s.prevDaily)
 	}
@@ -2062,6 +1877,10 @@ func unionStr(a, b []string) []string {
 // recriá-la), e agente/recursos/Confirm continuam valendo. O que ela bypassa
 // é o AGENDAMENTO (calendário/janela/horário — a ordem nasce elegível agora).
 func (s *Scheduler) ForceOrder(defID string) (string, error) {
+	calendar := s.BusinessCalendar()
+	if err := calendar.Validate(); err != nil {
+		return "", err
+	}
 	s.mu.Lock()
 	var def *domain.JobDefinition
 	for i := range s.defs {
@@ -2082,9 +1901,10 @@ func (s *Scheduler) ForceOrder(defID string) (string, error) {
 	// do relógio do server. Gravando o calendário, um Order Force às 02:00 com
 	// daily_at=06:00 nascia com o order_date de AMANHÃ — num dia que o board não
 	// está mostrando, então o card sumia sem erro nenhum.
-	now := s.NowLocal()
-	today := s.BusinessDate(now)
+	now := s.Now()
+	today := calendar.BusinessDate(now)
 	id := defID + "-FORCE-" + now.Format("150405")
+	*def = s.freezeTime(*def, calendar)
 	snap, _ := json.Marshal(*def) // Fase A: congela a def no momento da ordem manual.
 	mc := frozenMonitorCols(*def) // M1: Force congela a def publicada ATUAL — é a ordem nova.
 	_, err := s.db.Exec(
@@ -2116,7 +1936,7 @@ func (s *Scheduler) ForceOrder(defID string) (string, error) {
 		s.emitEvent(id, "submitted", "operator", "force waiting on gate: "+blockers[0].Detail)
 		return id, nil
 	}
-	if len(def.Resources) > 0 && s.resources != nil {
+	if s.durable == nil && len(def.Resources) > 0 && s.resources != nil {
 		if !s.resources.TryAcquire(id, def.Resources) {
 			return id, nil // recurso indisponível — o tick re-tenta
 		}

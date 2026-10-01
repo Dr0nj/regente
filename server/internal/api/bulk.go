@@ -144,6 +144,9 @@ func (s *server) canWriteInstanceQuiet(r *http.Request, instanceID string) error
 // de rows-affected para feedback honesto (ex.: hold em instance que não está
 // WAITING reporta erro do item em vez de "ok" silencioso).
 func (s *server) applyInstanceAction(actor, id, action string) (string, error) {
+	if s.cfg.Scheduler.DurableEngine() != nil {
+		return s.cfg.Scheduler.DurableAction(actor, id, action)
+	}
 	switch action {
 	case "hold":
 		// Hold geral (schemaV16): qualquer status exceto RUNNING (execução já no

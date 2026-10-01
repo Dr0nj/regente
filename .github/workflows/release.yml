@@ -150,7 +150,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
-        run: go build -trimpath -ldflags="-s -w" -o ../dist/regente-agent_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }} .
+        run: go build -trimpath -ldflags="-s -w -X main.agentVersion=${{ needs.version.outputs.tag }}" -o ../dist/regente-agent_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }} .
 
       # V1+V2 — bundle Linux "caixa única": binário + UI + arquivos de deploy, num
       # layout que ESPELHA o repo, pra o install-linux.sh achar tudo por caminho

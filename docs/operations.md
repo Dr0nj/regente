@@ -31,6 +31,15 @@ start a new migrator alongside an unqualified old runtime.
 bytes and requires an explicit disposable-DB acknowledgment. Its successful result
 is a same-binary drain observation, not certification of a version upgrade.
 
+### Dispatch and failover limits
+
+An atomic WAITING → RUNNING claim protects that database transition. It does not
+acknowledge durable receipt by the agent or fence attempts. A new leader and
+reconstructed quotas do not prove that disconnected work stopped or that an
+external effect was recorded exactly once. See the [mechanism/evidence matrix](capacity-guarantees.md#dispatch-and-ha-boundaries)
+and the [small integration profile](integration-baseline.md); recovery and
+partition guarantees remain separate enterprise gates.
+
 ## 2. Multiple environments (Dev / Staging / Prod)
 
 Each environment is an **independent deployment** — no magic flags inside a single process.

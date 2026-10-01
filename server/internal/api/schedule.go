@@ -27,19 +27,19 @@ func (s *server) schedulePreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now()
+	now, _ := time.Parse("2006-01-02", s.cfg.Scheduler.TodayDate())
 	parse := func(v string, def time.Time) time.Time {
 		if v == "" {
 			return def
 		}
-		t, err := time.ParseInLocation("2006-01-02", v, time.Local)
+		t, err := time.ParseInLocation("2006-01-02", v, time.UTC)
 		if err != nil {
 			return def
 		}
 		return t
 	}
-	from := parse(body.From, time.Date(now.Year(), 1, 1, 0, 0, 0, 0, time.Local))
-	to := parse(body.To, time.Date(now.Year(), 12, 31, 0, 0, 0, 0, time.Local))
+	from := parse(body.From, time.Date(now.Year(), 1, 1, 0, 0, 0, 0, time.UTC))
+	to := parse(body.To, time.Date(now.Year(), 12, 31, 0, 0, 0, 0, time.UTC))
 	if to.Before(from) {
 		from, to = to, from
 	}

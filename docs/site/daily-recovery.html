@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daily recovery · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="adr-i09-agent-journal.html">Durable agent journal</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="business-time.html">Business time</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html" class="active">Daily recovery</a>
+<a href="durable-execution.html">Durable execution and recovery</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="production-profile.html">Production profile</a>
+<a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
+<a href="web-events.html">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="daily-recovery">Daily recovery</h1>
+<p>A daily is a persisted materialization cycle, separate from the execution of its jobs. New cycles progress through planning, materializing and completed. An error records failed, the last committed checkpoint and a diagnostic. A daily is completed only after reconciling its frozen plan with its order ledger.</p>
+<h2 id="frozen-source-and-atomic-chunks">Frozen source and atomic chunks</h2>
+<p>Before inserting orders, Regente stores the eligible plan, its target Git commit and a checksum. Git definitions are read from immutable commit objects; offline mode freezes the loaded definitions. Schedule/calendar eligibility and business time are frozen at planning. A later publication or settings change cannot replace the plan during recovery.</p>
+<p>Orders are inserted in chunks of up to 5,000. Each transaction includes the orders, their ordered events, ledger entries and checkpoint. Failure rolls the whole chunk back. Restart resumes from the last committed checkpoint, using the same plan. Database serialization and unique daily/ordinal and daily/definition ledger keys protect concurrent attempts. Force Order remains a distinct manual order.</p>
+<p>The plan is held in memory and persisted as one JSON payload. Chunked order writes do not constitute capacity qualification; large plans require the separate capacity validation described in <a href="capacity-guarantees.html">capacity guarantees</a>.</p>
+<h2 id="operation">Operation</h2>
+<p>GET /api/daily/status returns the current run and the oldest pending cycle, with state, commit, expected/inserted counts, checkpoint and error. lastRunDate/lastRunAt refer to the last completed or legacy cycle. Monitoring shows an incomplete daily and offers Resume daily to writers. POST /api/daily/resume with {&quot;orderDate&quot;:&quot;YYYY-MM-DD&quot;} resumes an existing cycle; it never replans it. Completed cycles are idempotent.</p>
+<p>The automatic scheduler recovers pending cycles before opening another daily, including a restart before rollover. A recovery failure prevents the next cycle from starting. A new empty workspace does not mark a day; loaded definitions that are all excluded by scheduling produce a legitimate empty plan. Carry-over updates and events are atomic, with its completion recorded in the same transaction.</p>
+<p>Orders created by an incomplete cycle remain WAITING with CONFIGURATION_BLOCKED in Explain, including Run Now. A missing or checksum-mismatched snapshot on a verified daily order also blocks execution. A corrupt order snapshot also blocks execution and never falls back to live code. Restore verified state or reorder the affected job after investigation. A corrupt plan stays failed and cannot be rebuilt silently from current definitions. Retention and daily report delivery do not treat incomplete materialization as completed.</p>
+<p>The ledger records ordering, not continued existence of an order. Deleting an order after its checkpoint does not make recovery recreate it.</p>
+<h2 id="upgrade">Upgrade</h2>
+<p>Schema 26 adds cycle metadata and the order ledger for SQLite and PostgreSQL. Verify a backup before upgrading. Older binaries reject this schema: rollback requires restoring a verified compatible backup.</p>
+<p>Historical daily rows become legacy, preserving their dates and timestamps. No expected count, completion proof or frozen plan is invented. They cannot be resumed as a new cycle; inspect and explicitly reorder missing jobs. An absent order snapshot retains documented legacy compatibility; a present invalid snapshot is corruption, not legacy.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

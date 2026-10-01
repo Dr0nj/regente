@@ -1,0 +1,126 @@
+{
+  "date": "2026-09-30",
+  "implementation": "43580477924f9c8568e9e176b4f2353a9d1833a4",
+  "core": "c0193ef71821cfdb8ce6ae9c6ca6555482db8ec6",
+  "ci": "https://github.com/Dr0nj/regente/actions/runs/36794665074",
+  "status": "passed",
+  "jobs": 6,
+  "verification": {
+    "mode": "full",
+    "seconds": 493.985,
+    "gates": [
+      {
+        "gate": "runner",
+        "status": "passed"
+      },
+      {
+        "gate": "server",
+        "status": "passed"
+      },
+      {
+        "gate": "agent",
+        "status": "passed"
+      },
+      {
+        "gate": "web",
+        "status": "passed"
+      },
+      {
+        "gate": "docs",
+        "status": "passed"
+      },
+      {
+        "gate": "browser",
+        "status": "passed"
+      },
+      {
+        "gate": "integration",
+        "status": "passed"
+      },
+      {
+        "gate": "demo",
+        "status": "passed"
+      }
+    ]
+  },
+  "integration": {
+    "seconds": 214.059,
+    "passedTests": 225,
+    "i09Tests": [
+      "TestI09JournalCompactOnlyConfirmed",
+      "TestI09JournalIdentityCapacityAndCancel",
+      "TestI09JournalLockIdentityVersionCorruption",
+      "TestI09JournalOutputLimit",
+      "TestI09JournalRestartBoundaries",
+      "TestI09JournalStorageFailureBeforeAcceptance",
+      "TestI09RealAgentJournalLostReceiptAndUncertainRestart",
+      "TestI09RealAgentJournalLostReceiptAndUncertainRestart/postgres",
+      "TestI09RealAgentJournalLostReceiptAndUncertainRestart/sqlite",
+      "TestI09WorkerConcurrencyAndAdmission",
+      "TestI09WorkerDiskFailureAfterEffectStopsAdmission",
+      "TestI09WorkerLostResultReceiptRestartNoRepeatedEffect",
+      "TestI09WorkerStaleStartReceiptNeverExecutes",
+      "TestI09WorkerStartedRestartNeverReplays"
+    ],
+    "i10Tests": [
+      "TestI10EffectResolutionRequiresEvidenceAndAudit",
+      "TestI10ExternalActionUnknownIsNotRepeatedAfterRestart",
+      "TestI10InternalHTTPUsesJournalAndUnknownNeverRetries",
+      "TestI10KnownFailureRetryIsDurableAndOldAttemptCannotFinishNext",
+      "TestI10OperationsNeverOverwriteUnresolvedAttempt",
+      "TestI10OperatorAPIAndCLIContracts",
+      "TestI10OperatorAPIAndCLIContracts/postgres",
+      "TestI10OperatorAPIAndCLIContracts/sqlite",
+      "TestI10PostgresRuntimeContracts",
+      "TestI10PostgresRuntimeContracts/atomic-result",
+      "TestI10PostgresRuntimeContracts/effect-audit",
+      "TestI10PostgresRuntimeContracts/effects-recovery",
+      "TestI10PostgresRuntimeContracts/internal-http",
+      "TestI10PostgresRuntimeContracts/internal-ssh",
+      "TestI10PostgresRuntimeContracts/operation-protection",
+      "TestI10PostgresRuntimeContracts/retry-generation",
+      "TestI10PostgresRuntimeContracts/runtime-sla",
+      "TestI10PostgresRuntimeContracts/unknown-resolution",
+      "TestI10RealAgentRuntimeLostReceiptAndUncertainRestart",
+      "TestI10RealAgentRuntimeLostReceiptAndUncertainRestart/postgres",
+      "TestI10RealAgentRuntimeLostReceiptAndUncertainRestart/sqlite",
+      "TestI10RealOrderResultConditionsAndActionsAtomicRecovery",
+      "TestI10RealSSHReceiptsLossAndCancellation",
+      "TestI10RuntimeActionsAndSLARecoverAtomically",
+      "TestI10UnknownEffectRequiresAuditedResolutionAndNeverAutoRetries"
+    ],
+    "durableProcessRecovery": {
+      "sqlite": {
+        "server_sigkill": true,
+        "agent_result_pending": true,
+        "identity_preserved": true,
+        "effect_count": 1,
+        "condition_committed": true,
+        "seconds": 5.535
+      },
+      "postgres": {
+        "server_sigkill": true,
+        "agent_result_pending": true,
+        "identity_preserved": true,
+        "effect_count": 1,
+        "condition_committed": true,
+        "seconds": 5.939
+      }
+    },
+    "legacyRestore": {
+      "schema_from": 22,
+      "schema_to": 28,
+      "preserved_entities": 4,
+      "seconds": 1.265
+    }
+  },
+  "browser": {
+    "startTime": "2026-10-01T00:12:24.515Z",
+    "duration": 13772.648000000001,
+    "expected": 7,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "scope": "Integrated I08-I10 runtime contract: agent journal, transactional results/conditions, recoverable effects and audited operations. E04 execution correctness closed; distributed HA, DR capacity and pilot qualification remain separate increments."
+}

@@ -15,11 +15,24 @@ const readyTickStaleSeconds = 120.0
 
 func (s *server) metrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-	today := time.Now().Format("2006-01-02")
+	today := time.Now().UTC().Format("2006-01-02")
+	if s.cfg.Scheduler != nil {
+		today = s.cfg.Scheduler.TodayDate()
+	}
 
 	fmt.Fprintln(w, "# HELP regente_up 1 if the server is up.")
 	fmt.Fprintln(w, "# TYPE regente_up gauge")
 	fmt.Fprintln(w, "regente_up 1")
+	if s.attempts != nil {
+		if m, err := s.attempts.Metrics(); err == nil {
+			fmt.Fprintln(w, "# TYPE regente_execution_outbox gauge")
+			fmt.Fprintf(w, "regente_execution_outbox{state=%q} %d\n", "pending", m.Pending)
+			fmt.Fprintf(w, "regente_execution_outbox{state=%q} %d\n", "leased", m.Leased)
+			fmt.Fprintf(w, "regente_execution_outbox{state=%q} %d\n", "paused", m.Paused)
+			fmt.Fprintf(w, "regente_execution_uncertain %d\n", m.Uncertain)
+			fmt.Fprintf(w, "regente_execution_deliveries_total %d\n", m.Deliveries)
+		}
+	}
 
 	// Multi-ambiente: identifica QUAL deployment está respondendo (Dev/Staging/Prod).
 	// Dashboards/alertas agrupam por este label; cada ambiente é um deployment
@@ -164,7 +177,7 @@ func (s *server) readyz(w http.ResponseWriter, r *http.Request) {
 	out["schedulerLastTickAgeSeconds"] = age
 	out["schedulerStale"] = stale
 	var lastDaily string
-	_ = s.cfg.DB.QueryRow(`SELECT COALESCE(MAX(order_date),'') FROM daily_runs`).Scan(&lastDaily)
+	_ = s.cfg.DB.QueryRow(`SELECT COALESCE(MAX(order_date),'') FROM daily_runs WHERE state IN ('completed','legacy')`).Scan(&lastDaily)
 	out["lastDaily"] = lastDaily
 
 	out["ready"] = ready

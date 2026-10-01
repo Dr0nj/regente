@@ -1,5 +1,7 @@
 # Authentication: local, hybrid or SSO
 
+Production deployments: follow the [production profile](production-profile.md) for explicit environment/network scope, disabled legacy tokens and conversion steps.
+
 Regente supports personal installations and enterprise deployments with the same
 product. Choose with `-auth-mode` or `REGENTE_AUTH_MODE`:
 
@@ -80,10 +82,23 @@ the server sets the cookie. Cookie mutations require `X-CSRF-Token`, returned by
 login or `GET /api/auth/me`. Browser cookies cannot be used as API bearers. Query
 string tokens are no longer accepted.
 
+The static server `REGENTE_TOKEN` is an admin-equivalent API bearer only in
+local/hybrid mode. It is not a browser session or an agent credential. OIDC
+provider tokens are not accepted as Regente API bearers. Agents use separately
+issued [machine credentials](agent-identity.md) on their own transports.
+
+Public entry points include `/health`, `/livez`, `/readyz`, `/metrics`, `/api/env`,
+`/api/auth/config`, `/api/auth/login`, OIDC login/callback and `/api-docs`.
+Public login routes still enforce origin, credentials and mode policy. Signed
+quick actions validate their scoped link token; they do not grant general API access.
+The curated OpenAPI security declaration describes integration bearer calls,
+not the SPA cookie flow. The API explorer requires a non-browser API bearer.
+
 For events, call authenticated `POST /api/auth/event-ticket` and connect to
 `/ws/web?ticket=...` within 30 seconds. Each ticket can be used once; get a new one
 on reconnect. Sessions are checked before delivery and every second. Folder
-filtering remains tracked in I04.
+filtering, payload minimization and revocation follow the
+[web event authorization contract](web-events.md).
 
 ## Optional emergency access
 
@@ -120,6 +135,10 @@ Playwright uses a real server for all three policies, initial password change,
 session reload and logout.
 
 ## Web events
+
+I04 was delivered on 2026-09-17; [versioned evidence](evidence/i04-b6db081.json)
+records its tested revision. This closes the web-event authorization scope, not
+the remaining enterprise qualification gates in the [roadmap](roadmap.md).
 
 See [Web event authorization](web-events.md) for folder isolation, live ACL changes,
 reconnection, environment filters and the event payload contract.
