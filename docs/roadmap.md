@@ -386,7 +386,7 @@ domínio**, não o binário.
 
 ## Compatibilidade do grupo npm e lint (2026-10-01)
 
-Atualizações do grupo app-npm incorporadas com TypeScript~6.0.3 dentro do peer >=4.8.4 <6.1.0 de typescript-eslint. Lockfile regenerado de instalação limpa, mantendo bindings Linux/macOS/Windows e o range Node20.19/22.13/24. ESLint atualizado expôs duas inicializações descartadas: removidas sem mudar valores finais ou caminhos da UI. npm ci --engine-strict, lint e build passaram localmente; CI completo e matriz verificam browser e demos. TypeScript7 permanece fora até suporte do lint.
+Atualizações do grupo app-npm incorporadas com TypeScript~6.0.3 dentro do peer >=4.8.4 <6.1.0 de typescript-eslint. Lockfile regenerado de instalação limpa, mantendo bindings Linux/macOS/Windows e o range Node20.19/22.13/24. ESLint atualizado expôs duas inicializações descartadas: removidas sem mudar valores finais ou caminhos da UI. npm ci --engine-strict, lint e build passaram localmente; CI completo e matriz verificam browser e demos. Dependabot ignora TypeScript>=6.1 enquanto o peer do lint exige <6.1; rever esse limite ao atualizar o lint.
 
 
 ## I09/I10 — Journal, runtime e efeitos duráveis; E04 fechado (2026-09-30)
