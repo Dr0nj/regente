@@ -7,10 +7,31 @@ import (
 	"github.com/Dr0nj/regente-server/internal/domain"
 )
 
-// seedFolderDefs — publica N jobs na folder, direto no slice de defs (mesmo
-// atalho do seedForceDef: o que OrderFolder lê é s.defs).
+// A ordem manual ocorre numa diária já ativa. A fixture publica no store real
+// e coordena com o Tick assíncrono; só preencher s.defs deixava dailySync apagar
+// as definitions entre duas ordens (o store vazio não correspondia à fixture).
 func seedFolderDefs(t *testing.T, s *Scheduler, defs ...domain.JobDefinition) {
 	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		ok, release := s.tickGuard.tryEnter()
+		if ok {
+			defer release()
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("tick não terminou antes da publicação da fixture")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	for _, def := range defs {
+		if err := s.store.Save(def); err != nil {
+			t.Fatalf("publicar fixture: %v", err)
+		}
+	}
+	if _, err := s.db.Exec("INSERT INTO daily_runs(order_date,started_at,state) VALUES(?,CURRENT_TIMESTAMP,'completed') ON CONFLICT(order_date) DO NOTHING", s.TodayDate()); err != nil {
+		t.Fatalf("diária ativa da fixture: %v", err)
+	}
 	s.mu.Lock()
 	s.defs = defs
 	s.mu.Unlock()
