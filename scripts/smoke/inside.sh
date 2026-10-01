@@ -123,7 +123,7 @@ PRODUCTION
   case "$prod_machine" in rgta_*) ok "production scoped machine credential" ;; *) bad "production machine credential missing";exit 1 ;; esac
   umask 077
   printf '%s' "$prod_machine" > /var/lib/regente-agent/production-credential.txt
-  /usr/local/bin/regente-agent -server "$BASE" -id smoke-production -caps COMMAND -transport v2 \
+  /usr/local/bin/regente-agent -server "$BASE" -id smoke-production -caps COMMAND -env prod -transport v2 \
     -journal /var/lib/regente-agent/production-smoke.db -token-file /var/lib/regente-agent/production-credential.txt >/tmp/production-agent.log 2>&1 &
   prod_agent_pid=$!
   prod_definition_status=$(curl -sS --max-time 10 -o /tmp/production-definition-response.json -w '%{http_code}' \
