@@ -90,6 +90,15 @@ func TestI11ConcurrentReservations(t *testing.T) {
 	if err != nil || len(snap) != 1 || snap[0].Capacity != 0 || snap[0].Used != 1 {
 		t.Fatal(snap, err)
 	}
+	var waitingID string
+	if err = f.d.QueryRow("SELECT id FROM instances WHERE status='WAITING'").Scan(&waitingID); err != nil {
+		t.Fatal(err)
+	}
+	f.s.resources = nil // Explain durável não depende da existência do cache.
+	ex, err := f.s.Explain(waitingID)
+	if err != nil || len(ex.Blockers) != 1 || ex.Blockers[0].Kind != GateResource || ex.Blockers[0].Capacity != 0 || ex.Blockers[0].Used != 1 {
+		t.Fatal(ex, err)
+	}
 	if err = s.DurableResourceChange("pool", 0, true); !errors.Is(err, execution.ErrConflict) {
 		t.Fatal(err)
 	}
@@ -198,6 +207,10 @@ func TestI11AgentCapacityAndOffline(t *testing.T) {
 	}
 	if scalar(t, f.d, "SELECT COUNT(*) FROM execution_attempts") != 1 {
 		t.Fatal("excedeu slots do agente")
+	}
+	ex, err := f.s.Explain("b-2026-09-30")
+	if err != nil || len(ex.Blockers) != 1 || ex.Blockers[0].Kind != GateAgent || ex.Blockers[0].Detail != "no eligible agent with matching identity, capabilities and available admission capacity" {
+		t.Fatal(ex, err)
 	}
 	f.d.Exec("UPDATE execution_agent_capacity SET last_seen=0")
 	if _, err := f.s.durableAgent(i11Def("b")); !errors.Is(err, execution.ErrNotFound) {

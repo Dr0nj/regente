@@ -1,9 +1,11 @@
 # Capacity evidence and guarantee limits
 
-Reviewed on 2026-09-28 against source baseline `f067e48` (v0.2.36).
+Historical evidence reviewed on 2026-09-28 against `f067e48` (v0.2.36);
+durable dispatch and HA boundaries updated for I11 on 2026-10-01.
 This is an evidence inventory, not a new benchmark or production certification.
 The [roadmap](roadmap.md) owns delivery status; the enterprise cycle still has
-I05–I17 open. A documentation correction does not close those gates.
+I12–I17 pending after the I11 validation gate. A small-workload result does not
+close capacity, disaster recovery or pilot acceptance.
 
 ## Three different operations
 
@@ -52,11 +54,11 @@ dispatch. A green small-workload run cannot be extrapolated to 1M executions/day
 
 | Mechanism present in source | What it establishes | What it does not establish |
 |---|---|---|
-| [Atomic claim in startInstance](../server/internal/scheduler/scheduler.go) | Conditional UPDATE from WAITING to RUNNING; competing claimers cannot both win that same state transition | Durable agent acceptance, one execution across retries/reruns, or exactly-once external effects |
-| [Machine assignment](../server/internal/scheduler/agent_assignment.go) and [identity contract](agent-identity.md) | Work/result routing bound to the assigned authenticated machine | Per-attempt fencing, durable dispatch/result ACK or safe resolution of an uncertain remote effect |
-| [PostgreSQL advisory leadership](../server/internal/leader/leader.go) | One database session holds the leadership lock; internal scheduling follows local leadership state | A fixed failover deadline, immediate loss detection under partition, or fencing of already executing agents |
+| [Durable execution](durable-execution.md), I08–I10 | Attempt identity, durable dispatch/result receipts and agent journal; uncertain effects require explicit evidence | Exactly-once effects in arbitrary external systems, automatic resolution of unknown completion or fleet capacity |
+| [Machine identity](agent-identity.md) and shared protocol-2 capacity | Routing bound to authenticated assigned machines; polls on either node inform admission and agent limits | Immediate disconnection detection, a guarantee that a remote process stopped or permission to reset its journal |
+| [PostgreSQL leadership and resources](ha-resources.md), I11 | Session lock ownership and persisted terms gate scheduling transactions; shared reservations belong to executionId and survive failover | A fixed failover deadline, arbitrary partition qualification or fencing of already authorized physical effects |
 | [Per-tick lock](../server/internal/scheduler/ticklock.go) | Serializes protected overlapping ticks when configured | End-to-end recovery or durable execution by itself |
-| Resource rebuild from RUNNING rows | Reconstructs the leader's quota accounting from persisted state | Proof of what a remote process actually completed during disconnection |
+| Durable reservation reconciliation | Repairs missing reservations from verified runtime snapshots; retains unknown holds and rejects conflicting ownership | Proof of what a remote process completed during disconnection or unrestricted legacy HA guarantees |
 
 A crash between the database claim and delivery, or after a remote effect but
 before its result is recorded, leaves different uncertainty windows. Neither an
@@ -64,11 +66,18 @@ atomic row update nor electing a new leader alone resolves them. There is no
 universal zero-loss/zero-duplication guarantee. Recovery must reconcile durable
 state with the external system; use operation-specific idempotency where supported.
 
-Durable acceptance/results, attempt fencing, recovery and partition qualification
-remain separate enterprise work (including I08–I12); capacity, soak and operational
-acceptance remain subject to I16/I17. These IDs describe open gates, not capabilities
-implemented by this review. See also [operations](operations.md),
-[SLO objectives](slos.md) and [backup scope](dr-backup.md).
+I11 adds a separate two-server PostgreSQL/NATS scenario with an agent attached
+to the follower, shared quota 1, a follower quota update, a controlled database/NATS
+interruption and leader SIGKILL. A command remains active through succession;
+its execution identity and reservation are checked before allowing completion.
+Two isolated command effects must occur exactly once in this scenario. Inspect
+the mandatory integration report's i11_ha section at the tested SHA. This is a
+correctness profile, not a sustained-throughput benchmark or a claim about every
+asymmetric network partition.
+
+Audit, load/soak, disaster recovery and operational pilot acceptance remain separate
+enterprise gates I12–I17. See [operations](operations.md), [SLO objectives](slos.md)
+and [backup scope](dr-backup.md).
 
 ## Requirements for a new capacity or HA claim
 

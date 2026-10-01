@@ -201,14 +201,20 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 				detail = "agent '" + def.AgentID + "' is in another environment (the job requires '" + def.Environment + "')"
 			}
 		}
+		if s.durable != nil {
+			detail = "no eligible agent with matching identity, capabilities and available admission capacity"
+		}
 		if add(Blocker{Kind: GateAgent, Detail: detail}) {
 			return out
 		}
 	}
 
 	// 5) Recursos / quotas (F15) — read-only.
-	if len(def.Resources) > 0 && s.resources != nil {
-		shortfalls := s.resources.Shortfalls(def.Resources)
+	if len(def.Resources) > 0 && (s.durable != nil || s.resources != nil) {
+		var shortfalls []ResourceShortfall
+		if s.durable == nil {
+			shortfalls = s.resources.Shortfalls(def.Resources)
+		}
 		if s.durable != nil {
 			var err error
 			shortfalls, err = s.durableShortfalls(r.ID, def.Resources)

@@ -382,6 +382,7 @@ def durable_process_recovery(env, dsn):
         agent_dir = workspace / "agent"
         agent_dir.mkdir()
         effect_file = agent_dir / "effects.txt"
+    release_file = agent_dir / "release"
         journal = agent_dir / "journal.db"
         definition = {"id": "durable-effect", "team": "runtime", "jobType": "COMMAND", "confirm": True,
                       "conditionsOutAdd": ["durable-complete"], "schedule": {"enabled": True},
@@ -454,7 +455,7 @@ def i11_ha_processes(env, dsn, nats_url):
             definition = {"id": name, "team": "ha", "jobType": "COMMAND", "confirm": True,
                           "agentId": "i11-worker", "resources": {"shared": 1},
                           "schedule": {"enabled": True}, "params": {"command":
-                          "printf '" + name + "\\n' >> '" + str(effect_file) + "'; sleep 12; echo ha-completed"}}
+                          "printf '" + name + "\\n' >> '" + str(effect_file) + "'; while [ ! -f '" + str(release_file) + "' ]; do sleep 0.1; done; echo ha-completed"}}
             (defs / (name + ".yaml")).write_text(json.dumps(definition))
         address = "127.0.0.1:" + str(free_port())
         base = "http://" + address
@@ -508,6 +509,10 @@ def i11_ha_processes(env, dsn, nats_url):
             log.close()
             PROCESSES.remove((proc, log))
     eventually("i11 follower becomes leader", lambda: request(follower_base + "/readyz")["leader"]["detail"] == "leader")
+    current = request(follower_base + "/api/instances/" + ids[running] + "/executions")["attempts"]
+    if len(current) != 1 or current[0]["executionId"] != before["executionId"] or len(effect_file.read_text().splitlines()) != 1 or request(follower_base + "/api/resources")[0]["used"] != 1:
+        raise RuntimeError("failover lost the active execution or reserve")
+    release_file.touch()
     eventually("i11 completion after failover", lambda: request(follower_base + "/api/instances/" + ids[running])["status"] == "OK")
     after = request(follower_base + "/api/instances/" + ids[running] + "/executions")["attempts"]
     if len(after) != 1 or after[0]["executionId"] != before["executionId"]:

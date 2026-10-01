@@ -22,11 +22,13 @@ test("I10: uncertain execution survives restart and requires an audited decision
   const created=await request.post(base+"/api/users",{headers,data:{username:"execution-operator",password:"synthetic-password",role:"admin"}});expect(created.status()).toBe(200);const user=await created.json();
   expect((await request.patch(base+"/api/users/"+user.id+"/password",{headers,data:{next:"synthetic-password"}})).status()).toBe(204);
   const issued=await request.post(base+"/api/agents/tokens",{headers,data:{agentId:"browser-worker",environment:"",capabilities:["COMMAND","EXECUTION_V2"],expiresAt:new Date(Date.now()+3600000).toISOString()}});expect(issued.status()).toBe(200);const machine=await issued.json();const machineHeaders={Authorization:"Bearer "+machine.token};
+  const pollURL=base+"/api/agent/v2/poll?id=browser-worker&caps=COMMAND,EXECUTION_V2&protocol=2&journal=1&ver=synthetic&available=1&slots=1&pendingLimit=1";
+  expect((await request.get(pollURL,{headers:machineHeaders})).status()).toBe(204);
   expect((await request.post(base+"/api/definitions",{headers,data:{id:"execution-ui",team:"Execution",label:"Execution UI",jobType:"COMMAND",actionConfig:{command:"echo synthetic"},schedule:{enabled:false}}})).status()).toBe(200);
   expect((await request.post(base+"/api/definitions/execution-ui/force",{headers})).status()).toBe(200);
   expect((await request.post(base+"/api/scheduler/tick",{headers})).status()).toBe(200);
   const instances=await(await request.get(base+"/api/instances",{headers})).json();const id=instances.find((i:{definitionId:string})=>i.definitionId==="execution-ui").id;
-  const poll=await request.get(base+"/api/agent/v2/poll?id=browser-worker&caps=COMMAND,EXECUTION_V2&protocol=2&journal=1&ver=synthetic&available=1",{headers:machineHeaders});expect(poll.status()).toBe(200);const envelope=await poll.json();
+  const poll=await request.get(pollURL,{headers:machineHeaders});expect(poll.status()).toBe(200);const envelope=await poll.json();
   const identity={protocol:2,executionId:envelope.executionId,fence:envelope.fence};
   for(const kind of ["accepted","started","uncertain"]){expect((await request.post(base+"/api/agent/v2/ack",{headers:machineHeaders,data:{...identity,kind,reason:kind==="uncertain"?"Remote completion receipt lost":""}})).status()).toBe(200)}
   await stop();child=start();await ready();

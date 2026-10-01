@@ -77,10 +77,12 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <main>
 <article>
 <h1 id="capacity-evidence-and-guarantee-limits">Capacity evidence and guarantee limits</h1>
-<p>Reviewed on 2026-09-28 against source baseline <code>f067e48</code> (v0.2.36).
+<p>Historical evidence reviewed on 2026-09-28 against <code>f067e48</code> (v0.2.36);
+durable dispatch and HA boundaries updated for I11 on 2026-10-01.
 This is an evidence inventory, not a new benchmark or production certification.
 The <a href="https://github.com/Dr0nj/regente/blob/main/docs/roadmap.md">roadmap</a> owns delivery status; the enterprise cycle still has
-I05–I17 open. A documentation correction does not close those gates.</p>
+I12–I17 pending after the I11 validation gate. A small-workload result does not
+close capacity, disaster recovery or pilot acceptance.</p>
 <h2 id="three-different-operations">Three different operations</h2>
 <ul>
 <li><strong>Materialization:</strong> create instance rows for a daily. Rows do not prove that
@@ -163,19 +165,19 @@ dispatch. A green small-workload run cannot be extrapolated to 1M executions/day
 </thead>
 <tbody>
 <tr>
-<td><a href="https://github.com/Dr0nj/regente/blob/main/server/internal/scheduler/scheduler.go">Atomic claim in startInstance</a></td>
-<td>Conditional UPDATE from WAITING to RUNNING; competing claimers cannot both win that same state transition</td>
-<td>Durable agent acceptance, one execution across retries/reruns, or exactly-once external effects</td>
+<td><a href="durable-execution.html">Durable execution</a>, I08–I10</td>
+<td>Attempt identity, durable dispatch/result receipts and agent journal; uncertain effects require explicit evidence</td>
+<td>Exactly-once effects in arbitrary external systems, automatic resolution of unknown completion or fleet capacity</td>
 </tr>
 <tr>
-<td><a href="https://github.com/Dr0nj/regente/blob/main/server/internal/scheduler/agent_assignment.go">Machine assignment</a> and <a href="agent-identity.html">identity contract</a></td>
-<td>Work/result routing bound to the assigned authenticated machine</td>
-<td>Per-attempt fencing, durable dispatch/result ACK or safe resolution of an uncertain remote effect</td>
+<td><a href="agent-identity.html">Machine identity</a> and shared protocol-2 capacity</td>
+<td>Routing bound to authenticated assigned machines; polls on either node inform admission and agent limits</td>
+<td>Immediate disconnection detection, a guarantee that a remote process stopped or permission to reset its journal</td>
 </tr>
 <tr>
-<td><a href="https://github.com/Dr0nj/regente/blob/main/server/internal/leader/leader.go">PostgreSQL advisory leadership</a></td>
-<td>One database session holds the leadership lock; internal scheduling follows local leadership state</td>
-<td>A fixed failover deadline, immediate loss detection under partition, or fencing of already executing agents</td>
+<td><a href="ha-resources.html">PostgreSQL leadership and resources</a>, I11</td>
+<td>Session lock ownership and persisted terms gate scheduling transactions; shared reservations belong to executionId and survive failover</td>
+<td>A fixed failover deadline, arbitrary partition qualification or fencing of already authorized physical effects</td>
 </tr>
 <tr>
 <td><a href="https://github.com/Dr0nj/regente/blob/main/server/internal/scheduler/ticklock.go">Per-tick lock</a></td>
@@ -183,9 +185,9 @@ dispatch. A green small-workload run cannot be extrapolated to 1M executions/day
 <td>End-to-end recovery or durable execution by itself</td>
 </tr>
 <tr>
-<td>Resource rebuild from RUNNING rows</td>
-<td>Reconstructs the leader's quota accounting from persisted state</td>
-<td>Proof of what a remote process actually completed during disconnection</td>
+<td>Durable reservation reconciliation</td>
+<td>Repairs missing reservations from verified runtime snapshots; retains unknown holds and rejects conflicting ownership</td>
+<td>Proof of what a remote process completed during disconnection or unrestricted legacy HA guarantees</td>
 </tr>
 </tbody>
 </table>
@@ -194,11 +196,17 @@ before its result is recorded, leaves different uncertainty windows. Neither an
 atomic row update nor electing a new leader alone resolves them. There is no
 universal zero-loss/zero-duplication guarantee. Recovery must reconcile durable
 state with the external system; use operation-specific idempotency where supported.</p>
-<p>Durable acceptance/results, attempt fencing, recovery and partition qualification
-remain separate enterprise work (including I08–I12); capacity, soak and operational
-acceptance remain subject to I16/I17. These IDs describe open gates, not capabilities
-implemented by this review. See also <a href="operations.html">operations</a>,
-<a href="slos.html">SLO objectives</a> and <a href="dr-backup.html">backup scope</a>.</p>
+<p>I11 adds a separate two-server PostgreSQL/NATS scenario with an agent attached
+to the follower, shared quota 1, a follower quota update, a controlled database/NATS
+interruption and leader SIGKILL. A command remains active through succession;
+its execution identity and reservation are checked before allowing completion.
+Two isolated command effects must occur exactly once in this scenario. Inspect
+the mandatory integration report's i11_ha section at the tested SHA. This is a
+correctness profile, not a sustained-throughput benchmark or a claim about every
+asymmetric network partition.</p>
+<p>Audit, load/soak, disaster recovery and operational pilot acceptance remain separate
+enterprise gates I12–I17. See <a href="operations.html">operations</a>, <a href="slos.html">SLO objectives</a>
+and <a href="dr-backup.html">backup scope</a>.</p>
 <h2 id="requirements-for-a-new-capacity-or-ha-claim">Requirements for a new capacity or HA claim</h2>
 <p>Record the immutable server/agent SHA, date, OS/architecture, CPU/RAM/storage,
 database/version/settings, topology/transports, command and fixture, warm-up and
