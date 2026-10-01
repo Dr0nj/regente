@@ -382,7 +382,6 @@ def durable_process_recovery(env, dsn):
         agent_dir = workspace / "agent"
         agent_dir.mkdir()
         effect_file = agent_dir / "effects.txt"
-    release_file = agent_dir / "release"
         journal = agent_dir / "journal.db"
         definition = {"id": "durable-effect", "team": "runtime", "jobType": "COMMAND", "confirm": True,
                       "conditionsOutAdd": ["durable-complete"], "schedule": {"enabled": True},
@@ -447,6 +446,7 @@ def i11_ha_processes(env, dsn, nats_url):
     agent_dir = RUN / "i11-agent"
     agent_dir.mkdir()
     effect_file = agent_dir / "effects.txt"
+    release_file = agent_dir / "release"
     for suffix in ("a", "b"):
         workspace = RUN / ("i11-node-" + suffix)
         defs = workspace / "definitions/ha"
