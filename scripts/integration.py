@@ -117,6 +117,11 @@ def validate_test_events(output):
                 "TestI10PostgresRuntimeContracts/operation-protection", "TestI10PostgresRuntimeContracts/effect-audit",
                 "TestI10PostgresRuntimeContracts/internal-http", "TestI10PostgresRuntimeContracts/runtime-sla",
                 "TestI10PostgresRuntimeContracts/internal-ssh",
+                "TestI11MigrationPreservesHolds/sqlite", "TestI11MigrationPreservesHolds/postgres",
+                "TestI11PostgresLeadershipFencing", "TestI11PostgresTermWaitsForTransaction", "TestI11PostgresContracts/concurrent-reservations",
+                "TestI11PostgresContracts/follower-receipt", "TestI11PostgresContracts/unknown-capacity",
+                "TestI11PostgresContracts/reconciliation", "TestI11PostgresContracts/agent-capacity",
+                "TestI11PostgresContracts/fifo",
                 "TestHumanIdentity/sqlite", "TestHumanIdentity/postgres",
                 "TestWebEventAuthorization/sqlite", "TestWebEventAuthorization/postgres",
                 "TestWebEventDistributed/sqlite", "TestWebEventDistributed/postgres",
@@ -433,6 +438,94 @@ def durable_process_recovery(env, dsn):
         stop_process(server)
 
 
+def i11_ha_processes(env, dsn, nats_url):
+    begin = time.monotonic()
+    command(COMPOSE + ["exec", "-T", "postgres", "createdb", "-U", "regente", "regente_i11"])
+    database = dsn.replace("/regente_lab?", "/regente_i11?")
+    nodes = []
+    agent_dir = RUN / "i11-agent"
+    agent_dir.mkdir()
+    effect_file = agent_dir / "effects.txt"
+    for suffix in ("a", "b"):
+        workspace = RUN / ("i11-node-" + suffix)
+        defs = workspace / "definitions/ha"
+        defs.mkdir(parents=True)
+        for name in ("first", "second"):
+            definition = {"id": name, "team": "ha", "jobType": "COMMAND", "confirm": True,
+                          "agentId": "i11-worker", "resources": {"shared": 1},
+                          "schedule": {"enabled": True}, "params": {"command":
+                          "printf '" + name + "\\n' >> '" + str(effect_file) + "'; sleep 12; echo ha-completed"}}
+            (defs / (name + ".yaml")).write_text(json.dumps(definition))
+        address = "127.0.0.1:" + str(free_port())
+        base = "http://" + address
+        args = [str(RUN / "server"), "-addr", address, "-db-driver", "postgres", "-db", database,
+                "-workspace", str(workspace), "-execution-mode", "durable", "-api-token", ADMIN,
+                "-bus", "nats", "-nats-url", nats_url, "-server-agent=false", "-selfmon=false",
+                "-tick-ms", "100", "-node-id", "i11-" + suffix]
+        proc = start_process("i11-server-" + suffix, args, workspace, env)
+        eventually("i11 server", lambda: request(base + "/health"))
+        nodes.append((proc, base))
+    def roles():
+        return [request(base + "/readyz")["leader"]["detail"] for _, base in nodes]
+    eventually("one i11 leader", lambda: roles().count("leader") == 1)
+    leader_index = roles().index("leader")
+    follower_index = 1 - leader_index
+    leader_proc, leader_base = nodes[leader_index]
+    _, follower_base = nodes[follower_index]
+    issued = request(follower_base + "/api/agents/tokens", "POST", {"agentId": "i11-worker", "environment": "",
+                     "capabilities": ["COMMAND", "EXECUTION_V2"],
+                     "expiresAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time()+3600))})
+    agent = start_process("i11-agent", [str(RUN / "agent"), "-transport", "v2", "-server", follower_base,
+                "-id", "i11-worker", "-caps", "COMMAND", "-token", issued["token"],
+                "-journal", str(agent_dir / "journal.db"), "-concurrency", "2"], agent_dir, env)
+    rows = eventually("i11 daily", lambda: request(follower_base + "/api/instances"))
+    ids = {row["definitionId"]: row["id"] for row in rows}
+    for name in ("first", "second"):
+        request(follower_base + "/api/instances/" + ids[name] + "/confirm", "POST")
+    eventually("i11 first effect", lambda: effect_file.exists() and len(effect_file.read_text().splitlines()) == 1)
+    running = effect_file.read_text().strip()
+    waiting = "second" if running == "first" else "first"
+    before = request(follower_base + "/api/instances/" + ids[running] + "/executions")["attempts"][0]
+    resource = request(follower_base + "/api/resources")[0]
+    if resource["used"] != 1 or request(follower_base + "/api/instances/" + ids[waiting])["status"] != "WAITING":
+        raise RuntimeError("HA pool overcommitted")
+    # Alteração no follower bloqueia novas admissões sem cancelar o processo ativo.
+    request(follower_base + "/api/resources/shared", "PUT", {"capacity": 0})
+    # Interrupção real dos canais: autorização/contabilidade continuam no banco;
+    # banco indisponível não autoriza substituição ou liberação por timeout.
+    command(COMPOSE + ["pause", "nats", "postgres"], name="i11-partition")
+    try:
+        time.sleep(2)
+        if len(effect_file.read_text().splitlines()) != 1:
+            raise RuntimeError("partition repeated or overlapped effect")
+    finally:
+        command(COMPOSE + ["unpause", "nats", "postgres"], name="i11-reconnect")
+    eventually("i11 database recovered", lambda: request(follower_base + "/readyz"))
+    leader_proc.kill()
+    leader_proc.wait(timeout=10)
+    for proc, log in list(PROCESSES):
+        if proc is leader_proc:
+            log.close()
+            PROCESSES.remove((proc, log))
+    eventually("i11 follower becomes leader", lambda: request(follower_base + "/readyz")["leader"]["detail"] == "leader")
+    eventually("i11 completion after failover", lambda: request(follower_base + "/api/instances/" + ids[running])["status"] == "OK")
+    after = request(follower_base + "/api/instances/" + ids[running] + "/executions")["attempts"]
+    if len(after) != 1 or after[0]["executionId"] != before["executionId"]:
+        raise RuntimeError("failover changed execution identity")
+    if request(follower_base + "/api/resources")[0]["used"] != 0 or request(follower_base + "/api/instances/" + ids[waiting])["status"] != "WAITING":
+        raise RuntimeError("wrong reserve release or zero quota ignored")
+    request(follower_base + "/api/resources/shared", "PUT", {"capacity": 1})
+    eventually("i11 second completion", lambda: request(follower_base + "/api/instances/" + ids[waiting])["status"] == "OK")
+    if sorted(effect_file.read_text().splitlines()) != ["first", "second"]:
+        raise RuntimeError("effects repeated after failover")
+    REPORT["i11_ha"] = {"servers": 2, "agent_on_follower": True, "pool_peak": 1,
+                        "follower_quota_update": True, "db_nats_interruption": True,
+                        "leader_sigkill": True, "identity_preserved": True, "effect_count": 2,
+                        "zero_quota_blocks": True, "seconds": round(time.monotonic()-begin, 3)}
+    stop_process(agent)
+    stop_process(nodes[follower_index][0])
+
+
 def main():
     global TLS_CONTEXT
     EVIDENCE.mkdir(parents=True)
@@ -476,8 +569,8 @@ def main():
                    REGENTE_TEST_OIDC_CLIENT_SECRET="synthetic-client-secret",
                    REGENTE_TEST_OIDC_USER="lab-user", REGENTE_TEST_OIDC_PASS="synthetic-password")
         output = command(["go", "test", "-json", "-count=1", "-timeout=5m",
-                          "./server/internal/db", "./server/internal/api", "./server/internal/scheduler", "./agent/journal", "-run",
-                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials|TestHumanIdentity|TestWebEvent|TestProductionIdentity|TestI06BusinessTimeIntegration|TestI07DailyRecoveryIntegration|TestI08AttemptIntegration|TestI09|TestI10"],
+                          "./server/internal/db", "./server/internal/api", "./server/internal/scheduler", "./server/internal/leader", "./agent/journal", "-run",
+                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials|TestHumanIdentity|TestWebEvent|TestProductionIdentity|TestI06BusinessTimeIntegration|TestI07DailyRecoveryIntegration|TestI08AttemptIntegration|TestI09|TestI10|TestI11"],
                          env=env, timeout=360, name="database-oidc-tests")
         validate_test_events(output)
         command(["go", "test", "-race", "-count=1", "-timeout=3m", "./server/internal/api", "-run", "^TestWebEvent"],
@@ -485,6 +578,7 @@ def main():
         command(["go", "build", "-o", str(RUN/"server"), "./server"], timeout=180, name="server-build")
         command(["go", "build", "-o", str(RUN/"agent"), "./agent"], timeout=180, name="agent-build")
         durable_process_recovery(env, dsn)
+        i11_ha_processes(env, dsn, nats_url)
         legacy_restore(dsn)
         draft_recovery(env, dsn)
         same_binary_drain(env, dsn)

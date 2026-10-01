@@ -34,7 +34,7 @@ func durableTest(t *testing.T, defs ...domain.JobDefinition) *durableFixture {
 	t.Helper()
 	f := &durableFixture{path: filepath.Join(t.TempDir(), "runtime.db"), now: time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC), store: storage.NewFileStore(t.TempDir(), false)}
 	var err error
-	if strings.Contains(t.Name(), "TestI10PostgresRuntimeContracts") {
+	if strings.Contains(t.Name(), "TestI10PostgresRuntimeContracts") || strings.Contains(t.Name(), "TestI11Postgres") {
 		f.dialect = db.Postgres
 		f.path = durablePGDSN(t)
 	} else {
@@ -65,6 +65,9 @@ func durableTest(t *testing.T, defs ...domain.JobDefinition) *durableFixture {
 	f.d.Exec("INSERT INTO machine_principals(agent_id,environment,capabilities) VALUES('worker','','COMMAND,EXECUTION_V2')")
 	f.d.Exec("INSERT INTO agent_tokens(token_hash,label,agent_id,expires_at) VALUES('fixture','worker','worker',?)", time.Now().Add(time.Hour).UnixMilli())
 
+	if err = f.s.ReportAgentCapacity("worker", 4, 128, true); err != nil {
+		t.Fatal(err)
+	}
 	return f
 }
 func (f *durableFixture) attach() {
@@ -73,6 +76,9 @@ func (f *durableFixture) attach() {
 	f.s.RuntimePolicy = runtimeprofile.Config{Profile: "development", ExecutionMode: "durable"}
 	f.e = execution.New(f.d, f.s.Now)
 	f.s.AttachDurable(f.e)
+	rt := NewResourceTracker()
+	rt.LoadFromDB(f.d)
+	f.s.AttachResources(rt)
 }
 func (f *durableFixture) reopen(t *testing.T) {
 	t.Helper()

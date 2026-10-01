@@ -131,7 +131,7 @@ the same-binary drain and the schema-document contract. The
 [recorded evidence](evidence/doc-a-af75c51.json) is synthetic laboratory evidence,
 not production or mixed-version qualification.
 
-Current runtime schema: **28**; supported range: **[28,28]**.
+Current runtime schema: **29**; supported range: **[29,29]**.
 
 `TestMigrationRunbookContract` compares this current statement with the migration
 constants and an actual fresh database. Historical fixture versions below remain
@@ -170,3 +170,7 @@ must be registered for both dialects. SQL containing embedded semicolons or
 operations requiring autocommit is unsupported by this runner: design a separate
 verified resumable procedure before introducing it. PostgreSQL automatically rejects
 nontransactional DDL inside the transaction; the runner never retries it in autocommit.
+
+## I11 shared resources and leadership
+
+[HA resource contracts](ha-resources.md) are exercised by TestI11 on both supported backends and mandatory PostgreSQL leadership tests. The runner also records i11_ha with two servers, a follower-connected agent, quota changes, PostgreSQL/NATS interruption and leader SIGKILL. These are correctness proofs within the synthetic laboratory, not capacity or pilot qualification.

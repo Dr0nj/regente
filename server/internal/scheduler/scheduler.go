@@ -906,6 +906,9 @@ func (s *Scheduler) applyCarryDaily(date string, plan []carriedInstance, checkpo
 		return err
 	}
 	defer tx.Rollback()
+	if err = s.guardLeadership(tx); err != nil {
+		return err
+	}
 	if checkpoint {
 		if _, err := tx.Exec(`UPDATE daily_runs SET checkpoint=checkpoint WHERE order_date=?`, date); err != nil {
 			return err
@@ -1041,6 +1044,10 @@ const stuckRunningTimeout = 15 * time.Minute
 
 func (s *Scheduler) tickOnce() {
 	if s.durable != nil {
+		if _, err := s.rebuildDurableResources(); err != nil {
+			log.Printf("[quotas] reconciliation blocked: %v", err)
+			return
+		}
 		s.drainDurableEffects()
 		if _, err := s.durable.Reconcile(); err != nil {
 			log.Printf("[execution] reconcile: %v", err)
@@ -1058,7 +1065,7 @@ func (s *Scheduler) tickOnce() {
 	rows, err := s.db.Query(
 		`SELECT i.id, i.definition_id, i.order_date, i.status, i.scheduled_at,
 		 i.started_at,i.carried_at,COALESCE(i.forced,0),COALESCE(i.force_mode,''),COALESCE(i.confirmed,0),COALESCE(i.carried_from,''),COALESCE(i.definition_snapshot,''),COALESCE(i.held_from_status,''),COALESCE(d.state,''),COALESCE(l.snapshot_checksum,'')
-		 FROM instances i LEFT JOIN daily_order_ledger l ON l.instance_id=i.id LEFT JOIN daily_runs d ON d.order_date=l.order_date WHERE i.order_date=?`,
+		 FROM instances i LEFT JOIN daily_order_ledger l ON l.instance_id=i.id LEFT JOIN daily_runs d ON d.order_date=l.order_date WHERE i.order_date=? ORDER BY i.scheduled_at,i.created_at,i.id`,
 		today,
 	)
 	if err != nil {

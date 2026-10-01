@@ -13,18 +13,22 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
 
 type v2HTTP struct {
 	Base, Token, ID, Caps, Env, Version string
+	Slots, Pending                      int
 	Client                              *http.Client
 }
 
 func (t *v2HTTP) Poll(ctx context.Context, available bool) (*journal.Envelope, error) {
 	q := url.Values{"id": {t.ID}, "caps": {t.Caps}, "env": {t.Env}, "protocol": {"2"}, "ver": {t.Version}, "available": {"0"}}
 	q.Set("journal", "1")
+	q.Set("slots", strconv.Itoa(t.Slots))
+	q.Set("pendingLimit", strconv.Itoa(t.Pending))
 	q.Set("os", runtime.GOOS)
 	q.Set("arch", runtime.GOARCH)
 	host, _ := os.Hostname()
@@ -93,7 +97,7 @@ func runAgentV2(base, token, id, caps, environment, path string, concurrency, pe
 		case <-ctx.Done():
 		}
 	}()
-	t := &v2HTTP{base, token, id, caps, environment, agentVersion, &http.Client{Timeout: 10 * time.Second}}
+	t := &v2HTTP{Base: base, Token: token, ID: id, Caps: caps, Env: environment, Version: agentVersion, Slots: concurrency, Pending: pending, Client: &http.Client{Timeout: 10 * time.Second}}
 	w := journal.NewWorker(j, t, func(ctx context.Context, e journal.Envelope, emit func(string)) (int, string) {
 		var def struct {
 			DryRun  bool                   `json:"dryRun"`

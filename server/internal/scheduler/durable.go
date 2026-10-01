@@ -28,6 +28,9 @@ func (s *Scheduler) IsDurableInstance(id string) bool {
 }
 func (s *Scheduler) DurableEngine() *execution.Engine { return s.durable }
 func (s *Scheduler) durablePrepare(tx *db.Tx, o execution.Order, def domain.JobDefinition) (domain.JobDefinition, error) {
+	if err := s.guardLeadership(tx); err != nil {
+		return def, err
+	}
 	var od, localJSON string
 	var confirmed int
 	if err := tx.QueryRow("SELECT "+odateExpr+",COALESCE(local_vars,''),COALESCE(confirmed,0) FROM instances WHERE id=?", o.SourceInstanceID).Scan(&od, &localJSON, &confirmed); err != nil {
@@ -63,7 +66,7 @@ func (s *Scheduler) durableAgent(def domain.JobDefinition) (string, error) {
 		}
 		return s.internalAgentID, nil
 	}
-	rows, err := s.db.Query("SELECT p.agent_id,p.capabilities,p.internal FROM machine_principals p WHERE p.environment=? AND (p.internal=1 OR EXISTS(SELECT 1 FROM agent_tokens t WHERE t.agent_id=p.agent_id AND t.revoked_at=0 AND t.expires_at>?)) ORDER BY (SELECT COUNT(*) FROM execution_attempts a WHERE a.agent_id=p.agent_id AND a.state NOT IN ('succeeded','failed','cancelled')),p.agent_id", def.Environment, time.Now().UnixMilli())
+	rows, err := s.db.Query("SELECT p.agent_id,p.capabilities,p.internal FROM machine_principals p JOIN execution_agent_capacity c ON c.agent_id=p.agent_id WHERE c.available=1 AND c.last_seen>? AND (SELECT COUNT(*) FROM execution_attempts a WHERE a.agent_id=p.agent_id AND a.state NOT IN ('succeeded','failed','cancelled'))<c.slots AND (SELECT COUNT(*) FROM execution_attempts a WHERE a.agent_id=p.agent_id AND a.state NOT IN ('succeeded','failed','cancelled'))<c.pending_limit AND p.environment=? AND (p.internal=1 OR EXISTS(SELECT 1 FROM agent_tokens t WHERE t.agent_id=p.agent_id AND t.revoked_at=0 AND t.expires_at>?)) ORDER BY (SELECT COUNT(*) FROM execution_attempts a WHERE a.agent_id=p.agent_id AND a.state NOT IN ('succeeded','failed','cancelled')),p.agent_id", time.Now().Add(-15*time.Second).UnixMilli(), def.Environment, time.Now().UnixMilli())
 	if err != nil {
 		return "", err
 	}
@@ -91,7 +94,7 @@ func (s *Scheduler) durableAgent(def domain.JobDefinition) (string, error) {
 	return "", execution.ErrNotFound
 }
 func (s *Scheduler) startDurable(id string, def domain.JobDefinition) {
-	if s.durable == nil {
+	if s.durable == nil || !s.isLeader() {
 		return
 	}
 	agent, err := s.durableAgent(def)
@@ -154,7 +157,7 @@ func durableOut(tx *db.Tx, def domain.JobDefinition, odate, actor string, now ti
 	}
 	return nil
 }
-func (s *Scheduler) durableResources(tx *db.Tx, id string, want map[string]int, bypass bool) error {
+func (s *Scheduler) durableResources(tx *db.Tx, id string, executionID string, want map[string]int, bypass bool) error {
 	for name, qty := range want {
 		if qty <= 0 {
 			continue
@@ -172,14 +175,24 @@ func (s *Scheduler) durableResources(tx *db.Tx, id string, want map[string]int, 
 		if err := tx.QueryRow("SELECT COALESCE(SUM(quantity),0) FROM execution_resource_holds WHERE name=?", name).Scan(&used); err != nil {
 			return err
 		}
-		err := tx.QueryRow("SELECT quantity FROM execution_resource_holds WHERE name=? AND instance_id=?", name, id).Scan(&held)
+		var owner string
+		err := tx.QueryRow("SELECT quantity,execution_id FROM execution_resource_holds WHERE name=? AND instance_id=?", name, id).Scan(&held, &owner)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
+		}
+		if err == nil && owner != executionID {
+			var known int
+			if err = tx.QueryRow("SELECT COUNT(*) FROM execution_attempts a JOIN runtime_orders r ON r.order_id=a.order_id WHERE a.execution_id=? AND r.instance_id=? AND a.state IN ('succeeded','failed','cancelled')", owner, id).Scan(&known); err != nil {
+				return err
+			}
+			if known != 1 || held != qty {
+				return execution.ErrConflict
+			}
 		}
 		if !bypass && used-held+qty > capacity {
 			return execution.ErrCapacity
 		}
-		if _, err = tx.Exec("INSERT INTO execution_resource_holds(instance_id,name,quantity) VALUES(?,?,?) ON CONFLICT(instance_id,name) DO UPDATE SET quantity=excluded.quantity", id, name, qty); err != nil {
+		if _, err = tx.Exec("INSERT INTO execution_resource_holds(instance_id,name,quantity,execution_id) VALUES(?,?,?,?) ON CONFLICT(instance_id,name) DO UPDATE SET quantity=excluded.quantity,execution_id=excluded.execution_id", id, name, qty, executionID); err != nil {
 			return err
 		}
 	}
@@ -217,12 +230,19 @@ func (s *Scheduler) durableTransition(tx *db.Tx, o execution.Order, a execution.
 		if status != "WAITING" {
 			return execution.ErrConflict
 		}
+		if err := s.guardLeadership(tx); err != nil {
+			return err
+		}
+		// O lock global de admissão já está reservado pelo Engine.Start.
+		if err := s.durableAgentAdmission(tx, a.AgentID); err != nil {
+			return err
+		}
 		var forced int
 		var mode string
 		if err := tx.QueryRow("SELECT COALESCE(forced,0),COALESCE(force_mode,'') FROM instances WHERE id=?", id).Scan(&forced, &mode); err != nil {
 			return err
 		}
-		if err := s.durableResources(tx, id, def.Resources, forced != 0 && mode != ForceModeOrder); err != nil {
+		if err := s.durableResources(tx, id, a.ExecutionID, def.Resources, forced != 0 && mode != ForceModeOrder); err != nil {
 			return err
 		}
 		if _, err := tx.Exec("UPDATE instances SET status='RUNNING',started_at=NULL,finished_at=NULL,exit_code=NULL,agent_id=? WHERE id=? AND status='WAITING'", a.AgentID, id); err != nil {
@@ -373,7 +393,7 @@ func (s *Scheduler) durableTransition(tx *db.Tx, o execution.Order, a execution.
 		return err
 	}
 	if !retry {
-		if _, err = tx.Exec("DELETE FROM execution_resource_holds WHERE instance_id=?", id); err != nil {
+		if _, err = tx.Exec("DELETE FROM execution_resource_holds WHERE instance_id=? AND execution_id=?", id, a.ExecutionID); err != nil {
 			return err
 		}
 	}

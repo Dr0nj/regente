@@ -55,6 +55,9 @@ func TestProductionScopedDispatch(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &def); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.ReportAgentCapacity("worker", 4, 128, true); err != nil {
+		t.Fatal(err)
+	}
 	s.startInstance("instance", def)
 	msg, err := s.durable.Claim("worker")
 	if err != nil || msg == nil || msg.Protocol != 2 || msg.Definition.Environment != "prod" {

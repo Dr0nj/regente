@@ -423,3 +423,7 @@ The [durable attempt ADR](adr-i08-attempts.md) defines an opt-in development lab
 ## Recoverable daily (I07)
 
 The [daily recovery contract](daily-recovery.md) defines planning, chunk/checkpoint atomicity and resume. Orders from an incomplete daily and orders with a present invalid snapshot are CONFIGURATION_BLOCKED, including Run Now. Missing legacy snapshots retain their documented compatibility; invalid snapshots never execute live definitions. Only completed/legacy daily records participate in PREV resolution.
+
+## Shared resource admission (I11)
+
+The [HA resource contract](ha-resources.md) preserves C1–C7/M1. Run Now retains its explicit resource bypass and records usage; it cannot bypass agent admission limits. Known retries retain and transfer reservation ownership. Uncertain execution and cancellation requests hold capacity until a receipt or audited resolution confirms that the effect stopped.

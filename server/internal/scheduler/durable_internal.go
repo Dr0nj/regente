@@ -112,6 +112,10 @@ func (s *Scheduler) StartDurableInternal(parent context.Context, presence *hub.H
 		j.Close()
 		return errors.New("internal principal conflicts with an external credential")
 	}
+	if err = s.ReportAgentCapacity(id, 4, 128, true); err != nil {
+		j.Close()
+		return err
+	}
 	s.internalAgentID = id
 	if _, err = s.db.Exec("INSERT INTO agents(id,os,arch,host,version,capabilities,started_at,connected_at,first_seen,last_seen_at,online) VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,1) ON CONFLICT(id) DO UPDATE SET version=excluded.version,capabilities=excluded.capabilities,last_seen_at=CURRENT_TIMESTAMP,online=1", id, runtime.GOOS, runtime.GOARCH, node, version, strings.Join(caps, ",")); err != nil {
 		j.Close()
@@ -176,6 +180,7 @@ func (s *Scheduler) StartDurableInternal(parent context.Context, presence *hub.H
 				}
 			}
 			s.db.Exec("UPDATE agents SET last_seen_at=CURRENT_TIMESTAMP,online=1 WHERE id=?", id)
+			s.ReportAgentCapacity(id, 4, 128, true)
 			if presence != nil {
 				presence.Touch(id)
 			}

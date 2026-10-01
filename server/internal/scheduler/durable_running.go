@@ -34,6 +34,9 @@ func (s *Scheduler) evaluateDurableRunning(now time.Time) {
 		var before, after int
 		changed := false
 		if err = s.durable.RuntimeUpdate(id, func(tx *db.Tx, o execution.Order, a execution.Attempt) error {
+			if err := s.guardLeadership(tx); err != nil {
+				return err
+			}
 			if err := tx.QueryRow("SELECT COUNT(*) FROM execution_effects WHERE instance_id=?", id).Scan(&before); err != nil {
 				return err
 			}

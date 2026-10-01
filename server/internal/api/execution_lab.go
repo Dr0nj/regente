@@ -225,6 +225,23 @@ func (s *server) executionPoll(w http.ResponseWriter, r *http.Request) {
 		executionError(w, execution.ErrInvalid)
 		return
 	}
+	if s.cfg.RuntimePolicy.Durable() {
+		slots, pending := 1, 1 // Agente anterior: admissão conservadora, sem inventar capacidade.
+		for name, dest := range map[string]*int{"slots": &slots, "pendingLimit": &pending} {
+			if raw := r.URL.Query().Get(name); raw != "" {
+				n, err := strconv.Atoi(raw)
+				if err != nil {
+					executionError(w, execution.ErrInvalid)
+					return
+				}
+				*dest = n
+			}
+		}
+		if err := s.cfg.Scheduler.ReportAgentCapacity(p.AgentID, slots, pending, available != "0"); err != nil {
+			executionError(w, err)
+			return
+		}
+	}
 	msg, err := s.attempts.ClaimCapacity(p.AgentID, available != "0")
 	if err != nil {
 		executionError(w, err)

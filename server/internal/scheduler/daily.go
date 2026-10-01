@@ -91,7 +91,7 @@ func (s *Scheduler) MaterializeDaily(date string) (run *DailyRun, created int, e
 	// completou não pode ser rebaixado por um resultado de commit ambíguo.
 	defer func() {
 		if err != nil {
-			_, e := s.db.Exec(`UPDATE daily_runs SET state='failed',last_error=? WHERE order_date=? AND state NOT IN ('completed','legacy')`, err.Error(), date)
+			e := s.leaderExec(`UPDATE daily_runs SET state='failed',last_error=? WHERE order_date=? AND state NOT IN ('completed','legacy')`, err.Error(), date)
 			if e != nil {
 				log.Printf("[scheduler] daily failure state: %v", e)
 			}
@@ -201,7 +201,7 @@ func (s *Scheduler) freezeDailyPlan(date string) error {
 		return e
 	}
 	// Uma linha congela toda a fonte. Não há instances até esta escrita terminar.
-	_, e = s.db.Exec(`INSERT INTO daily_runs(order_date,started_at,state,target_commit_sha,expected_count,plan_json,plan_checksum) VALUES(?,?,'planning',?,?,?,?) ON CONFLICT(order_date) DO NOTHING`, date, s.Now(), sha, len(plan), string(raw), planDigest(date, sha, string(raw)))
+	e = s.leaderExec(`INSERT INTO daily_runs(order_date,started_at,state,target_commit_sha,expected_count,plan_json,plan_checksum) VALUES(?,?,'planning',?,?,?,?) ON CONFLICT(order_date) DO NOTHING`, date, s.Now(), sha, len(plan), string(raw), planDigest(date, sha, string(raw)))
 	if e == nil {
 		s.dailyChanged(date)
 	}
@@ -220,6 +220,9 @@ func (s *Scheduler) materializeDailyChunk(date, sha, sum string, defs []domain.J
 		return 0, false, e
 	}
 	defer tx.Rollback()
+	if e = s.guardLeadership(tx); e != nil {
+		return 0, false, e
+	}
 	if _, e = tx.Exec(`UPDATE daily_runs SET checkpoint=checkpoint WHERE order_date=?`, date); e != nil {
 		return 0, false, e
 	}

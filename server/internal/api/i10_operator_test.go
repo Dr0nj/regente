@@ -46,6 +46,9 @@ func TestI10OperatorAPIAndCLIContracts(t *testing.T) {
 			srv := httptest.NewServer(NewRouter(Config{DB: d, Hub: h, Scheduler: s, Store: store, Token: "test-token", RuntimePolicy: s.RuntimePolicy}))
 			defer srv.Close()
 			machineRequest(t, srv, "POST", "/api/agents/tokens", "test-token", map[string]any{"agentId": "worker", "environment": "", "capabilities": []string{"COMMAND", "EXECUTION_V2"}, "expiresAt": time.Now().Add(time.Hour)}, 200)
+			if err := s.ReportAgentCapacity("worker", 4, 128, true); err != nil {
+				t.Fatal(err)
+			}
 			order, err := e.CreateRuntimeOrder("job-2026-09-30")
 			if err != nil {
 				t.Fatal(err)

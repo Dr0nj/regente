@@ -87,6 +87,7 @@ func realJournalRuntimeTest(t *testing.T, runtime bool) {
 			start := func(key, intent string) {
 				t.Helper()
 				if runtime {
+ if err:=s.ReportAgentCapacity("worker",4,128,true);err!=nil{t.Fatal(err)}
 					if intent != "start" {
 						if _, err := s.DurableAction("operator", "job-2026-09-30", "rerun"); err != nil {
 							t.Fatal(err)

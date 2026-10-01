@@ -14,7 +14,7 @@ func (s *Scheduler) drainDurableEffects() {
 	if s.durable == nil {
 		return
 	}
-	if _, err := s.db.Exec("UPDATE execution_effects SET state='uncertain',reason='worker disappeared after claiming this effect; external outcome unknown',lease_until=0 WHERE state='claimed' AND lease_until>0 AND lease_until<=?", s.Now().UnixMilli()); err != nil {
+	if err := s.leaderExec("UPDATE execution_effects SET state='uncertain',reason='worker disappeared after claiming this effect; external outcome unknown',lease_until=0 WHERE state='claimed' AND lease_until>0 AND lease_until<=?", s.Now().UnixMilli()); err != nil {
 		log.Printf("[effects] recovery: %v", err)
 		return
 	}
@@ -51,6 +51,9 @@ func (s *Scheduler) durableEffect(id string) error {
 		return err
 	}
 	defer tx.Rollback()
+	if err = s.guardLeadership(tx); err != nil {
+		return err
+	}
 	// Writer/row lock precede reads; dois nós não podem despachar a mesma intenção.
 	res, err := tx.Exec("UPDATE execution_effects SET state=state WHERE id=? AND state='pending'", id)
 	if err != nil {
