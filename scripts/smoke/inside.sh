@@ -126,9 +126,19 @@ PRODUCTION
   /usr/local/bin/regente-agent -server "$BASE" -id smoke-production -caps COMMAND -transport v2 \
     -journal /var/lib/regente-agent/production-smoke.db -token-file /var/lib/regente-agent/production-credential.txt >/tmp/production-agent.log 2>&1 &
   prod_agent_pid=$!
-  curl -fsS -H "Authorization: Bearer $prod_token" -H 'Content-Type: application/json' \
-    -d '{"id":"production-journal","team":"ops","jobType":"COMMAND","environment":"prod","agentId":"smoke-production","actionConfig":{"command":"echo production-journal-ok"},"schedule":{"enabled":false}}' "$BASE/api/definitions" >/dev/null || bad "production definition failed"
-  prod_instance=$(curl -fsS -X POST -H "Authorization: Bearer $prod_token" "$BASE/api/definitions/production-journal/force" | jfield id)
+  prod_definition_status=$(curl -sS --max-time 10 -o /tmp/production-definition-response.json -w '%{http_code}' \
+    -H "Authorization: Bearer $prod_token" -H 'Content-Type: application/json' \
+    -d '{"id":"production-journal","label":"Production journal smoke","team":"ops","jobType":"COMMAND","environment":"prod","agentId":"smoke-production","actionConfig":{"command":"echo production-journal-ok"},"schedule":{"enabled":false}}' "$BASE/api/definitions") \
+    || { bad "production definition request failed"; kill "$prod_agent_pid" 2>/dev/null || true; exit 1; }
+  if [ "$prod_definition_status" != 200 ]; then
+    bad "production definition failed (HTTP $prod_definition_status)"
+    cat /tmp/production-definition-response.json
+    kill "$prod_agent_pid" 2>/dev/null || true
+    exit 1
+  fi
+  prod_instance=$(curl -fsS -X POST -H "Authorization: Bearer $prod_token" "$BASE/api/definitions/production-journal/force" | jfield instanceId) \
+    || { bad "production Force Order failed"; kill "$prod_agent_pid" 2>/dev/null || true; exit 1; }
+  [ -n "$prod_instance" ] || { bad "production Force Order returned no instance"; kill "$prod_agent_pid" 2>/dev/null || true; exit 1; }
   wait_for 45 'curl -fsS -H "Authorization: Bearer $prod_token" "$BASE/api/instances/$prod_instance" | grep -q '\''"status":"OK"'\''' || bad "production durable execution failed"
   curl -fsS -H "Authorization: Bearer $prod_token" "$BASE/api/instances/$prod_instance/executions" | grep -q '"state":"succeeded"' \
     && ok "production execution has durable succeeded receipt" || bad "production receipt missing"
