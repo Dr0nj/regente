@@ -1,0 +1,177 @@
+{
+  "increment": "I12",
+  "date": "2026-10-01",
+  "sha": "650e7ede6d84048220a430e72f7b45be4941b88f",
+  "ci_url": "https://github.com/Dr0nj/regente/actions/runs/36899774503",
+  "status": "passed",
+  "profile": "synthetic-ci-v1",
+  "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+  "go": "go version go1.26.8 linux/amd64",
+  "nats_version": "2.11.8",
+  "images": [
+    {
+      "ID": "sha256:d741b376874687de90374fd34f55c6b2760e8f7bd7e4ae5cd47f50757fc08cf8",
+      "ContainerName": "regente-it-e64e330240b0-postgres-1",
+      "Repository": "postgres",
+      "Tag": "",
+      "Platform": "linux/amd64",
+      "Size": 278205935,
+      "LastTagTime": "0001-01-01T00:00:00Z"
+    },
+    {
+      "ID": "sha256:0dfa54630538e8565a0953e5d7316c4b92bd17e293ec333e94f52be2094e7300",
+      "ContainerName": "regente-it-e64e330240b0-nats-1",
+      "Repository": "nats",
+      "Tag": "",
+      "Platform": "linux/amd64",
+      "Size": 25895714,
+      "LastTagTime": "0001-01-01T00:00:00Z"
+    },
+    {
+      "ID": "sha256:086a18b8b109fabaa6b370d30fe4c6abfe316bf1ab88dea7a3ddc6cf31333149",
+      "ContainerName": "regente-it-e64e330240b0-keycloak-1",
+      "Repository": "quay.io/keycloak/keycloak",
+      "Tag": "",
+      "Platform": "linux/amd64",
+      "Size": 450582544,
+      "LastTagTime": "0001-01-01T00:00:00Z"
+    }
+  ],
+  "verification": {
+    "mode": "full",
+    "status": "passed",
+    "gates": [
+      {
+        "gate": "runner",
+        "status": "passed"
+      },
+      {
+        "gate": "server",
+        "status": "passed"
+      },
+      {
+        "gate": "agent",
+        "status": "passed"
+      },
+      {
+        "gate": "web",
+        "status": "passed"
+      },
+      {
+        "gate": "docs",
+        "status": "passed"
+      },
+      {
+        "gate": "browser",
+        "status": "passed"
+      },
+      {
+        "gate": "integration",
+        "status": "passed"
+      },
+      {
+        "gate": "demo",
+        "status": "passed"
+      }
+    ],
+    "seconds": 454.665
+  },
+  "integration": {
+    "status": "passed",
+    "passed_test_count": 269,
+    "passed_tests": [
+      "TestI12DraftContracts",
+      "TestI12DraftContracts/postgres",
+      "TestI12DraftContracts/postgres/CODE-bulk-mass-undo-and-layout",
+      "TestI12DraftContracts/postgres/Git-conflict-preserves-draft",
+      "TestI12DraftContracts/postgres/concurrent-CAS-and-all-stale-mutations",
+      "TestI12DraftContracts/postgres/concurrent-bootstrap",
+      "TestI12DraftContracts/postgres/cross-node-restart-and-missing-cache",
+      "TestI12DraftContracts/postgres/database-failure-never-acknowledges-local-save",
+      "TestI12DraftContracts/postgres/legacy-preserved-and-migrated",
+      "TestI12DraftContracts/postgres/ownership-ACL-and-admin-audit",
+      "TestI12DraftContracts/postgres/publish-and-lost-receipt-recovery",
+      "TestI12DraftContracts/postgres/unsafe-path-and-discard-CAS",
+      "TestI12DraftContracts/postgres/verified-export-import-no-overwrite",
+      "TestI12DraftContracts/sqlite",
+      "TestI12DraftContracts/sqlite/CODE-bulk-mass-undo-and-layout",
+      "TestI12DraftContracts/sqlite/Git-conflict-preserves-draft",
+      "TestI12DraftContracts/sqlite/concurrent-CAS-and-all-stale-mutations",
+      "TestI12DraftContracts/sqlite/concurrent-bootstrap",
+      "TestI12DraftContracts/sqlite/cross-node-restart-and-missing-cache",
+      "TestI12DraftContracts/sqlite/database-failure-never-acknowledges-local-save",
+      "TestI12DraftContracts/sqlite/legacy-preserved-and-migrated",
+      "TestI12DraftContracts/sqlite/ownership-ACL-and-admin-audit",
+      "TestI12DraftContracts/sqlite/publish-and-lost-receipt-recovery",
+      "TestI12DraftContracts/sqlite/unsafe-path-and-discard-CAS",
+      "TestI12DraftContracts/sqlite/verified-export-import-no-overwrite",
+      "TestI12PreparedPRRetryAndGC"
+    ],
+    "seconds": 209.162,
+    "draft_recovery": {
+      "sqlite": {
+        "complete_set_preserved_content": true,
+        "db_only_preserved_content": true,
+        "cross_node_without_disk": true,
+        "restart_without_cache": true,
+        "stale_write_rejected": true,
+        "archived_files": 0,
+        "seconds": 1.419
+      },
+      "postgres": {
+        "complete_set_preserved_content": true,
+        "db_only_preserved_content": true,
+        "cross_node_without_disk": true,
+        "restart_without_cache": true,
+        "stale_write_rejected": true,
+        "archived_files": 0,
+        "seconds": 2.767
+      }
+    },
+    "i11_ha": {
+      "servers": 2,
+      "agent_on_follower": true,
+      "pool_peak": 1,
+      "follower_quota_update": true,
+      "db_nats_interruption": true,
+      "leader_sigkill": true,
+      "identity_preserved": true,
+      "effect_count": 2,
+      "zero_quota_blocks": true,
+      "seconds": 9.112
+    },
+    "durable_process_recovery": {
+      "sqlite": {
+        "server_sigkill": true,
+        "agent_result_pending": true,
+        "identity_preserved": true,
+        "effect_count": 1,
+        "condition_committed": true,
+        "seconds": 5.35
+      },
+      "postgres": {
+        "server_sigkill": true,
+        "agent_result_pending": true,
+        "identity_preserved": true,
+        "effect_count": 1,
+        "condition_committed": true,
+        "seconds": 5.906
+      }
+    }
+  },
+  "browser": {
+    "startTime": "2026-10-01T17:32:58.021Z",
+    "duration": 18083.87,
+    "expected": 8,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "limits": [
+    "PostgreSQL is the shared backend across hosts; SQLite scenarios qualify single-host recovery/concurrency only",
+    "Each revision is a full snapshot, at most 16 MiB compressed and 64 MiB expanded serialized payload; no automatic revision retention or throughput claim",
+    "Legacy clones remain preserved and need verified import or original files until migrated",
+    "Publication receipts and prepared commits support conservative retry; uncertain remote outcomes remain pending, without exactly-once network promises",
+    "I13-I17 remain pending; broader partition, capacity, DR and installed pilot qualification not implied"
+  ]
+}

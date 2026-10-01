@@ -75,8 +75,9 @@ Administrative endpoints:
 Import never replaces an existing draft. Verify its actual content/base/dirty status
 on another node before manually retiring old copies. Export files and DB backups
 contain repository history and draft content: protect them as sensitive artifacts.
-No PAT or `.git/config` is copied into the snapshot; credentials remain supplied by
-the server's secret provider.
+The snapshot excludes `.git/config` and does not serialize the server's injected
+PAT. Configure a credential-free Git source URL and supply authentication through
+the server's secret provider; secrets in repository files/history are not scrubbed.
 
 ## Backup and limits
 
@@ -100,3 +101,7 @@ limits in I16; broader DR/partition/pilot qualification remains open.
 Upgrade all nodes together: the current runtime accepts exactly schema 30. Restore
 a verified pre-upgrade recovery set with its matching binary for rollback; do not
 point an older binary at the upgraded database.
+
+## Verified laboratory
+
+[Full CI 36899774503](https://github.com/Dr0nj/regente/actions/runs/36899774503) passed at `650e7ede6d84048220a430e72f7b45be4941b88f` with all eight gates, 269 mandatory integration tests/subtests and eight browser scenarios, without skips or flaky results. The [recorded evidence](evidence/i12-650e7ed.json) includes real SQLite/PostgreSQL cross-node edits, restart without cache and DB-only restoration of unpublished content. This is a synthetic correctness laboratory, not throughput or general production qualification.

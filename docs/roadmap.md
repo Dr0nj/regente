@@ -19,7 +19,7 @@
 >
 > Documento vivo · revisão **2026-10-01** — o marco de manutenção de **2026-07-30**
 > descreve as trilhas originais. O ciclo enterprise iniciado em setembro está ativo:
-> I04/I05/I06/I07/I08/I09/I10/I11, E04 e DOC-01–DOC-14 entregues; I12–I17 seguem na §Backlog. Manutenção histórica
+> I04/I05/I06/I07/I08/I09/I10/I11/I12, E04 e DOC-01–DOC-14 entregues; I13–I17 seguem na §Backlog. Manutenção histórica
 > não cancela incrementos explicitamente solicitados nem significa homologação produtiva.
 > Estratégia de arquitetura em [`architecture-future.md`](architecture-future.md);
 > apresentação de produto no [`../README.md`](../README.md).
@@ -85,7 +85,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
-- **I12–I17:** auditoria, capacidade, recuperação e piloto seguem na sequência enterprise.
+- **I13–I17:** secrets/mTLS/isolamento, auditoria, publicação verificável, capacidade, recuperação e piloto seguem na sequência enterprise.
 
 Escopo ativo deste ciclo: separar credenciais humanas de execução e preparar as
 próximas garantias. Não representa homologação empresarial completa.
@@ -383,6 +383,16 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+## I12 — Drafts compartilhados, CAS e recuperação de Design (2026-10-01)
+
+- Schema30 guarda base/HEAD Git, working files, folders/layout e undo como revisões de snapshot em SQLite/PostgreSQL. Clone local é cache privado reconstruível; ausência de disco em outro nó nunca apaga a sessão compartilhada. Native go-git preserva o runtime sem Git CLI.
+- Propriedade explícita, intervenção administrativa auditada e ACL atual em leitura/escrita/publicação. If-Match obrigatório em forms/delete/folders/layout/CODE/bulk/Mass Update/undo/publish/discard; CAS, conteúdo e auditoria confirmam juntos antes de responder sucesso. Publicação verifica diff real, além das folders declaradas.
+- Browser ordena requests por draft, não avança revisão de edição em polling e bloqueia gravações stale mantendo texto não aplicado; reload é explícito. Undo compartilhado sobrevive troca de nó/restart. Bootstrap fresh DB concorrente e retomada de metadata após login corrigidos por logs/trace reais.
+- Commit preparado é durável antes do push. Retry reutiliza SHA, reconhece ancestrais remotos, recupera PR por branch única e conserva recibo depois de fechar. Conflito de base preserva original e exige revisão numa sessão nova; resultado remoto incerto continua protegido, sem force/rebase automático.
+- Legado é verificado por source/base/objetos/caminhos e reconstrução antes de importar; originais/missing metadata retidos. Export/import administrativo valida checksum e cria novo ID. Backup DB inclui conteúdo e recibos; restore DB-only preserva edição real sem clone original.
+- Full CI8gates e matriz6jobs aprovados no SHA 650e7ed: 269 testes/subtestes obrigatórios, SQLite/PostgreSQL reais, nós A/B separados, restart sem cache, concorrência, conflitos Git/PR/recibo, legado e restore. Oito browser sem skips/flaky. [Contrato](shared-drafts.md) · [Evidência](evidence/i12-650e7ed.json).
+- Snapshot completo limitado a16MiB comprimido/64MiB expandido, sem retenção automática ou alegação de throughput. PostgreSQL é o backend entre hosts; SQLite é recuperação/concorrência em um host. I13–I17 permanecem abertos; partição/capacidade/DR/piloto gerais não são homologados por este incremento.
 
 ## I11 — Quotas e liderança consistentes no HA durável (2026-10-01)
 
@@ -1904,6 +1914,8 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-10-01 — I12:** conteúdo/undo de Design compartilhados e versionados, CAS/propriedade/ACL/auditoria, publicação recuperável e legado/export-import preservados. Schema30, full CI8gates, SQLite/PG/restore DB-only e oito browser aprovados. [Contrato](shared-drafts.md) · [Evidência](evidence/i12-650e7ed.json). I13–I17 seguem backlog.
 
 - **2026-10-01 — I11:** reservas executionId, gate de termo PostgreSQL, capacidade compartilhada de agentes, reconciliação conservadora e Explain consistente. Migração29 e full CI com HA real aprovados; patch gRPC1.83.2. [Contrato](ha-resources.md) · [Evidência](evidence/i11-f95f856.json). I12–I17 seguem backlog.
 
