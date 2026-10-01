@@ -117,7 +117,9 @@ func realJournalRuntimeTest(t *testing.T, runtime bool) {
 				}
 				return nil
 			}
-			proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) { http.Error(w, "receipt unavailable", 503) }
+			proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+				http.Error(w, "receipt unavailable", http.StatusServiceUnavailable)
+			}
 			edge := httptest.NewServer(proxy)
 			defer edge.Close()
 			journal := filepath.Join(t.TempDir(), "agent.db")

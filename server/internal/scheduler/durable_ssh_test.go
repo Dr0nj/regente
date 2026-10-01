@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -154,6 +155,11 @@ func TestI10RealSSHReceiptsLossAndCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	awaitDurableState(t, f, "wait-2026-09-30", "NOTOK")
+	var cancelCode int
+	var cancelOutput string
+	if err = f.d.QueryRow("SELECT a.exit_code,a.result_output FROM execution_attempts a JOIN runtime_orders r ON r.order_id=a.order_id WHERE r.instance_id=?", "wait-2026-09-30").Scan(&cancelCode, &cancelOutput); err != nil || cancelCode != -1 || !strings.Contains(cancelOutput, "cancellation acknowledged") {
+		t.Fatal("cancel receipt lost sysout or exit code", cancelCode, cancelOutput, err)
+	}
 	f.reopen(t)
 	if err = f.s.StartDurableInternal(ctx, nil, dir, "ssh-node", "test", false, true); err != nil {
 		t.Fatal(err)

@@ -654,13 +654,10 @@ func runCommand(ctx context.Context, params map[string]interface{}, timeoutSec i
 	return code, buf.String()
 }
 
-// runREST — executa uma chamada HTTP.
+// runRESTContext — executa uma chamada HTTP.
 // Params: method (default GET), url (obrigatório), headers (map), body (string),
 //
 //	expectStatus ([]int opcional — se definido e não bater, vira falha).
-func runREST(params map[string]interface{}, timeoutSec int) (int, string) {
-	return runRESTContext(context.Background(), params, timeoutSec, false)
-}
 func runRESTContext(ctx context.Context, params map[string]interface{}, timeoutSec int, durable bool) (int, string) {
 	method, _ := params["method"].(string)
 	if method == "" {

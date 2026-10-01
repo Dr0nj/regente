@@ -2,6 +2,8 @@ package execution
 
 import (
 	"encoding/json"
+	"github.com/Dr0nj/regente-server/internal/db"
+	"strings"
 )
 
 // Claim só entrega mensagens atribuídas ao agente. O commit antecede qualquer envio.
@@ -154,6 +156,7 @@ func (e *Engine) AcknowledgeReason(id Identity, kind, reason string) (Receipt, e
 	now := e.now()
 	next := a.State
 	dup := false
+	var transitionResult *Result
 	switch kind {
 	case "uncertain":
 		next = "uncertain"
@@ -213,7 +216,12 @@ func (e *Engine) AcknowledgeReason(id Identity, kind, reason string) (Receipt, e
 			return Receipt{}, ErrConflict
 		}
 		next = "cancelled"
-		if _, err = tx.Exec(`UPDATE execution_attempts SET finished_at=? WHERE execution_id=?`, now, a.ExecutionID); err != nil {
+		cancelOutput, err := cancellationOutput(tx, a.ExecutionID)
+		if err != nil {
+			return Receipt{}, err
+		}
+		transitionResult = &Result{Identity: Identity{Protocol: 2, ExecutionID: a.ExecutionID, Fence: a.Fence, AgentID: a.AgentID}, ExitCode: -1, Output: cancelOutput}
+		if _, err = tx.Exec(`UPDATE execution_attempts SET finished_at=?,exit_code=-1,result_output=? WHERE execution_id=?`, now, cancelOutput, a.ExecutionID); err != nil {
 			return Receipt{}, err
 		}
 		if _, err = tx.Exec(`UPDATE execution_outbox SET state='acked',lease_until=0 WHERE execution_id=?`, a.ExecutionID); err != nil {
@@ -238,7 +246,7 @@ func (e *Engine) AcknowledgeReason(id Identity, kind, reason string) (Receipt, e
 	if kind == "accepted" {
 		a.AcceptedAt = now
 	}
-	if err = e.transition(tx, o, a.Attempt, kind, nil); err != nil {
+	if err = e.transition(tx, o, a.Attempt, kind, transitionResult); err != nil {
 		return Receipt{}, err
 	}
 	if kind != "heartbeat" {
@@ -400,4 +408,33 @@ func (e *Engine) expire(id string, now int64) (bool, error) {
 	}
 	e.notify(id)
 	return true, nil
+}
+
+func cancellationOutput(tx *db.Tx, id string) (string, error) {
+	rows, err := tx.Query("SELECT chunk FROM execution_output WHERE execution_id=? ORDER BY seq", id)
+	if err != nil {
+		return "", err
+	}
+	var out strings.Builder
+	for rows.Next() {
+		var chunk string
+		if err = rows.Scan(&chunk); err != nil {
+			rows.Close()
+			return "", err
+		}
+		out.WriteString(chunk)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return "", err
+	}
+	note := "(cancellation acknowledged; external effects are not rolled back)"
+	if out.Len()+len(note)+1 <= MaxOutputBytes {
+		if out.Len() > 0 {
+			out.WriteByte('\n')
+		}
+		out.WriteString(note)
+	}
+	return out.String(), nil
 }

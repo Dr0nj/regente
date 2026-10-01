@@ -259,7 +259,9 @@ func (s *Scheduler) durableTransition(tx *db.Tx, o execution.Order, a execution.
 	cancelled := a.State == "cancelled"
 	if cancelled {
 		code = -1
-		output = "(cancellation acknowledged; external effects are not rolled back)"
+		if output == "" {
+			output = "(cancellation acknowledged; external effects are not rolled back)"
+		}
 	}
 	if code != 0 {
 		final = "NOTOK"
