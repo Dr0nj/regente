@@ -12,6 +12,7 @@ import (
 	"os"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -73,6 +74,9 @@ func Load(path string) (Policy, error) {
 		}
 		for _, d := range j.Destinations {
 			if d.Host == "" || (strings.ContainsAny(d.Host, "/@ \t\r\n") || (strings.Contains(d.Host, ":") && net.ParseIP(d.Host) == nil)) || d.Port == "" || len(d.Networks) == 0 {
+				return p, ErrPolicy
+			}
+			if port, err := strconv.Atoi(d.Port); err != nil || port < 1 || port > 65535 {
 				return p, ErrPolicy
 			}
 			for _, n := range d.Networks {
@@ -220,6 +224,9 @@ func PinnedAddress(ctx context.Context, host, port string) (string, error) {
 	}
 	for _, ip := range ips {
 		ip = ip.Unmap()
+		if ip == netip.MustParseAddr("100.100.100.200") || ip == netip.MustParseAddr("fd00:ec2::254") {
+			return "", ErrPolicy
+		}
 		if !ip.IsValid() || ip.IsUnspecified() || ip.IsMulticast() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
 			return "", ErrPolicy
 		}

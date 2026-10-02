@@ -90,7 +90,7 @@ func TestI13EgressRedirectAndSensitiveDestination(t *testing.T) {
 	if _, e = PinnedAddress(ctx, "localhost", port); e == nil {
 		t.Fatal("host alias fora da política")
 	}
-	for _, ip := range []string{"169.254.169.254", "0.0.0.0", "224.0.0.1", "fe80::1"} {
+	for _, ip := range []string{"169.254.169.254", "100.100.100.200", "fd00:ec2::254", "0.0.0.0", "224.0.0.1", "fe80::1"} {
 		c := context.WithValue(context.Background(), policyKey{}, Job{Destinations: []Destination{{Host: ip, Port: "80", Networks: []string{"0.0.0.0/0", "::/0"}}}})
 		if _, e = PinnedAddress(c, ip, "80"); e == nil {
 			t.Fatalf("destino sensível permitido: %s", ip)

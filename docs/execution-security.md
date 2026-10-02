@@ -1,6 +1,6 @@
 # Execution security
 
-The supported I13 profile is a dedicated Linux/systemd HTTP execution cell:
+The supported I13 profile is a dedicated Linux/systemd execution cells:
 certificate-bound machine credentials, protocol 2 journals, local policy and
 runtime secrets, and host cgroup controls. It is opt-in; existing development
 agents and unrelated adapters retain their previous behavior.
@@ -57,7 +57,7 @@ This adapter uses protected JSON files managed by the host operator. No Vault/AW
 manager or remote availability claim is included. Each execution reloads policy
 and secrets: TTL=0; outage never serves stale values. In-flight executions retain
 their resolved values. Files must be regular, not symlinks, at most 1 MiB, and mode
-0600 on Linux. Windows development tests do not validate Unix permissions.
+0600 on Linux; each resolved value must contain 8–4096 bytes. Windows development tests do not validate Unix permissions.
 
 policy.json:
 
@@ -112,6 +112,8 @@ and may need restart to adopt new provider values.
 Restricted HTTP requires exact host/port and approved CIDRs for every DNS answer.
 Dialing uses the verified IP, without a second lookup. Unspecified, multicast and
 link-local targets (including metadata 169.254.169.254) are always denied.
+Egress CIDRs containing known metadata addresses are rejected by the installer.
+Known metadata addresses 100.100.100.200 and fd00:ec2::254 are also denied.
 Private/loopback targets require explicit authorization. Proxy environment
 variables are ignored and redirects rejected. A redirect after an initial effect
 may leave an unknown outcome when completion cannot be proven.
@@ -147,12 +149,18 @@ without working cgroup BPF is unsupported; require a verified namespace/firewall
 boundary before claiming equivalence. Release smoke tests an independently
 reachable forbidden target inside an isolated cgroup.
 
-Arbitrary trusted COMMAND/SCRIPT jobs need another dedicated cell/host, separate
-user, mounted working volumes, cgroup limits and enforced egress. Child processes
+For trusted COMMAND/SCRIPT jobs, use the same installer with CELL_KIND=command,
+a separate machine ID/certificate/token and a policy containing only COMMAND/SCRIPT
+and no secrets. It creates regente-agent-command with a separate UID, protected
+configuration and writable journal directory, and the same cgroup/egress controls.
+The HTTP cell credentials/secrets directory is not readable by this UID.
+The default working volume is /var/lib/regente-agent-command; mount additional
+volumes deliberately and review their ownership. Child processes
 omit inherited Regente/cloud credentials, but use the agent OS identity and may
 read its files. This is not a hostile-code sandbox. Use separate VMs/containers
 and principals for mutually untrusted jobs; no host/Docker sockets/shared secrets.
-The restricted HTTP installer intentionally denies these job types.
+The default HTTP cell denies command job types; the command cell denies HTTP and
+job secret references. All commands sharing a cell belong to one trust domain.
 
 ## Upgrade and evidence
 
@@ -165,4 +173,7 @@ matching previous DB backup and binary.
 Mandatory SQLite/PostgreSQL tests use the real agent, hot TLS/token/secret
 rotation, outage/authorization, canary redaction, egress and open-channel
 invalidation. Installed systemd smoke adds non-root identity, cgroup limits,
-actual denied host egress and revocation. See [verification](verification.md).
+actual denied host egress, separate command UID/volumes, absent inherited secrets
+and revocation. See [verification](verification.md).
+
+Metadata address references: [AWS IMDS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html) and [Alibaba Cloud metadata](https://www.alibabacloud.com/help/en/ecs/user-guide/view-instance-metadata).
