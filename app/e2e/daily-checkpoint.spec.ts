@@ -33,8 +33,12 @@ test("I07: incomplete daily resumes its frozen plan in Monitoring", async ({ pag
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(page.getByRole("button", { name: "Account", exact: true })).toBeVisible();
     await expect(page.getByRole("status").filter({ hasText: "Daily " + date + " incomplete" })).toContainText("failed · 0/1");
+    // O botão muda para Resuming… enquanto o POST está em voo; isso não prova conclusão.
+    const resumed = page.waitForResponse(response => response.url() === base + "/api/daily/resume" && response.request().method() === "POST");
     await page.getByRole("button", { name: "Resume daily", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Resume daily", exact: true })).toHaveCount(0);
+    expect((await resumed).status()).toBe(200);
+    await expect.poll(async () => (await (await request.get(base + "/api/daily/status", { headers })).json()).run.state).toBe("completed");
+    await expect(page.getByRole("status").filter({ hasText: "Daily " + date + " incomplete" })).toHaveCount(0);
     const final = await (await request.get(base + "/api/daily/status", { headers })).json();
     expect(final.run.state).toBe("completed"); expect(final.run.inserted).toBe(1); expect(final.pending).toBeNull();
     const orders = await (await request.get(base + "/api/instances?date=" + date, { headers })).json();
