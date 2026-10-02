@@ -1,6 +1,6 @@
 # Execution security
 
-The supported I13 profile is a dedicated Linux/systemd execution cells:
+The supported I13 profile uses dedicated Linux/systemd execution cells:
 certificate-bound machine credentials, protocol 2 journals, local policy and
 runtime secrets, and host cgroup controls. It is opt-in; existing development
 agents and unrelated adapters retain their previous behavior.
