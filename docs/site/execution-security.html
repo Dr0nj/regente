@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Execution security · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="adr-i09-agent-journal.html">Durable agent journal</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="business-time.html">Business time</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html">Daily recovery</a>
+<a href="durable-execution.html">Durable execution and recovery</a>
+<a href="execution-security.html" class="active">Execution security</a>
+<a href="ha-resources.html">Shared resources and scheduler leadership</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="production-profile.html">Production profile</a>
+<a href="shared-drafts.html">Shared Design drafts</a>
+<a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
+<a href="web-events.html">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="execution-security">Execution security</h1>
+<p>The supported I13 profile is a dedicated Linux/systemd HTTP execution cell:
+certificate-bound machine credentials, protocol 2 journals, local policy and
+runtime secrets, and host cgroup controls. It is opt-in; existing development
+agents and unrelated adapters retain their previous behavior.</p>
+<h2 id="certificate-bound-machine-transport">Certificate-bound machine transport</h2>
+<p>Set server TLS certificate/key and REGENTE_TLS_CLIENT_CA. The HTTPS listener
+verifies client certificates when supplied; browsers and probes do not require
+one. Every machine route requires a valid client certificate AND its scoped bearer
+when a client CA is configured. Proxy certificate headers are never identity.</p>
+<p>Provision agent ID, exact environment/capabilities, expiry and certificateSHA256:
+the lowercase SHA256 of the DER leaf certificate. Settings &gt; Agents includes
+issuance and a separate replacement fingerprint for rotation.</p>
+<pre><code class="language-bash">openssl x509 -in client.crt -outform DER | sha256sum
+regente-agent -transport v2 -server https://regente.example \
+  -id http-prod-01 -env prod -caps HTTP,REST \
+  -journal /var/lib/regente-agent-http/journal.db \
+  -token-file /etc/regente-agent-http/token \
+  -tls-cert /etc/regente-agent-http/client.crt \
+  -tls-key /etc/regente-agent-http/client.key \
+  -tls-ca /etc/regente-agent-http/ca.crt \
+  -execution-policy /etc/regente-agent-http/policy.json \
+  -job-secrets-file /etc/regente-agent-http/secrets.json
+</code></pre>
+<p>Provision HTTP, REST and EXECUTION_V2: the CLI adds EXECUTION_V2 automatically.
+The server reloads TLS files per handshake and revalidates the current CA,
+certificate expiry and credential binding per request and before dispatch.
+Open WS/SSE/poll clients revalidate every second. A failed DB/CA read denies access.</p>
+<p>POST /api/agents/tokens/{id}/rotate takes expiry, graceSeconds (0–3600) and the
+replacement certificateSHA256. Publish PEM files atomically and replace the token
+file within the grace window. V2 reloads token/cert/key/server CA per request,
+without old TLS keep-alive. A temporary file mismatch denies authentication and
+retains the journal until files agree. WS/SSE certificate changes take effect on
+reconnect; restart legacy agents for server CA/bearer rotation. Production uses V2.</p>
+<p>DELETE /api/agents/tokens/{id} revokes that credential and binding; revoke every
+credential deliberately issued with the same certificate if retiring its identity.
+This is not an OCSP/CRL service. CA removal or certificate expiry also invalidate
+open channels. Revocation does not prove an already started effect stopped:
+drain/reconcile through the <a href="durable-execution.html">durable runbook</a>.</p>
+<p>For nginx browser TLS termination, use a separate agent TLS origin or TCP
+passthrough to the server. TLS terminated at a proxy and a forwarded header do not
+satisfy this contract.</p>
+<h2 id="runtime-secrets-and-local-authorization">Runtime secrets and local authorization</h2>
+<p>This adapter uses protected JSON files managed by the host operator. No Vault/AWS
+manager or remote availability claim is included. Each execution reloads policy
+and secrets: TTL=0; outage never serves stale values. In-flight executions retain
+their resolved values. Files must be regular, not symlinks, at most 1 MiB, and mode
+0600 on Linux. Windows development tests do not validate Unix permissions.</p>
+<p>policy.json:</p>
+<pre><code class="language-json">{
+  &quot;environment&quot;: &quot;prod&quot;,
+  &quot;jobs&quot;: {
+    &quot;submit-report&quot;: {
+      &quot;types&quot;: [&quot;HTTP&quot;],
+      &quot;secrets&quot;: [&quot;reports.authorization&quot;],
+      &quot;destinations&quot;: [
+        {&quot;host&quot;: &quot;reports.example&quot;, &quot;port&quot;: &quot;443&quot;, &quot;networks&quot;: [&quot;192.0.2.10/32&quot;]}
+      ]
+    }
+  }
+}
+</code></pre>
+<p>secrets.json (placeholder; never commit a real value):</p>
+<pre><code class="language-json">{&quot;values&quot;: {&quot;reports.authorization&quot;: &quot;Bearer replace-this-outside-git&quot;}}
+</code></pre>
+<p>The Git/YAML definition contains a reference:</p>
+<pre><code class="language-yaml">actionConfig:
+  url: https://reports.example/submit
+  method: POST
+  headers:
+    Authorization:
+      secretRef: reports.authorization
+</code></pre>
+<p>Job ID/environment come from the frozen definition and must match local policy.
+References need an explicit job allowlist. Invalid policy, unauthorized reference
+or unavailable secret fails before external effects. Git, snapshots, outboxes and
+journal envelopes retain references; only a copied actionConfig receives values
+in memory after durable start authorization. Results are redacted before storage.</p>
+<p>Secret references are supported only for HTTP/REST in this profile. COMMAND,
+SCRIPT and SSH cannot resolve them. Do not mix untrusted commands with a secrets
+cell. Literal credentials already pasted into definitions/history are not
+retroactively scrubbed: migrate and rotate them. Redaction covers exact resolved
+values; it cannot prevent a malicious endpoint encoding/extracting credentials.
+Use trusted destinations. Control-plane PAT/OIDC/webhook consumers are separate
+and may need restart to adopt new provider values.</p>
+<h2 id="egress-and-host-isolation">Egress and host isolation</h2>
+<p>Restricted HTTP requires exact host/port and approved CIDRs for every DNS answer.
+Dialing uses the verified IP, without a second lookup. Unspecified, multicast and
+link-local targets (including metadata 169.254.169.254) are always denied.
+Private/loopback targets require explicit authorization. Proxy environment
+variables are ignored and redirects rejected. A redirect after an initial effect
+may leave an unknown outcome when completion cannot be proven.</p>
+<p>Internal control-plane HTTP/SSH can use the same execution-policy and
+job-secrets-file flags. Restricted SSH requires strictHostKey=yes and an explicit
+knownHostsPath, pins destination IP and disables local config/proxy/jump/agent
+forwarding/local hooks. Remote commands still need a separate remote trust boundary.
+Adapters without guarded dialing are denied by local policy: database, transfer,
+cloud/K8S/WASM are not homologated in this profile.</p>
+<p>Download install-secure-linux.sh and the agent binary from the same release.
+Requires Linux/systemd with working cgroup limits and cgroup BPF IP filtering:</p>
+<pre><code class="language-bash">sudo SERVER=https://regente.example ID=http-prod-01 ENVIRONMENT=prod \
+  TOKEN_FILE=/secure/token TLS_CERT=/secure/client.crt TLS_KEY=/secure/client.key \
+  TLS_CA=/secure/server-ca.crt POLICY_FILE=/secure/policy.json \
+  SECRETS_FILE=/secure/secrets.json \
+  EGRESS_CIDRS='192.0.2.20/32 192.0.2.10/32' \
+  bash install-secure-linux.sh
+</code></pre>
+<p>Allow DNS resolver IPs when using names: no implicit DNS exception exists.
+The installer validates an HTTP/REST-only policy and creates a dedicated non-root
+user, 0700 config/0600 files, writable journal state only, no capabilities/new
+privileges, private devices/tmp, protected system/home/kernel/cgroups, 128 tasks,
+512 MiB RAM, no swap, one CPU quota and deny-all IPs with explicit CIDR exceptions.</p>
+<p>Check systemctl show, logs, real allowed/denied connectivity and durable receipts
+before admitting jobs. Settings alone do not prove kernel IP enforcement. A host
+without working cgroup BPF is unsupported; require a verified namespace/firewall
+boundary before claiming equivalence. Release smoke tests an independently
+reachable forbidden target inside an isolated cgroup.</p>
+<p>Arbitrary trusted COMMAND/SCRIPT jobs need another dedicated cell/host, separate
+user, mounted working volumes, cgroup limits and enforced egress. Child processes
+omit inherited Regente/cloud credentials, but use the agent OS identity and may
+read its files. This is not a hostile-code sandbox. Use separate VMs/containers
+and principals for mutually untrusted jobs; no host/Docker sockets/shared secrets.
+The restricted HTTP installer intentionally denies these job types.</p>
+<h2 id="upgrade-and-evidence">Upgrade and evidence</h2>
+<p>Schema 31 adds only the non-secret certificate fingerprint. Drain/upgrade all
+nodes; supported range [31,31]. Unbound tokens work without an agent CA; provision
+or rotate bindings before enabling it. Back up host policy/credentials separately:
+DB backups contain references, not external secret values. Rollback requires the
+matching previous DB backup and binary.</p>
+<p>Mandatory SQLite/PostgreSQL tests use the real agent, hot TLS/token/secret
+rotation, outage/authorization, canary redaction, egress and open-channel
+invalidation. Installed systemd smoke adds non-root identity, cgroup limits,
+actual denied host egress and revocation. See <a href="verification.html">verification</a>.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

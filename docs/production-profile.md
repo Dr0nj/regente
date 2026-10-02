@@ -37,7 +37,7 @@ prove original password length: rotate existing local passwords before conversio
 |---|---|---|---|
 | loopback | Loopback IP only | HTTP localhost/loopback | Local access or SSH tunnel; no server TLS |
 | proxy | Loopback IP only | HTTPS | Explicit loopback trusted proxies; TLS terminates at a colocated proxy |
-| tls | Explicit numeric IP | HTTPS | Loadable certificate/key; optional client CA |
+| tls | Explicit numeric IP | HTTPS | Loadable certificate/key; optional client CA for machine routes |
 
 Trusting all proxy addresses is rejected. Proxy mode validates the configuration,
 not the external proxy's certificate, DNS or firewall. Configure and verify those
@@ -63,9 +63,7 @@ server. External agents remain available under all three policies. This policy
 applies to scheduled runs, Force, Run Now and retries. Explain reports
 `CONFIGURATION_BLOCKED`; blocked orders retain their snapshots and stay WAITING.
 
-This is an execution boundary, not a multi-tenant API visibility filter. It does
-not provide the secrets lifecycle, process isolation or full mTLS hardening planned
-separately. Do not mix old binaries or differently configured nodes into the same
+This is an execution boundary, not a multi-tenant API visibility filter. Use the [execution security profile](execution-security.md) for certificate-bound transport, runtime secret references and the dedicated Linux/systemd cell. Do not mix old binaries or differently configured nodes into the same
 production database or distributed bus.
 
 ## Clean installation

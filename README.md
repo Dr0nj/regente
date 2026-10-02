@@ -719,3 +719,5 @@ endorsed by, or derived from any commercial orchestration product. Third-party p
 they appear, are trademarks of their respective owners and are used only to identify a file format
 the importer can read.</sub>
 </div>
+
+For certificate-bound agents, runtime secret references and the supported dedicated Linux/systemd HTTP cell, see [execution security](docs/execution-security.md).

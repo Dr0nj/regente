@@ -93,7 +93,7 @@ Regente they already exist; enable them through `/etc/regente/server.env` (or fl
 | **RBAC + per-folder ACL** | Settings → Users: the `operator`/`viewer` roles; read/write ACLs per folder. |
 | **Audit → SIEM** | `REGENTE_AUDIT_SIEM_URL=https://siem/...` (logins and writes become JSON events that get POSTed). |
 | **Secrets outside the DB** | `REGENTE_SECRET_GITHUB_TOKEN=...` (the secrets provider; no PAT persisted in plaintext). |
-| **mTLS between server and agent** | a server started with `-tls-client-ca` requires a client certificate from the agent (defence in depth). |
+| **mTLS between server and agent** | a server started with `-tls-client-ca` requires a fingerprint-bound certificate plus scoped credential on machine routes; browsers/probes remain HTTPS. See [execution security](../../docs/execution-security.md). |
 | **HA / scale** | `REGENTE_DB_DRIVER=postgres` + N nodes on the SAME DB → leader election (only the leader runs the daily and dispatch). Backup/DR in [`../../docs/dr-backup.md`](../../docs/dr-backup.md). |
 | **NAT-friendly agents** | an **outbound** connection (WS/SSE/long-poll) — the agent never opens a port; it crosses corporate firewalls. |
 | **A strong API token** | `REGENTE_TOKEN` is admin-equivalent (it bypasses login) — **generate a strong value**; never leave `dev-token`/`change-me`. |

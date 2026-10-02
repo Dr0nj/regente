@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Dr0nj/regente-agent/journal"
+	"github.com/Dr0nj/regente-agent/security"
 	"github.com/Dr0nj/regente-server/internal/domain"
 	"github.com/Dr0nj/regente-server/internal/execution"
 	"github.com/Dr0nj/regente-server/internal/hub"
@@ -126,11 +127,20 @@ func (s *Scheduler) StartDurableInternal(parent context.Context, presence *hub.H
 		presence.Register(client)
 	}
 	ctx, cancel := context.WithCancel(parent)
-	worker := journal.NewWorker(j, internalTransport{s.durable, id}, func(ctx context.Context, envelope journal.Envelope, emit func(string)) (int, string) {
+	worker := journal.NewWorker(j, internalTransport{s.durable, id}, func(ctx context.Context, envelope journal.Envelope, emit func(string)) (code int, out string) {
 		var def domain.JobDefinition
 		if json.Unmarshal(envelope.Definition, &def) != nil {
 			return -1, "invalid frozen execution definition"
 		}
+		prepared, params, redact, err := security.Prepare(ctx, s.ExecutionPolicyPath, s.JobSecretsFile, def.Environment, def.ID, strings.ToUpper(def.JobType), def.Params)
+		if err != nil {
+			return -1, err.Error()
+		}
+		ctx = prepared
+		def.Params = params
+		defer func() { out = redact(out) }()
+		originalEmit := emit
+		emit = func(s string) { originalEmit(redact(s)) }
 		if def.DryRun {
 			return 0, "[dry run] no external effect executed"
 		}

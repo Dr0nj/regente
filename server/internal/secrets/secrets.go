@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
-	"sync"
 )
 
 // Provider resolve um segredo por chave lógica. found=false quando ausente
@@ -39,11 +38,9 @@ func (EnvProvider) Get(key string) (string, bool) {
 }
 
 // FileProvider lê um JSON simples {"chave":"valor"} de um arquivo (modo 0600
-// recomendado). Carregado uma vez; ausência de arquivo = provider vazio.
+// recomendado). Recarregado por consulta; cache TTL=0; indisponibilidade nunca serve valor stale.
 type FileProvider struct {
-	once sync.Once
 	path string
-	data map[string]string
 }
 
 // NewFileProvider — path vazio = provider inerte (sempre miss).
@@ -52,18 +49,18 @@ func NewFileProvider(path string) *FileProvider { return &FileProvider{path: pat
 func (f *FileProvider) Name() string { return "file" }
 
 func (f *FileProvider) Get(key string) (string, bool) {
-	f.once.Do(func() {
-		f.data = map[string]string{}
-		if f.path == "" {
-			return
-		}
-		raw, err := os.ReadFile(f.path)
-		if err != nil {
-			return
-		}
-		_ = json.Unmarshal(raw, &f.data)
-	})
-	v, ok := f.data[key]
+	data := map[string]string{}
+	if f.path == "" {
+		return "", false
+	}
+	raw, err := os.ReadFile(f.path)
+	if err != nil || len(raw) > 1<<20 {
+		return "", false
+	}
+	if json.Unmarshal(raw, &data) != nil {
+		return "", false
+	}
+	v, ok := data[key]
 	if !ok || v == "" {
 		return "", false
 	}

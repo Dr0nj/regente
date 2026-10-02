@@ -28,6 +28,7 @@ import (
 	// sistema. Custa ~450KB e torna o binário auto-suficiente.
 	_ "time/tzdata"
 
+	"github.com/Dr0nj/regente-agent/security"
 	"github.com/Dr0nj/regente-server/internal/api"
 	"github.com/Dr0nj/regente-server/internal/audit"
 	"github.com/Dr0nj/regente-server/internal/auth"
@@ -81,7 +82,7 @@ func main() {
 		// Segurança — TLS/mTLS opcional (vazio = HTTP plano, comportamento atual).
 		tlsCert      = flag.String("tls-cert", envOr("REGENTE_TLS_CERT", ""), "Security: server TLS cert (empty = plain HTTP)")
 		tlsKey       = flag.String("tls-key", envOr("REGENTE_TLS_KEY", ""), "Security: server TLS key")
-		tlsClientCA  = flag.String("tls-client-ca", envOr("REGENTE_TLS_CLIENT_CA", ""), "Security: CA to require+verify a client cert (enables mTLS)")
+		tlsClientCA  = flag.String("tls-client-ca", envOr("REGENTE_TLS_CLIENT_CA", ""), "Security: CA for certificate-bound machine routes (web and probes remain HTTPS)")
 		auditSIEMURL = flag.String("audit-siem-url", envOr("REGENTE_AUDIT_SIEM_URL", ""), "Security: SIEM HTTP endpoint to POST audit events to (empty = JSON to stderr only)")
 		secretsFile  = flag.String("secrets-file", envOr("REGENTE_SECRETS_FILE", ""), "H3: JSON secrets file {\"github_token\":...}; the REGENTE_SECRET_<KEY> env takes priority")
 		tickMs       = flag.Int("tick-ms", 2000, "Scheduler tick interval (ms) — used in internal mode")
@@ -136,6 +137,8 @@ func main() {
 
 		showVersion = flag.Bool("version", false, "print the build version and exit")
 	)
+	executionPolicy := flag.String("execution-policy", os.Getenv("REGENTE_EXECUTION_POLICY"), "Protected local execution policy JSON")
+	jobSecrets := flag.String("job-secrets-file", os.Getenv("REGENTE_JOB_SECRETS_FILE"), "Protected runtime job secrets JSON")
 	flag.Parse()
 
 	// Antes de abrir banco, workspace ou porta: `-version` tem de responder numa
@@ -201,6 +204,14 @@ func main() {
 		tlsCfg, mtlsOn, tlsErr = sectls.ServerTLS(*tlsCert, *tlsKey, *tlsClientCA)
 		if tlsErr != nil {
 			log.Fatal("[config] unable to load TLS certificate, key or client CA")
+		}
+	}
+	if serving && *executionPolicy != "" {
+		if _, err := security.Load(*executionPolicy); err != nil {
+			log.Fatal("[config] execution policy unavailable or invalid")
+		}
+		if !policy.Durable() {
+			log.Fatal("[config] execution policy requires durable execution")
 		}
 	}
 	if *checkConfig {
@@ -428,6 +439,8 @@ func main() {
 	sched := scheduler.New(store, database, theBus, time.Duration(*tickMs)*time.Millisecond)
 	sched.DemoMode = *demoMode
 	sched.RuntimePolicy = policy
+	sched.ExecutionPolicyPath = *executionPolicy
+	sched.JobSecretsFile = *jobSecrets
 	if policy.Durable() {
 		sched.AttachDurable(execution.New(database, sched.Now))
 	}

@@ -127,6 +127,8 @@ dk exec "$CT" chmod +x /root/regente-agent
 dk cp "$(hostpath "$ROOT/scripts/smoke/inside.sh")" "$CT:/root/inside.sh" >/dev/null
 dk exec "$CT" bash -c 'sed -i "s/\r$//" /root/agent-deploy/install-linux.sh /root/agent-deploy/regente-agent.service /root/inside.sh'
 
+dk cp "$(hostpath "$ROOT/agent/deploy/install-secure-linux.sh")" "$CT:/root/agent-deploy/install-secure-linux.sh" >/dev/null
+dk cp "$(hostpath "$ROOT/scripts/smoke/i13.py")" "$CT:/root/i13.py" >/dev/null
 echo "== stage 1: instalar, quebrar, consertar, executar"
 if ! dk exec "$CT" bash /root/inside.sh stage1; then
   echo; echo "---- journal do server ----"; dk exec "$CT" journalctl -u regente-server --no-pager -n 60 || true
@@ -148,4 +150,7 @@ if ! dk exec "$CT" bash /root/inside.sh stage2; then
 fi
 
 echo
+echo "== I13: restricted installed cell, mTLS, secrets and host egress"
+dk exec "$CT" python3 /root/i13.py
+
 echo "✅ smoke de instalação OK — o artefato instala, sobrevive a config errada e a reboot, e executa job."

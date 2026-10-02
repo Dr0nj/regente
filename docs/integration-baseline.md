@@ -131,7 +131,7 @@ the same-binary drain and the schema-document contract. The
 [recorded evidence](evidence/doc-a-af75c51.json) is synthetic laboratory evidence,
 not production or mixed-version qualification.
 
-Current runtime schema: **30**; supported range: **[30,30]**.
+Current runtime schema: **31**; supported range: **[31,31]**.
 
 `TestMigrationRunbookContract` compares this current statement with the migration
 constants and an actual fresh database. Historical fixture versions below remain

@@ -39,13 +39,14 @@ type Settings struct {
 }
 
 type Scheduler struct {
-	RuntimePolicy   runtimeprofile.Config
-	durable         *execution.Engine
-	internalAgentID string
-	store           *storage.FileStore
-	db              *db.DB
-	hub             Bus
-	tick            time.Duration
+	ExecutionPolicyPath, JobSecretsFile string
+	RuntimePolicy                       runtimeprofile.Config
+	durable                             *execution.Engine
+	internalAgentID                     string
+	store                               *storage.FileStore
+	db                                  *db.DB
+	hub                                 Bus
+	tick                                time.Duration
 
 	dailyMu    sync.Mutex // só coordenação local; o checkpoint também é serializado no banco.
 	mu         sync.Mutex

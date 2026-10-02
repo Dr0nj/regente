@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/Dr0nj/regente-agent/journal"
+	"github.com/Dr0nj/regente-agent/security"
 	"github.com/gorilla/websocket"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
@@ -96,6 +97,11 @@ func main() {
 	concurrency := flag.Int("concurrency", 4, "Maximum concurrent durable executions")
 	pending := flag.Int("max-pending", 1000, "Maximum unconfirmed durable executions")
 	showVersion := flag.Bool("version", false, "Print build version")
+	tlsCert := flag.String("tls-cert", os.Getenv("REGENTE_AGENT_TLS_CERT"), "Client certificate PEM file")
+	tlsKey := flag.String("tls-key", os.Getenv("REGENTE_AGENT_TLS_KEY"), "Client private key PEM file")
+	tlsCA := flag.String("tls-ca", os.Getenv("REGENTE_AGENT_TLS_CA"), "Server CA PEM file (empty uses system trust)")
+	executionPolicy = flag.String("execution-policy", os.Getenv("REGENTE_EXECUTION_POLICY"), "Protected local execution policy JSON")
+	jobSecrets = flag.String("job-secrets-file", os.Getenv("REGENTE_JOB_SECRETS_FILE"), "Protected runtime secrets JSON; never persisted in the journal")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(agentVersion)
@@ -107,6 +113,17 @@ func main() {
 			log.Fatal("cannot read protected machine credential file")
 		}
 		*token = strings.TrimSpace(string(raw))
+	}
+	if err := configureControl(*server, *tlsCert, *tlsKey, *tlsCA, *tokenFile); err != nil {
+		log.Fatal(err)
+	}
+	if *executionPolicy != "" {
+		if _, err := security.Load(*executionPolicy); err != nil {
+			log.Fatal("execution policy unavailable or invalid")
+		}
+		if strings.ToLower(*transport) != "v2" {
+			log.Fatal("execution policy requires durable protocol 2")
+		}
 	}
 	mode := strings.ToLower(*transport)
 	if mode != "ws" && mode != "http" && mode != "sse" && mode != "v2" {
@@ -191,7 +208,7 @@ func runAgent(wsURL string, tokens ...string) error {
 	if len(tokens) > 0 {
 		header.Set("Authorization", "Bearer "+tokens[0])
 	}
-	c, _, err := websocket.DefaultDialer.Dial(wsURL, header)
+	c, _, err := controlDialer.Dial(wsURL, header)
 	if err != nil {
 		return err
 	}
@@ -302,7 +319,7 @@ func runAgentHTTP(base, token, id, caps, env string, stop <-chan os.Signal) {
 		pollURL += "&env=" + url.QueryEscape(env) // ADV-2
 	}
 	// Client com timeout > janela de long-poll do server (25s) para não cortar.
-	client := &http.Client{Timeout: 35 * time.Second}
+	client := controlClient(35 * time.Second)
 	post := httpPost(base, token)
 
 	for {
@@ -391,7 +408,7 @@ func httpPost(base, token string) func(path string, v interface{}) {
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", "application/json")
-		if res, err := http.DefaultClient.Do(req); err == nil {
+		if res, err := controlClient(35 * time.Second).Do(req); err == nil {
 			res.Body.Close()
 		} else {
 			log.Printf("post %s: %v", path, err)
@@ -411,7 +428,7 @@ func runAgentSSE(base, token, id, caps, env string, stop <-chan os.Signal) {
 	post := httpPost(base, token)
 	// Sem Timeout no client: o stream é de longa duração (o keep-alive do server
 	// detecta conexão morta).
-	client := &http.Client{}
+	client := controlClient(0)
 
 	for {
 		select {
@@ -489,6 +506,9 @@ func sleepOrStop(stop <-chan os.Signal, d time.Duration) bool {
 }
 
 func executeJob(ctx context.Context, jobType string, params map[string]interface{}, timeoutSec int, emit func(string)) (int, string) {
+	if security.HasRefs(params) {
+		return -1, "secret references require authorized durable execution"
+	}
 	switch strings.ToUpper(jobType) {
 	case "COMMAND":
 		return runCommand(ctx, params, timeoutSec, emit)
@@ -674,7 +694,7 @@ func runRESTContext(ctx context.Context, params map[string]interface{}, timeoutS
 	if timeoutSec <= 0 {
 		timeoutSec = 60
 	}
-	client := &http.Client{Timeout: time.Duration(timeoutSec) * time.Second}
+	client := security.HTTPClient(ctx, time.Duration(timeoutSec)*time.Second)
 	req, err := http.NewRequestWithContext(ctx, strings.ToUpper(method), urlStr, body)
 	if err != nil {
 		return -1, err.Error()
@@ -684,6 +704,21 @@ func runRESTContext(ctx context.Context, params map[string]interface{}, timeoutS
 			if sv, ok := v.(string); ok {
 				req.Header.Set(k, sv)
 			}
+		}
+	}
+	if security.Restricted(ctx) {
+		if req.URL.User != nil || (req.URL.Scheme != "http" && req.URL.Scheme != "https") {
+			return -1, "HTTP destination denied by execution policy"
+		}
+		port := req.URL.Port()
+		if port == "" {
+			port = "80"
+			if req.URL.Scheme == "https" {
+				port = "443"
+			}
+		}
+		if _, err := security.PinnedAddress(ctx, req.URL.Hostname(), port); err != nil {
+			return -1, "HTTP destination denied by execution policy"
 		}
 	}
 	res, err := client.Do(req)
@@ -847,6 +882,7 @@ func envOr(key, def string) string {
 }
 
 func runProcess(ctx context.Context, cmd *exec.Cmd) error {
+	cmd.Env = childEnvironment()
 	if err := cmd.Start(); err != nil {
 		return err
 	}

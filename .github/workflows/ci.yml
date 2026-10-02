@@ -30,6 +30,10 @@ jobs:
       # Mesmo runner local; cada família obrigatória precisa produzir evidência.
       - name: Full verification
         run: bash scripts/verify.sh --full
+      - name: Installed execution security profile (systemd real)
+        run: |
+          mkdir -p .integration/i13-smoke/evidence
+          bash scripts/smoke-install.sh --build 2>&1 | tee .integration/i13-smoke/evidence/i13-systemd.log
       # Informativo; não compõe a condição de aprovação do perfil.
       - name: deadcode (informativo)
         continue-on-error: true

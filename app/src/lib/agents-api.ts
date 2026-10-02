@@ -47,6 +47,7 @@ export interface AgentToken {
   id: number;
   label: string;
   tokenPrefix: string;
+  certificateSHA256?: string;
   createdAt: string;
   lastUsedAt: string;
 }
@@ -57,13 +58,13 @@ export async function listAgentTokens(): Promise<AgentToken[]> {
 }
 
 /** Cria um token de agente. O `token` cru só volta aqui, uma vez. */
-export async function createAgentToken(body: { label: string; agentId: string; environment: string; capabilities: string[]; expiresAt: string }): Promise<{ id: number; token: string }> {
+export async function createAgentToken(body: { label: string; agentId: string; environment: string; capabilities: string[]; expiresAt: string; certificateSHA256?: string }): Promise<{ id: number; token: string }> {
   return api("/api/agents/tokens", { method: "POST", body: JSON.stringify(body) });
 }
 
-export async function rotateAgentToken(id: number, validityDays: number, graceSeconds: number): Promise<{ id: number; token: string }> {
+export async function rotateAgentToken(id: number, validityDays: number, graceSeconds: number, certificateSHA256?: string): Promise<{ id: number; token: string }> {
   const expiresAt = new Date(Date.now() + validityDays * 86400000).toISOString();
-  return api(`/api/agents/tokens/${id}/rotate`, { method: "POST", body: JSON.stringify({ expiresAt, graceSeconds }) });
+  return api(`/api/agents/tokens/${id}/rotate`, { method: "POST", body: JSON.stringify({ expiresAt, graceSeconds, ...(certificateSHA256 ? { certificateSHA256 } : {}) }) });
 }
 
 export async function revokeAgentToken(id: number): Promise<void> {

@@ -232,7 +232,7 @@ jobs:
       - name: Stage install scripts
         run: |
           cp install.sh dist/install.sh
-          cp agent/deploy/install-agent.sh agent/deploy/install-agent-windows.ps1 dist/
+          cp agent/deploy/install-agent.sh agent/deploy/install-agent-windows.ps1 agent/deploy/install-secure-linux.sh dist/
 
       # Guarda-chuva contra release incompleta: falha ANTES de publicar se faltar
       # qualquer arquivo que a documentação promete.
@@ -241,6 +241,7 @@ jobs:
           set -euo pipefail
           required="
             install.sh
+            install-secure-linux.sh
             install-agent.sh
             install-agent-windows.ps1
             regente-server_linux_amd64.tar.gz

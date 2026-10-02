@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/Dr0nj/regente-agent/journal"
+	"github.com/Dr0nj/regente-agent/security"
 	"github.com/Dr0nj/regente-server/internal/db"
 	"github.com/Dr0nj/regente-server/internal/domain"
 	"github.com/Dr0nj/regente-server/internal/hub"
@@ -195,7 +196,7 @@ func runHTTPOutcome(ctx context.Context, params map[string]interface{}, timeoutS
 	if timeoutSec <= 0 {
 		timeoutSec = 60
 	}
-	client := &http.Client{Timeout: time.Duration(timeoutSec) * time.Second}
+	client := security.HTTPClient(ctx, time.Duration(timeoutSec)*time.Second)
 	// ctx cancelável: o frame "cancel" (reg.kill) aborta a requisição em voo.
 	req, err := http.NewRequestWithContext(ctx, strings.ToUpper(method), urlStr, body)
 	if err != nil {
@@ -206,6 +207,24 @@ func runHTTPOutcome(ctx context.Context, params map[string]interface{}, timeoutS
 			if sv, ok := v.(string); ok {
 				req.Header.Set(k, sv)
 			}
+		}
+	}
+	if security.HasRefs(params) {
+		return -1, "secret references require authorized durable execution"
+	}
+	if security.Restricted(ctx) {
+		if req.URL.User != nil || (req.URL.Scheme != "http" && req.URL.Scheme != "https") {
+			return -1, "HTTP destination denied by execution policy"
+		}
+		port := req.URL.Port()
+		if port == "" {
+			port = "80"
+			if req.URL.Scheme == "https" {
+				port = "443"
+			}
+		}
+		if _, err := security.PinnedAddress(ctx, req.URL.Hostname(), port); err != nil {
+			return -1, "HTTP destination denied by execution policy"
 		}
 	}
 	res, err := client.Do(req)

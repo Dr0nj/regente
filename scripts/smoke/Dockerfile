@@ -13,7 +13,7 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -qq \
  && apt-get install -y -qq --no-install-recommends \
-      systemd systemd-sysv ca-certificates curl git python3 nginx \
+      systemd systemd-sysv ca-certificates curl git python3 nginx openssl \
  && rm -rf /var/lib/apt/lists/* \
  # Unidades que não fazem sentido em container e só sujam o boot.
  && rm -f /lib/systemd/system/multi-user.target.wants/* \

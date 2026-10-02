@@ -67,6 +67,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
 <a href="daily-recovery.html">Daily recovery</a>
 <a href="durable-execution.html">Durable execution and recovery</a>
+<a href="execution-security.html">Execution security</a>
 <a href="ha-resources.html">Shared resources and scheduler leadership</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="production-profile.html" class="active">Production profile</a>
@@ -175,7 +176,7 @@ prove original password length: rotate existing local passwords before conversio
 <td>tls</td>
 <td>Explicit numeric IP</td>
 <td>HTTPS</td>
-<td>Loadable certificate/key; optional client CA</td>
+<td>Loadable certificate/key; optional client CA for machine routes</td>
 </tr>
 </tbody>
 </table>
@@ -198,9 +199,7 @@ allows the embedded HTTP/REST executor; http-ssh also allows agentless SSH on th
 server. External agents remain available under all three policies. This policy
 applies to scheduled runs, Force, Run Now and retries. Explain reports
 <code>CONFIGURATION_BLOCKED</code>; blocked orders retain their snapshots and stay WAITING.</p>
-<p>This is an execution boundary, not a multi-tenant API visibility filter. It does
-not provide the secrets lifecycle, process isolation or full mTLS hardening planned
-separately. Do not mix old binaries or differently configured nodes into the same
+<p>This is an execution boundary, not a multi-tenant API visibility filter. Use the <a href="execution-security.html">execution security profile</a> for certificate-bound transport, runtime secret references and the dedicated Linux/systemd cell. Do not mix old binaries or differently configured nodes into the same
 production database or distributed bus.</p>
 <h2 id="clean-installation">Clean installation</h2>
 <p>Keep the service stopped and the port inaccessible while configuring a new install.

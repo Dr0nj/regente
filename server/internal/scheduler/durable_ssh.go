@@ -5,8 +5,12 @@ import (
 	"context"
 	"fmt"
 	"github.com/Dr0nj/regente-agent/journal"
+	"github.com/Dr0nj/regente-agent/security"
 	"github.com/Dr0nj/regente-server/internal/domain"
+	"net"
+	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -48,6 +52,24 @@ func executeDurableSSH(parent context.Context, def domain.JobDefinition, emit fu
 	if host == "" || command == "" {
 		return -1, "missing 'host' or 'command' param"
 	}
+	port := str("port")
+	if port == "" {
+		port = "22"
+	}
+	originalHost := host
+	if security.Restricted(parent) {
+		if user := str("user"); user != "" && !regexp.MustCompile("^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$").MatchString(user) {
+			return -1, "SSH user denied by execution policy"
+		}
+		pinned, err := security.PinnedAddress(parent, host, port)
+		if err != nil {
+			return -1, "SSH destination denied by execution policy"
+		}
+		host, _, _ = net.SplitHostPort(pinned)
+		if str("strictHostKey") != "yes" || str("knownHostsPath") == "" {
+			return -1, "restricted SSH requires strictHostKey=yes and knownHostsPath"
+		}
+	}
 	target := host
 	if user := str("user"); user != "" {
 		target = user + "@" + host
@@ -57,6 +79,9 @@ func executeDurableSSH(parent context.Context, def domain.JobDefinition, emit fu
 		strict = "accept-new"
 	}
 	args := []string{"-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=" + strict}
+	if security.Restricted(parent) {
+		args = append(args, "-F", os.DevNull, "-o", "ProxyCommand=none", "-o", "ProxyJump=none", "-o", "PermitLocalCommand=no", "-o", "ForwardAgent=no", "-o", "HostKeyAlias="+originalHost)
+	}
 	if known := str("knownHostsPath"); known != "" {
 		args = append(args, "-o", "UserKnownHostsFile="+known)
 	}
@@ -74,6 +99,7 @@ func executeDurableSSH(parent context.Context, def domain.JobDefinition, emit fu
 	ctx, cancel := context.WithTimeout(parent, time.Duration(timeout)*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "ssh", args...)
+	cmd.Env = security.CleanEnvironment()
 	journal.ConfigureCancel(cmd)
 	cmd.WaitDelay = 5 * time.Second
 	writer := &sshWriter{emit: emit}

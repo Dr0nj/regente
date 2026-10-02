@@ -48,3 +48,22 @@ func TestChainPrecedenceAndGetOr(t *testing.T) {
 		t.Fatalf("GetOr fallback: %q", got)
 	}
 }
+
+func TestI13ControlPlaneFileRotationAndOutage(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "rotate.json")
+	f := NewFileProvider(p)
+	for _, v := range []string{"old-value", "new-value"} {
+		if err := os.WriteFile(p, []byte(`{"key":"`+v+`"}`), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if got, ok := f.Get("key"); !ok || got != v {
+			t.Fatal("provider não recarregou")
+		}
+	}
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := f.Get("key"); ok {
+		t.Fatal("provider serviu segredo stale")
+	}
+}

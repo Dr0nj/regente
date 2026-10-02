@@ -130,9 +130,10 @@ func TestServerTLS_MutualAuth(t *testing.T) {
 
 	// 1) SEM cert de cliente → rejeitado (handshake falha).
 	noCert := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots}}}
-	if resp, err := noCert.Get(srv.URL); err == nil {
+	if resp, err := noCert.Get(srv.URL); err != nil {
+		t.Fatal("web/probe sem cert deve continuar acessível")
+	} else {
 		resp.Body.Close()
-		t.Fatal("cliente SEM certificado deveria ser rejeitado pelo mTLS")
 	}
 
 	// 2) COM cert assinado pela CA → aceito.

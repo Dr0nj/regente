@@ -34,7 +34,7 @@ func durableTest(t *testing.T, defs ...domain.JobDefinition) *durableFixture {
 	t.Helper()
 	f := &durableFixture{path: filepath.Join(t.TempDir(), "runtime.db"), now: time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC), store: storage.NewFileStore(t.TempDir(), false)}
 	var err error
-	if strings.Contains(t.Name(), "TestI10PostgresRuntimeContracts") || strings.Contains(t.Name(), "TestI11Postgres") {
+	if strings.Contains(t.Name(), "TestI10PostgresRuntimeContracts") || strings.Contains(t.Name(), "TestI11Postgres") || strings.Contains(t.Name(), "TestI13InternalHTTPPolicyAndSSH/postgres") {
 		f.dialect = db.Postgres
 		f.path = durablePGDSN(t)
 	} else {

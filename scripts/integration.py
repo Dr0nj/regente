@@ -117,6 +117,10 @@ def validate_test_events(output):
                 "TestI10PostgresRuntimeContracts/operation-protection", "TestI10PostgresRuntimeContracts/effect-audit",
                 "TestI10PostgresRuntimeContracts/internal-http", "TestI10PostgresRuntimeContracts/runtime-sla",
                 "TestI10PostgresRuntimeContracts/internal-ssh",
+                "TestI13CertificateBindingAndActiveRevocation/sqlite", "TestI13CertificateBindingAndActiveRevocation/postgres",
+                "TestI13RealAgentSecretsMTLSAndEgress/sqlite", "TestI13RealAgentSecretsMTLSAndEgress/postgres",
+                "TestI13InternalHTTPPolicyAndSSH/sqlite", "TestI13InternalHTTPPolicyAndSSH/postgres",
+                "TestI13SecretsRotationAuthorizationOutage", "TestI13EgressRedirectAndSensitiveDestination",
                 "TestI12PreparedPRRetryAndGC", "TestI12DraftContracts/sqlite", "TestI12DraftContracts/postgres",
                 "TestI11MigrationPreservesHolds/sqlite", "TestI11MigrationPreservesHolds/postgres",
                 "TestI11PostgresLeadershipFencing", "TestI11PostgresTermWaitsForTransaction", "TestI11PostgresContracts/concurrent-reservations",
@@ -601,8 +605,8 @@ def main():
                    REGENTE_TEST_OIDC_CLIENT_SECRET="synthetic-client-secret",
                    REGENTE_TEST_OIDC_USER="lab-user", REGENTE_TEST_OIDC_PASS="synthetic-password")
         output = command(["go", "test", "-json", "-count=1", "-timeout=5m",
-                          "./server/internal/db", "./server/internal/api", "./server/internal/storage", "./server/internal/scheduler", "./server/internal/leader", "./agent/journal", "-run",
-                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials|TestHumanIdentity|TestWebEvent|TestProductionIdentity|TestI06BusinessTimeIntegration|TestI07DailyRecoveryIntegration|TestI08AttemptIntegration|TestI09|TestI10|TestI11|TestI12"],
+                          "./server/internal/db", "./server/internal/api", "./server/internal/storage", "./server/internal/scheduler", "./server/internal/leader", "./agent/journal", "./agent/security", "-run",
+                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials|TestHumanIdentity|TestWebEvent|TestProductionIdentity|TestI06BusinessTimeIntegration|TestI07DailyRecoveryIntegration|TestI08AttemptIntegration|TestI09|TestI10|TestI11|TestI12|TestI13"],
                          env=env, timeout=360, name="database-oidc-tests")
         validate_test_events(output)
         command(["go", "test", "-race", "-count=1", "-timeout=3m", "./server/internal/api", "-run", "^TestWebEvent"],

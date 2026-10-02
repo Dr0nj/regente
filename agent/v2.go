@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Dr0nj/regente-agent/journal"
+	"github.com/Dr0nj/regente-agent/security"
 	"io"
 	"log"
 	"net/http"
@@ -97,24 +98,35 @@ func runAgentV2(base, token, id, caps, environment, path string, concurrency, pe
 		case <-ctx.Done():
 		}
 	}()
-	t := &v2HTTP{Base: base, Token: token, ID: id, Caps: caps, Env: environment, Version: agentVersion, Slots: concurrency, Pending: pending, Client: &http.Client{Timeout: 10 * time.Second}}
-	w := journal.NewWorker(j, t, func(ctx context.Context, e journal.Envelope, emit func(string)) (int, string) {
+	t := &v2HTTP{Base: base, Token: token, ID: id, Caps: caps, Env: environment, Version: agentVersion, Slots: concurrency, Pending: pending, Client: controlClient(10 * time.Second)}
+	w := journal.NewWorker(j, t, func(ctx context.Context, e journal.Envelope, emit func(string)) (code int, out string) {
 		var def struct {
-			DryRun  bool                   `json:"dryRun"`
-			JobType string                 `json:"jobType"`
-			Params  map[string]interface{} `json:"actionConfig"`
-			Timeout int                    `json:"timeout"`
+			ID          string                 `json:"id"`
+			Environment string                 `json:"environment"`
+			DryRun      bool                   `json:"dryRun"`
+			JobType     string                 `json:"jobType"`
+			Params      map[string]interface{} `json:"actionConfig"`
+			Timeout     int                    `json:"timeout"`
 		}
 		if json.Unmarshal(e.Definition, &def) != nil {
 			return -1, "invalid frozen execution definition"
 		}
+		prepared, params, redact, err := security.Prepare(ctx, *executionPolicy, *jobSecrets, def.Environment, def.ID, strings.ToUpper(def.JobType), def.Params)
+		if err != nil {
+			return -1, err.Error()
+		}
+		ctx = prepared
+		def.Params = params
+		defer func() { out = redact(out) }()
+		originalEmit := emit
+		emit = func(s string) { originalEmit(redact(s)) }
 		if def.DryRun {
 			return 0, "[dry run] no external effect executed"
 		}
 		if strings.EqualFold(def.JobType, "HTTP") || strings.EqualFold(def.JobType, "REST") {
 			return runRESTContext(ctx, def.Params, def.Timeout, true)
 		}
-		code, out := executeJob(ctx, def.JobType, def.Params, def.Timeout, emit)
+		code, out = executeJob(ctx, def.JobType, def.Params, def.Timeout, emit)
 		switch strings.ToUpper(def.JobType) {
 		case "FILE_TRANSFER", "DATABASE", "LAMBDA", "BATCH", "GLUE", "STEP_FUNCTION":
 			if code != 0 {

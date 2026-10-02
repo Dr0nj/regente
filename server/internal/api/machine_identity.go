@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/Dr0nj/regente-server/internal/sectls"
 	"net/http"
 	"regexp"
 	"slices"
@@ -20,10 +22,12 @@ import (
 const machineRevalidateInterval = time.Second
 
 type machinePrincipal struct {
-	CredentialID int64
-	AgentID      string
-	Environment  string
-	Capabilities string
+	CredentialID      int64
+	AgentID           string
+	Environment       string
+	Capabilities      string
+	CertificateSHA256 string
+	Certificates      []*x509.Certificate
 }
 
 func tokenDigest(token string) string {
@@ -41,20 +45,36 @@ func (s *server) machineAuth(r *http.Request) (*machinePrincipal, bool) {
 	ctx, cancel := context.WithTimeout(r.Context(), time.Second)
 	defer cancel()
 	p := &machinePrincipal{}
-	err := s.cfg.DB.QueryRowContext(ctx, `SELECT t.id, p.agent_id, p.environment, p.capabilities
+	err := s.cfg.DB.QueryRowContext(ctx, `SELECT t.id, p.agent_id, p.environment, p.capabilities, t.certificate_sha256
  FROM agent_tokens t JOIN machine_principals p ON p.agent_id=t.agent_id
  WHERE t.token_hash=? AND t.revoked_at=0 AND t.expires_at>?`, tokenDigest(token), time.Now().UnixMilli()).Scan(
-		&p.CredentialID, &p.AgentID, &p.Environment, &p.Capabilities)
+		&p.CredentialID, &p.AgentID, &p.Environment, &p.Capabilities, &p.CertificateSHA256)
 	if err == nil && !s.cfg.RuntimePolicy.AllowsEnvironment(p.Environment) {
 		return nil, false
 	}
 	if err == nil {
+		if r.TLS != nil {
+			p.Certificates = r.TLS.PeerCertificates
+		}
+		if !s.machineCertificateValid(p) {
+			return nil, false
+		}
 		_, _ = s.cfg.DB.ExecContext(ctx, `UPDATE agent_tokens SET last_used_at=CURRENT_TIMESTAMP WHERE id=?`, p.CredentialID)
 	}
 	return p, err == nil
 }
 
+func (s *server) machineCertificateValid(p *machinePrincipal) bool {
+	if s.cfg.RuntimePolicy.TLSClientCA == "" {
+		return p.CertificateSHA256 == ""
+	}
+	return p.CertificateSHA256 != "" && sectls.VerifyClient(p.Certificates, s.cfg.RuntimePolicy.TLSClientCA) &&
+		sectls.Fingerprint(p.Certificates[0]) == p.CertificateSHA256
+}
 func (s *server) machineValid(p *machinePrincipal) bool {
+	if !s.machineCertificateValid(p) {
+		return false
+	}
 	if !s.cfg.RuntimePolicy.AllowsEnvironment(p.Environment) {
 		return false
 	}
@@ -64,8 +84,8 @@ func (s *server) machineValid(p *machinePrincipal) bool {
 	err := s.cfg.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM agent_tokens t
  JOIN machine_principals p ON p.agent_id=t.agent_id
  WHERE t.id=? AND t.revoked_at=0 AND t.expires_at>? AND p.agent_id=?
- AND p.environment=? AND p.capabilities=?`, p.CredentialID, time.Now().UnixMilli(),
-		p.AgentID, p.Environment, p.Capabilities).Scan(&n)
+ AND p.environment=? AND p.capabilities=? AND t.certificate_sha256=?`, p.CredentialID, time.Now().UnixMilli(),
+		p.AgentID, p.Environment, p.Capabilities, p.CertificateSHA256).Scan(&n)
 	return err == nil && n == 1
 }
 
@@ -155,11 +175,12 @@ func (s *server) machineOwns(p *machinePrincipal, instanceID string) bool {
 }
 
 type tokenRequest struct {
-	Label        string    `json:"label"`
-	AgentID      string    `json:"agentId"`
-	Environment  string    `json:"environment"`
-	Capabilities []string  `json:"capabilities"`
-	ExpiresAt    time.Time `json:"expiresAt"`
+	Label             string    `json:"label"`
+	AgentID           string    `json:"agentId"`
+	Environment       string    `json:"environment"`
+	Capabilities      []string  `json:"capabilities"`
+	ExpiresAt         time.Time `json:"expiresAt"`
+	CertificateSHA256 string    `json:"certificateSHA256,omitempty"`
 }
 
 var machineName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
@@ -181,9 +202,12 @@ func (b *tokenRequest) validate() bool {
 			return false
 		}
 	}
-	return validMachineExpiry(b.ExpiresAt)
+	return validMachineExpiry(b.ExpiresAt) && validCertificateSHA(b.CertificateSHA256)
 }
 
+func validCertificateSHA(s string) bool {
+	return s == "" || regexp.MustCompile("^[a-f0-9]{64}$").MatchString(s)
+}
 func validMachineExpiry(t time.Time) bool {
 	now := time.Now()
 	return t.After(now) && !t.After(now.Add(365*24*time.Hour))
@@ -196,14 +220,14 @@ func issueMachineToken(tx *db.Tx, b tokenRequest) (map[string]any, error) {
 	}
 	token := "rgta_" + hex.EncodeToString(secret)
 	var id int64
-	err := tx.QueryRow(`INSERT INTO agent_tokens(token_hash, token_prefix, label, agent_id, expires_at)
- VALUES(?,?,?,?,?) RETURNING id`, tokenDigest(token), token[:13], b.Label, b.AgentID,
-		b.ExpiresAt.UnixMilli()).Scan(&id)
+	err := tx.QueryRow(`INSERT INTO agent_tokens(token_hash, token_prefix, label, agent_id, expires_at, certificate_sha256)
+ VALUES(?,?,?,?,?,?) RETURNING id`, tokenDigest(token), token[:13], b.Label, b.AgentID,
+		b.ExpiresAt.UnixMilli(), b.CertificateSHA256).Scan(&id)
 	if err != nil {
 		return nil, err
 	}
 	return map[string]any{"id": id, "label": b.Label, "agentId": b.AgentID, "environment": b.Environment,
-		"capabilities": strings.Split(canonicalCaps(b.Capabilities), ","), "expiresAt": b.ExpiresAt.UTC(), "token": token}, nil
+		"capabilities": strings.Split(canonicalCaps(b.Capabilities), ","), "expiresAt": b.ExpiresAt.UTC(), "token": token, "certificateSHA256": b.CertificateSHA256}, nil
 }
 
 func (s *server) createAgentToken(w http.ResponseWriter, r *http.Request) {
@@ -211,7 +235,7 @@ func (s *server) createAgentToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b tokenRequest
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&b) != nil || !b.validate() || !s.cfg.RuntimePolicy.AllowsEnvironment(b.Environment) {
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&b) != nil || !b.validate() || !s.cfg.RuntimePolicy.AllowsEnvironment(b.Environment) || (s.cfg.RuntimePolicy.TLSClientCA != "" && b.CertificateSHA256 == "") {
 		http.Error(w, "agentId, environment, capabilities and expiresAt (within 365 days) are required; reserved IDs are forbidden", http.StatusBadRequest)
 		return
 	}
@@ -250,11 +274,12 @@ func (s *server) rotateAgentToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b struct {
-		ExpiresAt    time.Time `json:"expiresAt"`
-		GraceSeconds int       `json:"graceSeconds"`
+		ExpiresAt         time.Time `json:"expiresAt"`
+		GraceSeconds      int       `json:"graceSeconds"`
+		CertificateSHA256 *string   `json:"certificateSHA256,omitempty"`
 	}
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&b) != nil ||
-		!validMachineExpiry(b.ExpiresAt) || b.GraceSeconds < 0 || b.GraceSeconds > 3600 {
+		!validMachineExpiry(b.ExpiresAt) || b.GraceSeconds < 0 || b.GraceSeconds > 3600 || (b.CertificateSHA256 != nil && !validCertificateSHA(*b.CertificateSHA256)) {
 		http.Error(w, "invalid expiry or graceSeconds (0..3600)", http.StatusBadRequest)
 		return
 	}
@@ -279,14 +304,21 @@ func (s *server) rotateAgentToken(w http.ResponseWriter, r *http.Request) {
 	}
 	var req tokenRequest
 	var caps string
-	err = tx.QueryRow(`SELECT t.label,p.agent_id,p.environment,p.capabilities FROM agent_tokens t
- JOIN machine_principals p ON p.agent_id=t.agent_id WHERE t.id=?`, chi.URLParam(r, "id")).Scan(&req.Label, &req.AgentID, &req.Environment, &caps)
+	err = tx.QueryRow(`SELECT t.label,p.agent_id,p.environment,p.capabilities,t.certificate_sha256 FROM agent_tokens t
+ JOIN machine_principals p ON p.agent_id=t.agent_id WHERE t.id=?`, chi.URLParam(r, "id")).Scan(&req.Label, &req.AgentID, &req.Environment, &caps, &req.CertificateSHA256)
 	if err != nil {
 		http.Error(w, "could not load principal", http.StatusInternalServerError)
 		return
 	}
 	if !s.cfg.RuntimePolicy.AllowsEnvironment(req.Environment) {
 		http.Error(w, "credential environment does not match production", http.StatusBadRequest)
+		return
+	}
+	if b.CertificateSHA256 != nil {
+		req.CertificateSHA256 = *b.CertificateSHA256
+	}
+	if s.cfg.RuntimePolicy.TLSClientCA != "" && req.CertificateSHA256 == "" {
+		http.Error(w, "certificateSHA256 is required", http.StatusBadRequest)
 		return
 	}
 	req.Capabilities = strings.Split(caps, ",")
@@ -308,7 +340,7 @@ func (s *server) listAgentTokens(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := s.cfg.DB.Query(`SELECT t.id,t.label,t.token_prefix,t.created_at,t.last_used_at,
- COALESCE(p.agent_id,''),COALESCE(p.environment,''),COALESCE(p.capabilities,''),t.expires_at,t.revoked_at
+ COALESCE(p.agent_id,''),COALESCE(p.environment,''),COALESCE(p.capabilities,''),t.expires_at,t.revoked_at,t.certificate_sha256
  FROM agent_tokens t LEFT JOIN machine_principals p ON p.agent_id=t.agent_id ORDER BY t.id DESC`)
 	if err != nil {
 		http.Error(w, "credential storage unavailable", http.StatusServiceUnavailable)
@@ -318,9 +350,9 @@ func (s *server) listAgentTokens(w http.ResponseWriter, r *http.Request) {
 	out := []map[string]any{}
 	for rows.Next() {
 		var id, expiry, revoked int64
-		var label, prefix, agent, env, caps string
+		var label, prefix, agent, env, caps, certificateSHA string
 		var created, last any
-		if err = rows.Scan(&id, &label, &prefix, &created, &last, &agent, &env, &caps, &expiry, &revoked); err != nil {
+		if err = rows.Scan(&id, &label, &prefix, &created, &last, &agent, &env, &caps, &expiry, &revoked, &certificateSHA); err != nil {
 			http.Error(w, "could not read credentials", http.StatusInternalServerError)
 			return
 		}
@@ -338,7 +370,7 @@ func (s *server) listAgentTokens(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, map[string]any{"id": id, "label": label, "tokenPrefix": prefix, "agentId": agent,
 			"environment": env, "capabilities": capList, "expiresAt": time.UnixMilli(expiry).UTC(), "status": status,
-			"createdAt": created, "lastUsedAt": last})
+			"createdAt": created, "lastUsedAt": last, "certificateSHA256": certificateSHA})
 	}
 	if !rowsOK(w, rows) {
 		return

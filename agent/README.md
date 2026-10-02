@@ -106,3 +106,7 @@ Building from source instead? Use [`deploy/install-linux.sh`](deploy/install-lin
 // agent → server (every 30s)
 { "event":"heartbeat" }
 ```
+
+## Certificate-bound execution cells
+
+The real binary supports -tls-cert, -tls-key, -tls-ca, -token-file, -execution-policy and -job-secrets-file. Protocol 2 reloads protected TLS/credential files per request and resolves authorized secret references only in memory. Use install-secure-linux.sh from the same release for the supported dedicated Linux/systemd HTTP cell. See [execution security](../docs/execution-security.md) for rotation, egress, limits and rollback.
