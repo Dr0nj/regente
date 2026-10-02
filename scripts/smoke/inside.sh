@@ -211,6 +211,7 @@ id: smoke-job
 label: Smoke job
 team: ops
 jobType: COMMAND
+agentId: smoke-agent
 schedule:
   enabled: true
   frequency: daily
@@ -262,15 +263,17 @@ fi
 wait_for 45 'api "'"$BASE"'/api/agents" | grep -q smoke-agent' || bad "o agente não apareceu online"
 api "$BASE/api/agents" | grep -q smoke-agent && ok "agente online na frota"
 
-api -X POST "$BASE/api/definitions/smoke-job/force" >/dev/null 2>&1 || bad "Order Force falhou"
-wait_for 90 'api "'"$BASE"'/api/instances" | grep -q "\"status\":\"OK\""' || bad "o job não terminou OK"
-if api "$BASE/api/instances" | grep -q '"status":"OK"'; then
+# Não confundir a instância forçada com a daily já terminal. A definição exige
+# o agente instalado; status/output são consultados pelo ID devolvido pelo Force.
+iid="$(api -X POST "$BASE/api/definitions/smoke-job/force" | jfield instanceId)" || { bad "Order Force falhou"; exit 1; }
+[ -n "$iid" ] || { bad "Order Force não devolveu instanceId"; exit 1; }
+wait_for 90 'api "'"$BASE"'/api/instances/$iid" | grep -q "\"status\":\"OK\""' || bad "a instância forçada não terminou OK"
+if api "$BASE/api/instances/$iid" | grep -q '"status":"OK"'; then
   ok "job executou pelo agente e terminou OK"
-  iid="$(api "$BASE/api/instances" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d[0]['id'] if d else '')")"
-  if api "$BASE/api/instances/$iid/output" | grep -q 'smoke-ok'; then
+  if wait_for 30 'api "'"$BASE"'/api/instances/$iid/output" | grep -q smoke-ok'; then
     ok "output do processo chegou na API"
   else
-    bad "o output do job não chegou"
+    bad "o output da instância forçada não chegou"
   fi
 fi
 
