@@ -17,9 +17,9 @@
 > no §Entregue e some uma linha no §Changelog. Ao **abrir** um item novo: só adicione no §Backlog.
 > Sem barras de progresso nem porcentagens — de propósito (confundem mais do que ajudam).
 >
-> Documento vivo · revisão **2026-10-01** — o marco de manutenção de **2026-07-30**
+> Documento vivo · revisão **2026-10-02** — o marco de manutenção de **2026-07-30**
 > descreve as trilhas originais. O ciclo enterprise iniciado em setembro está ativo:
-> I04/I05/I06/I07/I08/I09/I10/I11/I12, E04 e DOC-01–DOC-14 entregues; I13–I17 seguem na §Backlog. Manutenção histórica
+> I04/I05/I06/I07/I08/I09/I10/I11/I12/I13, E04 e DOC-01–DOC-14 entregues; I14–I17 seguem na §Backlog. Manutenção histórica
 > não cancela incrementos explicitamente solicitados nem significa homologação produtiva.
 > Estratégia de arquitetura em [`architecture-future.md`](architecture-future.md);
 > apresentação de produto no [`../README.md`](../README.md).
@@ -85,7 +85,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
-- **I13–I17:** secrets/mTLS/isolamento, auditoria, publicação verificável, capacidade, recuperação e piloto seguem na sequência enterprise.
+- **I14–I17:** auditoria, publicação verificável, capacidade, recuperação e piloto seguem na sequência enterprise.
 
 Escopo ativo deste ciclo: separar credenciais humanas de execução e preparar as
 próximas garantias. Não representa homologação empresarial completa.
@@ -383,6 +383,15 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+## I13 — Secrets, mTLS e células de execução restritas (2026-10-02)
+
+- Schema 31 liga credencial de máquina ao SHA256 da leaf e mantém claims imutáveis. TLS real no agente, revalidação da CA/validade/binding por request e em canais ativos, rotação/revogação; navegador/probes não exigem certificado de máquina. Proxy headers não provam identidade.
+- Provider local de arquivos protegidos por job/ambiente, referências no Git/snapshot/journal, resolução em cópia de memória após autorização durável, TTL0/sem cache stale, rotação e redaction antes da persistência. HTTP/REST apenas; valores de 8–4096 bytes. Não inclui cloud secret manager nem scrub retroativo de literal legado.
+- Egress HTTP host/porta/CIDR, todos os IPs DNS validados e dial pinado, sem proxy/redirect e com metadados sensíveis negados. SSH interno exige host key estrita e elimina hooks/proxy/config local; demais adapters sem guard são recusados.
+- Installer Linux/systemd publicado cria células HTTP/REST e COMMAND/SCRIPT em usuários distintos, configs protegidas, volumes delimitados, sem capabilities/privilégios novos, CPU/RAM/tasks e egress deny-all. COMMAND é domínio de confiança próprio, não sandbox para código hostil; sem acesso aos secrets da célula HTTP e sem credencial herdada no processo filho.
+- CI full com oito gates e matriz de seis jobs no SHA e5bb974, 280 testes/subtestes de integração obrigatórios SQLite/PostgreSQL e oito browser sem skips/flaky. Agente binário real e instalação systemd provaram rotação sem restart, outage sem efeito, ausência de raw secret, revogação, UID/volumes/limites e destino independente realmente bloqueado pelo host. [Contrato](execution-security.md) · [Evidência](evidence/i13-e5bb974.json).
+- Perfil exige cgroup BPF funcionando. Redaction exata não protege contra endpoint malicioso; shell remoto tem outra fronteira. Upgrade drenado [31,31], sem N/N−1. I14–I17 continuam abertos; capacidade, DR geral e piloto produtivo não são qualificados por I13.
 
 ## I12 — Drafts compartilhados, CAS e recuperação de Design (2026-10-01)
 
@@ -1914,6 +1923,8 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-10-02 — I13:** mTLS ligado à identidade de máquina, secrets autorizados por execução com TTL0/redaction e células Linux/systemd HTTP/COMMAND separadas com egress real. Schema 31, oito gates full, SQLite/PG, oito browser e smoke instalado aprovados. [Contrato](execution-security.md) · [Evidência](evidence/i13-e5bb974.json). Próximo I14.
 
 - **2026-10-01 — I12:** conteúdo/undo de Design compartilhados e versionados, CAS/propriedade/ACL/auditoria, publicação recuperável e legado/export-import preservados. Schema30, full CI8gates, SQLite/PG/restore DB-only e oito browser aprovados. [Contrato](shared-drafts.md) · [Evidência](evidence/i12-650e7ed.json). I13–I17 seguem backlog.
 

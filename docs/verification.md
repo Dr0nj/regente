@@ -16,7 +16,7 @@ failed commands, missing evidence or an omitted mandatory gate cause failure.
 | Real browser: local/hybrid/OIDC login, scoped WebSocket, frozen business timezone, daily/execution recovery and shared draft conflict/restart | No | Yes | Chromium against real server |
 | PostgreSQL, NATS, OIDC, daily recovery, isolated v2 attempts and synthetic execution | No | Yes | Real containers; evidence required |
 | PowerShell demo: offline and Git fixture | No | Linux Docker smoke | Native Windows smoke |
-| Release installation in systemd | No | No | Separate release workflow |
+| Installed systemd execution security and release installation | No | No | Mandatory CI step after full; repeated for release artifacts |
 
 Go unit suites include optional external-service tests. Their skips in quick
 are **not** integration evidence. Full separately invokes the integration runner,
@@ -94,7 +94,10 @@ The reusable [documentation recipe matrix](../.github/workflows/doc-recipes.yml)
 adds builds on the declared Node minima and native Windows PowerShell smoke.
 A local full pass covers the fixed Linux profile; the extra platform matrix
 still requires its own CI result. CI uploads `verification-evidence`, including
-integration evidence; browser failure traces are uploaded separately.
+integration evidence; browser failure traces are uploaded separately. CI also requires
+installed HTTP and COMMAND execution cells through scripts/smoke-install.sh
+after full, with cgroup BPF and actual denied egress. Its log is included in
+the same artifact as i13-systemd.log; pipefail propagates installation errors.
 
 Dead-code reporting is informational and is outside the pass condition.
 [Release](../.github/workflows/release.yml) retains its separate integration and

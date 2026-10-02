@@ -1,0 +1,190 @@
+{
+  "increment": "I13",
+  "date": "2026-10-02",
+  "sha": "e5bb974bbbc97b1d8790818992b15b6eb2760514",
+  "ci_url": "https://github.com/Dr0nj/regente/actions/runs/37012869940",
+  "status": "passed",
+  "profile": "synthetic-ci-v1",
+  "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+  "go": "go version go1.26.8 linux/amd64",
+  "nats_version": "2.11.8",
+  "images": [
+    {
+      "ID": "sha256:0dfa54630538e8565a0953e5d7316c4b92bd17e293ec333e94f52be2094e7300",
+      "ContainerName": "regente-it-bf698217e50c-nats-1",
+      "Repository": "nats",
+      "Tag": "",
+      "Platform": "linux/amd64",
+      "Size": 25895714,
+      "LastTagTime": "0001-01-01T00:00:00Z"
+    },
+    {
+      "ID": "sha256:d741b376874687de90374fd34f55c6b2760e8f7bd7e4ae5cd47f50757fc08cf8",
+      "ContainerName": "regente-it-bf698217e50c-postgres-1",
+      "Repository": "postgres",
+      "Tag": "",
+      "Platform": "linux/amd64",
+      "Size": 278205935,
+      "LastTagTime": "0001-01-01T00:00:00Z"
+    },
+    {
+      "ID": "sha256:086a18b8b109fabaa6b370d30fe4c6abfe316bf1ab88dea7a3ddc6cf31333149",
+      "ContainerName": "regente-it-bf698217e50c-keycloak-1",
+      "Repository": "quay.io/keycloak/keycloak",
+      "Tag": "",
+      "Platform": "linux/amd64",
+      "Size": 450582544,
+      "LastTagTime": "0001-01-01T00:00:00Z"
+    }
+  ],
+  "verification": {
+    "mode": "full",
+    "status": "passed",
+    "gates": [
+      {
+        "gate": "runner",
+        "status": "passed"
+      },
+      {
+        "gate": "server",
+        "status": "passed"
+      },
+      {
+        "gate": "agent",
+        "status": "passed"
+      },
+      {
+        "gate": "web",
+        "status": "passed"
+      },
+      {
+        "gate": "docs",
+        "status": "passed"
+      },
+      {
+        "gate": "browser",
+        "status": "passed"
+      },
+      {
+        "gate": "integration",
+        "status": "passed"
+      },
+      {
+        "gate": "demo",
+        "status": "passed"
+      }
+    ],
+    "seconds": 588.048
+  },
+  "integration": {
+    "status": "passed",
+    "passed_test_count": 280,
+    "passed_tests": [
+      "TestI13CertificateBindingAndActiveRevocation",
+      "TestI13CertificateBindingAndActiveRevocation/postgres",
+      "TestI13CertificateBindingAndActiveRevocation/sqlite",
+      "TestI13EgressRedirectAndSensitiveDestination",
+      "TestI13InternalHTTPPolicyAndSSH",
+      "TestI13InternalHTTPPolicyAndSSH/postgres",
+      "TestI13InternalHTTPPolicyAndSSH/sqlite",
+      "TestI13RealAgentSecretsMTLSAndEgress",
+      "TestI13RealAgentSecretsMTLSAndEgress/postgres",
+      "TestI13RealAgentSecretsMTLSAndEgress/sqlite",
+      "TestI13SecretsRotationAuthorizationOutage"
+    ],
+    "seconds": 272.224,
+    "i12_draft_recovery": {
+      "sqlite": {
+        "complete_set_preserved_content": true,
+        "db_only_preserved_content": true,
+        "cross_node_without_disk": true,
+        "restart_without_cache": true,
+        "stale_write_rejected": true,
+        "archived_files": 0,
+        "seconds": 1.412
+      },
+      "postgres": {
+        "complete_set_preserved_content": true,
+        "db_only_preserved_content": true,
+        "cross_node_without_disk": true,
+        "restart_without_cache": true,
+        "stale_write_rejected": true,
+        "archived_files": 0,
+        "seconds": 2.965
+      }
+    },
+    "i11_ha": {
+      "servers": 2,
+      "agent_on_follower": true,
+      "pool_peak": 1,
+      "follower_quota_update": true,
+      "db_nats_interruption": true,
+      "leader_sigkill": true,
+      "identity_preserved": true,
+      "effect_count": 2,
+      "zero_quota_blocks": true,
+      "seconds": 9.165
+    },
+    "durable_process_recovery": {
+      "sqlite": {
+        "server_sigkill": true,
+        "agent_result_pending": true,
+        "identity_preserved": true,
+        "effect_count": 1,
+        "condition_committed": true,
+        "seconds": 5.534
+      },
+      "postgres": {
+        "server_sigkill": true,
+        "agent_result_pending": true,
+        "identity_preserved": true,
+        "effect_count": 1,
+        "condition_committed": true,
+        "seconds": 5.936
+      }
+    }
+  },
+  "browser": {
+    "startTime": "2026-10-02T13:29:33.376Z",
+    "duration": 18844.421,
+    "expected": 8,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "installed_systemd": {
+    "status": "passed",
+    "markers": [
+      "SMOKE stage1 OK",
+      "SMOKE stage2 OK",
+      "I13 COMMAND CELL OK:",
+      "I13 SYSTEMD OK:"
+    ],
+    "profile": "Ubuntu 22/systemd with actual cgroup BPF IP filtering",
+    "cells": [
+      "HTTP/REST secrets cell",
+      "trusted COMMAND/SCRIPT cell with separate UID"
+    ],
+    "checks": [
+      "browser/probe TLS without machine certificate",
+      "certificate-bound scoped credential",
+      "hot certificate/token/secret rotation without restart",
+      "secret outage with no external effect",
+      "stored output and system journal redaction",
+      "credential revocation",
+      "non-root UID, protected files, cgroup CPU/RAM/task limits",
+      "independently reachable forbidden IP blocked by host cgroup",
+      "command cell denied HTTP secrets/key and system writes",
+      "command child without inherited credential and denied host egress"
+    ]
+  },
+  "limits": [
+    "Local file provider only, TTL=0 and no stale fallback; no Vault/AWS secret manager qualification",
+    "HTTP/REST secret references only, values 8-4096 bytes; redaction covers exact resolved values, not malicious endpoint encoding/exfiltration",
+    "Trusted COMMAND/SCRIPT cell is a separate UID and trust domain, not a hostile-code sandbox; child shares its own agent OS identity",
+    "Requires working Linux cgroup BPF IP filtering; unsupported hosts need a separately verified network boundary",
+    "Restricted SSH supports guarded dialing/host keys but the remote shell has a separate trust boundary; other network adapters are not homologated",
+    "Schema 31 supports [31,31]; drain/upgrade all nodes, no rolling N/N-1 claim",
+    "I14-I17 remain pending; broader audit, supply chain, capacity, DR and installed pilot qualification not implied"
+  ]
+}

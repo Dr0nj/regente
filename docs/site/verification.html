@@ -148,10 +148,10 @@ failed commands, missing evidence or an omitted mandatory gate cause failure.</p
 <td>Native Windows smoke</td>
 </tr>
 <tr>
-<td>Release installation in systemd</td>
+<td>Installed systemd execution security and release installation</td>
 <td>No</td>
 <td>No</td>
-<td>Separate release workflow</td>
+<td>Mandatory CI step after full; repeated for release artifacts</td>
 </tr>
 </tbody>
 </table>
@@ -215,7 +215,10 @@ The reusable <a href="https://github.com/Dr0nj/regente/blob/main/.github/workflo
 adds builds on the declared Node minima and native Windows PowerShell smoke.
 A local full pass covers the fixed Linux profile; the extra platform matrix
 still requires its own CI result. CI uploads <code>verification-evidence</code>, including
-integration evidence; browser failure traces are uploaded separately.</p>
+integration evidence; browser failure traces are uploaded separately. CI also requires
+installed HTTP and COMMAND execution cells through scripts/smoke-install.sh
+after full, with cgroup BPF and actual denied egress. Its log is included in
+the same artifact as i13-systemd.log; pipefail propagates installation errors.</p>
 <p>Dead-code reporting is informational and is outside the pass condition.
 <a href="https://github.com/Dr0nj/regente/blob/main/.github/workflows/release.yml">Release</a> retains its separate integration and
 systemd installation smoke. A CI pass does not mean a release or installation

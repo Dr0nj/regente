@@ -139,7 +139,7 @@ sudo SERVER=https://regente.example ID=http-prod-01 ENVIRONMENT=prod \
 
 Allow DNS resolver IPs when using names: no implicit DNS exception exists.
 The installer validates an HTTP/REST-only policy and creates a dedicated non-root
-user, 0700 config/0600 files, writable journal state only, no capabilities/new
+user, 0700 config/0600 files, dedicated writable journal state, no capabilities/new
 privileges, private devices/tmp, protected system/home/kernel/cgroups, 128 tasks,
 512 MiB RAM, no swap, one CPU quota and deny-all IPs with explicit CIDR exceptions.
 
@@ -154,7 +154,7 @@ a separate machine ID/certificate/token and a policy containing only COMMAND/SCR
 and no secrets. It creates regente-agent-command with a separate UID, protected
 configuration and writable journal directory, and the same cgroup/egress controls.
 The HTTP cell credentials/secrets directory is not readable by this UID.
-The default working volume is /var/lib/regente-agent-command; mount additional
+The writable state volume is /var/lib/regente-agent-command; set job cwd and mount additional
 volumes deliberately and review their ownership. Child processes
 omit inherited Regente/cloud credentials, but use the agent OS identity and may
 read its files. This is not a hostile-code sandbox. Use separate VMs/containers
@@ -177,3 +177,7 @@ actual denied host egress, separate command UID/volumes, absent inherited secret
 and revocation. See [verification](verification.md).
 
 Metadata address references: [AWS IMDS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html) and [Alibaba Cloud metadata](https://www.alibabacloud.com/help/en/ecs/user-guide/view-instance-metadata).
+
+## Verified laboratory
+
+[Full CI 37012869940](https://github.com/Dr0nj/regente/actions/runs/37012869940) passed at e5bb974bbbc97b1d8790818992b15b6eb2760514 with all eight gates, 280 mandatory integration tests/subtests and eight browser scenarios without skips or flaky results. The [recorded evidence](evidence/i13-e5bb974.json) includes real SQLite/PostgreSQL agent execution and installed Ubuntu/systemd HTTP and COMMAND cells with actual denied egress. This qualifies the documented profile in a synthetic laboratory, not an installed production pilot.

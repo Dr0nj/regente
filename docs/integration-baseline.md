@@ -175,3 +175,7 @@ nontransactional DDL inside the transaction; the runner never retries it in auto
 ## I11 shared resources and leadership
 
 [HA resource contracts](ha-resources.md) are exercised by TestI11 on both supported backends and mandatory PostgreSQL leadership tests. The runner also records i11_ha with two servers, a follower-connected agent, quota changes, PostgreSQL/NATS interruption and leader SIGKILL. These are correctness proofs within the synthetic laboratory, not capacity or pilot qualification.
+
+## I13 execution security
+
+The [execution security profile](execution-security.md) is exercised by TestI13CertificateBindingAndActiveRevocation, TestI13RealAgentSecretsMTLSAndEgress and TestI13InternalHTTPPolicyAndSSH on both SQLite and PostgreSQL, plus secret authorization/outage and pinned-egress tests. CI and release also require installed systemd HTTP and COMMAND cells, including actual denied host egress. This is a synthetic correctness profile; cloud managers and hostile-code isolation are outside its qualification.
