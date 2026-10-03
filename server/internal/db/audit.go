@@ -328,6 +328,13 @@ func (d *DB) VerifyAudit() error {
 	if cursor != seq || previous != hash {
 		return fmt.Errorf("audit head mismatch")
 	}
+	var missing int64
+	if err = tx.QueryRow("SELECT COUNT(*) FROM security_audit a LEFT JOIN audit_delivery d ON d.seq=a.seq WHERE d.seq IS NULL").Scan(&missing); err != nil {
+		return err
+	}
+	if missing != 0 {
+		return fmt.Errorf("audit delivery gap detected")
+	}
 	return nil
 }
 func (d *DB) AuditObservation(event, outcome string) error {

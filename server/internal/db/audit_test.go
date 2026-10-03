@@ -73,6 +73,18 @@ func TestMandatoryAuditTransactions(t *testing.T) {
 					t.Fatal(err)
 				}
 			})
+			t.Run("outbox_gap_is_detected", func(t *testing.T) {
+				d, _, _ := auditDB(t, dialect, 10)
+				if _, err := d.Exec("INSERT INTO variables(name,value) VALUES('kept','private')"); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := d.Raw().Exec("DELETE FROM audit_delivery WHERE seq=1"); err != nil {
+					t.Fatal(err)
+				}
+				if d.VerifyAudit() == nil {
+					t.Fatal("outbox incompleta passou pela verificação")
+				}
+			})
 			t.Run("persistence_failure_rolls_back", func(t *testing.T) {
 				d, _, _ := auditDB(t, dialect, 10)
 				if _, err := d.Raw().Exec("DROP TABLE audit_delivery"); err != nil {
