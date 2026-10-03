@@ -131,6 +131,12 @@ else
   echo "      Get it from the repository when you need it:  $REPO_URL/tree/main/deploy/vps"
 fi
 
+if [ -f "$HERE/install-audit-collector.sh" ] && [ -f "$HERE/regente-audit-collector.service" ]; then
+  install -d "$DEPLOY_DST/audit"
+  install -m 0755 "$HERE/install-audit-collector.sh" "$DEPLOY_DST/audit/install-audit-collector.sh"
+  install -m 0644 "$HERE/regente-audit-collector.service" "$DEPLOY_DST/audit/regente-audit-collector.service"
+fi
+
 UNIT=/etc/systemd/system/regente-server.service
 sed -e "s#__USER__#${RUN_USER}#g" "$HERE/regente-server.service" > "$UNIT"
 

@@ -7,7 +7,7 @@
 // eventos, o que vier primeiro (mesmo espírito do insertDailyBatch).
 //
 // Garantias:
-//   - NUNCA perde evento: fila cheia degrada pro INSERT síncrono de antes.
+//   - é telemetria best-effort; falha de batch pode perder eventos evento: fila cheia degrada pro INSERT síncrono de antes.
 //   - Ordem POR INSTANCE preservada no caminho da fila (canal único FIFO +
 //     writer único + lote na ordem de chegada). Única fronteira sem garantia:
 //     um write síncrono de degradação pode ganhar id menor que eventos da MESMA

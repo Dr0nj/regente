@@ -102,7 +102,10 @@ def validate_test_events(output):
     if skipped:
         raise RuntimeError(f"Mandatory integration tests skipped: {skipped}")
     passed = {e.get("Test") for e in events if e.get("Action") == "pass"}
-    required = {"TestMigrationRunbookContract", "TestPostgresMigrateAndCRUD", "TestMigrationSafety/postgres",
+    required = {"TestMandatoryAuditTransactions/sqlite", "TestMandatoryAuditTransactions/postgres",
+ "TestMandatoryAuditCrash/sqlite", "TestMandatoryAuditCrash/postgres",
+ "TestI14DurableExport/sqlite", "TestI14DurableExport/postgres", "TestI14MandatoryAPI",
+ "TestMigrationRunbookContract", "TestPostgresMigrateAndCRUD", "TestMigrationSafety/postgres",
                 "TestMigrationSafety/sqlite", "TestIntegrationOIDC_AuthCodeFlow",
                 "TestMachineIdentity/sqlite", "TestMachineIdentity/postgres",
                 "TestProductionIdentity/sqlite", "TestProductionIdentity/postgres",
@@ -562,6 +565,69 @@ def i11_ha_processes(env, dsn, nats_url):
     stop_process(nodes[follower_index][0])
 
 
+def i14_audit_processes(env, dsn, tls_dir):
+    pg = COMPOSE + ["exec", "-T", "postgres"]
+    command(pg + ["createdb", "-U", "regente", "regente_i14"])
+    for driver in ("sqlite", "postgres"):
+        begin = time.monotonic()
+        workspace = RUN / ("i14-" + driver)
+        workspace.mkdir()
+        database = str(workspace / "state.db") if driver == "sqlite" else dsn.replace("/regente_lab?", "/regente_i14?")
+        key = workspace / "signing.key"
+        common = [str(RUN / "server"), "-db-driver", driver, "-db", database, "-audit-key", str(key)]
+        command(common + ["-audit-verify"], env=env, name="i14-init-" + driver)
+        token = "synthetic-independent-audit-token-32"
+        token_file = workspace / "collector-token"
+        token_file.write_text(token)
+        token_file.chmod(0o600)
+        collector_addr = "127.0.0.1:" + str(free_port())
+        collector_file = workspace / "independent.jsonl"
+        collector_args = [str(RUN / "server"), "-addr", collector_addr,
+                          "-audit-collector-file", str(collector_file), "-audit-collector-public-key", str(key) + ".pub",
+                          "-audit-token-file", str(token_file), "-tls-cert", str(tls_dir / "lab.crt"), "-tls-key", str(tls_dir / "lab.key")]
+        collector = start_process("i14-collector-" + driver, collector_args, workspace, env)
+        addr = "127.0.0.1:" + str(free_port())
+        base = "http://" + addr
+        args = common + ["-addr", addr, "-workspace", str(workspace / "workspace"), "-role", "api", "-selfmon=false", "-server-agent=false",
+                         "-api-token", ADMIN, "-audit-siem-url", "https://" + collector_addr, "-audit-token-file", str(token_file)]
+        server = start_process("i14-server-" + driver, args, workspace, env)
+        eventually("i14 server " + driver, lambda: request(base + "/health"))
+        request(base + "/api/settings", "PUT", {"env_label": "i14-before"})
+        eventually("initial audit ACK " + driver, lambda: request(base + "/api/audit/security/status")["pending"] == 0, 90)
+        stop_process(collector)
+        request(base + "/api/settings", "PUT", {"env_label": "i14-accepted-during-outage"})
+        server.kill()
+        server.wait(timeout=10)
+        for proc, log in list(PROCESSES):
+            if proc is server:
+                log.close()
+                PROCESSES.remove((proc, log))
+        collector = start_process("i14-collector-resumed-" + driver, collector_args, workspace, env)
+        server = start_process("i14-server-resumed-" + driver, args, workspace, env)
+        eventually("i14 resumed " + driver, lambda: request(base + "/health"))
+        if request(base + "/api/settings")["env_label"] != "i14-accepted-during-outage":
+            raise RuntimeError("Accepted mutation was lost after SIGKILL")
+        eventually("resumed audit ACK " + driver, lambda: request(base + "/api/audit/security/status")["pending"] == 0, 90)
+        stop_process(server)
+        stop_process(collector)
+        records = [json.loads(line) for line in collector_file.read_text().splitlines()]
+        if not records or [r["seq"] for r in records] != list(range(1, len(records) + 1)):
+            raise RuntimeError("Independent collector has gaps or duplicate records")
+        last = records[-1]
+        checkpoint = workspace / "checkpoint.json"
+        checkpoint.write_text(json.dumps({key: last[key] for key in ("stream", "seq", "hash")}))
+        command(common + ["-audit-verify", "-audit-checkpoint", str(checkpoint)], env=env, name="i14-verify-" + driver)
+        if driver == "postgres":
+            command(pg + ["pg_dump", "-U", "regente", "-d", "regente_i14", "-Fc", "-f", "/tmp/i14.dump"])
+            command(pg + ["createdb", "-U", "regente", "regente_i14_restored"])
+            command(pg + ["pg_restore", "-U", "regente", "-d", "regente_i14_restored", "--exit-on-error", "/tmp/i14.dump"])
+            restored = dsn.replace("/regente_lab?", "/regente_i14_restored?")
+            command([str(RUN / "server"), "-db-driver", driver, "-db", restored, "-audit-key", str(key), "-audit-verify", "-audit-checkpoint", str(checkpoint)], env=env, name="i14-restored-ledger")
+        REPORT.setdefault("i14_audit", {})[driver] = {"server_sigkill": True, "destination_offline": True, "tls_collector": True,
+            "accepted_mutation_preserved": True, "acknowledged_records": len(records), "no_gaps_or_duplicates": True,
+            "independent_checkpoint_verified": True, "pg_dump_restore_verified": driver == "postgres", "seconds": round(time.monotonic() - begin, 3)}
+
+
 def main():
     global TLS_CONTEXT
     EVIDENCE.mkdir(parents=True)
@@ -603,22 +669,24 @@ def main():
         env = dict(clean_env, SSL_CERT_FILE=str(tls_dir/"lab.crt"), REGENTE_REQUIRE_INTEGRATION="1", REGENTE_TEST_PG_DSN=dsn, REGENTE_TEST_NATS_URL=nats_url,
                    REGENTE_TEST_OIDC_ISSUER=issuer, REGENTE_TEST_OIDC_CLIENT_ID="regente-lab",
                    REGENTE_TEST_OIDC_CLIENT_SECRET="synthetic-client-secret",
-                   REGENTE_TEST_OIDC_USER="lab-user", REGENTE_TEST_OIDC_PASS="synthetic-password")
+                   REGENTE_TEST_OIDC_USER="lab-user", REGENTE_TEST_OIDC_PASS="synthetic-password", REGENTE_AUDIT_KEY=str(RUN/"audit-integrity.key"))
         output = command(["go", "test", "-json", "-count=1", "-timeout=5m",
-                          "./server/internal/db", "./server/internal/api", "./server/internal/storage", "./server/internal/scheduler", "./server/internal/leader", "./agent/journal", "./agent/security", "-run",
-                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials|TestHumanIdentity|TestWebEvent|TestProductionIdentity|TestI06BusinessTimeIntegration|TestI07DailyRecoveryIntegration|TestI08AttemptIntegration|TestI09|TestI10|TestI11|TestI12|TestI13"],
+                          "./server/internal/db", "./server/internal/audit", "./server/internal/api", "./server/internal/storage", "./server/internal/scheduler", "./server/internal/leader", "./agent/journal", "./agent/security", "-run",
+                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials|TestHumanIdentity|TestWebEvent|TestProductionIdentity|TestI06BusinessTimeIntegration|TestI07DailyRecoveryIntegration|TestI08AttemptIntegration|TestI09|TestI10|TestI11|TestI12|TestI13|TestMandatoryAudit|TestI14"],
                          env=env, timeout=360, name="database-oidc-tests")
         validate_test_events(output)
         command(["go", "test", "-race", "-count=1", "-timeout=3m", "./server/internal/api", "-run", "^TestWebEvent"],
                 env=env, timeout=300, name="web-events-race")
         command(["go", "build", "-o", str(RUN/"server"), "./server"], timeout=180, name="server-build")
         command(["go", "build", "-o", str(RUN/"agent"), "./agent"], timeout=180, name="agent-build")
+        i14_audit_processes(env, dsn, tls_dir)
         durable_process_recovery(env, dsn)
         i11_ha_processes(env, dsn, nats_url)
         legacy_restore(dsn)
         draft_recovery(env, dsn)
         same_binary_drain(env, dsn)
         count = cluster(env, dsn, nats_url)
+        # I14: checkpoint copiado do coletor verificado, independente do dump.
         # Restore em OUTRA base descartável, mantendo a original intacta.
         start = time.monotonic()
         pg = COMPOSE+["exec", "-T", "postgres"]

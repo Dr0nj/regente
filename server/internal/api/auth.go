@@ -262,6 +262,10 @@ func (s *server) deleteUser(w http.ResponseWriter, r *http.Request) {
 func (s *server) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
 	u, ok := auth.FromContext(r.Context())
 	if !ok || !u.Role.CanAdmin() {
+		if err := s.recordAccessDenial(r); err != nil {
+			http.Error(w, "Mandatory audit unavailable", http.StatusServiceUnavailable)
+			return false
+		}
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return false
 	}

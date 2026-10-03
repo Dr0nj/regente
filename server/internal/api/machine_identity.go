@@ -59,6 +59,12 @@ func (s *server) machineAuth(r *http.Request) (*machinePrincipal, bool) {
 		if !s.machineCertificateValid(p) {
 			return nil, false
 		}
+		s.cfg.DB = s.cfg.DB.WithAuditActor("machine:" + p.AgentID)
+		if s.attempts != nil {
+			engine := *s.attempts
+			engine.DB = s.cfg.DB
+			s.attempts = &engine
+		}
 		_, _ = s.cfg.DB.ExecContext(ctx, `UPDATE agent_tokens SET last_used_at=CURRENT_TIMESTAMP WHERE id=?`, p.CredentialID)
 	}
 	return p, err == nil

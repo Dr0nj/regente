@@ -18,7 +18,8 @@ import (
 // audit emite um evento de segurança para o SIEM (no-op se não configurado) e
 // o PERSISTE em audit_events (E2) — a trilha durável que alimenta a retenção
 // (audit_retention_days) e o export JSONL (GET /api/audit/export).
-// Best-effort: falha de insert loga e não bloqueia o fluxo principal.
+// Feed legado best-effort. A trilha obrigatória é security_audit, gravada pelo
+// adaptador na transação e pela admissão da requisição antes do efeito.
 func (s *server) audit(e audit.Event) {
 	s.cfg.Audit.Emit(e)
 	if s.cfg.DB == nil {

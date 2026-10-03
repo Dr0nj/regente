@@ -18,7 +18,7 @@ type record struct {
 
 const attemptSelect = `SELECT execution_id,order_id,attempt,fence,agent_id,state,lease_until,accepted_at,started_at,finished_at,result_checksum,output_bytes,last_output_seq,last_contact,reason,resolved_at,resolved_by FROM execution_attempts WHERE execution_id=?`
 
-func scanAttempt(row *sql.Row) (record, error) {
+func scanAttempt(row interface{ Scan(...any) error }) (record, error) {
 	var a record
 	err := row.Scan(&a.ExecutionID, &a.OrderID, &a.Attempt.Attempt, &a.Fence, &a.AgentID, &a.State, &a.LeaseUntil, &a.AcceptedAt, &a.StartedAt, &a.FinishedAt, &a.resultHash, &a.outputBytes, &a.lastSeq, &a.LastContact, &a.Reason, &a.ResolvedAt, &a.ResolvedBy)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -30,7 +30,7 @@ func (e *Engine) Attempt(id string) (Attempt, error) {
 	a, err := scanAttempt(e.DB.QueryRow(attemptSelect, id))
 	return a.Attempt, err
 }
-func scanOrder(row *sql.Row) (Order, error) {
+func scanOrder(row interface{ Scan(...any) error }) (Order, error) {
 	var o Order
 	err := row.Scan(&o.ID, &o.SourceInstanceID, &o.State, &o.CurrentExecution, &o.Attempt, &o.Fence, &o.Runtime)
 	if errors.Is(err, sql.ErrNoRows) {

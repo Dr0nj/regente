@@ -164,12 +164,7 @@ func (s *server) putSettings(w http.ResponseWriter, r *http.Request) {
 
 // settingChange formata "chave: de → para" mascarando segredos.
 // Valores citados: "" vira aspas vazias no diff, não some.
-func settingChange(k, from, to string) string {
-	if secretSettingKeys[k] {
-		return k + ": (changed)"
-	}
-	return k + `: "` + from + `" → "` + to + `"`
-}
+func settingChange(k, from, to string) string { return k + ": (changed)" }
 
 // envLabel — F20: retorna label do ambiente (público, sem auth).
 // Reads from settings table; empty if not set.

@@ -117,276 +117,279 @@ func NewRouter(cfg Config) http.Handler {
 	r.Use(realIP(cfg.TrustedProxies))
 	r.Use(s.cors)
 
-	r.Get("/health", s.health)
+	r.Get("/health", s.scoped((*server).health))
 	// R2 — liveness (público): 200 enquanto o processo serve; reporta idade do tick.
-	r.Get("/livez", s.livez)
+	r.Get("/livez", s.scoped((*server).livez))
 	// R3 — readiness (público): 200 se o nó pode servir respostas corretas (DB alcançável);
 	// reporta líder + idade do tick + último daily. Aponte o readinessProbe do k8s aqui.
-	r.Get("/readyz", s.readyz)
+	r.Get("/readyz", s.scoped((*server).readyz))
 
 	// P17 — métricas Prometheus (público, sem auth — scraper-friendly)
-	r.Get("/metrics", s.metrics)
+	r.Get("/metrics", s.scoped((*server).metrics))
 
 	// F20 — env label (public, no auth)
-	r.Get("/api/env", s.envLabel)
+	r.Get("/api/env", s.scoped((*server).envLabel))
 
 	// Auth public endpoint (no session required)
-	r.Post("/api/auth/login", s.authLogin)
-	r.Get("/api/auth/config", s.authConfig)
+	r.Post("/api/auth/login", s.scoped((*server).authLogin))
+	r.Get("/api/auth/config", s.scoped((*server).authConfig))
 
 	// H1 — SSO/OIDC (público; o flow de login). Inertes se OIDC == nil.
-	r.Get("/api/auth/oidc/login", s.oidcLogin)
-	r.Get("/api/auth/oidc/callback", s.oidcCallback)
+	r.Get("/api/auth/oidc/login", s.scoped((*server).oidcLogin))
+	r.Get("/api/auth/oidc/callback", s.scoped((*server).oidcCallback))
 
 	r.Route("/api", func(r chi.Router) {
 		r.Use(s.authMiddleware)
+		r.Get("/audit/security", s.scoped((*server).securityAudit))
+		r.Get("/audit/security/status", s.scoped((*server).securityAuditStatus))
+		r.Post("/audit/security/retry", s.scoped((*server).retrySecurityAudit))
 
 		// Auth (post-login)
-		r.Post("/auth/logout", s.authLogout)
-		r.Get("/auth/me", s.authMe)
-		r.Post("/auth/event-ticket", s.authEventTicket)
-		r.Post("/auth/change-password", s.authChangePassword)
+		r.Post("/auth/logout", s.scoped((*server).authLogout))
+		r.Get("/auth/me", s.scoped((*server).authMe))
+		r.Post("/auth/event-ticket", s.scoped((*server).authEventTicket))
+		r.Post("/auth/change-password", s.scoped((*server).authChangePassword))
 
 		// Users (admin-only enforced em handler)
-		r.Get("/users", s.listUsers)
-		r.Post("/users", s.createUser)
-		r.Patch("/users/{id}/role", s.updateUserRole)
-		r.Patch("/users/{id}/password", s.resetUserPassword)
-		r.Delete("/users/{id}", s.deleteUser)
-		r.Post("/users/{id}/identity", s.linkIdentity)
-		r.Patch("/users/{id}/access", s.userAccess)
+		r.Get("/users", s.scoped((*server).listUsers))
+		r.Post("/users", s.scoped((*server).createUser))
+		r.Patch("/users/{id}/role", s.scoped((*server).updateUserRole))
+		r.Patch("/users/{id}/password", s.scoped((*server).resetUserPassword))
+		r.Delete("/users/{id}", s.scoped((*server).deleteUser))
+		r.Post("/users/{id}/identity", s.scoped((*server).linkIdentity))
+		r.Patch("/users/{id}/access", s.scoped((*server).userAccess))
 
 		// F11.10b — per-folder ACL (admin-only)
-		r.Get("/users/{id}/acls", s.listUserACLs)
-		r.Put("/users/{id}/acls", s.replaceUserACLs)
-		r.Patch("/users/{id}/acls/{folder}", s.setUserACL)
+		r.Get("/users/{id}/acls", s.scoped((*server).listUserACLs))
+		r.Put("/users/{id}/acls", s.scoped((*server).replaceUserACLs))
+		r.Patch("/users/{id}/acls/{folder}", s.scoped((*server).setUserACL))
 
 		// ADV-1 — catálogo de jobTypes com schema dedicado por tipo (read-only)
-		r.Get("/jobtypes", s.jobTypeCatalog)
+		r.Get("/jobtypes", s.scoped((*server).jobTypeCatalog))
 
 		// Definitions (source of truth em YAML)
-		r.Get("/definitions", s.listDefinitions)
-		r.With(s.requireWriterMW).Post("/definitions", s.saveDefinition)
-		r.With(s.requireWriterMW).Delete("/definitions/{team}/{id}", s.deleteDefinition)
+		r.Get("/definitions", s.scoped((*server).listDefinitions))
+		r.With(s.requireWriterMW).Post("/definitions", s.scoped((*server).saveDefinition))
+		r.With(s.requireWriterMW).Delete("/definitions/{team}/{id}", s.scoped((*server).deleteDefinition))
 		// F13.5 — audit history per definition
-		r.Get("/definitions/{team}/{id}/audit", s.listDefinitionAudit)
+		r.Get("/definitions/{team}/{id}/audit", s.scoped((*server).listDefinitionAudit))
 
 		// Folders (subdirs de definitions/) — F11.6 folder lifecycle
-		r.Get("/folders", s.listFolders)
-		r.With(s.requireWriterMW).Post("/folders", s.createFolder)
-		r.With(s.requireWriterMW).Patch("/folders/{name}", s.renameFolder)
-		r.With(s.requireWriterMW).Delete("/folders/{name}", s.deleteFolder)
-		r.With(s.requireWriterMW).Post("/folders/{name}/archive", s.archiveFolder)
-		r.With(s.requireWriterMW).Put("/folders/{name}/layout", s.setFolderLayout) // UI-3: override de grade por folder
+		r.Get("/folders", s.scoped((*server).listFolders))
+		r.With(s.requireWriterMW).Post("/folders", s.scoped((*server).createFolder))
+		r.With(s.requireWriterMW).Patch("/folders/{name}", s.scoped((*server).renameFolder))
+		r.With(s.requireWriterMW).Delete("/folders/{name}", s.scoped((*server).deleteFolder))
+		r.With(s.requireWriterMW).Post("/folders/{name}/archive", s.scoped((*server).archiveFolder))
+		r.With(s.requireWriterMW).Put("/folders/{name}/layout", s.scoped((*server).setFolderLayout)) // UI-3: override de grade por folder
 
 		// I08: API administrativa de laboratório, isolada de instances/condições.
-		r.Post("/lab/orders", s.labCreateOrder)
-		r.Get("/lab/orders/{id}", s.labOrder)
-		r.Post("/lab/orders/{id}/attempts", s.labStart)
-		r.Post("/lab/orders/{id}/cancel", s.labCancel)
-		r.Get("/lab/executions/{id}", s.labAttempt)
-		r.Get("/lab/executions/{id}/output", s.labOutput)
-		r.Post("/lab/reconcile", s.labReconcile)
+		r.Post("/lab/orders", s.scoped((*server).labCreateOrder))
+		r.Get("/lab/orders/{id}", s.scoped((*server).labOrder))
+		r.Post("/lab/orders/{id}/attempts", s.scoped((*server).labStart))
+		r.Post("/lab/orders/{id}/cancel", s.scoped((*server).labCancel))
+		r.Get("/lab/executions/{id}", s.scoped((*server).labAttempt))
+		r.Get("/lab/executions/{id}/output", s.scoped((*server).labOutput))
+		r.Post("/lab/reconcile", s.scoped((*server).labReconcile))
 
 		// Instances (runtime)
-		r.Get("/instances", s.listInstances)
-		r.Get("/instances/page", s.pageInstances)       // P2/escala: paginação por cursor
-		r.Get("/instances/summary", s.summaryInstances) // P2/escala: contadores agregados
-		r.Get("/instances/{id}/executions", s.instanceExecutions)
-		r.With(s.requireWriterMW).Post("/executions/{id}/resolve", s.resolveExecution)
-		r.With(s.requireWriterMW).Post("/execution-effects/{id}/resolve", s.resolveExecutionEffect)
-		r.Get("/instances/{id}", s.getInstance) // detalhe: linha + action congelada da ordem (snapshot)
+		r.Get("/instances", s.scoped((*server).listInstances))
+		r.Get("/instances/page", s.scoped((*server).pageInstances))       // P2/escala: paginação por cursor
+		r.Get("/instances/summary", s.scoped((*server).summaryInstances)) // P2/escala: contadores agregados
+		r.Get("/instances/{id}/executions", s.scoped((*server).instanceExecutions))
+		r.With(s.requireWriterMW).Post("/executions/{id}/resolve", s.scoped((*server).resolveExecution))
+		r.With(s.requireWriterMW).Post("/execution-effects/{id}/resolve", s.scoped((*server).resolveExecutionEffect))
+		r.Get("/instances/{id}", s.scoped((*server).getInstance)) // detalhe: linha + action congelada da ordem (snapshot)
 		// D-5 — query estruturada composta (POST baseline; QUERY = progressive
 		// enhancement, o verbo IETF safe+idempotente com body — mesma handler).
-		r.Post("/instances/query", s.queryInstances)
-		r.Method("QUERY", "/instances/query", http.HandlerFunc(s.queryInstances))
-		r.With(s.requireWriterMW).Post("/instances/{id}/hold", s.holdInstance)
-		r.With(s.requireWriterMW).Post("/instances/{id}/release", s.releaseInstance)
-		r.With(s.requireWriterMW).Post("/instances/{id}/cancel", s.cancelInstance)
-		r.With(s.requireWriterMW).Post("/instances/{id}/rerun", s.rerunInstance)
-		r.With(s.requireWriterMW).Post("/instances/{id}/set-ok", s.setOKInstance)
-		r.With(s.requireWriterMW).Post("/instances/{id}/confirm", s.confirmInstance) // Control-M Confirm (confirm:true)
-		r.With(s.requireWriterMW).Post("/instances/{id}/force", s.forceRunInstance)  // Run Now: força ESTA instance (bypass gates, honra agent+Confirm)
-		r.With(s.requireWriterMW).Delete("/instances/{id}", s.deleteInstance)        // Delete: remove a ordem (SÓ em HOLD; RUNNING nunca)
-		r.Get("/instances/{id}/events", s.listInstanceEvents)
-		r.Get("/instances/{id}/output", s.getInstanceOutput)  // OL-2: sysout da execução (por tentativa, live-tail)
-		r.Get("/instances/{id}/explain", s.explainInstance)   // diferencial: "por que não rodou?"
-		r.Get("/instances/{id}/blast-radius", s.blastRadius)  // diferencial: impacto de cancelar/segurar
-		r.Get("/instances/{id}/neighborhood", s.neighborhood) // diferencial: grafo local (up/downstream)
-		r.Get("/instances/{id}/rca", s.rca)                   // diferencial: causa raiz da falha/bloqueio
+		r.Post("/instances/query", s.scoped((*server).queryInstances))
+		r.Method("QUERY", "/instances/query", http.HandlerFunc(s.scoped((*server).queryInstances)))
+		r.With(s.requireWriterMW).Post("/instances/{id}/hold", s.scoped((*server).holdInstance))
+		r.With(s.requireWriterMW).Post("/instances/{id}/release", s.scoped((*server).releaseInstance))
+		r.With(s.requireWriterMW).Post("/instances/{id}/cancel", s.scoped((*server).cancelInstance))
+		r.With(s.requireWriterMW).Post("/instances/{id}/rerun", s.scoped((*server).rerunInstance))
+		r.With(s.requireWriterMW).Post("/instances/{id}/set-ok", s.scoped((*server).setOKInstance))
+		r.With(s.requireWriterMW).Post("/instances/{id}/confirm", s.scoped((*server).confirmInstance)) // Control-M Confirm (confirm:true)
+		r.With(s.requireWriterMW).Post("/instances/{id}/force", s.scoped((*server).forceRunInstance))  // Run Now: força ESTA instance (bypass gates, honra agent+Confirm)
+		r.With(s.requireWriterMW).Delete("/instances/{id}", s.scoped((*server).deleteInstance))        // Delete: remove a ordem (SÓ em HOLD; RUNNING nunca)
+		r.Get("/instances/{id}/events", s.scoped((*server).listInstanceEvents))
+		r.Get("/instances/{id}/output", s.scoped((*server).getInstanceOutput))  // OL-2: sysout da execução (por tentativa, live-tail)
+		r.Get("/instances/{id}/explain", s.scoped((*server).explainInstance))   // diferencial: "por que não rodou?"
+		r.Get("/instances/{id}/blast-radius", s.scoped((*server).blastRadius))  // diferencial: impacto de cancelar/segurar
+		r.Get("/instances/{id}/neighborhood", s.scoped((*server).neighborhood)) // diferencial: grafo local (up/downstream)
+		r.Get("/instances/{id}/rca", s.scoped((*server).rca))                   // diferencial: causa raiz da falha/bloqueio
 		// D-11 — chaos engineering: falha sintética pelo fluxo REAL de falha
-		r.With(s.requireWriterMW).Post("/instances/{id}/inject-failure", s.injectFailure)
+		r.With(s.requireWriterMW).Post("/instances/{id}/inject-failure", s.scoped((*server).injectFailure))
 		// D-2 — pause/resume de workflow (folder) com estado preservado
-		r.With(s.requireWriterMW).Post("/folders/{name}/pause", s.pauseFolder)
-		r.With(s.requireWriterMW).Post("/folders/{name}/resume", s.resumeFolder)
+		r.With(s.requireWriterMW).Post("/folders/{name}/pause", s.scoped((*server).pauseFolder))
+		r.With(s.requireWriterMW).Post("/folders/{name}/resume", s.scoped((*server).resumeFolder))
 		// Order Folder — ordena a folder inteira na diária ATIVA (pula quem já está nela)
-		r.With(s.requireWriterMW).Post("/folders/{name}/order", s.orderFolder)
+		r.With(s.requireWriterMW).Post("/folders/{name}/order", s.scoped((*server).orderFolder))
 
-		r.Get("/events", s.listEventLog)            // diferencial: event log CQRS-lite (feed do dia)
-		r.Get("/audit/export", s.auditExport)       // E2: export JSONL unificado (admin-only, cursor after_id)
-		r.Get("/archive", s.listArchives)           // ADV-5: dailies arquivadas pela retenção (admin-only)
-		r.Get("/archive/{file}", s.downloadArchive) // ADV-5: download do NDJSON de um dia (admin-only)
-		r.Post("/query", s.runQuery)                // diferencial: NL-query (texto → consulta estruturada)
+		r.Get("/events", s.scoped((*server).listEventLog))            // diferencial: event log CQRS-lite (feed do dia)
+		r.Get("/audit/export", s.scoped((*server).auditExport))       // E2: export JSONL unificado (admin-only, cursor after_id)
+		r.Get("/archive", s.scoped((*server).listArchives))           // ADV-5: dailies arquivadas pela retenção (admin-only)
+		r.Get("/archive/{file}", s.scoped((*server).downloadArchive)) // ADV-5: download do NDJSON de um dia (admin-only)
+		r.Post("/query", s.scoped((*server).runQuery))                // diferencial: NL-query (texto → consulta estruturada)
 		// D-3 — event-driven confiável: ingestão idempotente de eventos externos
-		r.With(s.requireWriterMW).Post("/events/ingest", s.ingestEvent)
-		r.Get("/events/external", s.listExternalEvents)
+		r.With(s.requireWriterMW).Post("/events/ingest", s.scoped((*server).ingestEvent))
+		r.Get("/events/external", s.scoped((*server).listExternalEvents))
 		// Versão do build — o que o rodapé da UI mostra. Responde "atualizei mesmo?"
 		// sem SSH na caixa: se a release publicou v0.2.7 e aqui ainda diz v0.2.6, o
 		// processo antigo continua no ar.
-		r.Get("/version", s.getVersion)
+		r.Get("/version", s.scoped((*server).getVersion))
 		// D-10 — policy as code: política ativa + violações do workspace publicado
-		r.Get("/policy", s.getPolicy)
-		r.Get("/daily/diff", s.diffDaily)              // diferencial: o que mudou entre duas diárias
-		r.Get("/daily/dryrun", s.dryRunDaily)          // diferencial: simular uma daily futura sem materializar
-		r.Get("/daily/status", s.dailyStatus)          // última daily (relógio do server) + horário configurado
-		r.Get("/daily/report", s.dailyReport)          // E5: relatório/SLO da daily (counts/lateStart/failures/slaBreaches)
-		r.Post("/schedule/preview", s.schedulePreview) // calendário-preview: dias que o schedule rodaria (read-only)
+		r.Get("/policy", s.scoped((*server).getPolicy))
+		r.Get("/daily/diff", s.scoped((*server).diffDaily))              // diferencial: o que mudou entre duas diárias
+		r.Get("/daily/dryrun", s.scoped((*server).dryRunDaily))          // diferencial: simular uma daily futura sem materializar
+		r.Get("/daily/status", s.scoped((*server).dailyStatus))          // última daily (relógio do server) + horário configurado
+		r.Get("/daily/report", s.scoped((*server).dailyReport))          // E5: relatório/SLO da daily (counts/lateStart/failures/slaBreaches)
+		r.Post("/schedule/preview", s.scoped((*server).schedulePreview)) // calendário-preview: dias que o schedule rodaria (read-only)
 
 		// Daily + Force (Control-M parity)
-		r.With(s.requireWriterMW).Post("/daily/run", s.runDaily)
-		r.With(s.requireWriterMW).Post("/daily/resume", s.resumeDaily)
-		r.With(s.requireWriterMW).Post("/definitions/{id}/force", s.forceOrder)
+		r.With(s.requireWriterMW).Post("/daily/run", s.scoped((*server).runDaily))
+		r.With(s.requireWriterMW).Post("/daily/resume", s.scoped((*server).resumeDaily))
+		r.With(s.requireWriterMW).Post("/definitions/{id}/force", s.scoped((*server).forceOrder))
 		// Fase 1 (serverless) — tick sob demanda para cron externo (scheduler=external)
-		r.With(s.requireWriterMW).Post("/scheduler/tick", s.schedulerTick)
+		r.With(s.requireWriterMW).Post("/scheduler/tick", s.scoped((*server).schedulerTick))
 		// ARCH-5 — gatilho de daily DEDICADO: um cron diário separado do tick de
 		// dispatch materializa a diária (idempotente, leader-guarded).
-		r.With(s.requireWriterMW).Post("/scheduler/daily", s.schedulerDaily)
+		r.With(s.requireWriterMW).Post("/scheduler/daily", s.scoped((*server).schedulerDaily))
 
 		// F11.8 — Find & Update / Mass Update (bulk, transacional por item)
-		r.With(s.requireWriterMW).Post("/bulk/instances", s.bulkInstances)
+		r.With(s.requireWriterMW).Post("/bulk/instances", s.scoped((*server).bulkInstances))
 
 		// Agents
-		r.Get("/agents", s.listAgents)
-		r.Post("/agents/{id}/ping", s.pingAgent) // ping ativo (round-trip latência)
+		r.Get("/agents", s.scoped((*server).listAgents))
+		r.Post("/agents/{id}/ping", s.scoped((*server).pingAgent)) // ping ativo (round-trip latência)
 		// B5 — tokens por agente (admin-only enforced no handler)
-		r.Get("/agents/tokens", s.listAgentTokens)
-		r.Post("/agents/tokens", s.createAgentToken)
-		r.Post("/agents/tokens/{id}/rotate", s.rotateAgentToken)
-		r.Delete("/agents/tokens/{id}", s.revokeAgentToken)
+		r.Get("/agents/tokens", s.scoped((*server).listAgentTokens))
+		r.Post("/agents/tokens", s.scoped((*server).createAgentToken))
+		r.Post("/agents/tokens/{id}/rotate", s.scoped((*server).rotateAgentToken))
+		r.Delete("/agents/tokens/{id}", s.scoped((*server).revokeAgentToken))
 
 		// F13 GitOps
-		r.Get("/git/status", s.gitStatus)
-		r.Get("/git/drift", s.gitDrift)
-		r.With(s.requireWriterMW).Post("/git/sync", s.gitSync)
+		r.Get("/git/status", s.scoped((*server).gitStatus))
+		r.Get("/git/drift", s.scoped((*server).gitDrift))
+		r.With(s.requireWriterMW).Post("/git/sync", s.scoped((*server).gitSync))
 		// Token via UI (admin-only) + cleanup da DB poluída no repo
-		r.Post("/git/token", s.setGitToken)
-		r.Delete("/git/token", s.clearGitToken)
-		r.Post("/git/cleanup-db", s.cleanupDB)
+		r.Post("/git/token", s.scoped((*server).setGitToken))
+		r.Delete("/git/token", s.scoped((*server).clearGitToken))
+		r.Post("/git/cleanup-db", s.scoped((*server).cleanupDB))
 		// P13 — secret do webhook GitHub (HMAC) configurável em runtime
-		r.Post("/git/webhook-secret", s.setWebhookSecret)
+		r.Post("/git/webhook-secret", s.scoped((*server).setWebhookSecret))
 
 		// === Design sessions (Etapa 3+4+5 do realinhamento, 2026-04-26) ===
-		r.Get("/design/sessions", s.listDesignSessions)
-		r.With(s.requireWriterMW).Post("/design/sessions/import", s.importDraft)
-		r.With(s.draftMiddleware).Get("/design/sessions/{sid}/export", s.exportDraft)
-		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/publication/cancel", s.cancelDraftPublication)
-		r.With(s.requireWriterMW).Post("/design/sessions", s.createDesignSession)
-		r.With(s.draftMiddleware).Get("/design/sessions/{sid}", s.getDesignSession)
-		r.With(s.draftMiddleware).Get("/design/sessions/{sid}/status", s.getDesignSessionStatus)
-		r.With(s.requireWriterMW, s.draftMiddleware).Delete("/design/sessions/{sid}", s.deleteDesignSession)
-		r.With(s.draftMiddleware).Get("/design/sessions/{sid}/folders", s.listSessionFolders)
-		r.With(s.draftMiddleware).Get("/design/sessions/{sid}/definitions", s.listSessionDefinitions)
-		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/definitions", s.saveSessionDefinition)
-		r.With(s.requireWriterMW, s.draftMiddleware).Delete("/design/sessions/{sid}/definitions/{team}/{id}", s.deleteSessionDefinition)
-		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/folders", s.createSessionFolder)
-		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/folders/open", s.openSessionFolder)
-		r.With(s.requireWriterMW, s.draftMiddleware).Put("/design/sessions/{sid}/folders/{name}/layout", s.setSessionFolderLayout)
-		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/publish", s.publishDesignSession)
+		r.Get("/design/sessions", s.scoped((*server).listDesignSessions))
+		r.With(s.requireWriterMW).Post("/design/sessions/import", s.scoped((*server).importDraft))
+		r.With(s.draftMiddleware).Get("/design/sessions/{sid}/export", s.scoped((*server).exportDraft))
+		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/publication/cancel", s.scoped((*server).cancelDraftPublication))
+		r.With(s.requireWriterMW).Post("/design/sessions", s.scoped((*server).createDesignSession))
+		r.With(s.draftMiddleware).Get("/design/sessions/{sid}", s.scoped((*server).getDesignSession))
+		r.With(s.draftMiddleware).Get("/design/sessions/{sid}/status", s.scoped((*server).getDesignSessionStatus))
+		r.With(s.requireWriterMW, s.draftMiddleware).Delete("/design/sessions/{sid}", s.scoped((*server).deleteDesignSession))
+		r.With(s.draftMiddleware).Get("/design/sessions/{sid}/folders", s.scoped((*server).listSessionFolders))
+		r.With(s.draftMiddleware).Get("/design/sessions/{sid}/definitions", s.scoped((*server).listSessionDefinitions))
+		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/definitions", s.scoped((*server).saveSessionDefinition))
+		r.With(s.requireWriterMW, s.draftMiddleware).Delete("/design/sessions/{sid}/definitions/{team}/{id}", s.scoped((*server).deleteSessionDefinition))
+		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/folders", s.scoped((*server).createSessionFolder))
+		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/folders/open", s.scoped((*server).openSessionFolder))
+		r.With(s.requireWriterMW, s.draftMiddleware).Put("/design/sessions/{sid}/folders/{name}/layout", s.scoped((*server).setSessionFolderLayout))
+		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/publish", s.scoped((*server).publishDesignSession))
 		// F11.8 — bulk em definitions DA SESSION (move-folder/patch/delete)
-		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/bulk", s.bulkSessionDefinitions)
+		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/bulk", s.scoped((*server).bulkSessionDefinitions))
 		// Job-as-code — o working set como YAML multi-doc (modo código do Design)
-		r.With(s.draftMiddleware).Get("/design/sessions/{sid}/code", s.getSessionCode)
-		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/code", s.applySessionCode)
+		r.With(s.draftMiddleware).Get("/design/sessions/{sid}/code", s.scoped((*server).getSessionCode))
+		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/code", s.scoped((*server).applySessionCode))
 		// CTM-3 — Mass Update rico (critério/regex → preview → apply → undo)
-		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/massupdate", s.massUpdateSession)
-		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/massupdate/undo", s.massUpdateUndo)
+		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/massupdate", s.scoped((*server).massUpdateSession))
+		r.With(s.requireWriterMW, s.draftMiddleware).Post("/design/sessions/{sid}/massupdate/undo", s.scoped((*server).massUpdateUndo))
 
 		// === Bloco 2 — Control-M parity ===
 		// F14 Calendars
-		r.Get("/calendars", s.listCalendars)
-		r.Get("/calendars/{name}", s.getCalendar)
-		r.With(s.requireWriterMW).Put("/calendars/{name}", s.saveCalendar)
-		r.With(s.requireWriterMW).Delete("/calendars/{name}", s.deleteCalendar)
+		r.Get("/calendars", s.scoped((*server).listCalendars))
+		r.Get("/calendars/{name}", s.scoped((*server).getCalendar))
+		r.With(s.requireWriterMW).Put("/calendars/{name}", s.scoped((*server).saveCalendar))
+		r.With(s.requireWriterMW).Delete("/calendars/{name}", s.scoped((*server).deleteCalendar))
 		// F15 Resources
-		r.Get("/resources", s.listResources)
-		r.With(s.requireWriterMW).Put("/resources/{name}", s.setResourceCapacity)
-		r.With(s.requireWriterMW).Delete("/resources/{name}", s.deleteResource)
+		r.Get("/resources", s.scoped((*server).listResources))
+		r.With(s.requireWriterMW).Put("/resources/{name}", s.scoped((*server).setResourceCapacity))
+		r.With(s.requireWriterMW).Delete("/resources/{name}", s.scoped((*server).deleteResource))
 
 		// F18 Variables (globals)
-		r.Get("/variables", s.listVariables)
-		r.Put("/variables/{name}", s.putVariable)
-		r.Delete("/variables/{name}", s.deleteVariable)
+		r.Get("/variables", s.scoped((*server).listVariables))
+		r.Put("/variables/{name}", s.scoped((*server).putVariable))
+		r.Delete("/variables/{name}", s.scoped((*server).deleteVariable))
 		// F16 Conditions
-		r.Get("/conditions", s.listConditions)
-		r.With(s.requireWriterMW).Post("/conditions/{name}/set", s.setCondition)
-		r.With(s.requireWriterMW).Post("/conditions/{name}/unset", s.unsetCondition)
+		r.Get("/conditions", s.scoped((*server).listConditions))
+		r.With(s.requireWriterMW).Post("/conditions/{name}/set", s.scoped((*server).setCondition))
+		r.With(s.requireWriterMW).Post("/conditions/{name}/unset", s.scoped((*server).unsetCondition))
 		// F19 SLA
-		r.Get("/sla/breaches", s.listSLABreaches)
+		r.Get("/sla/breaches", s.scoped((*server).listSLABreaches))
 		// Phase 8 — Alerting
-		r.Get("/alerts", s.listAlertEvents)
-		r.With(s.requireWriterMW).Post("/alerts/ack-all", s.ackAllAlertEvents)
-		r.With(s.requireWriterMW).Post("/alerts/{id}/ack", s.ackAlertEvent)
-		r.Get("/alerts/rules", s.listAlertRules)
-		r.With(s.requireWriterMW).Post("/alerts/rules/{id}/toggle", s.toggleAlertRule)
-		r.With(s.requireWriterMW).Put("/alerts/rules/{id}/channels", s.setAlertRuleChannels)
-		r.With(s.requireWriterMW).Put("/alerts/rules/{id}/cooldown", s.setAlertRuleCooldown)
+		r.Get("/alerts", s.scoped((*server).listAlertEvents))
+		r.With(s.requireWriterMW).Post("/alerts/ack-all", s.scoped((*server).ackAllAlertEvents))
+		r.With(s.requireWriterMW).Post("/alerts/{id}/ack", s.scoped((*server).ackAlertEvent))
+		r.Get("/alerts/rules", s.scoped((*server).listAlertRules))
+		r.With(s.requireWriterMW).Post("/alerts/rules/{id}/toggle", s.scoped((*server).toggleAlertRule))
+		r.With(s.requireWriterMW).Put("/alerts/rules/{id}/channels", s.scoped((*server).setAlertRuleChannels))
+		r.With(s.requireWriterMW).Put("/alerts/rules/{id}/cooldown", s.scoped((*server).setAlertRuleCooldown))
 		// ViewPoints salvos (filtros nomeados do Monitoring; base dos dashboards)
-		r.Get("/viewpoints", s.listViewpoints)
-		r.Post("/viewpoints", s.createViewpoint)
-		r.Delete("/viewpoints/{id}", s.deleteViewpoint)
+		r.Get("/viewpoints", s.scoped((*server).listViewpoints))
+		r.Post("/viewpoints", s.scoped((*server).createViewpoint))
+		r.Delete("/viewpoints/{id}", s.scoped((*server).deleteViewpoint))
 
 		// F21 Forecast
-		r.Get("/forecast", s.getForecast)
-		r.Get("/forecast/range", s.getForecastRange) // ≥1 semana à frente (CTM-6)
+		r.Get("/forecast", s.scoped((*server).getForecast))
+		r.Get("/forecast/range", s.scoped((*server).getForecastRange)) // ≥1 semana à frente (CTM-6)
 		// F22 Analytics
-		r.Get("/analytics/summary", s.analyticsSummary)
-		r.Get("/analytics/top-failing", s.analyticsTopFailing)
-		r.Get("/analytics/mttr", s.analyticsMTTR)
+		r.Get("/analytics/summary", s.scoped((*server).analyticsSummary))
+		r.Get("/analytics/top-failing", s.scoped((*server).analyticsTopFailing))
+		r.Get("/analytics/mttr", s.scoped((*server).analyticsMTTR))
 		// D-4 — performance forecasting por histórico (gráfico do drawer + Timeline)
-		r.Get("/analytics/forecast", s.perfForecast)
-		r.Get("/analytics/durations", s.dayDurations)
+		r.Get("/analytics/forecast", s.scoped((*server).perfForecast))
+		r.Get("/analytics/durations", s.scoped((*server).dayDurations))
 		// ADV-3 — Statistics por definition + What-If (simulação de cenário, read-only)
-		r.Get("/analytics/jobstats", s.jobStats)
-		r.Post("/whatif", s.whatIf)
+		r.Get("/analytics/jobstats", s.scoped((*server).jobStats))
+		r.Post("/whatif", s.scoped((*server).whatIf))
 
 		// D-13 — job templates (writer p/ mutar; leitura livre)
-		r.Get("/templates", s.listTemplates)
-		r.With(s.requireWriterMW).Post("/templates", s.saveTemplate)
-		r.With(s.requireWriterMW).Delete("/templates/{name}", s.deleteTemplate)
+		r.Get("/templates", s.scoped((*server).listTemplates))
+		r.With(s.requireWriterMW).Post("/templates", s.scoped((*server).saveTemplate))
+		r.With(s.requireWriterMW).Delete("/templates/{name}", s.scoped((*server).deleteTemplate))
 
 		// D-14 — self-service portal: gate PRÓPRIO (qualquer logado; opt-in por def)
-		r.Get("/selfservice/jobs", s.selfServiceJobs)
-		r.Post("/selfservice/run/{defId}", s.selfServiceRun)
+		r.Get("/selfservice/jobs", s.scoped((*server).selfServiceJobs))
+		r.Post("/selfservice/run/{defId}", s.scoped((*server).selfServiceRun))
 
 		// F20 Settings (admin-only for writes)
-		r.Get("/settings", s.getSettings)
-		r.Put("/settings", s.putSettings)
+		r.Get("/settings", s.scoped((*server).getSettings))
+		r.Put("/settings", s.scoped((*server).putSettings))
 	})
 
 	// WebSockets (auth via query ?token=...)
-	r.Get("/ws/web", s.wsWeb)
-	r.Get("/ws/agent", s.wsAgent)
+	r.Get("/ws/web", s.scoped((*server).wsWeb))
+	r.Get("/ws/agent", s.scoped((*server).wsAgent))
 
 	// Fase 2 — transporte HTTP long-poll p/ agentes (auth própria por agent token).
 	// Fora do grupo /api (que exige sessão/legacy), como o /ws/agent.
-	r.Get("/api/agent/v2/poll", s.executionPoll)
-	r.Post("/api/agent/v2/ack", s.executionAck)
-	r.Post("/api/agent/v2/result", s.executionResult)
-	r.Post("/api/agent/v2/output", s.executionOutput)
-	r.Get("/api/agent/poll", s.agentPoll)
+	r.Get("/api/agent/v2/poll", s.scoped((*server).executionPoll))
+	r.Post("/api/agent/v2/ack", s.scoped((*server).executionAck))
+	r.Post("/api/agent/v2/result", s.scoped((*server).executionResult))
+	r.Post("/api/agent/v2/output", s.scoped((*server).executionOutput))
+	r.Get("/api/agent/poll", s.scoped((*server).agentPoll))
 	// ARCH-4 — transporte SSE: stream de dispatch por push imediato (mesmo broker;
 	// resultados voltam pelos POSTs abaixo, iguais ao long-poll).
-	r.Get("/api/agent/events", s.agentSSE)
-	r.Post("/api/agent/result", s.agentResult)
-	r.Post("/api/agent/output", s.agentOutput)
+	r.Get("/api/agent/events", s.scoped((*server).agentSSE))
+	r.Post("/api/agent/result", s.scoped((*server).agentResult))
+	r.Post("/api/agent/output", s.scoped((*server).agentOutput))
 
 	// F13.3 — webhook GitHub (público; auth via HMAC do payload)
-	r.Post("/api/git/webhook", s.gitWebhook)
+	r.Post("/api/git/webhook", s.scoped((*server).gitWebhook))
 
 	// D-15 — quick actions de alerta (públicas; a AUTH é o token HMAC assinado
 	// de escopo único). GET = página de confirmação; POST = executa.
-	r.Get("/qa/{token}", s.quickActionPage)
-	r.Post("/qa/{token}", s.quickActionExec)
+	r.Get("/qa/{token}", s.scoped((*server).quickActionPage))
+	r.Post("/qa/{token}", s.scoped((*server).quickActionExec))
 
 	// API-1 — contrato OpenAPI da superfície de integração + viewer, embutidos
 	// no binário (go:embed): sempre no ar, sem flag. Público como /docs — é
@@ -395,9 +398,9 @@ func NewRouter(cfg Config) http.Handler {
 	r.Get("/api-docs", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/api-docs/", http.StatusFound)
 	})
-	r.Get("/api-docs/", s.apiDocsPage)
-	r.Get("/api-docs/openapi.yaml", s.apiDocsSpec)
-	r.Get("/api-docs/openapi.json", s.apiDocsSpec)
+	r.Get("/api-docs/", s.scoped((*server).apiDocsPage))
+	r.Get("/api-docs/openapi.yaml", s.scoped((*server).apiDocsSpec))
+	r.Get("/api-docs/openapi.json", s.scoped((*server).apiDocsSpec))
 
 	// ADV-7 — site de docs em /docs (registrado ANTES do NotFound do SPA, senão o
 	// fallback engoliria o caminho). Público como o restante do hosting estático.
@@ -483,6 +486,10 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tok := auth.ExtractToken(r)
 		if tok == "" {
+			if err := s.cfg.DB.WithAuditIdentity(db.AuditIdentity{Actor: "anonymous", Route: r.Method + " " + r.URL.Path, IP: clientIP(r)}).AuditObservation("access.denied", "401"); err != nil {
+				http.Error(w, "Mandatory audit unavailable", http.StatusServiceUnavailable)
+				return
+			}
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -502,6 +509,10 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		if !s.browserCSRF(w, r, u) {
+			if err := s.cfg.DB.WithAuditIdentity(db.AuditIdentity{Actor: u.Username, Route: r.Method + " " + r.URL.Path, IP: clientIP(r)}).AuditObservation("access.denied", "csrf"); err != nil {
+				http.Error(w, "Mandatory audit unavailable", http.StatusServiceUnavailable)
+				return
+			}
 			http.Error(w, "Invalid session transport or CSRF token", http.StatusForbidden)
 			return
 		}

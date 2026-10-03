@@ -39,8 +39,8 @@ func TestSettingsAudit_MudancaGeraEventoSemVazarSegredo(t *testing.T) {
 	if err := d.QueryRow(`SELECT detail, actor FROM audit_events WHERE kind='settings.write'`).Scan(&detail, &actor); err != nil {
 		t.Fatalf("ler evento: %v", err)
 	}
-	if !strings.Contains(detail, `daily_at: "" → "01:30"`) {
-		t.Fatalf("detail deveria ter o de→para de daily_at, veio %q", detail)
+	if !strings.Contains(detail, `daily_at: (changed)`) {
+		t.Fatalf("detail deveria registrar a mudança sem o valor, veio %q", detail)
 	}
 	if !strings.Contains(detail, "alert_smtp_password: (changed)") {
 		t.Fatalf("detail deveria registrar a mudança do segredo mascarada, veio %q", detail)

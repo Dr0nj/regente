@@ -12,6 +12,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -80,12 +81,19 @@ func main() {
 		migrateOnly      = flag.Bool("migrate-only", false, "Apply and verify schema migrations, then exit before starting services")
 		migrationTimeout = flag.Duration("migration-timeout", 2*time.Minute, "Total schema upgrade and lock wait timeout")
 		// Segurança — TLS/mTLS opcional (vazio = HTTP plano, comportamento atual).
-		tlsCert      = flag.String("tls-cert", envOr("REGENTE_TLS_CERT", ""), "Security: server TLS cert (empty = plain HTTP)")
-		tlsKey       = flag.String("tls-key", envOr("REGENTE_TLS_KEY", ""), "Security: server TLS key")
-		tlsClientCA  = flag.String("tls-client-ca", envOr("REGENTE_TLS_CLIENT_CA", ""), "Security: CA for certificate-bound machine routes (web and probes remain HTTPS)")
-		auditSIEMURL = flag.String("audit-siem-url", envOr("REGENTE_AUDIT_SIEM_URL", ""), "Security: SIEM HTTP endpoint to POST audit events to (empty = JSON to stderr only)")
-		secretsFile  = flag.String("secrets-file", envOr("REGENTE_SECRETS_FILE", ""), "H3: JSON secrets file {\"github_token\":...}; the REGENTE_SECRET_<KEY> env takes priority")
-		tickMs       = flag.Int("tick-ms", 2000, "Scheduler tick interval (ms) — used in internal mode")
+		tlsCert         = flag.String("tls-cert", envOr("REGENTE_TLS_CERT", ""), "Security: server TLS cert (empty = plain HTTP)")
+		tlsKey          = flag.String("tls-key", envOr("REGENTE_TLS_KEY", ""), "Security: server TLS key")
+		tlsClientCA     = flag.String("tls-client-ca", envOr("REGENTE_TLS_CLIENT_CA", ""), "Security: CA for certificate-bound machine routes (web and probes remain HTTPS)")
+		auditVerify     = flag.Bool("audit-verify", false, "Verify audit ledger and optional independent checkpoint, then exit")
+		auditCheckpoint = flag.String("audit-checkpoint", "", "Independent collector checkpoint JSON file for rollback detection")
+		auditKey        = flag.String("audit-key", envOr("REGENTE_AUDIT_KEY", ""), "External audit signing key file (default: SQLite DB path plus .audit.key; required for PostgreSQL)")
+		auditCapacity   = flag.Int64("audit-capacity", 100000, "Maximum unacknowledged mandatory audit records")
+		auditTokenFile  = flag.String("audit-token-file", os.Getenv("REGENTE_AUDIT_TOKEN_FILE"), "Separate collector bearer token file")
+		collectorFile   = flag.String("audit-collector-file", "", "Run only an independent audit collector with this journal file")
+		collectorPublic = flag.String("audit-collector-public-key", "", "Collector public key file; private key is never required")
+		auditSIEMURL    = flag.String("audit-siem-url", envOr("REGENTE_AUDIT_SIEM_URL", ""), "Durable audit collector endpoint; requires explicit sequence/hash ACK (empty = retain locally)")
+		secretsFile     = flag.String("secrets-file", envOr("REGENTE_SECRETS_FILE", ""), "H3: JSON secrets file {\"github_token\":...}; the REGENTE_SECRET_<KEY> env takes priority")
+		tickMs          = flag.Int("tick-ms", 2000, "Scheduler tick interval (ms) — used in internal mode")
 		// Fase 1/2 (serverless) — papel do processo + origem do tick. Ver docs/architecture-future.md.
 		role          = flag.String("role", envOr("REGENTE_ROLE", "all"), "Process role: all | api | scheduler")
 		schedulerMode = flag.String("scheduler", envOr("REGENTE_SCHEDULER", "internal"), "Scheduler trigger: internal (goroutine ticker) | external (cron via POST /api/scheduler/tick)")
@@ -145,6 +153,28 @@ func main() {
 	// máquina onde o serviço já está rodando, sem disputar nada com ele.
 	if *showVersion {
 		fmt.Println(version)
+		return
+	}
+
+	if *collectorFile != "" {
+		public, err := os.ReadFile(*collectorPublic)
+		if err != nil {
+			log.Fatal("collector public key unavailable")
+		}
+		token, err := os.ReadFile(*auditTokenFile)
+		if err != nil {
+			log.Fatal("collector token unavailable")
+		}
+		collector, err := audit.OpenCollector(*collectorFile, string(public), strings.TrimSpace(string(token)))
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer collector.Close()
+		if *tlsCert == "" || *tlsKey == "" {
+			log.Fatal("collector requires TLS certificate and key")
+		}
+		srv := &http.Server{Addr: *addr, Handler: collector, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
+		log.Fatal(srv.ListenAndServeTLS(*tlsCert, *tlsKey))
 		return
 	}
 
@@ -251,6 +281,45 @@ func main() {
 	log.Printf("[db] driver=%s schema=%d supported=[%d,%d]", dialect, db.MaxSupportedSchema, db.MinSupportedSchema, db.MaxSupportedSchema)
 	if *migrateOnly {
 		return
+	}
+
+	auditKeyPath := *auditKey
+	if auditKeyPath == "" {
+		if dialect == db.Postgres {
+			log.Fatal("PostgreSQL requires an explicit shared audit-key file")
+		}
+		auditKeyPath = *dbPath + ".audit.key"
+	}
+	if err := database.EnableAudit(auditKeyPath, *auditCapacity); err != nil {
+		log.Fatalf("[audit] startup refused: %v", err)
+	}
+	if *auditVerify {
+		if *auditCheckpoint != "" {
+			b, err := os.ReadFile(*auditCheckpoint)
+			if err != nil {
+				log.Fatal("independent checkpoint unavailable")
+			}
+			var checkpoint audit.ACK
+			if err = json.Unmarshal(b, &checkpoint); err != nil {
+				log.Fatal("invalid independent checkpoint")
+			}
+			if err = database.VerifyAuditCheckpoint(checkpoint.Stream, checkpoint.Seq, checkpoint.Hash); err != nil {
+				log.Fatal(err)
+			}
+		}
+		log.Print("[audit] ledger and supplied checkpoint verified")
+		return
+	}
+	var auditToken string
+	if *auditSIEMURL != "" {
+		b, err := os.ReadFile(*auditTokenFile)
+		if err != nil {
+			log.Fatal("audit token file unavailable")
+		}
+		auditToken = strings.TrimSpace(string(b))
+		if err = audit.ValidateDestination(*auditSIEMURL, auditToken, policy.Production()); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	if policy.Production() {
@@ -496,6 +565,9 @@ func main() {
 	log.Printf("[alerts] engine attached (Phase 8)")
 
 	ctx, cancel := context.WithCancel(context.Background())
+	if *auditSIEMURL != "" {
+		go (&audit.Exporter{DB: database, URL: *auditSIEMURL, Token: auditToken}).Run(ctx)
+	}
 	defer cancel()
 
 	// G1 — leader election. Postgres: advisory lock (vários nós, 1 líder).
@@ -648,7 +720,7 @@ func main() {
 	}
 
 	// Segurança — sink de auditoria p/ SIEM (sempre JSON em stderr; POST se -audit-siem-url).
-	auditSink := audit.New(*auditSIEMURL)
+	auditSink := audit.New("")
 	if *auditSIEMURL != "" {
 		log.Printf("[audit] SIEM export -> %s", *auditSIEMURL)
 	}

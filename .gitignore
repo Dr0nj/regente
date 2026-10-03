@@ -47,3 +47,7 @@ Thumbs.db
 # documentação e a referência de API SEM subir server nem toolchain (clona/baixa
 # e abre o index.html). O CI regenera e falha se ficar defasado — ver
 # .github/workflows/ci.yml (passo "docs site up to date").
+
+# I14 external signing keys must never enter Git
+*.audit.key
+*.audit.key.pub

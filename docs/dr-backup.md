@@ -148,3 +148,7 @@ and restarts A without its original session disk. See `draft_recovery` in
 `baseline.json`. Legacy migration and missing-clone preservation are covered by
 `TestI12DraftContracts`. These are synthetic recovery contracts, not workload-sized
 RPO/RTO, shared-file SQLite HA or general partition qualification.
+
+## Mandatory security audit
+
+Schema 32 adds a signed ledger and durable export outbox. Back up the external signing key separately and verify restores against an independent collector checkpoint before admitting jobs. See [failure-resistant audit](failure-resistant-audit.md) for commands, permissions and retention limits.

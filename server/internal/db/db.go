@@ -34,7 +34,9 @@ const (
 // assinatura de *sql.DB, então os call-sites existentes não mudam.
 type DB struct {
 	*sql.DB
-	dialect Dialect
+	dialect  Dialect
+	audit    *auditConfig
+	identity AuditIdentity
 }
 
 // Dialect devolve o backend ativo (usado por features que dependem do backend,
@@ -45,70 +47,172 @@ func (d *DB) Dialect() Dialect { return d.dialect }
 func (d *DB) Raw() *sql.DB { return d.DB }
 
 func (d *DB) Exec(query string, args ...any) (sql.Result, error) {
-	return d.DB.Exec(rebind(query, d.dialect), args...)
+	return d.ExecContext(context.Background(), query, args...)
 }
-
-func (d *DB) Query(query string, args ...any) (*sql.Rows, error) {
-	return d.DB.Query(rebind(query, d.dialect), args...)
-}
-
-func (d *DB) QueryRow(query string, args ...any) *sql.Row {
-	return d.DB.QueryRow(rebind(query, d.dialect), args...)
-}
-
-func (d *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	return d.DB.QueryRowContext(ctx, rebind(query, d.dialect), args...)
-}
-
 func (d *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	if _, ok := mutation(query); d.audit != nil && ok {
+		tx, err := d.BeginTx(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+		defer tx.Rollback()
+		result, err := tx.Exec(query, args...)
+		if err != nil {
+			return nil, err
+		}
+		if err = tx.Commit(); err != nil {
+			return nil, err
+		}
+		return result, nil
+	}
 	return d.DB.ExecContext(ctx, rebind(query, d.dialect), args...)
 }
+func (d *DB) Query(query string, args ...any) (*sql.Rows, error) {
+	return d.QueryContext(context.Background(), query, args...)
+}
+func (d *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	if _, ok := mutation(query); d.audit != nil && ok {
+		return nil, fmt.Errorf("mutating Query requires an explicit audited transaction")
+	}
+	return d.DB.QueryContext(ctx, rebind(query, d.dialect), args...)
+}
 
-// Begin abre uma transação que também reescreve as queries por dialeto.
-func (d *DB) Begin() (*Tx, error) {
-	tx, err := d.DB.Begin()
+type Row struct {
+	row   *sql.Row
+	tx    *Tx
+	err   error
+	query string
+	args  []any
+}
+
+func (r *Row) Scan(dest ...any) error {
+	if r.err != nil {
+		return r.err
+	}
+	err := r.row.Scan(dest...)
+	if r.tx != nil {
+		defer r.tx.Rollback()
+		if err == nil {
+			r.tx.track(r.query, 1, r.args...)
+			err = r.tx.Commit()
+		}
+	}
+	return err
+}
+func (d *DB) QueryRow(query string, args ...any) *Row {
+	return d.QueryRowContext(context.Background(), query, args...)
+}
+func (d *DB) QueryRowContext(ctx context.Context, query string, args ...any) *Row {
+	if _, ok := mutation(query); d.audit != nil && ok {
+		tx, err := d.BeginTx(ctx, nil)
+		if err != nil {
+			return &Row{err: err}
+		}
+		return &Row{row: tx.Tx.QueryRowContext(ctx, rebind(query, d.dialect), args...), tx: tx, query: query, args: args}
+	}
+	return &Row{row: d.DB.QueryRowContext(ctx, rebind(query, d.dialect), args...)}
+}
+func (d *DB) Begin() (*Tx, error) { return d.BeginTx(context.Background(), nil) }
+func (d *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
+	tx, err := d.DB.BeginTx(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
-	return &Tx{Tx: tx, dialect: d.dialect}, nil
+	t := &Tx{Tx: tx, dialect: d.dialect, audit: d.audit, identity: d.identity}
+	// Reserva a ordem global antes de qualquer escrita do domínio, nos dois bancos.
+	if d.audit != nil {
+		if d.dialect == Postgres {
+			if _, err = tx.ExecContext(ctx, "SET LOCAL synchronous_commit = on"); err != nil {
+				_ = tx.Rollback()
+				return nil, err
+			}
+		}
+		if _, err = tx.ExecContext(ctx, "UPDATE audit_head SET seq=seq WHERE id=1"); err != nil {
+			_ = tx.Rollback()
+			return nil, fmt.Errorf("%w: journal lock", ErrAuditUnavailable)
+		}
+	}
+	return t, nil
 }
-
-// InsertID executa um INSERT e devolve o id gerado, portável entre SQLite e
-// Postgres via `RETURNING id` (LastInsertId não é suportado pelo Postgres).
 func (d *DB) InsertID(query string, args ...any) (int64, error) {
 	var id int64
 	err := d.QueryRow(query+" RETURNING id", args...).Scan(&id)
 	return id, err
 }
 
-// Tx — transação com o mesmo rebind por dialeto.
 type Tx struct {
 	*sql.Tx
-	dialect Dialect
+	dialect  Dialect
+	audit    *auditConfig
+	identity AuditIdentity
+	changes  map[string]Mutation
 }
 
 func (t *Tx) Exec(query string, args ...any) (sql.Result, error) {
-	return t.Tx.Exec(rebind(query, t.dialect), args...)
+	return t.ExecContext(context.Background(), query, args...)
 }
-
-// Query/QueryRow — sem caller HOJE (aparecem no deadcode do CI), mas são
-// SOMBRAS DELIBERADAS dos métodos promovidos do *sql.Tx (mesmo racional do
-// Prepare abaixo): sem elas, um `tx.Query` futuro cairia no método cru SEM o
-// rebind de placeholder e quebraria só no Postgres. Não remover.
+func (t *Tx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	r, err := t.Tx.ExecContext(ctx, rebind(query, t.dialect), args...)
+	if err == nil {
+		n, e := r.RowsAffected()
+		if e != nil {
+			n = 1
+		}
+		t.track(query, n, args...)
+	}
+	return r, err
+}
 func (t *Tx) Query(query string, args ...any) (*sql.Rows, error) {
-	return t.Tx.Query(rebind(query, t.dialect), args...)
+	return t.QueryContext(context.Background(), query, args...)
+}
+func (t *Tx) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	r, err := t.Tx.QueryContext(ctx, rebind(query, t.dialect), args...)
+	if err == nil {
+		t.track(query, 1, args...)
+	}
+	return r, err
+}
+func (t *Tx) QueryRow(query string, args ...any) *Row {
+	return t.QueryRowContext(context.Background(), query, args...)
+}
+func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *Row {
+	t.track(query, 1, args...)
+	return &Row{row: t.Tx.QueryRowContext(ctx, rebind(query, t.dialect), args...)}
 }
 
-func (t *Tx) QueryRow(query string, args ...any) *sql.Row {
-	return t.Tx.QueryRow(rebind(query, t.dialect), args...)
+type Stmt struct {
+	*sql.Stmt
+	tx    *Tx
+	query string
 }
 
-// Prepare cria um prepared statement com o rebind por dialeto, atrelado a esta
-// transação. Use em loops quentes (ex.: materialização da daily em lote) para não
-// re-parsear o SQL por linha — o statement é compilado uma vez e reexecutado N×.
-// Sombreia o Prepare promovido do *sql.Tx (que NÃO faria o rebind p/ Postgres).
-func (t *Tx) Prepare(query string) (*sql.Stmt, error) {
-	return t.Tx.Prepare(rebind(query, t.dialect))
+func (s *Stmt) Exec(args ...any) (sql.Result, error) {
+	return s.ExecContext(context.Background(), args...)
+}
+func (s *Stmt) ExecContext(ctx context.Context, args ...any) (sql.Result, error) {
+	r, err := s.Stmt.ExecContext(ctx, args...)
+	if err == nil {
+		n, e := r.RowsAffected()
+		if e != nil {
+			n = 1
+		}
+		s.tx.track(s.query, n, args...)
+	}
+	return r, err
+}
+func (s *Stmt) QueryRow(args ...any) *Row {
+	s.tx.track(s.query, 1, args...)
+	return &Row{row: s.Stmt.QueryRow(args...)}
+}
+func (t *Tx) Prepare(query string) (*Stmt, error) {
+	return t.PrepareContext(context.Background(), query)
+}
+func (t *Tx) PrepareContext(ctx context.Context, query string) (*Stmt, error) {
+	s, err := t.Tx.PrepareContext(ctx, rebind(query, t.dialect))
+	if err != nil {
+		return nil, err
+	}
+	return &Stmt{Stmt: s, tx: t, query: query}, nil
 }
 
 // ParseDialect normaliza a string da flag -db-driver.
@@ -164,7 +268,7 @@ func sqliteDSN(path string) string {
 	if strings.Contains(path, "?") {
 		sep = "&"
 	}
-	return path + sep + "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
+	return path + sep + "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)&_pragma=foreign_keys(1)"
 }
 
 // ---------------------------------------------------------------------------
@@ -475,6 +579,7 @@ var sqliteMigrations = []migration{
 	{version: 29, sql: schemaV29()},
 	{version: 30, sql: schemaV30()},
 	{version: 31, sql: schemaV31()},
+	{version: 32, sql: schemaV32()},
 }
 
 var pgMigrations = []migration{
@@ -509,6 +614,7 @@ var pgMigrations = []migration{
 	{version: 29, sql: schemaV29()},
 	{version: 30, sql: schemaV30()},
 	{version: 31, sql: schemaV31()},
+	{version: 32, sql: schemaV32()},
 }
 
 // schemaV23 — ST-1 (Statistics honesta, 2026-08-05): a EXECUÇÃO vira linha
@@ -916,4 +1022,29 @@ func schemaV20() string {
 // sobrescreve o valor na entrada.
 func schemaV16() string {
 	return `ALTER TABLE instances ADD COLUMN held_from_status TEXT NOT NULL DEFAULT ''`
+}
+
+// Prepared writes outside a transaction cannot be silently committed without a ledger.
+func (d *DB) Prepare(query string) (*sql.Stmt, error) {
+	return d.PrepareContext(context.Background(), query)
+}
+func (d *DB) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
+	if _, ok := mutation(query); d.audit != nil && ok {
+		return nil, fmt.Errorf("prepared mutation requires an explicit audited transaction")
+	}
+	return d.DB.PrepareContext(ctx, rebind(query, d.dialect))
+}
+func (s *Stmt) Query(args ...any) (*sql.Rows, error) {
+	return s.QueryContext(context.Background(), args...)
+}
+func (s *Stmt) QueryContext(ctx context.Context, args ...any) (*sql.Rows, error) {
+	r, err := s.Stmt.QueryContext(ctx, args...)
+	if err == nil {
+		s.tx.track(s.query, 1, args...)
+	}
+	return r, err
+}
+func (s *Stmt) QueryRowContext(ctx context.Context, args ...any) *Row {
+	s.tx.track(s.query, 1, args...)
+	return &Row{row: s.Stmt.QueryRowContext(ctx, args...)}
 }

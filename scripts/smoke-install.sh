@@ -71,6 +71,7 @@ if [ "$BUILD" = 1 ]; then
   cp -r "$ROOT/app/dist" "$ROOT/.smoke/stage/regente-server_linux_amd64/app/dist"
   cp "$ROOT/server/deploy/install-linux.sh" "$ROOT/server/deploy/configure.sh" "$ROOT/server/deploy/update.sh" \
      "$ROOT/server/deploy/regente-server.service" "$ROOT/server/deploy/server.env.example" \
+     "$ROOT/server/deploy/install-audit-collector.sh" "$ROOT/server/deploy/regente-audit-collector.service" \
      "$ROOT/.smoke/stage/regente-server_linux_amd64/deploy/"
   # Espelha o release.yml: a borda (nginx/TLS/sandbox) também viaja no bundle, e
   # quem a instala em /var/lib/regente/deploy/vps é o install-linux.sh. Sem isto
@@ -152,5 +153,9 @@ fi
 echo
 echo "== I13: restricted installed cell, mTLS, secrets and host egress"
 dk exec "$CT" python3 /root/i13.py
+
+dk cp "$(hostpath "$ROOT/scripts/smoke/i14.py")" "$CT:/root/i14.py" >/dev/null
+echo "== I14: independent installed audit collector"
+dk exec "$CT" python3 /root/i14.py
 
 echo "✅ smoke de instalação OK — o artefato instala, sobrevive a config errada e a reboot, e executa job."

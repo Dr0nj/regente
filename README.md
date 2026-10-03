@@ -721,3 +721,5 @@ the importer can read.</sub>
 </div>
 
 For certificate-bound agents, runtime secret references and the supported dedicated Linux/systemd HTTP cell, see [execution security](docs/execution-security.md).
+
+The [failure-resistant audit](docs/failure-resistant-audit.md) records critical mutations atomically, exports with durable acknowledgements, and verifies restores against an independent collector.

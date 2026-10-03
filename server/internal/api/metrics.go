@@ -115,6 +115,20 @@ func (s *server) metrics(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "# TYPE regente_event_queue_depth gauge")
 		fmt.Fprintf(w, "regente_event_queue_depth %d\n", depth)
 	}
+	if s.cfg.DB.AuditEnabled() {
+		var pending, dead int64
+		var oldest string
+		if err := s.cfg.DB.QueryRow("SELECT COUNT(*),COALESCE(SUM(d.dead_letter),0),COALESCE(MIN(a.ts),'') FROM audit_delivery d JOIN security_audit a ON a.seq=d.seq WHERE d.acknowledged=0").Scan(&pending, &dead, &oldest); err == nil {
+			lag := 0.0
+			if parsed, err := time.Parse(time.RFC3339Nano, oldest); err == nil {
+				lag = max(0, time.Since(parsed).Seconds())
+			}
+			fmt.Fprintf(w, "# TYPE regente_audit_pending gauge\nregente_audit_pending %d\n# TYPE regente_audit_dead_letters gauge\nregente_audit_dead_letters %d\n# TYPE regente_audit_oldest_pending_seconds gauge\nregente_audit_oldest_pending_seconds %.1f\n", pending, dead, lag)
+		} else {
+			fmt.Fprintln(w, "# TYPE regente_audit_storage_unavailable gauge\nregente_audit_storage_unavailable 1")
+		}
+	}
+
 }
 
 // livez — R2/R3: liveness. Responde 200 enquanto o processo serve HTTP, e reporta
