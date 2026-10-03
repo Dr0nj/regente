@@ -1,0 +1,213 @@
+{
+  "increment": "I14",
+  "date": "2026-10-03",
+  "sha": "e76b5ce95d9974ebfc7096a52725ad093a4d1df1",
+  "ci_url": "https://github.com/Dr0nj/regente/actions/runs/37128702406",
+  "status": "passed",
+  "profile": "synthetic-ci-v1",
+  "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+  "go": "go version go1.26.8 linux/amd64",
+  "nats_version": "2.11.8",
+  "images": [
+    {
+      "ID": "sha256:d741b376874687de90374fd34f55c6b2760e8f7bd7e4ae5cd47f50757fc08cf8",
+      "ContainerName": "regente-it-66ca432f03bb-postgres-1",
+      "Repository": "postgres",
+      "Tag": "",
+      "Platform": "linux/amd64",
+      "Size": 278205935,
+      "LastTagTime": "0001-01-01T00:00:00Z"
+    },
+    {
+      "ID": "sha256:0dfa54630538e8565a0953e5d7316c4b92bd17e293ec333e94f52be2094e7300",
+      "ContainerName": "regente-it-66ca432f03bb-nats-1",
+      "Repository": "nats",
+      "Tag": "",
+      "Platform": "linux/amd64",
+      "Size": 25895714,
+      "LastTagTime": "0001-01-01T00:00:00Z"
+    },
+    {
+      "ID": "sha256:086a18b8b109fabaa6b370d30fe4c6abfe316bf1ab88dea7a3ddc6cf31333149",
+      "ContainerName": "regente-it-66ca432f03bb-keycloak-1",
+      "Repository": "quay.io/keycloak/keycloak",
+      "Tag": "",
+      "Platform": "linux/amd64",
+      "Size": 450582544,
+      "LastTagTime": "0001-01-01T00:00:00Z"
+    }
+  ],
+  "verification": {
+    "mode": "full",
+    "status": "passed",
+    "gates": [
+      {
+        "gate": "runner",
+        "status": "passed"
+      },
+      {
+        "gate": "server",
+        "status": "passed"
+      },
+      {
+        "gate": "agent",
+        "status": "passed"
+      },
+      {
+        "gate": "web",
+        "status": "passed"
+      },
+      {
+        "gate": "docs",
+        "status": "passed"
+      },
+      {
+        "gate": "browser",
+        "status": "passed"
+      },
+      {
+        "gate": "integration",
+        "status": "passed"
+      },
+      {
+        "gate": "demo",
+        "status": "passed"
+      }
+    ],
+    "seconds": 628.319
+  },
+  "integration": {
+    "status": "passed",
+    "passed_test_count": 305,
+    "passed_tests": [
+      "TestI14DurableExport",
+      "TestI14DurableExport/postgres",
+      "TestI14DurableExport/sqlite",
+      "TestI14MandatoryAPI",
+      "TestI14MemoryChangesWaitForAudit",
+      "TestMandatoryAuditConcurrentVerification",
+      "TestMandatoryAuditConcurrentVerification/postgres",
+      "TestMandatoryAuditConcurrentVerification/sqlite",
+      "TestMandatoryAuditCrash",
+      "TestMandatoryAuditCrash/postgres",
+      "TestMandatoryAuditCrash/sqlite",
+      "TestMandatoryAuditIdentityBounds",
+      "TestMandatoryAuditTransactions",
+      "TestMandatoryAuditTransactions/postgres",
+      "TestMandatoryAuditTransactions/postgres/capacity_separate_from_telemetry_and_recovery",
+      "TestMandatoryAuditTransactions/postgres/exec_returning_prepared_no_secrets",
+      "TestMandatoryAuditTransactions/postgres/outbox_gap_is_detected",
+      "TestMandatoryAuditTransactions/postgres/persistence_failure_rolls_back",
+      "TestMandatoryAuditTransactions/postgres/restart_tamper_and_verified_restore",
+      "TestMandatoryAuditTransactions/sqlite",
+      "TestMandatoryAuditTransactions/sqlite/capacity_separate_from_telemetry_and_recovery",
+      "TestMandatoryAuditTransactions/sqlite/exec_returning_prepared_no_secrets",
+      "TestMandatoryAuditTransactions/sqlite/outbox_gap_is_detected",
+      "TestMandatoryAuditTransactions/sqlite/persistence_failure_rolls_back",
+      "TestMandatoryAuditTransactions/sqlite/restart_tamper_and_verified_restore"
+    ],
+    "seconds": 303.442,
+    "i14_audit": {
+      "sqlite": {
+        "server_sigkill": true,
+        "destination_offline": true,
+        "tls_collector": true,
+        "accepted_mutation_preserved": true,
+        "acknowledged_records": 10,
+        "no_gaps_or_duplicates": true,
+        "independent_checkpoint_verified": true,
+        "pg_dump_restore_verified": false,
+        "seconds": 10.475
+      },
+      "postgres": {
+        "server_sigkill": true,
+        "destination_offline": true,
+        "tls_collector": true,
+        "accepted_mutation_preserved": true,
+        "acknowledged_records": 10,
+        "no_gaps_or_duplicates": true,
+        "independent_checkpoint_verified": true,
+        "pg_dump_restore_verified": true,
+        "seconds": 11.594
+      }
+    },
+    "i12_draft_recovery": {
+      "sqlite": {
+        "complete_set_preserved_content": true,
+        "db_only_preserved_content": true,
+        "cross_node_without_disk": true,
+        "restart_without_cache": true,
+        "stale_write_rejected": true,
+        "archived_files": 0,
+        "seconds": 1.437
+      },
+      "postgres": {
+        "complete_set_preserved_content": true,
+        "db_only_preserved_content": true,
+        "cross_node_without_disk": true,
+        "restart_without_cache": true,
+        "stale_write_rejected": true,
+        "archived_files": 0,
+        "seconds": 3.127
+      }
+    },
+    "i11_ha": {
+      "servers": 2,
+      "agent_on_follower": true,
+      "pool_peak": 1,
+      "follower_quota_update": true,
+      "db_nats_interruption": true,
+      "leader_sigkill": true,
+      "identity_preserved": true,
+      "effect_count": 2,
+      "zero_quota_blocks": true,
+      "seconds": 9.75
+    },
+    "durable_process_recovery": {
+      "sqlite": {
+        "server_sigkill": true,
+        "agent_result_pending": true,
+        "identity_preserved": true,
+        "effect_count": 1,
+        "condition_committed": true,
+        "seconds": 5.539
+      },
+      "postgres": {
+        "server_sigkill": true,
+        "agent_result_pending": true,
+        "identity_preserved": true,
+        "effect_count": 1,
+        "condition_committed": true,
+        "seconds": 5.956
+      }
+    }
+  },
+  "browser": {
+    "startTime": "2026-10-03T14:14:41.896Z",
+    "duration": 19340.78,
+    "expected": 8,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "installed_systemd": {
+    "status": "passed",
+    "markers": [
+      "SMOKE stage1 OK",
+      "SMOKE stage2 OK",
+      "I13 COMMAND CELL OK:",
+      "I13 SYSTEMD OK:",
+      "I14_SYSTEMD_OK:"
+    ],
+    "profile": "Ubuntu/systemd, distinct control and collector UIDs, protected files, TLS ACK, real outage and SIGKILL"
+  },
+  "limits": [
+    "Indefinite mandatory retention; no online pruning or key rotation",
+    "One ordered stream per collector journal, exporter drains one record per second",
+    "Hash/signature integrity requires protected signing key; complete DB rollback detection requires independent checkpoint",
+    "External Git/filesystem actions have durable admission and receipts, not a DB/filesystem transaction",
+    "Schema 32 supports [32,32]; drain/upgrade every node",
+    "Local Windows SSH fixture fails identically on baseline; mandatory Linux proof is required",
+    "I15-I17 remain pending; supply chain, capacity and installed production pilot not implied"
+  ]
+}

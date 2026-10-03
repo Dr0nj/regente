@@ -179,3 +179,7 @@ nontransactional DDL inside the transaction; the runner never retries it in auto
 ## I13 execution security
 
 The [execution security profile](execution-security.md) is exercised by TestI13CertificateBindingAndActiveRevocation, TestI13RealAgentSecretsMTLSAndEgress and TestI13InternalHTTPPolicyAndSSH on both SQLite and PostgreSQL, plus secret authorization/outage and pinned-egress tests. CI and release also require installed systemd HTTP and COMMAND cells, including actual denied host egress. This is a synthetic correctness profile; cloud managers and hostile-code isolation are outside its qualification.
+
+## I14 mandatory audit
+
+The [failure-resistant audit contract](failure-resistant-audit.md) is required on SQLite and PostgreSQL through transaction/storage/capacity/crash/verification/export tests and real SIGKILL processes with an independent TLS collector. PostgreSQL dump/restore is checked against the collector checkpoint. The installed smoke requires separate control/collector UIDs and permissions; its I14_SYSTEMD_OK marker is included in the verification artifact.

@@ -17,9 +17,9 @@
 > no §Entregue e some uma linha no §Changelog. Ao **abrir** um item novo: só adicione no §Backlog.
 > Sem barras de progresso nem porcentagens — de propósito (confundem mais do que ajudam).
 >
-> Documento vivo · revisão **2026-10-02** — o marco de manutenção de **2026-07-30**
+> Documento vivo · revisão **2026-10-03** — o marco de manutenção de **2026-07-30**
 > descreve as trilhas originais. O ciclo enterprise iniciado em setembro está ativo:
-> I04/I05/I06/I07/I08/I09/I10/I11/I12/I13, E04 e DOC-01–DOC-14 entregues; I14–I17 seguem na §Backlog. Manutenção histórica
+> I04/I05/I06/I07/I08/I09/I10/I11/I12/I13/I14, E04 e DOC-01–DOC-14 entregues; I15–I17 seguem na §Backlog. Manutenção histórica
 > não cancela incrementos explicitamente solicitados nem significa homologação produtiva.
 > Estratégia de arquitetura em [`architecture-future.md`](architecture-future.md);
 > apresentação de produto no [`../README.md`](../README.md).
@@ -85,7 +85,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
-- **I14–I17:** auditoria, publicação verificável, capacidade, recuperação e piloto seguem na sequência enterprise.
+- **I15–I17:** publicação verificável, capacidade, recuperação e piloto seguem na sequência enterprise.
 
 Escopo ativo deste ciclo: separar credenciais humanas de execução e preparar as
 próximas garantias. Não representa homologação empresarial completa.
@@ -383,6 +383,14 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+## I14 — Auditoria resistente a falhas (2026-10-03)
+
+- Schema32 acrescenta ledger assinado Ed25519 e outbox própria. Mutação do DB, trilha e entrega nascem no mesmo commit; falha ou backlog cheio recusa commit. Exec/RETURNING/prepared são cobertos, lotes agregados e sem SQL/segredos/output na exportação.
+- Ator/rota/correlação e IDs limitados; API registra intenção antes de efeitos e negações antes da resposta. Credenciais Git/webhook e capacidades só mudam memória após commit. Git/filesystem têm admissão e receipts reconciliáveis, não atomicidade com DB.
+- Coletor HTTPS independente com chave pública e UID/volume próprios; append+fsync antes de ACK por stream/seq/hash. Retry/dedupe após receipt perdido, dead-letter sem saltar lacunas e recovery administrativo auditado. Capacidade de segurança/acesso/controle separada de execução/telemetria; métricas de pendências/lag/dead-letter.
+- 305 testes/subtestes de integração obrigatórios SQLite/PG, oito gates full, seis jobs e oito browser sem skip/flaky no SHA e76b5ce. Storage recusado, fila cheia, segredo, adulteração, snapshot concorrente e restore; binários reais com outage+SIGKILL retomaram dez registros por backend sem lacuna/duplicação, e pg_dump/pg_restore conferiu checkpoint independente. Smoke systemd provou UIDs/permissões/TLS/outage/crash. [Contrato](failure-resistant-audit.md) · [Evidência](evidence/i14-e76b5ce.json).
+- Retenção mandatória indefinida; pruning/rotação não implementados. Exportador atual 1 registro/s e serialização dos commits são limites para medir em I16. Assinatura não protege host/chave comprometidos; rollback completo precisa checkpoint independente. Drain [32,32], sem N/N−1. I15–I17 continuam abertos; não qualifica piloto produtivo.
 
 ## I13 — Secrets, mTLS e células de execução restritas (2026-10-02)
 
@@ -1923,6 +1931,8 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-10-03 — I14:** auditoria mandatória na transação, exportação assinada com ACK/outbox/retry/dedupe, coletor independente e restore verificado. Falha e backlog cheio recusam efeitos; SQLite/PG, full oito gates, oito browser e smoke instalado aprovados. [Contrato](failure-resistant-audit.md) · [Evidência](evidence/i14-e76b5ce.json). Próximo I15.
 
 - **2026-10-02 — I13:** mTLS ligado à identidade de máquina, secrets autorizados por execução com TTL0/redaction e células Linux/systemd HTTP/COMMAND separadas com egress real. Schema 31, oito gates full, SQLite/PG, oito browser e smoke instalado aprovados. [Contrato](execution-security.md) · [Evidência](evidence/i13-e5bb974.json). Próximo I14.
 
