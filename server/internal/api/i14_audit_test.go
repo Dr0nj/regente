@@ -3,10 +3,15 @@ package api
 import (
 	"encoding/json"
 	"github.com/Dr0nj/regente-server/internal/db"
+	"github.com/Dr0nj/regente-server/internal/hub"
+	"github.com/Dr0nj/regente-server/internal/scheduler"
+	"github.com/Dr0nj/regente-server/internal/storage"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestI14MandatoryAPI(t *testing.T) {
@@ -85,5 +90,53 @@ func TestI14MandatoryAPI(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != 503 {
 		t.Fatal("negação sem storage retornou aceitação normal", response.StatusCode)
+	}
+}
+
+func TestI14MemoryChangesWaitForAudit(t *testing.T) {
+	d := newTestDB(t)
+	defer d.Close()
+	if err := d.EnableAudit(filepath.Join(t.TempDir(), "audit.key"), 1); err != nil {
+		t.Fatal(err)
+	}
+	gh, err := storage.NewGitHubClient("", "synthetic/repo", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := hub.New()
+	store := storage.NewFileStore(t.TempDir(), false)
+	sched := scheduler.New(store, d, h, time.Hour)
+	defer sched.Stop()
+	rt := scheduler.NewResourceTracker()
+	sched.AttachResources(rt)
+	if err = rt.LoadFromDB(d); err != nil {
+		t.Fatal(err)
+	}
+	if err = rt.SetCapacity("audit-capacity", 2); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(NewRouter(Config{DB: d, Hub: h, Store: store, Scheduler: sched, GitHub: gh, Token: "test-token"}))
+	defer srv.Close()
+	for _, endpoint := range []string{"/api/git/token", "/api/git/webhook-secret"} {
+		response := doReq(t, srv.Client(), http.MethodPost, srv.URL+endpoint, "test-token", `{"token":"must-not-apply","secret":"must-not-apply"}`)
+		response.Body.Close()
+		if response.StatusCode < 500 {
+			t.Fatal("alteração aceita com backlog cheio", endpoint, response.StatusCode)
+		}
+	}
+	if gh.HasToken() || gh.HasWebhookSecret() {
+		t.Fatal("credencial mudou sem commit auditado")
+	}
+	response := doReq(t, srv.Client(), http.MethodPut, srv.URL+"/api/resources/audit-capacity", "test-token", `{"capacity":7}`)
+	response.Body.Close()
+	if response.StatusCode != 503 {
+		t.Fatal(response.StatusCode)
+	}
+	snapshot := rt.Snapshot()
+	if len(snapshot) != 1 || snapshot[0].Capacity != 2 {
+		t.Fatal("capacidade em memória mudou", snapshot)
+	}
+	if rt.TryAcquire("refused", map[string]int{"unknown": 1}) {
+		t.Fatal("admitiu capacidade implícita sem auditoria")
 	}
 }

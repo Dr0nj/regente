@@ -115,12 +115,15 @@ func (s *server) setResourceCapacity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.Scheduler.DurableEngine() != nil {
-		if err := s.cfg.Scheduler.DurableResourceChange(name, body.Capacity, false); err != nil {
+		if err := s.cfg.Scheduler.DurableResourceChangeUsing(s.cfg.DB, name, body.Capacity, false); err != nil {
 			executionError(w, err)
 			return
 		}
 	} else {
-		rt.SetCapacity(name, body.Capacity)
+		if err := rt.SetCapacityUsing(s.cfg.DB, name, body.Capacity); err != nil {
+			http.Error(w, "Resource persistence unavailable", http.StatusServiceUnavailable)
+			return
+		}
 	}
 	writeJSON(w, 200, map[string]any{"name": name, "capacity": body.Capacity})
 }
@@ -134,14 +137,14 @@ func (s *server) deleteResource(w http.ResponseWriter, r *http.Request) {
 	}
 	name := urlName(r, "name")
 	if s.cfg.Scheduler.DurableEngine() != nil {
-		if err := s.cfg.Scheduler.DurableResourceChange(name, 0, true); err != nil {
+		if err := s.cfg.Scheduler.DurableResourceChangeUsing(s.cfg.DB, name, 0, true); err != nil {
 			executionError(w, err)
 			return
 		}
 		w.WriteHeader(204)
 		return
 	}
-	if err := rt.Delete(name); err != nil {
+	if err := rt.DeleteUsing(s.cfg.DB, name); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}

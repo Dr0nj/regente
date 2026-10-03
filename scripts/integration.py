@@ -105,7 +105,7 @@ def validate_test_events(output):
     required = {"TestMandatoryAuditTransactions/sqlite", "TestMandatoryAuditTransactions/postgres",
  "TestMandatoryAuditConcurrentVerification/sqlite", "TestMandatoryAuditConcurrentVerification/postgres",
  "TestMandatoryAuditCrash/sqlite", "TestMandatoryAuditCrash/postgres",
- "TestI14DurableExport/sqlite", "TestI14DurableExport/postgres", "TestI14MandatoryAPI",
+ "TestI14DurableExport/sqlite", "TestI14DurableExport/postgres", "TestI14MandatoryAPI", "TestI14MemoryChangesWaitForAudit",
  "TestMigrationRunbookContract", "TestPostgresMigrateAndCRUD", "TestMigrationSafety/postgres",
                 "TestMigrationSafety/sqlite", "TestIntegrationOIDC_AuthCodeFlow",
                 "TestMachineIdentity/sqlite", "TestMachineIdentity/postgres",

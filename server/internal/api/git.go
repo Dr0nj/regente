@@ -96,14 +96,14 @@ func (s *server) setWebhookSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	secret := strings.TrimSpace(body.Secret)
-	if s.cfg.GitHub != nil {
-		s.cfg.GitHub.SetWebhookSecret(secret)
-	}
 	if _, err := s.cfg.DB.Exec(
 		`INSERT INTO settings(key,value) VALUES('webhook_secret',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, secret,
 	); err != nil {
 		writeJSON(w, 500, map[string]string{"error": "persist failed: " + err.Error()})
 		return
+	}
+	if s.cfg.GitHub != nil {
+		s.cfg.GitHub.SetWebhookSecret(secret)
 	}
 	s.gitStatus(w, r)
 }
@@ -139,13 +139,13 @@ func (s *server) setGitToken(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]string{"error": "empty token"})
 		return
 	}
-	s.applyToken(tok)
 	if _, err := s.cfg.DB.Exec(
 		`INSERT INTO settings(key,value) VALUES('github_token',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, tok,
 	); err != nil {
 		writeJSON(w, 500, map[string]string{"error": "persist failed: " + err.Error()})
 		return
 	}
+	s.applyToken(tok)
 	// Revalida: fetch+reset com o novo header de auth (também reescreve remote limpo).
 	if s.cfg.Git != nil {
 		if err := s.cfg.Git.EnsureClone(); err != nil {
@@ -162,11 +162,11 @@ func (s *server) clearGitToken(w http.ResponseWriter, r *http.Request) {
 	if !s.requireAdmin(w, r) {
 		return
 	}
-	s.applyToken("")
 	if _, err := s.cfg.DB.Exec(`DELETE FROM settings WHERE key='github_token'`); err != nil {
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
 		return
 	}
+	s.applyToken("")
 	s.gitStatus(w, r)
 }
 

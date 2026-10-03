@@ -3,6 +3,7 @@ package scheduler
 import (
 	"database/sql"
 	"encoding/json"
+	"github.com/Dr0nj/regente-server/internal/db"
 	"github.com/Dr0nj/regente-server/internal/domain"
 	"github.com/Dr0nj/regente-server/internal/execution"
 )
@@ -114,10 +115,13 @@ func (s *Scheduler) DurableResourceSnapshot() ([]ResourceState, error) {
 	return out, rows.Err()
 }
 func (s *Scheduler) DurableResourceChange(name string, capacity int, remove bool) error {
+	return s.DurableResourceChangeUsing(s.db, name, capacity, remove)
+}
+func (s *Scheduler) DurableResourceChangeUsing(database *db.DB, name string, capacity int, remove bool) error {
 	if name == "" || capacity < 0 {
 		return execution.ErrInvalid
 	}
-	tx, err := s.db.Begin()
+	tx, err := database.Begin()
 	if err != nil {
 		return err
 	}

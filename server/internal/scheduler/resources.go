@@ -11,7 +11,6 @@ package scheduler
 
 import (
 	"fmt"
-	"log"
 	"sync"
 
 	"github.com/Dr0nj/regente-server/internal/db"
@@ -80,47 +79,49 @@ func (t *ResourceTracker) LoadFromDB(database *db.DB) error {
 
 // persist grava (upsert) a capacidade de um recurso na tabela durável.
 // Best-effort — chamar SEM o mutex (faz I/O). Sem DB é no-op.
-func (t *ResourceTracker) persist(name string, cap int) {
+func (t *ResourceTracker) persist(name string, cap int) error {
 	if t.db == nil {
-		return
+		return nil
 	}
-	if _, err := t.db.Exec(`INSERT OR REPLACE INTO resources(name, capacity) VALUES(?,?)`, name, cap); err != nil {
-		log.Printf("[quotas] persist capacity %q=%d: %v", name, cap, err)
-	}
+	_, err := t.db.Exec(`INSERT OR REPLACE INTO resources(name, capacity) VALUES(?,?)`, name, cap)
+	return err
 }
 
-// SetCapacity define ou atualiza capacidade de um recurso (e grava no banco).
-func (t *ResourceTracker) SetCapacity(name string, cap int) {
+// O registry em memória só muda depois do commit durável/auditado.
+func (t *ResourceTracker) SetCapacity(name string, cap int) error {
+	return t.SetCapacityUsing(t.db, name, cap)
+}
+func (t *ResourceTracker) SetCapacityUsing(database *db.DB, name string, cap int) error {
 	if cap < 0 {
 		cap = 0
 	}
 	t.mu.Lock()
+	defer t.mu.Unlock()
+	if database != nil {
+		if _, err := database.Exec(`INSERT OR REPLACE INTO resources(name,capacity) VALUES(?,?)`, name, cap); err != nil {
+			return err
+		}
+	}
 	t.capacity[name] = cap
-	t.mu.Unlock()
-	t.persist(name, cap)
+	return nil
 }
-
-// Delete remove um recurso do registry (e do banco). Recusa se houver uso ativo
-// (used > 0) para evitar inconsistência com instances rodando que detêm a quantia.
-func (t *ResourceTracker) Delete(name string) error {
+func (t *ResourceTracker) Delete(name string) error { return t.DeleteUsing(t.db, name) }
+func (t *ResourceTracker) DeleteUsing(database *db.DB, name string) error {
 	t.mu.Lock()
+	defer t.mu.Unlock()
 	if _, ok := t.capacity[name]; !ok {
-		t.mu.Unlock()
 		return fmt.Errorf("resource %q not found", name)
 	}
 	if used := t.used[name]; used > 0 {
-		t.mu.Unlock()
 		return fmt.Errorf("resource %q in use (used=%d); release first", name, used)
+	}
+	if database != nil {
+		if _, err := database.Exec(`DELETE FROM resources WHERE name=?`, name); err != nil {
+			return err
+		}
 	}
 	delete(t.capacity, name)
 	delete(t.used, name)
-	database := t.db
-	t.mu.Unlock()
-	if database != nil {
-		if _, err := database.Exec(`DELETE FROM resources WHERE name=?`, name); err != nil {
-			log.Printf("[quotas] persist delete %q: %v", name, err)
-		}
-	}
 	return nil
 }
 
@@ -159,35 +160,24 @@ func (t *ResourceTracker) TryAcquire(instanceID string, want map[string]int) boo
 		return true
 	}
 	t.mu.Lock()
-	// cria recursos desconhecidos com capacidade default 1 (gating "no máx 1 por vez").
-	// `created` são os que passam a existir no registry AGORA — persistidos após o
-	// unlock pra sobreviverem a restart mesmo sem passar pelo painel Recursos (o
-	// caso raro: só acontece na PRIMEIRA vez que um nome aparece; depois já está no mapa).
-	var created []string
+	defer t.mu.Unlock()
 	for name := range want {
 		if _, ok := t.capacity[name]; !ok {
+			if err := t.persist(name, 1); err != nil {
+				return false
+			}
 			t.capacity[name] = 1
-			created = append(created, name)
 		}
 	}
 	if len(t.shortfallsLocked(want)) > 0 {
-		t.mu.Unlock()
-		for _, name := range created {
-			t.persist(name, 1)
-		}
 		return false
 	}
-	// commit
 	if t.holders[instanceID] == nil {
 		t.holders[instanceID] = map[string]int{}
 	}
 	for name, qty := range want {
 		t.used[name] += qty
 		t.holders[instanceID][name] += qty
-	}
-	t.mu.Unlock()
-	for _, name := range created {
-		t.persist(name, 1)
 	}
 	return true
 }

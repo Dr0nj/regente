@@ -410,7 +410,7 @@ func (d *DB) WithAuditActor(actor string) *DB {
 
 var insertRefsRE = regexp.MustCompile(`(?is)^\s*INSERT(?:\s+OR\s+(?:IGNORE|REPLACE))?\s+INTO\s+\w+\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)`)
 var whereRefsRE = regexp.MustCompile(`(?i)\b(id|user_id|agent_id|execution_id|order_id|instance_id|order_date|definition_id)\s*=\s*\?`)
-var safeRefColumns = map[string]bool{"id": true, "user_id": true, "agent_id": true, "execution_id": true, "order_id": true, "instance_id": true, "order_date": true, "definition_id": true, "session_id": true, "folder_name": true, "actor": true, "action": true, "operation": true}
+var safeRefColumns = map[string]bool{"id": true, "user_id": true, "agent_id": true, "execution_id": true, "order_id": true, "instance_id": true, "order_date": true, "definition_id": true, "session_id": true, "folder_name": true, "name": true, "actor": true, "action": true, "operation": true}
 
 // Apenas identificadores declarados. Tokens, payloads, valores e output são proibidos.
 func safeAuditReferences(query string, args []any) []string {
