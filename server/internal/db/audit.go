@@ -142,6 +142,10 @@ func (d *DB) EnableAudit(path string, capacity int64) error {
 func (d *DB) AuditEnabled() bool { return d != nil && d.audit != nil }
 func (d *DB) WithAuditIdentity(identity AuditIdentity) *DB {
 	copy := *d
+	identity.Actor = boundedAuditIdentity(identity.Actor, 256)
+	identity.Route = boundedAuditIdentity(identity.Route, 2048)
+	identity.IP = boundedAuditIdentity(identity.IP, 64)
+	identity.Request = boundedAuditIdentity(identity.Request, 128)
 	copy.identity = identity
 	return &copy
 }
@@ -453,4 +457,12 @@ func safeAuditReferences(query string, args []any) []string {
 		}
 	}
 	return refs
+}
+
+func boundedAuditIdentity(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	digest := sha256.Sum256([]byte(value))
+	return strings.ToValidUTF8(value[:max(0, limit-80)], "?") + "...sha256:" + hex.EncodeToString(digest[:])
 }

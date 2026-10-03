@@ -238,3 +238,18 @@ func TestMandatoryAuditCrash(t *testing.T) {
 		})
 	}
 }
+
+func TestMandatoryAuditIdentityBounds(t *testing.T) {
+	d, _, _ := auditDB(t, SQLite, 10)
+	scoped := d.WithAuditIdentity(AuditIdentity{Actor: strings.Repeat("actor", 10000), Route: strings.Repeat("path", 100000), IP: strings.Repeat("ip", 10000)})
+	if err := scoped.AuditObservation("access.denied", "403"); err != nil {
+		t.Fatal(err)
+	}
+	records, err := d.AuditRecords(0, 1)
+	if err != nil || len(records) != 1 || len(records[0].Payload) > 4096 {
+		t.Fatal(records, err)
+	}
+	if !strings.Contains(records[0].Payload, "sha256:") {
+		t.Fatal("perdeu identidade do valor truncado")
+	}
+}
