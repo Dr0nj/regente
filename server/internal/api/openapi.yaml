@@ -1229,6 +1229,63 @@ paths:
         "409": { description: Stale generation, effect currently claimed or conflicting request key. }
         "503": { description: No durable receipt; retry the same request key. }
 
+  /api/audit/security:
+    get:
+      summary: Read signed mandatory security records
+      description: Administrator only. Returns up to 500 records after an exclusive sequence cursor. Records contain no credential or output payloads. Verify the signature and chain against the independently held public key.
+      parameters:
+        - in: query
+          name: after
+          schema: {type: integer, format: int64, minimum: 0, default: 0}
+      responses:
+        '200':
+          description: Signed records in ascending sequence order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [stream, seq, ts, previous, payload, hash, signature]
+                  properties:
+                    stream: {type: string}
+                    seq: {type: integer, format: int64}
+                    ts: {type: string}
+                    previous: {type: string}
+                    payload: {type: string, description: Canonical structured audit JSON}
+                    hash: {type: string}
+                    signature: {type: string, description: Hex Ed25519 signature over the hash}
+        '400': {description: Invalid cursor}
+        '403': {description: Administrator required}
+        '503': {description: Mandatory audit unavailable}
+  /api/audit/security/status:
+    get:
+      summary: Inspect mandatory audit backlog and integrity
+      description: Administrator only. Integrity verification uses a consistent database snapshot. A separate collector checkpoint is required to detect a complete database rollback.
+      responses:
+        '200':
+          description: Current transport status and local integrity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pending: {type: integer, format: int64}
+                  deadLetters: {type: integer, format: int64}
+                  head: {type: integer, format: int64}
+                  integrity: {type: string, enum: [verified, failed]}
+        '403': {description: Administrator required}
+        '503': {description: Audit storage unavailable}
+  /api/audit/security/retry:
+    post:
+      summary: Retry the oldest unacknowledged audit record
+      description: Administrator only. Fix the destination first. This operation clears retry/dead-letter state without skipping any sequence and records the administrative action durably.
+      responses:
+        '204': {description: Retry admitted and recorded}
+        '403': {description: Administrator required}
+        '503': {description: Retry audit could not be persisted}
+
+
 components:
   securitySchemes:
     machineAuth:
