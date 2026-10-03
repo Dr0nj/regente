@@ -222,7 +222,9 @@ func TestI13RealAgentSecretsMTLSAndEgress(t *testing.T) {
 			h := hub.New()
 			s := scheduler.New(store, d, h, time.Hour)
 			defer s.Stop()
-			s.SetClock(businessclock.Func(func() time.Time { return time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC) }))
+			// Data de negócio fixa, mas leases/retry precisam de tempo que avança.
+			clockStarted := time.Now()
+			s.SetClock(businessclock.Func(func() time.Time { return time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC).Add(time.Since(clockStarted)) }))
 			s.RuntimePolicy = runtimeprofile.Config{Profile: "development", ExecutionMode: "durable", TLSClientCA: p.ca}
 			s.AttachDurable(execution.New(d, s.Now))
 			s.ReloadDefs()
@@ -266,7 +268,8 @@ func TestI13RealAgentSecretsMTLSAndEgress(t *testing.T) {
 				if e != nil {
 					t.Fatal(e)
 				}
-				deadline := time.Now().Add(15 * time.Second)
+				// A revogação pode ocorrer entre claim e resposta: só o lease permite redelivery.
+				deadline := time.Now().Add(s.DurableEngine().DeliveryLease + 15*time.Second)
 				for time.Now().Before(deadline) {
 					got, e := s.DurableEngine().Attempt(a.ExecutionID)
 					if e != nil {

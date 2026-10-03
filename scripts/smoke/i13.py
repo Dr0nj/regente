@@ -119,6 +119,17 @@ try:
     (dropin/"probe.conf").write_text("[Service]\nEnvironment=REGENTE_SECRET_PARENT_CANARY=i13-parent-credential\n")
     command(["systemctl","daemon-reload"]);command(["systemctl","restart","regente-agent-command"])
     wait("installed command cell online",lambda:any(a["id"]=="i13-command-cell" and a["online"] for a in request("/api/agents")))
+    # MainPID aparece antes do exec/setuid; presença pode pertencer ao processo anterior.
+    expected_command_uid=command(["id","-u","regente-agent-command"]).strip()
+    def command_identity_ready():
+        current_pid=command(["systemctl","show","regente-agent-command","-p","MainPID","--value"]).strip()
+        if current_pid=="0":return False
+        try:
+            current_uid=[line for line in pathlib.Path("/proc/"+current_pid+"/status").read_text().splitlines() if line.startswith("Uid:")][0].split()[1]
+            executable=pathlib.Path("/proc/"+current_pid+"/exe").resolve().name
+        except FileNotFoundError:return False
+        return current_uid==expected_command_uid and executable=="regente-agent"
+    wait("command service exec and expected UID",command_identity_ready)
     command_pid=command(["systemctl","show","regente-agent-command","-p","MainPID","--value"]).strip()
     command_uid=[line for line in pathlib.Path("/proc/"+command_pid+"/status").read_text().splitlines() if line.startswith("Uid:")][0].split()[1]
     assert command_uid!="0" and command_uid!=uid,"command and secrets cells share OS identity"
