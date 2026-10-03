@@ -103,6 +103,7 @@ def validate_test_events(output):
         raise RuntimeError(f"Mandatory integration tests skipped: {skipped}")
     passed = {e.get("Test") for e in events if e.get("Action") == "pass"}
     required = {"TestMandatoryAuditTransactions/sqlite", "TestMandatoryAuditTransactions/postgres",
+ "TestMandatoryAuditConcurrentVerification/sqlite", "TestMandatoryAuditConcurrentVerification/postgres",
  "TestMandatoryAuditCrash/sqlite", "TestMandatoryAuditCrash/postgres",
  "TestI14DurableExport/sqlite", "TestI14DurableExport/postgres", "TestI14MandatoryAPI",
  "TestMigrationRunbookContract", "TestPostgresMigrateAndCRUD", "TestMigrationSafety/postgres",

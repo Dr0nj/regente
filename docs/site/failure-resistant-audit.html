@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Failure-resistant audit · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="adr-i09-agent-journal.html">Durable agent journal</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="business-time.html">Business time</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html">Daily recovery</a>
+<a href="durable-execution.html">Durable execution and recovery</a>
+<a href="execution-security.html">Execution security</a>
+<a href="failure-resistant-audit.html" class="active">Failure-resistant audit</a>
+<a href="ha-resources.html">Shared resources and scheduler leadership</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="production-profile.html">Production profile</a>
+<a href="shared-drafts.html">Shared Design drafts</a>
+<a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
+<a href="web-events.html">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="failure-resistant-audit">Failure-resistant audit</h1>
+<p>The mandatory security ledger is separate from operational logs. From schema 32 onward, runtime database mutations commit their ledger record and delivery entry in the same transaction. An audit write failure or a full security backlog rolls back the mutation. A successful database commit survives an immediate process crash without a shutdown flush.</p>
+<h2 id="coverage-and-data-policy">Coverage and data policy</h2>
+<p>The database adapter covers identities, sessions, credentials, ACLs, settings, definitions/drafts/publications, daily orders, runtime transitions, execution attempts, effects, conditions, resource holds and recovery decisions. Records contain the request actor, route, correlation ID, statement fingerprint, affected row count and bounded identifiers. Prepared batches produce one aggregate per statement per transaction. SQL text, bound values, passwords, tokens, output and definition payloads are not exported.</p>
+<p>Presence, heartbeat capacity, transient authentication challenges, web tickets, output, SLA/alert feeds, migration markers and legacy instance events are operational telemetry. The legacy audit feed and stderr sink remain historical diagnostics. Their retention/export does not establish the mandatory ledger's guarantees.</p>
+<p>API mutation requests persist an intent before entering the handler. Database commits carry the same request correlation ID. Responses and access denials are recorded before being returned; a failed audit write returns 503. Git and filesystem effects cannot share a database transaction: the durable intent is the admission record, I12 publication receipts remain the recovery evidence, and an interrupted request may have an unknown external outcome. Reconcile the receipt/Git state before retrying an external effect. Multi-step legacy operations can be partially completed, with each committed database step recorded.</p>
+<h2 id="keys-export-and-independent-permissions">Keys, export and independent permissions</h2>
+<p>SQLite defaults to a signing key beside the database: <code>state.db.audit.key</code>. PostgreSQL requires <code>-audit-key</code> / <code>REGENTE_AUDIT_KEY</code> explicitly; all nodes of one stream need the same protected key. Initialize the empty stream on one node before starting peers. The key is Ed25519, stored outside the database, and must be backed up separately. A missing, mismatched or altered key refuses startup. Unix key files require owner-only permissions; Windows development deployments require operator-managed NTFS ACLs and do not claim the installed Linux permission proof.</p>
+<pre><code class="language-sh">regente-server -db /var/lib/regente/state.db -audit-verify
+# Copy only the .pub file to the independent collector host.
+sudo bash /var/lib/regente/deploy/audit/install-audit-collector.sh /secure/source.pub /secure/collector-token /secure/tls.crt /secure/tls.key 127.0.0.1:9445
+</code></pre>
+<p>The installer creates <code>regente-audit</code> with its own private directory and hardened systemd unit. It receives the public signing key, a separate bearer token of at least 32 characters and a TLS certificate/key. The control plane must not own or have read/write permission on the collector journal. Prefer a different host/account and protect off-host backups. Root or compromise of both hosts is outside this guarantee.</p>
+<p>Configure the producer with <code>REGENTE_AUDIT_SIEM_URL=https://collector.example:9445</code> and <code>REGENTE_AUDIT_TOKEN_FILE=/etc/regente/audit-token</code>. This URL now requires the Regente collector protocol; generic SIEM endpoints returning a 2xx response are not ACKs. The application emits signed JSON records in order. The collector verifies sequence, previous hash, content hash and signature, appends and syncs its journal, then returns <code>{&quot;stream&quot;:&quot;...&quot;,&quot;seq&quot;:1,&quot;hash&quot;:&quot;...&quot;}</code>. Lost receipts retry the same identity; duplicate records return the original receipt. Redirects are rejected. Production requires HTTPS and normal certificate verification.</p>
+<p>Transport/5xx/429 failures retry with bounded exponential delay. Invalid ACKs and permanent 4xx responses enter dead letter; 20 unsuccessful attempts also stop delivery. No cursor skips the failed record. An administrator fixes the destination and calls <code>POST /api/audit/security/retry</code> to reset the oldest pending item; this action itself is durably recorded. Do not edit delivery rows manually in production.</p>
+<h2 id="capacity-retention-and-observation">Capacity, retention and observation</h2>
+<p><code>-audit-capacity</code> defaults to 100000 unacknowledged security records. Access denials have a separate capacity of 1000 and control intents/results have 10000. A full category refuses new records in that category. Output and operational telemetry never consume those budgets. Delivery is at least once; acknowledgement only changes transport state and never deletes the signed record. With no destination configured the local ledger remains durable and eventually refuses work at the configured capacity.</p>
+<p><code>GET /api/audit/security?after=SEQ</code> returns up to 500 signed records. <code>GET /api/audit/security/status</code> reports the head, pending count, dead letters and full integrity verification. Both require administrator access. Alert on pending growth, dead letters and failed integrity. Prometheus exposes <code>regente_audit_pending</code>, <code>regente_audit_dead_letters</code>, <code>regente_audit_oldest_pending_seconds</code> and a storage-unavailable gauge on read failure. Alert when lag exceeds the installation budget or dead letters are nonzero. The exporter currently drains one record per second; transaction serialization and export throughput are explicit capacity limits to measure in I16, not an enterprise throughput claim.</p>
+<p>Mandatory ledger and collector retention is indefinite. The operational <code>audit_retention_days</code> setting does not purge either ledger or unacknowledged outbox entries. Archive complete verified snapshots to protected storage according to the installation's retention policy. Online pruning, key rotation and multi-stream collector rotation are not implemented; plan disk capacity and use one collector journal per stream. Do not delete prefixes or claim a shorter retention guarantee without an implemented archive/checkpoint protocol.</p>
+<h2 id="integrity-and-restore">Integrity and restore</h2>
+<p>Each signed record links to its predecessor. Startup and verification detect changed content, missing records and head inconsistencies. A database-only attacker cannot forge a new signature without the external private key. A complete rollback to an older internally valid database needs comparison with the independent collector checkpoint; local verification alone cannot detect that rollback.</p>
+<p>Save the collector's last verified receipt (<code>stream</code>, <code>seq</code>, <code>hash</code>) independently of database backups. Restore the database, protected signing key and collector journal into new targets. Verify before admitting jobs:</p>
+<pre><code class="language-sh">regente-server -db restored.db -audit-key /secure/restored-signing.key -audit-verify -audit-checkpoint /independent/checkpoint.json
+# PostgreSQL: use -db-driver postgres -db &quot;$RESTORED_DSN&quot; with the same flags.
+</code></pre>
+<p>The database must include the checkpoint record with its exact hash. If a backup predates the collector checkpoint, restore a newer database or perform explicit incident recovery; do not reset the collector to hide a gap. An incomplete collector tail refuses startup and requires a verified recovery copy. Database backups, the signing key and collector backups have separate permissions and custody. Existing pre-I14 history is not retroactively signed.</p>
+<p>The mandatory gate proves SQLite/PostgreSQL rollback on storage failure, full backlog refusal, immediate process exit after commit, ACK loss/deduplication, invalid ACK dead letter, alteration detection and collector restore. Real processes additionally prove SIGKILL during a destination outage and PostgreSQL pg_dump/pg_restore against an independent checkpoint. The installed Linux smoke proves separate UIDs, inaccessible signing key/journal, TLS, outage and crash recovery.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

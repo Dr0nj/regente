@@ -3,6 +3,7 @@ package db
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -166,6 +167,32 @@ func TestMandatoryAuditTransactions(t *testing.T) {
 }
 
 // Processo filho encerra imediatamente após commit; não existe flush/graceful shutdown.
+func TestMandatoryAuditConcurrentVerification(t *testing.T) {
+	for _, dialect := range []Dialect{SQLite, Postgres} {
+		t.Run(string(dialect), func(t *testing.T) {
+			d, _, _ := auditDB(t, dialect, 200)
+			done := make(chan error, 1)
+			go func() {
+				for i := range 40 {
+					if _, err := d.Exec("INSERT INTO variables(name,value) VALUES(?,?)", fmt.Sprint(i), "private"); err != nil {
+						done <- err
+						return
+					}
+				}
+				done <- nil
+			}()
+			for range 40 {
+				if err := d.VerifyAudit(); err != nil {
+					t.Fatal("falso positivo sob commits", err)
+				}
+			}
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestMandatoryAuditCrash(t *testing.T) {
 	if os.Getenv("REGENTE_AUDIT_CRASH_CHILD") == "1" {
 		dialect := Dialect(os.Getenv("REGENTE_AUDIT_CRASH_DIALECT"))
