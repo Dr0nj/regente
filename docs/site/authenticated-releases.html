@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Authenticated releases · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="adr-i09-agent-journal.html">Durable agent journal</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authenticated-releases.html" class="active">Authenticated releases</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="business-time.html">Business time</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html">Daily recovery</a>
+<a href="durable-execution.html">Durable execution and recovery</a>
+<a href="execution-security.html">Execution security</a>
+<a href="failure-resistant-audit.html">Failure-resistant audit</a>
+<a href="ha-resources.html">Shared resources and scheduler leadership</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="production-profile.html">Production profile</a>
+<a href="shared-drafts.html">Shared Design drafts</a>
+<a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
+<a href="web-events.html">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="authenticated-releases">Authenticated releases</h1>
+<p>A release is published only after the <strong>same source SHA</strong> passes the complete
+Linux verification profile, both Go race suites, real PostgreSQL/NATS/OIDC and
+recovery tests, mandatory browser scenarios, documentation/toolchain recipes,
+the installed systemd smoke and five native binary checks. Failed or missing
+jobs block signing/publication. Unit fixtures are not independent integration
+evidence. The source smoke proves unsigned updates are refused; the release smoke
+uses the actual signed manifest to exercise the updater, backup, same-version
+no-op and production configuration/journal preservation.</p>
+<h2 id="trust-and-verification">Trust and verification</h2>
+<p>Install a trusted GitHub CLI with <code>gh attestation verify</code> support first
+(the reference verifier is CLI 2.96.0), and Python 3 on Linux/macOS. Windows uses
+PowerShell JSON and SHA256 facilities. There is no unsigned fallback.
+The CLI verifies the Sigstore certificate, transparency evidence, repository
+<code>Dr0nj/regente</code>, signer <code>.github/workflows/release.yml</code>, source SHA/ref and
+GitHub-hosted runner. Only main or the exact version tag is accepted.
+The signed <code>release-manifest.json</code> binds version, schema/protocol policy, sizes
+and SHA256 digests of every payload, including the SPDX SBOM. Downloads are pinned
+to that authenticated version before use. A checksum downloaded beside a payload
+is not an independent trust anchor.</p>
+<p>The <strong>bootstrap script and verifier themselves must already be trusted</strong>.
+A downloaded script cannot establish trust in its own earlier execution.
+Use a reviewed checkout at a trusted commit, or verify the manifest with your
+trusted CLI and check the script's size/hash from that manifest before executing
+it. Do not treat <code>curl | sudo bash</code> or <code>irm | iex</code> as authenticated bootstrap.
+For a pinned release, download its manifest/signature and the installer without
+executing them, inspect the version/ref/SHA, then:</p>
+<pre><code class="language-sh">gh attestation verify release-manifest.json --bundle release-manifest.sigstore.json \
+  --repo Dr0nj/regente --signer-workflow Dr0nj/regente/.github/workflows/release.yml \
+  --source-digest &quot;$REVIEWED_SHA&quot; --source-ref &quot;$REVIEWED_REF&quot; --deny-self-hosted-runners
+python3 - &lt;&lt;'PY'
+import hashlib,json
+from pathlib import Path
+m=json.load(open(&quot;release-manifest.json&quot;))
+p=Path(&quot;install.sh&quot;);a=m[&quot;assets&quot;][p.name]
+assert p.stat().st_size==a[&quot;bytes&quot;] and hashlib.sha256(p.read_bytes()).hexdigest()==a[&quot;sha256&quot;]
+PY
+sudo bash install.sh
+</code></pre>
+<p>Do not execute the last command if either check fails. Equivalent native
+SHA256/JSON checks apply to the Windows bootstrap. Repository override is refused.
+The release workflow is part of the publisher trust boundary; its compromise or
+a compromised trusted CLI/host is not repaired by artifact signing.</p>
+<p>For an offline Linux update provide all three local inputs:</p>
+<pre><code class="language-sh">sudo REGENTE_BUNDLE=/trusted/bundle.tar.gz \
+  REGENTE_MANIFEST=/trusted/release-manifest.json \
+  REGENTE_ATTESTATION=/trusted/release-manifest.sigstore.json regente-update vX.Y.Z
+</code></pre>
+<p>The same identity and bytes checks run before extraction or execution. Sigstore
+trust roots must be available to the trusted CLI (pre-populate its cache for a
+fully disconnected deployment). An old unsigned release is refused, even with
+<code>--force</code>. Force only reinstalls an authenticated version.</p>
+<h2 id="platform-and-compatibility-scope">Platform and compatibility scope</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Release evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Linux amd64</td>
+<td>Actual bundle install, reboot, authenticated same-build update, DB backup/no-op, credentials/journal preservation, execution security and independent audit collector</td>
+</tr>
+<tr>
+<td>Linux arm64</td>
+<td>Native version output and fresh/repeated SQLite migration</td>
+</tr>
+<tr>
+<td>Windows amd64</td>
+<td>Native server/agent version output and fresh/repeated SQLite migration; existing native demo recipe</td>
+</tr>
+<tr>
+<td>macOS amd64 / arm64</td>
+<td>Native server/agent version output and fresh/repeated SQLite migration</td>
+</tr>
+</tbody>
+</table>
+<p>Native binary checks do not certify every platform's service installer, fleet
+upgrade or workload. Server and agent must use the same tested release and
+protocol 2 in production; schema 32 accepts [32,32]. <strong>No N/N−1 rolling pair is
+qualified.</strong> Schema refusal/legacy migration/recovery tests remain mandatory.
+Follow <a href="upgrades.html">upgrades</a> for all-node drain and complete recovery sets;
+a retained old binary does not downgrade a migrated database.</p>
+<h2 id="repository-enforcement">Repository enforcement</h2>
+<p>Inspection on 2026-10-03 found main <strong>unprotected</strong>, no repository rulesets,
+administrator access and automatic merging disabled. These facts are not a
+branch-protection claim. The publication DAG enforces the release gates independently.
+Direct changes to publisher workflows still require review and trusted maintainers.
+Actions used by these workflows are pinned to reviewed commit SHAs; Syft is pinned
+to v1.54.0. The SBOM inventories actual Go artifacts and the frontend lockfile;
+it is an inventory, not a vulnerability clearance.</p>
+<p>Primary verifier references:
+<a href="https://github.com/actions/attest">GitHub attestations</a>,
+<a href="https://cli.github.com/manual/gh_attestation_verify">CLI verification policy</a>.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

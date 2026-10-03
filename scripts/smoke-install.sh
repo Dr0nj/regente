@@ -33,6 +33,8 @@ CT="regente-smoke-$$"
 IMG="regente-smoke-systemd"
 BUNDLE=""
 AGENT=""
+MANIFEST=""
+ATTESTATION=""
 BUILD=0
 KEEP="${KEEP:-0}"   # KEEP=1 deixa o container de pé pra investigar uma falha
 
@@ -41,6 +43,8 @@ while [ $# -gt 0 ]; do
     --build)  BUILD=1; shift ;;
     --bundle) BUNDLE="$2"; shift 2 ;;
     --agent)  AGENT="$2"; shift 2 ;;
+    --manifest) MANIFEST="$2"; shift 2 ;;
+    --attestation) ATTESTATION="$2"; shift 2 ;;
     --keep)   KEEP=1; shift ;;
     *) echo "argumento desconhecido: $1"; exit 2 ;;
   esac
@@ -97,6 +101,10 @@ fi
 [ -f "$BUNDLE" ] || { echo "bundle não encontrado: '$BUNDLE' (use --build ou --bundle <arquivo>)"; exit 2; }
 [ -f "$AGENT" ]  || { echo "binário do agente não encontrado: '$AGENT'"; exit 2; }
 
+if [ "$BUILD" = 0 ]; then
+  [ -f "$MANIFEST" ] && [ -f "$ATTESTATION" ] || { echo "Signed manifest required for a release smoke."; exit 1; }
+fi
+
 echo "== imagem do alvo (Ubuntu + systemd)..."
 dk build -q -t "$IMG" "$(hostpath "$ROOT/scripts/smoke")" >/dev/null
 
@@ -115,6 +123,12 @@ case "${st:-}" in
   *) echo "systemd não subiu no container (estado: ${st:-vazio})"; dk logs "$CT" | tail -20; exit 1 ;;
 esac
 
+if [ "$BUILD" = 0 ]; then
+  dk cp "$(hostpath "$MANIFEST")" "$CT:/root/release-manifest.json" >/dev/null
+  dk cp "$(hostpath "$ATTESTATION")" "$CT:/root/release-manifest.sigstore.json" >/dev/null
+  dk cp "$(hostpath "$(command -v gh)")" "$CT:/usr/local/bin/gh" >/dev/null
+  dk exec "$CT" chmod +x /usr/local/bin/gh
+fi
 dk cp "$(hostpath "$BUNDLE")" "$CT:/root/bundle.tar.gz" >/dev/null
 dk cp "$(hostpath "$AGENT")" "$CT:/root/regente-agent" >/dev/null
 dk exec "$CT" mkdir -p /root/agent-deploy

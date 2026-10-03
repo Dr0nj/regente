@@ -5,51 +5,14 @@ on:
     branches: [main, 'codex/**']
   pull_request:
 
+permissions:
+  contents: read
 jobs:
   doc-recipes:
     uses: ./.github/workflows/doc-recipes.yml
     with:
       ref: ${{ github.sha }}
-  verify-full:
-    name: full verification (Linux)
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.26'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: Prepare browser prerequisites
-        working-directory: app
-        run: |
-          npm ci --engine-strict
-          npx --no-install playwright install --with-deps chromium
-      # Mesmo runner local; cada família obrigatória precisa produzir evidência.
-      - name: Full verification
-        run: bash scripts/verify.sh --full
-      - name: Installed execution security profile (systemd real)
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p .integration/i13-smoke/evidence
-          bash scripts/smoke-install.sh --build 2>&1 | tee .integration/i13-smoke/evidence/i13-systemd.log
-      # Informativo; não compõe a condição de aprovação do perfil.
-      - name: deadcode (informativo)
-        continue-on-error: true
-        working-directory: server
-        run: go run golang.org/x/tools/cmd/deadcode@latest -test ./...
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: verification-evidence
-          path: .integration/*/evidence/
-          include-hidden-files: true
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: browser-auth-failures
-          path: app/test-results/
+  verification:
+    uses: ./.github/workflows/verification.yml
+    with:
+      ref: ${{ github.sha }}

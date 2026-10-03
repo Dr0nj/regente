@@ -59,6 +59,8 @@ if [ "$STAGE" = stage2 ]; then
   [ -n "$(gitfield sha)" ] && ok "workspace ainda clonado (sha $(gitfield sha | cut -c1-7))"
   [ -z "$(gitfield error)" ] && ok "GitOps sem erro" || bad "GitOps com erro após o reboot: $(gitfield error)"
 
+  if [ -f /root/release-manifest.json ]; then
+    export REGENTE_MANIFEST=/root/release-manifest.json REGENTE_ATTESTATION=/root/release-manifest.sigstore.json
   head1 "regente-update: backup do banco + troca de binário + restart"
   # Não há release NOVA para baixar (o smoke roda ANTES de publicar), então o
   # alvo é o PRÓPRIO bundle sob teste via REGENTE_BUNDLE + -f: mesmo caminho de
@@ -90,6 +92,14 @@ if [ "$STAGE" = stage2 ]; then
   n_after="$(ls -1 /var/lib/regente/backups/ 2>/dev/null | wc -l)"
   [ "$n_before" = "$n_after" ] && ok "--no-backup não criou snapshot" || bad "--no-backup criou snapshot mesmo assim"
   wait_for 30 active || bad "o serviço não voltou depois do --no-backup"
+  else
+    head1 "Source fixture: unsigned update is refused before service mutation"
+    before_pid="$(systemctl show regente-server -p MainPID --value)"
+    before_hash="$(sha256sum /usr/local/bin/regente-server)"
+    if REGENTE_BUNDLE=/root/bundle.tar.gz regente-update -f > /tmp/unsigned-update.log 2>&1; then bad "unsigned bundle accepted"; fi
+    [ "$(systemctl show regente-server -p MainPID --value)" = "$before_pid" ] && [ "$(sha256sum /usr/local/bin/regente-server)" = "$before_hash" ] && ok "unsigned update left process and binary intact" || bad "unsigned update mutated installation"
+    echo "Authenticated upgrade is mandatory in the release smoke; this source fixture is not a release."
+  fi
   head1 "Production profile: convert installed service and upgrade"
   # Fixture sintética; nenhum segredo do operador entra neste ensaio.
   login_token=$(curl -fsS -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin"}' "$BASE/api/auth/login" | jfield token)
@@ -111,7 +121,11 @@ PRODUCTION
   [ -n "$prod_token" ] && ok "production login on installed service" || bad "production login failed"
   legacy_status=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $login_token" "$BASE/api/users")
   [ "$legacy_status" = 401 ] && ok "old session rejected" || bad "old session accepted"
-  REGENTE_BUNDLE=/root/bundle.tar.gz regente-update -f --no-backup > /tmp/update-production.log 2>&1 || bad "production upgrade failed"
+  if [ -f /root/release-manifest.json ]; then
+    REGENTE_BUNDLE=/root/bundle.tar.gz regente-update -f --no-backup > /tmp/update-production.log 2>&1 || bad "production upgrade failed"
+  else
+    RUN_USER="$(systemctl show regente-server -p User --value)" bash /opt/bundle/regente-server_linux_amd64/deploy/install-linux.sh > /tmp/update-production.log 2>&1 || bad "trusted source fixture reinstall failed"
+  fi
   wait_for 30 '[ "$(code "'"$BASE"'/health")" = 200 ]' || bad "production did not return after upgrade"
   grep -q '^REGENTE_PROFILE=production' "$ENV_FILE" && ok "production configuration preserved by upgrade" || bad "production configuration lost"
   prod_token=$(curl -fsS -H 'Content-Type: application/json' -d '{"username":"admin","password":"production-smoke-fixture"}' "$BASE/api/auth/login" | jfield token)

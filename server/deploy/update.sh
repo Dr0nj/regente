@@ -18,7 +18,9 @@
 #   REGENTE_REPO=Dr0nj/regente          repo das releases
 #   REGENTE_VERSION=vX.Y.Z              mesmo que passar a versão como argumento
 #   REGENTE_BUNDLE=/caminho/b.tar.gz    instala ESTE bundle (máquina sem internet)
-#   REGENTE_BACKUP_DIR=/var/lib/regente/backups
+#   REGENTE_MANIFEST=/path/release-manifest.json  required with a local bundle
+  REGENTE_ATTESTATION=/path/release-manifest.sigstore.json
+  REGENTE_BACKUP_DIR=/var/lib/regente/backups
 #   REGENTE_BACKUP_KEEP=14              quantos snapshots manter
 set -euo pipefail
 
@@ -112,38 +114,63 @@ run_as_service() {
   fi
 }
 
+# BEGIN RELEASE VERIFICATION — identity first, then exact bytes; no bypass.
+verify_release() {
+  local asset="$1" destination="$2"
+  [ "$REPO" = Dr0nj/regente ] || { echo "Untrusted release repository." >&2; return 1; }
+  command -v gh >/dev/null || { echo "Install a trusted GitHub CLI with attestation support first." >&2; return 1; }
+  command -v python3 >/dev/null || { echo "python3 is required for release validation." >&2; return 1; }
+  VERSION="${VERSION:-latest}"
+  local base="https://github.com/$REPO/releases/download/$VERSION"
+  [ "$VERSION" != latest ] || base="https://github.com/$REPO/releases/latest/download"
+  local manifest="$TMP/release-manifest.json" signature="$TMP/release-manifest.sigstore.json"
+  if [ -n "${REGENTE_MANIFEST:-}" ]; then
+    cp "$REGENTE_MANIFEST" "$manifest" || return 1
+    cp "${REGENTE_ATTESTATION:?Set REGENTE_ATTESTATION for an offline bundle}" "$signature" || return 1
+  else
+    curl -fsSL "$base/release-manifest.json" -o "$manifest" || return 1
+    curl -fsSL "$base/release-manifest.sigstore.json" -o "$signature" || return 1
+  fi
+  # JSON não confiado nunca vira eval/comando/caminho.
+  local fields tag sha ref
+  fields="$(python3 - "$manifest" "$VERSION" <<'PY'
+import json,re,sys
+m=json.load(open(sys.argv[1]))
+assert m['schema']==1 and m['repository']=='Dr0nj/regente' and m['workflow']=='.github/workflows/release.yml'
+assert re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+',m['version']) and re.fullmatch(r'[0-9a-f]{40}',m['sourceSha'])
+assert sys.argv[2]=='latest' or sys.argv[2]==m['version'],'Requested version differs'
+assert m['sourceRef'] in ('refs/heads/main','refs/tags/'+m['version']),'Untrusted source ref'
+print(m['version'],m['sourceSha'],m['sourceRef'])
+PY
+)" || return 1
+  read -r tag sha ref <<< "$fields"
+  gh attestation verify "$manifest" --bundle "$signature" --repo Dr0nj/regente \
+    --signer-workflow Dr0nj/regente/.github/workflows/release.yml \
+    --source-digest "$sha" --source-ref "$ref" --deny-self-hosted-runners >/dev/null || return 1
+  if [ -n "${BUNDLE_LOCAL:-}" ]; then
+    cp "$BUNDLE_LOCAL" "$destination" || return 1
+  else
+    curl -fSL "https://github.com/$REPO/releases/download/$tag/$asset" -o "$destination" || return 1
+  fi
+  python3 - "$manifest" "$asset" "$destination" <<'PY' || return 1
+import hashlib,json,sys
+from pathlib import Path
+m=json.load(open(sys.argv[1])); a=m['assets'][sys.argv[2]]; p=Path(sys.argv[3])
+assert p.stat().st_size==a['bytes'] and hashlib.sha256(p.read_bytes()).hexdigest()==a['sha256'],'Release payload integrity failed'
+PY
+  VERSION="$tag"
+}
+# END RELEASE VERIFICATION
+
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 
-# ── 1. de onde vem a versão nova ─────────────────────────────────────────────
-if [ -n "$BUNDLE_LOCAL" ]; then
-  [ -f "$BUNDLE_LOCAL" ] || { echo "REGENTE_BUNDLE=$BUNDLE_LOCAL: file not found"; exit 1; }
-  echo "== Regente — installing the local bundle $BUNDLE_LOCAL (no download)"
-  cp "$BUNDLE_LOCAL" "$TMP/bundle.tar.gz"
-else
-  command -v curl >/dev/null || { echo "'curl' is required and is not on the PATH"; exit 1; }
-  case "$(uname -m)" in
-    x86_64|amd64)  ARCH=amd64 ;;
-    aarch64|arm64) ARCH=arm64 ;;
-    *) echo "unsupported architecture: $(uname -m) (amd64/arm64 only)"; exit 1 ;;
-  esac
-  BUNDLE="regente-server_linux_${ARCH}.tar.gz"
-  if [ -n "$VERSION" ] && [ "$VERSION" != latest ]; then
-    TAG="$VERSION"
-    URL="https://github.com/$REPO/releases/download/$TAG/$BUNDLE"
-  else
-    # A tag da `latest` sai do redirect — sem isso não dá pra dizer "já está
-    # atualizado" sem baixar 40 MB para descobrir.
-    TAG="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" 2>/dev/null | sed 's#.*/##')"
-    URL="https://github.com/$REPO/releases/latest/download/$BUNDLE"
-  fi
-  if [ -n "$TAG" ] && [ "$TAG" = "$CURRENT" ] && [ "$FORCE" = 0 ]; then
-    echo "already on $CURRENT — nothing to do."
-    echo "(reinstall the same version anyway with:  sudo regente-update -f)"
-    exit 0
-  fi
-  echo "== Regente — downloading $BUNDLE (${TAG:-latest}) from $REPO ..."
-  curl -fSL "$URL" -o "$TMP/bundle.tar.gz"
-fi
+# Authenticate offline/remote bundles before extraction or binary execution.
+case "$(uname -m)" in
+  x86_64|amd64) ARCH=amd64 ;;
+  aarch64|arm64) ARCH=arm64 ;;
+  *) echo "Unsupported architecture."; exit 1 ;;
+esac
+verify_release "regente-server_linux_$ARCH.tar.gz" "$TMP/bundle.tar.gz"
 
 tar -xzf "$TMP/bundle.tar.gz" -C "$TMP"
 DIR="$(find "$TMP" -maxdepth 1 -type d -name 'regente-server_linux_*' | head -1)"

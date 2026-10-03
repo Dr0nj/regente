@@ -136,6 +136,9 @@ class Verifier:
         if name == "runner":
             self.command([sys.executable, "-m", "unittest", "discover", "-s", "scripts",
                           "-p", "test_verify.py", "-v"])
+            if self.mode == "full":
+                self.command([sys.executable, "-m", "unittest", "discover", "-s", "scripts",
+                              "-p", "test_release.py", "-v"])
         elif name in ("server", "agent"):
             cwd = ROOT / name
             self.command(["go", "build", "./..."], cwd)
@@ -143,6 +146,8 @@ class Verifier:
             if self.mode == "full":
                 self.command(["go", "run", "honnef.co/go/tools/cmd/staticcheck@2026.1", "./..."], cwd)
             self.command(["go", "test", "-count=1", "./..."], cwd)
+            if self.mode == "full":
+                self.command(["go", "test", "-race", "-count=1", "./..."], cwd, timeout=900)
         elif name == "web":
             if self.mode == "full":
                 self.command(["npm", "ci", "--engine-strict"], ROOT / "app")

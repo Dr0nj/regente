@@ -84,3 +84,9 @@ REGENTE_DISPOSABLE_DB=1 REGENTE_PG_DSN="$LAB_DSN" \
 
 Only a separate reviewed/tested compatibility matrix can justify a future
 mixed-version procedure. A successful drain drill does not provide that evidence.
+
+## Authenticated update payloads
+
+Install/update requires a trusted bootstrap, GitHub CLI and authenticated release
+manifest. See [authenticated releases](authenticated-releases.md) for the verification
+policy and offline inputs. Unsigned historical packages are refused before use.

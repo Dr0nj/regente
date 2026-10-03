@@ -723,3 +723,10 @@ the importer can read.</sub>
 For certificate-bound agents, runtime secret references and the supported dedicated Linux/systemd HTTP cell, see [execution security](docs/execution-security.md).
 
 The [failure-resistant audit](docs/failure-resistant-audit.md) records critical mutations atomically, exports with durable acknowledgements, and verifies restores against an independent collector.
+
+### Release trust
+
+Before executing downloaded installers, read [authenticated releases](docs/authenticated-releases.md).
+Linux/macOS downloads require a trusted GitHub CLI and Python 3; Windows requires
+a trusted GitHub CLI. Verify bootstrap bytes before execution. Release publication
+requires complete verification of the same SHA and installed/native artifact checks.
