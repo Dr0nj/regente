@@ -65,105 +65,7 @@ function Get-VerifiedRelease {
     Invoke-WebRequest "$base/release-manifest.json" -OutFile $manifest -UseBasicParsing
     Invoke-WebRequest "$base/release-manifest.sigstore.json" -OutFile $signature -UseBasicParsing
     $m = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
-    if ($m.schema -ne 1 -or $m.repository -cne 'Dr0nj/regente' -or $m.workflow -cne '.github/workflows/release.yml' -or $m.version -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+
-New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
-$exe = Join-Path $dstDir "regente-agent.exe"
-Write-Host "Downloading $asset ($Version)..."
-
-$downloadPath = Join-Path $dstDir "regente-agent.next.exe"
-Get-VerifiedRelease -Asset $asset -Destination $downloadPath
-Stop-ScheduledTask -TaskName "RegenteAgent" -ErrorAction SilentlyContinue
-for ($attempt = 0; $attempt -lt 10; $attempt++) {
-  try { Move-Item -LiteralPath $downloadPath -Destination $exe -Force -ErrorAction Stop; break }
-  catch { if ($attempt -eq 9) { throw }; Start-Sleep -Seconds 1 }
-}
-
-# Tarefa Agendada: boot + SYSTEM + auto-restart (mesma config do install-windows.ps1).
-# Journal e credencial persistentes: upgrade nunca os remove.
-$stateDir = Join-Path $env:ProgramData "RegenteAgent"
-New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
-& icacls $stateDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "Cannot protect durable agent state directory" }
-$tokenPath = Join-Path $stateDir "credential.txt"
-[IO.File]::WriteAllText($tokenPath, $Token)
-$journalPath = Join-Path $stateDir "journal.db"
-foreach ($argument in @($Server, $Id, $Caps)) {
-  if ($argument -match '["\r\n]') { throw "Invalid agent argument" }
-}
-$argline = "-server `"$Server`" -token-file `"$tokenPath`" -id `"$Id`" -caps `"$Caps`" -transport v2 -journal `"$journalPath`""
-Stop-ScheduledTask -TaskName "RegenteAgent" -ErrorAction SilentlyContinue
-$action    = New-ScheduledTaskAction -Execute $exe -Argument $argline
-$trigger   = New-ScheduledTaskTrigger -AtStartup
-$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-$settings  = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
-             -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-Register-ScheduledTask -TaskName "RegenteAgent" -Action $action -Trigger $trigger `
-  -Principal $principal -Settings $settings -Force | Out-Null
-Start-ScheduledTask -TaskName "RegenteAgent"
-
-Write-Host "OK - RegenteAgent installed and started (boot + auto-restart, as SYSTEM)." -ForegroundColor Green
-
-# Prova que o processo ficou de pe: uma URL/token errados aparecem aqui, nao so
-# na tela de Agentes 10 minutos depois.
-Start-Sleep -Seconds 3
-if (Get-Process regente-agent -ErrorAction SilentlyContinue) {
-  Write-Host "Process: running." -ForegroundColor Green
-} else {
-  Write-Host "Process: NOT running - most likely a wrong server URL or token." -ForegroundColor Yellow
-  Write-Host "Test it in the foreground to see the error:" -ForegroundColor Yellow
-  Write-Host "  & '$exe' -server $Server -token <token> -id $Id -caps $Caps"
-}
-Write-Host "Status:  Get-ScheduledTask RegenteAgent    |    Check that '$Id' is online under Settings -> Agents."
- -or $m.sourceSha -cnotmatch '^[a-f0-9]{40}
-New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
-$exe = Join-Path $dstDir "regente-agent.exe"
-Write-Host "Downloading $asset ($Version)..."
-
-$downloadPath = Join-Path $dstDir "regente-agent.next.exe"
-Invoke-WebRequest -Uri $url -OutFile $downloadPath -UseBasicParsing
-Stop-ScheduledTask -TaskName "RegenteAgent" -ErrorAction SilentlyContinue
-for ($attempt = 0; $attempt -lt 10; $attempt++) {
-  try { Move-Item -LiteralPath $downloadPath -Destination $exe -Force -ErrorAction Stop; break }
-  catch { if ($attempt -eq 9) { throw }; Start-Sleep -Seconds 1 }
-}
-
-# Tarefa Agendada: boot + SYSTEM + auto-restart (mesma config do install-windows.ps1).
-# Journal e credencial persistentes: upgrade nunca os remove.
-$stateDir = Join-Path $env:ProgramData "RegenteAgent"
-New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
-& icacls $stateDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "Cannot protect durable agent state directory" }
-$tokenPath = Join-Path $stateDir "credential.txt"
-[IO.File]::WriteAllText($tokenPath, $Token)
-$journalPath = Join-Path $stateDir "journal.db"
-foreach ($argument in @($Server, $Id, $Caps)) {
-  if ($argument -match '["\r\n]') { throw "Invalid agent argument" }
-}
-$argline = "-server `"$Server`" -token-file `"$tokenPath`" -id `"$Id`" -caps `"$Caps`" -transport v2 -journal `"$journalPath`""
-Stop-ScheduledTask -TaskName "RegenteAgent" -ErrorAction SilentlyContinue
-$action    = New-ScheduledTaskAction -Execute $exe -Argument $argline
-$trigger   = New-ScheduledTaskTrigger -AtStartup
-$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-$settings  = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
-             -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-Register-ScheduledTask -TaskName "RegenteAgent" -Action $action -Trigger $trigger `
-  -Principal $principal -Settings $settings -Force | Out-Null
-Start-ScheduledTask -TaskName "RegenteAgent"
-
-Write-Host "OK - RegenteAgent installed and started (boot + auto-restart, as SYSTEM)." -ForegroundColor Green
-
-# Prova que o processo ficou de pe: uma URL/token errados aparecem aqui, nao so
-# na tela de Agentes 10 minutos depois.
-Start-Sleep -Seconds 3
-if (Get-Process regente-agent -ErrorAction SilentlyContinue) {
-  Write-Host "Process: running." -ForegroundColor Green
-} else {
-  Write-Host "Process: NOT running - most likely a wrong server URL or token." -ForegroundColor Yellow
-  Write-Host "Test it in the foreground to see the error:" -ForegroundColor Yellow
-  Write-Host "  & '$exe' -server $Server -token <token> -id $Id -caps $Caps"
-}
-Write-Host "Status:  Get-ScheduledTask RegenteAgent    |    Check that '$Id' is online under Settings -> Agents."
-) { throw 'Invalid release manifest' }
+    if ($m.schema -ne 1 -or $m.repository -cne 'Dr0nj/regente' -or $m.workflow -cne '.github/workflows/release.yml' -or $m.version -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+$' -or $m.sourceSha -cnotmatch '^[a-f0-9]{40}$') { throw 'Invalid release manifest' }
     if ($Version -ne 'latest' -and $Version -cne $m.version) { throw 'Requested version differs' }
     if ($m.sourceRef -cne 'refs/heads/main' -and $m.sourceRef -cne "refs/tags/$($m.version)") { throw 'Untrusted source ref' }
     & gh attestation verify $manifest --bundle $signature --repo Dr0nj/regente --signer-workflow Dr0nj/regente/.github/workflows/release.yml --source-digest $m.sourceSha --source-ref $m.sourceRef --deny-self-hosted-runners
@@ -186,7 +88,7 @@ $exe = Join-Path $dstDir "regente-agent.exe"
 Write-Host "Downloading $asset ($Version)..."
 
 $downloadPath = Join-Path $dstDir "regente-agent.next.exe"
-Invoke-WebRequest -Uri $url -OutFile $downloadPath -UseBasicParsing
+Get-VerifiedRelease -Asset $asset -Destination $downloadPath
 Stop-ScheduledTask -TaskName "RegenteAgent" -ErrorAction SilentlyContinue
 for ($attempt = 0; $attempt -lt 10; $attempt++) {
   try { Move-Item -LiteralPath $downloadPath -Destination $exe -Force -ErrorAction Stop; break }
