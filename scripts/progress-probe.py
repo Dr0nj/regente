@@ -12,7 +12,7 @@ def probe(base,definition,token,deadline=5):
         row=request(base,'/api/instances/'+instance,token)
         if row['status']=='OK':
             attempts=request(base,'/api/instances/'+instance+'/executions',token)['attempts']
-            if len(attempts)==1 and attempts[0]['state']=='succeeded' and attempts[0]['acceptedAt']>0 and attempts[0]['startedAt']>0:
+            if len(attempts)==1 and attempts[0]['state']=='succeeded' and attempts[0]['acceptedAt']>0 and attempts[0]['startedAt']>0 and time.monotonic()-start<=deadline:
                 return {'passed':True,'instanceId':instance,'executionId':attempts[0]['executionId'],'seconds':time.monotonic()-start}
         if row['status'] in ('NOTOK','UNCERTAIN','CANCELLED'):raise RuntimeError('Canary did not succeed: '+row['status'])
         time.sleep(.2)
