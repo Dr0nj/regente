@@ -4,7 +4,6 @@ import json
 import hashlib
 import os
 from pathlib import Path
-if sys.flags.optimize:raise SystemExit("Qualification requires Python optimization disabled")
 import platform
 import shutil
 import socket
@@ -15,6 +14,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+if sys.flags.optimize:raise SystemExit("Qualification requires Python optimization disabled")
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN = ROOT / ".integration" / uuid.uuid4().hex[:12]
