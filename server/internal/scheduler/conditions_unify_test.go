@@ -101,16 +101,33 @@ func TestCondUnify_HappyPathConsumesOnOK(t *testing.T) {
 	if _, st, _ := carriedState(t, s, "B-1"); st != string(domain.StatusWaiting) {
 		t.Fatalf("B não podia rodar sem a condição no pool, está %s", st)
 	}
+	// O mock legado publica status antes dos efeitos; esperar o evento pós-condições.
+	waitFinish := func(id string) {
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			var n int
+			if err := s.db.QueryRow("SELECT COUNT(*) FROM instance_events WHERE instance_id=? AND kind='finished'", id).Scan(&n); err != nil {
+				t.Fatal(err)
+			}
+			if n > 0 {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatalf("callback de conclusão não terminou para %s", id)
+	}
 	// A roda (mock OK) → adiciona a condição → B destrava e consome no OK.
 	if st := waitStatus(t, s, "A-1", string(domain.StatusOK)); st != string(domain.StatusOK) {
 		t.Fatalf("A deveria rodar a OK, está %s", st)
 	}
+	waitFinish("A-1")
 	if !poolHas(t, s, name, today) {
 		t.Fatalf("OK de A deveria ter adicionado %s@%s ao pool", name, today)
 	}
 	if st := waitStatus(t, s, "B-1", string(domain.StatusOK)); st != string(domain.StatusOK) {
 		t.Fatalf("B deveria rodar com a condição no pool, está %s", st)
 	}
+	waitFinish("B-1")
 	if poolHas(t, s, name, today) {
 		t.Fatalf("OK de B deveria ter CONSUMIDO (deletado) %s do pool", name)
 	}

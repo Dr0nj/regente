@@ -146,3 +146,11 @@ completed-attempt quantiles show it. A breached investigative tier stops new
 offers, drains admitted work within the unchanged 180-second recovery window
 and verifies receipts/effects/checkpoint. Only the last fully passing tier proceeds
 to the developer soak. Samples are saved during the run and attempts on failed drains.
+
+Profile v2 uses a real UTC business calendar with rollover approximately twelve
+hours after each phase setup. The seeder configures it through audited settings
+and uses the actual businessclock.BusinessDate for retained rows and frozen
+snapshots. This keeps a short qualification window at constant density when UTC
+midnight occurs; the clock is not frozen and no runtime order is rewritten. The
+actual calendar is recorded per phase. Business rollover qualification remains
+in the mandatory I06/I07 integration contracts, not this steady-load profile.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/Dr0nj/regente-server/internal/businessclock"
 	"github.com/Dr0nj/regente-server/internal/db"
 	"github.com/Dr0nj/regente-server/internal/scheduler"
 	"log"
@@ -47,7 +48,14 @@ func main() {
 		log.Fatal("Current business migrations were not initialized")
 	}
 	now := time.Now().UTC()
-	raw, _ := json.Marshal(map[string]any{"id": "retained", "label": "Retained fixture", "environment": "capacity", "jobType": "COMMAND", "actionConfig": map[string]string{"command": "echo retained # " + strings.Repeat("x", 2048)}, "schedule": map[string]bool{"enabled": false}})
+	calendar := businessclock.Calendar{Timezone: "UTC", DailyAt: now.Add(12 * time.Hour).Format("15:04")}
+	for key, value := range map[string]string{"daily_timezone": calendar.Timezone, "daily_at": calendar.DailyAt} {
+		if _, err = d.Exec("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)", key, value); err != nil {
+			log.Fatal(err)
+		}
+	}
+	businessDate := calendar.BusinessDate(now)
+	raw, _ := json.Marshal(map[string]any{"businessTime": calendar, "id": "retained", "label": "Retained fixture", "environment": "capacity", "jobType": "COMMAND", "actionConfig": map[string]string{"command": "echo retained # " + strings.Repeat("x", 2048)}, "schedule": map[string]bool{"enabled": false}})
 	tx, err := d.Begin()
 	if err != nil {
 		log.Fatal(err)
@@ -59,7 +67,7 @@ func main() {
 	}
 	defer stmt.Close()
 	for i := range *count {
-		if _, err = stmt.Exec(fmt.Sprintf("capacity-historical-%d", i), now.Format("2006-01-02"), now, string(raw)); err != nil {
+		if _, err = stmt.Exec(fmt.Sprintf("capacity-historical-%d", i), businessDate, now, string(raw)); err != nil {
 			log.Fatal(err)
 		}
 	}
