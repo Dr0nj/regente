@@ -86,7 +86,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 durable dispatch and HA boundaries updated for I11 on 2026-10-01.
 This is an evidence inventory, not a new benchmark or production certification.
 The <a href="https://github.com/Dr0nj/regente/blob/main/docs/roadmap.md">roadmap</a> owns delivery status; the enterprise cycle still has
-I12–I17 pending after the I11 validation gate. A small-workload result does not
+later increments tracked independently after the I11 validation gate. A small-workload result does not
 close capacity, disaster recovery or pilot acceptance.</p>
 <h2 id="three-different-operations">Three different operations</h2>
 <ul>
@@ -209,8 +209,10 @@ Two isolated command effects must occur exactly once in this scenario. Inspect
 the mandatory integration report's i11_ha section at the tested SHA. This is a
 correctness profile, not a sustained-throughput benchmark or a claim about every
 asymmetric network partition.</p>
-<p>Audit, load/soak, disaster recovery and operational pilot acceptance remain separate
-enterprise gates I12–I17. See <a href="operations.html">operations</a>, <a href="slos.html">SLO objectives</a>
+<p>The current <a href="capacity.html">measured profile</a> adds bounded latency/progress signals
+and a mandatory incremental load/soak gate. Its measured envelope is separate
+from the historical materialization observations above. Disaster recovery and
+independent operational pilot acceptance remain separate in I17. See <a href="operations.html">operations</a>, <a href="slos.html">SLO objectives</a>
 and <a href="dr-backup.html">backup scope</a>.</p>
 <h2 id="requirements-for-a-new-capacity-or-ha-claim">Requirements for a new capacity or HA claim</h2>
 <p>Record the immutable server/agent SHA, date, OS/architecture, CPU/RAM/storage,

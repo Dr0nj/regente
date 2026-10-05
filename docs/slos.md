@@ -10,7 +10,7 @@ reports from the current small [integration profile](integration-baseline.md).
 |---|---|---|---|
 | Readiness availability | Historical objective: >=99.9% successful probes over an agreed window | GET /readyz, db-unreachable alert | A successful probe is not whole-API or job availability; no measured monthly guarantee |
 | Leadership transfer | Historical objective: <=10s after leader loss | regente_is_leader, leader-flapping | Measure detection plus acquisition under the declared topology; not an execution recovery deadline |
-| Scheduling freshness | Alert when tick age exceeds 90s | regente_scheduler_last_tick_age_seconds, tick-stalled | Loop freshness does not establish dispatch latency or successful external effects |
+| Scheduling freshness | Alert when tick age exceeds 90s | regente_scheduler_last_tick_age_seconds, tick-stalled | Attempt freshness does not establish a completed scan; see completed-tick metrics and the external progress canary |
 | Agent fleet presence | Investigate unexpected online-agent drops | regente_agents_online, agents-drop | Presence is not throughput, concurrency capacity or durable acceptance |
 | Process liveness | Supervisor restarts failed processes; configured probe may trigger restart | /livez, systemd/Windows Service/orchestrator | Restart=always restarts exited processes; it alone does not detect every live-but-hung process |
 | Recovery | Set RPO/RTO from the complete backup set and measured drill | DB/WAL/backup age, restore logs, data comparison | No universal minutes-to-recover target; drafts and external configuration matter |
@@ -42,3 +42,8 @@ fencing or exactly-once external effects. See the
 
 Sustained capacity, soak, failure recovery and business acceptance remain subject
 to the enterprise gates in the [roadmap](roadmap.md), including I16/I17.
+
+The [capacity/progress profile](capacity.md) defines bounded one-hour completed
+latency denominators, engineering error budgets and alert expressions, plus an
+external canary that detects stalled agents while readiness remains healthy.
+Those lab budgets do not establish monthly availability or I17 pilot acceptance.

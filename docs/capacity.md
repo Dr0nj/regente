@@ -95,3 +95,36 @@ A bounded, sequential drain of at most 100 successful ACKs per tick took 1.026
 seconds in the same microbenchmark. Order, signatures, fsynced collector receipts,
 backoff and checkpoints are preserved. This microbenchmark is not a job
 throughput claim.
+
+## Error budget and alert interpretation
+
+The engineering latency objective allows at most 1% of completed observations to
+exceed 5 seconds planning-to-ACK or 10 seconds first readiness-to-start in the
+bounded one-hour window. `regente_execution_stage_budget_breaches` and
+`regente_execution_stage_observations` are gauges with the same window/stage.
+This is an observed latency fraction, not a monthly availability counter.
+Use the following PromQL for sustained budget exhaustion (for example, `for: 5m`):
+
+```promql
+sum without (threshold_seconds) (
+  regente_execution_stage_budget_breaches
+) / clamp_min(
+  regente_execution_stage_observations{stage=~"planned_to_accepted|ready_to_started"},
+  1
+) > 0.01
+```
+
+Alert separately on `regente_capacity_metrics_available == 0` for one minute,
+leader completed-tick age >90 seconds (or -1) for two minutes,
+oldest outbox age >5 seconds for one minute and audit lag >30 seconds for two
+minutes. Interpret age only on a serving leader; followers and external tick
+deployments have different expected cadence. An empty sample window is not a
+healthy workload claim: monitor the external canary at an approved cadence and
+alert on any failed deadline. Investigate outstanding/uncertain attempts as well
+as the completed denominator. No latency budget suppresses an integrity incident.
+
+The controlled soak pause must report a healthy HTTP/DB readiness check, a failed
+durable canary and a successful new canary after resumption within the 30-second
+engineering recovery deadline. That deadline concerns restored progress in this
+process pause scenario; it is not disaster RTO for a database restore or an
+independent I17 recovery exercise.

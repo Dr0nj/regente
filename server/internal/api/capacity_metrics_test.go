@@ -34,7 +34,7 @@ func TestI16CapacityMetrics(t *testing.T) {
 	s := server{cfg: Config{DB: d}}
 	w := httptest.NewRecorder()
 	s.capacityMetrics(w)
-	for _, want := range []string{"regente_capacity_metrics_available 1", "regente_execution_latency_sampled_attempts 1", `stage="ready_to_planned",window="1h_last_10000",quantile="0.99"} 1.000000`, `stage="ready_to_started",window="1h_last_10000",quantile="0.99"} 3.000000`} {
+	for _, want := range []string{"regente_capacity_metrics_available 1", "regente_execution_stage_budget_breaches{stage=\"planned_to_accepted\",window=\"1h_last_10000\",threshold_seconds=\"5\"} 0", "regente_execution_latency_sampled_attempts 1", `stage="ready_to_planned",window="1h_last_10000",quantile="0.99"} 1.000000`, `stage="ready_to_started",window="1h_last_10000",quantile="0.99"} 3.000000`} {
 		if !strings.Contains(w.Body.String(), want) {
 			t.Fatal(want, w.Body.String())
 		}

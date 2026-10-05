@@ -90,6 +90,22 @@ func (s *server) capacityMetrics(w http.ResponseWriter) {
 		values := stages[name]
 		sort.Float64s(values)
 		fmt.Fprintf(w, "regente_execution_stage_observations{stage=%q,window=%q} %d\n", name, "1h_last_10000", len(values))
+		budget := 0.0
+		if name == "planned_to_accepted" {
+			budget = 5
+		}
+		if name == "ready_to_started" {
+			budget = 10
+		}
+		if budget > 0 {
+			breaches := 0
+			for _, value := range values {
+				if value > budget {
+					breaches++
+				}
+			}
+			fmt.Fprintf(w, "regente_execution_stage_budget_breaches{stage=%q,window=%q,threshold_seconds=%q} %d\n", name, "1h_last_10000", fmt.Sprint(budget), breaches)
+		}
 		if len(values) > 0 {
 			for _, q := range []float64{0.95, 0.99} {
 				index := int(math.Ceil(float64(len(values))*q)) - 1

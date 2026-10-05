@@ -145,6 +145,10 @@ class Profile:
                     self.fault_interval=(pause_wall,time.time()+30)
                     next_offer+=fault_proof['pausedSeconds']
                     fault_proof['producerScheduledPauseSeconds']=fault_proof['pausedSeconds']
+                    fault_proof['restoredProgress']=probe(self.base,'probe',self.token,30)
+                    blocked=time.monotonic()-pause_at
+                    next_offer+=blocked-fault_proof['pausedSeconds']
+                    fault_proof['producerScheduledPauseSeconds']=blocked
                     resumed=True
                 time.sleep(.02)
             for future in futures:
@@ -196,7 +200,7 @@ class Profile:
         lab.command([str(lab.RUN/'server'),'-db-driver','postgres','-db',self.dsn,'-audit-key',str(self.key),'-audit-verify','-audit-checkpoint',str(checkpoint_path)],env=self.env,name=self.name+'-audit-verify')
         (lab.EVIDENCE/(self.name+'-attempts.json')).write_text(json.dumps(rows,indent=2))
         (lab.EVIDENCE/(self.name+'-samples.json')).write_text(json.dumps(self.samples,indent=2))
-        return {'name':self.name,'retainedRows':self.density,'targetOrdersPerDay':round(rate*86400),'measurementSeconds':seconds,'peakMultiplier':4,'peakSecondsPer300':60,'offeredRequests':len(futures),'admittedInstances':len(by_id),'attempts':len(rows),'errors':self.request_errors,'apiRequestSeconds':{'p95':quantile(self.request_times,.95),'p99':quantile(self.request_times,.99)},'latencies':latencies,'allAttemptLatenciesIncludingFault':all_latencies,'faultWallInterval':self.fault_interval,'databaseBytes':int(lab.command(lab.COMPOSE+['exec','-T','postgres','psql','-U','regente','-d',self.dbname,'-Atc','SELECT pg_database_size(current_database())'])),'serverCPUSeconds':cpu_seconds(self.server),'agentCPUSeconds':[cpu_seconds(p) for p in self.agents],'serverPeakRSSBytes':maxrss,'agentPeakRSSBytes':[max(s['agentRSS'][i] for s in self.samples) for i in range(2)],'maxAuditLagSeconds':max(lag,default=0),'maxOutboxAgeSeconds':max(oldest,default=0),'correctness':{'conditions':True,'attemptIdentity':True,'retry':True,'effectsExactlyOnceInThisLab':True,'ledgerCheckpoint':True},'externalCanary':canary,'fault':fault_proof,'qualified':qualified,'allSamplesIncludeFault':True,'normalPerformanceExclusionSeconds':60+fault_proof['pausedSeconds'] if fault_proof else 0,'averageOfferedPerSecond':len(futures)/(seconds-(fault_proof['pausedSeconds'] if fault_proof else 0))}
+        return {'name':self.name,'retainedRows':self.density,'targetOrdersPerDay':round(rate*86400),'measurementSeconds':seconds,'peakMultiplier':4,'peakSecondsPer300':60,'offeredRequests':len(futures),'admittedInstances':len(by_id),'attempts':len(rows),'errors':self.request_errors,'apiRequestSeconds':{'p95':quantile(self.request_times,.95),'p99':quantile(self.request_times,.99)},'latencies':latencies,'allAttemptLatenciesIncludingFault':all_latencies,'faultWallInterval':self.fault_interval,'databaseBytes':int(lab.command(lab.COMPOSE+['exec','-T','postgres','psql','-U','regente','-d',self.dbname,'-Atc','SELECT pg_database_size(current_database())'])),'serverCPUSeconds':cpu_seconds(self.server),'agentCPUSeconds':[cpu_seconds(p) for p in self.agents],'serverPeakRSSBytes':maxrss,'agentPeakRSSBytes':[max(s['agentRSS'][i] for s in self.samples) for i in range(2)],'maxAuditLagSeconds':max(lag,default=0),'maxOutboxAgeSeconds':max(oldest,default=0),'correctness':{'conditions':True,'attemptIdentity':True,'retry':True,'effectsExactlyOnceInThisLab':True,'ledgerCheckpoint':True},'externalCanary':canary,'fault':fault_proof,'qualified':qualified,'allSamplesIncludeFault':True,'normalPerformanceExclusionSeconds':60+fault_proof['pausedSeconds'] if fault_proof else 0,'averageOfferedPerSecond':len(futures)/(seconds-(fault_proof['producerScheduledPauseSeconds'] if fault_proof else 0))}
 
     def close(self):
         for proc in self.agents:lab.stop_process(proc)

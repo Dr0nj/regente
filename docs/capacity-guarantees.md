@@ -4,7 +4,7 @@ Historical evidence reviewed on 2026-09-28 against `f067e48` (v0.2.36);
 durable dispatch and HA boundaries updated for I11 on 2026-10-01.
 This is an evidence inventory, not a new benchmark or production certification.
 The [roadmap](roadmap.md) owns delivery status; the enterprise cycle still has
-I12–I17 pending after the I11 validation gate. A small-workload result does not
+later increments tracked independently after the I11 validation gate. A small-workload result does not
 close capacity, disaster recovery or pilot acceptance.
 
 ## Three different operations
@@ -75,8 +75,10 @@ the mandatory integration report's i11_ha section at the tested SHA. This is a
 correctness profile, not a sustained-throughput benchmark or a claim about every
 asymmetric network partition.
 
-Audit, load/soak, disaster recovery and operational pilot acceptance remain separate
-enterprise gates I12–I17. See [operations](operations.md), [SLO objectives](slos.md)
+The current [measured profile](capacity.md) adds bounded latency/progress signals
+and a mandatory incremental load/soak gate. Its measured envelope is separate
+from the historical materialization observations above. Disaster recovery and
+independent operational pilot acceptance remain separate in I17. See [operations](operations.md), [SLO objectives](slos.md)
 and [backup scope](dr-backup.md).
 
 ## Requirements for a new capacity or HA claim
