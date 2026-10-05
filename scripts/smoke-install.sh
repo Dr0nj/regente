@@ -35,6 +35,7 @@ BUNDLE=""
 AGENT=""
 MANIFEST=""
 ATTESTATION=""
+PREVIOUS_BUNDLE=""
 BUILD=0
 KEEP="${KEEP:-0}"   # KEEP=1 deixa o container de pé pra investigar uma falha
 
@@ -45,6 +46,7 @@ while [ $# -gt 0 ]; do
     --agent)  AGENT="$2"; shift 2 ;;
     --manifest) MANIFEST="$2"; shift 2 ;;
     --attestation) ATTESTATION="$2"; shift 2 ;;
+    --previous-bundle) PREVIOUS_BUNDLE="$2"; shift 2 ;;
     --keep)   KEEP=1; shift ;;
     *) echo "argumento desconhecido: $1"; exit 2 ;;
   esac
@@ -105,6 +107,15 @@ if [ "$BUILD" = 0 ]; then
   [ -f "$MANIFEST" ] && [ -f "$ATTESTATION" ] || { echo "Signed manifest required for a release smoke."; exit 1; }
 fi
 
+if [ -n "$PREVIOUS_BUNDLE" ]; then
+  python3 - "$PREVIOUS_BUNDLE" <<'PY'
+import hashlib,sys
+from pathlib import Path
+p=Path(sys.argv[1])
+assert hashlib.sha256(p.read_bytes()).hexdigest()=="52434beed4e25af0b1644eb5a31f8b0dd4073009ff4750052d30c25cf224d680", "Reviewed v0.2.47 anchor mismatch"
+PY
+fi
+
 echo "== imagem do alvo (Ubuntu + systemd)..."
 dk build -q -t "$IMG" "$(hostpath "$ROOT/scripts/smoke")" >/dev/null
 
@@ -131,6 +142,7 @@ if [ "$BUILD" = 0 ]; then
 fi
 dk cp "$(hostpath "$BUNDLE")" "$CT:/root/bundle.tar.gz" >/dev/null
 dk cp "$(hostpath "$AGENT")" "$CT:/root/regente-agent" >/dev/null
+if [ -n "$PREVIOUS_BUNDLE" ]; then dk cp "$(hostpath "$PREVIOUS_BUNDLE")" "$CT:/root/previous-bundle.tar.gz" >/dev/null; fi
 dk exec "$CT" mkdir -p /root/agent-deploy
 dk cp "$(hostpath "$ROOT/agent/deploy/install-linux.sh")" "$CT:/root/agent-deploy/install-linux.sh" >/dev/null
 dk cp "$(hostpath "$ROOT/agent/deploy/regente-agent.service")" "$CT:/root/agent-deploy/regente-agent.service" >/dev/null

@@ -35,6 +35,10 @@ type Exporter struct {
 
 // ACK somente após validação do recibo. Nenhum 2xx genérico permite avançar.
 func (e *Exporter) Step(ctx context.Context) error {
+	_, err := e.step(ctx)
+	return err
+}
+func (e *Exporter) step(ctx context.Context) (bool, error) {
 	var seq int64
 	var attempts int
 	var next int64
@@ -42,40 +46,40 @@ func (e *Exporter) Step(ctx context.Context) error {
 	err := e.DB.QueryRow("SELECT seq,attempts,next_at,dead_letter FROM audit_delivery WHERE acknowledged=0 ORDER BY seq LIMIT 1").Scan(&seq, &attempts, &next, &dead)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil
+			return false, nil
 		}
-		return err
+		return false, err
 	}
 	if dead != 0 {
-		return fmt.Errorf("audit dead letter at sequence %d", seq)
+		return false, fmt.Errorf("audit dead letter at sequence %d", seq)
 	}
 	if next > time.Now().UnixMilli() {
-		return nil
+		return false, nil
 	}
 	records, err := e.DB.AuditRecords(seq-1, 1)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if len(records) != 1 || records[0].Seq != seq {
-		return fmt.Errorf("audit outbox gap")
+		return false, fmt.Errorf("audit outbox gap")
 	}
 	record := records[0]
 	// Exportar uma trilha adulterada é proibido mesmo que o destino esteja indisponível.
 	var public string
 	if err = e.DB.QueryRow("SELECT public_key FROM audit_head WHERE id=1").Scan(&public); err != nil {
-		return err
+		return false, err
 	}
 	key, err := hex.DecodeString(public)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err = db.VerifyAuditRecord(record, key, record.Previous, seq); err != nil {
-		return err
+		return false, err
 	}
 	b, _ := json.Marshal(record)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.URL, bytes.NewReader(b))
 	if err != nil {
-		return err
+		return false, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+e.Token)
@@ -102,7 +106,7 @@ func (e *Exporter) Step(ctx context.Context) error {
 	}
 	if valid {
 		_, err = e.DB.Exec("UPDATE audit_delivery SET acknowledged=1,error_code='' WHERE seq=? AND acknowledged=0", seq)
-		return err
+		return err == nil, err
 	}
 	attempts++
 	delay := time.Second << min(attempts, 8)
@@ -112,10 +116,12 @@ func (e *Exporter) Step(ctx context.Context) error {
 	}
 	_, saveErr := e.DB.Exec("UPDATE audit_delivery SET attempts=?,next_at=?,dead_letter=?,error_code=? WHERE seq=? AND acknowledged=0", attempts, time.Now().Add(delay).UnixMilli(), dead, code, seq)
 	if saveErr != nil {
-		return saveErr
+		return false, saveErr
 	}
-	return fmt.Errorf("audit export sequence %d: %s", seq, code)
+	return false, fmt.Errorf("audit export sequence %d: %s", seq, code)
 }
+
+// Drena até100 ACKs sequenciais por ciclo; nunca pula backoff, lacuna ou dead-letter.
 func (e *Exporter) Run(ctx context.Context) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
@@ -124,8 +130,18 @@ func (e *Exporter) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
-			if err := e.Step(ctx); err != nil {
-				log.Printf("[audit] %v", err)
+			for range 100 {
+				if ctx.Err() != nil {
+					return
+				}
+				advanced, err := e.step(ctx)
+				if err != nil {
+					log.Printf("[audit] %v", err)
+					break
+				}
+				if !advanced {
+					break
+				}
 			}
 		}
 	}

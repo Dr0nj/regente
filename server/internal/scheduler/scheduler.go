@@ -48,12 +48,14 @@ type Scheduler struct {
 	hub                                 Bus
 	tick                                time.Duration
 
-	dailyMu    sync.Mutex // só coordenação local; o checkpoint também é serializado no banco.
-	mu         sync.Mutex
-	running    map[string]bool
-	defs       []domain.JobDefinition
-	settings   Settings
-	lastTickAt time.Time // R2 — watchdog: instante do último ciclo de scheduling
+	dailyMu      sync.Mutex // só coordenação local; o checkpoint também é serializado no banco.
+	mu           sync.Mutex
+	running      map[string]bool
+	defs         []domain.JobDefinition
+	settings     Settings
+	lastTickAt   time.Time // tentativa; progresso concluído é separado
+	progress     TickProgress
+	eligibleSeen map[string]bool
 
 	// emptyDailyLoggedFor — data da última daily recusada por não haver NENHUMA
 	// definition carregada (ver RunDaily). Sem isso o aviso sairia a cada tick.
@@ -414,36 +416,49 @@ func (s *Scheduler) Run(ctx context.Context) {
 //
 // G1 — só o líder materializa a daily e despacha; followers retornam cedo.
 func (s *Scheduler) Tick() {
-	// R2 — watchdog: registra que o loop de scheduling rodou. A idade deste
-	// instante é exposta em /metrics e /livez; se parar de avançar (ticker morto
-	// no modo internal, ou cron parado no external), o monitor externo alerta.
+	started := time.Now()
 	s.mu.Lock()
 	s.lastTickAt = s.Now()
+	s.progress.AttemptedAt = s.lastTickAt
+	s.progress.Attempts++
 	s.mu.Unlock()
-	// R2 — panic-recovery: um panic na materialização da daily ou na avaliação de
-	// deps/dispatch NÃO pode derrubar o processo nem matar o loop de scheduling.
+	outcome := "failed"
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("[scheduler] PANIC no Tick recuperado: %v", r)
 		}
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		switch outcome {
+		case "completed":
+			s.progress.CompletedAt = s.Now()
+			s.progress.Completed++
+			s.progress.Duration = time.Since(started)
+		case "overlap":
+			s.progress.Overlap++
+		case "follower":
+			s.progress.Follower++
+		default:
+			s.progress.Failed++
+		}
 	}()
-	// ARCH-3 — lock-por-tick: pula ciclos SOBREPOSTOS (em-processo sempre;
-	// cross-nó no Postgres serverless quando ligado). Não é correção (o claim
-	// atômico já garante), é higiene. O watchdog acima já marcou lastTickAt: um
-	// tick pulado ainda prova que o loop está vivo.
 	ok, release := s.tickGuard.tryEnter()
 	if !ok {
+		outcome = "overlap"
 		return
 	}
 	defer release()
 	if !s.isLeader() {
+		outcome = "follower"
 		return
 	}
 	s.autoDailyIfDue()
-	// E5 — se a daily de hoje fechou (ou bateu daily_report_at), envia o
-	// relatório 1× (claim em report_sent_at); throttle interno de 1 min.
 	s.maybeSendDailyReport()
-	s.tickOnce()
+	if err := s.tickOnce(); err != nil {
+		log.Printf("[scheduler] incomplete tick: %v", err)
+		return
+	}
+	outcome = "completed"
 }
 
 // RunDailyIfDue — ARCH-5: materializa a daily de hoje SE já passou do horário e
@@ -464,7 +479,7 @@ func (s *Scheduler) RunDailyIfDue() {
 	s.autoDailyIfDue()
 }
 
-// LastTick — R2: instante do último ciclo de scheduling (watchdog/health).
+// LastTick — compatibilidade: instante da última tentativa; ver TickProgress para conclusão.
 // Zero se o scheduler ainda não rodou nenhum tick.
 func (s *Scheduler) LastTick() time.Time {
 	s.mu.Lock()
@@ -1043,21 +1058,21 @@ func statusRank(s string) int {
 // com output de timeout. Cobre desconexão de agent ou mock que falhou.
 const stuckRunningTimeout = 15 * time.Minute
 
-func (s *Scheduler) tickOnce() {
+func (s *Scheduler) tickOnce() error {
 	if s.durable != nil {
 		if _, err := s.rebuildDurableResources(); err != nil {
 			log.Printf("[quotas] reconciliation blocked: %v", err)
-			return
+			return err
 		}
 		s.drainDurableEffects()
 		if _, err := s.durable.Reconcile(); err != nil {
 			log.Printf("[execution] reconcile: %v", err)
-			return
+			return err
 		}
 	}
 	now := s.Now()
-	if s.validateBusinessTime() != nil {
-		return
+	if err := s.validateBusinessTime(); err != nil {
+		return err
 	}
 	today := s.BusinessDate(now)
 
@@ -1070,13 +1085,16 @@ func (s *Scheduler) tickOnce() {
 		today,
 	)
 	if err != nil {
-		return
+		return err
 	}
 	insts := []instRow{}
 	for rows.Next() {
 		var r instRow
 		var forcedInt, confirmedInt int
-		_ = rows.Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.CarriedFrom, &r.Snapshot, &r.HeldFrom, &r.DailyState, &r.SnapshotChecksum)
+		if err := rows.Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.CarriedFrom, &r.Snapshot, &r.HeldFrom, &r.DailyState, &r.SnapshotChecksum); err != nil {
+			rows.Close()
+			return err
+		}
 		r.Forced = forcedInt == 1
 		r.Confirmed = confirmedInt == 1
 		insts = append(insts, r)
@@ -1085,6 +1103,8 @@ func (s *Scheduler) tickOnce() {
 	// tick — benigno, mas tem que aparecer no log pra não virar mistério).
 	if err := rows.Err(); err != nil {
 		log.Printf("[scheduler] tick: incomplete instance read (%d read): %v", len(insts), err)
+		rows.Close()
+		return err
 	}
 	rows.Close()
 
@@ -1157,6 +1177,9 @@ func (s *Scheduler) tickOnce() {
 			if def.Confirm && !r.Confirmed {
 				continue
 			}
+			if err := s.observeEligible(r.ID); err != nil {
+				return err
+			}
 			if !s.agentAvailable(def) {
 				s.maybeEmitNoAgent(r.ID, def.JobType)
 				continue
@@ -1174,7 +1197,13 @@ func (s *Scheduler) tickOnce() {
 		// condição (ou um set manual no painel) e o tick despacha o sucessor
 		// sozinho. Quem nunca ficar elegível morre na virada da daily
 		// (WAITING-nunca-rodou não carrega), como no Control-M.
-		if blockers := s.gateInstance(r, def, condIdx, now, true); len(blockers) > 0 {
+		blockers := s.gateInstance(r, def, condIdx, now, true)
+		if len(blockers) == 0 || blockers[0].Kind == GateAgent || blockers[0].Kind == GateResource {
+			if err := s.observeEligible(r.ID); err != nil {
+				return err
+			}
+		}
+		if len(blockers) > 0 {
 			// OL-4 — timeline da ESPERA (edge-triggered): grava o motivo-bloqueador
 			// primário como evento `wait`, só quando ele MUDA (dedup por instance).
 			// O estado NÃO muda (segue WAITING, sem broadcast); é o "por que demorou"
@@ -1195,11 +1224,11 @@ func (s *Scheduler) tickOnce() {
 	// F19 — SLA evaluation per tick
 	if s.durable != nil {
 		s.evaluateDurableRunning(now)
-		return
+		return nil
 	}
 	if s.sla != nil {
 		defsByID := map[string]domain.JobDefinition{}
-		for _, d := range s.defs {
+		for _, d := range defs {
 			defsByID[d.ID] = d
 		}
 		s.sla.Evaluate(defsByID, now)
@@ -1211,6 +1240,7 @@ func (s *Scheduler) tickOnce() {
 	// Slow Execution — alerta DURANTE a execução quando o decorrido estoura a
 	// média histórica do job + folga (rule-slow; ver slowalert.go).
 	s.evaluateSlowRunning(now)
+	return nil
 }
 
 // agentAvailable — há agente AGORA pra este job? SSH é agentless (roda no

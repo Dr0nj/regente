@@ -227,6 +227,9 @@ func (s *Scheduler) durableTransition(tx *db.Tx, o execution.Order, a execution.
 	id := o.SourceInstanceID
 	switch kind {
 	case "planned":
+		if _, err := tx.Exec("INSERT INTO instance_events(instance_id,kind,actor,message,ts) SELECT ?,'eligible','scheduler',?,? WHERE NOT EXISTS(SELECT 1 FROM instance_events WHERE instance_id=? AND kind='eligible')", id, "Business gates passed at "+now.UTC().Format(time.RFC3339Nano), now, id); err != nil {
+			return err
+		}
 		if status != "WAITING" {
 			return execution.ErrConflict
 		}

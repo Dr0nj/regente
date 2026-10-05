@@ -213,7 +213,7 @@ func TestTick_NoAgentNoClaim(t *testing.T) {
 	}
 	// Throttle: no máximo 1 evento de no-agent por instance apesar de 4 ticks.
 	var evs int
-	_ = s.db.QueryRow(`SELECT COUNT(*) FROM instance_events WHERE instance_id='na-1'`).Scan(&evs)
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM instance_events WHERE instance_id='na-1' AND kind!='eligible'`).Scan(&evs)
 	if evs > 1 {
 		t.Fatalf("spam de eventos sem agente: %d (esperado <=1)", evs)
 	}

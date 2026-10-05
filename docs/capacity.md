@@ -1,0 +1,97 @@
+# Capacity and progress
+
+Capacity is qualified by a measured engineering profile, never by row count alone.
+The mandatory CI/release gate runs real PostgreSQL, server/agent protocol 2,
+durable agent journals, external COMMAND/HTTP effects and an independent TLS
+audit collector. It advances through 10,000, 100,000 and 1,000,000 retained rows
+only while the previous tier meets its declared budgets. Each tier runs at least
+five minutes; the last supported tier must pass a further 30-minute developer
+soak. An independent operational pilot remains pending (I17).
+
+## Measurements
+
+`regente_scheduler_last_tick_age_seconds` measures a **tick attempt**, including
+overlap and follower calls. `regente_scheduler_completed_tick_age_seconds`
+advances only after a leader completes the synchronous instance scan without
+a returned error or panic. It does not prove asynchronous hooks, daily operations
+or external job effects have finished. No completion is represented by -1.
+`regente_scheduler_ticks_total{outcome=...}` counts attempted, completed, failed,
+overlap and follower outcomes; duration is the last completed scan.
+
+The first observed business eligibility is recorded separately from execution
+capacity. New instance events carry `kind=eligible`. Readiness, planning,
+durable ACK, start and finish timestamps produce the five latency stages:
+ready_to_planned, planned_to_accepted, accepted_to_started, started_to_finished
+and ready_to_started. Readiness latency applies to the first attempt; retry
+attempts retain their own planning/ACK/start/finish measurements. Historical
+eligibility is not reconstructed.
+
+`regente_execution_stage_seconds` reports nearest-rank p95/p99 **gauges** over
+at most the newest 10,000 attempts created in the last hour, with explicit
+per-stage observation counts. Incomplete observations are excluded from quantiles;
+pending queues, oldest outbox age and uncertain attempts remain independently
+visible. Do not apply `rate` or `increase` to these quantiles/count gauges.
+Check `regente_capacity_metrics_available` before interpreting missing samples.
+Database connections/waits, connected agent slots, active attempts and oldest
+audit/outbox age identify saturation without instance IDs in metric labels.
+
+## Independent progress canary
+
+Use a reviewed, non-destructive canary definition in an authorized environment.
+The probe admits a real order and therefore has an operational effect:
+
+```sh
+python3 scripts/progress-probe.py --base https://scheduler.example \
+  --definition approved-canary --token-file /run/secrets/canary-token --deadline 5
+```
+
+A pass requires the instance to reach OK with exactly one durable succeeded
+attempt and nonzero ACK/start receipts. HTTP health and database readiness alone
+cannot pass it. The lab deliberately stops both agent processes while /readyz
+remains healthy, requires the canary to detect stalled progress, then resumes
+them and verifies all results and external effects. A failed deadline retains
+the admitted instance ID; inspect it rather than ordering an automatic duplicate.
+
+## Reproducible profile and scope
+
+Run `python3 scripts/capacity.py` on Linux amd64 with Go 1.26 and Docker Compose.
+Only disposable loopback databases named `regente_capacity_*` can be seeded;
+the seeder also requires `REGENTE_DISPOSABLE_DB=1`. Each density uses a fresh
+database and about 2 KiB per retained terminal snapshot. These rows are **fixtures**,
+not a claim that their jobs or effects were executed.
+
+The profile uses one production server with a loopback network boundary,
+PostgreSQL and two durable agents (four fast slots and one slow slot).
+It offers density/86,400 orders per second with fourfold peaks for the first
+60 seconds of each five-minute period. The mix includes short COMMAND jobs,
+64 KiB output, three-second slow jobs, one real failure/retry, HTTP effects and
+producer/consumer condition gates. Authenticated operator queries run concurrently.
+The 30-minute soak includes a deliberate agent pause; its interval and a
+30-second margin on each side are excluded only from **normal performance**
+statistics. All samples, all-attempt latencies, effects and correctness checks
+remain in the evidence. The load producer records its scheduled pause.
+
+Budgets are planning-to-ACK p99 <=5 seconds, first readiness-to-start p99 <=10
+seconds, oldest outbox age <=5 seconds, audit lag <=30 seconds, server RSS <=1 GiB
+and zero normal admission errors. A tier exceeding any budget stops progression.
+No result can justify a higher untested tier. Completion requires no missing or
+duplicate lab effects, distinct execution IDs, correct retry attempts and a
+verified checkpoint from the independent audit collector.
+
+`capacity.json` and the detailed attempts/samples contain source SHA, dirty state,
+CPU/memory/OS/Go/PG settings and image identity, database size, process CPU/RSS,
+offered/admitted counts, sample denominators and p95/p99. Workflows preserve these
+artifacts even on failure. Capacity code changes must rerun the measured gate.
+
+This is a short synthetic rate/density qualification on one host. It does not
+certify a full day at the offered rate, business workloads, HA/NATS/mTLS capacity,
+monthly SLOs or a fleet upgrade. Platform/service scope is in
+[authenticated releases](authenticated-releases.md); recovery procedures are in
+[upgrades](upgrades.md). The measured envelope is published after the gate passes.
+
+The audit exporter change follows a measured bottleneck: eight real records took
+8.013 seconds to receive durable ACK at the origin with one record per tick.
+A bounded, sequential drain of at most 100 successful ACKs per tick took 1.026
+seconds in the same microbenchmark. Order, signatures, fsynced collector receipts,
+backoff and checkpoints are preserved. This microbenchmark is not a job
+throughput claim.

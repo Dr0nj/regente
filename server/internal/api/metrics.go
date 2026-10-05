@@ -15,6 +15,7 @@ const readyTickStaleSeconds = 120.0
 
 func (s *server) metrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	s.capacityMetrics(w)
 	today := time.Now().UTC().Format("2006-01-02")
 	if s.cfg.Scheduler != nil {
 		today = s.cfg.Scheduler.TodayDate()
@@ -94,7 +95,7 @@ func (s *server) metrics(w http.ResponseWriter, r *http.Request) {
 		if last := s.cfg.Scheduler.LastTick(); !last.IsZero() {
 			age = time.Since(last).Seconds()
 		}
-		fmt.Fprintln(w, "# HELP regente_scheduler_last_tick_age_seconds Seconds since the last scheduler cycle (-1 if it never ran).")
+		fmt.Fprintln(w, "# HELP regente_scheduler_last_tick_age_seconds Seconds since the last scheduler tick attempt (-1 if never attempted).")
 		fmt.Fprintln(w, "# TYPE regente_scheduler_last_tick_age_seconds gauge")
 		fmt.Fprintf(w, "regente_scheduler_last_tick_age_seconds %.1f\n", age)
 

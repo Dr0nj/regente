@@ -59,6 +59,25 @@ if [ "$STAGE" = stage2 ]; then
   [ -n "$(gitfield sha)" ] && ok "workspace ainda clonado (sha $(gitfield sha | cut -c1-7))"
   [ -z "$(gitfield error)" ] && ok "GitOps sem erro" || bad "GitOps com erro após o reboot: $(gitfield error)"
 
+
+  if [ -f /root/previous-bundle.tar.gz ]; then
+    head1 "Drained v0.2.47 service before authenticated upgrade"
+    systemctl stop regente-agent
+    prior_instances="$(api "$BASE/api/instances" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)))')" || exit 1
+    prior_source="$(grep "^REGENTE_GIT_SOURCE=" "$ENV_FILE")"
+    systemctl stop regente-server
+    mkdir -p /root/previous
+    tar -xzf /root/previous-bundle.tar.gz -C /root/previous || exit 1
+    prior=/root/previous/regente-server_linux_amd64/regente-server
+    [ "$("$prior" -version)" = v0.2.47 ] || exit 1
+    install -m 0755 "$prior" /usr/local/bin/regente-server
+    systemctl start regente-server
+    wait_for 30 '[ "$(code "'"$BASE"'/health")" = 200 ]' || exit 1
+    [ "$(api "$BASE/api/version" | jfield version)" = v0.2.47 ] || exit 1
+    [ "$(api "$BASE/api/instances" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)))')" = "$prior_instances" ] || exit 1
+    ok "Previous released binary serves the drained preserved schema-32 history"
+  fi
+
   if [ -f /root/release-manifest.json ]; then
     export REGENTE_MANIFEST=/root/release-manifest.json REGENTE_ATTESTATION=/root/release-manifest.sigstore.json
   head1 "regente-update: backup do banco + troca de binário + restart"
@@ -127,6 +146,13 @@ PRODUCTION
     RUN_USER="$(systemctl show regente-server -p User --value)" bash /opt/bundle/regente-server_linux_amd64/deploy/install-linux.sh > /tmp/update-production.log 2>&1 || bad "trusted source fixture reinstall failed"
   fi
   wait_for 30 '[ "$(code "'"$BASE"'/health")" = 200 ]' || bad "production did not return after upgrade"
+  expected_version="$(/opt/bundle/regente-server_linux_amd64/regente-server -version)"
+  actual_version="$(curl -fsS "$BASE/api/version" | jfield version)"
+  [ "$actual_version" = "$expected_version" ] && ok "Previous-to-current installed version transition verified" || bad "Current binary not running after upgrade"
+  if [ -f /root/previous-bundle.tar.gz ]; then
+    current_instances="$(curl -fsS -H "Authorization: Bearer $prod_token" "$BASE/api/instances" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)))')"
+    [ "$current_instances" = "$prior_instances" ] && [ "$(grep "^REGENTE_GIT_SOURCE=" "$ENV_FILE")" = "$prior_source" ] && ok "Drained upgrade preserved history and server configuration" || bad "Drained upgrade changed history/configuration"
+  fi
   grep -q '^REGENTE_PROFILE=production' "$ENV_FILE" && ok "production configuration preserved by upgrade" || bad "production configuration lost"
   prod_token=$(curl -fsS -H 'Content-Type: application/json' -d '{"username":"admin","password":"production-smoke-fixture"}' "$BASE/api/auth/login" | jfield token)
   [ -n "$prod_token" ] && ok "production credentials survived upgrade" || bad "production credentials lost"

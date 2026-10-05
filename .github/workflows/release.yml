@@ -6,8 +6,7 @@ name: Release
 #     releases/latest. Pra pular uma entrega, escreva [no release] na mensagem do
 #     commit (docs/roadmap sozinhos, por exemplo).
 #   • tag vX.Y.Z    → release daquela versão (é assim que se sobe minor/major).
-#   • workflow_dispatch → REPUBLICA os assets de uma tag existente sem criar
-#     versão nova (foi assim que a v0.1.0 ficou com só 2 dos 5 alvos anexados).
+#   • workflow_dispatch → publica tag no mesmo SHA; versão existente é recusada.
 #
 # Publicar sempre só é seguro por causa do job `smoke`: ele INSTALA o artefato num
 # Linux com systemd de verdade antes de publicar. Sem esse portão, "release a cada
@@ -20,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag existente a (re)publicar, ex.: v0.2.0"
+        description: "Unpublished version tag at this source SHA, e.g. v0.2.48"
         required: true
         type: string
 
@@ -62,12 +61,15 @@ jobs:
           ref: ${{ inputs.tag || github.sha }}
           fetch-depth: 0 # precisa do histórico de tags pra calcular o patch
       - id: pick
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          if [ -n "${{ inputs.tag }}" ]; then
+          if [ -n "$REQUESTED_TAG" ]; then
+            [[ "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid release tag"; exit 1; }
             test "$(git rev-parse HEAD)" = "$GITHUB_SHA" || { echo "Dispatch must use the tag source SHA; use a tag push for historical refs."; exit 1; }
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"; echo "skip=false" >> "$GITHUB_OUTPUT"; exit 0
+            echo "tag=$REQUESTED_TAG" >> "$GITHUB_OUTPUT"; echo "skip=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
           if [ "${{ startsWith(github.ref, 'refs/tags/v') }}" = true ]; then
             echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"; echo "skip=false" >> "$GITHUB_OUTPUT"; exit 0
@@ -211,13 +213,16 @@ jobs:
       - name: Instalar de verdade e validar
         run: |
           set -euo pipefail
+          mkdir -p .integration/previous
+          curl -fLsS --retry 3 https://github.com/Dr0nj/regente/releases/download/v0.2.47/regente-server_linux_amd64.tar.gz -o .integration/previous/bundle.tar.gz
           python3 scripts/test-release-live.py dist
           chmod +x dist/regente-agent_linux_amd64
           bash scripts/smoke-install.sh \
             --bundle dist/regente-server_linux_amd64.tar.gz \
             --agent  dist/regente-agent_linux_amd64 \
             --manifest dist/release-manifest.json \
-            --attestation dist/release-manifest.sigstore.json
+            --attestation dist/release-manifest.sigstore.json \
+            --previous-bundle .integration/previous/bundle.tar.gz
 
   sign:
     name: authenticated release inventory
@@ -373,6 +378,14 @@ jobs:
       - name: Verify signed manifest and all payload bytes
         run: python3 scripts/test-release-live.py dist
 
+      - name: Refuse an already published version
+        env:
+          RELEASE_TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          status=$(curl -sS -o /tmp/release.json -w "%{http_code}" "https://api.github.com/repos/Dr0nj/regente/releases/tags/$RELEASE_TAG")
+          test "$status" = 404 || { echo "Release exists or lookup failed; published assets cannot be replaced."; exit 1; }
       - name: Publish
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:

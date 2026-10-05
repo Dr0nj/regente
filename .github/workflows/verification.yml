@@ -35,7 +35,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .integration/i13-smoke/evidence
-          bash scripts/smoke-install.sh --build 2>&1 | tee .integration/i13-smoke/evidence/i13-systemd.log
+          mkdir -p .integration/previous
+          curl -fLsS --retry 3 https://github.com/Dr0nj/regente/releases/download/v0.2.47/regente-server_linux_amd64.tar.gz -o .integration/previous/bundle.tar.gz
+          bash scripts/smoke-install.sh --build --previous-bundle .integration/previous/bundle.tar.gz 2>&1 | tee .integration/i13-smoke/evidence/i13-systemd.log
       # Informativo; não compõe a condição de aprovação do perfil.
       - name: deadcode (informativo)
         continue-on-error: true
@@ -53,3 +55,24 @@ jobs:
         with:
           name: browser-auth-failures
           path: app/test-results/
+
+  capacity:
+    name: measured capacity and developer soak
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26'
+      - name: Incremental workload and 30-minute soak
+        run: python3 scripts/capacity.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: capacity-evidence
+          path: .integration/*/evidence/
+          include-hidden-files: true
+          if-no-files-found: error

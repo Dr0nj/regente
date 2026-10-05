@@ -3,7 +3,7 @@
 A release is published only after the **same source SHA** passes the complete
 Linux verification profile, both Go race suites, real PostgreSQL/NATS/OIDC and
 recovery tests, mandatory browser scenarios, documentation/toolchain recipes,
-the installed systemd smoke and five native binary checks. Failed or missing
+the installed systemd smoke, measured capacity/developer soak and five native binary checks. Failed or missing
 jobs block signing/publication. Unit fixtures are not independent integration
 evidence. The source smoke proves unsigned updates are refused; the release smoke
 uses the actual signed manifest to exercise the updater, backup, same-version
@@ -66,7 +66,7 @@ fully disconnected deployment). An old unsigned release is refused, even with
 
 | Platform | Release evidence |
 |---|---|
-| Linux amd64 | Actual bundle install, reboot, authenticated same-build update, DB backup/no-op, credentials/journal preservation, execution security and independent audit collector |
+| Linux amd64 | Actual bundle install, reboot, drained v0.2.47-to-current update and authenticated same-build update, DB backup/no-op, credentials/journal preservation, execution security and independent audit collector |
 | Linux arm64 | Native version output and fresh/repeated SQLite migration |
 | Windows amd64 | Native server/agent version output and fresh/repeated SQLite migration; existing native demo recipe |
 | macOS amd64 / arm64 | Native server/agent version output and fresh/repeated SQLite migration |
@@ -83,6 +83,7 @@ a retained old binary does not downgrade a migrated database.
 Inspection on 2026-10-03 found main **unprotected**, no repository rulesets,
 administrator access and automatic merging disabled. These facts are not a
 branch-protection claim. The publication DAG enforces the release gates independently.
+Publication refuses an existing release version; replacement requires a new version.
 Direct changes to publisher workflows still require review and trusted maintainers.
 Actions used by these workflows are pinned to reviewed commit SHAs; Syft is pinned
 to v1.54.0. The SBOM inventories actual Go artifacts and the frontend lockfile;

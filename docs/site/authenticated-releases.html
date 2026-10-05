@@ -65,6 +65,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="authenticated-releases.html" class="active">Authenticated releases</a>
 <a href="authentication.html">Authentication: local, hybrid or SSO</a>
 <a href="business-time.html">Business time</a>
+<a href="capacity.html">Capacity and progress</a>
 <a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
 <a href="daily-recovery.html">Daily recovery</a>
 <a href="durable-execution.html">Durable execution and recovery</a>
@@ -84,7 +85,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <p>A release is published only after the <strong>same source SHA</strong> passes the complete
 Linux verification profile, both Go race suites, real PostgreSQL/NATS/OIDC and
 recovery tests, mandatory browser scenarios, documentation/toolchain recipes,
-the installed systemd smoke and five native binary checks. Failed or missing
+the installed systemd smoke, measured capacity/developer soak and five native binary checks. Failed or missing
 jobs block signing/publication. Unit fixtures are not independent integration
 evidence. The source smoke proves unsigned updates are refused; the release smoke
 uses the actual signed manifest to exercise the updater, backup, same-version
@@ -143,7 +144,7 @@ fully disconnected deployment). An old unsigned release is refused, even with
 <tbody>
 <tr>
 <td>Linux amd64</td>
-<td>Actual bundle install, reboot, authenticated same-build update, DB backup/no-op, credentials/journal preservation, execution security and independent audit collector</td>
+<td>Actual bundle install, reboot, drained v0.2.47-to-current update and authenticated same-build update, DB backup/no-op, credentials/journal preservation, execution security and independent audit collector</td>
 </tr>
 <tr>
 <td>Linux arm64</td>
@@ -169,6 +170,7 @@ a retained old binary does not downgrade a migrated database.</p>
 <p>Inspection on 2026-10-03 found main <strong>unprotected</strong>, no repository rulesets,
 administrator access and automatic merging disabled. These facts are not a
 branch-protection claim. The publication DAG enforces the release gates independently.
+Publication refuses an existing release version; replacement requires a new version.
 Direct changes to publisher workflows still require review and trusted maintainers.
 Actions used by these workflows are pinned to reviewed commit SHAs; Syft is pinned
 to v1.54.0. The SBOM inventories actual Go artifacts and the frontend lockfile;
