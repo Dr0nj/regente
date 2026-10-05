@@ -35,7 +35,7 @@ func main() {
 		log.Fatal(err)
 	}
 	now := time.Now().UTC()
-	raw, _ := json.Marshal(map[string]any{"id": "retained", "jobType": "COMMAND", "params": map[string]string{"command": "echo retained # " + strings.Repeat("x", 2048)}, "schedule": map[string]bool{"enabled": false}})
+	raw, _ := json.Marshal(map[string]any{"id": "retained", "jobType": "COMMAND", "actionConfig": map[string]string{"command": "echo retained # " + strings.Repeat("x", 2048)}, "schedule": map[string]bool{"enabled": false}})
 	tx, err := d.Begin()
 	if err != nil {
 		log.Fatal(err)
