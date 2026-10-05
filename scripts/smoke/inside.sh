@@ -147,7 +147,7 @@ PRODUCTION
   fi
   wait_for 30 '[ "$(code "'"$BASE"'/health")" = 200 ]' || bad "production did not return after upgrade"
   expected_version="$(/opt/bundle/regente-server_linux_amd64/regente-server -version)"
-  actual_version="$(curl -fsS "$BASE/api/version" | jfield version)"
+  actual_version="$(curl -fsS -H "Authorization: Bearer $prod_token" "$BASE/api/version" | jfield version)"
   [ "$actual_version" = "$expected_version" ] && ok "Previous-to-current installed version transition verified" || bad "Current binary not running after upgrade"
   if [ -f /root/previous-bundle.tar.gz ]; then
     current_instances="$(curl -fsS -H "Authorization: Bearer $prod_token" "$BASE/api/instances" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)))')"

@@ -1970,7 +1970,13 @@ func (s *Scheduler) ForceOrder(defID string) (string, error) {
 		ID: id, DefID: defID, OrderDate: today, Status: string(domain.StatusWaiting),
 		ScheduledAt: now, Forced: true, ForceMode: ForceModeOrder, Snapshot: string(snap),
 	}
-	if blockers := s.gateInstance(r, *def, nil, now, true); len(blockers) > 0 {
+	blockers := s.gateInstance(r, *def, nil, now, true)
+	if len(blockers) == 0 || blockers[0].Kind == GateAgent || blockers[0].Kind == GateResource {
+		if err := s.observeEligible(id); err != nil {
+			return id, err
+		}
+	}
+	if len(blockers) > 0 {
 		s.emitEvent(id, "submitted", "operator", "force waiting on gate: "+blockers[0].Detail)
 		return id, nil
 	}
