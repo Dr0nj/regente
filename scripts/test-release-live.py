@@ -23,6 +23,6 @@ with tempfile.TemporaryDirectory() as t:
     env=__import__('os').environ.copy()
     env.update(REPO='Dr0nj/regente',VERSION='latest',TMP=t,REGENTE_MANIFEST=str(dist/'release-manifest.json'),REGENTE_ATTESTATION=str(dist/'release-manifest.sigstore.json'),BUNDLE_LOCAL=str(payload))
     command='set -euo pipefail; source scripts/release-verification.sh; if verify_release "$1" "$2"; then exit 91; fi'
-    result=subprocess.run(['bash','-c',command,'verify',asset,str(Path(t)/'output')],env=env)
-    assert result.returncode==0,'Installer accepted modified payload'
+    result=subprocess.run(['bash','-c',command,'verify',asset,str(Path(t)/'output')],env=env,capture_output=True,text=True)
+    assert result.returncode==0 and 'Release payload integrity failed' in result.stderr,'Installer did not reject modified payload for integrity'
 print('I15 REAL SIGNATURE + ALL ASSETS + MODIFIED MANIFEST/PAYLOAD REFUSED')
