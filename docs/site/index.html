@@ -268,6 +268,10 @@ commit. If <strong>both</strong> have content, the server refuses to overwrite e
 two ways out (keep the repository, or publish the disk) — it never picks for you.</p>
 </blockquote>
 <h3 id="installing-the-server">Installing the server</h3>
+<p>Release installation requires a trusted GitHub CLI and Python 3. First verify the
+bootstrap script with the <a href="authenticated-releases.html">authenticated release procedure</a>,
+or use a reviewed checkout. The release commands below assume a verified local
+<code>install.sh</code>; downloading a script is not sufficient to trust its execution.</p>
 <p>There are three ways to run the server and two ways to run an agent. Pick by what the machine
 should do.</p>
 <p><strong>The recommended default is systemd</strong>: the service is supervised (<code>Restart=always</code>), so it
@@ -288,8 +292,7 @@ Run PowerShell <strong>as Administrator</strong>.</p>
 <p>A control plane <strong>with no UI attached</strong>. Use it when you drive Regente through the API or the
 CLI, or when the UI is served from somewhere else.</p>
 <pre><code class="language-bash"># from a release (no toolchain needed):
-curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install.sh -o regente-install.sh
-sudo WITH_UI=0 bash regente-install.sh
+sudo WITH_UI=0 bash install.sh # previously verified bootstrap
 
 # or from source:
 cd server &amp;&amp; CGO_ENABLED=0 go build -o regente-server . &amp;&amp; sudo WITH_UI=0 ./deploy/install-linux.sh
@@ -299,8 +302,7 @@ cd server &amp;&amp; CGO_ENABLED=0 go build -o regente-server . &amp;&amp; sudo 
 configure and the frontend resolves its own address at runtime — which means the same build works
 behind any domain or tunnel.</p>
 <pre><code class="language-bash"># from a release (binary + UI + systemd unit, all ready):
-curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install.sh -o regente-install.sh
-sudo bash regente-install.sh
+sudo bash install.sh # previously verified bootstrap
 
 # or from source (it builds the UI and wires it up on its own):
 cd server &amp;&amp; CGO_ENABLED=0 go build -o regente-server .

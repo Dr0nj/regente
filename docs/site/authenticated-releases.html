@@ -108,7 +108,8 @@ trusted CLI and check the script's size/hash from that manifest before executing
 it. Do not treat <code>curl | sudo bash</code> or <code>irm | iex</code> as authenticated bootstrap.
 For a pinned release, download its manifest/signature and the installer without
 executing them, inspect the version/ref/SHA, then:</p>
-<pre><code class="language-sh">gh attestation verify release-manifest.json --bundle release-manifest.sigstore.json \
+<pre><code class="language-sh">set -e
+gh attestation verify release-manifest.json --bundle release-manifest.sigstore.json \
   --repo Dr0nj/regente --signer-workflow Dr0nj/regente/.github/workflows/release.yml \
   --source-digest &quot;$REVIEWED_SHA&quot; --source-ref &quot;$REVIEWED_REF&quot; --deny-self-hosted-runners
 python3 - &lt;&lt;'PY'
@@ -116,7 +117,8 @@ import hashlib,json
 from pathlib import Path
 m=json.load(open(&quot;release-manifest.json&quot;))
 p=Path(&quot;install.sh&quot;);a=m[&quot;assets&quot;][p.name]
-assert p.stat().st_size==a[&quot;bytes&quot;] and hashlib.sha256(p.read_bytes()).hexdigest()==a[&quot;sha256&quot;]
+if p.stat().st_size!=a[&quot;bytes&quot;] or hashlib.sha256(p.read_bytes()).hexdigest()!=a[&quot;sha256&quot;]:
+    raise SystemExit(&quot;Bootstrap integrity failed&quot;)
 PY
 sudo bash install.sh
 </code></pre>

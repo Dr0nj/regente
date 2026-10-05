@@ -31,6 +31,7 @@ For a pinned release, download its manifest/signature and the installer without
 executing them, inspect the version/ref/SHA, then:
 
 ```sh
+set -e
 gh attestation verify release-manifest.json --bundle release-manifest.sigstore.json \
   --repo Dr0nj/regente --signer-workflow Dr0nj/regente/.github/workflows/release.yml \
   --source-digest "$REVIEWED_SHA" --source-ref "$REVIEWED_REF" --deny-self-hosted-runners
@@ -39,7 +40,8 @@ import hashlib,json
 from pathlib import Path
 m=json.load(open("release-manifest.json"))
 p=Path("install.sh");a=m["assets"][p.name]
-assert p.stat().st_size==a["bytes"] and hashlib.sha256(p.read_bytes()).hexdigest()==a["sha256"]
+if p.stat().st_size!=a["bytes"] or hashlib.sha256(p.read_bytes()).hexdigest()!=a["sha256"]:
+    raise SystemExit("Bootstrap integrity failed")
 PY
 sudo bash install.sh
 ```

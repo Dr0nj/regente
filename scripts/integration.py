@@ -4,6 +4,7 @@ import json
 import hashlib
 import os
 from pathlib import Path
+if sys.flags.optimize:raise SystemExit("Qualification requires Python optimization disabled")
 import platform
 import shutil
 import socket

@@ -176,6 +176,11 @@ You need three things. None of them requires knowing Go, Node or Docker.
 
 ### Installing the server
 
+Release installation requires a trusted GitHub CLI and Python 3. First verify the
+bootstrap script with the [authenticated release procedure](docs/authenticated-releases.md),
+or use a reviewed checkout. The release commands below assume a verified local
+`install.sh`; downloading a script is not sufficient to trust its execution.
+
 There are three ways to run the server and two ways to run an agent. Pick by what the machine
 should do.
 
@@ -200,8 +205,7 @@ CLI, or when the UI is served from somewhere else.
 
 ```bash
 # from a release (no toolchain needed):
-curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install.sh -o regente-install.sh
-sudo WITH_UI=0 bash regente-install.sh
+sudo WITH_UI=0 bash install.sh # previously verified bootstrap
 
 # or from source:
 cd server && CGO_ENABLED=0 go build -o regente-server . && sudo WITH_UI=0 ./deploy/install-linux.sh
@@ -215,8 +219,7 @@ behind any domain or tunnel.
 
 ```bash
 # from a release (binary + UI + systemd unit, all ready):
-curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install.sh -o regente-install.sh
-sudo bash regente-install.sh
+sudo bash install.sh # previously verified bootstrap
 
 # or from source (it builds the UI and wires it up on its own):
 cd server && CGO_ENABLED=0 go build -o regente-server .

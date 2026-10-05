@@ -2,6 +2,7 @@
 """I16 synthetic engineering capacity profile; no production/pilot qualification."""
 import argparse,collections,concurrent.futures,hashlib,http.server,json,math,os,platform,signal,ssl,sys,threading,time,urllib.parse,urllib.request
 from pathlib import Path
+if sys.flags.optimize:raise SystemExit("Qualification requires Python optimization disabled")
 import integration as lab
 import importlib.util
 spec=importlib.util.spec_from_file_location('progress_probe',lab.ROOT/'scripts/progress-probe.py')

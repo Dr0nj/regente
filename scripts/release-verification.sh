@@ -20,10 +20,12 @@ verify_release() {
   fields="$(python3 - "$manifest" "$VERSION" <<'PY'
 import json,re,sys
 m=json.load(open(sys.argv[1]))
-assert m['schema']==1 and m['repository']=='Dr0nj/regente' and m['workflow']=='.github/workflows/release.yml'
-assert re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+',m['version']) and re.fullmatch(r'[0-9a-f]{40}',m['sourceSha'])
-assert sys.argv[2]=='latest' or sys.argv[2]==m['version'],'Requested version differs'
-assert m['sourceRef'] in ('refs/heads/main','refs/tags/'+m['version']),'Untrusted source ref'
+def require(ok,message):
+    if not ok:raise SystemExit(message)
+require(m['schema']==1 and m['repository']=='Dr0nj/regente' and m['workflow']=='.github/workflows/release.yml','Invalid release identity')
+require(re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+',m['version']) and re.fullmatch(r'[0-9a-f]{40}',m['sourceSha']),'Invalid release version/source')
+require(sys.argv[2]=='latest' or sys.argv[2]==m['version'],'Requested version differs')
+require(m['sourceRef'] in ('refs/heads/main','refs/tags/'+m['version']),'Untrusted source ref')
 print(m['version'],m['sourceSha'],m['sourceRef'])
 PY
 )" || return 1
@@ -40,7 +42,8 @@ PY
 import hashlib,json,sys
 from pathlib import Path
 m=json.load(open(sys.argv[1])); a=m['assets'][sys.argv[2]]; p=Path(sys.argv[3])
-assert p.stat().st_size==a['bytes'] and hashlib.sha256(p.read_bytes()).hexdigest()==a['sha256'],'Release payload integrity failed'
+if p.stat().st_size!=a['bytes'] or hashlib.sha256(p.read_bytes()).hexdigest()!=a['sha256']:
+    raise SystemExit('Release payload integrity failed')
 PY
   VERSION="$tag"
 }

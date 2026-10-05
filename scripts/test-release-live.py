@@ -2,6 +2,7 @@
 """Verify the actual signature/payload and prove tamper refusal before publication."""
 import hashlib,json,subprocess,sys,tempfile,os
 from pathlib import Path
+if sys.flags.optimize:raise SystemExit("Qualification requires Python optimization disabled")
 dist=Path(sys.argv[1]).resolve()
 m=json.loads((dist/'release-manifest.json').read_text())
 args=['gh','attestation','verify',str(dist/'release-manifest.json'),'--bundle',str(dist/'release-manifest.sigstore.json'),'--repo','Dr0nj/regente','--signer-workflow','Dr0nj/regente/.github/workflows/release.yml','--source-digest',m['sourceSha'],'--source-ref',m['sourceRef'],'--deny-self-hosted-runners']

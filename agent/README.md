@@ -65,7 +65,7 @@ server and the token if you do not pass them.
 
 ```bash
 # Linux or macOS
-curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install-agent.sh -o install-agent.sh
+# First verify this local bootstrap: ../docs/authenticated-releases.md
 sudo bash install-agent.sh
 # fleet / unattended:
 sudo SERVER=wss://YOUR-DOMAIN/ws/agent TOKEN=rgta_xxx bash install-agent.sh
@@ -73,7 +73,8 @@ sudo SERVER=wss://YOUR-DOMAIN/ws/agent TOKEN=rgta_xxx bash install-agent.sh
 
 ```powershell
 # Windows (PowerShell as Administrator)
-irm https://github.com/Dr0nj/regente/releases/latest/download/install-agent-windows.ps1 | iex
+# Execute a previously verified local bootstrap (trusted GitHub CLI required):
+& .\install-agent-windows.ps1
 # fleet / unattended: download the .ps1 and run it with  -Server wss://... -Token rgta_xxx
 ```
 
