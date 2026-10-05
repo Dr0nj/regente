@@ -4,8 +4,9 @@ Capacity is qualified by a measured engineering profile, never by row count alon
 The mandatory CI/release gate runs real PostgreSQL, server/agent protocol 2,
 durable agent journals, external COMMAND/HTTP effects and an independent TLS
 audit collector. It advances through 10,000, 100,000 and 1,000,000 retained rows
-only while the previous tier meets its declared budgets. Each tier runs at least
-five minutes; the last supported tier must pass a further 30-minute developer
+only while the previous tier meets its declared budgets. A qualifying tier runs at least
+five minutes. A budget breach stops new admissions and drains the admitted work,
+preserving receipts/effects and the shortened failed window. The last supported tier must pass a further 30-minute developer
 soak. An independent operational pilot remains pending (I17).
 
 ## Measurements
@@ -136,3 +137,12 @@ its lag reached 81.8 seconds while ACK p99 remained 1.996 seconds, so the tier w
 rejected. That is preserved as legacy-bootstrap evidence, not included in the
 current-schema steady workload envelope. Legacy backfill/startup capacity is a
 separate qualification; no timeout or audit budget was raised to hide this run.
+
+The oldest first eligibility waiting before planning is exposed separately as
+regente_execution_oldest_eligible_wait_seconds; retries with an existing runtime
+order are excluded. It closes the censored-sample gap: a growing pre-admission
+queue can breach its additional conservative 10-second maximum budget before
+completed-attempt quantiles show it. A breached investigative tier stops new
+offers, drains admitted work within the unchanged 180-second recovery window
+and verifies receipts/effects/checkpoint. Only the last fully passing tier proceeds
+to the developer soak. Samples are saved during the run and attempts on failed drains.

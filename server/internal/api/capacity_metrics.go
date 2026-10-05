@@ -32,6 +32,23 @@ func (s *server) capacityMetrics(w http.ResponseWriter) {
 		age = max(0, float64(time.Now().UnixMilli()-oldest.Int64)/1000)
 	}
 	fmt.Fprintf(w, "regente_execution_oldest_outbox_seconds %.3f\n", age)
+	// Idade antes do planejamento: tentativas incompletas não podem sumir do SLO.
+	var waitingReady string
+	waitingAge := 0.0
+	errReady := s.cfg.DB.QueryRow("SELECT ev.message FROM instance_events ev JOIN instances i ON i.id=ev.instance_id WHERE ev.kind='eligible' AND i.status='WAITING' AND NOT EXISTS(SELECT 1 FROM runtime_orders r WHERE r.instance_id=i.id) ORDER BY ev.ts LIMIT 1").Scan(&waitingReady)
+	if errReady != nil && errReady != sql.ErrNoRows {
+		fmt.Fprintln(w, "regente_capacity_metrics_available 0")
+		return
+	}
+	if errReady == nil {
+		ready, err := time.Parse(time.RFC3339Nano, strings.TrimPrefix(waitingReady, "Business gates passed at "))
+		if err != nil {
+			fmt.Fprintln(w, "regente_capacity_metrics_available 0")
+			return
+		}
+		waitingAge = max(0, time.Since(ready).Seconds())
+	}
+	fmt.Fprintf(w, "regente_execution_oldest_eligible_wait_seconds %.3f\n", waitingAge)
 	var slots, active int
 	if err := s.cfg.DB.QueryRow("SELECT COALESCE(SUM(slots),0) FROM execution_agent_capacity WHERE available=1 AND last_seen>?", time.Now().Add(-15*time.Second).UnixMilli()).Scan(&slots); err != nil {
 		fmt.Fprintln(w, "regente_capacity_metrics_available 0")

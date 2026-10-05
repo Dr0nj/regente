@@ -117,7 +117,7 @@ class Profile:
         assert self.req('/api/instances/'+child['id'])['status']=='WAITING','Condition gate bypassed'
         self.records.append(self.order('parent'))
         canary=probe(self.base,'probe',self.token,5)
-        fault_proof=None
+        fault_proof=None;stop_reason=None
         start=time.monotonic();start_wall=time.time();next_offer=start;next_sample=start;index=0;futures=[];paused=False;resumed=False
         mix=('fast','output','long','retry','http','child','parent')
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
@@ -134,6 +134,12 @@ class Profile:
                     # Operador concorrente: consulta autenticada durante as admissões.
                     self.req('/api/resources')
                     next_sample=now+5
+                    (lab.EVIDENCE/(self.name+'-samples.json')).write_text(json.dumps(self.samples,indent=2))
+                    expected_fault=self.fault_interval and self.fault_interval[0]-30<=time.time()<=self.fault_interval[1]
+                    checks={'eligible_wait':m.get('regente_execution_oldest_eligible_wait_seconds',0)>10,'ack_p99':m.get('regente_execution_stage_seconds{stage="planned_to_accepted",window="1h_last_10000",quantile="0.99"}',0)>5,'ready_start_p99':m.get('regente_execution_stage_seconds{stage="ready_to_started",window="1h_last_10000",quantile="0.99"}',0)>10,'oldest_outbox':m.get('regente_execution_oldest_outbox_seconds',0)>5,'audit_lag':m.get('regente_audit_oldest_pending_seconds',0)>30,'server_rss':rss(self.server)>1<<30}
+                    if not expected_fault and any(checks.values()):
+                        stop_reason={'elapsedSeconds':elapsed,'exceeded':[k for k,v in checks.items() if v]}
+                        break
                 if fault and elapsed>seconds/2 and not paused:
                     for proc in self.agents:os.kill(proc.pid,signal.SIGSTOP)
                     paused=True;pause_at=time.monotonic();pause_wall=time.time()
@@ -159,7 +165,10 @@ class Profile:
                 else:self.records.append(record)
         if paused and not resumed:
             for proc in self.agents:os.kill(proc.pid,signal.SIGCONT)
-        lab.eventually('all admitted effects and results',self.finished,180)
+        try:lab.eventually('all admitted effects and results',self.finished,180)
+        except Exception:
+            (lab.EVIDENCE/(self.name+'-attempts.json')).write_text(json.dumps(self.inspect(),indent=2))
+            raise
         rows=self.inspect()
         by_id=collections.defaultdict(list)
         for row in rows:by_id[row['id']].append(row)
@@ -195,7 +204,7 @@ class Profile:
         oldest=[s['metrics'].get('regente_execution_oldest_outbox_seconds',0) for s in normal]
         maxrss=max(s['serverRSS'] for s in self.samples)
         minimum_density=min(s['metrics'].get('regente_instances{status="OK"}',0) for s in self.samples)
-        qualified=(minimum_density>=self.density and not self.request_errors and latencies['planned_to_accepted']['p99'] is not None and latencies['planned_to_accepted']['p99']<=5 and latencies['ready_to_started']['p99'] is not None and latencies['ready_to_started']['p99']<=10 and max(lag,default=0)<=30 and max(oldest,default=0)<=5 and maxrss<=1<<30)
+        qualified=(not stop_reason and minimum_density>=self.density and not self.request_errors and latencies['planned_to_accepted']['p99'] is not None and latencies['planned_to_accepted']['p99']<=5 and latencies['ready_to_started']['p99'] is not None and latencies['ready_to_started']['p99']<=10 and max(lag,default=0)<=30 and max(oldest,default=0)<=5 and maxrss<=1<<30)
         # Completa a prova fora do orçamento de performance, sem falsificar aceite.
         lab.eventually('audit drained',lambda:self.req('/api/audit/security/status')['pending']==0,300)
         checkpoint=json.loads(self.journal.read_text().splitlines()[-1])
@@ -204,7 +213,7 @@ class Profile:
         lab.command([str(lab.RUN/'server'),'-db-driver','postgres','-db',self.dsn,'-audit-key',str(self.key),'-audit-verify','-audit-checkpoint',str(checkpoint_path)],env=self.env,name=self.name+'-audit-verify')
         (lab.EVIDENCE/(self.name+'-attempts.json')).write_text(json.dumps(rows,indent=2))
         (lab.EVIDENCE/(self.name+'-samples.json')).write_text(json.dumps(self.samples,indent=2))
-        return {'name':self.name,'retainedRows':self.density,'minimumObservedTerminalRows':minimum_density,'targetOrdersPerDay':round(rate*86400),'measurementSeconds':seconds,'peakMultiplier':4,'peakSecondsPer300':60,'offeredRequests':len(futures),'admittedInstances':len(by_id),'attempts':len(rows),'errors':self.request_errors,'apiRequestSeconds':{'p95':quantile(self.request_times,.95),'p99':quantile(self.request_times,.99)},'latencies':latencies,'allAttemptLatenciesIncludingFault':all_latencies,'faultWallInterval':self.fault_interval,'databaseBytes':int(lab.command(lab.COMPOSE+['exec','-T','postgres','psql','-U','regente','-d',self.dbname,'-Atc','SELECT pg_database_size(current_database())'])),'serverCPUSeconds':cpu_seconds(self.server),'agentCPUSeconds':[cpu_seconds(p) for p in self.agents],'serverPeakRSSBytes':maxrss,'agentPeakRSSBytes':[max(s['agentRSS'][i] for s in self.samples) for i in range(2)],'maxAuditLagSeconds':max(lag,default=0),'maxOutboxAgeSeconds':max(oldest,default=0),'correctness':{'conditions':True,'attemptIdentity':True,'retry':True,'effectsExactlyOnceInThisLab':True,'ledgerCheckpoint':True},'externalCanary':canary,'fault':fault_proof,'qualified':qualified,'allSamplesIncludeFault':True,'normalPerformanceExclusionSeconds':60+fault_proof['pausedSeconds'] if fault_proof else 0,'averageOfferedPerSecond':len(futures)/(seconds-(fault_proof['producerScheduledPauseSeconds'] if fault_proof else 0))}
+        return {'name':self.name,'retainedRows':self.density,'minimumObservedTerminalRows':minimum_density,'targetOrdersPerDay':round(rate*86400),'requestedMeasurementSeconds':seconds,'measurementSeconds':min(seconds,stop_reason['elapsedSeconds'] if stop_reason else seconds),'recoveryAndVerificationSeconds':time.monotonic()-start-min(seconds,stop_reason['elapsedSeconds'] if stop_reason else seconds),'admissionStop':stop_reason,'peakMultiplier':4,'peakSecondsPer300':60,'offeredRequests':len(futures),'admittedInstances':len(by_id),'attempts':len(rows),'errors':self.request_errors,'apiRequestSeconds':{'p95':quantile(self.request_times,.95),'p99':quantile(self.request_times,.99)},'latencies':latencies,'allAttemptLatenciesIncludingFault':all_latencies,'faultWallInterval':self.fault_interval,'databaseBytes':int(lab.command(lab.COMPOSE+['exec','-T','postgres','psql','-U','regente','-d',self.dbname,'-Atc','SELECT pg_database_size(current_database())'])),'serverCPUSeconds':cpu_seconds(self.server),'agentCPUSeconds':[cpu_seconds(p) for p in self.agents],'serverPeakRSSBytes':maxrss,'agentPeakRSSBytes':[max(s['agentRSS'][i] for s in self.samples) for i in range(2)],'maxAuditLagSeconds':max(lag,default=0),'maxOutboxAgeSeconds':max(oldest,default=0),'correctness':{'conditions':True,'attemptIdentity':True,'retry':True,'effectsExactlyOnceInThisLab':True,'ledgerCheckpoint':True},'externalCanary':canary,'fault':fault_proof,'qualified':qualified,'allSamplesIncludeFault':True,'normalPerformanceExclusionSeconds':60+fault_proof['pausedSeconds'] if fault_proof else 0,'averageOfferedPerSecond':len(futures)/(min(seconds,stop_reason['elapsedSeconds'] if stop_reason else seconds)-(fault_proof['producerScheduledPauseSeconds'] if fault_proof else 0))}
 
     def close(self):
         for proc in self.agents:lab.stop_process(proc)
@@ -217,7 +226,7 @@ def main():
     a=p.parse_args()
     if a.tier_seconds<300 or a.soak_seconds<1800:raise SystemExit('Qualification requires tiers >=300s and developer soak >=1800s')
     lab.EVIDENCE.mkdir(parents=True)
-    report={'datasetPreparation':'Schema32 and actual empty-business backfills initialized before seeding; frozen label/job_type/environment populated; terminal fixtures without execution claims','status':'running','profile':'synthetic-i16-postgres-loopback-v1','tiers':[],'budgets':{'plannedToAcceptedP99Seconds':5,'readyToStartedP99Seconds':10,'oldestOutboxMaxSeconds':5,'auditLagMaxSeconds':30,'serverRSSMaxBytes':1<<30,'normalRequestErrorBudget':0},'limits':['One Linux host; PostgreSQL; production loopback; two agents/5 slots','Short rate windows with retained terminal fixtures; not a full day of executions','No HA/NATS/mTLS throughput or monthly SLO claim; independent pilot I17 pending']}
+    report={'datasetPreparation':'Schema32 and actual empty-business backfills initialized before seeding; frozen label/job_type/environment populated; terminal fixtures without execution claims','status':'running','profile':'synthetic-i16-postgres-loopback-v1','tiers':[],'budgets':{'plannedToAcceptedP99Seconds':5,'readyToStartedP99Seconds':10,'firstEligibleWaitMaxSeconds':10,'oldestOutboxMaxSeconds':5,'auditLagMaxSeconds':30,'serverRSSMaxBytes':1<<30,'normalRequestErrorBudget':0},'limits':['One Linux host; PostgreSQL; production loopback; two agents/5 slots','Short rate windows with retained terminal fixtures; not a full day of executions','No HA/NATS/mTLS throughput or monthly SLO claim; independent pilot I17 pending']}
     started=time.monotonic();active=None;compose=False
     try:
         if platform.system()!='Linux' or platform.machine() not in ('x86_64','amd64'):raise RuntimeError('Mandatory Linux/amd64 profile')
