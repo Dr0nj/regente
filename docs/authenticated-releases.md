@@ -68,7 +68,7 @@ fully disconnected deployment). An old unsigned release is refused, even with
 |---|---|
 | Linux amd64 | Actual bundle install, reboot, drained v0.2.47-to-current update and authenticated same-build update, DB backup/no-op, credentials/journal preservation, execution security and independent audit collector |
 | Linux arm64 | Native version output and fresh/repeated SQLite migration |
-| Windows amd64 | Native server/agent version output and fresh/repeated SQLite migration; existing native demo recipe |
+| Windows amd64 | Actual Windows installer verifier/signature and tamper refusal, native server/agent version output and fresh/repeated SQLite migration; existing native demo recipe |
 | macOS amd64 / arm64 | Native server/agent version output and fresh/repeated SQLite migration |
 
 Native binary checks do not certify every platform's service installer, fleet
@@ -92,3 +92,7 @@ it is an inventory, not a vulnerability clearance.
 Primary verifier references:
 [GitHub attestations](https://github.com/actions/attest),
 [CLI verification policy](https://cli.github.com/manual/gh_attestation_verify).
+
+Windows offline verification accepts REGENTE_MANIFEST, REGENTE_ATTESTATION and
+REGENTE_RELEASE_ASSET (the exact executable asset). It applies the same identity
+and size/hash policy before replacing the installed agent.

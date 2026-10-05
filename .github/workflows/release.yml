@@ -299,6 +299,10 @@ jobs:
         with:
           name: signed-release
           path: dist
+      - name: Verify actual Windows installer signature and reject tampering
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./scripts/test-release-windows.ps1
       - name: Run the exact release binary on its native platform
         shell: bash
         env:
