@@ -4,6 +4,7 @@ import (
 	"github.com/Dr0nj/regente-server/internal/db"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -39,4 +40,30 @@ func TestI16CapacityMetrics(t *testing.T) {
 			t.Fatal(want, w.Body.String())
 		}
 	}
+	// Quantis completados continuam pequenos, mas a fila não planejada é visível.
+	exec("INSERT INTO instances(id,definition_id,order_date,status,scheduled_at) VALUES('waiting','d','2026-10-05','WAITING',?)", now)
+	waiting := time.Now().Add(-20 * time.Second)
+	exec("INSERT INTO instance_events(instance_id,kind,message,ts) VALUES('waiting','eligible',?,?)", "Business gates passed at "+waiting.UTC().Format(time.RFC3339Nano), waiting)
+	// Runtime existente em espera de nova tentativa não é primeira admissão.
+	exec("INSERT INTO instances(id,definition_id,order_date,status,scheduled_at) VALUES('retry','d','2026-10-05','WAITING',?)", now)
+	exec("INSERT INTO lab_orders(id,source_instance_id,request_key,snapshot,snapshot_checksum,environment,state,created_at,runtime) VALUES('retry-order','retry','retry-key','{}','sum','','queued',?,1)", now.UnixMilli())
+	exec("INSERT INTO runtime_orders(instance_id,order_id) VALUES('retry','retry-order')")
+	retryReady := time.Now().Add(-90 * time.Second)
+	exec("INSERT INTO instance_events(instance_id,kind,message,ts) VALUES('retry','eligible',?,?)", "Business gates passed at "+retryReady.UTC().Format(time.RFC3339Nano), retryReady)
+	w = httptest.NewRecorder()
+	s.capacityMetrics(w)
+	found := false
+	for _, line := range strings.Split(w.Body.String(), "\n") {
+		if strings.HasPrefix(line, "regente_execution_oldest_eligible_wait_seconds ") {
+			age, err := strconv.ParseFloat(strings.TrimPrefix(line, "regente_execution_oldest_eligible_wait_seconds "), 64)
+			if err != nil || age < 19 || age >= 90 {
+				t.Fatal("Censored backlog or retry exclusion incorrect", line, err)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("Missing eligibility backlog signal", w.Body.String())
+	}
+
 }
