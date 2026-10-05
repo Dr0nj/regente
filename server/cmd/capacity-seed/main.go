@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/Dr0nj/regente-server/internal/db"
+	"github.com/Dr0nj/regente-server/internal/scheduler"
 	"log"
 	"net/url"
 	"os"
@@ -34,14 +35,25 @@ func main() {
 	if err = d.EnableAudit(*key, 100000); err != nil {
 		log.Fatal(err)
 	}
+	// Prepara um banco corrente pelas mesmas migrações de negócio do servidor,
+	// antes dos fixtures; não confundir uma escrita legada por linha com a carga.
+	s := scheduler.New(nil, d, nil, 2*time.Second)
+	s.MigrateMonitoringSnapshot()
+	s.MigrateResourcesSnapshot()
+	s.MigrateCondLogicSnapshot()
+	s.Stop()
+	var flags int
+	if err = d.QueryRow("SELECT COUNT(*) FROM meta_flags WHERE name IN ('monitoring-snapshot-v18','monitoring-resources-v19','monitoring-condlogic-v21')").Scan(&flags); err != nil || flags != 3 {
+		log.Fatal("Current business migrations were not initialized")
+	}
 	now := time.Now().UTC()
-	raw, _ := json.Marshal(map[string]any{"id": "retained", "jobType": "COMMAND", "actionConfig": map[string]string{"command": "echo retained # " + strings.Repeat("x", 2048)}, "schedule": map[string]bool{"enabled": false}})
+	raw, _ := json.Marshal(map[string]any{"id": "retained", "label": "Retained fixture", "environment": "capacity", "jobType": "COMMAND", "actionConfig": map[string]string{"command": "echo retained # " + strings.Repeat("x", 2048)}, "schedule": map[string]bool{"enabled": false}})
 	tx, err := d.Begin()
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer tx.Rollback()
-	stmt, err := tx.Prepare("INSERT INTO instances(id,definition_id,order_date,status,scheduled_at,definition_snapshot) VALUES(?,'retained',?,'OK',?,?)")
+	stmt, err := tx.Prepare("INSERT INTO instances(id,definition_id,order_date,status,scheduled_at,definition_snapshot,label,job_type,environment) VALUES(?,'retained',?,'OK',?,?,'Retained fixture','COMMAND','capacity')")
 	if err != nil {
 		log.Fatal(err)
 	}

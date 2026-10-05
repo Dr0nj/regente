@@ -217,7 +217,7 @@ def main():
     a=p.parse_args()
     if a.tier_seconds<300 or a.soak_seconds<1800:raise SystemExit('Qualification requires tiers >=300s and developer soak >=1800s')
     lab.EVIDENCE.mkdir(parents=True)
-    report={'status':'running','profile':'synthetic-i16-postgres-loopback-v1','tiers':[],'budgets':{'plannedToAcceptedP99Seconds':5,'readyToStartedP99Seconds':10,'oldestOutboxMaxSeconds':5,'auditLagMaxSeconds':30,'serverRSSMaxBytes':1<<30,'normalRequestErrorBudget':0},'limits':['One Linux host; PostgreSQL; production loopback; two agents/5 slots','Short rate windows with retained terminal fixtures; not a full day of executions','No HA/NATS/mTLS throughput or monthly SLO claim; independent pilot I17 pending']}
+    report={'datasetPreparation':'Schema32 and actual empty-business backfills initialized before seeding; frozen label/job_type/environment populated; terminal fixtures without execution claims','status':'running','profile':'synthetic-i16-postgres-loopback-v1','tiers':[],'budgets':{'plannedToAcceptedP99Seconds':5,'readyToStartedP99Seconds':10,'oldestOutboxMaxSeconds':5,'auditLagMaxSeconds':30,'serverRSSMaxBytes':1<<30,'normalRequestErrorBudget':0},'limits':['One Linux host; PostgreSQL; production loopback; two agents/5 slots','Short rate windows with retained terminal fixtures; not a full day of executions','No HA/NATS/mTLS throughput or monthly SLO claim; independent pilot I17 pending']}
     started=time.monotonic();active=None;compose=False
     try:
         if platform.system()!='Linux' or platform.machine() not in ('x86_64','amd64'):raise RuntimeError('Mandatory Linux/amd64 profile')
