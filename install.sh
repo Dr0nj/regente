@@ -5,12 +5,10 @@
 # + unit systemd) e instala como serviço supervisionado (Restart=always), servindo
 # UI+API+WS numa origem só. NÃO precisa de Go nem Node no VPS.
 #
-# Recomendado (leia antes de rodar):
-#   curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install.sh -o regente-install.sh
+# Bootstrap precisa de confiança antes de executar; verificar conforme:
+#   https://dr0nj.github.io/regente/authenticated-releases.html
+# Depois de verificar o script local:
 #   sudo bash regente-install.sh
-#
-# Direto:
-#   curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install.sh | sudo bash
 #
 # Variáveis opcionais:
 #   REGENTE_REPO=Dr0nj/regente          repo das releases
@@ -21,7 +19,7 @@ set -euo pipefail
 REPO="${REGENTE_REPO:-Dr0nj/regente}"
 VERSION="${REGENTE_VERSION:-latest}"
 
-[ "$(id -u)" = 0 ] || { echo "run as root:  sudo bash $0   (or:  curl … | sudo bash)"; exit 1; }
+[ "$(id -u)" = 0 ] || { echo "run the verified local script as root:  sudo bash $0"; exit 1; }
 case "$(uname -s)" in
   Linux) : ;;
   *) echo "this installer is Linux-only (systemd). On Windows use deploy/install-windows.ps1"; exit 1 ;;

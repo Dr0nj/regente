@@ -5,8 +5,10 @@
   reinicia sozinho se cair, roda como SYSTEM (sem ninguém logado). NÃO precisa de Docker,
   Go nem runtime — é um binário estático. Rode num PowerShell COMO ADMINISTRADOR.
 
-  Interativo (pergunta servidor + token):
-    irm https://github.com/Dr0nj/regente/releases/latest/download/install-agent-windows.ps1 | iex
+  Verificar o bootstrap antes de executar:
+    https://dr0nj.github.io/regente/authenticated-releases.html
+  Interativo, com o script local já verificado:
+    .\install-agent-windows.ps1
 
   Silencioso (frota / GPO):
     .\install-agent-windows.ps1 -Server wss://regente.suaempresa.com/ws/agent -Token rgta_xxx

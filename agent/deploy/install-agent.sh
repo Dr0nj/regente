@@ -5,8 +5,8 @@
 # launchd no macOS: inicia no boot, reinicia sozinho se cair, roda sem ninguém logado.
 # NÃO precisa de Docker, Go nem runtime — é um binário estático.
 #
-# Interativo (pergunta servidor + token) — baixe e rode:
-#   curl -fsSL https://github.com/Dr0nj/regente/releases/latest/download/install-agent.sh -o install-agent.sh
+# Interativo (pergunta servidor + token) — verificar o bootstrap antes de executar:
+#   https://dr0nj.github.io/regente/authenticated-releases.html
 #   sudo bash install-agent.sh
 #
 # Silencioso (frota / GPO-like) — passe por env:
