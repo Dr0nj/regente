@@ -1,4 +1,4 @@
-import hashlib,json,os,subprocess,tempfile,unittest
+import hashlib,json,os,shutil,subprocess,tempfile,unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -33,5 +33,17 @@ class ReleaseTests(unittest.TestCase):
             payload.write_bytes(b'trusted')
             m['sourceRef']='refs/heads/codex/malicious';manifest.write_text(json.dumps(m))
             self.assertEqual(run(),17)
+
+
+    def test_updater_preserves_operator_environment(self):
+        # Executa o script real até --help, sem tocar serviço/disco; trap observa
+        # atribuições indevidas mesmo quando usage termina o processo com exit.
+        env=dict(os.environ,REGENTE_ATTESTATION='operator-proof.json',REGENTE_BACKUP_DIR='operator-backups')
+        command="""trap '[[ "$REGENTE_ATTESTATION" == operator-proof.json && "$REGENTE_BACKUP_DIR" == operator-backups ]] || exit 19' EXIT
+source server/deploy/update.sh --help"""
+        result=subprocess.run([shutil.which('bash') or 'bash','-c',command],cwd=ROOT,env=env,capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertIn('REGENTE_ATTESTATION',result.stdout)
+        self.assertIn('REGENTE_MANIFEST',result.stdout)
 
 if __name__=='__main__': unittest.main()

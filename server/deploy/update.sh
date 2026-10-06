@@ -19,8 +19,8 @@
 #   REGENTE_VERSION=vX.Y.Z              mesmo que passar a versão como argumento
 #   REGENTE_BUNDLE=/caminho/b.tar.gz    instala ESTE bundle (máquina sem internet)
 #   REGENTE_MANIFEST=/path/release-manifest.json  required with a local bundle
-  REGENTE_ATTESTATION=/path/release-manifest.sigstore.json
-  REGENTE_BACKUP_DIR=/var/lib/regente/backups
+#   REGENTE_ATTESTATION=/path/release-manifest.sigstore.json
+#   REGENTE_BACKUP_DIR=/var/lib/regente/backups
 #   REGENTE_BACKUP_KEEP=14              quantos snapshots manter
 set -euo pipefail
 
@@ -58,6 +58,8 @@ Environment:
   REGENTE_REPO=Dr0nj/regente          release repository
   REGENTE_VERSION=vX.Y.Z              same as passing the version as an argument
   REGENTE_BUNDLE=/path/bundle.tar.gz  install THIS bundle (machine with no internet)
+  REGENTE_MANIFEST=/path/release-manifest.json
+  REGENTE_ATTESTATION=/path/release-manifest.sigstore.json
   REGENTE_BACKUP_DIR=/var/lib/regente/backups
   REGENTE_BACKUP_KEEP=14              how many snapshots to keep
 
