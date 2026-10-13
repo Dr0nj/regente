@@ -17,9 +17,9 @@
 > no §Entregue e some uma linha no §Changelog. Ao **abrir** um item novo: só adicione no §Backlog.
 > Sem barras de progresso nem porcentagens — de propósito (confundem mais do que ajudam).
 >
-> Documento vivo · revisão **2026-10-03** — o marco de manutenção de **2026-07-30**
+> Documento vivo · revisão **2026-10-13** — o marco de manutenção de **2026-07-30**
 > descreve as trilhas originais. O ciclo enterprise iniciado em setembro está ativo:
-> I04/I05/I06/I07/I08/I09/I10/I11/I12/I13/I14, E04 e DOC-01–DOC-14 entregues; I15–I17 seguem na §Backlog. Manutenção histórica
+> I04/I05/I06/I07/I08/I09/I10/I11/I12/I13/I14/I15/I16, E04 e DOC-01–DOC-14 entregues; I17 segue na §Backlog. Manutenção histórica
 > não cancela incrementos explicitamente solicitados nem significa homologação produtiva.
 > Estratégia de arquitetura em [`architecture-future.md`](architecture-future.md);
 > apresentação de produto no [`../README.md`](../README.md).
@@ -85,7 +85,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
-- **I15–I17:** publicação verificável, capacidade, recuperação e piloto seguem na sequência enterprise.
+- **I17 — recuperação e piloto operacional:** pendente por decisão explícita do usuário; requer ambiente/janela e segundo mantenedor para executar o runbook, medir RPO/RTO e aceitar o piloto não crítico. Os ensaios automatizados de I15/I16 não substituem esse aceite.
 
 Escopo ativo deste ciclo: separar credenciais humanas de execução e preparar as
 próximas garantias. Não representa homologação empresarial completa.
@@ -383,6 +383,32 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+## I15 — Publicação verificável (2026-10-13)
+
+Release v0.2.48 / fonte 93e33d0: full de oito gates, race nos dois módulos,
+305 testes/subtestes de integração e oito cenários browser sem skips/flaky,
+receitas, capacidade/soak e instalação autenticada no mesmo SHA. Manifesto Sigstore
+vincula identidade, workflow, ref, SHA e 17 payloads; SBOM SPDX e 20 assets publicados.
+Adulteração de manifesto/pacote recusada antes de uso; verificador Windows real.
+Upgrade drenado v0.2.47→v0.2.48, cinco plataformas nativas e schema 32 [32,32].
+Main sem proteção/rulesets na inspeção; DAG de release é o gate efetivo.
+Sem promessa N/N−1, frota ou homologação produtiva.
+[Contrato](authenticated-releases.md) · [Evidência](evidence/i15-i16-93e33d0.json).
+
+## I16 — Capacidade e progresso medidos (2026-10-13)
+
+Tick tentado separado de ciclo concluído, cinco estágios de latência, espera
+elegível, filas/outbox/auditoria/DB/agentes e probe externo com efeito/receipt.
+Perfil v2 nominal de 10 mil ordens/dia: pico 4×, soak de 30 minutos, 332 instâncias/379 tentativas,
+ACK p99 de 2,002 s e elegível→início p99 de 3,017 s,
+sem efeito ausente/duplicado no laboratório. Pausa detectada com readyz saudável,
+progresso restaurado em 3,263 s. O degrau de 100 mil excedeu o orçamento;
+1 milhão não foi executado. Exportação medida de 8,013 s para 1,026 s com 8 ACKs,
+drenagem limitada a 100 ACKs por tick.
+Não certifica 24 horas, HA/NATS/mTLS em carga, SLO mensal nem piloto I17.
+[Perfil](capacity.md) · [Evidência](evidence/i15-i16-93e33d0.json).
+
 
 ## I14 — Auditoria resistente a falhas (2026-10-03)
 
@@ -1931,6 +1957,9 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-10-13 — I15/I16:** publicação autenticada v0.2.48, full/race e 22 jobs de release no SHA 93e33d0; capacidade nominal de 10 mil no perfil sintético, soak de 30 minutos, saturação de 100 mil registrada e 1 milhão não executado. I17 permanece pendente por decisão humana. [Release](https://github.com/Dr0nj/regente/releases/tag/v0.2.48) · [Evidência](evidence/i15-i16-93e33d0.json).
+
 
 - **2026-10-03 — I14:** auditoria mandatória na transação, exportação assinada com ACK/outbox/retry/dedupe, coletor independente e restore verificado. Falha e backlog cheio recusam efeitos; SQLite/PG, full oito gates, oito browser e smoke instalado aprovados. [Contrato](failure-resistant-audit.md) · [Evidência](evidence/i14-e76b5ce.json). Próximo I15.
 

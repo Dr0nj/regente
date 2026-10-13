@@ -4,7 +4,7 @@ A release is published only after the **same source SHA** passes the complete
 Linux verification profile, both Go race suites, real PostgreSQL/NATS/OIDC and
 recovery tests, mandatory browser scenarios, documentation/toolchain recipes,
 the installed systemd smoke, measured capacity/developer soak and five native binary checks. Failed or missing
-jobs block signing/publication. Unit fixtures are not independent integration
+jobs block publication. Signing additionally waits for the build, verification and recipe gates. Unit fixtures are not independent integration
 evidence. The source smoke proves unsigned updates are refused; the release smoke
 uses the actual signed manifest to exercise the updater, backup, same-version
 no-op and production configuration/journal preservation.
@@ -51,6 +51,12 @@ SHA256/JSON checks apply to the Windows bootstrap. Repository override is refuse
 The release workflow is part of the publisher trust boundary; its compromise or
 a compromised trusted CLI/host is not repaired by artifact signing.
 
+An existing v0.2.47 installation has an older updater that does not enforce this
+new trust policy. Before the first authenticated upgrade, obtain and review the
+current `server/deploy/update.sh` from the trusted source SHA, or use a
+verified current bootstrap. Run that trusted updater for the drained upgrade;
+do not assume the old installed command gained verification retroactively.
+
 For an offline Linux update provide all three local inputs:
 
 ```sh
@@ -70,7 +76,7 @@ fully disconnected deployment). An old unsigned release is refused, even with
 |---|---|
 | Linux amd64 | Actual bundle install, reboot, drained v0.2.47-to-current update and authenticated same-build update, DB backup/no-op, credentials/journal preservation, execution security and independent audit collector |
 | Linux arm64 | Native version output and fresh/repeated SQLite migration |
-| Windows amd64 | Actual Windows installer verifier/signature and tamper refusal, native server/agent version output and fresh/repeated SQLite migration; existing native demo recipe |
+| Windows amd64 | Actual Windows installer verifier/signature and tamper refusal, native server/agent version output and fresh/repeated SQLite migration; existing native demo recipe and real SSH receipts/loss/cancellation with a sanitized process environment |
 | macOS amd64 / arm64 | Native server/agent version output and fresh/repeated SQLite migration |
 
 Native binary checks do not certify every platform's service installer, fleet
@@ -82,7 +88,7 @@ a retained old binary does not downgrade a migrated database.
 
 ## Repository enforcement
 
-Inspection on 2026-10-03 found main **unprotected**, no repository rulesets,
+Inspection on 2026-10-13 found main **unprotected**, no repository rulesets,
 administrator access and automatic merging disabled. These facts are not a
 branch-protection claim. The publication DAG enforces the release gates independently.
 Publication refuses an existing release version; replacement requires a new version.
@@ -98,3 +104,23 @@ Primary verifier references:
 Windows offline verification accepts REGENTE_MANIFEST, REGENTE_ATTESTATION and
 REGENTE_RELEASE_ASSET (the exact executable asset). It applies the same identity
 and size/hash policy before replacing the installed agent.
+
+## Published proof — 2026-10-13
+
+[v0.2.48](https://github.com/Dr0nj/regente/releases/tag/v0.2.48) binds source 93e33d03f9f3942a895102376f5b26c77774f93b
+to 17 signed payload entries (including the SPDX inventory) and 20 release assets.
+[The release run](https://github.com/Dr0nj/regente/actions/runs/38402718776) passed all 22 jobs: complete verification,
+capacity/soak, recipes, signed systemd installation/upgrade, five native platforms
+and publication. Real signature checks rejected a modified manifest and payload;
+the native Windows installer verifier also rejected a same-size byte modification.
+Both Linux bundles and four bootstrap scripts were compared with the tested source.
+[Recorded inventory and qualification](evidence/i15-i16-93e33d0.json) preserves the hashes and limits.
+
+### Qualification history
+
+The first release attempt stopped because the Windows native demonstration exceeded
+its unchanged 45-second synthetic COMMAND deadline after authentication. The same
+source passed the CI Windows recipe and a local native smoke. One bounded rerun of
+the failed release job passed; no timeout or acceptance check was relaxed. The
+original failure is retained in the linked evidence. Its cause was not established
+from the original runner logs; the passing rerun is not a root-cause diagnosis.
