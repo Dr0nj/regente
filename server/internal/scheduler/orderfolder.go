@@ -116,7 +116,8 @@ func (s *Scheduler) OrderFolder(folder string) (FolderOrder, error) {
 	// que já pode rodar (as raízes), deixando o resto em WAITING pelas condições.
 	// Repetir aqui o gate+dispatch do ForceOrder individual seria uma segunda
 	// cópia da mesma regra — e é o tick que a mantém.
-	go s.Tick()
+	// Stop precisa aguardar este tick antes de fechar DB/store.
+	s.spawnTracked("order folder "+folder, s.Tick)
 	return res, nil
 }
 

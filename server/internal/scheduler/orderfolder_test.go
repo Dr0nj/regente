@@ -190,3 +190,51 @@ func TestOrderIntoActiveDaily_BeforeDailyAtBelongsToPreviousDay(t *testing.T) {
 		t.Fatalf("Order Force gravou order_date=%s, esperado a diária ativa %s", od, want)
 	}
 }
+
+// Gate explícito evita depender do acaso de um write tardio durante TempDir.
+type orderFolderBlockedLeader struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (l *orderFolderBlockedLeader) IsLeader() bool {
+	close(l.entered)
+	<-l.release
+	return false
+}
+
+func TestOrderFolder_StopWaitsForTriggeredTick(t *testing.T) {
+	s := newTestScheduler(t)
+	seedFolderDefs(t, s, domain.JobDefinition{ID: "a", Team: "FIN", JobType: "COMMAND"})
+	leader := &orderFolderBlockedLeader{entered: make(chan struct{}), release: make(chan struct{})}
+	s.AttachLeader(leader)
+	released := false
+	defer func() {
+		if !released {
+			close(leader.release)
+		}
+	}()
+	if _, err := s.OrderFolder("FIN"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-leader.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("tick de OrderFolder não iniciou")
+	}
+	stopped := make(chan struct{})
+	go func() { s.Stop(); close(stopped) }()
+	<-s.quit
+	select {
+	case <-stopped:
+		t.Fatal("Stop retornou enquanto o tick de OrderFolder ainda estava ativo")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(leader.release)
+	released = true
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop não aguardou a conclusão do tick")
+	}
+}

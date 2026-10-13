@@ -279,6 +279,12 @@ func CleanEnvironment() []string {
 		switch u {
 		case "PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "LANG", "TZ":
 			out = append(out, entry)
+		case "PROGRAMDATA":
+			// Win32 OpenSSH requires this system path during init_prog_paths,
+			// even for ssh -V. Keep it without inheriting arbitrary credentials.
+			if runtime.GOOS == "windows" {
+				out = append(out, entry)
+			}
 		default:
 			if strings.HasPrefix(u, "LC_") {
 				out = append(out, entry)

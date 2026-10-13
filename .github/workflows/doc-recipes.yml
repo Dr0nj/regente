@@ -63,6 +63,16 @@ jobs:
           ./scripts/test-demo-guards.ps1
           ./deploy/demo/host-demo.ps1 -Smoke -NativeSmoke -Port 0 -EvidencePath "$env:RUNNER_TEMP/demo-offline.json"
           ./deploy/demo/host-demo.ps1 -Smoke -NativeSmoke -GitFixture -Port 0 -EvidencePath "$env:RUNNER_TEMP/demo-git.json"
+      - name: Windows SSH receipts and credential isolation
+        if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          REGENTE_REQUIRE_INTEGRATION: '1'
+        run: |
+          go -C agent test ./security -run '^TestCleanEnvironmentSystemPathsWithoutCredentials$' -count=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go -C server test ./internal/scheduler -run '^TestI10RealSSHReceiptsLossAndCancellation$' -count=1 -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: demo-evidence-${{ runner.os }}

@@ -9,10 +9,34 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestCleanEnvironmentSystemPathsWithoutCredentials(t *testing.T) {
+	t.Setenv("ProgramData", "synthetic-system-data")
+	for _, key := range []string{"GITHUB_TOKEN", "AWS_SECRET_ACCESS_KEY", "SSH_AUTH_SOCK", "REGENTE_TOKEN"} {
+		t.Setenv(key, "synthetic-secret-canary")
+	}
+	var programData string
+	for _, entry := range CleanEnvironment() {
+		key, value, _ := strings.Cut(entry, "=")
+		if strings.Contains(value, "synthetic-secret-canary") {
+			t.Fatalf("credential inherited: %s", key)
+		}
+		if strings.EqualFold(key, "ProgramData") {
+			programData = value
+		}
+	}
+	if runtime.GOOS == "windows" && programData != "synthetic-system-data" {
+		t.Fatal("Windows OpenSSH system path was removed")
+	}
+	if runtime.GOOS != "windows" && programData != "" {
+		t.Fatal("Windows-only environment was inherited on another platform")
+	}
+}
 
 func secureFile(t *testing.T, path string, v any) {
 	t.Helper()
