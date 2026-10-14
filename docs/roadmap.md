@@ -85,7 +85,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
-- **I17 — recuperação e piloto operacional:** iniciado por pedido explícito em 14/10/2026. Ensaio integrado de snapshot anterior a efeito/checkpoint e restore coerente em validação; [runbook e dossiê](operational-recovery-pilot.md). Permanecem necessários ambiente/janela, metas aceitas, segundo mantenedor humano e piloto não crítico. CI não substitui esse aceite; não concluído.
+- **I17 — recuperação e piloto operacional:** preparação técnica autorizada em 14/10/2026: ensaio integrado de snapshot anterior a efeito/checkpoint, restore coerente e [runbook/dossiê](operational-recovery-pilot.md). **Etapa operacional com segundo mantenedor humano e piloto real adiada pelo usuário em 14/10/2026.** Ambiente/janela, metas aceitas e aceite independente serão definidos na retomada. Publicação da preparação técnica não conclui I17; CI não substitui esse aceite.
 
 Escopo ativo deste ciclo: separar credenciais humanas de execução e preparar as
 próximas garantias. Não representa homologação empresarial completa.
