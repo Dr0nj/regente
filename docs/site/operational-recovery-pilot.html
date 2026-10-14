@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operational recovery and controlled pilot · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="adr-i09-agent-journal.html">Durable agent journal</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authenticated-releases.html">Authenticated releases</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="business-time.html">Business time</a>
+<a href="capacity.html">Capacity and progress</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html">Daily recovery</a>
+<a href="durable-execution.html">Durable execution and recovery</a>
+<a href="execution-security.html">Execution security</a>
+<a href="failure-resistant-audit.html">Failure-resistant audit</a>
+<a href="ha-resources.html">Shared resources and scheduler leadership</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="operational-recovery-pilot.html" class="active">Operational recovery and controlled pilot</a>
+<a href="production-profile.html">Production profile</a>
+<a href="shared-drafts.html">Shared Design drafts</a>
+<a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
+<a href="web-events.html">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="operational-recovery-and-controlled-pilot">Operational recovery and controlled pilot</h1>
+<p>I17 combines technical recovery evidence with <strong>independent human operation and a
+bounded pilot</strong>. Automated rehearsals prepare this work; a passing CI run does not
+accept a production installation. I17 remains open until the installation dossier
+below is completed and accepted. Never use a critical workload as the first pilot.</p>
+<h2 id="entry-dossier-complete-before-touching-an-installation">Entry dossier: complete before touching an installation</h2>
+<p>Keep a private, dated record with these fields. Use sanitized identifiers in public
+evidence; never upload databases, tokens, private keys, journals containing output,
+environment files or customer definitions to CI artifacts.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required record</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>People</td>
+<td>Technical owner, independent second maintainer, operational approver, incident contact</td>
+</tr>
+<tr>
+<td>Installation</td>
+<td>Hosts, OS, DB, bus, agents, collector, versions, schema and protocol, Git SHAs</td>
+</tr>
+<tr>
+<td>Authorization</td>
+<td>Disposable or installed environment, permitted disruptions, window and rollback/stop owner</td>
+</tr>
+<tr>
+<td>Workload</td>
+<td>Daily volume, peak ready/s, concurrency, duration/output distribution, dependencies, timezone/windows, retention</td>
+</tr>
+<tr>
+<td>Effects</td>
+<td>Every external destination, how to prove completion/absence, reversibility, idempotency boundaries</td>
+</tr>
+<tr>
+<td>Recovery objectives</td>
+<td>Accepted RPO and RTO, measurement start/end, allowed downtime/data loss, evidence needed to resume</td>
+</tr>
+<tr>
+<td>Storage</td>
+<td>Backup frequency, off-host custody, encryption/decryption, key/provider access, disk and retention budget</td>
+</tr>
+<tr>
+<td>Pilot</td>
+<td>Synthetic stage, bounded reversible non-critical stage, duration, success thresholds, pause and promotion criteria</td>
+</tr>
+</tbody>
+</table>
+<p>The existing I16 envelope is a nominal 10,000 orders/day rate in a 30-minute
+synthetic test. The 100,000 profile failed qualification and one million was not
+executed. A new workload needs its own approved targets. Do not infer a 24-hour
+pilot, disaster RPO/RTO or monthly SLO from the developer soak.</p>
+<h2 id="capture-the-complete-recovery-set">Capture the complete recovery set</h2>
+<ol>
+<li>Identify and stop all ordering, publication, editing and dispatch triggers on
+every control plane. Drain jobs where possible; explicitly inventory unresolved
+attempts/effects and their agents. Stop writers before the coherent snapshot.</li>
+<li>Follow <a href="dr-backup.html">database and draft backup</a>. Include the DB, published Git
+objects/SHAs, offline/unpushed workspace state, legacy draft paths and actual
+unpublished content. Preserve permissions and process working directories.</li>
+<li>Preserve each stable agent identity and its stopped journal, output and WAL
+state. A SQLite backup API snapshot includes committed WAL data; copying a live
+<code>.db</code> alone is insufficient. Never initialize a replacement empty journal as a
+shortcut. Inventory internal executor journals as well.</li>
+<li>Preserve service configuration, compatible binaries/UI, signing keys,
+certificates, credentials and the documented way to regain external provider
+access. Test that access using synthetic credentials in the rehearsal.</li>
+<li>Save the independently verified collector checkpoint and journal under separate
+custody. Record snapshot completion times, hashes, file owners/modes, source
+version, migration range, Git commit and last known accepted effects in a private
+manifest. A database dump and an old collector copy do not define current truth.</li>
+</ol>
+<h2 id="restore-without-replaying-post-backup-effects">Restore without replaying post-backup effects</h2>
+<ol>
+<li>Preserve the failed/source environment. Allocate new, isolated targets; never
+overwrite the only recovery copy. Keep outbound execution, notifications, Git
+pushes, incoming agent traffic and external schedulers blocked at the boundary.</li>
+<li>Restore the matching DB/files/configuration/key set. Use a compatible binary and
+<a href="integration-baseline.html#safe-schema-upgrade-and-interrupted-upgrade-recovery">schema procedure</a>.
+Run <code>-migrate-only</code> before serving. Follow the current <a href="upgrades.html">upgrade matrix</a>;
+mixed-version rolling operation is not qualified.</li>
+<li>Run <code>-audit-verify -audit-checkpoint /independent/checkpoint.json</code> with the
+restored DB and key. A locally valid old ledger may still predate an external
+effect. A checkpoint rejection is a <strong>stop</strong>, not a reason to discard/reset the
+collector. Obtain a newer coherent set or enter explicit incident recovery.</li>
+<li>Start one isolated inspection node with <code>-scheduler external -server-agent=false</code>, bound to loopback, without agents or external callers.
+<strong>These flags are not a dispatch lock:</strong> authenticated API calls can tick or
+trigger work. Network isolation and absence of mutating triggers remain required;
+<code>-role api</code> is not an authorization boundary either.</li>
+<li>Inspect authenticated settings, orders/attempts/fences, actual draft contents and
+dirty state, Git commit, output conditions and stable agent identity/journal.
+Reconcile all operations after the snapshot with receipts and external evidence.
+Preserve unknown outcomes. Restoring before an effect does not undo that effect.</li>
+<li>Apply only supported, audited <a href="durable-execution.html#recover-an-unconfirmed-outcome">execution resolution</a>
+after proving the operation stopped and checking its outcome. Never mark success
+by assumption, bulk replay, edit ledger rows, clear fences or delete journals.
+Some old-snapshot incidents require newer backups or an explicit recovery plan;
+no universal automatic history merge is provided.</li>
+<li>Record the incident-to-inspection interval and the longer interval until safe
+resumption. Record lost accepted records and the time range they cover. Zero loss
+of a quiesced fixture is distinct from disaster RPO. Resume one bounded synthetic
+workload only after the operational owner accepts the reconciliation.</li>
+</ol>
+<h2 id="failure-matrix-and-independent-execution">Failure matrix and independent execution</h2>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>Evidence required before proceeding</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Control-plane loss</td>
+<td>Stable execution identity, preserved journal/results, no duplicate effects</td>
+</tr>
+<tr>
+<td>Database or bus interruption</td>
+<td>No unauthorized dispatch/overcommit; recovery of connectivity, leadership and results</td>
+</tr>
+<tr>
+<td>Audit destination outage</td>
+<td>Durable backlog, ordered acknowledged recovery, checkpoint agreement and no missing records</td>
+</tr>
+<tr>
+<td>Stale backup</td>
+<td>Local audit may pass; newer independent checkpoint rejects restore before any resume</td>
+</tr>
+<tr>
+<td>Missing signing key/provider access</td>
+<td>Startup/access fails clearly; recovery of the correct material, never substitute identities</td>
+</tr>
+<tr>
+<td>Coherent restore and upgrade</td>
+<td>New targets, compatible versions, real drafts/configuration and reconciled effects preserved</td>
+</tr>
+</tbody>
+</table>
+<p>The mandatory laboratory already covers node loss, DB/NATS interruption and audit
+outage through I10/I11/I14, and draft recovery through I12. I17 adds the integrated
+stale/current snapshot rehearsal below. Installed failure drills still require
+the entry dossier and authorized window.</p>
+<p>The second maintainer must execute the procedure from the recorded artifacts and
+runbook without the author operating on their behalf. Record start/end times,
+commands, failed steps, help needed, preserved/lost items and the decision to stop
+or resume. An AI agent, an automated job or a second process is not that maintainer.
+If assistance was required, fix the procedure and repeat the affected independent
+step; do not label the assisted run independent.</p>
+<h2 id="controlled-pilot-and-exit-criteria">Controlled pilot and exit criteria</h2>
+<p>Begin with synthetic effects isolated from real destinations. Then admit a named,
+limited batch of reversible non-critical work. Parallel comparison must simulate
+or isolate effects so two schedulers cannot perform the same real action. Preserve
+every incident, latency sample and unresolved item, including failed attempts.</p>
+<p>Pause on duplicate effects, unauthorized execution, missing audit/journal data,
+incomplete daily materialization, wrong attempt attribution, unreconciled outcomes,
+failed recovery, breached capacity/recovery budgets or unexpected destinations.
+Identify the person who can stop/resume, and how they will be reached.</p>
+<p>Accept I17 only when an independent operator reproduced recovery and compatible
+upgrade, measured RPO/RTO meet the approved workload targets, the pilot meets its
+frozen criteria, no P0/P1 issue blocks that profile, and product/security/operation
+reviewers record the decision. Acceptance must name the exact source/release,
+environment, workload and evidence. Promotion to critical use is a separate decision.</p>
+<h2 id="reproducible-engineering-rehearsal">Reproducible engineering rehearsal</h2>
+<p>The mandatory Linux integration gate calls <code>scripts/recovery_rehearsal.py</code> for
+SQLite and PostgreSQL using its own disposable services and binaries. It:</p>
+<ul>
+<li>commits a local Git definition and creates a real unpublished draft;</li>
+<li>takes a stopped snapshot before one reversible file effect;</li>
+<li>executes the effect through a real durable agent and waits for its journal receipt;</li>
+<li>drains a real TLS collector and snapshots the completed order;</li>
+<li>proves the old snapshot passes local audit but fails the newer independent checkpoint;</li>
+<li>restores the coherent set to a new target, checks key failure and checkpoint
+success, and inspects draft, configuration, Git SHA, attempt, condition and journal;</li>
+<li>leaves dispatch isolated and checks that the one effect was not repeated.</li>
+</ul>
+<p>Reports <code>i17-recovery-sqlite.json</code> and <code>i17-recovery-postgres.json</code> are included in
+integration evidence. They record binary hashes, fixture Git SHA, partial restore
+timing and explicit limits. They always leave operational acceptance pending.
+The collector is a separate process on the same laboratory host, not independent
+human custody or a production security boundary.</p>
+<p>The optional standalone SQLite command requires Linux, Python, Git, OpenSSL and
+matching server/agent binaries. It allocates its own <code>.integration</code> run and accepts
+no existing DB, server URL or production credentials:</p>
+<pre><code class="language-sh">python3 scripts/recovery_rehearsal.py --server-bin /path/to/regente-server --agent-bin /path/to/regente-agent
+</code></pre>
+<p>The ephemeral CA uses process-local <code>SSL_CERT_FILE</code> on Linux. Windows does not
+use that Unix trust mechanism for the Go exporter; the rehearsal refuses that
+host rather than changing system trust or bypassing verification. Windows native
+installation evidence remains in I15; it does not qualify this Linux recovery profile.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

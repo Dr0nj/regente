@@ -85,7 +85,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
-- **I17 — recuperação e piloto operacional:** pendente por decisão explícita do usuário; requer ambiente/janela e segundo mantenedor para executar o runbook, medir RPO/RTO e aceitar o piloto não crítico. Os ensaios automatizados de I15/I16 não substituem esse aceite.
+- **I17 — recuperação e piloto operacional:** iniciado por pedido explícito em 14/10/2026. Ensaio integrado de snapshot anterior a efeito/checkpoint e restore coerente em validação; [runbook e dossiê](operational-recovery-pilot.md). Permanecem necessários ambiente/janela, metas aceitas, segundo mantenedor humano e piloto não crítico. CI não substitui esse aceite; não concluído.
 
 Escopo ativo deste ciclo: separar credenciais humanas de execução e preparar as
 próximas garantias. Não representa homologação empresarial completa.
