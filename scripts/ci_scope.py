@@ -28,7 +28,8 @@ def needs_capacity(paths):
 def changed_paths(base, head):
     if not base or set(base) == {"0"}:
         raise ValueError("No trustworthy diff base")
-    result = subprocess.run(["git", "diff", "--name-only", "-z", base, head],
+    # A runtime file moved into docs must still expose its deleted source path.
+    result = subprocess.run(["git", "diff", "--no-renames", "--name-only", "-z", base, head],
                             check=True, capture_output=True)
     return [p for p in result.stdout.decode("utf-8").split("\0") if p]
 

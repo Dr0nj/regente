@@ -32,6 +32,7 @@ class ScopeTests(unittest.TestCase):
             self.assertEqual(changed_paths("a" * 40, "b" * 40),
                              ["docs/a b.md", "agent/main.go"])
             self.assertEqual(run.call_args.args[0][-2:], ["a" * 40, "b" * 40])
+            self.assertIn("--no-renames", run.call_args.args[0])
 
 
 if __name__ == "__main__":
