@@ -1,0 +1,998 @@
+{
+  "increments": [
+    "I15",
+    "I16"
+  ],
+  "date": "2026-10-13",
+  "sourceSha": "93e33d03f9f3942a895102376f5b26c77774f93b",
+  "sourceCI": "https://github.com/Dr0nj/regente/actions/runs/38402718825",
+  "mainCI": "https://github.com/Dr0nj/regente/actions/runs/38402718825",
+  "release": {
+    "version": "v0.2.48",
+    "url": "https://github.com/Dr0nj/regente/releases/tag/v0.2.48",
+    "workflow": "https://github.com/Dr0nj/regente/actions/runs/38402718776",
+    "jobs": 22,
+    "manifest": {
+      "schema": 1,
+      "repository": "Dr0nj/regente",
+      "version": "v0.2.48",
+      "sourceSha": "93e33d03f9f3942a895102376f5b26c77774f93b",
+      "sourceRef": "refs/heads/main",
+      "workflow": ".github/workflows/release.yml",
+      "compatibility": {
+        "schema": 32,
+        "minimumSchema": 32,
+        "maximumSchema": 32,
+        "agentProtocol": 2,
+        "mixedVersions": false
+      },
+      "assets": {
+        "install-agent-windows.ps1": {
+          "sha256": "d179ec8cc9c3e46e59bc6909ce7243c5bfc6655b17a0883fc614e6097d83f0fd",
+          "bytes": 8675
+        },
+        "install-agent.sh": {
+          "sha256": "b0a8ea7d50f7039ea44eba3cf6d86f1932e2f472f20338632c69dffa0a2f676b",
+          "bytes": 9306
+        },
+        "install-secure-linux.sh": {
+          "sha256": "f7be0673af36014fed3d22b1db22270d432c6d6ded097b8af7792a9fbfa9b9b3",
+          "bytes": 5871
+        },
+        "install.sh": {
+          "sha256": "58f803cba3ed700b55890b024ccfa58b22c3c1ce962a500a09e56c82a4251479",
+          "bytes": 5362
+        },
+        "regente-agent_darwin_amd64": {
+          "sha256": "93e52d12fc30b82f26a3d0453fcc18e5f3bf4ce0a196a5945d3c71aade666a7d",
+          "bytes": 18865984
+        },
+        "regente-agent_darwin_arm64": {
+          "sha256": "efb1594d906ad0e081392d01b253a39b69d643c91dd809c20fc13002a1be8397",
+          "bytes": 18053282
+        },
+        "regente-agent_linux_amd64": {
+          "sha256": "8b577e25f6c2d24c96bdefde0c00a710ed5416f5dc86ad27004a84e3b6876d9e",
+          "bytes": 18575522
+        },
+        "regente-agent_linux_arm64": {
+          "sha256": "8fe9b176b4b7c8d60e8d9e3a8b376ee4f6156b252fb72806183f670585e91048",
+          "bytes": 17694882
+        },
+        "regente-agent_windows_amd64.exe": {
+          "sha256": "ad18131d79bbe024e157a2ed4963bc9af298f3da5020d504c942c748ee939aee",
+          "bytes": 18990080
+        },
+        "regente-server_darwin_amd64": {
+          "sha256": "8edf8c87b881a196abc8239e3149449d19181f0e01335b3d307465d326918793",
+          "bytes": 34907008
+        },
+        "regente-server_darwin_arm64": {
+          "sha256": "43d201f5ecda82e37ba11342c6a6f9811c61d9947cfb7b6b924aeecb73b79524",
+          "bytes": 32970802
+        },
+        "regente-server_linux_amd64": {
+          "sha256": "b61bfd1097e02ab7345bc0d7447014a67d5ad4707f7132e368e19fa69e3f59d0",
+          "bytes": 34037922
+        },
+        "regente-server_linux_amd64.tar.gz": {
+          "sha256": "64c62f628cf3c5f22abb5bf40d0163145f07b8a8e65f9d571d35fdf6569e9ac1",
+          "bytes": 12866712
+        },
+        "regente-server_linux_arm64": {
+          "sha256": "ddcf99266ead9e349a3bf49c8d51eb0928b1a3d7319b12cff5398d06b3c1bc88",
+          "bytes": 31916194
+        },
+        "regente-server_linux_arm64.tar.gz": {
+          "sha256": "18b49e8326d9609a1c765460bae54e43b5586c67080228570e7d6effc9f2cabf",
+          "bytes": 11786957
+        },
+        "regente-server_windows_amd64.exe": {
+          "sha256": "bf980f71dc7e16916f48ea71fb3c00c4da8ab026c11c7fa27b0f97af88438da6",
+          "bytes": 34973184
+        },
+        "release-sbom.spdx.json": {
+          "sha256": "8111d61e930c8d68f72e243b02164bdc11868eb036b6c38f518ff4aaed45ae11",
+          "bytes": 1038822
+        }
+      }
+    },
+    "assets": {
+      "install-agent-windows.ps1": {
+        "sha256": "d179ec8cc9c3e46e59bc6909ce7243c5bfc6655b17a0883fc614e6097d83f0fd",
+        "bytes": 8675
+      },
+      "install-agent.sh": {
+        "sha256": "b0a8ea7d50f7039ea44eba3cf6d86f1932e2f472f20338632c69dffa0a2f676b",
+        "bytes": 9306
+      },
+      "install-secure-linux.sh": {
+        "sha256": "f7be0673af36014fed3d22b1db22270d432c6d6ded097b8af7792a9fbfa9b9b3",
+        "bytes": 5871
+      },
+      "install.sh": {
+        "sha256": "58f803cba3ed700b55890b024ccfa58b22c3c1ce962a500a09e56c82a4251479",
+        "bytes": 5362
+      },
+      "regente-agent_darwin_amd64": {
+        "sha256": "93e52d12fc30b82f26a3d0453fcc18e5f3bf4ce0a196a5945d3c71aade666a7d",
+        "bytes": 18865984
+      },
+      "regente-agent_darwin_arm64": {
+        "sha256": "efb1594d906ad0e081392d01b253a39b69d643c91dd809c20fc13002a1be8397",
+        "bytes": 18053282
+      },
+      "regente-agent_linux_amd64": {
+        "sha256": "8b577e25f6c2d24c96bdefde0c00a710ed5416f5dc86ad27004a84e3b6876d9e",
+        "bytes": 18575522
+      },
+      "regente-agent_linux_arm64": {
+        "sha256": "8fe9b176b4b7c8d60e8d9e3a8b376ee4f6156b252fb72806183f670585e91048",
+        "bytes": 17694882
+      },
+      "regente-agent_windows_amd64.exe": {
+        "sha256": "ad18131d79bbe024e157a2ed4963bc9af298f3da5020d504c942c748ee939aee",
+        "bytes": 18990080
+      },
+      "regente-server_darwin_amd64": {
+        "sha256": "8edf8c87b881a196abc8239e3149449d19181f0e01335b3d307465d326918793",
+        "bytes": 34907008
+      },
+      "regente-server_darwin_arm64": {
+        "sha256": "43d201f5ecda82e37ba11342c6a6f9811c61d9947cfb7b6b924aeecb73b79524",
+        "bytes": 32970802
+      },
+      "regente-server_linux_amd64": {
+        "sha256": "b61bfd1097e02ab7345bc0d7447014a67d5ad4707f7132e368e19fa69e3f59d0",
+        "bytes": 34037922
+      },
+      "regente-server_linux_amd64.tar.gz": {
+        "sha256": "64c62f628cf3c5f22abb5bf40d0163145f07b8a8e65f9d571d35fdf6569e9ac1",
+        "bytes": 12866712
+      },
+      "regente-server_linux_arm64": {
+        "sha256": "ddcf99266ead9e349a3bf49c8d51eb0928b1a3d7319b12cff5398d06b3c1bc88",
+        "bytes": 31916194
+      },
+      "regente-server_linux_arm64.tar.gz": {
+        "sha256": "18b49e8326d9609a1c765460bae54e43b5586c67080228570e7d6effc9f2cabf",
+        "bytes": 11786957
+      },
+      "regente-server_windows_amd64.exe": {
+        "sha256": "bf980f71dc7e16916f48ea71fb3c00c4da8ab026c11c7fa27b0f97af88438da6",
+        "bytes": 34973184
+      },
+      "release-manifest.json": {
+        "sha256": "1b8a5820336f35579fe95ebd230e0f70547a548438abc3c970d803752e3d8fa7",
+        "bytes": 2919
+      },
+      "release-manifest.sigstore.json": {
+        "sha256": "f0b4e3cf396dc5cb33cc4870c406284f091b8fbab872109787cf048a3dfb1bb4",
+        "bytes": 10274
+      },
+      "release-sbom.spdx.json": {
+        "sha256": "8111d61e930c8d68f72e243b02164bdc11868eb036b6c38f518ff4aaed45ae11",
+        "bytes": 1038822
+      },
+      "SHA256SUMS": {
+        "sha256": "25e5125eff1027be5df683ec6172a0f06ae8ece7b965a2e10cb6c8a06c63c569",
+        "bytes": 1757
+      }
+    },
+    "sbomPackages": 578,
+    "sourceMatches": [
+      {
+        "member": "regente-server_linux_amd64/deploy/install-linux.sh",
+        "sha256": "c37ebb566d9083acc12570b29ec4baf2e129ee55b0dd9dac3555f16d04eb3138"
+      },
+      {
+        "member": "regente-server_linux_amd64/deploy/configure.sh",
+        "sha256": "a6e1a29302396561af1acc83faa5d480001edf8bc895c677835a8bea239361c4"
+      },
+      {
+        "member": "regente-server_linux_amd64/deploy/update.sh",
+        "sha256": "da89cca9349723f8ea2b556e77167dcfa2b0768b89a31437eebe909bbd06430b"
+      },
+      {
+        "member": "regente-server_linux_amd64/deploy/regente-server.service",
+        "sha256": "8b22c20dce05037ab47f4eebf3e0479a5e2cca41f47038764eaebae7d3cf3340"
+      },
+      {
+        "member": "regente-server_linux_amd64/deploy/server.env.example",
+        "sha256": "952924c22163d4e98a51a883f271b5a90b474302c594dcf41f74947116a1f1d2"
+      },
+      {
+        "member": "regente-server_linux_amd64/deploy/install-audit-collector.sh",
+        "sha256": "81ffcbc615bb9fa72394cd6ad5f92924a97cc19db38374908e07509f6b311bf7"
+      },
+      {
+        "member": "regente-server_linux_amd64/deploy/regente-audit-collector.service",
+        "sha256": "eaf0ecfc63a4fb19d69adbf3c109aa55c6097436fd65f74bcf47f57a3151915b"
+      },
+      {
+        "member": "regente-server_linux_arm64/deploy/install-linux.sh",
+        "sha256": "c37ebb566d9083acc12570b29ec4baf2e129ee55b0dd9dac3555f16d04eb3138"
+      },
+      {
+        "member": "regente-server_linux_arm64/deploy/configure.sh",
+        "sha256": "a6e1a29302396561af1acc83faa5d480001edf8bc895c677835a8bea239361c4"
+      },
+      {
+        "member": "regente-server_linux_arm64/deploy/update.sh",
+        "sha256": "da89cca9349723f8ea2b556e77167dcfa2b0768b89a31437eebe909bbd06430b"
+      },
+      {
+        "member": "regente-server_linux_arm64/deploy/regente-server.service",
+        "sha256": "8b22c20dce05037ab47f4eebf3e0479a5e2cca41f47038764eaebae7d3cf3340"
+      },
+      {
+        "member": "regente-server_linux_arm64/deploy/server.env.example",
+        "sha256": "952924c22163d4e98a51a883f271b5a90b474302c594dcf41f74947116a1f1d2"
+      },
+      {
+        "member": "regente-server_linux_arm64/deploy/install-audit-collector.sh",
+        "sha256": "81ffcbc615bb9fa72394cd6ad5f92924a97cc19db38374908e07509f6b311bf7"
+      },
+      {
+        "member": "regente-server_linux_arm64/deploy/regente-audit-collector.service",
+        "sha256": "eaf0ecfc63a4fb19d69adbf3c109aa55c6097436fd65f74bcf47f57a3151915b"
+      },
+      {
+        "name": "install.sh",
+        "sha256": "58f803cba3ed700b55890b024ccfa58b22c3c1ce962a500a09e56c82a4251479"
+      },
+      {
+        "name": "install-agent.sh",
+        "sha256": "b0a8ea7d50f7039ea44eba3cf6d86f1932e2f472f20338632c69dffa0a2f676b"
+      },
+      {
+        "name": "install-agent-windows.ps1",
+        "sha256": "d179ec8cc9c3e46e59bc6909ce7243c5bfc6655b17a0883fc614e6097d83f0fd"
+      },
+      {
+        "name": "install-secure-linux.sh",
+        "sha256": "f7be0673af36014fed3d22b1db22270d432c6d6ded097b8af7792a9fbfa9b9b3"
+      }
+    ]
+  },
+  "verification": {
+    "gates": [
+      {
+        "gate": "runner",
+        "status": "passed"
+      },
+      {
+        "gate": "server",
+        "status": "passed"
+      },
+      {
+        "gate": "agent",
+        "status": "passed"
+      },
+      {
+        "gate": "web",
+        "status": "passed"
+      },
+      {
+        "gate": "docs",
+        "status": "passed"
+      },
+      {
+        "gate": "browser",
+        "status": "passed"
+      },
+      {
+        "gate": "integration",
+        "status": "passed"
+      },
+      {
+        "gate": "demo",
+        "status": "passed"
+      }
+    ],
+    "seconds": 1038.219,
+    "integrationTests": 305,
+    "browser": {
+      "startTime": "2026-10-13T13:21:51.191Z",
+      "duration": 19337.839,
+      "expected": 8,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "raceModules": [
+      "server",
+      "agent"
+    ]
+  },
+  "capacity": {
+    "datasetPreparation": "Schema32 and actual empty-business backfills initialized before seeding; frozen label/job_type/environment populated; terminal fixtures without execution claims",
+    "status": "passed",
+    "profile": "synthetic-i16-postgres-loopback-v2",
+    "tiers": [
+      {
+        "name": "tier10000",
+        "businessCalendar": {
+          "dailyAt": "01:10",
+          "lastRunAt": "2026-10-13T13:10:39Z",
+          "lastRunDate": "2026-10-13",
+          "lateStart": true,
+          "orderDate": "2026-10-13",
+          "pending": null,
+          "run": {
+            "orderDate": "2026-10-13",
+            "state": "completed",
+            "commitSha": "",
+            "expected": 0,
+            "inserted": 0,
+            "checkpoint": 0,
+            "carried": 0,
+            "startedAt": "2026-10-13T13:10:39.925487Z",
+            "finishedAt": "2026-10-13T13:10:39.936378Z",
+            "canResume": false
+          },
+          "serverNow": "2026-10-13T13:10:44Z",
+          "timezone": "UTC"
+        },
+        "retainedRows": 10000,
+        "minimumObservedTerminalRows": 10002,
+        "targetOrdersPerDay": 10000,
+        "requestedMeasurementSeconds": 300,
+        "measurementSeconds": 300,
+        "recoveryAndVerificationSeconds": 0.4997944539999821,
+        "admissionStop": null,
+        "peakMultiplier": 4,
+        "peakSecondsPer300": 60,
+        "offeredRequests": 56,
+        "admittedInstances": 59,
+        "attempts": 67,
+        "errors": [],
+        "apiRequestSeconds": {
+          "p95": 0.010869370999984085,
+          "p99": 0.016548687000010887
+        },
+        "latencies": {
+          "ready_to_planned": {
+            "observations": 59,
+            "p95": 0.821,
+            "p99": 1.992,
+            "max": 1.992
+          },
+          "planned_to_accepted": {
+            "observations": 67,
+            "p95": 2.037,
+            "p99": 2.365,
+            "max": 2.365
+          },
+          "accepted_to_started": {
+            "observations": 67,
+            "p95": 0.2,
+            "p99": 0.294,
+            "max": 0.294
+          },
+          "started_to_finished": {
+            "observations": 67,
+            "p95": 3.033,
+            "p99": 3.333,
+            "max": 3.333
+          },
+          "ready_to_started": {
+            "observations": 59,
+            "p95": 2.429,
+            "p99": 3.225,
+            "max": 3.225
+          }
+        },
+        "allAttemptLatenciesIncludingFault": {
+          "ready_to_planned": {
+            "observations": 59,
+            "p95": 0.821,
+            "p99": 1.992,
+            "max": 1.992
+          },
+          "planned_to_accepted": {
+            "observations": 67,
+            "p95": 2.037,
+            "p99": 2.365,
+            "max": 2.365
+          },
+          "accepted_to_started": {
+            "observations": 67,
+            "p95": 0.2,
+            "p99": 0.294,
+            "max": 0.294
+          },
+          "started_to_finished": {
+            "observations": 67,
+            "p95": 3.033,
+            "p99": 3.333,
+            "max": 3.333
+          },
+          "ready_to_started": {
+            "observations": 59,
+            "p95": 2.429,
+            "p99": 3.225,
+            "max": 3.225
+          }
+        },
+        "faultWallInterval": null,
+        "databaseBytes": 20049043,
+        "serverCPUSeconds": 15.21,
+        "agentCPUSeconds": [
+          0.58,
+          0.44
+        ],
+        "serverPeakRSSBytes": 99221504,
+        "agentPeakRSSBytes": [
+          31023104,
+          29839360
+        ],
+        "maxAuditLagSeconds": 0.9,
+        "maxOutboxAgeSeconds": 1.596,
+        "correctness": {
+          "conditions": true,
+          "attemptIdentity": true,
+          "retry": true,
+          "effectsExactlyOnceInThisLab": true,
+          "ledgerCheckpoint": true
+        },
+        "externalCanary": {
+          "passed": true,
+          "instanceId": "probe-FORCE-131040",
+          "executionId": "77e4f88912c3ac4e06a0024737f2011b",
+          "seconds": 3.654819524000004
+        },
+        "fault": null,
+        "qualified": true,
+        "allSamplesIncludeFault": true,
+        "normalPerformanceExclusionSeconds": 0,
+        "averageOfferedPerSecond": 0.18666666666666668
+      },
+      {
+        "name": "tier100000",
+        "businessCalendar": {
+          "dailyAt": "01:15",
+          "lastRunAt": "2026-10-13T13:16:04Z",
+          "lastRunDate": "2026-10-13",
+          "lateStart": true,
+          "orderDate": "2026-10-13",
+          "pending": null,
+          "run": {
+            "orderDate": "2026-10-13",
+            "state": "completed",
+            "commitSha": "",
+            "expected": 0,
+            "inserted": 0,
+            "checkpoint": 0,
+            "carried": 0,
+            "startedAt": "2026-10-13T13:16:04.881188Z",
+            "finishedAt": "2026-10-13T13:16:04.892143Z",
+            "canResume": false
+          },
+          "serverNow": "2026-10-13T13:16:08Z",
+          "timezone": "UTC"
+        },
+        "retainedRows": 100000,
+        "minimumObservedTerminalRows": 100002,
+        "targetOrdersPerDay": 100000,
+        "requestedMeasurementSeconds": 300,
+        "measurementSeconds": 15.022419177000017,
+        "recoveryAndVerificationSeconds": 64.242073226,
+        "admissionStop": {
+          "elapsedSeconds": 15.022419177000017,
+          "exceeded": [
+            "eligible_wait"
+          ]
+        },
+        "peakMultiplier": 4,
+        "peakSecondsPer300": 60,
+        "offeredRequests": 70,
+        "admittedInstances": 73,
+        "attempts": 83,
+        "errors": [],
+        "apiRequestSeconds": {
+          "p95": 0.02331084499996905,
+          "p99": 0.03603864799998746
+        },
+        "latencies": {
+          "ready_to_planned": {
+            "observations": 73,
+            "p95": 49.852,
+            "p99": 51.278,
+            "max": 51.278
+          },
+          "planned_to_accepted": {
+            "observations": 83,
+            "p95": 3.449,
+            "p99": 3.939,
+            "max": 3.939
+          },
+          "accepted_to_started": {
+            "observations": 83,
+            "p95": 0.101,
+            "p99": 0.229,
+            "max": 0.229
+          },
+          "started_to_finished": {
+            "observations": 83,
+            "p95": 3.153,
+            "p99": 3.203,
+            "max": 3.203
+          },
+          "ready_to_started": {
+            "observations": 73,
+            "p95": 52.66,
+            "p99": 54.129,
+            "max": 54.129
+          }
+        },
+        "allAttemptLatenciesIncludingFault": {
+          "ready_to_planned": {
+            "observations": 73,
+            "p95": 49.852,
+            "p99": 51.278,
+            "max": 51.278
+          },
+          "planned_to_accepted": {
+            "observations": 83,
+            "p95": 3.449,
+            "p99": 3.939,
+            "max": 3.939
+          },
+          "accepted_to_started": {
+            "observations": 83,
+            "p95": 0.101,
+            "p99": 0.229,
+            "max": 0.229
+          },
+          "started_to_finished": {
+            "observations": 83,
+            "p95": 3.153,
+            "p99": 3.203,
+            "max": 3.203
+          },
+          "ready_to_started": {
+            "observations": 73,
+            "p95": 52.66,
+            "p99": 54.129,
+            "max": 54.129
+          }
+        },
+        "faultWallInterval": null,
+        "databaseBytes": 84135059,
+        "serverCPUSeconds": 32.44,
+        "agentCPUSeconds": [
+          0.57,
+          0.21
+        ],
+        "serverPeakRSSBytes": 542109696,
+        "agentPeakRSSBytes": [
+          29278208,
+          26689536
+        ],
+        "maxAuditLagSeconds": 0.5,
+        "maxOutboxAgeSeconds": 3.896,
+        "correctness": {
+          "conditions": true,
+          "attemptIdentity": true,
+          "retry": true,
+          "effectsExactlyOnceInThisLab": true,
+          "ledgerCheckpoint": true
+        },
+        "externalCanary": {
+          "passed": true,
+          "instanceId": "probe-FORCE-131605",
+          "executionId": "e3d57644e0035aa308a046acab545238",
+          "seconds": 2.4704356109999708
+        },
+        "fault": null,
+        "qualified": false,
+        "allSamplesIncludeFault": true,
+        "normalPerformanceExclusionSeconds": 0,
+        "averageOfferedPerSecond": 4.6597022207430525
+      }
+    ],
+    "budgets": {
+      "plannedToAcceptedP99Seconds": 5,
+      "readyToStartedP99Seconds": 10,
+      "firstEligibleWaitMaxSeconds": 10,
+      "oldestOutboxMaxSeconds": 5,
+      "auditLagMaxSeconds": 30,
+      "serverRSSMaxBytes": 1073741824,
+      "normalRequestErrorBudget": 0
+    },
+    "limits": [
+      "One Linux host; PostgreSQL; production loopback; two agents/5 slots",
+      "Short rate windows with retained terminal fixtures; not a full day of executions",
+      "No HA/NATS/mTLS throughput or monthly SLO claim; independent pilot I17 pending"
+    ],
+    "sha": "93e33d03f9f3942a895102376f5b26c77774f93b",
+    "dirty": false,
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "cpu": {
+      "lscpu": [
+        {
+          "field": "Architecture:",
+          "data": "x86_64"
+        },
+        {
+          "field": "CPU op-mode(s):",
+          "data": "32-bit, 64-bit"
+        },
+        {
+          "field": "Address sizes:",
+          "data": "48 bits physical, 48 bits virtual"
+        },
+        {
+          "field": "Byte Order:",
+          "data": "Little Endian"
+        },
+        {
+          "field": "CPU(s):",
+          "data": "4"
+        },
+        {
+          "field": "On-line CPU(s) list:",
+          "data": "0-3"
+        },
+        {
+          "field": "Vendor ID:",
+          "data": "AuthenticAMD"
+        },
+        {
+          "field": "Model name:",
+          "data": "AMD EPYC 9V74 80-Core Processor"
+        },
+        {
+          "field": "CPU family:",
+          "data": "25"
+        },
+        {
+          "field": "Model:",
+          "data": "17"
+        },
+        {
+          "field": "Thread(s) per core:",
+          "data": "2"
+        },
+        {
+          "field": "Core(s) per socket:",
+          "data": "2"
+        },
+        {
+          "field": "Socket(s):",
+          "data": "1"
+        },
+        {
+          "field": "Stepping:",
+          "data": "1"
+        },
+        {
+          "field": "BogoMIPS:",
+          "data": "5192.29"
+        },
+        {
+          "field": "Flags:",
+          "data": "fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology tsc_reliable nonstop_tsc cpuid extd_apicid aperfmperf tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand hypervisor lahf_lm cmp_legacy svm cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw topoext vmmcall fsgsbase bmi1 avx2 smep bmi2 erms invpcid avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves user_shstk avx512_bf16 clzero xsaveerptr rdpru arat npt nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold v_vmsave_vmload avx512vbmi umip avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid fsrm"
+        },
+        {
+          "field": "Virtualization:",
+          "data": "AMD-V"
+        },
+        {
+          "field": "Hypervisor vendor:",
+          "data": "Microsoft"
+        },
+        {
+          "field": "Virtualization type:",
+          "data": "full"
+        },
+        {
+          "field": "L1d cache:",
+          "data": "64 KiB (2 instances)"
+        },
+        {
+          "field": "L1i cache:",
+          "data": "64 KiB (2 instances)"
+        },
+        {
+          "field": "L2 cache:",
+          "data": "2 MiB (2 instances)"
+        },
+        {
+          "field": "L3 cache:",
+          "data": "32 MiB (1 instance)"
+        },
+        {
+          "field": "NUMA node(s):",
+          "data": "1"
+        },
+        {
+          "field": "NUMA node0 CPU(s):",
+          "data": "0-3"
+        },
+        {
+          "field": "Vulnerability Gather data sampling:",
+          "data": "Not affected"
+        },
+        {
+          "field": "Vulnerability Ghostwrite:",
+          "data": "Not affected"
+        },
+        {
+          "field": "Vulnerability Indirect target selection:",
+          "data": "Not affected"
+        },
+        {
+          "field": "Vulnerability Itlb multihit:",
+          "data": "Not affected"
+        },
+        {
+          "field": "Vulnerability L1tf:",
+          "data": "Not affected"
+        },
+        {
+          "field": "Vulnerability Mds:",
+          "data": "Not affected"
+        },
+        {
+          "field": "Vulnerability Meltdown:",
+          "data": "Not affected"
+        },
+        {
+          "field": "Vulnerability Mmio stale data:",
+          "data": "Not affected"
+        },
+        {
+          "field": "Vulnerability Old microcode:",
+          "data": "Not affected"
+        },
+        {
+          "field": "Vulnerability Reg file data sampling:",
+          "data": "Not affected"
+        },
+        {
+          "field": "Vulnerability Retbleed:",
+          "data": "Not affected"
+        },
+        {
+          "field": "Vulnerability Spec rstack overflow:",
+          "data": "Vulnerable: Safe RET, no microcode"
+        },
+        {
+          "field": "Vulnerability Spec store bypass:",
+          "data": "Vulnerable"
+        },
+        {
+          "field": "Vulnerability Spectre v1:",
+          "data": "Mitigation; usercopy/swapgs barriers and __user pointer sanitization"
+        },
+        {
+          "field": "Vulnerability Spectre v2:",
+          "data": "Mitigation; Retpolines; STIBP disabled; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected"
+        },
+        {
+          "field": "Vulnerability Srbds:",
+          "data": "Not affected"
+        },
+        {
+          "field": "Vulnerability Tsa:",
+          "data": "Vulnerable: No microcode"
+        },
+        {
+          "field": "Vulnerability Tsx async abort:",
+          "data": "Not affected"
+        },
+        {
+          "field": "Vulnerability Vmscape:",
+          "data": "Not affected"
+        }
+      ]
+    },
+    "meminfo": "MemTotal:       16373452 kB\nMemFree:        12853792 kB\nMemAvailable:   15088508 kB\nBuffers:           87340 kB\nCached:          2406748 kB\nSwapCached:            0 kB\nActive:           723416 kB\nInactive:        2050032 kB\nActive(anon):     334964 kB\nInactive(anon):        0 kB\nActive(file):     388452 kB\nInactive(file):  2050032 kB\nUnevictable:       46728 kB\nMlocked:           43656 kB\nSwapTotal:       3145724 kB\nSwapFree:        3145724 kB\nZswap:                 0 kB\nZswapped:              0 kB\nDirty:            865748 kB\nWriteback:             0 kB\nAnonPages:        314080 kB\nMapped:           314732 kB\nShmem:             46856 kB\nKReclaimable:     115180 kB\nSlab:             194276 kB\nSReclaimable:     115180 kB\nSUnreclaim:        79096 kB\nKernelStack:        4144 kB\nPageTables:         6100 kB\nSecPageTables:         0 kB\nNFS_Unstable:          0 kB\nBounce:                0 kB\nWritebackTmp:          0 kB\nCommitLimit:    11332448 kB\nCommitted_AS:    1992764 kB\nVmallocTotal:   34359738367 kB\nVmallocUsed:       39588 kB\nVmallocChunk:          0 kB\nPercpu:             2240 kB\nHardwareCorrupted:     0 kB\nAnonHugePages:     81920 kB\nShmemHugePages:        0 kB\nShmemPmdMapped:        0 kB\nFileHugePages:         0 kB\nFilePmdMapped:         0 kB\nCmaTotal:              0 kB\nCmaFree:               0 kB\nUnaccepted:            0 kB\nBalloon:               0 kB\nHugePages_Total:       0\nHugePages_Free:        0\nHugePages_Rsvd:        0\nHugePages_Surp:        0\nHugepagesize:       2048 kB\nHugetlb:               0 kB\nDirectMap4k:      119936 kB\nDirectMap2M:     4069376 kB\nDirectMap1G:    14680064 kB\n",
+    "go": "go version go1.26.8 linux/amd64",
+    "postgresSettings": "fsync=on\nfull_page_writes=on\nmax_connections=100\nshared_buffers=16384\nsynchronous_commit=on",
+    "stopReason": "Previous tier exceeded its declared budget; higher tiers not run",
+    "soak": {
+      "name": "soak10000",
+      "businessCalendar": {
+        "dailyAt": "01:17",
+        "lastRunAt": "2026-10-13T13:17:32Z",
+        "lastRunDate": "2026-10-13",
+        "lateStart": true,
+        "orderDate": "2026-10-13",
+        "pending": null,
+        "run": {
+          "orderDate": "2026-10-13",
+          "state": "completed",
+          "commitSha": "",
+          "expected": 0,
+          "inserted": 0,
+          "checkpoint": 0,
+          "carried": 0,
+          "startedAt": "2026-10-13T13:17:32.213885Z",
+          "finishedAt": "2026-10-13T13:17:32.224662Z",
+          "canResume": false
+        },
+        "serverNow": "2026-10-13T13:17:35Z",
+        "timezone": "UTC"
+      },
+      "retainedRows": 10000,
+      "minimumObservedTerminalRows": 10001,
+      "targetOrdersPerDay": 10000,
+      "requestedMeasurementSeconds": 1800,
+      "measurementSeconds": 1800,
+      "recoveryAndVerificationSeconds": 1.7304585320002843,
+      "admissionStop": null,
+      "peakMultiplier": 4,
+      "peakSecondsPer300": 60,
+      "offeredRequests": 327,
+      "admittedInstances": 332,
+      "attempts": 379,
+      "errors": [],
+      "apiRequestSeconds": {
+        "p95": 0.010105205999934697,
+        "p99": 0.01589360899993153
+      },
+      "latencies": {
+        "ready_to_planned": {
+          "observations": 314,
+          "p95": 0.034,
+          "p99": 1.53,
+          "max": 2.39
+        },
+        "planned_to_accepted": {
+          "observations": 359,
+          "p95": 1.969,
+          "p99": 2.002,
+          "max": 2.092
+        },
+        "accepted_to_started": {
+          "observations": 359,
+          "p95": 0.08,
+          "p99": 0.214,
+          "max": 0.363
+        },
+        "started_to_finished": {
+          "observations": 359,
+          "p95": 3.032,
+          "p99": 3.169,
+          "max": 3.236
+        },
+        "ready_to_started": {
+          "observations": 314,
+          "p95": 2.017,
+          "p99": 3.017,
+          "max": 3.891
+        }
+      },
+      "allAttemptLatenciesIncludingFault": {
+        "ready_to_planned": {
+          "observations": 332,
+          "p95": 0.034,
+          "p99": 1.53,
+          "max": 2.39
+        },
+        "planned_to_accepted": {
+          "observations": 379,
+          "p95": 1.977,
+          "p99": 2.003,
+          "max": 6.062
+        },
+        "accepted_to_started": {
+          "observations": 379,
+          "p95": 0.08,
+          "p99": 0.214,
+          "max": 0.363
+        },
+        "started_to_finished": {
+          "observations": 379,
+          "p95": 3.032,
+          "p99": 3.184,
+          "max": 3.236
+        },
+        "ready_to_started": {
+          "observations": 332,
+          "p95": 2.032,
+          "p99": 3.225,
+          "max": 6.085
+        }
+      },
+      "faultWallInterval": [
+        1791898355.8168805,
+        1791898390.8783677
+      ],
+      "databaseBytes": 29600915,
+      "serverCPUSeconds": 88.02,
+      "agentCPUSeconds": [
+        3.49,
+        2.56
+      ],
+      "serverPeakRSSBytes": 102662144,
+      "agentPeakRSSBytes": [
+        33554432,
+        32022528
+      ],
+      "maxAuditLagSeconds": 1,
+      "maxOutboxAgeSeconds": 1.755,
+      "correctness": {
+        "conditions": true,
+        "attemptIdentity": true,
+        "retry": true,
+        "effectsExactlyOnceInThisLab": true,
+        "ledgerCheckpoint": true
+      },
+      "externalCanary": {
+        "passed": true,
+        "instanceId": "probe-FORCE-131733",
+        "executionId": "d12fc56e0adce952f514778f5594f8b5",
+        "seconds": 2.456333127999983
+      },
+      "fault": {
+        "healthReady": true,
+        "stalledProgressDetected": true,
+        "error": "No durable canary progress by deadline; instance=probe-FORCE-133235",
+        "pausedSeconds": 5.0614867029999004,
+        "producerScheduledPauseSeconds": 8.324389871999983,
+        "restoredProgress": {
+          "passed": true,
+          "instanceId": "probe-FORCE-133240",
+          "executionId": "cf3b1fafd0577863347fab85f2028c80",
+          "seconds": 3.2628914509998594
+        }
+      },
+      "qualified": true,
+      "allSamplesIncludeFault": true,
+      "normalPerformanceExclusionSeconds": 65.0614867029999,
+      "averageOfferedPerSecond": 0.1825107168683502
+    },
+    "supportedEnvelope": 10000,
+    "images": [
+      {
+        "ID": "sha256:d741b376874687de90374fd34f55c6b2760e8f7bd7e4ae5cd47f50757fc08cf8",
+        "ContainerName": "regente-it-93171e538b74-postgres-1",
+        "Repository": "postgres",
+        "Tag": "",
+        "Platform": "linux/amd64",
+        "Size": 278205935,
+        "LastTagTime": "0001-01-01T00:00:00Z"
+      }
+    ],
+    "seconds": 2282.6288747159997
+  },
+  "repositoryEnforcement": {
+    "date": "2026-10-13",
+    "sourceSha": "93e33d03f9f3942a895102376f5b26c77774f93b",
+    "protected": false,
+    "requiredChecks": {
+      "enforcement_level": "off",
+      "contexts": [],
+      "checks": []
+    },
+    "rulesets": [],
+    "admin": true,
+    "allowAutoMerge": false
+  },
+  "limits": [
+    "One Linux host; PostgreSQL; production loopback; two agents/5 slots",
+    "Short rate windows with retained terminal fixtures; not a full day of executions",
+    "No HA/NATS/mTLS throughput or monthly SLO claim; independent pilot I17 pending",
+    "No N/N-1 rolling pair qualified; schema 32 [32,32], production protocol 2",
+    "I17 remains pending at user request; no independent operational pilot or maintainer recovery sign-off"
+  ],
+  "qualificationHistory": {
+    "sourceSha": "93e33d03f9f3942a895102376f5b26c77774f93b",
+    "failedJobUrl": "https://github.com/Dr0nj/regente/actions/runs/38402718776/job/115314317706",
+    "initialFailure": "Windows native demonstration authenticated but exceeded the unchanged 45-second synthetic COMMAND deadline",
+    "rootCause": "Not established; original runner private state was not preserved",
+    "sameSourceCI": "https://github.com/Dr0nj/regente/actions/runs/38402718825",
+    "sameSourceLocalNativeSmoke": "passed",
+    "boundedRetry": {
+      "attempt": 2,
+      "conclusion": "success",
+      "url": "https://github.com/Dr0nj/regente/actions/runs/38402718776",
+      "timeoutSeconds": 45
+    },
+    "qualification": "Final required jobs passed at the same SHA; this does not establish the cause of the initial failure"
+  }
+}

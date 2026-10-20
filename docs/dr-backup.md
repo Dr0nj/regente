@@ -1,5 +1,8 @@
 # DR: database, unpublished drafts and configuration
 
+For the complete recovery sequence, independent operator record and pilot exit
+criteria, see [operational recovery and controlled pilot](operational-recovery-pilot.md).
+
 Recovery requires a **set of artifacts**, not just the database. Use the
 [upgrade compatibility matrix](upgrades.md) and [migration runbook](integration-baseline.md#safe-schema-upgrade-and-interrupted-upgrade-recovery)
 before starting any restored binary. Stop every control plane and other writer

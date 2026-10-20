@@ -73,6 +73,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="failure-resistant-audit.html">Failure-resistant audit</a>
 <a href="ha-resources.html">Shared resources and scheduler leadership</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="operational-recovery-pilot.html">Operational recovery and controlled pilot</a>
 <a href="production-profile.html">Production profile</a>
 <a href="shared-drafts.html">Shared Design drafts</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
@@ -86,7 +87,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 Linux verification profile, both Go race suites, real PostgreSQL/NATS/OIDC and
 recovery tests, mandatory browser scenarios, documentation/toolchain recipes,
 the installed systemd smoke, measured capacity/developer soak and five native binary checks. Failed or missing
-jobs block signing/publication. Unit fixtures are not independent integration
+jobs block publication. Signing additionally waits for the build, verification and recipe gates. Unit fixtures are not independent integration
 evidence. The source smoke proves unsigned updates are refused; the release smoke
 uses the actual signed manifest to exercise the updater, backup, same-version
 no-op and production configuration/journal preservation.</p>
@@ -126,6 +127,11 @@ sudo bash install.sh
 SHA256/JSON checks apply to the Windows bootstrap. Repository override is refused.
 The release workflow is part of the publisher trust boundary; its compromise or
 a compromised trusted CLI/host is not repaired by artifact signing.</p>
+<p>An existing v0.2.47 installation has an older updater that does not enforce this
+new trust policy. Before the first authenticated upgrade, obtain and review the
+current <code>server/deploy/update.sh</code> from the trusted source SHA, or use a
+verified current bootstrap. Run that trusted updater for the drained upgrade;
+do not assume the old installed command gained verification retroactively.</p>
 <p>For an offline Linux update provide all three local inputs:</p>
 <pre><code class="language-sh">sudo REGENTE_BUNDLE=/trusted/bundle.tar.gz \
   REGENTE_MANIFEST=/trusted/release-manifest.json \
@@ -154,7 +160,7 @@ fully disconnected deployment). An old unsigned release is refused, even with
 </tr>
 <tr>
 <td>Windows amd64</td>
-<td>Actual Windows installer verifier/signature and tamper refusal, native server/agent version output and fresh/repeated SQLite migration; existing native demo recipe</td>
+<td>Actual Windows installer verifier/signature and tamper refusal, native server/agent version output and fresh/repeated SQLite migration; existing native demo recipe and real SSH receipts/loss/cancellation with a sanitized process environment</td>
 </tr>
 <tr>
 <td>macOS amd64 / arm64</td>
@@ -169,7 +175,7 @@ qualified.</strong> Schema refusal/legacy migration/recovery tests remain mandat
 Follow <a href="upgrades.html">upgrades</a> for all-node drain and complete recovery sets;
 a retained old binary does not downgrade a migrated database.</p>
 <h2 id="repository-enforcement">Repository enforcement</h2>
-<p>Inspection on 2026-10-03 found main <strong>unprotected</strong>, no repository rulesets,
+<p>Inspection on 2026-10-13 found main <strong>unprotected</strong>, no repository rulesets,
 administrator access and automatic merging disabled. These facts are not a
 branch-protection claim. The publication DAG enforces the release gates independently.
 Publication refuses an existing release version; replacement requires a new version.
@@ -183,6 +189,22 @@ it is an inventory, not a vulnerability clearance.</p>
 <p>Windows offline verification accepts REGENTE_MANIFEST, REGENTE_ATTESTATION and
 REGENTE_RELEASE_ASSET (the exact executable asset). It applies the same identity
 and size/hash policy before replacing the installed agent.</p>
+<h2 id="published-proof--2026-10-13">Published proof — 2026-10-13</h2>
+<p><a href="https://github.com/Dr0nj/regente/releases/tag/v0.2.48">v0.2.48</a> binds source 93e33d03f9f3942a895102376f5b26c77774f93b
+to 17 signed payload entries (including the SPDX inventory) and 20 release assets.
+<a href="https://github.com/Dr0nj/regente/actions/runs/38402718776">The release run</a> passed all 22 jobs: complete verification,
+capacity/soak, recipes, signed systemd installation/upgrade, five native platforms
+and publication. Real signature checks rejected a modified manifest and payload;
+the native Windows installer verifier also rejected a same-size byte modification.
+Both Linux bundles and four bootstrap scripts were compared with the tested source.
+<a href="https://github.com/Dr0nj/regente/blob/main/docs/evidence/i15-i16-93e33d0.json">Recorded inventory and qualification</a> preserves the hashes and limits.</p>
+<h3 id="qualification-history">Qualification history</h3>
+<p>The first release attempt stopped because the Windows native demonstration exceeded
+its unchanged 45-second synthetic COMMAND deadline after authentication. The same
+source passed the CI Windows recipe and a local native smoke. One bounded rerun of
+the failed release job passed; no timeout or acceptance check was relaxed. The
+original failure is retained in the linked evidence. Its cause was not established
+from the original runner logs; the passing rerun is not a root-cause diagnosis.</p>
 </article>
 <footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
 </main>

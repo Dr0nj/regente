@@ -686,6 +686,11 @@ def main():
         i11_ha_processes(env, dsn, nats_url)
         legacy_restore(dsn)
         draft_recovery(env, dsn)
+        # I17: reject a snapshot predating a real effect; inspect a coherent new
+        # target against independent audit and agent-journal evidence.
+        from recovery_rehearsal import rehearse
+        for recovery_driver in ("sqlite", "postgres"):
+            rehearse(env, tls_dir, recovery_driver, dsn)
         same_binary_drain(env, dsn)
         count = cluster(env, dsn, nats_url)
         # I14: checkpoint copiado do coletor verificado, independente do dump.
@@ -733,4 +738,6 @@ def main():
 
 
 if __name__ == "__main__":
+    # Recovery scenario imports these helpers; share this run, not another module.
+    sys.modules["integration"] = sys.modules[__name__]
     sys.exit(main())

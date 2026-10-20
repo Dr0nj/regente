@@ -1,13 +1,46 @@
 import json
+from contextlib import closing
 import os
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
 import integration
+import recovery_rehearsal
 
 
 class EvidenceGateTest(unittest.TestCase):
+    def test_recovery_refuses_missing_proof_loss_duplicates_and_synthetic_acceptance(self):
+        good = dict.fromkeys(recovery_rehearsal.CHECKS, True)
+        good.update(effect_count=1, snapshot_committed_order_loss=0,
+                    operational_acceptance="pending-independent-operator-and-pilot")
+        recovery_rehearsal.validate(good)
+        for name in recovery_rehearsal.CHECKS:
+            for value in (False, None, "true"):
+                with self.subTest(name=name, value=value), self.assertRaises(RuntimeError):
+                    recovery_rehearsal.validate(dict(good, **{name: value}))
+        for change in ({"effect_count": 2}, {"snapshot_committed_order_loss": 1},
+                       {"operational_acceptance": "accepted"}):
+            with self.assertRaises(RuntimeError):
+                recovery_rehearsal.validate(dict(good, **change))
+
+    def test_journal_snapshot_preserves_wal_and_refuses_existing_target(self):
+        import sqlite3
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = Path(tmp) / "live.db", Path(tmp) / "copy.db"
+            with closing(sqlite3.connect(source)) as db:
+                db.execute("PRAGMA journal_mode=WAL")
+                db.execute("CREATE TABLE effect(id TEXT)")
+                db.execute("INSERT INTO effect VALUES ('committed-in-wal')")
+                db.commit()
+                recovery_rehearsal.sqlite_snapshot(source, target)
+                with closing(sqlite3.connect(target)) as copied:
+                    self.assertEqual(copied.execute("SELECT id FROM effect").fetchall(), [("committed-in-wal",)])
+                before = target.read_bytes()
+                with self.assertRaises(FileExistsError):
+                    recovery_rehearsal.sqlite_snapshot(source, target)
+                self.assertEqual(target.read_bytes(), before)
+
     def test_rejects_skip(self):
         with self.assertRaisesRegex(RuntimeError, "skipped"):
             integration.validate_test_events(json.dumps({"Action": "skip", "Package": "db", "Test": "pg"}))

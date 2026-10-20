@@ -88,7 +88,7 @@ This is a short synthetic rate/density qualification on one host. It does not
 certify a full day at the offered rate, business workloads, HA/NATS/mTLS capacity,
 monthly SLOs or a fleet upgrade. Platform/service scope is in
 [authenticated releases](authenticated-releases.md); recovery procedures are in
-[upgrades](upgrades.md). The measured envelope is published after the gate passes.
+[upgrades](upgrades.md). The measured envelope is recorded below.
 
 The audit exporter change follows a measured bottleneck: eight real records took
 8.013 seconds to receive durable ACK at the origin with one record per tick.
@@ -154,3 +154,41 @@ snapshots. This keeps a short qualification window at constant density when UTC
 midnight occurs; the clock is not frozen and no runtime order is rewritten. The
 actual calendar is recorded per phase. Business rollover qualification remains
 in the mandatory I06/I07 integration contracts, not this steady-load profile.
+
+## Measured result — 2026-10-13
+
+The qualified source is `93e33d03f9f3942a895102376f5b26c77774f93b`, published as
+[v0.2.48](https://github.com/Dr0nj/regente/releases/tag/v0.2.48). [Main CI](https://github.com/Dr0nj/regente/actions/runs/38402718825)
+and [release qualification](https://github.com/Dr0nj/regente/actions/runs/38402718776)
+passed at that source SHA. [Versioned evidence](evidence/i15-i16-93e33d0.json) contains the full
+profile, hardware, budgets, phase summaries and release inventory; detailed
+attempts/samples and logs are retained in the linked Actions artifacts.
+
+The measured envelope is a **nominal 10,000 orders/day rate**, with fourfold peaks,
+10,000 retained terminal fixtures, one Linux amd64 host (4 vCPU, about 16 GiB),
+PostgreSQL and two durable agents/five slots. It is a short synthetic qualification,
+not a day-long or production throughput guarantee.
+
+| Phase | Offer window | Offered / admitted / attempts | ACK p95 / p99 | First eligibility-to-start p95 / p99 | Peak server RSS | Result |
+|---|---:|---:|---:|---:|---:|---|
+| tier10000 | 300.000 s | 56 / 59 / 67 | 2.037 / 2.365 s | 2.429 / 3.225 s | 94.625 MiB | Qualified |
+| tier100000 | 15.022 s | 70 / 73 / 83 | 3.449 / 3.939 s | 52.660 / 54.129 s | 516.996 MiB | Not qualified |
+| soak10000 | 1800.000 s | 327 / 332 / 379 | 1.969 / 2.002 s | 2.017 / 3.017 s | 97.906 MiB | Qualified |
+
+The 100,000 tier exceeded the 10-second first-eligibility wait/start budget.
+Offers stopped after 15.022 seconds; admitted work drained
+and correctness verification completed in a further 64.242
+seconds. Its results remain visible. The 1,000,000 tier was not run.
+
+The 30-minute soak recorded 332 instances and 379 attempts,
+zero normal admission errors, correct condition/retry behavior and no missing or
+duplicate laboratory effects. Peak audit lag was 1 second,
+oldest outbox age 1.755 seconds, and server CPU usage
+88.02 CPU-seconds. Collector checkpoints verified against the database.
+
+Pausing both agents for 5.061 seconds left HTTP/DB readiness
+healthy while the external canary correctly missed its 5-second progress deadline.
+After resumption, a new canary completed in 3.263
+seconds. The 65.061-second fault/margin interval
+is excluded only from the normal performance columns above; all-attempt latencies,
+all samples and every effect remain in the evidence. I17 is pending.
