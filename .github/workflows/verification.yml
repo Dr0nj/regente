@@ -5,6 +5,13 @@ on:
       ref:
         required: true
         type: string
+      run-capacity:
+        type: boolean
+        default: true
+    outputs:
+      capacity-result:
+        description: Actual capacity job result, including intentional skips
+        value: ${{ jobs.capacity-outcome.outputs.result }}
 permissions:
   contents: read
 jobs:
@@ -19,9 +26,14 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26'
+          cache-dependency-path: |
+            server/go.sum
+            agent/go.sum
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
       - name: Prepare browser prerequisites
         working-directory: app
         run: |
@@ -36,13 +48,8 @@ jobs:
           set -euo pipefail
           mkdir -p .integration/i13-smoke/evidence
           mkdir -p .integration/previous
-          curl -fLsS --retry 3 https://github.com/Dr0nj/regente/releases/download/v0.2.47/regente-server_linux_amd64.tar.gz -o .integration/previous/bundle.tar.gz
+          curl -fLsS --connect-timeout 15 --max-time 180 --retry 3 https://github.com/Dr0nj/regente/releases/download/v0.2.47/regente-server_linux_amd64.tar.gz -o .integration/previous/bundle.tar.gz
           bash scripts/smoke-install.sh --build --previous-bundle .integration/previous/bundle.tar.gz 2>&1 | tee .integration/i13-smoke/evidence/i13-systemd.log
-      # Informativo; não compõe a condição de aprovação do perfil.
-      - name: deadcode (informativo)
-        continue-on-error: true
-        working-directory: server
-        run: go run golang.org/x/tools/cmd/deadcode@latest -test ./...
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -57,6 +64,7 @@ jobs:
           path: app/test-results/
 
   capacity:
+    if: inputs.run-capacity
     name: measured capacity and developer soak
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -67,6 +75,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: '1.26'
+          cache-dependency-path: |
+            server/go.sum
+            agent/go.sum
       - name: Incremental workload and 30-minute soak
         run: python3 scripts/capacity.py
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -76,3 +87,17 @@ jobs:
           path: .integration/*/evidence/
           include-hidden-files: true
           if-no-files-found: error
+
+  capacity-outcome:
+    name: capacity outcome
+    needs: capacity
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      result: ${{ steps.result.outputs.result }}
+    steps:
+      - id: result
+        env:
+          RESULT: ${{ needs.capacity.result }}
+        run: echo "result=$RESULT" >> "$GITHUB_OUTPUT"

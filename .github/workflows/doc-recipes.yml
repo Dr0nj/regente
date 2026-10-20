@@ -11,6 +11,7 @@ jobs:
   node-minima:
     name: toolchain minimum Node ${{ matrix.node }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -22,6 +23,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: app/package-lock.json
       - name: Clean install, declared engines and POSIX build
         working-directory: app
         run: |
@@ -46,9 +49,14 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26'
+          cache-dependency-path: |
+            server/go.sum
+            agent/go.sum
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
       - name: Linux Docker agent, offline and explicit local Git origin
         if: runner.os == 'Linux'
         shell: pwsh
@@ -74,9 +82,10 @@ jobs:
           go -C server test ./internal/scheduler -run '^TestI10RealSSHReceiptsLossAndCancellation$' -count=1 -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
         with:
           name: demo-evidence-${{ runner.os }}
           path: |
             ${{ runner.temp }}/demo-offline.json
             ${{ runner.temp }}/demo-git.json
-          if-no-files-found: error
+          if-no-files-found: ${{ job.status == 'success' && 'error' || 'warn' }}

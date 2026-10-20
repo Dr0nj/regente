@@ -203,6 +203,7 @@ class Verifier:
             self.preflight()
             for name in self.gates:
                 print(f"GATE {name}", flush=True)
+                gate_started = time.monotonic()
                 entry = {"gate": name, "status": "running"}
                 self.report["gates"].append(entry)
                 try:
@@ -211,6 +212,7 @@ class Verifier:
                     entry["status"] = "failed"
                     raise
                 entry["status"] = "passed"
+                print(f"PASS gate {name} ({time.monotonic() - gate_started:.1f}s)", flush=True)
             validate_completion(plan(self.mode), self.report["gates"])
             self.report["status"] = "passed"
         except Exception as error:
