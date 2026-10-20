@@ -16,6 +16,7 @@ param(
   [ValidateRange(5, 180)][int]$TimeoutSeconds = 45
 )
 $ErrorActionPreference = 'Stop'
+$script:smokePhase = 'bootstrap'
 $onWindows = $env:OS -eq 'Windows_NT'
 if ($NativeSmoke -and -not $Smoke) { throw '-NativeSmoke requires -Smoke; it is not a guest execution mode.' }
 if ($GitFixture -and -not $Smoke) { throw '-GitFixture requires -Smoke.' }

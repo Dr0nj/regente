@@ -52,7 +52,7 @@ jobs:
     with:
       ref: ${{ github.sha }}
   verification:
-    needs: scope
+    needs: [scope, workflow-contract]
     uses: ./.github/workflows/verification.yml
     with:
       ref: ${{ github.sha }}

@@ -88,4 +88,4 @@ jobs:
           path: |
             ${{ runner.temp }}/demo-offline.json
             ${{ runner.temp }}/demo-git.json
-          if-no-files-found: warn
+          if-no-files-found: ${{ job.status == 'success' && 'error' || 'warn' }}
