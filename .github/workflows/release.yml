@@ -1,7 +1,7 @@
 name: Release
 
 # TRÊS gatilhos:
-#   • push na main  → release AUTOMÁTICA (patch seguinte). O que está na main mas
+#   • CI aprovado na main → release AUTOMÁTICA (patch seguinte). O que está na main mas
 #     não está numa release não existe pra quem instala: o README manda baixar de
 #     releases/latest. Pra pular uma entrega, escreva [no release] na mensagem do
 #     commit (docs/roadmap sozinhos, por exemplo).
@@ -13,8 +13,11 @@ name: Release
 # push" espalharia regressão na velocidade do push — foi o que aconteceu com a
 # v0.2.0 (passou em build/vet/test/lint e travava a instalação mesmo assim).
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
+  push:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
@@ -22,9 +25,14 @@ on:
         description: "Unpublished version tag at this source SHA, e.g. v0.2.48"
         required: true
         type: string
+      capacity:
+        description: Force the 30-minute capacity qualification
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  actions: read
 
 # Uma release por vez: dois pushes seguidos calculariam o MESMO patch seguinte e
 # uma sobrescreveria a outra. cancel-in-progress=false porque a que já começou
@@ -36,36 +44,67 @@ concurrency:
 jobs:
   doc-recipes:
     needs: version
-    if: needs.version.outputs.skip != 'true'
+    if: needs.version.outputs.skip != 'true' && github.event_name != 'workflow_run'
     uses: ./.github/workflows/doc-recipes.yml
     with:
       ref: ${{ needs.version.outputs.sha }}
   verification:
     needs: version
-    if: needs.version.outputs.skip != 'true'
+    if: needs.version.outputs.skip != 'true' && github.event_name != 'workflow_run'
     uses: ./.github/workflows/verification.yml
     with:
       ref: ${{ needs.version.outputs.sha }}
+      run-capacity: ${{ needs.version.outputs.capacity == 'true' }}
   # Decide a versão ANTES de qualquer build: tag do ref, input do dispatch, ou
   # o próximo patch a partir da maior tag existente (push na main).
   version:
     name: definir versão
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       tag: ${{ steps.pick.outputs.tag }}
       skip: ${{ steps.pick.outputs.skip }}
       sha: ${{ steps.pick.outputs.sha }}
+      capacity: ${{ steps.scope.outputs.capacity }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag || github.sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0 # precisa do histórico de tags pra calcular o patch
+      - id: scope
+        if: github.event_name != 'workflow_run'
+        run: python3 scripts/ci_scope.py --release
+      - name: Verify successful CI identity and every required job
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          CI_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: python3 scripts/ci_release_gate.py --run-id "$CI_RUN_ID" --sha "$SOURCE_SHA" --output .integration/ci-proof.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: github.event_name == 'workflow_run'
+        with:
+          name: source-ci-proof
+          path: .integration/ci-proof.json
+          include-hidden-files: true
+          if-no-files-found: error
       - id: pick
         env:
           REQUESTED_TAG: ${{ inputs.tag }}
+          AUTOMATIC: ${{ github.event_name == 'workflow_run' }}
         run: |
           set -euo pipefail
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if [ "$AUTOMATIC" = true ] && [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+            echo "A newer main revision exists; only the current main is released automatically."
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
           if [ -n "$REQUESTED_TAG" ]; then
             [[ "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid release tag"; exit 1; }
             test "$(git rev-parse HEAD)" = "$GITHUB_SHA" || { echo "Dispatch must use the tag source SHA; use a tag push for historical refs."; exit 1; }
@@ -97,6 +136,7 @@ jobs:
     needs: version
     if: needs.version.outputs.skip != 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -104,6 +144,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
       - name: Build SPA (@origin)
         working-directory: app
         env:
@@ -120,6 +162,7 @@ jobs:
     name: build ${{ matrix.goos }}/${{ matrix.goarch }}
     needs: [version, spa]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       # fail-fast=false: um alvo quebrado não deve cancelar os outros — mas o
       # publish só roda se TODOS passarem (needs: build), então uma release
@@ -139,6 +182,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26"
+          cache-dependency-path: |
+            server/go.sum
+            agent/go.sum
 
       # Binários pure-Go (modernc sqlite + pgx) → CGO desligado, cross-compile limpo.
       - name: Build server
@@ -203,6 +249,7 @@ jobs:
     name: smoke de instalação (systemd real)
     needs: [version, build, sign]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -216,7 +263,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .integration/previous
-          curl -fLsS --retry 3 https://github.com/Dr0nj/regente/releases/download/v0.2.47/regente-server_linux_amd64.tar.gz -o .integration/previous/bundle.tar.gz
+          curl -fLsS --connect-timeout 15 --max-time 180 --retry 3 https://github.com/Dr0nj/regente/releases/download/v0.2.47/regente-server_linux_amd64.tar.gz -o .integration/previous/bundle.tar.gz
           python3 scripts/test-release-live.py dist
           chmod +x dist/regente-agent_linux_amd64
           bash scripts/smoke-install.sh \
@@ -228,8 +275,10 @@ jobs:
 
   sign:
     name: authenticated release inventory
+    if: ${{ !cancelled() && needs.version.result == 'success' && needs.version.outputs.skip != 'true' && needs.build.result == 'success' && (needs.verification.result == 'success' || (github.event_name == 'workflow_run' && needs.verification.result == 'skipped')) && (needs.doc-recipes.result == 'success' || (github.event_name == 'workflow_run' && needs.doc-recipes.result == 'skipped')) }}
     needs: [version, build, verification, doc-recipes]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       id-token: write
@@ -284,6 +333,7 @@ jobs:
     name: native ${{ matrix.goos }}/${{ matrix.arch }}
     needs: [version, sign]
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -325,10 +375,12 @@ jobs:
 
   publish:
     name: publish release
+    if: ${{ !cancelled() && needs.version.result == 'success' && needs.version.outputs.skip != 'true' && needs.build.result == 'success' && (needs.verification.result == 'success' || (github.event_name == 'workflow_run' && needs.verification.result == 'skipped')) && (needs.doc-recipes.result == 'success' || (github.event_name == 'workflow_run' && needs.doc-recipes.result == 'skipped')) && needs.smoke.result == 'success' && needs.sign.result == 'success' && needs.native.result == 'success' }}
     permissions:
       contents: write
     needs: [version, build, smoke, verification, doc-recipes, sign, native]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -390,7 +442,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          status=$(curl -sS -o /tmp/release.json -w "%{http_code}" "https://api.github.com/repos/Dr0nj/regente/releases/tags/$RELEASE_TAG")
+          status=$(curl --connect-timeout 15 --max-time 60 -sS -o /tmp/release.json -w "%{http_code}" "https://api.github.com/repos/Dr0nj/regente/releases/tags/$RELEASE_TAG")
           test "$status" = 404 || { echo "Release exists or lookup failed; published assets cannot be replaced."; exit 1; }
       - name: Publish
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3

@@ -2,17 +2,81 @@ name: CI
 
 on:
   push:
-    branches: [main, 'codex/**']
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      capacity:
+        description: Force the 30-minute capacity qualification
+        type: boolean
+        default: false
+
+# Superseded branch/PR validation is disposable; releases have a separate lock.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 jobs:
+  scope:
+    name: verification scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      capacity: ${{ steps.scope.outputs.capacity }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - id: scope
+        run: python3 scripts/ci_scope.py
+  workflow-contract:
+    name: workflow contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.26'
+          cache-dependency-path: |
+            server/go.sum
+            agent/go.sum
+      - name: Validate workflows and release trust boundary
+        run: |
+          go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= -pyflakes=
+          python3 -m unittest discover -s scripts -p 'test_ci_*.py' -v
   doc-recipes:
     uses: ./.github/workflows/doc-recipes.yml
     with:
       ref: ${{ github.sha }}
   verification:
+    needs: scope
     uses: ./.github/workflows/verification.yml
     with:
       ref: ${{ github.sha }}
+      run-capacity: ${{ needs.scope.outputs.capacity == 'true' }}
+  capacity-policy:
+    name: capacity policy
+    needs: [scope, verification]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require the selected qualification outcome
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          VERIFY_RESULT: ${{ needs.verification.result }}
+          REQUIRED: ${{ needs.scope.outputs.capacity }}
+          CAPACITY_RESULT: ${{ needs.verification.outputs.capacity-result }}
+        run: |
+          test "$SCOPE_RESULT" = success
+          test "$VERIFY_RESULT" = success
+          if [ "$REQUIRED" = true ]; then
+            test "$CAPACITY_RESULT" = success
+          else
+            test "$REQUIRED" = false
+            test "$CAPACITY_RESULT" = skipped
+          fi
+          echo "Capacity policy passed: required=$REQUIRED, result=$CAPACITY_RESULT" >> "$GITHUB_STEP_SUMMARY"

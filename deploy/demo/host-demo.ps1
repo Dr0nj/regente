@@ -54,6 +54,7 @@ function Api([string]$Path, [string]$Method = 'GET', $Body = $null) {
   Invoke-RestMethod @options
 }
 function Wait-For([string]$Description, [scriptblock]$Check) {
+  $script:smokePhase = $Description
   $until = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
   do {
     if ($srv -and $srv.HasExited) { throw 'The owned server exited; inspect the private run directory.' }
@@ -190,6 +191,29 @@ try {
     Write-Host 'Use environment demo on guest jobs. Container networking is ON, not job-only isolation.'
     $null = Read-Host 'Press Enter to stop this demo (only owned resources are stopped)'
   }
+} catch {
+  # Only allowlisted synthetic state is exported; private logs contain credentials.
+  if ($Smoke -and $EvidencePath) {
+    $diagnostic = @{status='failed'; nativeSmoke=[bool]$NativeSmoke; gitFixture=[bool]$GitFixture
+      phase=$script:smokePhase; publicTunnel=$false
+      serverExited=($null -ne $srv -and $srv.HasExited)
+      agentExited=($null -ne $agent -and $agent.HasExited)}
+    if ($instanceId -and $srv -and -not $srv.HasExited) {
+      try {
+        $observed = Api "/api/instances/$instanceId"
+        if ($observed.status -in @('WAITING','RUNNING','OK','NOTOK','CANCELLED','HELD')) {
+          $diagnostic.instanceStatus = $observed.status
+        }
+        $diagnostic.agentMatches = $observed.agentId -eq $agentID
+        $diagnostic.outputMarkerPresent = [bool]($observed.output -match 'regente-demo-smoke')
+      } catch { $diagnostic.instanceUnavailable = $true }
+    }
+    try {
+      [IO.File]::WriteAllText([IO.Path]::GetFullPath($EvidencePath), (ConvertTo-Json $diagnostic))
+      Write-Host "Synthetic failure evidence: $(ConvertTo-Json $diagnostic -Compress)"
+    } catch { Write-Warning 'Could not write synthetic failure evidence.' }
+  }
+  throw
 } finally {
   $env:REGENTE_TOKEN = $null
   if ($credential -and $srv -and -not $srv.HasExited) {
