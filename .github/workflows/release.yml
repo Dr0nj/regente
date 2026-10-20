@@ -248,6 +248,7 @@ jobs:
   smoke:
     name: smoke de instalação (systemd real)
     needs: [version, build, sign]
+    if: ${{ !cancelled() && needs.version.result == 'success' && needs.version.outputs.skip != 'true' && needs.build.result == 'success' && needs.sign.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -332,6 +333,7 @@ jobs:
   native:
     name: native ${{ matrix.goos }}/${{ matrix.arch }}
     needs: [version, sign]
+    if: ${{ !cancelled() && needs.version.result == 'success' && needs.version.outputs.skip != 'true' && needs.sign.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     strategy:
