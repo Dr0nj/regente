@@ -83,6 +83,14 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > detalhado em §✅ Entregue (+ linha no changelog). As caixinhas espalhadas nas seções de
 > baixo **não valem** como status (ver ⛔ REGRA DE STATUS no topo).
 
+### Kubernetes — implantação híbrida (21/10/2026)
+
+- **KUBERNETES-01 — qualificação complementar:** baseline local entregue abaixo; completar interação de navegador/WS, matriz de papéis humanos, rotação com execução em voo e indisponibilidade de disco antes de ampliar a garantia operacional. Harness completo corrigido ainda precisa de execução em laboratório novo; evidência atual composta por testes segmentados. Sem conta AWS: Docker/kind é o ambiente vigente, sem homologação EC2/EKS.
+- **KUBERNETES-02 — agente no cluster:** HTTP interno via Services, identidade/journal exclusivos, segurança/egress e recuperação após perda de pod; coexistência com agentes externos.
+- **KUBERNETES-03 — ponte remota:** escolher e implementar transporte para scripts em hosts sem agente Regente local (SSH/SSM conforme inventário), com autorização, output, cancelamento e incerteza preservada. SSM requer AWS; não foi escolhido.
+- **KUBERNETES-04 — migração gradual:** equivalência por job/destino, coexistência, observabilidade e rollback antes de remover agentes externos.
+- **KUBERNETES-05 — pod por execução:** controlador/Jobs, quotas, isolamento, resultado e reconciliação; distinto do agente persistente em pod.
+
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
 - **I17 — recuperação e piloto operacional:** preparação técnica autorizada em 14/10/2026: ensaio integrado de snapshot anterior a efeito/checkpoint, restore coerente e [runbook/dossiê](operational-recovery-pilot.md). **Etapa operacional com segundo mantenedor humano e piloto real adiada pelo usuário em 14/10/2026.** Ambiente/janela, metas aceitas e aceite independente serão definidos na retomada. Publicação da preparação técnica não conclui I17; CI não substitui esse aceite.
@@ -383,6 +391,11 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+### Kubernetes-01 — baseline local com agente externo (21/10/2026)
+
+[Laboratório reproduzível](../deploy/kubernetes/README.md): imagem backend+SPA, manifests kind, PostgreSQL/workspace em PVCs, production/durable/deny, TLS/mTLS, agente externo não-root e journal persistente. Dez efeitos únicos, dispatch p95 1,483s; falha/retry/cancelamento, reconciliação após troca de backend, crash com incerteza preservada, restore isolado de 15 instâncias em 49,665s e upgrade/rollback no mesmo schema32. Readiness503 durante perda do banco; certificado obrigatório e rotação/revogação ociosa verificados. Limites e qualificações restantes constam na §Backlog. Não homologa AWS, HA, VM/systemd, capacidade produtiva ou I17 humano.
+
 
 ## I15 — Publicação verificável (2026-10-13)
 
@@ -1957,6 +1970,8 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-10-21 — Kubernetes-01 baseline local:** backend+SPA/PostgreSQL no kind e agente externo persistente; circuito curto e recuperação documentados. Corrigida dependência agent/security no Dockerfile existente. Empacotamento do laboratório não dispara soak nativo; runtime/dependências continuam sujeitos ao gate. Qualificação complementar segue no backlog.
 
 - **2026-10-13 — I15/I16:** publicação autenticada v0.2.48, full/race e 22 jobs de release no SHA 93e33d0; capacidade nominal de 10 mil no perfil sintético, soak de 30 minutos, saturação de 100 mil registrada e 1 milhão não executado. I17 permanece pendente por decisão humana. [Release](https://github.com/Dr0nj/regente/releases/tag/v0.2.48) · [Evidência](evidence/i15-i16-93e33d0.json).
 

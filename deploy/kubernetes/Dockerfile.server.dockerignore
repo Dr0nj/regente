@@ -1,0 +1,15 @@
+**
+!server/**
+!agent/go.mod
+!agent/go.sum
+!agent/journal/**
+!app/**
+app/node_modules
+app/dist
+**/*.db*
+**/*.exe
+**/*.key
+**/*.pem
+server/workspace
+server/sessions
+!agent/security/**

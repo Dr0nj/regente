@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+FROM node:24-bookworm-slim@sha256:91acba91b842bec0bf7ea6f5e09c644c7ccad72c4996ed9616d861d1c7cd60d4 AS web
+WORKDIR /app
+COPY app/package*.json ./
+RUN npm ci
+COPY app/ ./
+ENV VITE_REGENTE_SERVER_URL=@origin
+RUN npm run build
+FROM golang:1.26@sha256:3745f1aa11822297b79113f5e84ce2bffeb039734571c39855809cfe9e5d7be6 AS build
+WORKDIR /src
+COPY server/go.mod server/go.sum ./server/
+COPY agent/go.mod agent/go.sum ./agent/
+RUN cd server && go mod download
+COPY server/ ./server/
+COPY agent/journal/ ./agent/journal/
+COPY agent/security/ ./agent/security/
+ARG VERSION=dev
+RUN cd server && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/regente-server .
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+COPY --from=build /out/regente-server /usr/local/bin/regente-server
+COPY --from=web /app/dist /app
+USER 65532:65532
+EXPOSE 8443
+ENTRYPOINT ["regente-server"]

@@ -1,0 +1,72 @@
+{
+  "scope": "Local kind baseline, not complete Kubernetes-01 qualification",
+  "date": "2026-10-21",
+  "runtimeSourceSha": "93117783e85aee77d6891821cc9d590f78c02374",
+  "schema": 32,
+  "environment": {
+    "kind": "0.32.0",
+    "kubernetes": "1.36.1",
+    "architecture": "linux/amd64",
+    "backendReplicas": 1,
+    "externalAgentConcurrency": 2
+  },
+  "checks": {
+    "upgrade-rollback": {
+      "originalImage": "regente-kubernetes-server:9311778",
+      "instancesBefore": 15,
+      "upgrade": "passed",
+      "rollback": "passed",
+      "schemaChange": false,
+      "status": "passed"
+    },
+    "dispatch-latency": {
+      "count": 10,
+      "p95_dispatch_seconds": 1.4829999999999999,
+      "max_dispatch_seconds": 1.492
+    },
+    "database-recovery": {
+      "databaseUnavailableReadiness503": true,
+      "status": "passed"
+    },
+    "identity-check": {
+      "status": "passed",
+      "missingCertificateRejected": true,
+      "machineCannotAdminister": true,
+      "rotationOldRejectedNewAccepted": true,
+      "revokedRejected": true,
+      "inFlightRotationTested": false
+    },
+    "restore": {
+      "status": "passed",
+      "restoredInstanceCount": 15,
+      "expectedInstanceCount": 15,
+      "seconds": 49.665,
+      "agentAttachedToRestore": false
+    },
+    "originalHarness": {
+      "status": "failed",
+      "reason": "Graceful restart incorrectly expected uncertainty; known failure was correct. Corrected SIGKILL test passed separately; no complete rerun."
+    },
+    "tenCommands": {
+      "count": 10,
+      "effectsEach": 1
+    },
+    "backendReplacement": {
+      "effectCount": 1,
+      "seconds": 20.605
+    },
+    "abruptAgentCrash": {
+      "status": "passed",
+      "effectsDelta": 1,
+      "duplicateAttempt": false,
+      "uncertaintyResolvedAfterProcessInspection": true
+    }
+  },
+  "limits": [
+    "SPA delivery and API login, not browser UI/WS qualification",
+    "No in-flight credential rotation or disk exhaustion test",
+    "No cross-schema rollback",
+    "No sustained capacity soak or AWS/VM/systemd qualification",
+    "Updated complete harness not rerun on a fresh second lab"
+  ]
+}

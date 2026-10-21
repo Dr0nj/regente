@@ -11,6 +11,7 @@ COPY agent/go.mod agent/go.sum ./agent/
 RUN cd server && go mod download
 COPY server/ ./server/
 COPY agent/journal/ ./agent/journal/
+COPY agent/security/ ./agent/security/
 RUN cd server && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/regente-server .
 # Diretório de trabalho do server (workspace GitOps + DB SQLite quando usada),
 # pré-criado para ser COPYado com a dona correta na imagem distroless (que não

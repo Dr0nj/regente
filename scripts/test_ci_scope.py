@@ -11,14 +11,15 @@ class ScopeTests(unittest.TestCase):
         self.assertFalse(needs_capacity([
             ".github/workflows/ci.yml", "README.md", "docs/site/index.html",
             "app/src/main.tsx", "scripts/ci_scope.py", "scripts/verify.py",
-            "deploy/demo/host-demo.ps1"]))
+            "deploy/demo/host-demo.ps1", "deploy/Dockerfile",
+            "deploy/kubernetes/lab.py", "deploy/kubernetes/Dockerfile.server"]))
 
     def test_runtime_workload_dependencies_and_unknown_paths_require_soak(self):
         for path in ("server/internal/scheduler/durable.go", "agent/main.go",
                      "server/go.sum", "go.work", "scripts/capacity.py",
                      "scripts/integration.py", "new-runtime/config.json"):
             with self.subTest(path=path):
-                self.assertTrue(needs_capacity(["README.md", path]))
+                self.assertTrue(needs_capacity(["README.md", "deploy/kubernetes/lab.py", path]))
 
     def test_missing_base_is_not_an_empty_diff(self):
         for base in ("", "0" * 40):

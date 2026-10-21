@@ -9,7 +9,7 @@ import subprocess
 def needs_capacity(paths):
     """Only known non-runtime changes bypass the engineering soak."""
     for path in paths:
-        if path.endswith(".md") or path.startswith(("docs/", ".github/", "app/")):
+        if path.endswith(".md") or path.startswith(("docs/", ".github/", "app/", "deploy/kubernetes/")):
             continue
         if path.startswith(("server/cmd/docsite/", "server/internal/api/apidocs")):
             continue
@@ -18,7 +18,7 @@ def needs_capacity(paths):
             "scripts/ci_release_gate.py", "scripts/test_ci_release_gate.py",
             "scripts/verify.py", "scripts/verify.sh", "scripts/test_verify.py",
             "scripts/check-doc-recipes.cjs", "scripts/test-demo-guards.ps1",
-            "deploy/demo/host-demo.ps1",
+            "deploy/demo/host-demo.ps1", "deploy/Dockerfile",
         }:
             continue
         return True

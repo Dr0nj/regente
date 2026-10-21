@@ -1,0 +1,14 @@
+# syntax=docker/dockerfile:1
+FROM golang:1.26-alpine@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . ./
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.agentVersion=${VERSION}" -o /out/regente-agent .
+FROM alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
+RUN adduser -D -u 10001 runner && mkdir -p /state /lab/output && chown -R 10001:10001 /state /lab
+COPY --from=build /out/regente-agent /usr/local/bin/regente-agent
+USER 10001:10001
+WORKDIR /lab
+ENTRYPOINT ["regente-agent"]
