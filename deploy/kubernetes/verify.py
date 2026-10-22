@@ -49,12 +49,18 @@ def scale(n):
 
 
 def verify():
+    wait("initial HTTPS readiness", lambda: lab.api("/readyz")["ready"], 120)
     lab.login()
     ctx = ssl.create_default_context(cafile=str(lab.STATE / "ca.crt"))
-    with urllib.request.urlopen("https://localhost:8443", context=ctx) as r:
+    with urllib.request.urlopen(lab.BASE, context=ctx) as r:
         assert r.status == 200 and b"<html" in r.read()
     report["checks"]["https_spa_login"] = True
-    assert any(a["id"] == lab.WORKER and a["online"] for a in lab.api("/api/agents"))
+    wait(
+        "external agent online",
+        lambda: any(
+            a["id"] == lab.WORKER and a["online"] for a in lab.api("/api/agents")
+        ),
+    )
     report["checks"]["external_agent_mtls_v2"] = True
     # One earlier single-order smoke is retained as the first of the ten.
     first = lab.STATE / "first-order.json"

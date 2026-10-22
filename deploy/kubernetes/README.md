@@ -99,13 +99,72 @@ and recovered. Missing machine certificates, revoked tokens, and machine access
 to credential administration were rejected; idle credential rotation accepted the
 replacement and rejected the old token.
 
-The original verification report stopped at a mistaken graceful-restart
-expectation. A separate corrected SIGKILL check supplied the crash evidence; this
-is not a claim that the original report passed. The corrected full harness has
-not been rerun on a second fresh lab. SPA delivery and API login were checked;
-browser interaction/WebSocket reconnection, human role matrix, in-flight credential
-rotation, disk exhaustion and sustained load remain outside this qualification.
-No 30-minute soak was run. These local observations are not a cloud SLA.
+Qualification was completed on 22 October in a fresh namespace, with separate
+PostgreSQL/workspace PVCs, PKI, agent identity and journal. The corrected full
+`verify.py` run passed. Chromium 153 verified HTTPS login without TLS bypass,
+viewer/operator/admin read/write/admin permissions, scoped reads and automatic
+WebSocket reconnection after ACL change. Token rotation with zero grace during a
+running command rejected the old token, completed the same execution once and did
+not restart the agent. Making the stopped agent's journal unwritable caused a
+nonzero startup refusal; its queued job ran once after restoring permissions.
+This is an unwritable-volume test, not a host disk exhaustion benchmark.
+
+The original baseline report and an initial readiness failure (before any job)
+remain preserved as historical evidence. The fresh run supplies complete harness
+evidence; no failed report was relabeled. No 30-minute soak was run. These local
+observations do not qualify AWS, HA, production capacity or cross-schema rollback.
+
+## Repeat qualification in a fresh namespace
+
+Keep the original lab. Set `REGENTE_LAB_INSTANCE=regente-kubernetes-qual01`,
+`REGENTE_LAB_NODE_PORT=30444` and `REGENTE_LAB_URL=https://127.0.0.1:9443` for every
+Python command. The instance name determines the isolated namespace, local state,
+external agent and volumes. Prepare/deploy/agent/finalize as above. Do not reuse a
+name whose state or evidence already exists. The API refuses a different CA in an
+existing namespace. A new namespace still shares the local cluster and Docker
+host; this is not tenant isolation.
+
+Provide a stable loopback TCP mapping from port 9443 to the control-plane node's
+30444, preserving TLS end to end. A `kubectl port-forward` to a pod or Service exits
+when its selected backend pod is replaced, so it cannot carry the backend-loss
+rehearsal without supervision. The observed run used a disposable Node TCP proxy:
+
+```sh
+docker run -d --name regente-kubernetes-qual01-proxy --network kind --read-only --cap-drop ALL --security-opt no-new-privileges --memory 128m --cpus 0.25 -p 127.0.0.1:9443:9443 regente-kubernetes-web-check node -e 'const net=require("node:net");net.createServer(s=>{const t=net.connect(30444,"regente-kubernetes-control-plane");s.pipe(t).pipe(s);s.on("error",()=>t.destroy());t.on("error",()=>s.destroy());}).listen(9443,"0.0.0.0")'
+python deploy/kubernetes/verify.py
+python deploy/kubernetes/qualify.py
+python deploy/kubernetes/recover.py
+```
+
+Build the `web` target as `regente-kubernetes-web-check` before that proxy.
+`qualify.py` inspects and resolves the synthetic crash, rotates the actual agent's
+token during a command, then tests refusal/recovery of an unwritable journal. It
+preserves evidence, refuses a second run and restores journal permissions in a
+finally block. On failure, inspect the report and durable state before retrying.
+The one-day replacement token is installed atomically; credentials are never
+printed. Keep `token.next` and `credential-next-id.json` if installation fails.
+
+For the browser and role matrix, build `Dockerfile.browser` after the `web` target.
+Run `browser-check.cjs` in that disposable container on Docker's `kind` network,
+with `NODE_PATH=/app/node_modules`, `LAB_STATE=/state`,
+`LAB_BROWSER_URL=https://regente-kubernetes.local:30444`, the isolated state mounted
+at `/state` and the script mounted read-only. Map that hostname to the discovered
+control-plane IP. Before running Node, initialize the container's NSS database and
+import only the laboratory CA:
+
+```sh
+mkdir -p /root/.local/share/pki/nssdb
+certutil -N --empty-password -d sql:/root/.local/share/pki/nssdb
+certutil -A -d sql:/root/.local/share/pki/nssdb -n regente-lab-ca -t 'C,,' -i /state/ca.crt
+node /check.cjs
+```
+
+Use `--shm-size 256m` for the browser container. The trust database lives only in
+that disposable container; see [Chromium certificate management](https://chromium.googlesource.com/chromium/src/+/main/docs/linux/cert_management.md).
+The script creates synthetic viewer/operator accounts, records its JSON report
+and screenshot privately, and verifies that event URLs use tickets rather than
+bearer tokens. `browser-accounts.json` contains credentials and must remain ignored.
+
 
 ## Operational boundaries
 

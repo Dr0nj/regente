@@ -46,6 +46,7 @@ def recover():
     backup = lab.STATE / "backup"
     backup.mkdir(exist_ok=False)
     source = lab.NS
+    source_base = lab.BASE
     lab.login()
     instances = lab.api("/api/instances")
     if any(r.get("status") == "RUNNING" for r in instances):
@@ -104,7 +105,7 @@ def recover():
                     "--entrypoint",
                     "tar",
                     "-v",
-                    "regente-kubernetes-journal:/state:ro",
+                    lab.JOURNAL_VOLUME + ":/state:ro",
                     lab.AGENT,
                     "cf",
                     "-",
@@ -269,7 +270,7 @@ def recover():
         log.close()
         lab.kube("-n", restored, "scale", "deployment/regente-server", "--replicas=0")
         lab.NS = source
-        lab.BASE = "https://127.0.0.1:8443"
+        lab.BASE = source_base
         lab.TOKEN = None
 
 

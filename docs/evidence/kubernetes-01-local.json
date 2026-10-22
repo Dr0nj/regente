@@ -1,5 +1,5 @@
 {
-  "scope": "Local kind baseline, not complete Kubernetes-01 qualification",
+  "scope": "Kubernetes-01 completed in a local kind laboratory; no cloud or HA qualification",
   "date": "2026-10-21",
   "runtimeSourceSha": "93117783e85aee77d6891821cc9d590f78c02374",
   "schema": 32,
@@ -63,10 +63,93 @@
     }
   },
   "limits": [
-    "SPA delivery and API login, not browser UI/WS qualification",
-    "No in-flight credential rotation or disk exhaustion test",
-    "No cross-schema rollback",
-    "No sustained capacity soak or AWS/VM/systemd qualification",
-    "Updated complete harness not rerun on a fresh second lab"
-  ]
+    "Local synthetic fixtures, not AWS/EC2/systemd/cloud qualification",
+    "Single backend; no HA or sustained capacity SLA",
+    "Same-schema32 rollback only",
+    "Storage failure injected as unwritable agent journal; not host disk exhaustion",
+    "Certificate rotation not tested; token rotation during an execution tested",
+    "Historical failed harness reports preserved; fresh corrected complete run passed"
+  ],
+  "qualificationDate": "2026-10-22",
+  "freshLaboratoryQualification": {
+    "instance": "regente-kubernetes-qual01",
+    "fullHarness": {
+      "status": "passed",
+      "checks": [
+        "https_spa_login",
+        "external_agent_mtls_v2",
+        "orders",
+        "ten_commands",
+        "accept_to_start_seconds",
+        "known_failure_and_operator_retry",
+        "cancel",
+        "backend_replacement",
+        "agent_restart_uncertainty"
+      ],
+      "successCount": 10,
+      "effectsEach": 1,
+      "backendRecoverySeconds": 17.591
+    },
+    "complementary": {
+      "status": "passed",
+      "checks": {
+        "crashResolvedAfterInspection": true,
+        "rotationDuringExecution": {
+          "oldRejected401": true,
+          "sameExecution": true,
+          "effects": 1,
+          "agentRestarted": false
+        },
+        "unwritableJournal": {
+          "agentExitedNonzero": true,
+          "noEffectWhileUnavailable": true,
+          "journalPreserved": true,
+          "effectAfterRecovery": 1
+        }
+      }
+    },
+    "browser": {
+      "status": "passed",
+      "roles": {
+        "viewer": {
+          "read": 200,
+          "write": 403,
+          "administer": 403
+        },
+        "operator": {
+          "read": 200,
+          "write": 200,
+          "administer": 403
+        },
+        "admin": {
+          "read": 200,
+          "write": 200,
+          "administer": 200
+        }
+      },
+      "browser": {
+        "login": true,
+        "tlsVerified": true,
+        "websocketConnections": 2,
+        "automaticReconnect": true,
+        "eventReceivedAfterReconnect": true,
+        "aclScopedReads": true,
+        "ticketWithoutBearerInURL": true,
+        "chromium": "153.0.8010.12"
+      }
+    },
+    "restore": {
+      "status": "passed",
+      "restoredInstanceCount": 16,
+      "expectedInstanceCount": 16,
+      "seconds": 50.595,
+      "agentAttachedToRestore": false
+    },
+    "evidenceSha256": {
+      "verification.json": "91579496b204d97314095884caacdf5a36037e9485be58219652a95e37d51cff",
+      "qualification.json": "466ec7dc70abd39306c1c1c2962952029aa163b6530ce1c894af3cc9f134938e",
+      "browser-check.json": "59090846ce969df8ffae3362b9dded449b16775d764df07d45a112de3ad186e2",
+      "recovery.json": "6a9600f5177bd01bf8a21f107d5abee2c500138a2c5d6ffa1169e663a2395953"
+    }
+  }
 }

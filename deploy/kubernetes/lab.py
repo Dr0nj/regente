@@ -5,20 +5,33 @@ Requires Python cryptography, docker, kubectl and kind. Runtime secrets stay in
 
 import argparse, base64, datetime as dt, hashlib, ipaddress, json, os, secrets
 from pathlib import Path
-import ssl, subprocess, time, urllib.request, urllib.error
+import ssl, subprocess, time, urllib.request, urllib.error, re
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, ed25519
 from cryptography.x509.oid import NameOID, ExtendedKeyUsageOID
 
 ROOT = Path(__file__).resolve().parents[2]
-STATE = ROOT / ".integration/kubernetes"
+INSTANCE = os.environ.get("REGENTE_LAB_INSTANCE", "regente-kubernetes")
+if not re.fullmatch(r"regente-kubernetes(?:-[a-z0-9]{1,16})?", INSTANCE):
+    raise ValueError("Invalid isolated laboratory instance name")
+STATE = (
+    ROOT
+    / ".integration"
+    / ("kubernetes" if INSTANCE == "regente-kubernetes" else INSTANCE)
+)
+NODE_PORT = int(os.environ.get("REGENTE_LAB_NODE_PORT", "30443"))
+if not 30000 <= NODE_PORT <= 32767:
+    raise ValueError("Lab NodePort must be in 30000..32767")
+BASE = os.environ.get("REGENTE_LAB_URL", "https://127.0.0.1:8443")
+JOURNAL_VOLUME = INSTANCE + "-journal"
+CREDENTIAL_VOLUME = INSTANCE + "-credentials"
 CONTEXT = "kind-regente-kubernetes"
-NS = "regente-kubernetes-lab"
+NS = INSTANCE + "-lab"
 SERVER = "regente-kubernetes-server:9311778"
 AGENT = "regente-kubernetes-agent:9311778"
 PG = "postgres:17.6-alpine@sha256:747d5ed1fdeeb124b880fbe3d7c6557d2c4064ae41d6b6297d417882effce4be"
-WORKER = "regente-kubernetes-external-agent"
+WORKER = INSTANCE + "-external-agent"
 
 
 def run(args, data=None, timeout=120):
@@ -173,7 +186,7 @@ def manifests():
         "REGENTE_ENVIRONMENT": "kubernetes-lab",
         "REGENTE_NETWORK_BOUNDARY": "tls",
         "REGENTE_ADDR": "0.0.0.0:8443",
-        "REGENTE_APP_URL": "https://localhost:8443",
+        "REGENTE_APP_URL": BASE,
         "REGENTE_AUTH_MODE": "local",
         "REGENTE_TOKEN": "",
         "REGENTE_DEMO_MODE": "0",
@@ -300,7 +313,9 @@ def manifests():
             spec=dict(
                 type="NodePort",
                 selector={"app": "regente-server"},
-                ports=[dict(name="https", port=8443, targetPort=8443, nodePort=30443)],
+                ports=[
+                    dict(name="https", port=8443, targetPort=8443, nodePort=NODE_PORT)
+                ],
             ),
         )
     )
@@ -531,7 +546,6 @@ def deploy():
 
 
 TOKEN = None
-BASE = "https://127.0.0.1:8443"
 
 
 def api(path, body=None, method=None):
@@ -605,7 +619,7 @@ def agent():
     (STATE / "credential-id.json").write_text(json.dumps({"id": issued["id"]}))
     (STATE / "token").write_text(issued["token"])
     os.chmod(STATE / "token", 0o600)
-    for name in ("regente-kubernetes-journal", "regente-kubernetes-credentials"):
+    for name in (JOURNAL_VOLUME, CREDENTIAL_VOLUME):
         run(["docker", "volume", "create", name])
     # Linux volume owns credentials; Windows bind permissions are not the security contract.
     run(
@@ -620,9 +634,9 @@ def agent():
             "-v",
             str(STATE) + ":/source:ro",
             "-v",
-            "regente-kubernetes-credentials:/credentials",
+            CREDENTIAL_VOLUME + ":/credentials",
             "-v",
-            "regente-kubernetes-journal:/state",
+            JOURNAL_VOLUME + ":/state",
             AGENT,
             "-ec",
             "cp /source/client.crt /source/client.key /source/ca.crt /source/token /credentials/; chmod 600 /credentials/*; chown -R 10001:10001 /credentials /state",
@@ -661,14 +675,14 @@ def agent():
             "--pids-limit",
             "128",
             "-v",
-            "regente-kubernetes-credentials:/credentials:ro",
+            CREDENTIAL_VOLUME + ":/credentials:ro",
             "-v",
-            "regente-kubernetes-journal:/state",
+            JOURNAL_VOLUME + ":/state",
             AGENT,
             "-transport",
             "v2",
             "-server",
-            "https://regente-kubernetes.local:30443",
+            "https://regente-kubernetes.local:" + str(NODE_PORT),
             "-id",
             WORKER,
             "-env",

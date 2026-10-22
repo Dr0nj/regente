@@ -1,0 +1,5 @@
+# Disposable qualification tooling, never a production workload.
+# First build Dockerfile.server --target web -t regente-kubernetes-web-check .
+FROM regente-kubernetes-web-check
+RUN apt-get update && apt-get install -y --no-install-recommends libnss3-tools \
+    && npx playwright install --with-deps chromium
