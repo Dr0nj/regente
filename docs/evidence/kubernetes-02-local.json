@@ -1,0 +1,35 @@
+{
+  "status": "passed",
+  "checks": {
+    "nonroot_readonly_no_caps_no_sa_regular0600": true,
+    "tls_service_dns_redaction_and_coexistence": true,
+    "kernel_egress_live_negative_control": true,
+    "host_port_cidr_metadata_denied_before_effect": true,
+    "drained_secret_rotation_same_pvc_journal": true,
+    "pod_loss_mutation_uncertain_single_effect_same_execution": true,
+    "uncertainty_resolved_after_independent_inspection": true
+  },
+  "orders": {
+    "http-ok": "http-ok-FORCE-195815",
+    "external-coexist": "external-coexist-FORCE-195816",
+    "deny-host": "deny-host-FORCE-195820",
+    "deny-port": "deny-port-FORCE-195823",
+    "deny-cidr": "deny-cidr-FORCE-195826",
+    "deny-metadata": "deny-metadata-FORCE-195830",
+    "http-rotated": "http-rotated-FORCE-195928",
+    "http-slow": "http-slow-FORCE-195932",
+    "http-crash": "http-slow-FORCE-200159"
+  },
+  "priorHarnessFailure": "In-pod STOP did not enforce crash; graceful interruption returned failed. Original report retained.",
+  "date": "2026-10-22",
+  "scope": "local kind Kubernetes-02; HTTP pod and external COMMAND coexistence",
+  "runtimeBase": "9311778",
+  "phase01Release": "v0.2.52",
+  "limitations": [
+    "No AWS, HA, cross-node journal recovery or production capacity SLA",
+    "Secret rotation is drained replacement, not hot reload",
+    "One HTTP identity; local-path PVC, no force deletion or autoscaling",
+    "Firewall init requires NET_ADMIN/NET_RAW; agent drops all capabilities",
+    "No per-pod PID limit or cluster admission policy qualified"
+  ]
+}

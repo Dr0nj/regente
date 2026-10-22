@@ -191,6 +191,7 @@ bearer tokens. `browser-accounts.json` contains credentials and must remain igno
   cluster, external container and two named volumes before deleting anything.
   Never use broad Docker prune commands. Existing clusters are unrelated.
 
-Future Kubernetes stages are tracked only in the [canonical roadmap](../../docs/roadmap.md):
-in-cluster HTTP agents, remote execution bridge, coexistence/migration and
-per-execution pods.
+The [HTTP cell extension](HTTP-CELL.md) adds an in-cluster HTTP agent with its own
+identity, persistent journal and verified egress, alongside the external agent.
+Future stages are tracked in the [canonical roadmap](../../docs/roadmap.md):
+remote execution bridge, migration and per-execution pods.

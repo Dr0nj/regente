@@ -85,7 +85,6 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Kubernetes — implantação híbrida (21/10/2026)
 
-- **KUBERNETES-02 — agente no cluster:** HTTP interno via Services, identidade/journal exclusivos, segurança/egress e recuperação após perda de pod; coexistência com agentes externos.
 - **KUBERNETES-03 — ponte remota:** escolher e implementar transporte para scripts em hosts sem agente Regente local (SSH/SSM conforme inventário), com autorização, output, cancelamento e incerteza preservada. SSM requer AWS; não foi escolhido.
 - **KUBERNETES-04 — migração gradual:** equivalência por job/destino, coexistência, observabilidade e rollback antes de remover agentes externos.
 - **KUBERNETES-05 — pod por execução:** controlador/Jobs, quotas, isolamento, resultado e reconciliação; distinto do agente persistente em pod.
@@ -390,6 +389,10 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+### Kubernetes-02 — célula HTTP no pod e coexistência local (22/10/2026)
+
+[Célula reproduzível](../deploy/kubernetes/HTTP-CELL.md): StatefulSet de um dono, PVC para journal, identidade/certificado/token próprios, agente não-root/read-only/caps0/sem ServiceAccount token. Init configura firewall de egress no namespace do pod; teste direto contra destino alcançável de outro pod comprovou bloqueio real. HTTP/TLS via Service e COMMAND externo coexistem com targeting explícito; host/porta/CIDR/metadata negados, segredo por referência e resultado redigido. Rotação drenada por Secret+substituição preservou journal; queda abrupta pelo runtime seguida de remoção normal preservou UNCERTAIN, mesma execução e um único efeito, sem replay. Primeiro ensaio de interrupção graciosa e sua expectativa incorreta permanecem registrados; crash corrigido validado separadamente. [Evidência](evidence/kubernetes-02-local.json). Qualificação local, sem AWS/HA/failover de nó/capacidade produtiva, PID limit ou admission policy; rotação não é hot reload. Kubernetes03–05 seguem no backlog.
 
 ### Kubernetes-01 — baseline local com agente externo (21/10/2026)
 
@@ -1969,6 +1972,8 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-10-22 — Kubernetes-02 local:** agente HTTP no pod com journal exclusivo, firewall verificado, TLS/secrets e coexistência com COMMAND externo; perda abrupta preserva incerteza e não repete efeito.
 
 - **2026-10-22 — Kubernetes-01 local concluído:** harness integral em namespace/PVC/identidade novos, navegador real com TLS/WS, papéis humanos, rotação durante execução e journal indisponível com recuperação. Sem soak30min nem alegação de homologação cloud.
 

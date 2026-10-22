@@ -63,7 +63,7 @@ def resource(kind, name, **values):
     )
 
 
-def certs():
+def certs(http_cell=False):
     STATE.mkdir(parents=True, exist_ok=True)
     if (STATE / "private.json").exists():
         raise RuntimeError(
@@ -108,7 +108,11 @@ def certs():
         .sign(ca_key, hashes.SHA256())
     )
     (STATE / "ca.crt").write_bytes(ca.public_bytes(serialization.Encoding.PEM))
-    for who in ("server", "client"):
+    for who in (
+        ("server", "client", "http-client", "http-fixture")
+        if http_cell
+        else ("server", "client")
+    ):
         key = ec.generate_private_key(ec.SECP256R1())
         b = (
             x509.CertificateBuilder()
@@ -124,20 +128,21 @@ def certs():
                 [
                     (
                         ExtendedKeyUsageOID.SERVER_AUTH
-                        if who == "server"
+                        if who in ("server", "http-fixture")
                         else ExtendedKeyUsageOID.CLIENT_AUTH
                     )
                 ]
             ),
             critical=False,
         )
-        if who == "server":
+        if who in ("server", "http-fixture"):
             b = b.add_extension(
                 x509.SubjectAlternativeName(
                     [
                         x509.DNSName("localhost"),
                         x509.DNSName("regente-kubernetes.local"),
                         x509.DNSName("regente-server"),
+                        x509.DNSName("http-fixture"),
                         x509.IPAddress(ipaddress.ip_address("127.0.0.1")),
                     ]
                 ),
