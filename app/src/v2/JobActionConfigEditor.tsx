@@ -48,8 +48,9 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
       );
 
     case "SSH":
+    case "SSH_REMOTE":
       return (
-        <Section label="Remote SSH (agentless)">
+        <Section label={jobType === "SSH_REMOTE" ? "Remote SSH through bridge agent" : "Remote SSH (agentless)"}>
           <Row label="Host">
             <Input mono value={str("host")} placeholder="10.0.0.5 / ec2-...compute.amazonaws.com" onChange={v => set("host", v)} />
           </Row>
@@ -62,9 +63,17 @@ export default function JobActionConfigEditor({ jobType, config, onChange }: Pro
           <Row label="Command">
             <TextArea mono rows={3} value={str("command")} placeholder="systemctl restart app && echo ok" onChange={v => set("command", v)} />
           </Row>
-          <Row label="Private key (keyPath, optional)">
+          <Row label={jobType === "SSH_REMOTE" ? "Private key on bridge (keyPath, required)" : "Private key (keyPath, optional)"}>
             <Input mono value={str("keyPath")} placeholder="/home/user/.ssh/id_rsa" onChange={v => set("keyPath", v)} />
           </Row>
+          {jobType === "SSH_REMOTE" && <>
+            <Row label="Known hosts file on bridge (required)">
+              <Input mono value={str("knownHostsPath")} placeholder="/private/known_hosts" onChange={v => set("knownHostsPath", v)} />
+            </Row>
+            <Row label="Strict host key verification (required: yes)">
+              <Input value={str("strictHostKey")} placeholder="yes" onChange={v => set("strictHostKey", v)} />
+            </Row>
+          </>}
         </Section>
       );
 

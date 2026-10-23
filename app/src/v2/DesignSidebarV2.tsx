@@ -47,6 +47,7 @@ const JOB_TYPES: Array<{
   { id: "COMMAND",       label: "Command",       hint: "Shell command on the agent (Win/Linux)", Icon: Terminal },
   { id: "SCRIPT",        label: "Script",        hint: ".sh/.bat/.ps1 script on the agent",      Icon: FileCode },
   { id: "SSH",           label: "SSH",           hint: "Remote command over SSH (agentless)",    Icon: Network },
+  { id: "SSH_REMOTE",    label: "SSH bridge",    hint: "SSH through a durable bridge agent",    Icon: Network },
   { id: "HTTP",          label: "HTTP",          hint: "REST call with status validation",       Icon: Globe },
   { id: "FILE_WATCH",    label: "File Watch",    hint: "Waits for a file on the agent",          Icon: FileSearch },
   { id: "FILE_TRANSFER", label: "File Transfer", hint: "MFT: local ↔ SFTP ↔ S3 from the agent",  Icon: ArrowRightLeft },

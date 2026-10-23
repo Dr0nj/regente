@@ -553,6 +553,7 @@ const ACTION_VERB: Record<string, string> = {
   COMMAND: "Runs a shell command on the agent",
   SCRIPT: "Runs a script on the agent",
   SSH: "Runs a command over SSH",
+  SSH_REMOTE: "Runs a remote command through the bridge agent (SSH)",
   FILE_WATCH: "Waits for a file to appear",
   FILE_TRANSFER: "Transfers files (local / SFTP / S3)",
   DATABASE: "Runs SQL against a database",
@@ -567,6 +568,7 @@ const ACTION_FIELDS: Record<string, ActionField[]> = {
   COMMAND: [{ label: "Command", key: "command", code: true }, { label: "Working dir", key: "cwd" }],
   SCRIPT: [{ label: "Script path", key: "scriptPath" }, { label: "Args", key: "args" }, { label: "Working dir", key: "cwd" }],
   SSH: [{ label: "Host", key: "host" }, { label: "User", key: "user" }, { label: "Port", key: "port" }, { label: "Command", key: "command", code: true }, { label: "Key path", key: "keyPath" }],
+  SSH_REMOTE: [{ label: "Host", key: "host" }, { label: "User", key: "user" }, { label: "Port", key: "port" }, { label: "Command", key: "command", code: true }, { label: "Key path", key: "keyPath" }, { label: "Known hosts", key: "knownHostsPath" }, { label: "Strict host key", key: "strictHostKey" }],
   FILE_WATCH: [{ label: "Path", key: "path" }, { label: "Poll interval (s)", key: "intervalSec" }, { label: "Stable (s)", key: "stableSec" }],
   FILE_TRANSFER: [{ label: "Source", key: "src", code: true }, { label: "Destination", key: "dst", code: true }, { label: "Checksum", key: "checksum" }, { label: "Delete source", key: "deleteSource" }, { label: "Overwrite", key: "overwrite" }, { label: "Key path", key: "keyPath" }],
   DATABASE: [{ label: "Driver", key: "driver" }, { label: "DSN", key: "dsn" }, { label: "SQL", key: "sql", code: true }, { label: "Max rows", key: "maxRows" }],
@@ -668,6 +670,7 @@ function commandOf(jobType: string, config: Record<string, unknown>): string {
   switch (jobType) {
     case "COMMAND":
     case "SSH":
+    case "SSH_REMOTE":
     case "BATCH":
       return str("command");
     case "SCRIPT":

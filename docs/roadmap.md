@@ -85,7 +85,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ### Kubernetes — implantação híbrida (21/10/2026)
 
-- **KUBERNETES-03 — ponte remota:** escolher e implementar transporte para scripts em hosts sem agente Regente local (SSH/SSM conforme inventário), com autorização, output, cancelamento e incerteza preservada. SSM requer AWS; não foi escolhido.
+- **KUBERNETES-03 — ponte SSH local entregue:** SSH_REMOTE no agente v2, destino sshd sem Regente, autorização estrita e incerteza preservada. Ver entrega abaixo; SSM/AWS não homologados.
 - **KUBERNETES-04 — migração gradual:** equivalência por job/destino, coexistência, observabilidade e rollback antes de remover agentes externos.
 - **KUBERNETES-05 — pod por execução:** controlador/Jobs, quotas, isolamento, resultado e reconciliação; distinto do agente persistente em pod.
 
@@ -390,9 +390,13 @@ domínio**, não o binário.
 
 # ✅ Entregue *(tracking por tópico)*
 
+### Kubernetes-03 — ponte SSH local (23/10/2026)
+
+[Contrato e laboratório](../deploy/kubernetes/SSH-BRIDGE.md): SSH_REMOTE no agente v2 em pod, destino Linux/sshd sem Regente, targeting explícito e SSH legado preservado. Política local limita host/porta/CIDR/usuário/comando/chaves; host key obrigatória. Sucesso, stdout/stderr/exit7, coexistência COMMAND, egress negado, revogação e host key errada qualificados. Cancelamento/deadline/queda do pod mantêm UNCERTAIN com um efeito e sem replay; resolução só após observação remota. Editor Chromium/TLS salvou tipo, trust e agente ponte. [Evidência](evidence/kubernetes-03-local.json). Sem promessa de kill remoto, exatamente uma vez, AWS, migração produtiva ou pods por execução.
+
 ### Kubernetes-02 — célula HTTP no pod e coexistência local (22/10/2026)
 
-[Célula reproduzível](../deploy/kubernetes/HTTP-CELL.md): StatefulSet de um dono, PVC para journal, identidade/certificado/token próprios, agente não-root/read-only/caps0/sem ServiceAccount token. Init configura firewall de egress no namespace do pod; teste direto contra destino alcançável de outro pod comprovou bloqueio real. HTTP/TLS via Service e COMMAND externo coexistem com targeting explícito; host/porta/CIDR/metadata negados, segredo por referência e resultado redigido. Rotação drenada por Secret+substituição preservou journal; queda abrupta pelo runtime seguida de remoção normal preservou UNCERTAIN, mesma execução e um único efeito, sem replay. Primeiro ensaio de interrupção graciosa e sua expectativa incorreta permanecem registrados; crash corrigido validado separadamente. [Evidência](evidence/kubernetes-02-local.json). Qualificação local, sem AWS/HA/failover de nó/capacidade produtiva, PID limit ou admission policy; rotação não é hot reload. Kubernetes03–05 seguem no backlog.
+[Célula reproduzível](../deploy/kubernetes/HTTP-CELL.md): StatefulSet de um dono, PVC para journal, identidade/certificado/token próprios, agente não-root/read-only/caps0/sem ServiceAccount token. Init configura firewall de egress no namespace do pod; teste direto contra destino alcançável de outro pod comprovou bloqueio real. HTTP/TLS via Service e COMMAND externo coexistem com targeting explícito; host/porta/CIDR/metadata negados, segredo por referência e resultado redigido. Rotação drenada por Secret+substituição preservou journal; queda abrupta pelo runtime seguida de remoção normal preservou UNCERTAIN, mesma execução e um único efeito, sem replay. Primeiro ensaio de interrupção graciosa e sua expectativa incorreta permanecem registrados; crash corrigido validado separadamente. [Evidência](evidence/kubernetes-02-local.json). Qualificação local, sem AWS/HA/failover de nó/capacidade produtiva, PID limit ou admission policy; rotação não é hot reload. Kubernetes04–05 seguem no backlog.
 
 ### Kubernetes-01 — baseline local com agente externo (21/10/2026)
 

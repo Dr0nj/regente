@@ -52,3 +52,7 @@ See [agent journal](adr-i09-agent-journal.md), [production profile](production-p
 ## Shared quotas and leadership (I11)
 
 See [shared resources and leadership](ha-resources.md) for reservation ownership, failover, agent admission limits, queue policy and schema 30 upgrade. Quota reduction does not stop active effects; disconnected or UNCERTAIN executions retain their reservations.
+
+## Remote SSH uncertainty
+
+For `SSH_REMOTE`, cancellation closes the bridge connection but cannot confirm remote termination. Missing remote completion after submission remains UNCERTAIN, including after a cancel request; automatic replay is suppressed. Inspect remote effects and completion before audited resolution. See [SSH bridge](../deploy/kubernetes/SSH-BRIDGE.md).

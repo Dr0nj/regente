@@ -126,6 +126,9 @@ func runAgentV2(base, token, id, caps, environment, path string, concurrency, pe
 		if strings.EqualFold(def.JobType, "HTTP") || strings.EqualFold(def.JobType, "REST") {
 			return runRESTContext(ctx, def.Params, def.Timeout, true)
 		}
+		if strings.EqualFold(def.JobType, "SSH_REMOTE") {
+			return runRemoteSSH(ctx, def.Params, def.Timeout, emit)
+		}
 		code, out = executeJob(ctx, def.JobType, def.Params, def.Timeout, emit)
 		switch strings.ToUpper(def.JobType) {
 		case "FILE_TRANSFER", "DATABASE", "LAMBDA", "BATCH", "GLUE", "STEP_FUNCTION":

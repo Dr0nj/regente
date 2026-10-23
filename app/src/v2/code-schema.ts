@@ -38,6 +38,22 @@ export interface GuideEntry {
 
 const JOB_TYPE_CHILDREN: GuideEntry[] = [
   {
+    tag: "SSH_REMOTE",
+    kind: "jobType",
+    summary: "SSH through a durable bridge agent, without Regente on the destination.",
+    detail: "Select agentId with SSH_REMOTE capability. Requires local policy authorizing exact host/port/CIDR, user, command, keyPath and knownHostsPath. strictHostKey must be yes. Cancellation or lost receipt can leave UNCERTAIN; inspect the destination before retrying.",
+    example: `jobType: SSH_REMOTE
+agentId: ssh-bridge-01
+actionConfig:
+  host: remote-host
+  user: runner
+  port: 2222
+  command: /jobs/report.sh
+  keyPath: /private/ssh_key
+  knownHostsPath: /private/known_hosts
+  strictHostKey: "yes"`,
+  },
+  {
     tag: "COMMAND",
     kind: "jobType",
     summary: "Shell command on the agent (Windows runs it through powershell).",

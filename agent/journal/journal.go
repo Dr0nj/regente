@@ -21,6 +21,10 @@ const Version = 1
 
 // UnknownExitCode é reservado ao adapter; não representa um exit do processo.
 const UnknownExitCode = -2147483648
+
+// RemoteUnknownExitCode cannot be acknowledged as cancelled merely because the
+// local client returned. The destination has not confirmed remote termination.
+const RemoteUnknownExitCode = -2147483647
 const MaxOutput = 5 << 20
 
 var ErrConflict = errors.New("journal execution identity conflict")

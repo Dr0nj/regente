@@ -26,6 +26,7 @@ export type JobType =
   | "COMMAND"
   | "SCRIPT"
   | "SSH"
+  | "SSH_REMOTE"
   | "HTTP"
   | "FILE_WATCH"
   | "FILE_TRANSFER"
@@ -72,6 +73,7 @@ export const JOB_TYPES: Record<JobType, JobTypeConfig> = {
   COMMAND:       make("Command",       "Command on the agent (shell)", Terminal),
   SCRIPT:        make("Script",        ".sh/.bat/.ps1 script on the agent", FileCode),
   SSH:           make("SSH",           "Remote command over SSH (agentless)", Network),
+  SSH_REMOTE:    make("SSH bridge",    "Remote command through a bridge agent", Network),
   LAMBDA:        make("Lambda",        "Serverless function",     Zap),
   BATCH:         make("Batch",         "Container / batch job",   Box),
   GLUE:          make("Glue",          "ETL pipeline",            Paintbrush),

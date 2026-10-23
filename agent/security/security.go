@@ -29,6 +29,15 @@ type Job struct {
 	Types        []string      `json:"types"`
 	Secrets      []string      `json:"secrets"`
 	Destinations []Destination `json:"destinations"`
+	SSH          *SSHRule      `json:"ssh,omitempty"`
+}
+
+// SSHRule binds a remote cell to operator-provisioned credentials and exact commands.
+type SSHRule struct {
+	User           string   `json:"user"`
+	Commands       []string `json:"commands"`
+	KeyPath        string   `json:"keyPath"`
+	KnownHostsPath string   `json:"knownHostsPath"`
 }
 type Policy struct {
 	Environment string         `json:"environment"`
@@ -129,9 +138,21 @@ func Prepare(ctx context.Context, policyFile, secretsFile, env, id, kind string,
 	}
 	// Adapters sem dialer controlável não são homologados neste perfil.
 	switch strings.ToUpper(kind) {
-	case "HTTP", "REST", "SSH", "COMMAND", "SCRIPT":
+	case "HTTP", "REST", "SSH", "SSH_REMOTE", "COMMAND", "SCRIPT":
 	default:
 		return ctx, nil, redact, ErrPolicy
+	}
+	if strings.EqualFold(kind, "SSH_REMOTE") {
+		r := j.SSH
+		if r == nil || r.User == "" || r.KeyPath == "" || r.KnownHostsPath == "" ||
+			params["user"] != r.User || params["keyPath"] != r.KeyPath || params["knownHostsPath"] != r.KnownHostsPath ||
+			params["strictHostKey"] != "yes" {
+			return ctx, nil, redact, ErrPolicy
+		}
+		command, ok := params["command"].(string)
+		if !ok || command == "" || !slices.Contains(r.Commands, command) {
+			return ctx, nil, redact, ErrPolicy
+		}
 	}
 	var secrets Secrets
 	if HasRefs(params) {

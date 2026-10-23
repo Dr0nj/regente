@@ -181,3 +181,7 @@ Metadata address references: [AWS IMDS](https://docs.aws.amazon.com/AWSEC2/lates
 ## Verified laboratory
 
 [Full CI 37012869940](https://github.com/Dr0nj/regente/actions/runs/37012869940) passed at e5bb974bbbc97b1d8790818992b15b6eb2760514 with all eight gates, 280 mandatory integration tests/subtests and eight browser scenarios without skips or flaky results. The [recorded evidence](evidence/i13-e5bb974.json) includes real SQLite/PostgreSQL agent execution and installed Ubuntu/systemd HTTP and COMMAND cells with actual denied egress. This qualifies the documented profile in a synthetic laboratory, not an installed production pilot.
+
+## Remote SSH bridge
+
+`SSH_REMOTE` requires v2, an explicit local SSH policy and protected key/known_hosts files. Host-key verification is mandatory; commands execute at the allowed destination. See the [bridge contract](../deploy/kubernetes/SSH-BRIDGE.md) for authorization, isolation and credential handling. Legacy `SSH` remains server-side.

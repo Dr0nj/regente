@@ -195,3 +195,5 @@ The [HTTP cell extension](HTTP-CELL.md) adds an in-cluster HTTP agent with its o
 identity, persistent journal and verified egress, alongside the external agent.
 Future stages are tracked in the [canonical roadmap](../../docs/roadmap.md):
 remote execution bridge, migration and per-execution pods.
+
+The [SSH bridge extension](SSH-BRIDGE.md) runs SSH_REMOTE in a dedicated pod against a Linux host without a Regente agent.

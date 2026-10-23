@@ -1,0 +1,54 @@
+{
+  "scope": "local kind laboratory, synthetic Linux SSH target; no AWS/HA/fleet qualification",
+  "date": "2026-10-23",
+  "runtime": {
+    "status": "passed",
+    "checks": {
+      "external_sshd_no_regente_agent": true,
+      "routing_stdout_stderr_exit0_exit7_and_coexistence": true,
+      "destination_user_command_policy_denied_before_effect": true,
+      "bridge_egress_denies_database": true,
+      "revoked_key_and_wrong_host_key_no_effect": true,
+      "cancel_uncertain_single_effect_no_retry_resolved_after_observation": true,
+      "timeout_uncertain_single_effect_no_retry_resolved_after_observation": true,
+      "crash_uncertain_single_effect_no_retry_resolved_after_observation": true
+    },
+    "orders": {
+      "ssh-ok": "ssh-ok-FORCE-145334",
+      "external-coexist": "external-coexist-FORCE-145334",
+      "ssh-failure": "ssh-failure-FORCE-145337",
+      "ssh-denied": "ssh-denied-FORCE-145341",
+      "ssh-user-denied": "ssh-user-denied-FORCE-145344",
+      "ssh-command-denied": "ssh-command-denied-FORCE-145347",
+      "ssh-revoked": "ssh-revoked-FORCE-145352",
+      "ssh-hostkey": "ssh-hostkey-FORCE-145356",
+      "ssh-cancel": "ssh-cancel-FORCE-145400",
+      "ssh-timeout": "ssh-timeout-FORCE-145415",
+      "ssh-crash": "ssh-crash-FORCE-145431"
+    }
+  },
+  "browser": {
+    "status": "passed",
+    "checks": [
+      "TLS login",
+      "SSH_REMOTE type selectable",
+      "bridge agent retained",
+      "strict host key fields",
+      "draft saved with bridge targeting"
+    ]
+  },
+  "limits": [
+    "Remote cancellation is not a confirmed kill",
+    "No automatic retry while UNCERTAIN",
+    "Pre-provisioned scripts only",
+    "CI/release tracked separately by exact source SHA"
+  ],
+  "harnessCorrections": [
+    "docker top requires pid,args",
+    "Password reset invalidates sessions; login again",
+    "Design requires GitOps and writable sessions directory",
+    "go-git file transport requires git-upload-pack; use isolated read-only daemon",
+    "YAML params differs from JSON actionConfig",
+    "Sidebar focuses node; canvas click opens editor"
+  ]
+}

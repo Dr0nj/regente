@@ -286,13 +286,13 @@ func (w *Worker) launch(parent context.Context, e Entry) {
 			return err
 		})
 		code, out := w.Execute(ctx, e.Envelope, emit)
-		if code == UnknownExitCode {
+		if code == UnknownExitCode || code == RemoteUnknownExitCode {
 			latest, readErr := w.Journal.Entry(e.Envelope.ExecutionID)
 			if readErr != nil {
 				w.fail(readErr)
 				return
 			}
-			if !latest.CancelRequested {
+			if code == RemoteUnknownExitCode || !latest.CancelRequested {
 				if err := w.Journal.Uncertain(e.Envelope.ExecutionID, out); err != nil {
 					w.fail(err)
 				}

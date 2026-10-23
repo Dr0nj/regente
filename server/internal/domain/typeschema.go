@@ -91,6 +91,18 @@ var jobTypeSchemas = []JobTypeSchema{
 		},
 	},
 	{
+		Type: "SSH_REMOTE", Summary: "SSH from a durable bridge agent; no Regente agent on the destination.",
+		Fields: []FieldSpec{
+			{Name: "host", Kind: KindString, Required: true, Desc: "remote target host, distinct from agentId"},
+			{Name: "user", Kind: KindString, Required: true, Desc: "remote user authorized by bridge policy"},
+			{Name: "port", Kind: KindScalar, Desc: "SSH port (default 22)"},
+			{Name: "command", Kind: KindString, Required: true, Desc: "exact command authorized by bridge policy"},
+			{Name: "keyPath", Kind: KindString, Required: true, Desc: "protected private key on bridge"},
+			{Name: "knownHostsPath", Kind: KindString, Required: true, Desc: "protected known_hosts on bridge"},
+			{Name: "strictHostKey", Kind: KindEnum, Enum: []string{"yes"}, Required: true, Desc: "host key verification is mandatory"},
+		},
+	},
+	{
 		Type: "HTTP", Aliases: []string{"REST"}, Summary: "REST call from the agent.",
 		Fields: []FieldSpec{
 			{Name: "url", Kind: KindString, Required: true, Desc: "target URL"},
