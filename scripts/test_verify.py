@@ -41,6 +41,20 @@ class VerificationTests(unittest.TestCase):
                 self.assertEqual(gate.call_count, 1)
             self.assertEqual(runner.report["gates"], [{"gate": "runner", "status": "failed"}])
 
+    def test_stale_docs_stop_before_expensive_runtime_checks(self):
+        for mode in ("quick", "full"):
+            with tempfile.TemporaryDirectory() as tmp, mock.patch.object(verify, "ROOT", Path(tmp)):
+                runner = verify.Verifier(mode)
+                visited = []
+                def gate(name):
+                    visited.append(name)
+                    if name == "docs":
+                        raise RuntimeError("generated documentation stale")
+                with mock.patch.object(runner, "preflight"), mock.patch.object(runner, "gate", side_effect=gate), self.quiet(), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(runner.execute(), 1)
+                self.assertEqual(visited, ["runner", "docs"])
+                self.assertEqual(runner.report["status"], "failed")
+
     def test_full_rejects_unsupported_host_and_missing_dependency(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(verify, "ROOT", Path(tmp)):
             runner = verify.Verifier("full")

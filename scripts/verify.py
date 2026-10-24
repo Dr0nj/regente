@@ -12,8 +12,8 @@ import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
-FULL = ("runner", "server", "agent", "web", "docs", "browser", "integration", "demo")
-QUICK = ("runner", "server", "agent", "web", "docs")
+FULL = ("runner", "docs", "server", "agent", "web", "browser", "integration", "demo")
+QUICK = ("runner", "docs", "server", "agent", "web")
 OMITTED_QUICK = ("staticcheck (both Go modules)", "clean npm install",
                  "real browser", "PostgreSQL/NATS/OIDC and recovery",
                  "PowerShell/Docker demo")
