@@ -1,0 +1,142 @@
+{
+  "date": "2026-10-29",
+  "scope": "Local kind, two synthetic jobs, origin sidecar and sshd share scripts/data; no AWS or production fleet",
+  "status": "passed",
+  "qualification": "Segmented with preserved failed reports; not an uninterrupted harness pass",
+  "runtimeBase": "e9c7e6ac0ad4cbcbb6247c9c8e545070134a94f5 (phase03 runtime unchanged)",
+  "checks": {
+    "new_dispatch_gated_running_drained_old_pending_cancelled": true,
+    "baseline_resume_verified_without_repeating_effects": true,
+    "canary_remote_and_remaining_origin_same_scripts_results": true,
+    "batch_expanded_with_immutable_old_snapshots": true,
+    "uncertain_resume_verified_existing_order_no_new_submission": true,
+    "uncertainty_blocks_rollback_retirement_no_replay_resolved_by_witness": true,
+    "rollback_new_orders_on_origin_old_remote_snapshot_unchanged": true,
+    "retirement_blocked_while_definitions_depend_on_origin": true,
+    "origin_stopped_journal_acknowledged_preserved_credential_revoked": true,
+    "remote_after_retirement_nonmigrated_agent_supported_no_uncertain_rerun": true
+  },
+  "orders": [
+    "migrate-one-FORCE-110701",
+    "migrate-two-FORCE-110705",
+    "migrate-two-FORCE-110710",
+    "migrate-one-FORCE-110954",
+    "migrate-two-FORCE-111002",
+    "migrate-two-FORCE-111013",
+    "migrate-one-FORCE-111022",
+    "migrate-one-FORCE-111118",
+    "migrate-two-FORCE-111126",
+    "migrate-one-FORCE-111136",
+    "migrate-two-FORCE-111145",
+    "migrate-one-FORCE-111519",
+    "migrate-two-FORCE-111528",
+    "retained-external-FORCE-111538"
+  ],
+  "transitions": [
+    {
+      "jobs": [
+        "migrate-one"
+      ],
+      "mode": "SSH_REMOTE",
+      "oldSnapshotsUnchanged": 1
+    },
+    {
+      "jobs": [
+        "migrate-two"
+      ],
+      "mode": "SSH_REMOTE",
+      "oldSnapshotsUnchanged": 3
+    },
+    {
+      "jobs": [
+        "migrate-one",
+        "migrate-two"
+      ],
+      "mode": "COMMAND",
+      "oldSnapshotsUnchanged": 7
+    },
+    {
+      "jobs": [
+        "migrate-one",
+        "migrate-two"
+      ],
+      "mode": "SSH_REMOTE",
+      "oldSnapshotsUnchanged": 9
+    }
+  ],
+  "scriptSHA256": {
+    "migrate-one": "880d36ff269e8384534d2817aa04572720d6903ce3fdf177dd960bc35a81bdbe",
+    "migrate-two": "fe69dc99985997fa2f7961ba3e662cd8d8a47a702407a591f9f91fab8568e83c"
+  },
+  "effects": {
+    "migrate-one": 6,
+    "migrate-two": 6
+  },
+  "completed": {
+    "migrate-one": 6,
+    "migrate-two": 6
+  },
+  "finalStatuses": {
+    "OK": 12,
+    "NOTOK": 1,
+    "CANCELLED": 1
+  },
+  "retiredJournal": {
+    "identity": "regente-kubernetes-phase04-origin-agent",
+    "pendingEntries": 0,
+    "pendingChunks": 0,
+    "stopped": true
+  },
+  "sourceReports": [
+    {
+      "file": "migration-verification-complete.json",
+      "status": "passed",
+      "sha256": "ad1318ef892bdb455d8dca30648e2870025f85de1a9913a132d14631c600b34b"
+    },
+    {
+      "file": "migration-verification-final.json",
+      "status": "failed",
+      "sha256": "b60e0dd08a1937324863251c14b7c4ebd52f82f444bc740bff02652b5e3d6ff7"
+    },
+    {
+      "file": "migration-verification-qualified.json",
+      "status": "failed",
+      "sha256": "5e143b2baf43773f92cc2e1f904518ad15587e301375c74f393d129d8de5aa6f"
+    },
+    {
+      "file": "migration-verification-resumed.json",
+      "status": "failed",
+      "sha256": "276d46a7ddaf5b9ec76d9c8ec47693d7f6b4328790eb74869dc25c282e8f3f45"
+    },
+    {
+      "file": "migration-verification-retirement-verified.json",
+      "status": "failed",
+      "sha256": "cd8cad894afd9b019ad5966ac37948af3838d268274f0d168efb372c8adf2c5a"
+    },
+    {
+      "file": "migration-verification-retirement.json",
+      "status": "failed",
+      "sha256": "50800de2533ac15152b21e6f3a502bade5c51dda5d0bfcf8167e0705273f3975"
+    },
+    {
+      "file": "migration-verification.json",
+      "status": "failed",
+      "sha256": "96b0abc24afe7d35ef8d3b6ee879b67d0e5aefb80124c87f235b38d219a5f6db"
+    }
+  ],
+  "limits": [
+    "Single harness producer; confirm is not a distributed maintenance lock",
+    "Retired origin is a stopped container with no restart policy, not an EC2/systemd removal",
+    "No HA, node failover, production fleet, arbitrary file transfer or exactly-once qualification",
+    "Rollback precedes credential retirement; uncertain orders were resolved by independent evidence, never rerun",
+    "CI/release tracked separately against publication SHA"
+  ],
+  "harnessCorrections": [
+    "Use default zero for omitted exitCode",
+    "Wait for asynchronous attempt creation before indexing",
+    "Read protected journal as UID10001",
+    "Copy entire stopped journal to private tmpfs for SQLite WAL sidecars; preserve original read-only",
+    "Set protocol=2 in poll preflight",
+    "Convert numeric credential ID to URL text"
+  ]
+}

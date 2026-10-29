@@ -136,6 +136,8 @@ class Verifier:
         if name == "runner":
             self.command([sys.executable, "-m", "unittest", "discover", "-s", "scripts",
                           "-p", "test_verify.py", "-v"])
+            self.command([sys.executable, "-m", "unittest", "discover", "-s", "deploy/kubernetes",
+                          "-p", "test_migration_guard.py", "-v"])
             if self.mode == "full":
                 self.command([sys.executable, "-m", "unittest", "discover", "-s", "scripts",
                               "-p", "test_release.py", "-v"])

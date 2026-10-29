@@ -586,7 +586,7 @@ def finalize():
     )
 
 
-def agent():
+def agent(mounts=()):
     existing = (
         run(
             [
@@ -683,6 +683,7 @@ def agent():
             CREDENTIAL_VOLUME + ":/credentials:ro",
             "-v",
             JOURNAL_VOLUME + ":/state",
+            *[part for mount in mounts for part in ("-v", mount)],
             AGENT,
             "-transport",
             "v2",

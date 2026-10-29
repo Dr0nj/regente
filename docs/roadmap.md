@@ -86,7 +86,6 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ### Kubernetes — implantação híbrida (21/10/2026)
 
 - **KUBERNETES-03 — ponte SSH local entregue:** SSH_REMOTE no agente v2, destino sshd sem Regente, autorização estrita e incerteza preservada. Ver entrega abaixo; SSM/AWS não homologados.
-- **KUBERNETES-04 — migração gradual:** equivalência por job/destino, coexistência, observabilidade e rollback antes de remover agentes externos.
 - **KUBERNETES-05 — pod por execução:** controlador/Jobs, quotas, isolamento, resultado e reconciliação; distinto do agente persistente em pod.
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
@@ -389,6 +388,10 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+### Kubernetes-04 — migração gradual local (29/10/2026)
+
+[Runbook e laboratório](../deploy/kubernetes/MIGRATION.md): dois jobs sintéticos usam os mesmos scripts/dados via COMMAND na origem e SSH_REMOTE na ponte. Bloqueio de novas ordens por Confirm em produtor isolado, drenagem e cancelamento de snapshot pendente; canário, ampliação e rollback em novas ordens preservam snapshots anteriores. UNCERTAIN impede troca/retirada até observação independente e resolução auditada, sem rerun. Origem parada, journal preservado com zero entradas/chunks sem ACK, credencial revogada (204 antes/401 depois); ambos jobs remotos e agente não migrado aprovados após retirada. Quatorze ordens, doze efeitos no destino (seis por job), doze OK/um CANCELLED/um NOTOK resolvido. Oito testes de guard integram o runner. [Evidência segmentada](evidence/kubernetes-04-local.json) preserva falhas do harness e retomadas sem repetir efeitos. Confirm não é lock distribuído; sidecar local não homologa retirada em VM, frota produtiva, AWS ou HA. Kubernetes-05 permanece no backlog.
 
 ### Kubernetes-03 — ponte SSH local (23/10/2026)
 
@@ -1976,6 +1979,8 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-10-29 — Kubernetes-04 local:** canário e ampliação de dois jobs para SSH_REMOTE, rollback drenado com snapshots intactos, incerteza sem replay, retirada/revogação da origem e coexistência. Journal preservado e evidência segmentada; sem homologação produtiva.
 
 - **2026-10-22 — Kubernetes-02 local:** agente HTTP no pod com journal exclusivo, firewall verificado, TLS/secrets e coexistência com COMMAND externo; perda abrupta preserva incerteza e não repete efeito.
 

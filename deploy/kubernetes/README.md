@@ -1,5 +1,8 @@
 # Kubernetes laboratory — external agent
 
+Later stages: [isolated HTTP cell](HTTP-CELL.md), [SSH bridge](SSH-BRIDGE.md),
+and [gradual migration, rollback and origin retirement](MIGRATION.md).
+
 This is the first Kubernetes deployment stage: one backend serving the SPA,
 PostgreSQL on its own PVC, and a Linux agent **outside** Kubernetes. The external
 Docker container simulates an execution host. It does not qualify EC2, systemd,
