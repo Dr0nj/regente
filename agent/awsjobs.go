@@ -287,7 +287,7 @@ func runGlueJob(params map[string]interface{}, timeoutSec int, emit func(string)
 		return -1, "glue StartJobRun: response without a JobRunId: " + trunc(out, 400)
 	}
 	if emit != nil {
-		emit(fmt.Sprintf("glue job %s: run %s disparado\n", jobName, run.JobRunID))
+		emit(fmt.Sprintf("glue job %s: run %s submitted\n", jobName, run.JobRunID))
 	}
 
 	deadline := time.Now().Add(time.Duration(max(timeoutSec, 1)) * time.Second)
@@ -295,8 +295,9 @@ func runGlueJob(params map[string]interface{}, timeoutSec int, emit func(string)
 	for {
 		if time.Now().After(deadline) {
 			tb, _ := json.Marshal(map[string]interface{}{"JobName": jobName, "JobRunIds": []string{run.JobRunID}})
-			_, _, _ = conn.awsPost("/", "AWSGlue.BatchStopJobRun", ct, tb)
-			return -1, fmt.Sprintf("glue run %s timed out after %ds (last status %s; BatchStopJobRun sent)", run.JobRunID, timeoutSec, last)
+			sc, response, stopErr := conn.awsPost("/", "AWSGlue.BatchStopJobRun", ct, tb)
+			stop := glueStopResult(sc, response, stopErr, jobName, run.JobRunID)
+			return -1, fmt.Sprintf("glue run %s timed out after %ds (last status %s; %s; remote completion unconfirmed)", run.JobRunID, timeoutSec, last, stop)
 		}
 		gb, _ := json.Marshal(map[string]string{"JobName": jobName, "RunId": run.JobRunID})
 		sc, out, err := conn.awsPost("/", "AWSGlue.GetJobRun", ct, gb)
@@ -318,12 +319,36 @@ func runGlueJob(params map[string]interface{}, timeoutSec int, emit func(string)
 			switch st {
 			case "SUCCEEDED":
 				return 0, fmt.Sprintf("glue run %s SUCCEEDED", run.JobRunID)
-			case "FAILED", "ERROR", "TIMEOUT", "STOPPED":
+			case "FAILED", "ERROR", "TIMEOUT", "STOPPED", "EXPIRED":
 				return 1, fmt.Sprintf("glue run %s %s: %s", run.JobRunID, st, got.JobRun.ErrorMessage)
 			}
 		}
 		time.Sleep(awsPollEvery)
 	}
+}
+
+// A successful stop submission is not a terminal STOPPED observation.
+// HTTP 200 can contain per-run errors; never describe it as confirmed stopping.
+func glueStopResult(status int, body []byte, err error, job, run string) string {
+	if err != nil || status < 200 || status >= 300 {
+		return "BatchStopJobRun request failed"
+	}
+	var result struct {
+		Errors                []json.RawMessage `json:"Errors"`
+		SuccessfulSubmissions []struct {
+			JobName  string `json:"JobName"`
+			JobRunID string `json:"JobRunId"`
+		} `json:"SuccessfulSubmissions"`
+	}
+	if json.Unmarshal(body, &result) != nil || len(result.Errors) != 0 {
+		return "BatchStopJobRun not acknowledged"
+	}
+	for _, submission := range result.SuccessfulSubmissions {
+		if submission.JobName == job && submission.JobRunID == run {
+			return "BatchStopJobRun submission accepted"
+		}
+	}
+	return "BatchStopJobRun not acknowledged"
 }
 
 // ─── AWS Step Functions ──────────────────────────────────────────────────────

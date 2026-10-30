@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Enterprise compatibility contracts · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="adr-i09-agent-journal.html">Durable agent journal</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authenticated-releases.html">Authenticated releases</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="business-time.html">Business time</a>
+<a href="capacity.html">Capacity and progress</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html">Daily recovery</a>
+<a href="durable-execution.html">Durable execution and recovery</a>
+<a href="enterprise-compatibility.html" class="active">Enterprise compatibility contracts</a>
+<a href="execution-security.html">Execution security</a>
+<a href="failure-resistant-audit.html">Failure-resistant audit</a>
+<a href="ha-resources.html">Shared resources and scheduler leadership</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="operational-recovery-pilot.html">Operational recovery and controlled pilot</a>
+<a href="production-profile.html">Production profile</a>
+<a href="shared-drafts.html">Shared Design drafts</a>
+<a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
+<a href="web-events.html">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="enterprise-compatibility-contracts">Enterprise compatibility contracts</h1>
+<p>This track extends existing scheduling, policies, diagnostics and executors. It
+does not certify equivalence with another scheduler or a production environment.
+Open work and status are maintained in <a href="https://github.com/Dr0nj/regente/blob/main/docs/roadmap.md">the roadmap</a>.</p>
+<h2 id="first-increment-offline-aapi-inventory">First increment: offline AAPI inventory</h2>
+<p>From <code>server</code>, run:</p>
+<pre><code class="language-sh">go run ./cmd/inventoryaapi -in /private/definitions -source-version YOUR_SOURCE_VERSION &gt; /private/inventory.json
+</code></pre>
+<p>The input can be a JSON file or a directory. Directory traversal includes hidden
+<code>.folder.json</code> files and processes JSON documents independently; it does <strong>not</strong>
+infer how split files are composed. The report contains relative filenames,
+SHA-256 provenance and JSON pointers for every value, including empty containers,
+arrays, unknown properties and unknown declared types. Array positions preserve
+duplicate names. JSON keys with <code>/</code> or <code>~</code> use JSON Pointer escaping. Duplicate
+object keys, trailing content, invalid Type values, nesting beyond 128 levels,
+documents larger than 16 MiB and symbolic links are rejected. Input must be a
+trusted local export; keep the directory unchanged during inventory.</p>
+<p>All nodes are <code>inventoried-unverified</code>; <code>executable</code> is always false. No workspace
+definitions, calendar defaults, remote requests or executable jobs are created.
+No partial report is emitted when a document fails. Sorting and content hashes
+make reports reproducible for unchanged inputs. A source-version label records
+the operator's declaration; it does not validate the schema of that release.</p>
+<p>Scalar values are omitted except declared Type labels. <strong>This is not an
+anonymizer:</strong> filenames, pointers and Type labels can identify an organization.
+Keep real inputs and reports private. Public examples and tests must be entirely
+synthetic, including names, topology, counts and operational references.</p>
+<p>The structural reference is the public BMC
+<a href="https://documents.bmc.com/supportu/API/Monthly/en-US/Documentation/API_CodeRef_JobProperties.htm">Job Properties documentation</a>,
+consulted on 2026-10-30. It documents named objects and array-based definitions.
+Monthly is a moving reference, not a pinned compatibility certification. This
+increment inventories JSON only; version-specific conversion needs a pinned
+contract and corpus. Parsing coverage is not semantic or execution coverage.</p>
+<h2 id="completion-gates-for-subsequent-increments">Completion gates for subsequent increments</h2>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Required evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Conversion</td>
+<td>Every material field mapped or blocked with a reason; provenance and original identity retained; no partial executable definitions</td>
+</tr>
+<tr>
+<td>Planning</td>
+<td>Folder/date variable isolation, event date and boolean fidelity, imported calendars and inheritance, cycle and resource semantics</td>
+</tr>
+<tr>
+<td>Observation</td>
+<td>Immutable snapshots, source timestamps, missing evidence explicit; compare eligibility, readiness and admission separately</td>
+</tr>
+<tr>
+<td>Shadow</td>
+<td>No dispatch, remote writes, operational event publication or real notifications; opaque types remain unknown, never simulated success</td>
+</tr>
+<tr>
+<td>Operations</td>
+<td>Profiles and secret rotation, least privilege, folder authorization, audit export, proxy qualification and independent recovery</td>
+</tr>
+<tr>
+<td>Adapters</td>
+<td>Submission identity, terminal evidence, cancellation, lost-response/restart handling and no blind replay</td>
+</tr>
+<tr>
+<td>Usage</td>
+<td>Versioned definitions of order, attempt, rerun and shadow; reproducible aggregates; estimated cost distinguished from invoices</td>
+</tr>
+</tbody>
+</table>
+<p>Site-specific naming, calendar and alert rules are configuration, not universal
+defaults. HTTP 200 alone is not SOAP success; shell return values alone do not
+establish DataStage success; a stop request alone does not prove remote completion.
+Read-only pilots still require authorization. Human operational acceptance is
+separate from CI and synthetic tests.</p>
+<h2 id="aws-glue-local-contract-no-paid-infrastructure">AWS Glue: local contract, no paid infrastructure</h2>
+<p>The existing <code>GLUE</code> / <code>AWS_GLUE</code> adapter submits an existing job with StartJobRun,
+then observes GetJobRun. It supports job name, arguments, worker type/count and
+the existing AWS connection parameters. It does not create Glue jobs, IAM roles,
+buckets or infrastructure. CI uses loopback HTTP fixtures and synthetic
+credentials; no AWS account, cloud endpoint or billable workload is needed.</p>
+<p>The local contract now covers WAITING before completion, all documented terminal
+states including EXPIRED, one submission when the start response is ambiguous,
+and per-run stop acknowledgement. BatchStopJobRun can return HTTP 200 with errors.
+Only an acknowledgement matching both job and run is described as accepted;
+even then remote completion remains unconfirmed after a timeout.</p>
+<p>This is a legacy adapter under qualification. Durable JobRun persistence,
+restart reconciliation, context cancellation, modern credential-provider support
+and network/secret policy integration remain GLUE-02. The restricted execution
+policy remains unchanged. Do not enable cloud execution or automatic replay on
+the strength of local mocks. GLUE-03 requires a separately authorized AWS
+environment and cost budget; it remains deferred. No exactly-once guarantee.</p>
+<p>Primary AWS contracts, consulted on 2026-10-30:</p>
+<ul>
+<li><a href="https://docs.aws.amazon.com/glue/latest/webapi/API_StartJobRun.html">StartJobRun</a></li>
+<li><a href="https://docs.aws.amazon.com/glue/latest/webapi/API_JobRun.html">JobRun states</a></li>
+<li><a href="https://docs.aws.amazon.com/glue/latest/webapi/API_BatchStopJobRun.html">BatchStopJobRun</a></li>
+</ul>
+<p>Job arguments can be logged by AWS; do not put plaintext secrets in arguments.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

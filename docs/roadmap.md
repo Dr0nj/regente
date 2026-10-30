@@ -83,6 +83,23 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > detalhado em §✅ Entregue (+ linha no changelog). As caixinhas espalhadas nas seções de
 > baixo **não valem** como status (ver ⛔ REGRA DE STATUS no topo).
 
+### Compatibilidade enterprise — ciclo autorizado em 30/10/2026
+
+Plano sanitizado, sem inventários ou referências de organizações: [contrato e critérios](enterprise-compatibility.md). Implementação por incrementos; nenhum item abaixo equivale a homologação produtiva.
+
+- **EC-00 — contrato/corpus:** exemplos inteiramente sintéticos, fontes e versões explícitas, cobertura de parsing separada de semântica e execução. Fixar versão alvo antes de prometer equivalência.
+- **EC-01 — importação AAPI offline:** primeiro incremento de inventário estrutural em `server/cmd/inventoryaapi`; conversão, composição de arquivos, herança e cobertura semântica ainda pendentes. Nada executável enquanto houver perda material ou comportamento desconhecido.
+- **EC-02 — planejamento:** variáveis por folder/data e pools, eventos Add/Wait/Delete, calendários importados, ciclos e locks compartilhados/exclusivos; preservar dependências externas.
+- **EC-03 — observação/shadow:** snapshots e diagnóstico/diff externos antes de conector autorizado; nenhuma execução, notificação ou escrita operacional; divergências e inconclusivos separados.
+- **EC-04 — operação:** Connection Profiles, Vault/Secrets Manager, grupos de agentes, políticas configuráveis, alertas correlacionados por tentativa e extração de output; homologação de IdP/RBAC/auditoria e proxy de saída.
+- **EC-05 — piloto de execução:** subconjunto compatível autorizado, dono/janela/rollback e ausência de execução concorrente entre plataformas; aceite humano I17 preservado.
+- **EC-06 — adapters:** SOAP com resultado funcional, DataStage por operação/retorno, transferência/watchers com retomada e Windows serviço/RunAs; qualificação independente por adapter.
+- **EC-07 — uso/custo:** ledger auditável de ordens/tentativas/reruns e agregações diárias/mensais/trimestrais por dimensões configuráveis; custo estimado separado de cobrança contratual.
+- **GLUE-02 — execução durável e segura:** identidade persistida de JobRun, observação após restart, submissão ambígua sem replay, cancelamento contextual, credenciais temporárias e política de rede/segredos. Não habilitar adapter em política restrita antes desse gate.
+- **GLUE-03 — homologação AWS futura:** IAM, região, runtime, rede e custos em ambiente autorizado. **Adiada: não há conta paga de teste; nenhuma chamada real ou recurso AWS no CI.** Mocks não encerram este item.
+
+Ordem: EC-00/EC-01 → EC-02 → EC-03 → fundação operacional/piloto; adapters por valor. Glue avança localmente em incrementos sem custo de nuvem.
+
 ### Kubernetes — implantação híbrida (21/10/2026)
 
 - **KUBERNETES-03 — ponte SSH local entregue:** SSH_REMOTE no agente v2, destino sshd sem Regente, autorização estrita e incerteza preservada. Ver entrega abaixo; SSM/AWS não homologados.
@@ -388,6 +405,13 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+### EC-01a / GLUE-01 — inventário offline e contrato local (30/10/2026)
+
+- Inventário AAPI JSON independente do importador XML: arquivos e diretórios, `.folder.json`, arrays, todos os campos com JSON Pointer e SHA-256. Rejeita duplicatas, trailing JSON, excesso de tamanho/profundidade e links simbólicos. Sem conversão, composição/herança ou jobs executáveis; EC-00/EC-01 continuam abertos.
+- Glue existente: EXPIRED terminal, WAITING não terminal, resposta ambígua sem nova submissão e reconhecimento de BatchStopJobRun por job/run; HTTP200 com erros não confirma parada. Testes locais com HTTP fake, sem AWS paga. GLUE-02/03 permanecem abertos.
+- [Contrato, uso, fontes e limites](enterprise-compatibility.md). Relatórios reais são privados, não anonimizados. Corpus público sintético; nenhuma referência organizacional incorporada.
+
 
 ### Kubernetes-05 — pod por execução local (29/10/2026)
 
@@ -1985,6 +2009,8 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-10-30 — EC-01a / GLUE-01:** roadmap enterprise sanitizado, inventário estrutural AAPI sem execução e correções de estados/parada Glue verificáveis localmente; conversão semântica, durabilidade e homologação cloud continuam separadas.
 
 - **2026-10-29 — Kubernetes-04 local:** canário e ampliação de dois jobs para SSH_REMOTE, rollback drenado com snapshots intactos, incerteza sem replay, retirada/revogação da origem e coexistência. Journal preservado e evidência segmentada; sem homologação produtiva.
 
