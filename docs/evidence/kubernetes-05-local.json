@@ -1,0 +1,747 @@
+{
+  "status": "passed",
+  "scope": "local kind v1.36.1; segmented qualification",
+  "generatedAt": "2026-10-29T23:58:40.561369+00:00",
+  "checks": {
+    "pod-ok": true,
+    "pod-fail": true,
+    "pod-boundary": true,
+    "pod-restart": true,
+    "controller_restart_same_job_pod": true,
+    "pod-cancel": true,
+    "pod-timeout": true,
+    "api-outage": true,
+    "api_access_restored_without_resubmission": true,
+    "pod_loss_no_job_recreation": true,
+    "node_unavailable_uncertain_no_job_recreation": true,
+    "pod-policy": true,
+    "pod-revoked": true,
+    "policy_and_rbac_denied_without_job": true,
+    "configured_retry_distinct_execution_and_job": true,
+    "final_binary_success": true
+  },
+  "orders": [
+    {
+      "id": "api-outage-FORCE-235055",
+      "status": "OK",
+      "exitCode": null,
+      "attempts": [
+        {
+          "executionId": "486623a702395eeef8b6bee5b73f8bba",
+          "orderId": "8f2fc8f3b282f17ab502cd5840c53fa5",
+          "attempt": 1,
+          "fence": 1,
+          "agentId": "regente-kubernetes-phase05-controller",
+          "state": "succeeded",
+          "leaseUntil": 0,
+          "acceptedAt": 1793317856586,
+          "startedAt": 1793317856611,
+          "finishedAt": 1793317887063,
+          "lastContact": 1793317856611,
+          "reason": "",
+          "resolvedAt": 0,
+          "resolvedBy": ""
+        }
+      ]
+    },
+    {
+      "id": "node-loss-FORCE-235140",
+      "status": "NOTOK",
+      "exitCode": 1,
+      "attempts": [
+        {
+          "executionId": "26d26622ce76d2680fcc2f12b613f10a",
+          "orderId": "50d000b55c3dde636d9d6811d009c8cc",
+          "attempt": 1,
+          "fence": 1,
+          "agentId": "regente-kubernetes-phase05-controller",
+          "state": "failed",
+          "leaseUntil": 0,
+          "acceptedAt": 1793317901481,
+          "startedAt": 1793317901509,
+          "finishedAt": 1793317998994,
+          "lastContact": 1793317998817,
+          "reason": "Synthetic fault: worker reachable, no running workload container for the original Job; inspected before resolution, no replay",
+          "resolvedAt": 1793317998994,
+          "resolvedBy": "admin"
+        }
+      ]
+    },
+    {
+      "id": "pod-boundary-FORCE-234537",
+      "status": "OK",
+      "exitCode": null,
+      "attempts": [
+        {
+          "executionId": "4277d83f28067e87949a14f4df04a0f2",
+          "orderId": "fa10cbbcb654321dc9063d9ea1647030",
+          "attempt": 1,
+          "fence": 1,
+          "agentId": "regente-kubernetes-phase05-controller",
+          "state": "succeeded",
+          "leaseUntil": 0,
+          "acceptedAt": 1793317538985,
+          "startedAt": 1793317539012,
+          "finishedAt": 1793317547176,
+          "lastContact": 1793317539012,
+          "reason": "",
+          "resolvedAt": 0,
+          "resolvedBy": ""
+        }
+      ]
+    },
+    {
+      "id": "pod-cancel-FORCE-234705",
+      "status": "NOTOK",
+      "exitCode": -1,
+      "attempts": [
+        {
+          "executionId": "e7f8c413376f56f2febbd3f1fb47fcea",
+          "orderId": "9dc0cf4c8a94d8a393a922a3e7ae4ecc",
+          "attempt": 1,
+          "fence": 1,
+          "agentId": "regente-kubernetes-phase05-controller",
+          "state": "cancelled",
+          "leaseUntil": 0,
+          "acceptedAt": 1793317626677,
+          "startedAt": 1793317626706,
+          "finishedAt": 1793317635899,
+          "lastContact": 1793317635899,
+          "reason": "",
+          "resolvedAt": 0,
+          "resolvedBy": ""
+        }
+      ]
+    },
+    {
+      "id": "pod-cancel-FORCE-235023",
+      "status": "NOTOK",
+      "exitCode": -1,
+      "attempts": [
+        {
+          "executionId": "fb06ff1e7577feba570c2e71a89f16c5",
+          "orderId": "14d7b68703c8ac44df1a54cc833018c8",
+          "attempt": 1,
+          "fence": 1,
+          "agentId": "regente-kubernetes-phase05-controller",
+          "state": "cancelled",
+          "leaseUntil": 0,
+          "acceptedAt": 1793317824954,
+          "startedAt": 1793317824981,
+          "finishedAt": 1793317834174,
+          "lastContact": 1793317834174,
+          "reason": "",
+          "resolvedAt": 0,
+          "resolvedBy": ""
+        }
+      ]
+    },
+    {
+      "id": "pod-fail-FORCE-234530",
+      "status": "NOTOK",
+      "exitCode": 7,
+      "attempts": [
+        {
+          "executionId": "245a4ca0fd80ff11355f52fd82d1c408",
+          "orderId": "da44843607908a261183265f83d5eb61",
+          "attempt": 1,
+          "fence": 1,
+          "agentId": "regente-kubernetes-phase05-controller",
+          "state": "failed",
+          "leaseUntil": 0,
+          "acceptedAt": 1793317531770,
+          "startedAt": 1793317531802,
+          "finishedAt": 1793317536929,
+          "lastContact": 1793317531802,
+          "reason": "",
+          "resolvedAt": 0,
+          "resolvedBy": ""
+        }
+      ]
+    },
+    {
+      "id": "pod-fail-FORCE-235738",
+      "status": "NOTOK",
+      "exitCode": 7,
+      "attempts": [
+        {
+          "executionId": "1936a2b978727b7e305b2db3e65919bb",
+          "orderId": "0ba9f5693026883499fe0ea7f31e0df5",
+          "attempt": 2,
+          "fence": 2,
+          "agentId": "regente-kubernetes-phase05-controller",
+          "state": "failed",
+          "leaseUntil": 0,
+          "acceptedAt": 1793318272350,
+          "startedAt": 1793318272376,
+          "finishedAt": 1793318278520,
+          "lastContact": 1793318272376,
+          "reason": "",
+          "resolvedAt": 0,
+          "resolvedBy": ""
+        },
+        {
+          "executionId": "c66dca83e79b1d44f6c33c91bddf81b5",
+          "orderId": "0ba9f5693026883499fe0ea7f31e0df5",
+          "attempt": 1,
+          "fence": 1,
+          "agentId": "regente-kubernetes-phase05-controller",
+          "state": "failed",
+          "leaseUntil": 0,
+          "acceptedAt": 1793318260071,
+          "startedAt": 1793318260097,
+          "finishedAt": 1793318266241,
+          "lastContact": 1793318260097,
+          "reason": "",
+          "resolvedAt": 0,
+          "resolvedBy": ""
+        }
+      ]
+    },
+    {
+      "id": "pod-loss-FORCE-235127",
+      "status": "NOTOK",
+      "exitCode": 1,
+      "attempts": [
+        {
+          "executionId": "118316f5aa348ab582c4e6918d685d13",
+          "orderId": "b506f2a7f7e55712d8e0f9f4159697f2",
+          "attempt": 1,
+          "fence": 1,
+          "agentId": "regente-kubernetes-phase05-controller",
+          "state": "failed",
+          "leaseUntil": 0,
+          "acceptedAt": 1793317889118,
+          "startedAt": 1793317889145,
+          "finishedAt": 1793317899785,
+          "lastContact": 1793317899397,
+          "reason": "Synthetic fault: worker reachable, no running workload container for the original Job; inspected before resolution, no replay",
+          "resolvedAt": 1793317899785,
+          "resolvedBy": "admin"
+        }
+      ]
+    },
+    {
+      "id": "pod-ok-FORCE-173313",
+      "status": "CANCELLED",
+      "exitCode": null,
+      "attempts": []
+    },
+    {
+      "id": "pod-ok-FORCE-234522",
+      "status": "OK",
+      "exitCode": null,
+      "attempts": [
+        {
+          "executionId": "a9d5b5f3fa33b92fdd7f59d479c49f98",
+          "orderId": "b422bf94e5a098757e1b18af28840f94",
+          "attempt": 1,
+          "fence": 1,
+          "agentId": "regente-kubernetes-phase05-controller",
+          "state": "succeeded",
+          "leaseUntil": 0,
+          "acceptedAt": 1793317524532,
+          "startedAt": 1793317524563,
+          "finishedAt": 1793317529718,
+          "lastContact": 1793317524563,
+          "reason": "",
+          "resolvedAt": 0,
+          "resolvedBy": ""
+        }
+      ]
+    },
+    {
+      "id": "pod-ok-FORCE-235728",
+      "status": "OK",
+      "exitCode": null,
+      "attempts": [
+        {
+          "executionId": "c50974b72447479578aa7ddc1cb67d1e",
+          "orderId": "e29b5bfcf4427c2849b2686fed3e3274",
+          "attempt": 1,
+          "fence": 1,
+          "agentId": "regente-kubernetes-phase05-controller",
+          "state": "succeeded",
+          "leaseUntil": 0,
+          "acceptedAt": 1793318250834,
+          "startedAt": 1793318250859,
+          "finishedAt": 1793318256999,
+          "lastContact": 1793318250859,
+          "reason": "",
+          "resolvedAt": 0,
+          "resolvedBy": ""
+        }
+      ]
+    },
+    {
+      "id": "pod-policy-FORCE-235339",
+      "status": "NOTOK",
+      "exitCode": -1,
+      "attempts": [
+        {
+          "executionId": "50e15075064e59f53105ac00692f520e",
+          "orderId": "3eb21ce9fd0b2dd98e88f494d93c01da",
+          "attempt": 1,
+          "fence": 1,
+          "agentId": "regente-kubernetes-phase05-controller",
+          "state": "failed",
+          "leaseUntil": 0,
+          "acceptedAt": 1793318021124,
+          "startedAt": 1793318021150,
+          "finishedAt": 1793318022199,
+          "lastContact": 1793318021150,
+          "reason": "",
+          "resolvedAt": 0,
+          "resolvedBy": ""
+        }
+      ]
+    },
+    {
+      "id": "pod-restart-FORCE-234633",
+      "status": "OK",
+      "exitCode": null,
+      "attempts": [
+        {
+          "executionId": "cfa304973229ef23a9a63aa094492544",
+          "orderId": "a7b1e662e95e172918167b7340720c53",
+          "attempt": 1,
+          "fence": 1,
+          "agentId": "regente-kubernetes-phase05-controller",
+          "state": "succeeded",
+          "leaseUntil": 0,
+          "acceptedAt": 1793317594562,
+          "startedAt": 1793317594587,
+          "finishedAt": 1793317624619,
+          "lastContact": 1793317594587,
+          "reason": "",
+          "resolvedAt": 0,
+          "resolvedBy": ""
+        }
+      ]
+    },
+    {
+      "id": "pod-revoked-FORCE-235342",
+      "status": "NOTOK",
+      "exitCode": -1,
+      "attempts": [
+        {
+          "executionId": "c4edb08bffa442254d1e37d9b6722b49",
+          "orderId": "de5fcaac857ffa465bef037004efceef",
+          "attempt": 1,
+          "fence": 1,
+          "agentId": "regente-kubernetes-phase05-controller",
+          "state": "failed",
+          "leaseUntil": 0,
+          "acceptedAt": 1793318024261,
+          "startedAt": 1793318024290,
+          "finishedAt": 1793318025338,
+          "lastContact": 1793318024290,
+          "reason": "",
+          "resolvedAt": 0,
+          "resolvedBy": ""
+        }
+      ]
+    },
+    {
+      "id": "pod-timeout-FORCE-234736",
+      "status": "NOTOK",
+      "exitCode": 1,
+      "attempts": [
+        {
+          "executionId": "0f7427ae0e39da553296869bd1f342d8",
+          "orderId": "163910684272055b19947098244e17d8",
+          "attempt": 1,
+          "fence": 1,
+          "agentId": "regente-kubernetes-phase05-controller",
+          "state": "failed",
+          "leaseUntil": 0,
+          "acceptedAt": 1793317658193,
+          "startedAt": 1793317658215,
+          "finishedAt": 1793317786947,
+          "lastContact": 1793317786592,
+          "reason": "Synthetic deadline: Job Failed and no running workload container on the reachable worker; original missing-pod uncertainty retained in evidence",
+          "resolvedAt": 1793317786947,
+          "resolvedBy": "admin"
+        }
+      ]
+    },
+    {
+      "id": "pod-timeout-FORCE-235034",
+      "status": "NOTOK",
+      "exitCode": 137,
+      "attempts": [
+        {
+          "executionId": "8ddc8289a411e411575ca6651a1d8d1c",
+          "orderId": "8911468b0e503c3540d42bf975822fc0",
+          "attempt": 1,
+          "fence": 1,
+          "agentId": "regente-kubernetes-phase05-controller",
+          "state": "failed",
+          "leaseUntil": 0,
+          "acceptedAt": 1793317836248,
+          "startedAt": 1793317836270,
+          "finishedAt": 1793317854537,
+          "lastContact": 1793317836270,
+          "reason": "",
+          "resolvedAt": 0,
+          "resolvedBy": ""
+        }
+      ]
+    }
+  ],
+  "jobs": [
+    {
+      "name": "rg-0280d61232e501180e3e2bda2602e4b8660ec7f3",
+      "uid": "8023d940-9d32-420c-a57f-b983cf74beea",
+      "execution": "8ddc8289a411e411575ca6651a1d8d1c",
+      "conditions": [
+        {
+          "lastProbeTime": "2026-10-29T23:50:53Z",
+          "lastTransitionTime": "2026-10-29T23:50:53Z",
+          "message": "Job has reached the specified backoff limit",
+          "reason": "BackoffLimitExceeded",
+          "status": "True",
+          "type": "FailureTarget"
+        },
+        {
+          "lastProbeTime": "2026-10-29T23:50:53Z",
+          "lastTransitionTime": "2026-10-29T23:50:53Z",
+          "message": "Job has reached the specified backoff limit",
+          "reason": "BackoffLimitExceeded",
+          "status": "True",
+          "type": "Failed"
+        }
+      ]
+    },
+    {
+      "name": "rg-096d8150073d61a3e7453e5e947e40e99c6e392b",
+      "uid": "b6e0df13-3821-41ba-81a4-948cd8f76b13",
+      "execution": "0f7427ae0e39da553296869bd1f342d8",
+      "conditions": [
+        {
+          "lastProbeTime": "2026-10-29T23:47:48Z",
+          "lastTransitionTime": "2026-10-29T23:47:48Z",
+          "message": "Job was active longer than specified deadline",
+          "reason": "DeadlineExceeded",
+          "status": "True",
+          "type": "FailureTarget"
+        },
+        {
+          "lastProbeTime": "2026-10-29T23:47:54Z",
+          "lastTransitionTime": "2026-10-29T23:47:54Z",
+          "message": "Job was active longer than specified deadline",
+          "reason": "DeadlineExceeded",
+          "status": "True",
+          "type": "Failed"
+        }
+      ]
+    },
+    {
+      "name": "rg-351b06efca108c4f18a370a8c31cf27070c4a379",
+      "uid": "23aa9882-0425-4a29-9ae5-b9a89159a0f8",
+      "execution": "1936a2b978727b7e305b2db3e65919bb",
+      "conditions": [
+        {
+          "lastProbeTime": "2026-10-29T23:57:57Z",
+          "lastTransitionTime": "2026-10-29T23:57:57Z",
+          "message": "Job has reached the specified backoff limit",
+          "reason": "BackoffLimitExceeded",
+          "status": "True",
+          "type": "FailureTarget"
+        },
+        {
+          "lastProbeTime": "2026-10-29T23:57:57Z",
+          "lastTransitionTime": "2026-10-29T23:57:57Z",
+          "message": "Job has reached the specified backoff limit",
+          "reason": "BackoffLimitExceeded",
+          "status": "True",
+          "type": "Failed"
+        }
+      ]
+    },
+    {
+      "name": "rg-53a73efba1c39b8a19ef1cf36babfb2c3bfa69b3",
+      "uid": "d7dff247-ad35-4491-aa1f-cdf523275661",
+      "execution": "26d26622ce76d2680fcc2f12b613f10a",
+      "conditions": [
+        {
+          "lastProbeTime": "2026-10-29T23:52:46Z",
+          "lastTransitionTime": "2026-10-29T23:52:46Z",
+          "message": "Job was active longer than specified deadline",
+          "reason": "DeadlineExceeded",
+          "status": "True",
+          "type": "FailureTarget"
+        },
+        {
+          "lastProbeTime": "2026-10-29T23:53:19Z",
+          "lastTransitionTime": "2026-10-29T23:53:19Z",
+          "message": "Job was active longer than specified deadline",
+          "reason": "DeadlineExceeded",
+          "status": "True",
+          "type": "Failed"
+        }
+      ]
+    },
+    {
+      "name": "rg-6524f0622f8e78928f69185c611e361fa53fba0b",
+      "uid": "3f049c52-f76d-4d75-9dd5-a8892a54905a",
+      "execution": "c50974b72447479578aa7ddc1cb67d1e",
+      "conditions": [
+        {
+          "lastProbeTime": "2026-10-29T23:57:36Z",
+          "lastTransitionTime": "2026-10-29T23:57:36Z",
+          "message": "Reached expected number of succeeded pods",
+          "reason": "CompletionsReached",
+          "status": "True",
+          "type": "SuccessCriteriaMet"
+        },
+        {
+          "lastProbeTime": "2026-10-29T23:57:36Z",
+          "lastTransitionTime": "2026-10-29T23:57:36Z",
+          "message": "Reached expected number of succeeded pods",
+          "reason": "CompletionsReached",
+          "status": "True",
+          "type": "Complete"
+        }
+      ]
+    },
+    {
+      "name": "rg-7b1e4bbf2518d1a7d6e136d1c37d2847fecb0433",
+      "uid": "a95478c2-e434-42a7-97e8-79b58c6f193d",
+      "execution": "e7f8c413376f56f2febbd3f1fb47fcea",
+      "conditions": [
+        {
+          "lastProbeTime": "2026-10-29T23:47:09Z",
+          "lastTransitionTime": "2026-10-29T23:47:09Z",
+          "message": "Job was active longer than specified deadline",
+          "reason": "DeadlineExceeded",
+          "status": "True",
+          "type": "FailureTarget"
+        },
+        {
+          "lastProbeTime": "2026-10-29T23:47:16Z",
+          "lastTransitionTime": "2026-10-29T23:47:16Z",
+          "message": "Job was active longer than specified deadline",
+          "reason": "DeadlineExceeded",
+          "status": "True",
+          "type": "Failed"
+        }
+      ]
+    },
+    {
+      "name": "rg-7defb9ed95ae7d7a0833e1189cc67680b9a6826c",
+      "uid": "9e7a9c54-0801-4347-8ebe-fde6cd96a6da",
+      "execution": "245a4ca0fd80ff11355f52fd82d1c408",
+      "conditions": [
+        {
+          "lastProbeTime": "2026-10-29T23:45:36Z",
+          "lastTransitionTime": "2026-10-29T23:45:36Z",
+          "message": "Job has reached the specified backoff limit",
+          "reason": "BackoffLimitExceeded",
+          "status": "True",
+          "type": "FailureTarget"
+        },
+        {
+          "lastProbeTime": "2026-10-29T23:45:36Z",
+          "lastTransitionTime": "2026-10-29T23:45:36Z",
+          "message": "Job has reached the specified backoff limit",
+          "reason": "BackoffLimitExceeded",
+          "status": "True",
+          "type": "Failed"
+        }
+      ]
+    },
+    {
+      "name": "rg-abaa4c25d7aeb01c21a1d37545fc6b51d7b63257",
+      "uid": "f956b0ed-71bc-40b5-9dac-a41ae41829e4",
+      "execution": "486623a702395eeef8b6bee5b73f8bba",
+      "conditions": [
+        {
+          "lastProbeTime": "2026-10-29T23:51:26Z",
+          "lastTransitionTime": "2026-10-29T23:51:26Z",
+          "message": "Reached expected number of succeeded pods",
+          "reason": "CompletionsReached",
+          "status": "True",
+          "type": "SuccessCriteriaMet"
+        },
+        {
+          "lastProbeTime": "2026-10-29T23:51:26Z",
+          "lastTransitionTime": "2026-10-29T23:51:26Z",
+          "message": "Reached expected number of succeeded pods",
+          "reason": "CompletionsReached",
+          "status": "True",
+          "type": "Complete"
+        }
+      ]
+    },
+    {
+      "name": "rg-bb2c80fe0bf34dbdcdd8fb58db904e935fb2b1ef",
+      "uid": "f501be66-31f7-414b-900d-146551e444db",
+      "execution": "a9d5b5f3fa33b92fdd7f59d479c49f98",
+      "conditions": [
+        {
+          "lastProbeTime": "2026-10-29T23:45:29Z",
+          "lastTransitionTime": "2026-10-29T23:45:29Z",
+          "message": "Reached expected number of succeeded pods",
+          "reason": "CompletionsReached",
+          "status": "True",
+          "type": "SuccessCriteriaMet"
+        },
+        {
+          "lastProbeTime": "2026-10-29T23:45:29Z",
+          "lastTransitionTime": "2026-10-29T23:45:29Z",
+          "message": "Reached expected number of succeeded pods",
+          "reason": "CompletionsReached",
+          "status": "True",
+          "type": "Complete"
+        }
+      ]
+    },
+    {
+      "name": "rg-c4e5b561e75cce40a6f74e6b374544265ff8a71d",
+      "uid": "f6fc3371-28cd-421c-9927-ddfe301182cb",
+      "execution": "118316f5aa348ab582c4e6918d685d13",
+      "conditions": [
+        {
+          "lastProbeTime": "2026-10-29T23:51:38Z",
+          "lastTransitionTime": "2026-10-29T23:51:38Z",
+          "message": "Job has reached the specified backoff limit",
+          "reason": "BackoffLimitExceeded",
+          "status": "True",
+          "type": "FailureTarget"
+        },
+        {
+          "lastProbeTime": "2026-10-29T23:51:38Z",
+          "lastTransitionTime": "2026-10-29T23:51:38Z",
+          "message": "Job has reached the specified backoff limit",
+          "reason": "BackoffLimitExceeded",
+          "status": "True",
+          "type": "Failed"
+        }
+      ]
+    },
+    {
+      "name": "rg-cf59c9f6308ae1d8d2f09a17dd9ba045843720b5",
+      "uid": "702d2299-c033-4ddb-9ad1-0df96f12816e",
+      "execution": "4277d83f28067e87949a14f4df04a0f2",
+      "conditions": [
+        {
+          "lastProbeTime": "2026-10-29T23:45:46Z",
+          "lastTransitionTime": "2026-10-29T23:45:46Z",
+          "message": "Reached expected number of succeeded pods",
+          "reason": "CompletionsReached",
+          "status": "True",
+          "type": "SuccessCriteriaMet"
+        },
+        {
+          "lastProbeTime": "2026-10-29T23:45:46Z",
+          "lastTransitionTime": "2026-10-29T23:45:46Z",
+          "message": "Reached expected number of succeeded pods",
+          "reason": "CompletionsReached",
+          "status": "True",
+          "type": "Complete"
+        }
+      ]
+    },
+    {
+      "name": "rg-dfa664df1223b9fde5238d8361e1966467010319",
+      "uid": "7cf9e48d-a7bb-46cb-acd9-95c8ed6bca80",
+      "execution": "c66dca83e79b1d44f6c33c91bddf81b5",
+      "conditions": [
+        {
+          "lastProbeTime": "2026-10-29T23:57:45Z",
+          "lastTransitionTime": "2026-10-29T23:57:45Z",
+          "message": "Job has reached the specified backoff limit",
+          "reason": "BackoffLimitExceeded",
+          "status": "True",
+          "type": "FailureTarget"
+        },
+        {
+          "lastProbeTime": "2026-10-29T23:57:45Z",
+          "lastTransitionTime": "2026-10-29T23:57:45Z",
+          "message": "Job has reached the specified backoff limit",
+          "reason": "BackoffLimitExceeded",
+          "status": "True",
+          "type": "Failed"
+        }
+      ]
+    },
+    {
+      "name": "rg-fda6600e045dab123aab9cc1410e23e7d3f28d26",
+      "uid": "fdcf7f1d-c2e1-4495-aca5-b8a01c58a900",
+      "execution": "cfa304973229ef23a9a63aa094492544",
+      "conditions": [
+        {
+          "lastProbeTime": "2026-10-29T23:47:04Z",
+          "lastTransitionTime": "2026-10-29T23:47:04Z",
+          "message": "Reached expected number of succeeded pods",
+          "reason": "CompletionsReached",
+          "status": "True",
+          "type": "SuccessCriteriaMet"
+        },
+        {
+          "lastProbeTime": "2026-10-29T23:47:04Z",
+          "lastTransitionTime": "2026-10-29T23:47:04Z",
+          "message": "Reached expected number of succeeded pods",
+          "reason": "CompletionsReached",
+          "status": "True",
+          "type": "Complete"
+        }
+      ]
+    },
+    {
+      "name": "rg-ff7fa93f08b2685569267831df3748de0e6849d9",
+      "uid": "5d40a794-1baa-4f49-9cab-cae91314f4ea",
+      "execution": "fb06ff1e7577feba570c2e71a89f16c5",
+      "conditions": [
+        {
+          "lastProbeTime": "2026-10-29T23:50:34Z",
+          "lastTransitionTime": "2026-10-29T23:50:34Z",
+          "message": "Job has reached the specified backoff limit",
+          "reason": "BackoffLimitExceeded",
+          "status": "True",
+          "type": "FailureTarget"
+        },
+        {
+          "lastProbeTime": "2026-10-29T23:50:34Z",
+          "lastTransitionTime": "2026-10-29T23:50:34Z",
+          "message": "Job has reached the specified backoff limit",
+          "reason": "BackoffLimitExceeded",
+          "status": "True",
+          "type": "Failed"
+        }
+      ]
+    }
+  ],
+  "harnessCorrections": [
+    {
+      "order": "pod-ok-FORCE-173313",
+      "reason": "K8S_JOB capability absent, no attempt or pod; cancelled before dispatch"
+    },
+    {
+      "order": "pod-cancel-FORCE-234705",
+      "reason": "Running cancellation maps to NOTOK with attempt cancelled; assertion corrected from CANCELLED after source inspection"
+    },
+    {
+      "order": "pod-restart-FORCE-234633",
+      "reason": "Initial observer indexed an empty attempts list before dispatch; resumed the same order after fixing polling, no extra submission"
+    }
+  ],
+  "observedFailures": [
+    {
+      "order": "pod-timeout-FORCE-234736",
+      "reason": "Kubernetes pod disappeared; no recreation allowed",
+      "resolution": "failed after Job/node runtime inspection"
+    }
+  ],
+  "limitations": [
+    "No AWS, production fleet, HA or exactly-once guarantee",
+    "Node unavailability simulated by pausing only the dedicated worker container",
+    "API access outage simulated by temporary RoleBinding removal",
+    "ACK/retention/delete/tombstone verified by deterministic journal plus TLS API tests; no one-hour real retention wait in this qualification",
+    "Token re-read tested against TLS fixture; projected token configured in cluster",
+    "Logs fetched at completion, bounded to 1 MiB; no live application log streaming",
+    "Firewall init is a trusted Pod Security exception; no Restricted/PID-limit certification",
+    "Interrupted harness assertions and original deadline failure retained; no claim of a single uninterrupted run"
+  ]
+}

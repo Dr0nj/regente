@@ -150,15 +150,15 @@ stdout/stderr in real time</strong> (visible in the instance detail).</p>
 <td><code>wasmPath</code> | <code>wasmUrl</code>, <code>args?</code>, <code>stdin?</code></td>
 </tr>
 <tr>
-<td><code>K8S_JOB</code></td>
-<td>Creates a <strong>Kubernetes Job</strong> through the REST API and waits for it</td>
-<td><code>image</code>, <code>command?</code>, <code>namespace?</code>, <code>apiServer?</code>, <code>token?</code></td>
+<td><code>K8S</code> / <code>K8S_JOB</code></td>
+<td>Creates and observes a <strong>Kubernetes Job</strong> with durable identity</td>
+<td>v2: <code>image</code> by digest, <code>command</code>, <code>namespace</code>; explicit local Kubernetes policy required</td>
 </tr>
 </tbody>
 </table>
 <blockquote>
 <p><code>SSH</code> (an agentless remote command) does <strong>not</strong> use the agent — it runs on the server itself.
-<code>K8S_JOB</code> needs an agent that announces <code>-caps K8S</code> (with access to the cluster API).</p>
+Kubernetes needs the exact capability matching the job type (<code>-caps K8S</code> for <code>K8S</code>, or <code>-caps K8S_JOB</code> for <code>K8S_JOB</code>). In v2, credentials and API access belong to the local policy; job-supplied credentials are rejected. See the <a href="https://github.com/Dr0nj/regente/blob/main/deploy/kubernetes/JOB-CELL.md">Job cell contract</a>.</p>
 </blockquote>
 <h2 id="build">Build</h2>
 <pre><code class="language-bash">go build -o regente-agent .      # Linux/macOS

@@ -228,15 +228,15 @@ var jobTypeSchemas = []JobTypeSchema{
 		},
 	},
 	{
-		Type: "K8S", Aliases: []string{"K8S_JOB"}, Summary: "Kubernetes Job from the agent (API server, no kubectl).",
+		Type: "K8S", Aliases: []string{"K8S_JOB"}, Summary: "Kubernetes Job; durable execution requires explicit local agent policy and exact capability matching.",
 		Fields: []FieldSpec{
-			{Name: "image", Kind: KindString, Required: true, Desc: "container image"},
-			{Name: "command", Kind: KindString, Desc: `runs as ["/bin/sh","-c",command]`},
-			{Name: "namespace", Kind: KindString, Desc: `default "default"`},
-			{Name: "name", Kind: KindString, Desc: "Job name (default regente-<ms>)"},
-			{Name: "apiServer", Kind: KindString, Desc: "k8s API URL; empty = in-cluster"},
-			{Name: "token", Kind: KindString, Desc: "service account Bearer; empty = in-cluster"},
-			{Name: "insecureTLS", Kind: KindBool, Desc: "true skips TLS verification (self-signed)"},
+			{Name: "image", Kind: KindString, Required: true, Desc: "durable: policy-allowlisted image pinned by sha256 digest"},
+			{Name: "command", Kind: KindString, Desc: `durable: required and policy-allowlisted; runs as ["/bin/sh","-c",command]`},
+			{Name: "namespace", Kind: KindString, Desc: "durable: required and fixed by local policy"},
+			{Name: "name", Kind: KindString, Desc: "legacy only; rejected by durable execution"},
+			{Name: "apiServer", Kind: KindString, Desc: "legacy only; durable API URL comes from local policy"},
+			{Name: "token", Kind: KindString, Desc: "legacy only; durable credentials come from a local projected token file"},
+			{Name: "insecureTLS", Kind: KindBool, Desc: "legacy only; rejected by durable execution, which requires a trusted CA"},
 		},
 	},
 	{

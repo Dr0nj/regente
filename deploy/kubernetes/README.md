@@ -196,7 +196,10 @@ bearer tokens. `browser-accounts.json` contains credentials and must remain igno
 
 The [HTTP cell extension](HTTP-CELL.md) adds an in-cluster HTTP agent with its own
 identity, persistent journal and verified egress, alongside the external agent.
-Future stages are tracked in the [canonical roadmap](../../docs/roadmap.md):
-remote execution bridge, migration and per-execution pods.
+Stages and their qualification limits are tracked in the [canonical roadmap](../../docs/roadmap.md).
 
 The [SSH bridge extension](SSH-BRIDGE.md) runs SSH_REMOTE in a dedicated pod against a Linux host without a Regente agent.
+
+The [Job cell](JOB-CELL.md) adds a separate pod per durable execution, with a
+restricted local policy, persistent external identity and recovery without
+resubmission. Its two-node fault laboratory is isolated from the prior stages.

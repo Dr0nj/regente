@@ -39,9 +39,12 @@ type Transport interface {
 }
 type Executor func(context.Context, Envelope, func(string)) (int, string)
 type Worker struct {
-	Journal    *Journal
-	Transport  Transport
-	Execute    Executor
+	Journal   *Journal
+	Transport Transport
+	Execute   Executor
+	// Reconcile must only observe an already submitted effect, never submit anew.
+	Reconcile  Executor
+	Resumable  func(Entry) bool
 	Concurrent int
 	mu         sync.Mutex
 	active     map[string]context.CancelFunc
@@ -76,6 +79,31 @@ func (w *Worker) Sync(ctx context.Context, e Entry) error {
 	j := w.Journal
 	switch e.State {
 	case "uncertain":
+		if e.Reason == "worker restarted with an unresolved effect" && e.StartedAck && w.Reconcile != nil && w.Resumable != nil && w.Resumable(e) {
+			w.mu.Lock()
+			available := len(w.active) < w.Concurrent
+			w.mu.Unlock()
+			if !available {
+				return nil
+			}
+			r, err := w.phase(ctx, e, "status")
+			if err != nil {
+				return err
+			}
+			if !received(r, e) {
+				return errors.New("invalid reconciliation receipt")
+			}
+			if terminal(r.State) {
+				return j.Ack(e.Envelope.ExecutionID)
+			}
+			if r.Current && (r.State == "running" || r.State == "cancel_requested") {
+				if err := j.ResumeObservation(e.Envelope.ExecutionID, r.State == "cancel_requested"); err != nil {
+					return err
+				}
+				w.launchWith(ctx, e, w.Reconcile)
+				return nil
+			}
+		}
 		r, err := w.phase(ctx, e, "uncertain")
 		if err != nil {
 			return err
@@ -227,6 +255,9 @@ func (w *Worker) Sync(ctx context.Context, e Entry) error {
 	return nil
 }
 func (w *Worker) launch(parent context.Context, e Entry) {
+	w.launchWith(parent, e, w.Execute)
+}
+func (w *Worker) launchWith(parent context.Context, e Entry, execute Executor) {
 	w.mu.Lock()
 	if _, ok := w.active[e.Envelope.ExecutionID]; ok {
 		w.mu.Unlock()
@@ -285,7 +316,11 @@ func (w *Worker) launch(parent context.Context, e Entry) {
 			}
 			return err
 		})
-		code, out := w.Execute(ctx, e.Envelope, emit)
+		code, out := execute(ctx, e.Envelope, emit)
+		if code == DeferredObservationExitCode && parent.Err() != nil {
+			// Preserve running for an explicitly supported observer on restart.
+			return
+		}
 		if code == UnknownExitCode || code == RemoteUnknownExitCode {
 			latest, readErr := w.Journal.Entry(e.Envelope.ExecutionID)
 			if readErr != nil {

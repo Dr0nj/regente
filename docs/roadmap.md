@@ -86,7 +86,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ### Kubernetes — implantação híbrida (21/10/2026)
 
 - **KUBERNETES-03 — ponte SSH local entregue:** SSH_REMOTE no agente v2, destino sshd sem Regente, autorização estrita e incerteza preservada. Ver entrega abaixo; SSM/AWS não homologados.
-- **KUBERNETES-05 — pod por execução:** controlador/Jobs, quotas, isolamento, resultado e reconciliação; distinto do agente persistente em pod.
+- **KUBERNETES-05 — pod por execução qualificado localmente:** política restrita, vínculo durável, recuperação sem nova submissão, cancelamento/deadline e falhas de pod/nó/API. [Runbook](../deploy/kubernetes/JOB-CELL.md) e [evidência segmentada](evidence/kubernetes-05-local.json). AWS, produção, HA e aceite humano I17 permanecem separados.
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
@@ -388,6 +388,12 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+### Kubernetes-05 — pod por execução local (29/10/2026)
+
+Agente v2 exige política local com API/CA/token projetado, namespace/ServiceAccount, imagens por digest, comandos e recursos fixados. Intenção precede o único POST; executionId/fence, JobUID e PodUID ficam no journal. Restart retoma somente observação autorizada; objeto ausente, identidade alterada ou recibo inconclusivo gera UNCERTAIN sem recriação. Pod não-root/RO/caps0/sem credencial, init de firewall confiável e quota em namespace dedicado; não é perfil Pod Security Restricted.
+
+Dezesseis ordens sintéticas e quatorze Jobs na [qualificação](evidence/kubernetes-05-local.json): sucesso/exit7, isolamento, crash do controlador preservando Job/pod, cancelamento, deadline do pod, acesso API revogado/restaurado, perda de pod e pausa do nó isolado, política/RBAC negativos e retry configurado com execuções distintas. Histórico de falha inicial do deadline do Job e correções do harness preservado. Limpeza ACK+retenção/UID/tombstone e rotação de token testadas com journal real/API TLS controlada; sem alegar espera real de uma hora ou streaming de logs. [Limites e operação](../deploy/kubernetes/JOB-CELL.md); não prova exactly-once, AWS, HA ou frota produtiva.
 
 ### Kubernetes-04 — migração gradual local (29/10/2026)
 

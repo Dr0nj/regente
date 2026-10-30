@@ -98,8 +98,12 @@ func runAgentV2(base, token, id, caps, environment, path string, concurrency, pe
 		case <-ctx.Done():
 		}
 	}()
+	store, err := newKubeStore(j)
+	if err != nil {
+		return err
+	}
 	t := &v2HTTP{Base: base, Token: token, ID: id, Caps: caps, Env: environment, Version: agentVersion, Slots: concurrency, Pending: pending, Client: controlClient(10 * time.Second)}
-	w := journal.NewWorker(j, t, func(ctx context.Context, e journal.Envelope, emit func(string)) (code int, out string) {
+	execute := func(ctx context.Context, e journal.Envelope, emit func(string), resume bool) (code int, out string) {
 		var def struct {
 			ID          string                 `json:"id"`
 			Environment string                 `json:"environment"`
@@ -113,6 +117,9 @@ func runAgentV2(base, token, id, caps, environment, path string, concurrency, pe
 		}
 		prepared, params, redact, err := security.Prepare(ctx, *executionPolicy, *jobSecrets, def.Environment, def.ID, strings.ToUpper(def.JobType), def.Params)
 		if err != nil {
+			if resume {
+				return journal.RemoteUnknownExitCode, "Kubernetes policy unavailable during observation"
+			}
 			return -1, err.Error()
 		}
 		ctx = prepared
@@ -122,6 +129,12 @@ func runAgentV2(base, token, id, caps, environment, path string, concurrency, pe
 		emit = func(s string) { originalEmit(redact(s)) }
 		if def.DryRun {
 			return 0, "[dry run] no external effect executed"
+		}
+		if security.IsKubernetes(def.JobType) {
+			return runDurableKube(ctx, store, e, def.Params, def.Timeout, resume, emit)
+		}
+		if resume {
+			return journal.RemoteUnknownExitCode, "unsupported external observation"
 		}
 		if strings.EqualFold(def.JobType, "HTTP") || strings.EqualFold(def.JobType, "REST") {
 			return runRESTContext(ctx, def.Params, def.Timeout, true)
@@ -137,11 +150,21 @@ func runAgentV2(base, token, id, caps, environment, path string, concurrency, pe
 			}
 		}
 		return code, out
+	}
+	w := journal.NewWorker(j, t, func(ctx context.Context, e journal.Envelope, emit func(string)) (int, string) {
+		return execute(ctx, e, emit, false)
 	}, concurrency)
+	w.Resumable = store.resumable
+	w.Reconcile = func(ctx context.Context, e journal.Envelope, emit func(string)) (int, string) {
+		return execute(ctx, e, emit, true)
+	}
 	defer w.Stop()
 	nextCompact := time.Time{}
 	for {
 		if time.Now().After(nextCompact) {
+			if err = cleanupKube(ctx, store); err != nil {
+				return err
+			}
 			if err = j.Compact(time.Now().Add(-7 * 24 * time.Hour)); err != nil {
 				return fmt.Errorf("journal retention failed: %w", err)
 			}

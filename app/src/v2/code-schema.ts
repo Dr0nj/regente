@@ -185,11 +185,12 @@ params:
   {
     tag: "K8S",
     kind: "jobType · alias K8S_JOB",
-    summary: "Kubernetes Job from the agent (talks to the API server directly, no kubectl).",
-    detail: "params: `image` (REQUIRED) · `command` · `namespace` (default default) · `name` · `apiServer`/`token` (empty = in-cluster) · `insecureTLS` (bool).",
+    summary: "Kubernetes Job with durable execution tracking and an explicit agent policy.",
+    detail: "Durable execution requires image by sha256 digest, command and namespace matching the agent's local policy. Credentials, API URL, service account and resource limits belong to that policy. Job-supplied token, apiServer, name and insecureTLS are rejected. Advertise the exact jobType as an agent capability (K8S or K8S_JOB).",
     example: `jobType: K8S
 params:
-  image: alpine:3
+  image: registry.internal/workload@sha256:<approved-digest>
+  namespace: regente-jobs
   command: "echo hi"`,
   },
   {

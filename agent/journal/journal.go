@@ -25,6 +25,7 @@ const UnknownExitCode = -2147483648
 // RemoteUnknownExitCode cannot be acknowledged as cancelled merely because the
 // local client returned. The destination has not confirmed remote termination.
 const RemoteUnknownExitCode = -2147483647
+const DeferredObservationExitCode = -2147483646
 const MaxOutput = 5 << 20
 
 var ErrConflict = errors.New("journal execution identity conflict")
@@ -336,6 +337,20 @@ func (j *Journal) BeginEffect(id string) (bool, error) {
 }
 func (j *Journal) Running(id string) error {
 	_, err := j.DB.Exec("UPDATE journal_entries SET state='running' WHERE execution_id=? AND state='starting' AND started_ack=1", id)
+	return err
+}
+
+// ResumeObservation restores only restart-marked effects for an observer whose
+// durable external binding has been checked. It is not authorization to replay.
+func (j *Journal) ResumeObservation(id string, cancel bool) error {
+	r, err := j.DB.Exec("UPDATE journal_entries SET state='running',reason='',cancel_requested=CASE WHEN ? THEN 1 ELSE cancel_requested END WHERE execution_id=? AND state='uncertain' AND reason='worker restarted with an unresolved effect' AND started_ack=1", cancel, id)
+	if err != nil {
+		return err
+	}
+	n, err := r.RowsAffected()
+	if err == nil && n != 1 {
+		return ErrConflict
+	}
 	return err
 }
 func (j *Journal) CancelBeforeEffect(id string) error {

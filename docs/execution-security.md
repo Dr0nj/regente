@@ -123,7 +123,10 @@ job-secrets-file flags. Restricted SSH requires strictHostKey=yes and an explici
 knownHostsPath, pins destination IP and disables local config/proxy/jump/agent
 forwarding/local hooks. Remote commands still need a separate remote trust boundary.
 Adapters without guarded dialing are denied by local policy: database, transfer,
-cloud/K8S/WASM are not homologated in this profile.
+cloud/WASM are not homologated in this profile. Durable `K8S` / `K8S_JOB` now has a
+separate explicit Kubernetes policy and guarded API client; see the
+[Job cell contract](../deploy/kubernetes/JOB-CELL.md). Its trusted firewall init
+requires a security exception and is not Pod Security Restricted.
 
 Download install-secure-linux.sh and the agent binary from the same release.
 Requires Linux/systemd with working cgroup limits and cgroup BPF IP filtering:

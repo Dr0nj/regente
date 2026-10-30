@@ -22,10 +22,10 @@ stdout/stderr in real time** (visible in the instance detail).
 | `BATCH` · `GLUE` · `STEP_FUNCTION` | AWS Batch job, Glue job run, Step Functions execution | see the API reference |
 | `GCP_RUN` | Triggers a Cloud Run Job (Run Admin API v2) | `project`, `region`, `job` |
 | `WASM` | Runs a sandboxed WASI WebAssembly module through [wazero](https://wazero.dev) (pure Go, no CGO) | `wasmPath` \| `wasmUrl`, `args?`, `stdin?` |
-| `K8S_JOB` | Creates a **Kubernetes Job** through the REST API and waits for it | `image`, `command?`, `namespace?`, `apiServer?`, `token?` |
+| `K8S` / `K8S_JOB` | Creates and observes a **Kubernetes Job** with durable identity | v2: `image` by digest, `command`, `namespace`; explicit local Kubernetes policy required |
 
 > `SSH` (an agentless remote command) does **not** use the agent — it runs on the server itself.
-> `K8S_JOB` needs an agent that announces `-caps K8S` (with access to the cluster API).
+> Kubernetes needs the exact capability matching the job type (`-caps K8S` for `K8S`, or `-caps K8S_JOB` for `K8S_JOB`). In v2, credentials and API access belong to the local policy; job-supplied credentials are rejected. See the [Job cell contract](../deploy/kubernetes/JOB-CELL.md).
 
 ## Build
 
