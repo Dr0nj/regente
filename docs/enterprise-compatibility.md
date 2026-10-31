@@ -28,7 +28,7 @@ No partial report is emitted when a document fails. Sorting and content hashes
 make reports reproducible for unchanged inputs. A source-version label records
 the operator's declaration; it does not validate the schema of that release.
 
-Scalar values are omitted except declared Type labels. **This is not an
+In inventory-only mode, scalar values are omitted except declared Type labels. **This is not an
 anonymizer:** filenames, pointers and Type labels can identify an organization.
 Keep real inputs and reports private. Public examples and tests must be entirely
 synthetic, including names, topology, counts and operational references.
@@ -37,8 +37,53 @@ The structural reference is the public BMC
 [Job Properties documentation](https://documents.bmc.com/supportu/API/Monthly/en-US/Documentation/API_CodeRef_JobProperties.htm),
 consulted on 2026-10-30. It documents named objects and array-based definitions.
 Monthly is a moving reference, not a pinned compatibility certification. This
-increment inventories JSON only; version-specific conversion needs a pinned
+inventory-only mode inventories JSON only; version-specific conversion needs a pinned
 contract and corpus. Parsing coverage is not semantic or execution coverage.
+
+## Conversion review plan (EC-01b)
+
+For a complete, single-file definition document using the declared source version:
+
+```sh
+go run ./cmd/inventoryaapi -in /private/export.json -source-version 9.0.22.100 -plan > /private/review.json
+```
+
+`-plan` adds the versioned `regente-aapi-review/9.0.22.100/v1` contract. Other
+source-version labels are rejected in this mode. The default inventory remains
+unchanged. This is a review report, not a workspace import: no YAML, job IDs,
+enabled schedules, runtime calls or executable definitions are produced.
+
+The parser recognizes named folders/subfolders/jobs and the `Folders`,
+`SubFolders`, and `Jobs` array containers. Each recognized job retains its source
+pointer and ancestor pointers. Duplicate array names remain separate objects.
+Document filename plus pointer identifies a source occurrence; array reordering
+changes that identity. Do not use it as a cross-snapshot runtime identity.
+
+Only a literal `Job:Command` action without additional properties can become an
+`action-candidate-review-only` proposal for `COMMAND`. Its command bytes are
+preserved without trimming or execution. **Plan mode includes command text and
+must be kept private.** It is not safe to publish real reports.
+
+Unknown properties, RunAs, Host, metadata without a target mapping, variables,
+events and calendars block proposals. Folder and root constraints propagate to
+descendants; they are not flattened or overridden by guesses. Dummy and other
+job types remain blocked. Malformed or unresolved layouts block all proposals
+in the document. Empty folders retain their unmapped constraints. Directory
+mode inventories every file but blocks proposals because file composition is
+not qualified; `.folder.json` is not implicitly merged.
+
+The report separates recognized jobs, action candidates and blocked jobs. These
+counts are **not** scheduler or execution compatibility percentages. Every plan
+lists outstanding gates for source-runtime equivalence, scheduling/folder
+lifecycle, execution identity/policy and workspace conversion review. Even an
+action candidate is non-executable and does not establish source validity or
+production compatibility. No schedule defaults are inferred.
+
+The contract uses the version-addressed BMC references consulted on 2026-10-30:
+[Job Properties](https://documents.bmc.com/supportu/API/9.0.22/9.0.22.100/en-US/Documentation/API_CodeRef_JobProperties.htm)
+and [Folders and Flows](https://documents.bmc.com/supportu/API/9.0.22/9.0.22.100/en-US/Documentation/API_CodeRef_Folder.htm).
+These document the hierarchy and folder-level influence on child jobs. Tests
+use independent synthetic examples; no real export has been qualified.
 
 ## Completion gates for subsequent increments
 

@@ -88,7 +88,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 Plano sanitizado, sem inventários ou referências de organizações: [contrato e critérios](enterprise-compatibility.md). Implementação por incrementos; nenhum item abaixo equivale a homologação produtiva.
 
 - **EC-00 — contrato/corpus:** exemplos inteiramente sintéticos, fontes e versões explícitas, cobertura de parsing separada de semântica e execução. Fixar versão alvo antes de prometer equivalência.
-- **EC-01 — importação AAPI offline:** primeiro incremento de inventário estrutural em `server/cmd/inventoryaapi`; conversão, composição de arquivos, herança e cobertura semântica ainda pendentes. Nada executável enquanto houver perda material ou comportamento desconhecido.
+- **EC-01 — importação AAPI offline:** inventário estrutural e plano de revisão EC-01b em `server/cmd/inventoryaapi`; conversão executável, composição de arquivos, resolução de herança e cobertura semântica ainda pendentes. Nada executável enquanto houver perda material ou comportamento desconhecido.
 - **EC-02 — planejamento:** variáveis por folder/data e pools, eventos Add/Wait/Delete, calendários importados, ciclos e locks compartilhados/exclusivos; preservar dependências externas.
 - **EC-03 — observação/shadow:** snapshots e diagnóstico/diff externos antes de conector autorizado; nenhuma execução, notificação ou escrita operacional; divergências e inconclusivos separados.
 - **EC-04 — operação:** Connection Profiles, Vault/Secrets Manager, grupos de agentes, políticas configuráveis, alertas correlacionados por tentativa e extração de output; homologação de IdP/RBAC/auditoria e proxy de saída.
@@ -405,6 +405,11 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+### EC-01b — plano de conversão AAPI para revisão (30/10/2026)
+
+Contrato `regente-aapi-review/9.0.22.100/v1`, referências BMC versionadas e corpus sintético. Flag `-plan` preserva hierarquia/pointers, nomes repetidos em arrays e propaga bloqueios de folder/root aos filhos. Proposta de ação COMMAND literal apenas quando nenhum campo material está sem mapeamento; RunAs, Host, variáveis, calendário, eventos, Dummy e tipos desconhecidos bloqueiam. Layout ambíguo bloqueia o documento; diretórios não inferem composição. Contagens distinguem objetos reconhecidos, candidatos de ação e bloqueados. Saída não executável, separada de JobDefinition/YAML; candidatos ainda exigem gates de schedule, identidade/política e equivalência. Modo padrão de inventário continua omitindo valores; modo plan contém comandos privados. [Uso e limites](enterprise-compatibility.md#conversion-review-plan-ec-01b). EC-00/EC-01 completos seguem abertos.
+
 
 ### EC-01a / GLUE-01 — inventário offline e contrato local (30/10/2026)
 
@@ -2009,6 +2014,8 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-10-30 — EC-01b:** plano AAPI versionado para revisão de conversão, bloqueios herdados e testes sintéticos; nenhuma definição executável ou composição implícita.
 
 - **2026-10-30 — EC-01a / GLUE-01:** roadmap enterprise sanitizado, inventário estrutural AAPI sem execução e correções de estados/parada Glue verificáveis localmente; conversão semântica, durabilidade e homologação cloud continuam separadas.
 

@@ -24,9 +24,10 @@ type node struct {
 	Status       string `json:"status"`
 }
 type document struct {
-	File   string `json:"file"`
-	SHA256 string `json:"sha256"`
-	Nodes  []node `json:"nodes"`
+	File   string          `json:"file"`
+	SHA256 string          `json:"sha256"`
+	Nodes  []node          `json:"nodes"`
+	Plan   *conversionPlan `json:"plan,omitempty"`
 }
 type report struct {
 	Format        string     `json:"format"`
@@ -132,11 +133,15 @@ func run(args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("inventoryaapi", flag.ContinueOnError)
 	input := flags.String("in", "", "JSON file or directory (including .folder.json)")
 	version := flags.String("source-version", "", "declared source version; not a compatibility claim")
+	plan := flags.Bool("plan", false, "include a non-executable conversion review plan (9.0.22.100 only)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if *input == "" || strings.TrimSpace(*version) == "" || flags.NArg() != 0 {
 		return fmt.Errorf("-in and -source-version are required; no positional arguments")
+	}
+	if *plan && *version != "9.0.22.100" {
+		return fmt.Errorf("conversion review requires -source-version 9.0.22.100; other versions support inventory only")
 	}
 	root, err := filepath.Abs(*input)
 	if err != nil {
@@ -197,6 +202,9 @@ func run(args []string, out io.Writer) error {
 		doc, e := inventory(filepath.ToSlash(name), raw)
 		if e != nil {
 			return fmt.Errorf("document %d: %w", len(r.Documents)+1, e)
+		}
+		if *plan {
+			doc.Plan = reviewPlan(raw, doc, info.IsDir())
 		}
 		r.Documents = append(r.Documents, doc)
 	}
