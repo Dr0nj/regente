@@ -83,6 +83,18 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > detalhado em §✅ Entregue (+ linha no changelog). As caixinhas espalhadas nas seções de
 > baixo **não valem** como status (ver ⛔ REGRA DE STATUS no topo).
 
+### Revisão técnica — ciclo autorizado em 01/11/2026
+
+- **REV-01 — dependências e alcance:** em desenvolvimento. Vite 8.3.5 e Zod 4.6.7 removem os dois alertas altos; auditoria de produção zero, auditoria completa ainda com 12 moderados da cadeia minimatch/ESLint. Fechar somente com árvore compatível validada ou exceções delimitadas por advisory, alcance, responsável e revisão. Não aplicar downgrade automático ou override major apenas para zerar contagem.
+- **REV-02 — primeira inicialização segura:** incremento inicial em desenvolvimento: loopback por padrão no daemon, CLI dev e novos serviços Linux/Windows, preservando endereços explícitos existentes. Restam bootstrap sem bearer administrativo conhecido, configuração guiada e política para bind público development; cobrir instalação limpa, upgrade e containers sem quebrar acesso explicitamente configurado. Loopback sozinho não fecha o item.
+- **REV-03 — coerência documental:** implementado localmente, publicação pendente: distinguir guards históricos de scheduling do runtime v2, corrigir schema e referenciar evidência do SHA exato. Aceite: site regenerado/verificado e ausência de promessa de exactly-once externo, HA universal ou piloto produtivo aprovado.
+- **REV-04 — compatibilidade de upgrade executável:** consolidar matriz server/schema/agent/protocol/journal com aceites de combinações suportadas, rejeição segura das demais e recuperação do conjunto completo. Reutilizar gates existentes; não prometer rolling upgrade misto.
+- **REV-05 — desempenho e manutenção frontend:** medir carga inicial e navegação antes de dividir Design/Analytics/Settings; preservar contratos e verificar browser. Extrair módulos grandes somente com fronteira funcional e benefício demonstrados; tamanho de arquivo isolado não justifica reescrita.
+
+Validação local do primeiro incremento: lint/build, oito cenários Playwright, testes Go de inicialização/runtimeprofile/CLI/docsite e go vet aprovados. Receitas Node e site aprovados. Suíte Python no Windows: 25 aprovados e cinco skips de plataforma, após correção da fixture para Git Bash/Python explícitos. Não equivale ao full Linux do novo commit; CI/release ainda pendentes.
+
+Homologação de efeitos externos/recuperação permanece em **I17/EC-05**, sem criar piloto duplicado nem revogar o adiamento humano. Expandir matriz por adapter com receipt, incerteza, reconciliação e perda de rede; **GLUE-02/03** mantêm seus limites. Full Linux já aprovado no SHA 721a453 é baseline histórica; alterações novas exigem os gates aplicáveis ao novo commit.
+
 ### Compatibilidade enterprise — ciclo autorizado em 30/10/2026
 
 Plano sanitizado, sem inventários ou referências de organizações: [contrato e critérios](enterprise-compatibility.md). Implementação por incrementos; nenhum item abaixo equivale a homologação produtiva.

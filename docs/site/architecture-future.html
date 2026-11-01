@@ -289,6 +289,12 @@ optimization</strong> (avoiding N nodes doing redundant scheduling). If you do n
 <strong>overlapping</strong> ticks (a cron that fires twice, or long ticks that cross), the right mechanism is
 a <strong>per-tick lock</strong> — <code>pg_try_advisory_lock</code> acquired at the start of <code>Tick()</code> and released at the
 end, short scope — and <strong>not</strong> a long-lived leadership lock.</p>
+<p><strong>Current runtime:</strong> the guards above describe scheduling coordination, not the
+complete production execution protocol. I09/I10 added durable dispatch intent,
+agent journals, start authorization, generation/fence and result deduplication.
+Production requires v2; unknown outcomes remain UNCERTAIN without automatic replay.
+Internal fencing does not fence arbitrary external systems. See
+<a href="durable-execution.html">durable execution</a> for the current contract.</p>
 <p><strong>Scope:</strong> PostgreSQL supports both tracks; leadership and per-tick/row guards
 coordinate database work. Neither track gains durable execution or partition safety
 automatically. See <a href="capacity-guarantees.html">capacity and HA evidence</a> for the
@@ -370,7 +376,10 @@ scheduler.</li>
 engine <strong>contradicts this ADR's root decision</strong> (single binary, zero infrastructure,
 anti-lock-in): it would mean operating another service. This historical choice
 did not implement equivalent durable execution. An atomic claim cannot establish
-safe crash resumption; native ACK/fencing/recovery remains enterprise work.</li>
+safe crash resumption. Native ACK, journal, generation/fence and recovery were
+subsequently delivered in I09/I10; see <a href="durable-execution.html">durable execution</a>.
+Production requires protocol v2 and preserves uncertain outcomes without automatic
+replay. These internal guarantees do not make arbitrary external effects exactly once.</li>
 <li><strong>Postgres-as-a-queue</strong> (<code>SKIP LOCKED</code>, e.g. River) — adopting that library was
 historically declined. The 1M report measured materialization, not dispatch.
 This technology choice does not close durable dispatch or recovery requirements.</li>

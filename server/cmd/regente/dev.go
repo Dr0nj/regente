@@ -44,7 +44,7 @@ func cmdDev(args []string) error {
 	fs := flag.NewFlagSet("dev", flag.ExitOnError)
 	workspace := fs.String("workspace", "./workspace", "local workspace (contains definitions/)")
 	date := fs.String("date", time.Now().Format("2006-01-02"), "order_date of the daily materialized at boot")
-	addr := fs.String("addr", ":8686", "HTTP address")
+	addr := fs.String("addr", "127.0.0.1:8686", "HTTP address (loopback by default)")
 	token := fs.String("token", "dev-token", "API bearer token")
 	spaDir := fs.String("spa-dir", "", "serve the built SPA from this directory (default: auto-detected app/dist)")
 	_ = fs.Parse(args)

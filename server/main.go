@@ -71,7 +71,7 @@ func main() {
 		executionMode    = flag.String("execution-mode", envOr("REGENTE_EXECUTION_MODE", "auto"), "Execution contract: auto (durable in production), durable or legacy (development only)")
 		executionLab     = flag.Bool("execution-lab", envOr("REGENTE_EXECUTION_LAB", "") == "1", "I08 development laboratory for protocol v2 attempts; unavailable in production")
 		checkConfig      = flag.Bool("check-config", false, "Validate static configuration and TLS files without opening the database or services")
-		addr             = flag.String("addr", envOr("REGENTE_ADDR", ":8080"), "HTTP listen address")
+		addr             = flag.String("addr", envOr("REGENTE_ADDR", "127.0.0.1:8080"), "HTTP listen address (loopback by default)")
 		spaDir           = flag.String("spa-dir", envOr("REGENTE_SPA_DIR", ""), "Single-origin hosting: serve the built SPA from this directory (UI+API+WS on the same port). Empty = API only")
 		docsDir          = flag.String("docs-dir", envOr("REGENTE_DOCS_DIR", ""), "ADV-7: serve the docs site (cmd/docsite) at /docs on the same port. Empty = no docs")
 		workspace        = flag.String("workspace", envOr("REGENTE_WORKSPACE", "./workspace"), "Path to regente workspace (contains definitions/)")

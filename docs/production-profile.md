@@ -1,7 +1,10 @@
 # Production profile
 
 The production profile is opt-in: set `REGENTE_PROFILE=production` (or
-`-profile production`). Development remains the default for existing installs.
+`-profile production`). Development remains the default. New server and service configurations listen on
+127.0.0.1 by default; the local development CLI also binds loopback. Existing
+explicit addresses are preserved on upgrade. Loopback reduces accidental network
+exposure but does not replace production configuration or remove development credentials.
 Production does not imply mandatory SSO: choose local, hybrid or oidc explicitly.
 Use oidc when SSO must be required; provider unavailability never enables normal
 password login. An explicitly configured emergency administrator is the exception.
@@ -134,4 +137,4 @@ systemd service. See [verification](verification.md) for commands and gate limit
 
 ## Durable execution upgrade
 
-Production selects REGENTE_EXECUTION_MODE=durable automatically and rejects legacy mode. Protocol 2 agents require a persistent local journal and EXECUTION_V2 in their exact provisioned capabilities. Schema 28 and the new agent/server binaries must be upgraded together after draining legacy executions. See the [durable execution runbook](durable-execution.md) for backup, rollback, uncertainty and operator resolution.
+Production selects REGENTE_EXECUTION_MODE=durable automatically and rejects legacy mode. Protocol 2 agents require a persistent local journal and EXECUTION_V2 in their exact provisioned capabilities. Schema 32 and the matching agent/server binaries must be upgraded together after draining legacy executions. See the [durable execution runbook](durable-execution.md) for backup, rollback, uncertainty and operator resolution.

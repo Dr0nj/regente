@@ -15,7 +15,7 @@
 # máquina (System) a colar em texto; ou configure pela UI (Settings → GitHub).
 param(
   [Parameter(Mandatory = $true)][string]$Token,
-  [string]$Addr = ":8080",
+  [string]$Addr = "127.0.0.1:8080",
   [string]$DbDriver = "sqlite",
   [string]$Db = "C:\ProgramData\Regente\regente.db",
   [string]$Workspace = "C:\ProgramData\Regente\workspace",

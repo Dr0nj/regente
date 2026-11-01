@@ -7,7 +7,7 @@ the GitOps layer.
 
 ## Architecture
 
-- HTTP REST API (chi) on `:8080`
+- HTTP REST API (chi) on `127.0.0.1:8080`
 - A WebSocket hub for the web UI (live events) and for agents (dispatch); agents can also use
   HTTP long-poll or SSE
 - The scheduler core running in a goroutine (daily + tick)
@@ -28,7 +28,7 @@ CGO_ENABLED=0 go build -o regente-server .
 ## Run (dev)
 
 ```bash
-./regente-server -addr :8080 -workspace ./workspace -db ./regente.db -api-token dev-token
+./regente-server -addr 127.0.0.1:8080 -workspace ./workspace -db ./regente.db -api-token dev-token
 ```
 
 The most common flags (all of them also read a `REGENTE_*` environment variable, so a systemd
@@ -36,7 +36,7 @@ unit or a k8s manifest needs no arguments):
 
 | Flag | Default | What it does |
 |---|---|---|
-| `-addr` | `:8080` | HTTP listen address |
+| `-addr` | `127.0.0.1:8080` | HTTP listen address |
 | `-workspace` | `./workspace` | Path containing `definitions/` |
 | `-db` | `./regente.db` | SQLite file path, or the Postgres DSN |
 | `-db-driver` | `sqlite` | `sqlite` \| `postgres` |

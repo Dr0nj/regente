@@ -163,7 +163,7 @@ else
 fi
 
 ADDR="$(grep -E '^REGENTE_ADDR=' "$ENV_FILE" | tail -1 | cut -d= -f2-)"
-ADDR="${ADDR:-:8080}"
+ADDR="${ADDR:-127.0.0.1:8080}"
 PORT="${ADDR##*:}"
 # Endereço para imprimir uma URL clicável (best-effort, sem rede externa).
 # `hostname -I | awk '{print $1}'` pegava o PRIMEIRO endereço da lista, que NÃO é

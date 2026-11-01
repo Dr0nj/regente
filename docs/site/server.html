@@ -89,7 +89,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 the GitOps layer.</p>
 <h2 id="architecture">Architecture</h2>
 <ul>
-<li>HTTP REST API (chi) on <code>:8080</code></li>
+<li>HTTP REST API (chi) on <code>127.0.0.1:8080</code></li>
 <li>A WebSocket hub for the web UI (live events) and for agents (dispatch); agents can also use
 HTTP long-poll or SSE</li>
 <li>The scheduler core running in a goroutine (daily + tick)</li>
@@ -104,7 +104,7 @@ go mod tidy
 CGO_ENABLED=0 go build -o regente-server .
 </code></pre>
 <h2 id="run-dev">Run (dev)</h2>
-<pre><code class="language-bash">./regente-server -addr :8080 -workspace ./workspace -db ./regente.db -api-token dev-token
+<pre><code class="language-bash">./regente-server -addr 127.0.0.1:8080 -workspace ./workspace -db ./regente.db -api-token dev-token
 </code></pre>
 <p>The most common flags (all of them also read a <code>REGENTE_*</code> environment variable, so a systemd
 unit or a k8s manifest needs no arguments):</p>
@@ -119,7 +119,7 @@ unit or a k8s manifest needs no arguments):</p>
 <tbody>
 <tr>
 <td><code>-addr</code></td>
-<td><code>:8080</code></td>
+<td><code>127.0.0.1:8080</code></td>
 <td>HTTP listen address</td>
 </tr>
 <tr>

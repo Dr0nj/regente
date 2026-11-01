@@ -172,6 +172,13 @@ optimization** (avoiding N nodes doing redundant scheduling). If you do need to 
 a **per-tick lock** — `pg_try_advisory_lock` acquired at the start of `Tick()` and released at the
 end, short scope — and **not** a long-lived leadership lock.
 
+**Current runtime:** the guards above describe scheduling coordination, not the
+complete production execution protocol. I09/I10 added durable dispatch intent,
+agent journals, start authorization, generation/fence and result deduplication.
+Production requires v2; unknown outcomes remain UNCERTAIN without automatic replay.
+Internal fencing does not fence arbitrary external systems. See
+[durable execution](durable-execution.md) for the current contract.
+
 **Scope:** PostgreSQL supports both tracks; leadership and per-tick/row guards
 coordinate database work. Neither track gains durable execution or partition safety
 automatically. See [capacity and HA evidence](capacity-guarantees.md) for the
@@ -260,7 +267,10 @@ announcing the capability.** The core does not change.
   engine **contradicts this ADR's root decision** (single binary, zero infrastructure,
   anti-lock-in): it would mean operating another service. This historical choice
   did not implement equivalent durable execution. An atomic claim cannot establish
-  safe crash resumption; native ACK/fencing/recovery remains enterprise work.
+  safe crash resumption. Native ACK, journal, generation/fence and recovery were
+  subsequently delivered in I09/I10; see [durable execution](durable-execution.md).
+  Production requires protocol v2 and preserves uncertain outcomes without automatic
+  replay. These internal guarantees do not make arbitrary external effects exactly once.
 - **Postgres-as-a-queue** (`SKIP LOCKED`, e.g. River) — adopting that library was
   historically declined. The 1M report measured materialization, not dispatch.
   This technology choice does not close durable dispatch or recovery requirements.
