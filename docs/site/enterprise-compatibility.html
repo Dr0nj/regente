@@ -137,8 +137,8 @@ events and calendars block proposals. Folder and root constraints propagate to
 descendants; they are not flattened or overridden by guesses. Dummy and other
 job types remain blocked. Malformed or unresolved layouts block all proposals
 in the document. Empty folders retain their unmapped constraints. Directory
-mode inventories every file but blocks proposals because file composition is
-not qualified; <code>.folder.json</code> is not implicitly merged.</p>
+mode without <code>-compose</code> inventories every file but blocks proposals because file
+composition is not declared; <code>.folder.json</code> is not implicitly merged.</p>
 <p>The report separates recognized jobs, action candidates and blocked jobs. These
 counts are <strong>not</strong> scheduler or execution compatibility percentages. Every plan
 lists outstanding gates for source-runtime equivalence, scheduling/folder
@@ -150,6 +150,53 @@ production compatibility. No schedule defaults are inferred.</p>
 and <a href="https://documents.bmc.com/supportu/API/9.0.22/9.0.22.100/en-US/Documentation/API_CodeRef_Folder.htm">Folders and Flows</a>.
 These document the hierarchy and folder-level influence on child jobs. Tests
 use independent synthetic examples; no real export has been qualified.</p>
+<h2 id="explicit-split-file-composition-ec-01c">Explicit split-file composition (EC-01c)</h2>
+<p><code>regente-aapi-composition/v1</code> is a <strong>Regente packaging contract</strong>, not a BMC
+export convention. The operator declares every association; filenames and
+directory names never imply a folder relationship. This initial contract
+supports flat folders with named jobs. Nested folders and array-based packaging
+remain outside this composition contract (single-document review still supports
+the layouts described above).</p>
+<p>Example manifest, using entirely synthetic names:</p>
+<pre><code class="language-json">{
+  &quot;contract&quot;: &quot;regente-aapi-composition/v1&quot;,
+  &quot;folders&quot;: [{
+    &quot;name&quot;: &quot;sample&quot;,
+    &quot;metadata&quot;: &quot;sample/.folder.json&quot;,
+    &quot;jobs&quot;: [{&quot;name&quot;: &quot;task&quot;, &quot;file&quot;: &quot;sample/task.json&quot;}]
+  }]
+}
+</code></pre>
+<p>The metadata file must contain a definition object with <code>&quot;Type&quot;:&quot;Folder&quot;</code> at
+its root. Each job file must contain a <code>Job:</code> definition at its root. These are
+unwrapped objects, not objects keyed by the folder/job name. Names come from the
+manifest. Metadata must not embed jobs, subfolders, Jobs/SubFolders containers
+or Name. Existing constraints such as When and Variables are retained and still
+block action proposals until their semantics are qualified.</p>
+<pre><code class="language-sh">go run ./cmd/inventoryaapi -in /private/parts -source-version 9.0.22.100 -plan -compose /private/composition.json &gt; /private/composed-review.json
+</code></pre>
+<p>Composition requires directory input and <code>-plan</code>. The manifest uses a strict
+schema: unknown fields and duplicate JSON keys are errors. Source paths must
+match inventory-relative paths using <code>/</code>; absolute paths, traversal, backslashes
+and drive/stream syntax are rejected. Files are read from the input inventory,
+not opened using manifest paths. Every JSON input must be assigned exactly once.
+An explicitly selected manifest inside the input directory is excluded from
+source inventory. Extra JSON files, missing files, duplicate folder/job names,
+metadata collisions and source reuse fail the entire command without a partial
+report. Source files and the manifest must be trusted regular files; keep them
+unchanged during the run. Existing inventory link and size limits apply, and
+the combined document is also limited to 16 MiB.</p>
+<p>The report retains the independent source inventories and adds <code>composition</code>:
+the manifest SHA-256, sorted source bindings and a virtual document inventory
+with its review plan. For each binding, <code>targetPointer + sourcePointer</code> locates
+the original node in the combined document. Source hashes describe original
+bytes; the combined hash describes canonical JSON with sorted object keys.
+Changing manifest order changes its hash but not the combined document hash.
+The virtual document is never written as a workspace definition or deployed.</p>
+<p>Composition proves explicit placement and provenance only. It does not resolve
+inheritance, validate runtime defaults or certify executable equivalence. All
+review gates remain, and <code>executable</code> stays false. Reports can contain private
+command text and names. No network, scheduler or cloud call is made.</p>
 <h2 id="completion-gates-for-subsequent-increments">Completion gates for subsequent increments</h2>
 <table>
 <thead>

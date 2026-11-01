@@ -88,7 +88,7 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 Plano sanitizado, sem inventários ou referências de organizações: [contrato e critérios](enterprise-compatibility.md). Implementação por incrementos; nenhum item abaixo equivale a homologação produtiva.
 
 - **EC-00 — contrato/corpus:** exemplos inteiramente sintéticos, fontes e versões explícitas, cobertura de parsing separada de semântica e execução. Fixar versão alvo antes de prometer equivalência.
-- **EC-01 — importação AAPI offline:** inventário estrutural e plano de revisão EC-01b em `server/cmd/inventoryaapi`; conversão executável, composição de arquivos, resolução de herança e cobertura semântica ainda pendentes. Nada executável enquanto houver perda material ou comportamento desconhecido.
+- **EC-01 — importação AAPI offline:** inventário, plano de revisão EC-01b e composição explícita plana EC-01c em `server/cmd/inventoryaapi`; conversão executável, composição hierárquica, resolução de herança e cobertura semântica ainda pendentes. Nada executável enquanto houver perda material ou comportamento desconhecido.
 - **EC-02 — planejamento:** variáveis por folder/data e pools, eventos Add/Wait/Delete, calendários importados, ciclos e locks compartilhados/exclusivos; preservar dependências externas.
 - **EC-03 — observação/shadow:** snapshots e diagnóstico/diff externos antes de conector autorizado; nenhuma execução, notificação ou escrita operacional; divergências e inconclusivos separados.
 - **EC-04 — operação:** Connection Profiles, Vault/Secrets Manager, grupos de agentes, políticas configuráveis, alertas correlacionados por tentativa e extração de output; homologação de IdP/RBAC/auditoria e proxy de saída.
@@ -405,6 +405,11 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+### EC-01c — composição explícita de arquivos AAPI (31/10/2026)
+
+Manifesto Regente `regente-aapi-composition/v1`, opt-in `-compose` com `-plan`, para folders planos e jobs nomeados. Todas as associações são declaradas: sem inferência por diretório ou .folder.json. Rejeita schema desconhecido, duplicatas, paths inválidos, arquivos ausentes/não declarados, reuso de fonte, colisões e conteúdo já composto. Preserva inventários individuais, hashes de fontes/manifesto e bindings source→pointer do documento virtual; bloco When/Variables e demais restrições continuam no plano. Sem mutação de fontes, escrita de workspace, execução ou acesso cloud. Testes sintéticos cobrem atomicidade, determinismo e propagação de bloqueios. Não é convenção nativa BMC nem prova de equivalência runtime; composição hierárquica e conversão executável continuam no backlog. [Contrato e exemplo](enterprise-compatibility.md#explicit-split-file-composition-ec-01c).
+
 
 ### EC-01b — plano de conversão AAPI para revisão (30/10/2026)
 
@@ -2014,6 +2019,8 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-10-31 — EC-01c:** manifesto explícito para composição AAPI plana, rastreabilidade por fonte e bloqueio de colisões/omissões; saída continua somente revisão.
 
 - **2026-10-30 — EC-01b:** plano AAPI versionado para revisão de conversão, bloqueios herdados e testes sintéticos; nenhuma definição executável ou composição implícita.
 

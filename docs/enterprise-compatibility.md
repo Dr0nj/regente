@@ -69,8 +69,8 @@ events and calendars block proposals. Folder and root constraints propagate to
 descendants; they are not flattened or overridden by guesses. Dummy and other
 job types remain blocked. Malformed or unresolved layouts block all proposals
 in the document. Empty folders retain their unmapped constraints. Directory
-mode inventories every file but blocks proposals because file composition is
-not qualified; `.folder.json` is not implicitly merged.
+mode without `-compose` inventories every file but blocks proposals because file
+composition is not declared; `.folder.json` is not implicitly merged.
 
 The report separates recognized jobs, action candidates and blocked jobs. These
 counts are **not** scheduler or execution compatibility percentages. Every plan
@@ -84,6 +84,64 @@ The contract uses the version-addressed BMC references consulted on 2026-10-30:
 and [Folders and Flows](https://documents.bmc.com/supportu/API/9.0.22/9.0.22.100/en-US/Documentation/API_CodeRef_Folder.htm).
 These document the hierarchy and folder-level influence on child jobs. Tests
 use independent synthetic examples; no real export has been qualified.
+
+## Explicit split-file composition (EC-01c)
+
+`regente-aapi-composition/v1` is a **Regente packaging contract**, not a BMC
+export convention. The operator declares every association; filenames and
+directory names never imply a folder relationship. This initial contract
+supports flat folders with named jobs. Nested folders and array-based packaging
+remain outside this composition contract (single-document review still supports
+the layouts described above).
+
+Example manifest, using entirely synthetic names:
+
+```json
+{
+  "contract": "regente-aapi-composition/v1",
+  "folders": [{
+    "name": "sample",
+    "metadata": "sample/.folder.json",
+    "jobs": [{"name": "task", "file": "sample/task.json"}]
+  }]
+}
+```
+
+The metadata file must contain a definition object with `"Type":"Folder"` at
+its root. Each job file must contain a `Job:` definition at its root. These are
+unwrapped objects, not objects keyed by the folder/job name. Names come from the
+manifest. Metadata must not embed jobs, subfolders, Jobs/SubFolders containers
+or Name. Existing constraints such as When and Variables are retained and still
+block action proposals until their semantics are qualified.
+
+```sh
+go run ./cmd/inventoryaapi -in /private/parts -source-version 9.0.22.100 -plan -compose /private/composition.json > /private/composed-review.json
+```
+
+Composition requires directory input and `-plan`. The manifest uses a strict
+schema: unknown fields and duplicate JSON keys are errors. Source paths must
+match inventory-relative paths using `/`; absolute paths, traversal, backslashes
+and drive/stream syntax are rejected. Files are read from the input inventory,
+not opened using manifest paths. Every JSON input must be assigned exactly once.
+An explicitly selected manifest inside the input directory is excluded from
+source inventory. Extra JSON files, missing files, duplicate folder/job names,
+metadata collisions and source reuse fail the entire command without a partial
+report. Source files and the manifest must be trusted regular files; keep them
+unchanged during the run. Existing inventory link and size limits apply, and
+the combined document is also limited to 16 MiB.
+
+The report retains the independent source inventories and adds `composition`:
+the manifest SHA-256, sorted source bindings and a virtual document inventory
+with its review plan. For each binding, `targetPointer + sourcePointer` locates
+the original node in the combined document. Source hashes describe original
+bytes; the combined hash describes canonical JSON with sorted object keys.
+Changing manifest order changes its hash but not the combined document hash.
+The virtual document is never written as a workspace definition or deployed.
+
+Composition proves explicit placement and provenance only. It does not resolve
+inheritance, validate runtime defaults or certify executable equivalence. All
+review gates remain, and `executable` stays false. Reports can contain private
+command text and names. No network, scheduler or cloud call is made.
 
 ## Completion gates for subsequent increments
 

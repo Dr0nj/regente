@@ -30,10 +30,11 @@ type document struct {
 	Plan   *conversionPlan `json:"plan,omitempty"`
 }
 type report struct {
-	Format        string     `json:"format"`
-	SourceVersion string     `json:"sourceVersion"`
-	Executable    bool       `json:"executable"`
-	Documents     []document `json:"documents"`
+	Format        string             `json:"format"`
+	SourceVersion string             `json:"sourceVersion"`
+	Executable    bool               `json:"executable"`
+	Documents     []document         `json:"documents"`
+	Composition   *compositionResult `json:"composition,omitempty"`
 }
 
 // Token parsing rejects duplicate keys instead of silently overwriting them.
@@ -134,6 +135,7 @@ func run(args []string, out io.Writer) error {
 	input := flags.String("in", "", "JSON file or directory (including .folder.json)")
 	version := flags.String("source-version", "", "declared source version; not a compatibility claim")
 	plan := flags.Bool("plan", false, "include a non-executable conversion review plan (9.0.22.100 only)")
+	compose := flags.String("compose", "", "explicit split-file composition manifest (requires -plan and directory input)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -143,6 +145,9 @@ func run(args []string, out io.Writer) error {
 	if *plan && *version != "9.0.22.100" {
 		return fmt.Errorf("conversion review requires -source-version 9.0.22.100; other versions support inventory only")
 	}
+	if *compose != "" && !*plan {
+		return fmt.Errorf("-compose requires -plan")
+	}
 	root, err := filepath.Abs(*input)
 	if err != nil {
 		return err
@@ -150,6 +155,16 @@ func run(args []string, out io.Writer) error {
 	info, err := os.Lstat(root)
 	if err != nil {
 		return err
+	}
+	if *compose != "" && !info.IsDir() {
+		return fmt.Errorf("-compose requires directory input")
+	}
+	manifestPath := ""
+	if *compose != "" {
+		manifestPath, err = filepath.Abs(*compose)
+		if err != nil {
+			return err
+		}
 	}
 	base := filepath.Dir(root)
 	if info.IsDir() {
@@ -169,6 +184,9 @@ func run(args []string, out io.Writer) error {
 		if !entry.Type().IsRegular() {
 			return fmt.Errorf("nonregular input")
 		}
+		if path == manifestPath {
+			return nil
+		}
 		if strings.EqualFold(filepath.Ext(path), ".json") {
 			files = append(files, path)
 		}
@@ -182,6 +200,7 @@ func run(args []string, out io.Writer) error {
 	}
 	sort.Strings(files)
 	r := report{Format: "regente-aapi-inventory/v1", SourceVersion: *version, Documents: []document{}}
+	sources := map[string][]byte{}
 	for _, path := range files {
 		f, e := os.Open(path)
 		if e != nil {
@@ -207,6 +226,15 @@ func run(args []string, out io.Writer) error {
 			doc.Plan = reviewPlan(raw, doc, info.IsDir())
 		}
 		r.Documents = append(r.Documents, doc)
+		if *compose != "" {
+			sources[doc.File] = raw
+		}
+	}
+	if *compose != "" {
+		r.Composition, err = composeFiles(manifestPath, sources)
+		if err != nil {
+			return err
+		}
 	}
 	// Buffer until every document has passed validation: never emit partial success.
 	b, err := json.MarshalIndent(r, "", "  ")
