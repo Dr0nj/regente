@@ -215,8 +215,31 @@ See <a href="agent-identity.html">identity lifecycle</a> and the
 </code></pre>
 <h2 id="checks">Checks</h2>
 <pre><code class="language-bash">npm run build     # tsc -b &amp;&amp; vite build
-npm run lint      # eslint — a CI gate, it must stay at zero
+npm run lint      # lint compatibility contract + eslint, a required CI gate
 </code></pre>
+<h3 id="security-overrides-in-the-lint-toolchain">Security overrides in the lint toolchain</h3>
+<p>As of 2026-11-01, the npm audit for the reviewed lockfile reports no advisories,
+including development dependencies. This is a dated dependency audit, not proof
+that every deployment is secure. Run <code>npm audit</code> and <code>npm audit --omit=dev</code> when
+changing dependencies; retain the JSON output for the reviewed lockfile.</p>
+<p><code>minimatch</code> 11.0.1 addresses
+<a href="https://github.com/advisories/GHSA-g3hv-75wg-m249">GHSA-g3hv-75wg-m249</a>.
+The upstream lint packages still declare minimatch 10, so <code>package.json</code> has
+version-scoped overrides for ESLint 10.11.0, @eslint/config-array 0.23.5 and
+@typescript-eslint/typescript-estree 8.71.0. ESLint is pinned to the inspected
+version. This is not a global override and does not alter browser/runtime dependencies.</p>
+<p>The <a href="https://github.com/isaacs/minimatch/blob/v11.0.1/changelog.md">upstream v11 changelog</a>
+removes APIs including <code>makeRe</code> and changes internal matcher representations.
+The inspected consumers use <code>Minimatch.match</code> (including partial directory traversal)
+or <code>minimatch</code>, which remain supported. The required lint contract checks the
+resolved version for each consumer and exercises the actual project config:
+TS/TSX traversal, nested/dot paths, invalid code detection, valid JSX, ignored build
+output and rejection of unmatched patterns. CI runs this with every supported Node
+minimum. A clean install and the full repository lint must also pass.</p>
+<p>Re-review these overrides whenever a consumer changes; do not widen the version
+selectors automatically. Remove them when upstream accepts a corrected minimatch
+version, after repeating the compatibility contract, lint, build and audit. The
+contract intentionally fails if a new dependency path resolves a different version.</p>
 <hr>
 <p><sub>A personal portfolio project, independently designed and built. It is not affiliated with,
 endorsed by, or derived from any commercial orchestration product.</sub></p>

@@ -147,8 +147,36 @@ src/
 
 ```bash
 npm run build     # tsc -b && vite build
-npm run lint      # eslint — a CI gate, it must stay at zero
+npm run lint      # lint compatibility contract + eslint, a required CI gate
 ```
+
+### Security overrides in the lint toolchain
+
+As of 2026-11-01, the npm audit for the reviewed lockfile reports no advisories,
+including development dependencies. This is a dated dependency audit, not proof
+that every deployment is secure. Run `npm audit` and `npm audit --omit=dev` when
+changing dependencies; retain the JSON output for the reviewed lockfile.
+
+`minimatch` 11.0.1 addresses
+[GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249).
+The upstream lint packages still declare minimatch 10, so `package.json` has
+version-scoped overrides for ESLint 10.11.0, @eslint/config-array 0.23.5 and
+@typescript-eslint/typescript-estree 8.71.0. ESLint is pinned to the inspected
+version. This is not a global override and does not alter browser/runtime dependencies.
+
+The [upstream v11 changelog](https://github.com/isaacs/minimatch/blob/v11.0.1/changelog.md)
+removes APIs including `makeRe` and changes internal matcher representations.
+The inspected consumers use `Minimatch.match` (including partial directory traversal)
+or `minimatch`, which remain supported. The required lint contract checks the
+resolved version for each consumer and exercises the actual project config:
+TS/TSX traversal, nested/dot paths, invalid code detection, valid JSX, ignored build
+output and rejection of unmatched patterns. CI runs this with every supported Node
+minimum. A clean install and the full repository lint must also pass.
+
+Re-review these overrides whenever a consumer changes; do not widen the version
+selectors automatically. Remove them when upstream accepts a corrected minimatch
+version, after repeating the compatibility contract, lint, build and audit. The
+contract intentionally fails if a new dependency path resolves a different version.
 
 ---
 
