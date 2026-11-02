@@ -668,7 +668,7 @@ def main():
         # Configuração pessoal de Git, TLS, banco ou telemetria não entra no lab.
         clean_env = {k: v for k, v in os.environ.items()
                      if not k.startswith(("REGENTE_", "OTEL_")) and k not in ("GITHUB_TOKEN", "GH_TOKEN")}
-        env = dict(clean_env, SSL_CERT_FILE=str(tls_dir/"lab.crt"), REGENTE_REQUIRE_INTEGRATION="1", REGENTE_TEST_PG_DSN=dsn, REGENTE_TEST_NATS_URL=nats_url,
+        env = dict(clean_env, REGENTE_BOOTSTRAP_PASSWORD="synthetic-lab-bootstrap-password", SSL_CERT_FILE=str(tls_dir/"lab.crt"), REGENTE_REQUIRE_INTEGRATION="1", REGENTE_TEST_PG_DSN=dsn, REGENTE_TEST_NATS_URL=nats_url,
                    REGENTE_TEST_OIDC_ISSUER=issuer, REGENTE_TEST_OIDC_CLIENT_ID="regente-lab",
                    REGENTE_TEST_OIDC_CLIENT_SECRET="synthetic-client-secret",
                    REGENTE_TEST_OIDC_USER="lab-user", REGENTE_TEST_OIDC_PASS="synthetic-password", REGENTE_AUDIT_KEY=str(RUN/"audit-integrity.key"))
@@ -681,6 +681,7 @@ def main():
                 env=env, timeout=300, name="web-events-race")
         command(["go", "build", "-o", str(RUN/"server"), "./server"], timeout=180, name="server-build")
         command(["go", "build", "-o", str(RUN/"agent"), "./agent"], timeout=180, name="agent-build")
+        command([sys.executable, "scripts/check-compatibility.py", "--server", str(RUN/"server"), "--agent", str(RUN/"agent"), "--schema", "32"], name="runtime-compatibility")
         i14_audit_processes(env, dsn, tls_dir)
         durable_process_recovery(env, dsn)
         i11_ha_processes(env, dsn, nats_url)

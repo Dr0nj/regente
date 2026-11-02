@@ -75,7 +75,7 @@ sudo ufw allow OpenSSH && sudo ufw allow 80,443/tcp && sudo ufw enable
 > both in `server_name` **before** running certbot — it reads that directive to decide which names
 > go into the certificate.
 
-Done: `https://regente.yourcompany.com` (initial login `admin`/`admin`, which you must change).
+Done: `https://regente.yourcompany.com` (initial login uses the random bootstrap password in the private service configuration; remove it after login).
 Certificate renewal is automatic (`systemctl status certbot.timer`).
 
 > **Why step 4 matters:** with `REGENTE_ADDR=127.0.0.1:8080` only nginx can reach the control
@@ -89,14 +89,14 @@ Regente they already exist; enable them through `/etc/regente/server.env` (or fl
 
 | Enterprise layer | How to enable it |
 |---|---|
-| **SSO / OIDC** (no more `admin/admin`) | `REGENTE_AUTH_MODE=oidc` + `REGENTE_OIDC_ISSUER/CLIENT_ID/CLIENT_SECRET/REDIRECT_URL`. The first federated login provisions the user (the default role is configurable). |
+| **SSO / OIDC** | `REGENTE_AUTH_MODE=oidc` + `REGENTE_OIDC_ISSUER/CLIENT_ID/CLIENT_SECRET/REDIRECT_URL`. The first federated login provisions the user (the default role is configurable). |
 | **RBAC + per-folder ACL** | Settings → Users: the `operator`/`viewer` roles; read/write ACLs per folder. |
 | **Audit → SIEM** | `REGENTE_AUDIT_SIEM_URL=https://siem/...` (logins and writes become JSON events that get POSTed). |
 | **Secrets outside the DB** | `REGENTE_SECRET_GITHUB_TOKEN=...` (the secrets provider; no PAT persisted in plaintext). |
 | **mTLS between server and agent** | a server started with `-tls-client-ca` requires a fingerprint-bound certificate plus scoped credential on machine routes; browsers/probes remain HTTPS. See [execution security](../../docs/execution-security.md). |
 | **HA / scale** | `REGENTE_DB_DRIVER=postgres` + N nodes on the SAME DB → leader election (only the leader runs the daily and dispatch). Backup/DR in [`../../docs/dr-backup.md`](../../docs/dr-backup.md). |
 | **NAT-friendly agents** | an **outbound** connection (WS/SSE/long-poll) — the agent never opens a port; it crosses corporate firewalls. |
-| **A strong API token** | `REGENTE_TOKEN` is admin-equivalent (it bypasses login) — **generate a strong value**; never leave `dev-token`/`change-me`. |
+| **No legacy API token** | Leave `REGENTE_TOKEN` empty in production; use user sessions and scoped machine credentials. See [safe bootstrap](../../docs/safe-bootstrap.md). |
 | **Trustworthy source IPs in the audit trail** | Nothing to do for this layout: `REGENTE_TRUSTED_PROXIES` defaults to **loopback**, which is exactly the nginx-on-`127.0.0.1` setup above, so the `X-Real-IP`/`X-Forwarded-For` nginx sets are honoured while the same headers from anyone else are ignored. Set it (comma-separated CIDRs) **only** when another proxy or load balancer sits in front of nginx — list that hop, never `0.0.0.0/0`, or the audit trail becomes forgeable again. |
 
 > **Alternative without a proxy:** the server can terminate TLS itself

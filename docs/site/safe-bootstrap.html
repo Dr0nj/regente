@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Safe first startup · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="adr-i09-agent-journal.html">Durable agent journal</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authenticated-releases.html">Authenticated releases</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="business-time.html">Business time</a>
+<a href="capacity.html">Capacity and progress</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html">Daily recovery</a>
+<a href="durable-execution.html">Durable execution and recovery</a>
+<a href="enterprise-compatibility.html">Enterprise compatibility contracts</a>
+<a href="execution-security.html">Execution security</a>
+<a href="failure-resistant-audit.html">Failure-resistant audit</a>
+<a href="frontend-performance.html">Frontend loading measurement</a>
+<a href="ha-resources.html">Shared resources and scheduler leadership</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="operational-recovery-pilot.html">Operational recovery and controlled pilot</a>
+<a href="production-profile.html">Production profile</a>
+<a href="safe-bootstrap.html" class="active">Safe first startup</a>
+<a href="shared-drafts.html">Shared Design drafts</a>
+<a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
+<a href="web-events.html">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="safe-first-startup">Safe first startup</h1>
+<p>Normal daemon startup creates no known administrative bearer and no <code>admin/admin</code>
+account. An empty user table requires an explicit bootstrap password. Existing
+accounts are preserved, including across development restarts; production still
+rejects known weak legacy passwords until the operator rotates them.</p>
+<h2 id="guided-local-installation">Guided local installation</h2>
+<p>With a trusted server binary, run:</p>
+<pre><code class="language-sh">regente-server -init-config ./server.env
+regente-server -config-env ./server.env -check-config
+regente-server -config-env ./server.env
+</code></pre>
+<p>The assistant asks for an environment name and port, then writes a <strong>new</strong> private
+file with production profile, numeric loopback, no administrative bearer, no built-in
+executor and a random 192-bit bootstrap password. It never prints that password.
+Read <code>REGENTE_BOOTSTRAP_PASSWORD</code> privately, sign in as <code>admin</code>, then remove the
+password entry. Restart does not require the bootstrap secret or replace accounts.
+<code>-init-config</code> refuses an existing target, including symlinks. It never migrates a DB.</p>
+<p>On Unix the file is mode 0600. On Windows its protected DACL grants only its creator
+and SYSTEM; the installer runs the task as SYSTEM. Do not grant Users/Everyone read
+access. <code>-config-env</code> checks file permissions before reading. The format is literal
+<code>REGENTE_NAME=value</code>, not shell code: no interpolation, quoting or command execution.
+Duplicate/invalid keys are rejected before applying values. Explicit process
+environment overrides the file; explicit command flags override both. Avoid conflicting
+inherited <code>REGENTE_</code> values, especially when inspecting generated configurations.</p>
+<p>Linux installation creates this private configuration only when absent, preserves
+existing operator configuration and prints the SSH tunnel access path. <code>regente-configure</code>
+leaves an existing file untouched; a new destination invokes the same assistant.
+Windows installation accepts <code>-Config PATH</code>, generates it if absent, validates it,
+then registers the Scheduled Task. Secrets are not embedded in task arguments.</p>
+<h2 id="development-and-existing-installations">Development and existing installations</h2>
+<p>An unconfigured <code>regente-server</code> refuses an empty account store. Supply a strong
+<code>REGENTE_BOOTSTRAP_PASSWORD</code> through a private environment or use the assistant.
+The daemon's administrative token default is empty. An explicitly supplied token
+remains a development compatibility option, never a production credential.</p>
+<p>For disposable, local fixtures only:</p>
+<pre><code class="language-sh">regente-server -insecure-dev-auth -addr 127.0.0.1:8080
+# or the disposable CLI command:
+regente dev daily
+</code></pre>
+<p>These explicit fixtures use <code>admin/admin</code>, requiring password change. Development
+is restricted to numeric loopback; <code>0.0.0.0</code>, <code>:8080</code>, DNS aliases and public/private
+network addresses are refused before opening the DB/workspace. <code>-insecure-dev-auth</code>
+is rejected with production. Existing development services bound to network
+interfaces must deliberately convert using the <a href="production-profile.html">production profile</a>;
+the installer does not silently rewrite their network/security policy.</p>
+<h2 id="containers">Containers</h2>
+<p>A container's loopback is local to its network namespace. Publishing a Docker port
+does not make a loopback listener reachable from the host. Do not solve this by
+exposing a development fixture. For a host-local Linux container, use host networking
+and a protected configuration owned by the container UID; persist <code>/data</code>:</p>
+<pre><code class="language-sh"># Prepare config with the trusted host binary; it is never baked into the image.
+regente-server -init-config ./server.env
+# Ensure server.env is readable only by the image UID (65532), and /data is writable.
+docker run --rm --network host --mount type=bind,src=&quot;$PWD/server.env&quot;,dst=/run/regente.env,readonly \
+  --mount type=volume,src=regente-data,dst=/data regente-server -config-env /run/regente.env
+</code></pre>
+<p>For a bridge network, Kubernetes or another machine, explicitly configure production
+TLS (<code>REGENTE_NETWORK_BOUNDARY=tls</code>, numeric bind, matching HTTPS app origin and
+certificate/key mounts). Supply bootstrap credentials via the platform secret store,
+remove them after first login, and preserve the external audit key and DB/workspace.
+The historical Knative manifest is not a current deployment recipe: its public
+development bind is rejected. A platform-specific production boundary must be
+reviewed rather than assuming a generic TLS/container recipe configures Knative ingress. See <a href="production-profile.html">production boundary</a> and
+<a href="dr-backup.html">recovery set</a> before exposing a deployment.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

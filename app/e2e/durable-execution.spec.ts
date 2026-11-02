@@ -10,6 +10,7 @@ test("I10: uncertain execution survives restart and requires an audited decision
  const base = "http://127.0.0.1:18910";
  const bin = resolve("../.integration/server-i03" + (process.platform === "win32" ? ".exe" : ""));
  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("REGENTE_") && !key.startsWith("GITHUB_") && !key.startsWith("OTEL_")));
+  env.REGENTE_INSECURE_DEV_AUTH = "1";
  const args = ["-addr", "127.0.0.1:18910", "-db", join(dir,"state.db"), "-workspace", join(dir,"workspace"), "-spa-dir", resolve("dist"), "-execution-mode", "durable", "-auth-mode", "local", "-api-token", "synthetic-exec-admin", "-git-source", "", "-selfmon=false", "-server-agent=false", "-scheduler=external"];
  let output = "";
  const start = () => { const p=spawn(bin,args,{windowsHide:true,stdio:["ignore","pipe","pipe"],env}); p.stdout.on("data",data=>{output+=data.toString()});p.stderr.on("data",data=>{output+=data.toString()});return p; };

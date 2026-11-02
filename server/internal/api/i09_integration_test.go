@@ -70,6 +70,16 @@ func realJournalRuntimeTest(t *testing.T, runtime bool) {
 			defer srv.Close()
 			var cred issuedMachine
 			json.Unmarshal(machineRequest(t, srv, "POST", "/api/agents/tokens", "test-token", map[string]any{"agentId": "worker", "environment": "", "capabilities": []string{"HTTP", "EXECUTION_V2"}, "expiresAt": time.Now().Add(time.Hour)}, 200), &cred)
+
+			if runtime {
+				for _, query := range []string{"protocol=1&journal=1&ver=dev", "protocol=3&journal=1&ver=dev", "protocol=2&journal=2&ver=dev", "protocol=2&journal=1", "protocol=2&ver=dev"} {
+					machineRequest(t, srv, "GET", "/api/agent/v2/poll?id=worker&env=&caps=HTTP,EXECUTION_V2&"+query, cred.Token, nil, 426)
+				}
+				var count int
+				if err := d.QueryRow("SELECT COUNT(*) FROM agents WHERE id='worker'").Scan(&count); err != nil || count != 0 {
+					t.Fatal("incompatible handshake registered worker", err, count)
+				}
+			}
 			var order execution.Order
 			if runtime {
 				if _, err := d.Exec("UPDATE instances SET confirmed=1 WHERE id='job-2026-09-30'"); err != nil {
@@ -87,7 +97,9 @@ func realJournalRuntimeTest(t *testing.T, runtime bool) {
 			start := func(key, intent string) {
 				t.Helper()
 				if runtime {
- if err:=s.ReportAgentCapacity("worker",4,128,true);err!=nil{t.Fatal(err)}
+					if err := s.ReportAgentCapacity("worker", 4, 128, true); err != nil {
+						t.Fatal(err)
+					}
 					if intent != "start" {
 						if _, err := s.DurableAction("operator", "job-2026-09-30", "rerun"); err != nil {
 							t.Fatal(err)

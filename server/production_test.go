@@ -128,6 +128,59 @@ func TestProductionBoot(t *testing.T) {
 		t.Fatalf("sem health: %s", logs.String())
 		return nil
 	}
+
+	development := []string{"-db", filepath.Join(dir, "development.db")}
+	if out, err = invoke(development); err == nil || !strings.Contains(string(out), "REGENTE_BOOTSTRAP_PASSWORD") {
+		t.Fatalf("implicit development bootstrap: %s", out)
+	}
+	for _, args := range [][]string{{"-addr", "0.0.0.0:8080"}, {"-addr", "0.0.0.0:8080", "-insecure-dev-auth"}} {
+		out, err = invoke(append(args, "-db", checkDB))
+		if err == nil {
+			t.Fatalf("public development accepted: %s", out)
+		}
+		if _, e := os.Stat(checkDB); !os.IsNotExist(e) {
+			t.Fatal("invalid boundary opened database")
+		}
+	}
+	devStop := start(development, "REGENTE_BOOTSTRAP_PASSWORD=secure-development-fixture")
+	request("POST", "/api/auth/login", "", map[string]string{"username": "admin", "password": "admin"}, 401)
+	request("GET", "/api/users", "dev-token", nil, 401)
+	request("POST", "/api/auth/login", "", map[string]string{"username": "admin", "password": "secure-development-fixture"}, 200)
+	devStop()
+	devStop = start(development)
+	request("POST", "/api/auth/login", "", map[string]string{"username": "admin", "password": "secure-development-fixture"}, 200)
+	devStop()
+
+	configPath := filepath.Join(dir, "private config.env")
+	initialize := exec.Command(bin, "-init-config", configPath)
+	initialize.Env = env
+	_, port, _ := net.SplitHostPort(addr)
+	initialize.Stdin = strings.NewReader("guided\n" + port + "\n")
+	initialized, e := initialize.CombinedOutput()
+	if e != nil {
+		t.Fatalf("init-config: %v %s", e, initialized)
+	}
+	raw, e := os.ReadFile(configPath)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var generatedPassword string
+	for _, line := range strings.Split(string(raw), "\n") {
+		if strings.HasPrefix(line, "REGENTE_BOOTSTRAP_PASSWORD=") {
+			generatedPassword = strings.TrimPrefix(line, "REGENTE_BOOTSTRAP_PASSWORD=")
+		}
+	}
+	if len(generatedPassword) != 48 || strings.Contains(string(initialized), generatedPassword) {
+		t.Fatal("unsafe bootstrap output")
+	}
+	guided := []string{"--config-env", configPath, "-db", filepath.Join(dir, "guided.db")}
+	if out, err = invoke(append(append([]string{}, guided...), "-check-config")); err != nil {
+		t.Fatalf("generated configuration rejected: %s", out)
+	}
+	guidedStop := start(guided)
+	request("POST", "/api/auth/login", "", map[string]string{"username": "admin", "password": generatedPassword}, 200)
+	request("GET", "/api/users", "dev-token", nil, 401)
+	guidedStop()
 	const password = "production-fixture-password"
 	// Instalação limpa: recusa segredo ausente, bootstrap explícito e restart sem segredo.
 	fresh := append(append([]string{}, production...), "-db", filepath.Join(dir, "fresh.db"))
@@ -145,7 +198,7 @@ func TestProductionBoot(t *testing.T) {
 	stop()
 	// Conversão: senha padrão bloqueia, rotação permite, sessão antiga é revogada.
 	legacyDB := filepath.Join(dir, "legacy.db")
-	legacy := []string{"-db", legacyDB, "-server-agent=false"}
+	legacy := []string{"-db", legacyDB, "-server-agent=false", "-insecure-dev-auth"}
 	stop = start(legacy)
 	request("POST", "/api/auth/login", "", map[string]string{"username": "admin", "password": "admin"}, 200)
 	stop()

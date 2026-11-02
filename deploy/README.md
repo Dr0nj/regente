@@ -40,16 +40,18 @@ docker build -f deploy/Dockerfile -t ghcr.io/dr0nj/regente-server:latest .
 docker push ghcr.io/dr0nj/regente-server:latest
 ```
 
-## Run (Knative / any k8s)
+## Runtime configuration
 
-```bash
-kubectl create secret generic regente-secrets \
-  --from-literal=REGENTE_DB='postgres://user:pw@host:5432/regente' \
-  --from-literal=REGENTE_TOKEN='<a-strong-token>'
+Use [safe bootstrap](../docs/safe-bootstrap.md) and the production profile for the
+container network boundary, bootstrap secret and persistent state. A bridged
+container requires explicit TLS configuration; loopback remains inside its network
+namespace unless host networking is deliberately used.
 
-kubectl apply -f deploy/knative-service.yaml
-kubectl apply -f deploy/cronjob.yaml
-```
+`knative-service.yaml` and `cronjob.yaml` are historical architecture references,
+not runnable production recipes for the current authentication contract. Their
+public development bind is rejected. Qualify platform-specific ingress, scoped
+scheduler triggering and durable machine identities before deployment; a portable
+image alone does not certify that integration.
 
 ## Lock-in-free equivalents
 

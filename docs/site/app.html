@@ -72,10 +72,12 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="enterprise-compatibility.html">Enterprise compatibility contracts</a>
 <a href="execution-security.html">Execution security</a>
 <a href="failure-resistant-audit.html">Failure-resistant audit</a>
+<a href="frontend-performance.html">Frontend loading measurement</a>
 <a href="ha-resources.html">Shared resources and scheduler leadership</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="operational-recovery-pilot.html">Operational recovery and controlled pilot</a>
 <a href="production-profile.html">Production profile</a>
+<a href="safe-bootstrap.html">Safe first startup</a>
 <a href="shared-drafts.html">Shared Design drafts</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
 <a href="verification.html">Verification profiles</a>
@@ -147,7 +149,8 @@ npm run dev                 # http://localhost:5173
 <p>Environment variables (<code>.env</code>):</p>
 <pre><code class="language-bash">VITE_REGENTE_SERVER_URL=http://localhost:8080   # empty = local mode (localStorage)
 </code></pre>
-<p>Default dev login: <code>admin</code> / <code>admin</code>.</p>
+<p>Only the explicit loopback fixture (<code>-insecure-dev-auth</code>) uses <code>admin</code> / <code>admin</code>.
+Normal daemon startup uses <a href="safe-bootstrap.html">safe bootstrap</a>.</p>
 <p><code>VITE_REGENTE_SERVER_URL=@origin</code> means <strong>same-origin</strong>: the Go server serves the SPA on its own
 port (<code>-spa-dir</code>), so the UI resolves <code>window.location.origin</code> at runtime. This is how the
 single-origin deployment and the tunnelled demo work — the URL can change without rebuilding the

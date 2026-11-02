@@ -119,10 +119,12 @@ if [ "$STAGE" = stage2 ]; then
     [ "$(systemctl show regente-server -p MainPID --value)" = "$before_pid" ] && [ "$(sha256sum /usr/local/bin/regente-server)" = "$before_hash" ] && ok "unsigned update left process and binary intact" || bad "unsigned update mutated installation"
     echo "Authenticated upgrade is mandatory in the release smoke; this source fixture is not a release."
   fi
-  head1 "Production profile: convert installed service and upgrade"
+  head1 "Production profile: convert explicit legacy fixture and upgrade"
   # Fixture sintética; nenhum segredo do operador entra neste ensaio.
-  login_token=$(curl -fsS -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin"}' "$BASE/api/auth/login" | jfield token)
-  curl -fsS -H "Authorization: Bearer $login_token" -H 'Content-Type: application/json' -d '{"current":"admin","next":"production-smoke-fixture"}' "$BASE/api/auth/change-password" >/dev/null || bad "password rotation failed"
+  bootstrap=$(grep '^REGENTE_BOOTSTRAP_PASSWORD=' "$ENV_FILE" | tail -1 | cut -d= -f2-)
+  login_token=$(printf '{"username":"admin","password":"%s"}' "$bootstrap" | curl -fsS -H 'Content-Type: application/json' --data-binary @- "$BASE/api/auth/login" | jfield token)
+  printf '{"current":"%s","next":"production-smoke-fixture"}' "$bootstrap" | curl -fsS -H "Authorization: Bearer $login_token" -H 'Content-Type: application/json' --data-binary @- "$BASE/api/auth/change-password" >/dev/null || bad "password rotation failed"
+  unset bootstrap
   systemctl stop regente-server
   cat >> "$ENV_FILE" <<'PRODUCTION'
 REGENTE_PROFILE=production
@@ -208,6 +210,30 @@ wait_for 30 '[ "$(code "'"$BASE"'/health")" = 200 ]' || bad "health nunca respon
 curl -fsS "$BASE/" 2>/dev/null | grep -qi '<!doctype html' && ok "UI servida na mesma porta" || bad "a UI não está sendo servida"
 [ -x /usr/local/bin/regente-configure ] && ok "regente-configure instalado" || bad "regente-configure não foi instalado"
 [ -x /usr/local/bin/regente-update ] && ok "regente-update instalado" || bad "regente-update não foi instalado"
+# Fresh installation must use production, no static bearer, private random bootstrap.
+grep -qx 'REGENTE_PROFILE=production' "$ENV_FILE" || bad "fresh install is not production"
+grep -qx 'REGENTE_TOKEN=' "$ENV_FILE" || bad "fresh install has legacy bearer"
+[ "$(stat -c %a "$ENV_FILE")" = 600 ] || bad "bootstrap config is not private"
+[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer dev-token' "$BASE/api/users")" = 401 ] || bad "default bearer accepted"
+[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin"}' "$BASE/api/auth/login")" = 401 ] || bad "known password accepted"
+# Remaining stage1 exercises legacy installer/agent compatibility deliberately.
+# Production binding must never be removed or downgraded to run a legacy fixture.
+# Preserve the fresh production DB/signing material, then start an independent empty DB.
+systemctl stop regente-server
+install -d -m 0700 /var/lib/regente/fresh-production-proof
+for file in /var/lib/regente/regente.db*; do
+  [ ! -f "$file" ] || mv "$file" /var/lib/regente/fresh-production-proof/
+done
+cat >> "$ENV_FILE" <<'LEGACY_FIXTURE'
+REGENTE_PROFILE=development
+REGENTE_ENVIRONMENT=
+REGENTE_NETWORK_BOUNDARY=
+REGENTE_CONTROL_PLANE_EXECUTION=
+REGENTE_TOKEN=synthetic-smoke-legacy-admin
+REGENTE_EXECUTION_MODE=durable
+LEGACY_FIXTURE
+systemctl start regente-server
+wait_for 30 '[ "$(code "'"$BASE"'/health")" = 200 ]' || bad "explicit legacy fixture did not start"
 grep -q 'firewall' /tmp/install.log && ok "instalador lembra do firewall" || bad "instalador não fala do firewall"
 grep -q 'Health:' /tmp/install.log && ok "instalador imprime health check" || bad "instalador não faz health check"
 # Versão: prova a cadeia toda (ldflags -X main.version → binário → API → rodapé).

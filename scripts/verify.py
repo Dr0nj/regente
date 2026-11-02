@@ -18,7 +18,7 @@ OMITTED_QUICK = ("staticcheck (both Go modules)", "clean npm install",
                  "real browser", "PostgreSQL/NATS/OIDC and recovery",
                  "PowerShell/Docker demo")
 CI_EXTRA = ("other Node minima", "native Windows PowerShell demo")
-REQUIRED_BROWSER = {"I12: shared draft resumes after restart and rejects stale browser edits",
+REQUIRED_BROWSER = {"REV05: login and portal defer console assets","I12: shared draft resumes after restart and rejects stale browser edits",
                     "local: login policy and browser session",
                     "hybrid: login policy and browser session",
                     "oidc: login policy and browser session",
@@ -134,6 +134,7 @@ class Verifier:
 
     def gate(self, name):
         if name == "runner":
+            self.command([sys.executable, "-m", "unittest", "discover", "-s", "scripts", "-p", "test_compatibility.py", "-v"])
             self.command([sys.executable, "-m", "unittest", "discover", "-s", "scripts",
                           "-p", "test_verify.py", "-v"])
             self.command([sys.executable, "-m", "unittest", "discover", "-s", "deploy/kubernetes",

@@ -72,10 +72,12 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="enterprise-compatibility.html">Enterprise compatibility contracts</a>
 <a href="execution-security.html">Execution security</a>
 <a href="failure-resistant-audit.html">Failure-resistant audit</a>
+<a href="frontend-performance.html">Frontend loading measurement</a>
 <a href="ha-resources.html">Shared resources and scheduler leadership</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="operational-recovery-pilot.html">Operational recovery and controlled pilot</a>
 <a href="production-profile.html">Production profile</a>
+<a href="safe-bootstrap.html">Safe first startup</a>
 <a href="shared-drafts.html">Shared Design drafts</a>
 <a href="upgrades.html" class="active">Upgrade and recovery compatibility</a>
 <a href="verification.html">Verification profiles</a>
@@ -156,6 +158,38 @@ a production rollout without a workload-specific rehearsal.</p>
 every historical release executable. No mixed-release rolling pair is currently
 qualified by this matrix. Expand/contract is a design requirement, not permission
 to bypass the runner's supported range or protocol changes.</p>
+<h2 id="executable-runtime-admission-rev-04">Executable runtime admission (REV-04)</h2>
+<p>Trusted server and agent binaries expose <code>-compatibility</code> as JSON without opening
+state or listeners. The server descriptor derives its schema range from the real
+migration runner, and the agent descriptor derives its journal version from the
+journal implementation. Inspect the isolated target's migration history, then run:</p>
+<pre><code class="language-sh">python3 scripts/check-compatibility.py --server ./regente-server --agent ./regente-agent --schema 32
+</code></pre>
+<p>Exit zero requires matching nonempty build labels, schema within the server's
+runtime range (currently 32), protocol 2 and journal 1. Different/empty build labels,
+old/future runtime schemas and wire/journal versions fail closed. The report includes
+binary SHA256 values. A matching label is not proof of provenance: use trusted
+release artifacts (or explicitly identified local builds), and retain the hashes.
+The checker does not read the DB: <code>--schema</code> must come from the actual restored,
+migrated target. Schema 22/23/24 fixtures are migration <strong>inputs</strong>, not runnable
+schema versions for the current binary. No mixed-release rolling pair is qualified.</p>
+<p>This offline deployment admission check complements runtime rejection, not replaces
+it: DB migration/history checks and journal owner/version checks still run at startup;
+the durable handshake rejects unsupported protocol/journal before reconciliation or
+agent registration. Build labels alone are not a transport authorization mechanism.</p>
+<p>The mandatory integration runner invokes the checker on its freshly built binaries.
+<code>test_compatibility.py</code> exercises the negative matrix; <code>TestMigrationSafety</code>,
+<code>TestMigrationLegacySQLiteBackupRestore</code>, <code>TestI09JournalLockIdentityVersionCorruption</code>
+and the I09 real-agent tests exercise actual migration, journal and handshake behavior.</p>
+<p>For the complete recovery set, run the existing synthetic Linux rehearsal:</p>
+<pre><code class="language-sh">python3 scripts/recovery_rehearsal.py --server-bin ./regente-server --agent-bin ./regente-agent
+# WSL: use a NEW native Linux directory for actual private-file permission semantics:
+python3 scripts/recovery_rehearsal.py --server-bin ./regente-server --agent-bin ./regente-agent --work-dir /tmp/regente-recovery-unique
+</code></pre>
+<p>It restores DB, drafts, definitions/commit, identities, journal, configuration and
+external signing material, rejects an older snapshot against the independent
+checkpoint, and checks that the synthetic effect is not repeated. This is a technical
+rehearsal; independent operator/pilot acceptance remains explicitly pending (I17).</p>
 <h2 id="before-changing-a-deployment">Before changing a deployment</h2>
 <ol>
 <li>Record source/target binary version, checksum, DB driver/history, service working

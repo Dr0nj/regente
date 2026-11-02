@@ -1,3 +1,6 @@
+# HISTORICAL REFERENCE, NOT A RUNNABLE PRODUCTION RECIPE.
+# Current daemon rejects this public development bind. Do not bypass that check.
+# Configure an explicitly reviewed production boundary; see docs/safe-bootstrap.md.
 # Knative Service — "serverless portátil" sem lock-in de fornecedor.
 # Knative é CNCF e roda em qualquer Kubernetes (GKE, EKS, AKS, on-prem, kind).
 # A MESMA imagem roda em Cloud Run / Fly / App Runner / Container Apps trocando

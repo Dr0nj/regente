@@ -14,7 +14,7 @@
 #   (cd .. && CGO_ENABLED=0 go build -o regente-server .)
 #   (cd ../../app && npm ci && VITE_REGENTE_SERVER_URL=@origin npm run build)   # p/ UI junto
 #   sudo ./install-linux.sh
-#   sudo $EDITOR /etc/regente/server.env      # REGENTE_TOKEN forte, GitOps…
+#   sudo $EDITOR /etc/regente/server.env      # bootstrap password, GitOps…
 #   sudo systemctl restart regente-server
 #
 # Do bundle de release (V2): os arquivos já vêm no lugar certo; o one-liner
@@ -52,8 +52,11 @@ install -d -o "$RUN_USER" -g "$RUN_USER" "$DATA_DIR"
 # server.env criado ANTES do bloco de UI (as duas formas mexem nele).
 mkdir -p /etc/regente
 if [ ! -f "$ENV_FILE" ]; then
-  install -m 0640 "$HERE/server.env.example" "$ENV_FILE"
-  echo "created $ENV_FILE (from the example) — EDIT it before exposing this in production."
+  printf "\n\n" | /usr/local/bin/regente-server -init-config "$ENV_FILE"
+  printf "REGENTE_DB=/var/lib/regente/regente.db\nREGENTE_WORKSPACE=/var/lib/regente/workspace\n" >> "$ENV_FILE"
+  chown "$RUN_USER:$RUN_USER" "$ENV_FILE"
+  chmod 0600 "$ENV_FILE"
+  echo "Created private production loopback configuration at $ENV_FILE."
 fi
 
 # --- V1: UI single-origin (opt-out via WITH_UI=0) --------------------------
@@ -227,15 +230,15 @@ fi
 echo ""
 echo "== Next steps, in order"
 if [ -x /usr/local/bin/regente-configure ]; then
-  echo "  1) sudo regente-configure     # strong token, YOUR workspace repo + GitHub PAT"
+  echo "  1) sudo regente-configure     # review protected configuration"
 else
-  echo "  1) sudo \$EDITOR $ENV_FILE     # strong REGENTE_TOKEN, YOUR workspace repo"
+  echo "  1) sudo \$EDITOR $ENV_FILE     # read bootstrap password; configure YOUR workspace repo"
 fi
 echo "  2) sudo systemctl restart regente-server"
 if [ "$SPA_INSTALLED" = "1" ]; then
   echo "  3) FIRST ACCESS — without exposing the control plane. From YOUR machine:"
   echo "       ssh -L 18080:127.0.0.1:${PORT} <you>@${HOST_IP}"
-  echo "     then open http://localhost:18080   (login: admin / admin — it forces a password change)"
+  echo "     then open http://localhost:18080   (login: admin; read REGENTE_BOOTSTRAP_PASSWORD in the private config)"
 else
   echo "  3) FIRST ACCESS (API only, no UI installed). From YOUR machine:"
   echo "       ssh -L 18080:127.0.0.1:${PORT} <you>@${HOST_IP}"
@@ -248,12 +251,6 @@ else
   echo "       $REPO_URL/tree/main/deploy/vps   (nginx reverse proxy + Let's Encrypt + firewall)"
 fi
 echo ""
-echo "Publishing port ${PORT} straight to the internet is NOT the recommended path: it is plain"
-echo "HTTP, so the admin password and REGENTE_TOKEN travel in the clear. If you still want it"
-echo "temporarily, allow SSH in the SAME command — enabling ufw without it locks you out:"
-echo "       sudo ufw allow OpenSSH && sudo ufw allow ${PORT}/tcp && sudo ufw enable   # ufw"
-echo "       (OpenSSH is port 22 — if your sshd listens elsewhere, allow THAT port instead)"
-echo "       sudo firewall-cmd --add-port=${PORT}/tcp --permanent && sudo firewall-cmd --reload   # firewalld"
-echo "  (a cloud VM ALSO needs the port opened in its security group.)"
+echo "Remove REGENTE_BOOTSTRAP_PASSWORD after first login. Configure proxy/TLS before network exposure."
 echo ""
 echo "Logs:    journalctl -u regente-server -f"

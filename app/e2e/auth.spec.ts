@@ -13,6 +13,7 @@ for (const mode of ["local", "hybrid", "oidc"]) {
       "-spa-dir", resolve("dist"), "-auth-mode", mode, "-api-token", "", "-git-source", "", "-selfmon=false"];
     if (mode !== "local") args.push("-oidc-issuer", "http://127.0.0.1:1", "-oidc-client-id", "test", "-oidc-redirect-url", base + "/api/auth/oidc/callback");
     const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("REGENTE_") && !key.startsWith("GITHUB_") && !key.startsWith("OTEL_")));
+    env.REGENTE_INSECURE_DEV_AUTH = "1";
     const child = spawn(bin, args, { windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env });
     let output = "";
     child.stdout.on("data", data => { output += data.toString(); });

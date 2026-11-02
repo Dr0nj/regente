@@ -25,10 +25,13 @@ go mod tidy
 CGO_ENABLED=0 go build -o regente-server .
 ```
 
-## Run (dev)
+## Run (explicit local fixture)
+
+Normal startup uses [safe bootstrap](../docs/safe-bootstrap.md); the following
+loopback-only fixture deliberately enables `admin/admin`.
 
 ```bash
-./regente-server -addr 127.0.0.1:8080 -workspace ./workspace -db ./regente.db -api-token dev-token
+./regente-server -addr 127.0.0.1:8080 -workspace ./workspace -db ./regente.db -insecure-dev-auth
 ```
 
 The most common flags (all of them also read a `REGENTE_*` environment variable, so a systemd
@@ -40,7 +43,7 @@ unit or a k8s manifest needs no arguments):
 | `-workspace` | `./workspace` | Path containing `definitions/` |
 | `-db` | `./regente.db` | SQLite file path, or the Postgres DSN |
 | `-db-driver` | `sqlite` | `sqlite` \| `postgres` |
-| `-api-token` | `dev-token` / `REGENTE_TOKEN` | Administrative API bearer; **not** an agent credential or browser session |
+| `-api-token` | empty / `REGENTE_TOKEN` | Administrative API bearer; **not** an agent credential or browser session |
 | `-spa-dir` | — | Serves the built UI on the same origin (single-origin) |
 | `-docs-dir` | — | Serves a generated docs site under `/docs` |
 | `-git-source` | — | Workspace repository URL (GitOps) |

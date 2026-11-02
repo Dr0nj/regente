@@ -8,6 +8,7 @@ function Expect-Rejection($Arguments, [string]$Message) {
   }
   if (-not $rejected) { throw "Expected launcher rejection: $Message" }
 }
+Expect-Rejection @{BindAddress='0.0.0.0'} 'require numeric loopback'
 Expect-Rejection @{NativeSmoke=$true} '-NativeSmoke requires -Smoke'
 Expect-Rejection @{Smoke=$true; GitRepo='owner/real-workspace'} 'cannot access a real GitHub workspace'
 Expect-Rejection @{GitFixture=$true} '-GitFixture requires -Smoke'

@@ -16,7 +16,8 @@ select `hybrid` during upgrade. Configure every node with the same policy.
 
 ## Local installation
 
-Run the server normally. On a new database, sign in as `admin` / `admin` and change
+Use [safe bootstrap](safe-bootstrap.md) for normal startup. Only the explicit
+loopback fixture `-insecure-dev-auth` uses `admin` / `admin`; change
 the initial password. Create accounts from **Users**. No external identity
 provider or enterprise infrastructure is required.
 

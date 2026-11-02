@@ -23,7 +23,7 @@ common=["runuser","-u","i14-control","--","/usr/local/bin/regente-server","-db",
 command(common+["-audit-verify"])
 command(["bash","/var/lib/regente/deploy/audit/install-audit-collector.sh",str(CONTROL/"state.db.audit.key.pub"),str(token_file),str(cert),str(key),"127.0.0.1:19545"])
 args=common+["-addr","127.0.0.1:19544","-workspace",str(CONTROL/"workspace"),"-role","api","-api-token",TOKEN,"-selfmon=false","-server-agent=false","-audit-siem-url","https://127.0.0.1:19545","-audit-token-file",str(control_token)]
-env={k:v for k,v in os.environ.items() if not k.startswith("REGENTE_")};env["SSL_CERT_FILE"]=str(cert)
+env={k:v for k,v in os.environ.items() if not k.startswith("REGENTE_")};env["SSL_CERT_FILE"]=str(cert);env["REGENTE_BOOTSTRAP_PASSWORD"]="synthetic-smoke-bootstrap-password"
 process=None;log=open(ROOT/"control.log","w")
 def start():return subprocess.Popen(args,env=env,stdout=log,stderr=subprocess.STDOUT)
 def request(path,method="GET",body=None):

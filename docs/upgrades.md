@@ -28,6 +28,49 @@ every historical release executable. No mixed-release rolling pair is currently
 qualified by this matrix. Expand/contract is a design requirement, not permission
 to bypass the runner's supported range or protocol changes.
 
+## Executable runtime admission (REV-04)
+
+Trusted server and agent binaries expose `-compatibility` as JSON without opening
+state or listeners. The server descriptor derives its schema range from the real
+migration runner, and the agent descriptor derives its journal version from the
+journal implementation. Inspect the isolated target's migration history, then run:
+
+```sh
+python3 scripts/check-compatibility.py --server ./regente-server --agent ./regente-agent --schema 32
+```
+
+Exit zero requires matching nonempty build labels, schema within the server's
+runtime range (currently 32), protocol 2 and journal 1. Different/empty build labels,
+old/future runtime schemas and wire/journal versions fail closed. The report includes
+binary SHA256 values. A matching label is not proof of provenance: use trusted
+release artifacts (or explicitly identified local builds), and retain the hashes.
+The checker does not read the DB: `--schema` must come from the actual restored,
+migrated target. Schema 22/23/24 fixtures are migration **inputs**, not runnable
+schema versions for the current binary. No mixed-release rolling pair is qualified.
+
+This offline deployment admission check complements runtime rejection, not replaces
+it: DB migration/history checks and journal owner/version checks still run at startup;
+the durable handshake rejects unsupported protocol/journal before reconciliation or
+agent registration. Build labels alone are not a transport authorization mechanism.
+
+The mandatory integration runner invokes the checker on its freshly built binaries.
+`test_compatibility.py` exercises the negative matrix; `TestMigrationSafety`,
+`TestMigrationLegacySQLiteBackupRestore`, `TestI09JournalLockIdentityVersionCorruption`
+and the I09 real-agent tests exercise actual migration, journal and handshake behavior.
+
+For the complete recovery set, run the existing synthetic Linux rehearsal:
+
+```sh
+python3 scripts/recovery_rehearsal.py --server-bin ./regente-server --agent-bin ./regente-agent
+# WSL: use a NEW native Linux directory for actual private-file permission semantics:
+python3 scripts/recovery_rehearsal.py --server-bin ./regente-server --agent-bin ./regente-agent --work-dir /tmp/regente-recovery-unique
+```
+
+It restores DB, drafts, definitions/commit, identities, journal, configuration and
+external signing material, rejects an older snapshot against the independent
+checkpoint, and checks that the synthetic effect is not repeated. This is a technical
+rehearsal; independent operator/pilot acceptance remains explicitly pending (I17).
+
 ## Before changing a deployment
 
 1. Record source/target binary version, checksum, DB driver/history, service working

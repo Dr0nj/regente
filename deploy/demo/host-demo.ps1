@@ -16,6 +16,8 @@ param(
   [ValidateRange(5, 180)][int]$TimeoutSeconds = 45
 )
 $ErrorActionPreference = 'Stop'
+$bindIP = $null
+if (-not [Net.IPAddress]::TryParse($BindAddress, [ref]$bindIP) -or -not [Net.IPAddress]::IsLoopback($bindIP)) { throw 'Demo credentials require numeric loopback; use a production profile for network access.' }
 $script:smokePhase = 'bootstrap'
 $onWindows = $env:OS -eq 'Windows_NT'
 if ($NativeSmoke -and -not $Smoke) { throw '-NativeSmoke requires -Smoke; it is not a guest execution mode.' }
@@ -127,7 +129,7 @@ try {
   $srvArgs = @("-addr=$($BindAddress):$Port", '-spa-dir', (Join-Path $repo 'app/dist'),
     '-workspace', $workspace, '-db', (Join-Path $runDir 'state.db'), '-db-driver=sqlite',
     "-git-source=$source", "-git-branch=$GitBranch", "-github-repo=$GitRepo", '-git-poll-interval=0',
-    '-auth-mode=local', '-scheduler=external', '-bus=hub', '-demo-mode=false', '-server-agent=false',
+    '-auth-mode=local', '-scheduler=external', '-bus=hub', '-insecure-dev-auth', '-demo-mode=false', '-server-agent=false',
     '-selfmon=false', '-design-session-gc-tick-min=0')
   if ($GitRepo) { $srvArgs += @('-git-commit', '-git-write-mode=direct') }
   if (-not $Smoke) { $srvArgs = @($srvArgs | Where-Object { $_ -ne '-scheduler=external' }) }

@@ -96,6 +96,7 @@ func main() {
 	journalPath := flag.String("journal", envOr("REGENTE_AGENT_JOURNAL", ""), "Durable local journal path (required for v2)")
 	concurrency := flag.Int("concurrency", 4, "Maximum concurrent durable executions")
 	pending := flag.Int("max-pending", 1000, "Maximum unconfirmed durable executions")
+	showCompatibility := flag.Bool("compatibility", false, "Print offline runtime compatibility descriptor")
 	showVersion := flag.Bool("version", false, "Print build version")
 	tlsCert := flag.String("tls-cert", os.Getenv("REGENTE_AGENT_TLS_CERT"), "Client certificate PEM file")
 	tlsKey := flag.String("tls-key", os.Getenv("REGENTE_AGENT_TLS_KEY"), "Client private key PEM file")
@@ -103,6 +104,10 @@ func main() {
 	executionPolicy = flag.String("execution-policy", os.Getenv("REGENTE_EXECUTION_POLICY"), "Protected local execution policy JSON")
 	jobSecrets = flag.String("job-secrets-file", os.Getenv("REGENTE_JOB_SECRETS_FILE"), "Protected runtime secrets JSON; never persisted in the journal")
 	flag.Parse()
+	if *showCompatibility {
+		json.NewEncoder(os.Stdout).Encode(map[string]any{"component": "agent", "build": agentVersion, "protocol": 2, "journal": journal.Version})
+		return
+	}
 	if *showVersion {
 		fmt.Println(agentVersion)
 		return

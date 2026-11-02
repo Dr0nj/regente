@@ -250,7 +250,11 @@ def main():
     parser.add_argument("--server-bin", type=Path, required=True)
     parser.add_argument("--agent-bin", type=Path, required=True)
     parser.add_argument("--openssl", default="openssl")
+    parser.add_argument("--work-dir", type=Path, help="New private local Linux directory (use ext4 rather than a Windows mount under WSL)")
     args = parser.parse_args()
+    if args.work_dir:
+        lab.RUN = args.work_dir.resolve()
+        lab.EVIDENCE = lab.RUN / "evidence"
     lab.EVIDENCE.mkdir(parents=True)
     lab.REPORT.update(profile="i17-linux-sqlite-recovery", platform=platform.platform())
     started = time.monotonic()
@@ -266,7 +270,7 @@ def main():
             "-out", str(tls_dir / "lab.crt")], name="i17-certificate")
         env = {k: v for k, v in os.environ.items() if not k.startswith(("REGENTE_", "OTEL_", "GIT_", "AWS_"))
                and k not in ("GH_TOKEN", "GITHUB_TOKEN", "SSH_AUTH_SOCK")}
-        env.update(SSL_CERT_FILE=str(tls_dir / "lab.crt"), GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+        env.update(REGENTE_BOOTSTRAP_PASSWORD="synthetic-lab-bootstrap-password", SSL_CERT_FILE=str(tls_dir / "lab.crt"), GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
         lab.TLS_CONTEXT = ssl.create_default_context(cafile=str(tls_dir / "lab.crt"))
         rehearse(env, tls_dir, server_bin=args.server_bin.resolve(), agent_bin=args.agent_bin.resolve())
         lab.REPORT["status"] = "passed"

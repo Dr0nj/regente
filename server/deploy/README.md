@@ -8,7 +8,7 @@
 | File | What it is for |
 |---|---|
 | `regente-server.service` | A systemd unit with `Restart=always` (Linux). |
-| `server.env.example` | Configuration through env vars (token, DB, GitOps…). Copy it to `/etc/regente/server.env`. |
+| `server.env.example` | Safe template; the installer generates a private random bootstrap configuration. |
 | `install-linux.sh` | Installs the unit, the binary and the env file, then enables and starts it. |
 | `install-windows.ps1` | A Scheduled Task (boot + automatic restart) on Windows. |
 | `configure.sh` | Guided setup, installed as `regente-configure`. |
@@ -23,7 +23,7 @@ cd server && CGO_ENABLED=0 go build -o regente-server .
 # optional: build the UI so it is served alongside, single-origin (UI+API+WS on one port)
 (cd ../app && npm ci && VITE_REGENTE_SERVER_URL=@origin npm run build)
 sudo ./deploy/install-linux.sh          # detects ../app/dist and sets REGENTE_SPA_DIR itself
-sudo regente-configure                   # guided: strong token, GitHub PAT/repo, domain
+sudo regente-configure                   # review private bootstrap configuration
 sudo systemctl restart regente-server
 journalctl -u regente-server -f
 ```
@@ -46,7 +46,7 @@ their original volumes or verified exports; reconcile interrupted execution sepa
 
 ```powershell
 cd server; go build -o regente-server.exe .
-.\deploy\install-windows.ps1 -Token <a-strong-token> `
+.\deploy\install-windows.ps1 `
   -GitSource https://github.com/<owner>/<your-workspace>.git
 ```
 
@@ -56,9 +56,12 @@ cd server; go build -o regente-server.exe .
 
 ## Container / Kubernetes / serverless
 
-See [`../../deploy/`](../../deploy): `Dockerfile` (distroless) + `knative-service.yaml`
-(`readinessProbe`→`/readyz`, `livenessProbe`→`/livez` — a process that hangs while still listening
-gets restarted) + `cronjob.yaml` (the external trigger for `-scheduler=external`).
+Read [safe bootstrap](../../docs/safe-bootstrap.md) before starting a container.
+The generic image in [`../../deploy/`](../../deploy) requires explicit configuration
+and persistent data. `knative-service.yaml` and its legacy cron trigger are historical
+architecture references, not current production deployment recipes; their public
+development bind is deliberately refused. Use the production profile and qualify
+the platform-specific ingress, machine identity and scheduler path before deployment.
 
 ## DR / backup (R6)
 
@@ -80,12 +83,12 @@ Every relevant flag reads an environment variable, so the unit or manifest needs
 
 | Env | Flag | Default |
 |---|---|---|
-| `REGENTE_ADDR` | `-addr` | `:8080` |
+| `REGENTE_ADDR` | `-addr` | `127.0.0.1:8080` |
 | `REGENTE_SPA_DIR` | `-spa-dir` | — (single-origin UI; the installer sets it when it finds `app/dist`) |
 | `REGENTE_DB_DRIVER` | `-db-driver` | `sqlite` |
 | `REGENTE_DB` | `-db` | `./regente.db` (a SQLite path or a Postgres DSN) |
 | `REGENTE_WORKSPACE` | `-workspace` | `./workspace` |
-| `REGENTE_TOKEN` | `-api-token` | `dev-token` |
+| `REGENTE_TOKEN` | `-api-token` | empty (no administrative bearer) |
 | `REGENTE_GIT_SOURCE` | `-git-source` | — (**empty = offline**, definitions on local disk; set it to **your own** workspace repository) |
 | `REGENTE_SECRET_GITHUB_TOKEN` | (secrets provider) | — (keeps the PAT out of the DB in plaintext) |
 | `REGENTE_ROLE` / `REGENTE_SCHEDULER` | `-role` / `-scheduler` | `all` / `internal` |

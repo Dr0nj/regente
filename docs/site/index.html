@@ -72,10 +72,12 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="enterprise-compatibility.html">Enterprise compatibility contracts</a>
 <a href="execution-security.html">Execution security</a>
 <a href="failure-resistant-audit.html">Failure-resistant audit</a>
+<a href="frontend-performance.html">Frontend loading measurement</a>
 <a href="ha-resources.html">Shared resources and scheduler leadership</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="operational-recovery-pilot.html">Operational recovery and controlled pilot</a>
 <a href="production-profile.html">Production profile</a>
+<a href="safe-bootstrap.html">Safe first startup</a>
 <a href="shared-drafts.html">Shared Design drafts</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
 <a href="verification.html">Verification profiles</a>
@@ -324,20 +326,20 @@ sudo SERVER=ws://localhost:8080/ws/agent TOKEN=&lt;token&gt; ID=$(hostname) \
 # create the TOKEN in Settings → Agents, including for local development.
 </code></pre>
 <h3 id="after-installing-the-server-all-options">After installing the server (all options)</h3>
-<p><strong>1. Configure it.</strong> The guided script asks for the three things that matter — a strong token,
-your workspace repository (<code>owner/name</code>) and its PAT — and writes them to
-<code>/etc/regente/server.env</code>:</p>
+<p><strong>1. Review the private bootstrap configuration.</strong> The installer generates a random
+password and starts production on loopback. The helper preserves an existing file:</p>
 <pre><code class="language-bash">sudo regente-configure
 </code></pre>
-<p>It offers to restart the service at the end and then tells you whether GitOps actually
-connected. Leaving the repository blank is a valid answer: that is offline mode.</p>
+<p>It preserves the existing private configuration and explains first access. Configure
+GitOps in Settings after login; leaving it unconfigured keeps offline mode.</p>
 <p><strong>2. Reach the UI — without publishing it yet.</strong> The default port speaks plain <strong>HTTP</strong>, so the
-first login (<code>admin</code>/<code>admin</code>) and the <code>REGENTE_TOKEN</code> would cross the internet in the clear. Use
+initial login credentials would cross the internet in the clear. Use
 an SSH tunnel from <strong>your own machine</strong> and nothing has to be opened at all:</p>
 <pre><code class="language-bash">ssh -L 18080:127.0.0.1:8080 &lt;you&gt;@&lt;your-host&gt;
 </code></pre>
-<p><strong>3. Open <code>http://localhost:18080</code></strong> and log in with <code>admin</code> / <code>admin</code> — it will make you change
-the password.</p>
+<p><strong>3. Open <code>http://localhost:18080</code></strong> and log in as <code>admin</code> using the random
+<code>REGENTE_BOOTSTRAP_PASSWORD</code> in the private <code>/etc/regente/server.env</code>. Remove that
+entry after first login. See <a href="safe-bootstrap.html">safe bootstrap</a>.</p>
 <p>For a link other people can use, go to <a href="https://github.com/Dr0nj/regente/blob/main/deploy/vps/README.md"><code>deploy/vps/</code></a>: a real domain, nginx
 and Let's Encrypt, with <code>:8080</code> staying closed. If you only want the port open <strong>temporarily</strong>,
 allow SSH in the same command — enabling <code>ufw</code> without it locks you out of the machine — and
@@ -737,7 +739,7 @@ external effects; see <a href="capacity-guarantees.html#dispatch-and-ha-boundari
 <h2 id="-development">🛠 Development</h2>
 <p>Three terminals — server, agent and frontend:</p>
 <pre><code class="language-bash"># 1. server
-cd server &amp;&amp; go run . -api-token dev-token
+cd server &amp;&amp; go run . -insecure-dev-auth
 
 # 2. agent (a separate terminal; first create its token in Settings → Agents)
 cd agent &amp;&amp; go run . -server ws://localhost:8080/ws/agent -token rgta_REPLACE_ME -id my-pc -caps COMMAND,SCRIPT,HTTP
@@ -745,7 +747,8 @@ cd agent &amp;&amp; go run . -server ws://localhost:8080/ws/agent -token rgta_RE
 # 3. frontend (a separate terminal)
 cd app &amp;&amp; npm install &amp;&amp; cp .env.example .env &amp;&amp; npm run dev    # http://localhost:5173
 </code></pre>
-<p>Dev login: <code>admin</code> / <code>admin</code>. Agent connections require a separate token issued in
+<p>Explicit loopback-only fixture login: <code>admin</code> / <code>admin</code> (the flag above is required). Normal
+daemon startup requires a supplied bootstrap password or <code>-init-config</code>; see <a href="safe-bootstrap.html">safe bootstrap</a>. Agent connections require a separate token issued in
 Settings → Agents; login sessions and the server API token are not accepted. See
 <a href="agent-authentication.html">agent authentication and upgrades</a>.</p>
 <p>Before pushing, run the quick checks and read their explicit coverage report:</p>

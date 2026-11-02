@@ -63,6 +63,22 @@ import (
 var version = "dev"
 
 func main() {
+	for i, arg := range os.Args[1:] {
+		arg = "-" + strings.TrimLeft(arg, "-")
+		path := ""
+		if strings.HasPrefix(arg, "-config-env=") {
+			path = strings.TrimPrefix(arg, "-config-env=")
+		}
+		if arg == "-config-env" && i+2 < len(os.Args) {
+			path = os.Args[i+2]
+		}
+		if path != "" {
+			if err := runtimeprofile.LoadEnvironment(path); err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
+
 	var (
 		profile          = flag.String("profile", envOr("REGENTE_PROFILE", "development"), "Runtime profile: development | production")
 		environment      = flag.String("environment", os.Getenv("REGENTE_ENVIRONMENT"), "Production environment scope")
@@ -109,7 +125,7 @@ func main() {
 		otelEndpoint     = flag.String("otel-endpoint", envOr("OTEL_EXPORTER_OTLP_ENDPOINT", ""), "OTLP/HTTP endpoint for distributed tracing (empty = off)")
 		otelService      = flag.String("otel-service", envOr("OTEL_SERVICE_NAME", "regente-server"), "service.name in the traces")
 		gitEnable        = flag.Bool("git-commit", false, "Commit saves via git (workspace must be a git repo)")
-		apiToken         = flag.String("api-token", envOr("REGENTE_TOKEN", "dev-token"), "Bearer token for API + WS")
+		apiToken         = flag.String("api-token", envOr("REGENTE_TOKEN", ""), "Bearer token for API + WS")
 		demoMode         = flag.Bool("demo-mode", envOr("REGENTE_DEMO_MODE", "") == "1", "Demo/playground: with no agent online, jobs are mock-finalized OK. Default OFF (production): with no agent, the instance stays WAITING and retries when an agent connects")
 		serverAgent      = flag.Bool("server-agent", envOr("REGENTE_SERVER_AGENT", "1") != "0", "Registers the built-in SERVER-AGENT (runs HTTP/REST jobs on the server itself, no external agent). Turn it off with -server-agent=false / REGENTE_SERVER_AGENT=0")
 		trustedProxyCIDR = flag.String("trusted-proxies", envOr("REGENTE_TRUSTED_PROXIES", ""), "Comma-separated CIDRs/IPs allowed to set X-Forwarded-For / X-Real-IP (empty = loopback only, which is the nginx-in-front layout of deploy/vps). Headers from any other peer are ignored, so the audit trail cannot be spoofed")
@@ -143,14 +159,28 @@ func main() {
 		oidcDefaultRole  = flag.String("oidc-default-role", envOr("REGENTE_OIDC_DEFAULT_ROLE", "viewer"), "Role on the 1st federated login: viewer|operator|admin")
 		appURL           = flag.String("app-url", envOr("REGENTE_APP_URL", ""), "SPA URL for the post-OIDC-login redirect (e.g. http://localhost:5173)")
 
-		showVersion = flag.Bool("version", false, "print the build version and exit")
+		showCompatibility = flag.Bool("compatibility", false, "Print offline runtime compatibility descriptor")
+		showVersion       = flag.Bool("version", false, "print the build version and exit")
 	)
 	executionPolicy := flag.String("execution-policy", os.Getenv("REGENTE_EXECUTION_POLICY"), "Protected local execution policy JSON")
 	jobSecrets := flag.String("job-secrets-file", os.Getenv("REGENTE_JOB_SECRETS_FILE"), "Protected runtime job secrets JSON")
+	flag.String("config-env", "", "Protected KEY=VALUE file; environment and flags override it")
+	initConfig := flag.String("init-config", "", "Create a new private production configuration interactively")
+	insecureDev := flag.Bool("insecure-dev-auth", os.Getenv("REGENTE_INSECURE_DEV_AUTH") == "1", "Explicit loopback-only fixture credentials; never production")
 	flag.Parse()
+	if *initConfig != "" {
+		if err := runtimeprofile.Initialize(os.Stdin, os.Stdout, *initConfig); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 
 	// Antes de abrir banco, workspace ou porta: `-version` tem de responder numa
 	// máquina onde o serviço já está rodando, sem disputar nada com ele.
+	if *showCompatibility {
+		json.NewEncoder(os.Stdout).Encode(map[string]any{"component": "server", "build": version, "schemaMin": db.MinSupportedSchema, "schemaMax": db.MaxSupportedSchema, "protocol": execution.ProtocolVersion, "journal": execution.JournalVersion, "mixedRelease": false})
+		return
+	}
 	if *showVersion {
 		fmt.Println(version)
 		return
@@ -205,6 +235,12 @@ func main() {
 	mode, modeErr := auth.Mode(*authMode)
 	trustedProxies, tpErr := api.ParseTrustedProxies(*trustedProxyCIDR)
 	if serving {
+		if *insecureDev && (*profile != "development" || !runtimeprofile.LocalAddress(*addr)) {
+			log.Fatal("insecure-dev-auth requires development on numeric loopback")
+		}
+		if *profile == "development" && !runtimeprofile.LocalAddress(*addr) {
+			log.Fatal("development requires numeric loopback; use an explicit production profile for network exposure")
+		}
 		if value, set := os.LookupEnv("REGENTE_EXECUTION_LAB"); set && !explicit["execution-lab"] && value != "0" && value != "1" {
 			log.Fatal("[config] REGENTE_EXECUTION_LAB must be 0 or 1")
 		}
@@ -343,7 +379,13 @@ func main() {
 
 	// F11.10 — bootstrap admin if no users exist
 	if !policy.Production() {
-		if err := auth.Bootstrap(database); err != nil {
+		bootstrap := func() error {
+			if *insecureDev {
+				return auth.Bootstrap(database)
+			}
+			return auth.BootstrapConfigured(database, envOr("REGENTE_BOOTSTRAP_USER", "admin"), os.Getenv("REGENTE_BOOTSTRAP_PASSWORD"))
+		}
+		if err := bootstrap(); err != nil {
 			log.Fatalf("auth bootstrap: %v", err)
 		}
 	}
@@ -730,8 +772,8 @@ func main() {
 	// numa instalação nova, e o único jeito de o operador perceber é no log.
 	if !policy.Production() {
 		switch strings.TrimSpace(*apiToken) {
-		case "dev-token", "change-me", "":
-			log.Printf("[security] WARNING: REGENTE_TOKEN is still the example value (%q). It is ADMIN-EQUIVALENT and bypasses the login — anyone who reaches this port owns this Regente. Fix it with: sudo regente-configure", *apiToken)
+		case "dev-token", "change-me":
+			log.Printf("[security] WARNING: REGENTE_TOKEN is still the example value (%q). It is ADMIN-EQUIVALENT and bypasses the login — anyone who reaches this port owns this Regente. Remove the legacy token and configure production; see docs/safe-bootstrap.md", *apiToken)
 		}
 
 	}

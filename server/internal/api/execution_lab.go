@@ -183,7 +183,7 @@ func (s *server) executionMachine(w http.ResponseWriter, r *http.Request, handsh
 		if !ok {
 			return nil, false
 		}
-		if r.URL.Query().Get("protocol") != "2" {
+		if r.URL.Query().Get("protocol") != strconv.Itoa(execution.ProtocolVersion) {
 			http.Error(w, "protocol 2 is required", http.StatusUpgradeRequired)
 			return nil, false
 		}
@@ -205,12 +205,8 @@ func (s *server) executionPoll(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, err := s.attempts.Reconcile(); err != nil {
-		executionError(w, err)
-		return
-	}
 	if s.cfg.RuntimePolicy.Durable() {
-		if r.URL.Query().Get("journal") != "1" || r.URL.Query().Get("ver") == "" {
+		if r.URL.Query().Get("journal") != strconv.Itoa(execution.JournalVersion) || r.URL.Query().Get("ver") == "" {
 			http.Error(w, "journal version 1 and agent version are required", http.StatusUpgradeRequired)
 			return
 		}
@@ -219,6 +215,10 @@ func (s *server) executionPoll(w http.ResponseWriter, r *http.Request) {
 			executionError(w, err)
 			return
 		}
+	}
+	if _, err := s.attempts.Reconcile(); err != nil {
+		executionError(w, err)
+		return
 	}
 	available := r.URL.Query().Get("available")
 	if available != "" && available != "0" && available != "1" {

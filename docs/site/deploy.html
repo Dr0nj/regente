@@ -72,10 +72,12 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="enterprise-compatibility.html">Enterprise compatibility contracts</a>
 <a href="execution-security.html">Execution security</a>
 <a href="failure-resistant-audit.html">Failure-resistant audit</a>
+<a href="frontend-performance.html">Frontend loading measurement</a>
 <a href="ha-resources.html">Shared resources and scheduler leadership</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="operational-recovery-pilot.html">Operational recovery and controlled pilot</a>
 <a href="production-profile.html">Production profile</a>
+<a href="safe-bootstrap.html">Safe first startup</a>
 <a href="shared-drafts.html">Shared Design drafts</a>
 <a href="upgrades.html">Upgrade and recovery compatibility</a>
 <a href="verification.html">Verification profiles</a>
@@ -137,14 +139,16 @@ a minimal attack surface.</p>
 docker build -f deploy/Dockerfile -t ghcr.io/dr0nj/regente-server:latest .
 docker push ghcr.io/dr0nj/regente-server:latest
 </code></pre>
-<h2 id="run-knative--any-k8s">Run (Knative / any k8s)</h2>
-<pre><code class="language-bash">kubectl create secret generic regente-secrets \
-  --from-literal=REGENTE_DB='postgres://user:pw@host:5432/regente' \
-  --from-literal=REGENTE_TOKEN='&lt;a-strong-token&gt;'
-
-kubectl apply -f deploy/knative-service.yaml
-kubectl apply -f deploy/cronjob.yaml
-</code></pre>
+<h2 id="runtime-configuration">Runtime configuration</h2>
+<p>Use <a href="safe-bootstrap.html">safe bootstrap</a> and the production profile for the
+container network boundary, bootstrap secret and persistent state. A bridged
+container requires explicit TLS configuration; loopback remains inside its network
+namespace unless host networking is deliberately used.</p>
+<p><code>knative-service.yaml</code> and <code>cronjob.yaml</code> are historical architecture references,
+not runnable production recipes for the current authentication contract. Their
+public development bind is rejected. Qualify platform-specific ingress, scoped
+scheduler triggering and durable machine identities before deployment; a portable
+image alone does not certify that integration.</p>
 <h2 id="lock-in-free-equivalents">Lock-in-free equivalents</h2>
 <table>
 <thead>

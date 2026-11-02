@@ -83,15 +83,15 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > detalhado em §✅ Entregue (+ linha no changelog). As caixinhas espalhadas nas seções de
 > baixo **não valem** como status (ver ⛔ REGRA DE STATUS no topo).
 
-### Revisão técnica — ciclo autorizado em 01/11/2026
+### Revisão técnica — conclusão local, 02/11/2026
 
-- **REV-01 — dependências e alcance:** próximo incremento implementado e validado localmente, CI/publicação pendentes. Auditoria completa e omitdev sem advisories após Vite8.3.5/Zod4.6.7 e minimatch11.0.1 restrito aos três consumidores inspecionados. Overrides versionados, ESLint10.11.0 fixado e contrato obrigatório de seleção/erros/ignoreTS/TSX; instalação limpa/lint/buildPASS. [Escopo e critério de retirada](../app/README.md#security-overrides-in-the-lint-toolchain). Não aplicar override global nem downgrade automático; fechamento depende dos gates do novo commit.
-- **REV-02 — primeira inicialização segura:** incremento inicial em desenvolvimento: loopback por padrão no daemon, CLI dev e novos serviços Linux/Windows, preservando endereços explícitos existentes. Restam bootstrap sem bearer administrativo conhecido, configuração guiada e política para bind público development; cobrir instalação limpa, upgrade e containers sem quebrar acesso explicitamente configurado. Loopback sozinho não fecha o item.
-- **REV-03 — coerência documental:** implementado localmente, publicação pendente: distinguir guards históricos de scheduling do runtime v2, corrigir schema e referenciar evidência do SHA exato. Aceite: site regenerado/verificado e ausência de promessa de exactly-once externo, HA universal ou piloto produtivo aprovado.
-- **REV-04 — compatibilidade de upgrade executável:** consolidar matriz server/schema/agent/protocol/journal com aceites de combinações suportadas, rejeição segura das demais e recuperação do conjunto completo. Reutilizar gates existentes; não prometer rolling upgrade misto.
-- **REV-05 — desempenho e manutenção frontend:** medir carga inicial e navegação antes de dividir Design/Analytics/Settings; preservar contratos e verificar browser. Extrair módulos grandes somente com fronteira funcional e benefício demonstrados; tamanho de arquivo isolado não justifica reescrita.
+REV-02, REV-04 e REV-05 concluídos, em um único incremento. Após autorização de
+publicação, o smoke Docker/systemd também passou: instalação, reboot, upgrade,
+protocolo v2/journal, células I13 e coletor I14. Detalhes em §✅ Entregue abaixo.
+CI full e release do novo SHA ainda devem confirmar a publicação; não reutilizar
+a aprovação da v0.2.61 como prova destas mudanças.
 
-Validação local do primeiro incremento: lint/build, oito cenários Playwright, testes Go de inicialização/runtimeprofile/CLI/docsite e go vet aprovados. Receitas Node e site aprovados. Suíte Python no Windows: 25 aprovados e cinco skips de plataforma, após correção da fixture para Git Bash/Python explícitos. Não equivale ao full Linux do novo commit; CI/release ainda pendentes.
+Primeiro incremento bcd5913 publicado na v0.2.60: full Linux, oito cenários browser sem skips/flaky, soak sintético, instalação systemd e cinco plataformas nativas aprovados; prova de CI vinculada ao SHA exato. Segundo incremento 599dea6 publicado na v0.2.61: CI/full/capacity, três mínimos Node, browser, instalação e release aprovados; tag e source-ci-proof conferidos no SHA exato.
 
 Homologação de efeitos externos/recuperação permanece em **I17/EC-05**, sem criar piloto duplicado nem revogar o adiamento humano. Expandir matriz por adapter com receipt, incerteza, reconciliação e perda de rede; **GLUE-02/03** mantêm seus limites. Full Linux já aprovado no SHA 721a453 é baseline histórica; alterações novas exigem os gates aplicáveis ao novo commit.
 
@@ -417,6 +417,48 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+### REV-02 / REV-04 / REV-05 — implementação local, 02/11/2026
+
+- **REV-02:** daemon sem bearer/senha conhecidos por padrão; bootstrap explícito preserva
+  contas existentes; `-init-config` cria arquivo privado com senha aleatória de 192 bits,
+  `-config-env` valida permissões e precedência. Instaladores Linux/Windows usam o
+  fluxo seguro em instalações novas e preservam configuração existente. Fixture
+  `admin/admin` só por opção explícita e loopback; bind development público recusado
+  antes do DB. Serviços development expostos precisam conversão deliberada. Guias,
+  `.env.example` e exemplos de containers reconciliados; Knative legado identificado
+  como referência histórica. Ver [bootstrap](safe-bootstrap.md).
+- **REV-04:** descritores offline reais server/schema/agent/protocol/journal e checker
+  com hashes, matriz positiva/negativa obrigatória no runner; handshake incompatível
+  recusado antes de reconciliação/registro. Migração, journal e agentes reais exercitados
+  nos testes existentes. Ensaio Linux/SQLite recuperou DB, drafts, commit, identidade,
+  journal, configuração e chave; snapshot antigo e chave ausente recusados; efeito
+  sintético ocorreu uma vez. Sem promessa de rolling misto ou homologação humana.
+  Ver [upgrade](upgrades.md#executable-runtime-admission-rev-04).
+- **REV-05:** autenticação leve antes de carregar console/portal; Settings permanece
+  sob demanda. Login carregou 670542→246102 bytes JS (−63,3%); portal 670542→254842 bytes.
+  Navegação pós-login paga o carregamento adiado; não declarar melhora universal de
+  latência. Medição repetível e orçamento browser <350 KB para login, com teste de cache
+  de identidade forjado e isolamento de chunks. Ver [medição](frontend-performance.md).
+
+Provas locais: suíte Go/vet, bootstrap real/ACL Windows e permissões Unix, matriz,
+31 testes Python Linux, recuperação sintética, nove cenários browser sem falhas/skips,
+demo nativa com COMMAND real, frontend lint/build e docs. Smoke Docker/systemd real
+aprovado após restauração do Docker: instalação limpa, reboot, upgrade, execução
+durável, células I13 e coletor I14. Não equivalem a full CI ou release nova. I17/EC-05 humano continuam adiados.
+
+
+### REV-01 — dependências npm e contrato de compatibilidade (01/11/2026)
+
+Entregue em 599dea6/v0.2.61, após Vite8.3.5/Zod4.6.7 no incremento anterior. Minimatch11.0.1 aplicado apenas aos três consumidores/versionamentos inspecionados, ESLint10.11.0 fixado e contrato obrigatório de lint real TS/TSX/ignore/erros. Auditoria npm completa sem advisories no lockfile revisado; isso não encerra alertas de outros ecossistemas nem autoriza upgrades automáticos sem revalidar overrides. [Escopo e retirada](../app/README.md#security-overrides-in-the-lint-toolchain).
+
+CI41368809558 e Release41372197150 aprovados, três mínimos Node, full Linux, oito cenários browser sem skips/flaky, carga sintética e soak, instalação systemd e cinco plataformas nativas. Tag v0.2.61 aponta para599dea65ee6e70dd880cb3750f1d6f2bc69d9c7a,20assets, source-ci-proof passed. Não equivale a homologação produtiva; tier100000 não qualificado. Naquela release o bootstrap completo ainda era REV-02; foi implementado no incremento local acima.
+
+
+### REV-03 — coerência documental da revisão técnica (01/11/2026)
+
+Entregue em bcd5913/v0.2.60. Arquitetura histórica distingue guards de scheduling do runtime durável v2; guias de execução/produção corrigidos para schema32 conforme constantes do banco. Documentação preserva limites de efeitos externos, HA e piloto, sem promessa universal de exactly-once. Site regenerado/verificado e CI/release vinculados ao SHA. O parecer externo foi corrigido separadamente, preservando o original na memória privada da revisão.
+
 
 ### EC-01c — composição explícita de arquivos AAPI (31/10/2026)
 
@@ -2031,6 +2073,12 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-11-02 — REV-02/04/05 local:** bootstrap privado, matriz executável e carregamento por autenticação/rota; incremento único com publicação autorizada após smoke Docker/systemd aprovado; limites de homologação explícitos.
+
+- **2026-11-01 — REV-01:** v0.2.61 conclui correção npm/minimatch com overrides delimitados, contrato obrigatório de lint e CI/release aprovados no SHA exato.
+
+- **2026-11-01 — REV-03 / REV-02 inicial:** v0.2.60 alinha documentação v2/schema32, adota loopback nos defaults e corrige Vite/Zod; bootstrap completo e minimatch seguem com status próprio no backlog.
 
 - **2026-10-31 — EC-01c:** manifesto explícito para composição AAPI plana, rastreabilidade por fonte e bloqueio de colisões/omissões; saída continua somente revisão.
 

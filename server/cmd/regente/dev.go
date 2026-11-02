@@ -30,6 +30,7 @@ import (
 	"github.com/Dr0nj/regente-server/internal/db"
 	"github.com/Dr0nj/regente-server/internal/hub"
 	"github.com/Dr0nj/regente-server/internal/leader"
+	"github.com/Dr0nj/regente-server/internal/runtimeprofile"
 	"github.com/Dr0nj/regente-server/internal/scheduler"
 	"github.com/Dr0nj/regente-server/internal/storage"
 )
@@ -45,9 +46,12 @@ func cmdDev(args []string) error {
 	workspace := fs.String("workspace", "./workspace", "local workspace (contains definitions/)")
 	date := fs.String("date", time.Now().Format("2006-01-02"), "order_date of the daily materialized at boot")
 	addr := fs.String("addr", "127.0.0.1:8686", "HTTP address (loopback by default)")
-	token := fs.String("token", "dev-token", "API bearer token")
+	token := fs.String("token", "", "API bearer token")
 	spaDir := fs.String("spa-dir", "", "serve the built SPA from this directory (default: auto-detected app/dist)")
 	_ = fs.Parse(args)
+	if !runtimeprofile.LocalAddress(*addr) {
+		return fmt.Errorf("disposable development requires a numeric loopback address")
+	}
 
 	// -workspace explícito é promessa do usuário: se não tem definitions/, é erro
 	// dele (typo no caminho) e a gente avisa. SEM -workspace, o comando tem de

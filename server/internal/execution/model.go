@@ -13,6 +13,9 @@ import (
 )
 
 const ProtocolVersion = 2
+
+// JournalVersion is the durable admission contract, checked before reconciliation.
+const JournalVersion = 1
 const Capability = "EXECUTION_V2"
 const MaxOutputBytes = 5 << 20
 

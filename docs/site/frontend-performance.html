@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontend loading measurement · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="adr-i09-agent-journal.html">Durable agent journal</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authenticated-releases.html">Authenticated releases</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="business-time.html">Business time</a>
+<a href="capacity.html">Capacity and progress</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html">Daily recovery</a>
+<a href="durable-execution.html">Durable execution and recovery</a>
+<a href="enterprise-compatibility.html">Enterprise compatibility contracts</a>
+<a href="execution-security.html">Execution security</a>
+<a href="failure-resistant-audit.html">Failure-resistant audit</a>
+<a href="frontend-performance.html" class="active">Frontend loading measurement</a>
+<a href="ha-resources.html">Shared resources and scheduler leadership</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="operational-recovery-pilot.html">Operational recovery and controlled pilot</a>
+<a href="production-profile.html">Production profile</a>
+<a href="safe-bootstrap.html">Safe first startup</a>
+<a href="shared-drafts.html">Shared Design drafts</a>
+<a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
+<a href="web-events.html">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="frontend-loading-measurement">Frontend loading measurement</h1>
+<p>REV-05 local comparison, 2026-11-02. Baseline: v0.2.61 frontend, Vite 8.3.5,
+React 19.3.0. Candidate: lazy console/portal with a lightweight session gate.
+Both use the same local synthetic SQLite server, same-origin production build,
+Chromium, three fresh browser contexts, no network throttling. Run
+<code>node scripts/frontend-performance.mjs OUTPUT.json</code> from the repository root.
+Capture the baseline before changing frontend loading; build each revision first.</p>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th style="text-align:right">JS bytes before</th>
+<th style="text-align:right">JS bytes after</th>
+<th style="text-align:right">Median ready ms before</th>
+<th style="text-align:right">Median ready ms after</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>login</td>
+<td style="text-align:right">670,542</td>
+<td style="text-align:right">246,102</td>
+<td style="text-align:right">341</td>
+<td style="text-align:right">247</td>
+</tr>
+<tr>
+<td>console</td>
+<td style="text-align:right">670,542</td>
+<td style="text-align:right">669,227</td>
+<td style="text-align:right">140</td>
+<td style="text-align:right">861</td>
+</tr>
+<tr>
+<td>settings</td>
+<td style="text-align:right">704,501</td>
+<td style="text-align:right">703,168</td>
+<td style="text-align:right">851</td>
+<td style="text-align:right">863</td>
+</tr>
+<tr>
+<td>portal</td>
+<td style="text-align:right">670,542</td>
+<td style="text-align:right">254,842</td>
+<td style="text-align:right">47</td>
+<td style="text-align:right">853</td>
+</tr>
+</tbody>
+</table>
+<p>Bytes are decoded resource body sizes, not gzip estimates or installation size.
+Login is cold; console and Settings accumulate requests in the same document.
+Portal is a new navigation in the authenticated context. Timings are descriptive
+local samples, not a production SLO or a controlled latency benchmark.
+The first console load now pays for its chunk after login; this is an intentional
+tradeoff, not a claim that every navigation became faster. Authenticated console
+bytes remain similar because Monitoring and Design share the canvas.</p>
+<p>The main entry fell from 655.41 KB (201.75 KB gzip) to 246.10 KB (78.28 KB gzip).
+Console is 399.78 KB and portal 4.09 KB as separate chunks. Settings and the other
+existing optional dialogs remain lazy. No feature was removed and no visual
+redesign was introduced. Further splitting the shared canvas requires separate
+workload evidence; file length alone is not a performance reason to rewrite it.</p>
+<p><code>REV05: login and portal defer console assets</code> is a mandatory browser scenario:
+forged cached identity cannot load the console, cold login stays below 350000 JS
+bytes, portal avoids console/Settings assets, and Settings loads only on opening.
+Existing browser coverage preserves login modes, password change, sessions,
+reconnect, business time, daily recovery, uncertain execution and shared drafts.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>

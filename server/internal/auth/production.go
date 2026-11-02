@@ -71,3 +71,15 @@ func BootstrapProduction(d *db.DB, username, password, emergency string) error {
 	}
 	return nil
 }
+
+// BootstrapConfigured preserves existing accounts and never creates sample credentials.
+func BootstrapConfigured(d *db.DB, username, password string) error {
+	var count int
+	if err := d.QueryRow("SELECT COUNT(*) FROM users").Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	return BootstrapProduction(d, username, password, "")
+}

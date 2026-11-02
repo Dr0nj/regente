@@ -246,27 +246,27 @@ sudo SERVER=ws://localhost:8080/ws/agent TOKEN=<token> ID=$(hostname) \
 
 ### After installing the server (all options)
 
-**1. Configure it.** The guided script asks for the three things that matter — a strong token,
-your workspace repository (`owner/name`) and its PAT — and writes them to
-`/etc/regente/server.env`:
+**1. Review the private bootstrap configuration.** The installer generates a random
+password and starts production on loopback. The helper preserves an existing file:
 
 ```bash
 sudo regente-configure
 ```
 
-It offers to restart the service at the end and then tells you whether GitOps actually
-connected. Leaving the repository blank is a valid answer: that is offline mode.
+It preserves the existing private configuration and explains first access. Configure
+GitOps in Settings after login; leaving it unconfigured keeps offline mode.
 
 **2. Reach the UI — without publishing it yet.** The default port speaks plain **HTTP**, so the
-first login (`admin`/`admin`) and the `REGENTE_TOKEN` would cross the internet in the clear. Use
+initial login credentials would cross the internet in the clear. Use
 an SSH tunnel from **your own machine** and nothing has to be opened at all:
 
 ```bash
 ssh -L 18080:127.0.0.1:8080 <you>@<your-host>
 ```
 
-**3. Open `http://localhost:18080`** and log in with `admin` / `admin` — it will make you change
-the password.
+**3. Open `http://localhost:18080`** and log in as `admin` using the random
+`REGENTE_BOOTSTRAP_PASSWORD` in the private `/etc/regente/server.env`. Remove that
+entry after first login. See [safe bootstrap](docs/safe-bootstrap.md).
 
 For a link other people can use, go to [`deploy/vps/`](deploy/vps/README.md): a real domain, nginx
 and Let's Encrypt, with `:8080` staying closed. If you only want the port open **temporarily**,
@@ -652,7 +652,7 @@ Three terminals — server, agent and frontend:
 
 ```bash
 # 1. server
-cd server && go run . -api-token dev-token
+cd server && go run . -insecure-dev-auth
 
 # 2. agent (a separate terminal; first create its token in Settings → Agents)
 cd agent && go run . -server ws://localhost:8080/ws/agent -token rgta_REPLACE_ME -id my-pc -caps COMMAND,SCRIPT,HTTP
@@ -661,7 +661,8 @@ cd agent && go run . -server ws://localhost:8080/ws/agent -token rgta_REPLACE_ME
 cd app && npm install && cp .env.example .env && npm run dev    # http://localhost:5173
 ```
 
-Dev login: `admin` / `admin`. Agent connections require a separate token issued in
+Explicit loopback-only fixture login: `admin` / `admin` (the flag above is required). Normal
+daemon startup requires a supplied bootstrap password or `-init-config`; see [safe bootstrap](docs/safe-bootstrap.md). Agent connections require a separate token issued in
 Settings → Agents; login sessions and the server API token are not accepted. See
 [agent authentication and upgrades](docs/agent-authentication.md).
 

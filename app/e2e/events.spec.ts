@@ -12,6 +12,7 @@ test("I04: scoped frames and automatic reconnect after ACL change", async ({ pag
     "-spa-dir", resolve("dist"), "-auth-mode", "local", "-api-token", "synthetic-events-admin",
     "-git-source", "", "-selfmon=false", "-server-agent=false", "-scheduler=external"];
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("REGENTE_") && !key.startsWith("GITHUB_") && !key.startsWith("OTEL_")));
+  env.REGENTE_INSECURE_DEV_AUTH = "1";
   const child = spawn(bin, args, { windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env });
   let output = "";
   child.stdout.on("data", data => { output += data.toString(); });

@@ -1,10 +1,11 @@
 # Production profile
 
 The production profile is opt-in: set `REGENTE_PROFILE=production` (or
-`-profile production`). Development remains the default. New server and service configurations listen on
-127.0.0.1 by default; the local development CLI also binds loopback. Existing
-explicit addresses are preserved on upgrade. Loopback reduces accidental network
-exposure but does not replace production configuration or remove development credentials.
+`-profile production`). The bare daemon defaults to development, with no known bearer/password and an
+explicit bootstrap requirement. The guided configuration and new service installations
+use production on loopback. Development is loopback-only, including explicit binds;
+existing network-bound development installations must convert deliberately. See
+[safe bootstrap](safe-bootstrap.md).
 Production does not imply mandatory SSO: choose local, hybrid or oidc explicitly.
 Use oidc when SSO must be required; provider unavailability never enables normal
 password login. An explicitly configured emergency administrator is the exception.

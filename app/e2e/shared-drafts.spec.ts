@@ -12,6 +12,7 @@ test("I12: shared draft resumes after restart and rejects stale browser edits", 
  for(const args of [["init","-b","main",remote],["-C",remote,"add","."],["-C",remote,"-c","user.name=Lab","-c","user.email=lab@example.invalid","-c","commit.gpgsign=false","commit","-m","synthetic fixture"]]) execFileSync("git",args,{stdio:"pipe",windowsHide:true});
  const bin=resolve("../.integration/server-i03"+(process.platform==="win32"?".exe":""));
  const env=Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith("REGENTE_")&&!key.startsWith("GITHUB_")&&!key.startsWith("OTEL_")));
+  env.REGENTE_INSECURE_DEV_AUTH = "1";
  const bases=["http://127.0.0.1:18912","http://127.0.0.1:18913"];
  const dirs=[join(dir,"a"),join(dir,"b")];for(const cwd of dirs)await mkdir(cwd);
  let output="";

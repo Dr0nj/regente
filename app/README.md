@@ -55,7 +55,8 @@ Environment variables (`.env`):
 VITE_REGENTE_SERVER_URL=http://localhost:8080   # empty = local mode (localStorage)
 ```
 
-Default dev login: `admin` / `admin`.
+Only the explicit loopback fixture (`-insecure-dev-auth`) uses `admin` / `admin`.
+Normal daemon startup uses [safe bootstrap](../docs/safe-bootstrap.md).
 
 `VITE_REGENTE_SERVER_URL=@origin` means **same-origin**: the Go server serves the SPA on its own
 port (`-spa-dir`), so the UI resolves `window.location.origin` at runtime. This is how the

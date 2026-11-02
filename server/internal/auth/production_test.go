@@ -61,3 +61,26 @@ func TestProductionBootstrapAndUpgrade(t *testing.T) {
 		}
 	})
 }
+
+func TestConfiguredDevelopmentBootstrap(t *testing.T) {
+	d := productionDB(t)
+	if BootstrapConfigured(d, "admin", "") == nil {
+		t.Fatal("implicit admin/admin bootstrap")
+	}
+	if _, _, err := Login(d, "admin", "admin"); err == nil {
+		t.Fatal("known credentials accepted")
+	}
+	const password = "isolated-bootstrap-password"
+	if err := BootstrapConfigured(d, "admin", password); err != nil {
+		t.Fatal(err)
+	}
+	if err := BootstrapConfigured(d, "admin", ""); err != nil {
+		t.Fatal("restart required initial secret", err)
+	}
+	if err := BootstrapConfigured(d, "admin", "replacement-password"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Login(d, "admin", password); err != nil {
+		t.Fatal("existing account changed", err)
+	}
+}

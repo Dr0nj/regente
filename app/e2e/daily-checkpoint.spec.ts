@@ -10,6 +10,7 @@ test("I07: incomplete daily resumes its frozen plan in Monitoring", async ({ pag
   const base = "http://127.0.0.1:18907";
   const bin = resolve("../.integration/server-i03" + (process.platform === "win32" ? ".exe" : ""));
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("REGENTE_") && !key.startsWith("GITHUB_") && !key.startsWith("OTEL_")));
+  env.REGENTE_INSECURE_DEV_AUTH = "1";
   const child = spawn(bin, ["-addr", "127.0.0.1:18907", "-db", join(dir, "state.db"), "-workspace", join(dir, "workspace"), "-spa-dir", resolve("dist"), "-auth-mode", "local", "-api-token", "synthetic-time-admin", "-git-source", "", "-selfmon=false", "-server-agent=false", "-scheduler=external"], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env });
   let output = "";
   child.stdout.on("data", data => { output += data.toString(); });
