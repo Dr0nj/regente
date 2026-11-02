@@ -17,7 +17,7 @@
 > no §Entregue e some uma linha no §Changelog. Ao **abrir** um item novo: só adicione no §Backlog.
 > Sem barras de progresso nem porcentagens — de propósito (confundem mais do que ajudam).
 >
-> Documento vivo · revisão **2026-10-13** — o marco de manutenção de **2026-07-30**
+> Documento vivo · revisão **2026-11-02** — o marco de manutenção de **2026-07-30**
 > descreve as trilhas originais. O ciclo enterprise iniciado em setembro está ativo:
 > I04/I05/I06/I07/I08/I09/I10/I11/I12/I13/I14/I15/I16, E04 e DOC-01–DOC-14 entregues; I17 segue na §Backlog. Manutenção histórica
 > não cancela incrementos explicitamente solicitados nem significa homologação produtiva.
@@ -51,12 +51,17 @@
 - **Idioma — produto e documentação 100% em inglês (I18N-1..7)** — SPA, mensagens do server, CLI, output do agente, o contrato **OpenAPI** público (+ viewer `/api-docs`), os scripts de instalação/operação e a **documentação publicada** (READMEs + `docs/*.md`) passaram a falar só inglês; termos canônicos do domínio (Schedule · On/Do · ODAT · Force Order · Set OK…) e identificadores de máquina ficaram intactos. Comentário de código, mensagem de commit e o `roadmap.md` seguem em pt-BR. A doc virou **site estático publicado** (https://dr0nj.github.io/regente/) que também abre offline do `docs/site/` commitado, com a **referência de API** self-contained junto. Entregue 2026-07-24 (produto) e 2026-07-27 (docs).
 - **Output × Logs (OL-1..OL-4)** — o **sysout da EXECUÇÃO** saiu da trilha de auditoria: tabela própria `instance_output` **por tentativa** (schemaV22), API `/instances/{id}/output` (live-tail), **aba Output ao vivo** com seletor de tentativa (retry deixa de perder o sysout da tentativa falha), e evento **`wait` edge-triggered** na timeline (a espera vira história consultável). O feed/export de auditoria deixam de vazar sysout. Paridade enterprise clássica. Entregue 2026-07-22.
 
+- **Revisão técnica REV-01–05** — concluída nas releases v0.2.60–v0.2.62; publicação, CI e limites detalhados em §✅ Entregue.
+- **Kubernetes-01–05** — implantação híbrida qualificada no laboratório local: baseline, célula HTTP, ponte SSH, migração gradual e pod por execução. AWS, HA, capacidade produtiva e aceite humano I17 permanecem fora dessa qualificação.
+
 - **Fase Z — divulgação** — artefatos entregues 2026-07-13/28 (`docs/case-study.md` + os 4 posts) e **publicação FEITA em 2026-07-29** (artigo + post do perfil pessoal). Trilha fechada.
 
 **Itens ainda ABERTOS** (detalhe em [§🔜 Backlog](#-backlog-o-que-falta)).
 A política de manutenção de 30/07 refere-se às trilhas antigas abaixo; a fila
 enterprise de setembro e a remediação documental têm escopo e aceite próprios:
 
+- **EC-00–EC-07 / GLUE-02–03** — compatibilidade enterprise iniciada em 30/10; inventário, plano de revisão e composição AAPI plana entregues, com conversão/semântica e demais gates ainda abertos. AWS GLUE-03 adiada.
+- **I17 / EC-05 humano** — preparação técnica entregue; piloto real e aceite independente adiados pelo usuário.
 - **Fase V / V6** — **V1–V5 entregues** (install single-origin 3-formas · bundle+one-liner · config guiada · hospedagem enterprise nginx+TLS · agente sandbox). O deploy "1 caixa" 24/7 está pronto ponta a ponta; **V6** (docker-compose) era opcional desde 2026-07-11 e agora está **congelado**.
 - **V-LIVE-TEST / LT-3..LT-11** — campanha de teste da instância 24/7, **amarrada à vida do VPS** (é custo de mantê-lo no ar, não trabalho de produto).
 - **AI-1 (`AI_AGENT`)** — visão futura, nunca committada; **congelada**.
@@ -83,19 +88,11 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 > detalhado em §✅ Entregue (+ linha no changelog). As caixinhas espalhadas nas seções de
 > baixo **não valem** como status (ver ⛔ REGRA DE STATUS no topo).
 
-### Revisão técnica — conclusão local, 02/11/2026
-
-REV-02, REV-04 e REV-05 concluídos, em um único incremento. Após autorização de
-publicação, o smoke Docker/systemd também passou: instalação, reboot, upgrade,
-protocolo v2/journal, células I13 e coletor I14. Detalhes em §✅ Entregue abaixo.
-CI full e release do novo SHA ainda devem confirmar a publicação; não reutilizar
-a aprovação da v0.2.61 como prova destas mudanças.
-
-Primeiro incremento bcd5913 publicado na v0.2.60: full Linux, oito cenários browser sem skips/flaky, soak sintético, instalação systemd e cinco plataformas nativas aprovados; prova de CI vinculada ao SHA exato. Segundo incremento 599dea6 publicado na v0.2.61: CI/full/capacity, três mínimos Node, browser, instalação e release aprovados; tag e source-ci-proof conferidos no SHA exato.
-
-Homologação de efeitos externos/recuperação permanece em **I17/EC-05**, sem criar piloto duplicado nem revogar o adiamento humano. Expandir matriz por adapter com receipt, incerteza, reconciliação e perda de rede; **GLUE-02/03** mantêm seus limites. Full Linux já aprovado no SHA 721a453 é baseline histórica; alterações novas exigem os gates aplicáveis ao novo commit.
-
 ### Compatibilidade enterprise — ciclo autorizado em 30/10/2026
+
+Trilha originada na avaliação de 21 sugestões enterprise de 30/10/2026 e incorporada
+ao roadmap em `1a88f9e`, após autorização. Já existia antes da análise técnica de
+01/11/2026 que originou REV-01–05; suas pendências não são resíduos daquela revisão.
 
 Plano sanitizado, sem inventários ou referências de organizações: [contrato e critérios](enterprise-compatibility.md). Implementação por incrementos; nenhum item abaixo equivale a homologação produtiva.
 
@@ -111,11 +108,6 @@ Plano sanitizado, sem inventários ou referências de organizações: [contrato 
 - **GLUE-03 — homologação AWS futura:** IAM, região, runtime, rede e custos em ambiente autorizado. **Adiada: não há conta paga de teste; nenhuma chamada real ou recurso AWS no CI.** Mocks não encerram este item.
 
 Ordem: EC-00/EC-01 → EC-02 → EC-03 → fundação operacional/piloto; adapters por valor. Glue avança localmente em incrementos sem custo de nuvem.
-
-### Kubernetes — implantação híbrida (21/10/2026)
-
-- **KUBERNETES-03 — ponte SSH local entregue:** SSH_REMOTE no agente v2, destino sshd sem Regente, autorização estrita e incerteza preservada. Ver entrega abaixo; SSM/AWS não homologados.
-- **KUBERNETES-05 — pod por execução qualificado localmente:** política restrita, vínculo durável, recuperação sem nova submissão, cancelamento/deadline e falhas de pod/nó/API. [Runbook](../deploy/kubernetes/JOB-CELL.md) e [evidência segmentada](evidence/kubernetes-05-local.json). AWS, produção, HA e aceite humano I17 permanecem separados.
 
 ### Base empresarial e identidade — ciclo iniciado em 2026-09-10
 
@@ -418,7 +410,7 @@ domínio**, não o binário.
 
 # ✅ Entregue *(tracking por tópico)*
 
-### REV-02 / REV-04 / REV-05 — implementação local, 02/11/2026
+### REV-02 / REV-04 / REV-05 — entregues na v0.2.62, 02/11/2026
 
 - **REV-02:** daemon sem bearer/senha conhecidos por padrão; bootstrap explícito preserva
   contas existentes; `-init-config` cria arquivo privado com senha aleatória de 192 bits,
@@ -445,14 +437,31 @@ Provas locais: suíte Go/vet, bootstrap real/ACL Windows e permissões Unix, mat
 31 testes Python Linux, recuperação sintética, nove cenários browser sem falhas/skips,
 demo nativa com COMMAND real, frontend lint/build e docs. Smoke Docker/systemd real
 aprovado após restauração do Docker: instalação limpa, reboot, upgrade, execução
-durável, células I13 e coletor I14. Não equivalem a full CI ou release nova. I17/EC-05 humano continuam adiados.
+durável, células I13 e coletor I14.
+
+Publicação confirmada na [v0.2.62](https://github.com/Dr0nj/regente/releases/tag/v0.2.62),
+com tag no SHA exato `539e6135c2605ebe9ee1d3084fd8c9b963dae5b9` e 20 assets não vazios.
+[CI 41489620445](https://github.com/Dr0nj/regente/actions/runs/41489620445) aprovado na
+tentativa 2: full Linux e capacity/soak aprovados; o rerun dirigido ao job Windows
+passou nas duas demos e no teste SSH. A primeira tentativa ficou sem saída do
+COMMAND por 45 segundos; código e timeout não mudaram e a causa raiz não foi
+comprovada. [Release 41497561298](https://github.com/Dr0nj/regente/actions/runs/41497561298)
+aprovada, incluindo inventário autenticado, instalação systemd e cinco plataformas
+nativas; `source-ci-proof` passou para o mesmo SHA, CI e tentativa 2. Os jobs de
+receitas/verificação pulados na release reutilizam o CI validado.
+
+REV-01–05 estão entregues. Homologação de efeitos externos e recuperação real
+permanece em I17/EC-05, com aceite humano adiado; nenhuma destas provas certifica
+AWS, HA ou capacidade produtiva universal. A matriz por adapter continua com
+receipt, incerteza, reconciliação e perda de rede como critérios; GLUE-02/03
+mantêm seus limites.
 
 
 ### REV-01 — dependências npm e contrato de compatibilidade (01/11/2026)
 
 Entregue em 599dea6/v0.2.61, após Vite8.3.5/Zod4.6.7 no incremento anterior. Minimatch11.0.1 aplicado apenas aos três consumidores/versionamentos inspecionados, ESLint10.11.0 fixado e contrato obrigatório de lint real TS/TSX/ignore/erros. Auditoria npm completa sem advisories no lockfile revisado; isso não encerra alertas de outros ecossistemas nem autoriza upgrades automáticos sem revalidar overrides. [Escopo e retirada](../app/README.md#security-overrides-in-the-lint-toolchain).
 
-CI41368809558 e Release41372197150 aprovados, três mínimos Node, full Linux, oito cenários browser sem skips/flaky, carga sintética e soak, instalação systemd e cinco plataformas nativas. Tag v0.2.61 aponta para599dea65ee6e70dd880cb3750f1d6f2bc69d9c7a,20assets, source-ci-proof passed. Não equivale a homologação produtiva; tier100000 não qualificado. Naquela release o bootstrap completo ainda era REV-02; foi implementado no incremento local acima.
+CI41368809558 e Release41372197150 aprovados, três mínimos Node, full Linux, oito cenários browser sem skips/flaky, carga sintética e soak, instalação systemd e cinco plataformas nativas. Tag v0.2.61 aponta para599dea65ee6e70dd880cb3750f1d6f2bc69d9c7a,20assets, source-ci-proof passed. Não equivale a homologação produtiva; tier100000 não qualificado. Naquela release o bootstrap completo ainda era REV-02; foi entregue na v0.2.62 acima.
 
 
 ### REV-03 — coerência documental da revisão técnica (01/11/2026)
@@ -477,6 +486,20 @@ Contrato `regente-aapi-review/9.0.22.100/v1`, referências BMC versionadas e cor
 - [Contrato, uso, fontes e limites](enterprise-compatibility.md). Relatórios reais são privados, não anonimizados. Corpus público sintético; nenhuma referência organizacional incorporada.
 
 
+### Kubernetes-01–05 — conclusão do escopo local
+
+As cinco etapas estão entregues e qualificadas no laboratório local; a última
+qualificação foi concluída em 29/10/2026. Kubernetes-05 foi publicada na
+[v0.2.56](https://github.com/Dr0nj/regente/releases/tag/v0.2.56), tag no SHA
+`b5428bfef83e50bf4a68ab86245ff71ac11f24f7`, em 30/10/2026. As entregas detalhadas
+abaixo preservam a data e os limites de cada ensaio; etapas posteriores não
+ampliam retroativamente as garantias dos anteriores.
+
+Não há etapa local Kubernetes-01–05 aberta. AWS/EC2, HA, capacidade produtiva,
+segurança de CNI/admission em produção e piloto humano I17 exigem qualificação
+própria. O init de firewall local exige exceção de segurança e não atende Pod
+Security Restricted; não é um desenho homologado de segurança produtiva.
+
 ### Kubernetes-05 — pod por execução local (29/10/2026)
 
 Agente v2 exige política local com API/CA/token projetado, namespace/ServiceAccount, imagens por digest, comandos e recursos fixados. Intenção precede o único POST; executionId/fence, JobUID e PodUID ficam no journal. Restart retoma somente observação autorizada; objeto ausente, identidade alterada ou recibo inconclusivo gera UNCERTAIN sem recriação. Pod não-root/RO/caps0/sem credencial, init de firewall confiável e quota em namespace dedicado; não é perfil Pod Security Restricted.
@@ -485,7 +508,7 @@ Dezesseis ordens sintéticas e quatorze Jobs na [qualificação](evidence/kubern
 
 ### Kubernetes-04 — migração gradual local (29/10/2026)
 
-[Runbook e laboratório](../deploy/kubernetes/MIGRATION.md): dois jobs sintéticos usam os mesmos scripts/dados via COMMAND na origem e SSH_REMOTE na ponte. Bloqueio de novas ordens por Confirm em produtor isolado, drenagem e cancelamento de snapshot pendente; canário, ampliação e rollback em novas ordens preservam snapshots anteriores. UNCERTAIN impede troca/retirada até observação independente e resolução auditada, sem rerun. Origem parada, journal preservado com zero entradas/chunks sem ACK, credencial revogada (204 antes/401 depois); ambos jobs remotos e agente não migrado aprovados após retirada. Quatorze ordens, doze efeitos no destino (seis por job), doze OK/um CANCELLED/um NOTOK resolvido. Oito testes de guard integram o runner. [Evidência segmentada](evidence/kubernetes-04-local.json) preserva falhas do harness e retomadas sem repetir efeitos. Confirm não é lock distribuído; sidecar local não homologa retirada em VM, frota produtiva, AWS ou HA. Kubernetes-05 permanece no backlog.
+[Runbook e laboratório](../deploy/kubernetes/MIGRATION.md): dois jobs sintéticos usam os mesmos scripts/dados via COMMAND na origem e SSH_REMOTE na ponte. Bloqueio de novas ordens por Confirm em produtor isolado, drenagem e cancelamento de snapshot pendente; canário, ampliação e rollback em novas ordens preservam snapshots anteriores. UNCERTAIN impede troca/retirada até observação independente e resolução auditada, sem rerun. Origem parada, journal preservado com zero entradas/chunks sem ACK, credencial revogada (204 antes/401 depois); ambos jobs remotos e agente não migrado aprovados após retirada. Quatorze ordens, doze efeitos no destino (seis por job), doze OK/um CANCELLED/um NOTOK resolvido. Oito testes de guard integram o runner. [Evidência segmentada](evidence/kubernetes-04-local.json) preserva falhas do harness e retomadas sem repetir efeitos. Confirm não é lock distribuído; sidecar local não homologa retirada em VM, frota produtiva, AWS ou HA. Kubernetes-05 foi concluído posteriormente; ver entrega acima.
 
 ### Kubernetes-03 — ponte SSH local (23/10/2026)
 
@@ -493,7 +516,7 @@ Dezesseis ordens sintéticas e quatorze Jobs na [qualificação](evidence/kubern
 
 ### Kubernetes-02 — célula HTTP no pod e coexistência local (22/10/2026)
 
-[Célula reproduzível](../deploy/kubernetes/HTTP-CELL.md): StatefulSet de um dono, PVC para journal, identidade/certificado/token próprios, agente não-root/read-only/caps0/sem ServiceAccount token. Init configura firewall de egress no namespace do pod; teste direto contra destino alcançável de outro pod comprovou bloqueio real. HTTP/TLS via Service e COMMAND externo coexistem com targeting explícito; host/porta/CIDR/metadata negados, segredo por referência e resultado redigido. Rotação drenada por Secret+substituição preservou journal; queda abrupta pelo runtime seguida de remoção normal preservou UNCERTAIN, mesma execução e um único efeito, sem replay. Primeiro ensaio de interrupção graciosa e sua expectativa incorreta permanecem registrados; crash corrigido validado separadamente. [Evidência](evidence/kubernetes-02-local.json). Qualificação local, sem AWS/HA/failover de nó/capacidade produtiva, PID limit ou admission policy; rotação não é hot reload. Kubernetes04–05 seguem no backlog.
+[Célula reproduzível](../deploy/kubernetes/HTTP-CELL.md): StatefulSet de um dono, PVC para journal, identidade/certificado/token próprios, agente não-root/read-only/caps0/sem ServiceAccount token. Init configura firewall de egress no namespace do pod; teste direto contra destino alcançável de outro pod comprovou bloqueio real. HTTP/TLS via Service e COMMAND externo coexistem com targeting explícito; host/porta/CIDR/metadata negados, segredo por referência e resultado redigido. Rotação drenada por Secret+substituição preservou journal; queda abrupta pelo runtime seguida de remoção normal preservou UNCERTAIN, mesma execução e um único efeito, sem replay. Primeiro ensaio de interrupção graciosa e sua expectativa incorreta permanecem registrados; crash corrigido validado separadamente. [Evidência](evidence/kubernetes-02-local.json). Qualificação local, sem AWS/HA/failover de nó/capacidade produtiva, PID limit ou admission policy; rotação não é hot reload. Kubernetes-04/05 foram concluídos posteriormente; ver entregas acima.
 
 ### Kubernetes-01 — baseline local com agente externo (21/10/2026)
 
@@ -2074,7 +2097,9 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 
 ## 📜 Changelog de entregas
 
-- **2026-11-02 — REV-02/04/05 local:** bootstrap privado, matriz executável e carregamento por autenticação/rota; incremento único com publicação autorizada após smoke Docker/systemd aprovado; limites de homologação explícitos.
+- **2026-11-02 — REV-02/04/05 publicados:** v0.2.62 no SHA `539e613`, 20 assets; CI tentativa 2/full/capacity e release aprovados, source-ci-proof conferido. Bootstrap privado, matriz executável e carregamento por autenticação/rota entregues; causa raiz da primeira falha Windows não comprovada. REV-01–05 concluídos, I17/EC-05 humano adiados.
+
+- **2026-11-02 — conciliação do roadmap:** status final da revisão e Kubernetes-01–05 alinhado às evidências; entregas retiradas do backlog e origem dos ECs explicitada. Nenhuma ampliação de homologação.
 
 - **2026-11-01 — REV-01:** v0.2.61 conclui correção npm/minimatch com overrides delimitados, contrato obrigatório de lint e CI/release aprovados no SHA exato.
 
@@ -2086,13 +2111,17 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 
 - **2026-10-30 — EC-01a / GLUE-01:** roadmap enterprise sanitizado, inventário estrutural AAPI sem execução e correções de estados/parada Glue verificáveis localmente; conversão semântica, durabilidade e homologação cloud continuam separadas.
 
+- **2026-10-29 — Kubernetes-05 local:** pod por execução, vínculo durável, recuperação sem nova submissão, cancelamento/deadline e falhas de pod/nó/API qualificados. Publicado em 30/10 na v0.2.56; conclusão das cinco etapas locais, com limites cloud/produção preservados.
+
 - **2026-10-29 — Kubernetes-04 local:** canário e ampliação de dois jobs para SSH_REMOTE, rollback drenado com snapshots intactos, incerteza sem replay, retirada/revogação da origem e coexistência. Journal preservado e evidência segmentada; sem homologação produtiva.
+
+- **2026-10-23 — Kubernetes-03 local:** ponte SSH com trust e política estrita, targeting explícito, coexistência e incerteza sem replay qualificados; sem homologação AWS ou promessa de kill remoto.
 
 - **2026-10-22 — Kubernetes-02 local:** agente HTTP no pod com journal exclusivo, firewall verificado, TLS/secrets e coexistência com COMMAND externo; perda abrupta preserva incerteza e não repete efeito.
 
 - **2026-10-22 — Kubernetes-01 local concluído:** harness integral em namespace/PVC/identidade novos, navegador real com TLS/WS, papéis humanos, rotação durante execução e journal indisponível com recuperação. Sem soak30min nem alegação de homologação cloud.
 
-- **2026-10-21 — Kubernetes-01 baseline local:** backend+SPA/PostgreSQL no kind e agente externo persistente; circuito curto e recuperação documentados. Corrigida dependência agent/security no Dockerfile existente. Empacotamento do laboratório não dispara soak nativo; runtime/dependências continuam sujeitos ao gate. Qualificação complementar concluída22/10 no laboratório local; Kubernetes02–05 seguem no backlog.
+- **2026-10-21 — Kubernetes-01 baseline local:** backend+SPA/PostgreSQL no kind e agente externo persistente; circuito curto e recuperação documentados. Corrigida dependência agent/security no Dockerfile existente. Empacotamento do laboratório não dispara soak nativo; runtime/dependências continuam sujeitos ao gate. Qualificação complementar concluída22/10 no laboratório local; Kubernetes-02–05 foram concluídos posteriormente; ver entregas acima.
 
 - **2026-10-13 — I15/I16:** publicação autenticada v0.2.48, full/race e 22 jobs de release no SHA 93e33d0; capacidade nominal de 10 mil no perfil sintético, soak de 30 minutos, saturação de 100 mil registrada e 1 milhão não executado. I17 permanece pendente por decisão humana. [Release](https://github.com/Dr0nj/regente/releases/tag/v0.2.48) · [Evidência](evidence/i15-i16-93e33d0.json).
 
