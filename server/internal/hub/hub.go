@@ -7,7 +7,6 @@ package hub
 import (
 	"encoding/json"
 	"log"
-	"strings"
 	"sync"
 	"time"
 
@@ -50,14 +49,8 @@ type Client struct {
 	LastSeen    time.Time // último sinal (heartbeat/result/output)
 }
 
-// EnvMatch — regra ÚNICA do roteamento por ambiente (ADV-2, F20 finalmente
-// roteando): lado sem label = coringa; os dois com label = precisa bater
-// (case-insensitive). Assim, setups sem -env continuam idênticos ao passado
-// e o isolamento estrito é opt-in: rotule TODOS os agentes.
-func EnvMatch(defEnv, agentEnv string) bool {
-	defEnv, agentEnv = strings.TrimSpace(defEnv), strings.TrimSpace(agentEnv)
-	return defEnv == "" || agentEnv == "" || strings.EqualFold(defEnv, agentEnv)
-}
+// EnvMatch is retained for older transport adapters; labels no longer restrict routing.
+func EnvMatch(defEnv, agentEnv string) bool { return true }
 
 type Hub struct {
 	mu      sync.RWMutex
@@ -125,18 +118,11 @@ func (h *Hub) removeLocked(c *Client) {
 	}
 }
 
-// Principal externo nunca herda o coringa legado de ambiente vazio.
+// Matches preserves capability checks; the caller enforces the requested agent ID.
 func Matches(c *Client, capability, env string) bool {
 	if capability == "" && env == "" {
 		return true
 	} // controle ping/cancel
-	if c.StrictIdentity {
-		if env != c.Environment {
-			return false
-		}
-	} else if !EnvMatch(env, c.Environment) {
-		return false
-	}
 	if capability == "" {
 		return true
 	} // ping/cancel não anunciam jobType

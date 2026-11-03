@@ -749,3 +749,25 @@ Before executing downloaded installers, read [authenticated releases](docs/authe
 Linux/macOS downloads require a trusted GitHub CLI and Python 3; Windows requires
 a trusted GitHub CLI. Verify bootstrap bytes before execution. Release publication
 requires complete verification of the same SHA and installed/native artifact checks.
+
+### Native Linux onboarding and agent routing
+
+The trusted release installer prepares GitHub CLI/Python verification prerequisites
+on Ubuntu/Debian and creates a dedicated service user for a fresh installation.
+Keep using the signed release verification procedure; custom Python commands and
+manual verifier installation are no longer part of the normal VPS steps.
+
+Jobs select execution hosts through **Agent ID** and capabilities. Environment
+labels are deprecated and do not block execution, credentials or admission.
+Existing agent tokens, journals and definition snapshots remain readable.
+
+For an existing compatible Linux installation, update with:
+
+```bash
+sudo regente-update
+```
+
+The updater verifies the signed release, snapshots the database and replaces the
+server/UI while preserving configuration. Agent binaries on separate hosts retain
+their own upgrade procedure. Check the [upgrade guide](docs/upgrades.md) for schema
+and identity transitions. Kubernetes remains **IN DEVELOPMENT AND TESTING**.

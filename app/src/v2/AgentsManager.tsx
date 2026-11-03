@@ -42,7 +42,6 @@ export default function AgentsManager() {
   const [detail, setDetail] = useState<AgentInfo | null>(null);
   const [newLabel, setNewLabel] = useState("");
   const [newAgentId, setNewAgentId] = useState("");
-  const [newEnvironment, setNewEnvironment] = useState("");
   const [newCaps, setNewCaps] = useState("COMMAND,SCRIPT,HTTP,EXECUTION_V2");
   const [validDays, setValidDays] = useState(90);
   const [rotationCertificateSHA256, setRotationCertificateSHA256] = useState("");
@@ -76,7 +75,7 @@ export default function AgentsManager() {
   async function handleCreate() {
     setBusy(true); setJustCreated(null); setTokenError("");
     try {
-      const r = await createAgentToken({ certificateSHA256: certificateSHA256.trim() || undefined, label: newLabel.trim(), agentId: newAgentId.trim(), environment: newEnvironment.trim(), capabilities: newCaps.split(",").map(c => c.trim()), expiresAt: new Date(Date.now() + validDays * 86400000).toISOString() });
+      const r = await createAgentToken({ certificateSHA256: certificateSHA256.trim() || undefined, label: newLabel.trim(), agentId: newAgentId.trim(), capabilities: newCaps.split(",").map(c => c.trim()), expiresAt: new Date(Date.now() + validDays * 86400000).toISOString() });
       setJustCreated(r.token);
       setNewLabel("");
       reload();
@@ -136,12 +135,6 @@ export default function AgentsManager() {
                   {a.id}
                 </span>
                 {a.os && <span style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-text-muted)", border: "1px solid var(--v2-border-subtle)", borderRadius: 3, padding: "1px 5px" }}>{a.os}{a.arch ? `/${a.arch}` : ""}</span>}
-                {a.environment && (
-                  <span title={`Agent environment/site (-env flag) — jobs with environment "${a.environment}" route here`}
-                    style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-accent-info)", border: "1px solid var(--v2-accent-info)", borderRadius: 3, padding: "1px 5px", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                    ◉ {a.environment}
-                  </span>
-                )}
                 {a.online && a.node && !a.local && (
                   <span title={`Connected to another cluster node (${a.node})`}
                     style={{ fontSize: 9, fontFamily: "var(--v2-font-mono)", color: "var(--v2-accent-brand)", border: "1px solid var(--v2-accent-brand)", borderRadius: 3, padding: "1px 5px", whiteSpace: "nowrap" }}>
@@ -175,14 +168,14 @@ export default function AgentsManager() {
           Agent tokens
         </legend>
         <label style={{ fontSize: 12, display: "block", marginBottom: 6 }}>New token</label>
-        <p style={{ fontSize: 11, color: "var(--v2-text-secondary)" }}>Credentials bind one agent ID to a fixed environment and capability set. Empty environment permits only jobs without an environment. Legacy tokens require reissue. Rotation keeps the old token valid for up to 5 minutes; update the protected token file within that window. Protocol 2 reloads token and TLS files on every request. For certificate rotation, use the separate replacement fingerprint field.</p>
+        <p style={{ fontSize: 11, color: "var(--v2-text-secondary)" }}>Credentials bind one agent ID to its capability set. Jobs route by Agent ID. Legacy environment labels do not restrict execution. Legacy tokens require reissue. Rotation keeps the old token valid for up to 5 minutes; update the protected token file within that window. Protocol 2 reloads token and TLS files on every request. For certificate rotation, use the separate replacement fingerprint field.</p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginBottom: 8 }}>
           <label>Agent ID<input aria-label="Agent ID" value={newAgentId} onChange={e => setNewAgentId(e.target.value)} placeholder="worker-01" style={{ width: "100%", boxSizing: "border-box", padding: "6px 10px", background: "var(--v2-bg-elevated)", color: "var(--v2-text-primary)", border: "1px solid var(--v2-border-medium)", borderRadius: 4 }} /></label>
-          <label>Environment<input aria-label="Environment" value={newEnvironment} onChange={e => setNewEnvironment(e.target.value)} placeholder="empty = unlabeled jobs only" style={{ width: "100%", boxSizing: "border-box", padding: "6px 10px", background: "var(--v2-bg-elevated)", color: "var(--v2-text-primary)", border: "1px solid var(--v2-border-medium)", borderRadius: 4 }} /></label>
           <label>Capabilities<input aria-label="Capabilities" value={newCaps} onChange={e => setNewCaps(e.target.value)} placeholder="COMMAND,SCRIPT" style={{ width: "100%", boxSizing: "border-box", padding: "6px 10px", background: "var(--v2-bg-elevated)", color: "var(--v2-text-primary)", border: "1px solid var(--v2-border-medium)", borderRadius: 4 }} /></label>
           <label>Client certificate SHA256<input aria-label="Client certificate SHA256" value={certificateSHA256} onChange={e => setCertificateSHA256(e.target.value.toLowerCase())} placeholder="64 lowercase hex characters; required with agent mTLS" style={{ width: "100%", boxSizing: "border-box", padding: "6px 10px", background: "var(--v2-bg-elevated)", color: "var(--v2-text-primary)", border: "1px solid var(--v2-border-medium)", borderRadius: 4 }} /></label>
           <label>Validity (days)<input aria-label="Validity in days" type="number" min={1} max={365} value={validDays} onChange={e => setValidDays(Number(e.target.value))} style={{ width: "100%", boxSizing: "border-box", padding: "6px 10px", background: "var(--v2-bg-elevated)", color: "var(--v2-text-primary)", border: "1px solid var(--v2-border-medium)", borderRadius: 4 }} /></label>
         </div>
+        {(validDays < 1 || validDays > 365) && <p role="alert">Validity must be between 1 and 365 days.</p>}
         {tokenError && <p role="alert" style={{ color: "var(--v2-status-failed)" }}>{tokenError}</p>}
         <div style={{ display: "flex", gap: 6 }}>
           <input
@@ -202,7 +195,7 @@ export default function AgentsManager() {
             <div style={{ color: "var(--v2-status-ok)", fontWeight: 600, marginBottom: 4 }}>Token created — copy it now (it will not be shown again):</div>
             <code style={{ fontFamily: "var(--v2-font-mono)", fontSize: 11, wordBreak: "break-all", userSelect: "all" }}>{justCreated}</code>
             <div style={{ color: "var(--v2-text-muted)", marginTop: 6 }}>
-              Store the secret in REGENTE_TOKEN in the protected agent service environment. Set -id, -env and -caps to the exact provisioned scope, then restart the service.
+              Store the secret in REGENTE_TOKEN in the protected agent service environment. Set -id and -caps to the exact provisioned scope, then restart the service.
               <button onClick={() => setJustCreated(null)} style={{ marginLeft: 8 }}>Dismiss secret</button>
             </div>
           </div>
@@ -213,7 +206,7 @@ export default function AgentsManager() {
           <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 4 }}>
             {tokens.map((t) => (
               <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, padding: "5px 8px", background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-subtle)", borderRadius: 3 }}>
-                <span style={{ flex: 1, color: "var(--v2-text-primary)" }}>{t.label || "—"}<br />{t.agentId || "Unbound legacy credential"} · {t.environment || "unlabeled"} · {t.capabilities.join(", ")}<br />{t.certificateSHA256 && <>Certificate: {t.certificateSHA256}<br /></>}{t.status} {t.agentId && `· expires ${new Date(t.expiresAt).toLocaleString()}`}</span>
+                <span style={{ flex: 1, color: "var(--v2-text-primary)" }}>{t.label || "—"}<br />{t.agentId || "Unbound legacy credential"} · {t.capabilities.join(", ")}<br />{t.certificateSHA256 && <>Certificate: {t.certificateSHA256}<br /></>}{t.status} {t.agentId && `· expires ${new Date(t.expiresAt).toLocaleString()}`}</span>
                 <span style={{ fontFamily: "var(--v2-font-mono)", fontSize: 10, color: "var(--v2-text-muted)" }}>{t.tokenPrefix}</span>
                 <span style={{ fontSize: 9, color: "var(--v2-text-muted)" }} title="last use">{t.lastUsedAt ? "used" : "never used"}</span>
                 {t.status === "active" && <button onClick={() => handleRotate(t.id)} disabled={busy || validDays < 1 || validDays > 365}>rotate</button>}
@@ -250,7 +243,6 @@ function AgentDetailModal({ agent, onClose }: { agent: AgentInfo; onClose: () =>
         </div>
         <div style={{ padding: "10px 16px" }}>
           {a.online && a.node && <Row label="Node" value={a.local ? `${a.node} (this node)` : a.node} />}
-          {a.environment && <Row label="Environment" value={a.environment} />}
           <Row label="System" value={a.os ? `${a.os}${a.arch ? ` / ${a.arch}` : ""}` : "—"} />
           <Row label="Host" value={a.host || "—"} />
           <Row label="Version" value={a.version || "—"} />

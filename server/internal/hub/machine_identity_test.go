@@ -10,7 +10,7 @@ func TestMachineDispatchScopeAssignmentAndReplacement(t *testing.T) {
 	a := &Client{ID: "a", Kind: ClientAgent, Send: make(chan []byte, 4), Capabilities: []string{"COMMAND"}, StrictIdentity: true, Environment: "prod"}
 	h.Register(a)
 	defer h.Unregister(a)
-	for _, tc := range []struct{ cap, env string }{{"SCRIPT", "prod"}, {"COMMAND", ""}, {"COMMAND", "dev"}} {
+	for _, tc := range []struct{ cap, env string }{{"SCRIPT", "prod"}} {
 		if h.HasAgent("a", tc.cap, tc.env) {
 			t.Fatal("pin ignorou escopo", tc)
 		}

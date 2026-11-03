@@ -7,7 +7,7 @@
  * radius de mudanças de UI: layout muda AQUI, ciclo de vida do componente lá.
  */
 
-import Dagre from "@dagrejs/dagre";
+import { dependencyLayout } from "./dependency-layout";
 import { Position } from "@xyflow/react";
 import type { Node, Edge, NodeHandle } from "@xyflow/react";
 import type { JobNodeData } from "@/lib/job-config";
@@ -77,8 +77,6 @@ export const DESIGN_PAN_MARGIN_X = 360;
 // ranksep dagre (dep vertical): folga suficiente pra LINHA de dependência
 // aparecer entre pai e filho — com 28px os cards quase encostavam e só o ✓
 // ficava visível (report do usuário, 2026-07-17).
-const NODE_GAP_Y = 72;
-const NODE_GAP_X = 36; // nodesep dagre (jobs paralelos na mesma linha)
 const COL_PADDING_X = 24;
 // Grade dos jobs SOLTOS (sem dependência interna). Configurável em Settings (Fase 2).
 const LAYOUT_COLUMNS = 10; // colunas-base da grade (cap soft)
@@ -398,70 +396,15 @@ function layoutFolderInner<T extends { id: string; team?: string }>(
   const memberIds = new Set(members.map((m) => nodeIdOf(m)));
   const innerEdges = allEdges.filter((e) => memberIds.has(e.source) && memberIds.has(e.target));
 
-  // Particiona a folder: CONECTADOS (≥1 aresta interna) vs SOLTOS (sem aresta interna).
-  // Dependentes mantêm o fluxo top-down do dagre; soltos vão pra uma GRADE (evita a
-  // fila horizontal infinita que o dagre faz quando todo nó cai no rank 0).
-  const connectedIds = new Set<string>();
-  for (const e of innerEdges) { connectedIds.add(e.source); connectedIds.add(e.target); }
-  const connected = members.filter((m) => connectedIds.has(nodeIdOf(m)));
-  const standalone = members.filter((m) => !connectedIds.has(nodeIdOf(m)));
-
-  const positions = new Map<string, { x: number; y: number }>();
-  let flowW = 0, flowH = 0;
-
-  // 1) CONECTADOS → dagre TB (camadas: A em cima, B/C lado a lado embaixo, etc.).
-  if (connected.length > 0) {
-    const g = new Dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
-    g.setGraph({ rankdir: "TB", nodesep: NODE_GAP_X, ranksep: NODE_GAP_Y, marginx: 0, marginy: 0 });
-    for (const m of connected) g.setNode(nodeIdOf(m), { width: NODE_W, height: NODE_H });
-    for (const e of innerEdges) g.setEdge(e.source, e.target);
-    Dagre.layout(g);
-
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    const raw = new Map<string, { x: number; y: number }>();
-    for (const m of connected) {
-      const dn = g.node(nodeIdOf(m));
-      const x0 = dn.x - NODE_W / 2;
-      const y0 = dn.y - NODE_H / 2;
-      raw.set(nodeIdOf(m), { x: x0, y: y0 });
-      if (x0 < minX) minX = x0;
-      if (y0 < minY) minY = y0;
-      if (x0 + NODE_W > maxX) maxX = x0 + NODE_W;
-      if (y0 + NODE_H > maxY) maxY = y0 + NODE_H;
-    }
-    for (const [id, p] of raw) positions.set(id, { x: p.x - minX, y: p.y - minY });
-    flowW = maxX - minX;
-    flowH = maxY - minY;
-  }
-
-  // 2) SOLTOS → GRADE com wrap + alargamento, ABAIXO da zona de fluxos.
-  //    cols-base = LAYOUT_COLUMNS; passou de LAYOUT_MAX_ROWS linhas, alarga em vez
-  //    de crescer pra baixo (cols = max(base, ceil(N/maxRows))). Ordem estável p/ id.
-  let gridW = 0, gridH = 0;
-  const gap = flowH > 0 && standalone.length > 0 ? NODE_GAP_Y * 3 : 0;
-  if (standalone.length > 0) {
-    const sorted = [...standalone].sort((a, b) => nodeIdOf(a).localeCompare(nodeIdOf(b)));
-    const cols = Math.max(cfg.columns, Math.ceil(sorted.length / cfg.maxRows));
-    const cellW = NODE_W + NODE_GAP_X;
-    const cellH = NODE_H + NODE_GAP_Y;
-    const baseY = flowH + gap;
-    let usedCols = 0, usedRows = 0;
-    sorted.forEach((m, k) => {
-      const c = k % cols;
-      const r = Math.floor(k / cols);
-      positions.set(nodeIdOf(m), { x: c * cellW, y: baseY + r * cellH });
-      if (c + 1 > usedCols) usedCols = c + 1;
-      if (r + 1 > usedRows) usedRows = r + 1;
-    });
-    gridW = usedCols * cellW - NODE_GAP_X;
-    gridH = usedRows * cellH - NODE_GAP_Y;
-  }
-
+  // All roots, including isolated jobs, occupy the first dependency row.
+  void cfg; // Legacy grid settings no longer split roots away from dependencies.
+  const positions = dependencyLayout(members.map(nodeIdOf), innerEdges, NODE_W, NODE_H);
+  const values = [...positions.values()];
   return {
     team,
     positions,
-    width: Math.max(flowW, gridW),
-    height: flowH + gap + gridH,
+    width: Math.max(0, ...values.map(p => p.x + NODE_W)),
+    height: Math.max(0, ...values.map(p => p.y + NODE_H)),
     count: members.length,
   };
 }

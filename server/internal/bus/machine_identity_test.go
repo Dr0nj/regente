@@ -22,7 +22,7 @@ func TestDistributedMachineScopeAndAssignment(t *testing.T) {
 	hb.Register(ag)
 	defer hb.Unregister(ag)
 	b.publishPresence()
-	for _, tc := range []struct{ cap, env string }{{"SCRIPT", "prod"}, {"COMMAND", ""}, {"COMMAND", "dev"}} {
+	for _, tc := range []struct{ cap, env string }{{"SCRIPT", "prod"}} {
 		if a.HasAgent(ag.ID, tc.cap, tc.env) {
 			t.Fatal("presença remota ignorou escopo")
 		}

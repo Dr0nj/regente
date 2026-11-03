@@ -89,7 +89,7 @@ func main() {
 		token     = flag.String("token", envOr("REGENTE_TOKEN", ""), "Agent token created in Settings > Agents")
 		agentID   = flag.String("id", hostnameOr("agent-local"), "Agent ID (unique)")
 		caps      = flag.String("caps", "COMMAND,SCRIPT,HTTP,REST,WASM,DATABASE,FILE_WATCH,FILE_TRANSFER,MFT", "Comma-separated capabilities advertised")
-		agentEnv  = flag.String("env", envOr("REGENTE_AGENT_ENV", ""), "Provisioned environment (exact match). Empty permits only unlabeled jobs")
+		agentEnv  = flag.String("env", envOr("REGENTE_AGENT_ENV", ""), "Deprecated legacy label; ignored for routing")
 		transport = flag.String("transport", envOr("REGENTE_AGENT_TRANSPORT", "ws"), "Transport: v2 (durable journal) | ws (WebSocket) | http (long-poll) | sse (Server-Sent Events, immediate push) — the last two are serverless-friendly")
 	)
 	tokenFile := flag.String("token-file", "", "Protected file containing the machine credential")

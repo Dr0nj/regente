@@ -33,6 +33,24 @@ for c in curl tar systemctl; do
   command -v "$c" >/dev/null || { echo "'$c' is required and is not on the PATH"; exit 1; }
 done
 
+# The trusted bootstrap prepares its verifier; operators need no Python snippets.
+if ! command -v gh >/dev/null || ! command -v python3 >/dev/null; then
+  command -v apt-get >/dev/null || { echo "Install GitHub CLI (attestation support) and Python 3, then rerun." >&2; exit 1; }
+  apt-get update
+  apt-get install -y ca-certificates python3
+  if ! command -v gh >/dev/null; then
+    KEYFILE="$(mktemp)"
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o "$KEYFILE"
+    printf '%s  %s\n' 6084d5d7bd8e288441e0e94fc6275570895da18e6751f70f057485dc2d1a811b "$KEYFILE" | sha256sum -c -
+    install -D -m 0644 "$KEYFILE" /etc/apt/keyrings/githubcli-archive-keyring.gpg
+    rm -f "$KEYFILE"
+    printf '%s\n' "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
+    apt-get update
+    apt-get install -y gh
+  fi
+fi
+gh attestation verify --help >/dev/null || { echo "GitHub CLI must support attestation verification." >&2; exit 1; }
+
 # BEGIN RELEASE VERIFICATION — identity first, then exact bytes; no bypass.
 verify_release() {
   local asset="$1" destination="$2"
@@ -99,7 +117,14 @@ DIR="$TMP/regente-server_linux_${ARCH}"
 [ -x "$DIR/regente-server" ] || { echo "invalid bundle: the regente-server binary was not found"; exit 1; }
 
 # Delega pro installer systemd do bundle (que também instala a UI single-origin).
-RUN_USER="${RUN_USER:-${SUDO_USER:-root}}" bash "$DIR/deploy/install-linux.sh"
+if [ -z "${RUN_USER:-}" ]; then
+  RUN_USER="$(systemctl show regente-server -p User --value 2>/dev/null || true)"
+  RUN_USER="${RUN_USER:-regente}"
+fi
+if ! id "$RUN_USER" >/dev/null 2>&1; then
+  useradd --system --user-group --home-dir /var/lib/regente --shell /usr/sbin/nologin "$RUN_USER"
+fi
+RUN_USER="$RUN_USER" bash "$DIR/deploy/install-linux.sh"
 
 echo ""
 echo "  The workspace repository is YOURS and is different in every installation:"

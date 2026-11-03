@@ -81,7 +81,7 @@ func main() {
 
 	var (
 		profile          = flag.String("profile", envOr("REGENTE_PROFILE", "development"), "Runtime profile: development | production")
-		environment      = flag.String("environment", os.Getenv("REGENTE_ENVIRONMENT"), "Production environment scope")
+		environment      = flag.String("environment", os.Getenv("REGENTE_ENVIRONMENT"), "Deprecated legacy label; ignored for routing")
 		network          = flag.String("network-boundary", os.Getenv("REGENTE_NETWORK_BOUNDARY"), "Production boundary: loopback | proxy | tls")
 		controlPlane     = flag.String("control-plane-execution", os.Getenv("REGENTE_CONTROL_PLANE_EXECUTION"), "Production execution policy: deny | http | http-ssh")
 		executionMode    = flag.String("execution-mode", envOr("REGENTE_EXECUTION_MODE", "auto"), "Execution contract: auto (durable in production), durable or legacy (development only)")

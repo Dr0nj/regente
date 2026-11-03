@@ -57,18 +57,6 @@ func LoadEnvironment(path string) error {
 // Initialize writes an exclusively new file; secrets are never printed.
 func Initialize(input io.Reader, output io.Writer, path string) error {
 	reader := bufio.NewReader(input)
-	fmt.Fprint(output, "Environment [local]: ")
-	environment, err := reader.ReadString('\n')
-	if err != nil && err != io.EOF {
-		return err
-	}
-	environment = strings.TrimSpace(environment)
-	if environment == "" {
-		environment = "local"
-	}
-	if !environmentPattern.MatchString(environment) {
-		return errors.New("invalid environment")
-	}
 	fmt.Fprint(output, "Local HTTP port [8080]: ")
 	port, err := reader.ReadString('\n')
 	if err != nil && err != io.EOF {
@@ -87,7 +75,7 @@ func Initialize(input io.Reader, output io.Writer, path string) error {
 		return err
 	}
 	addr := net.JoinHostPort("127.0.0.1", port)
-	content := fmt.Sprintf("# Private initial configuration. Remove bootstrap password after first login.\nREGENTE_PROFILE=production\nREGENTE_ENVIRONMENT=%s\nREGENTE_NETWORK_BOUNDARY=loopback\nREGENTE_ADDR=%s\nREGENTE_APP_URL=http://%s\nREGENTE_TOKEN=\nREGENTE_CONTROL_PLANE_EXECUTION=deny\nREGENTE_SERVER_AGENT=0\nREGENTE_BOOTSTRAP_USER=admin\nREGENTE_BOOTSTRAP_PASSWORD=%s\n", environment, addr, addr, hex.EncodeToString(secret))
+	content := fmt.Sprintf("# Private initial configuration. Remove bootstrap password after first login.\nREGENTE_PROFILE=production\nREGENTE_NETWORK_BOUNDARY=loopback\nREGENTE_ADDR=%s\nREGENTE_APP_URL=http://%s\nREGENTE_TOKEN=\nREGENTE_CONTROL_PLANE_EXECUTION=deny\nREGENTE_SERVER_AGENT=0\nREGENTE_BOOTSTRAP_USER=admin\nREGENTE_BOOTSTRAP_PASSWORD=%s\n", addr, addr, hex.EncodeToString(secret))
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return errors.New("configuration target must be a new writable file")

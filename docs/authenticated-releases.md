@@ -11,7 +11,9 @@ no-op and production configuration/journal preservation.
 
 ## Trust and verification
 
-Install a trusted GitHub CLI with `gh attestation verify` support first
+The trusted Ubuntu/Debian bootstrap installs GitHub CLI and Python prerequisites
+automatically when missing. For manual/offline verification, install a trusted
+GitHub CLI with `gh attestation verify` support first
 (the reference verifier is CLI 2.96.0), and Python 3 on Linux/macOS. Windows uses
 PowerShell JSON and SHA256 facilities. There is no unsigned fallback.
 The CLI verifies the Sigstore certificate, transparency evidence, repository

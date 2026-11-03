@@ -283,11 +283,13 @@ func TestWebEventDistributed(t *testing.T) {
 			publish("public-a")
 			publish("private-b")
 			publish("a-prod")
+			readWeb(t, env, "instance.changed", "public-a")
 			readWeb(t, env, "instance.changed", "a-prod")
 			if _, err := d.Exec("UPDATE instances SET environment='dev' WHERE id='a-prod'"); err != nil {
 				t.Fatal(err)
 			}
 			publish("a-prod")
+			readWeb(t, env, "instance.changed", "a-prod")
 			ba.BroadcastWeb("daily.started", map[string]any{"orderDate": "2026-09-17", "created": 999, "commitSha": "private"})
 			readWeb(t, env, "daily.started", `"orderDate":"2026-09-17"`)
 			env.Close()

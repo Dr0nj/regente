@@ -86,12 +86,12 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <main>
 <article>
 <h1 id="agent-authentication-and-upgrades">Agent authentication and upgrades</h1>
-<p>All external agent transports require a dedicated credential bound to an agent ID,
-environment and capability set. Human sessions and the server API bearer cannot
+<p>All external agent transports require a dedicated credential bound to an agent ID
+and capability set. Human sessions and the server API bearer cannot
 authenticate machines. Expired, revoked and unbound legacy tokens are rejected.</p>
 <p>In <strong>Settings &gt; Agents</strong>, issue a token with the verified identity and an expiry,
 then copy its one-time secret into the protected <code>REGENTE_TOKEN</code> service environment.
-Configure <code>-id</code>, <code>-env</code> and <code>-caps</code> to match the provisioned scope and restart the agent.
+Configure <code>-id</code> and <code>-caps</code> to match the provisioned scope and restart the agent.
 Verify presence and a harmless job's dispatch, output and completion.</p>
 <p><strong>Upgrading to schema 24 requires reissuing all schema-23 agent tokens and upgrading
 both server and agent binaries.</strong> Stop old processes and take a verified backup first.

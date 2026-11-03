@@ -138,6 +138,8 @@ func TestMachineIdentity(t *testing.T) {
 					t.Fatal("listagem expôs segredo/hash")
 				}
 				body := tokenRequest{AgentID: "worker-a", Environment: "prod", Capabilities: []string{"COMMAND"}, ExpiresAt: time.Now().Add(time.Hour)}
+				machineRequest(t, servers[0], "POST", "/api/agents/tokens", "test-token", body, 200)
+				body.Capabilities = []string{"SCRIPT"}
 				machineRequest(t, servers[0], "POST", "/api/agents/tokens", "test-token", body, 409)
 				body.AgentID = "SERVER-AGENT"
 				machineRequest(t, servers[0], "POST", "/api/agents/tokens", "test-token", body, 400)
@@ -147,7 +149,7 @@ func TestMachineIdentity(t *testing.T) {
 			})
 			t.Run("claims_rejected_on_all_transports", func(t *testing.T) {
 				for _, path := range []string{"/ws/agent", "/api/agent/poll", "/api/agent/events"} {
-					for _, query := range []string{"id=worker-b&caps=COMMAND", "id=worker-a&caps=COMMAND&env=prod", "id=worker-a&caps=SCRIPT", "caps=COMMAND"} {
+					for _, query := range []string{"id=worker-b&caps=COMMAND", "id=worker-a&caps=SCRIPT", "caps=COMMAND"} {
 						machineRequest(t, servers[0], "GET", path+"?"+query, a.Token, nil, 403)
 					}
 					machineRequest(t, servers[0], "GET", path+"?id=worker-a&caps=COMMAND&token="+a.Token, "", nil, 401)

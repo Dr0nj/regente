@@ -479,7 +479,6 @@ function GeneralTab({ instance, definition, jobType, actionConfig }: {
         <Field label="Job Type" value={jobType} />
         <Field label="Folder" value={instance.team ?? definition?.team ?? "—"} />
         <Field label="Agent" value={agentValue} hint={agentHint} />
-        {definition?.environment && <Field label="Environment" value={definition.environment} />}
       </Section>
 
       <Section title="Description">

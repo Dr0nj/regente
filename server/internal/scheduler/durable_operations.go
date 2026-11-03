@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/Dr0nj/regente-server/internal/domain"
 	"github.com/Dr0nj/regente-server/internal/execution"
+	"strings"
 )
 
 // Todas as operações compartilham o lock de admissão com Start/Complete.
@@ -152,7 +153,11 @@ func (s *Scheduler) DurableAction(actor, id, action string) (string, error) {
 		return "", err
 	}
 	if action != "delete" {
-		if err = durableEvent(tx, id, action, actor, "durable operator action", s.Now()); err != nil {
+		message := "durable operator action"
+		if action == "set-ok" {
+			message = "Set OK; conditions added: " + strings.Join(def.ConditionsOutAdd, ", ") + "; conditions removed: " + strings.Join(def.ConditionsOutRemove, ", ") + "; order date: " + odate
+		}
+		if err = durableEvent(tx, id, action, actor, message, s.Now()); err != nil {
 			return "", err
 		}
 	}

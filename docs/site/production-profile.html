@@ -124,7 +124,7 @@ the database, cloning a workspace, registering agents or starting the scheduler.
 </tr>
 <tr>
 <td><code>REGENTE_ENVIRONMENT</code> / <code>-environment</code></td>
-<td>Explicit scope, 1–64 letters/digits/dots/underscores/hyphens; first character alphanumeric</td>
+<td>Deprecated compatibility input; ignored for routing and admission</td>
 </tr>
 <tr>
 <td><code>REGENTE_TOKEN</code> / <code>-api-token</code></td>
@@ -212,11 +212,14 @@ explicit trusted proxy addresses with TLS between proxy and server.</p>
 also accepts an HTTP loopback issuer for isolated rehearsals. Local mode rejects
 leftover OIDC issuer/client/callback settings. OIDC client secrets use the existing
 secret provider. See <a href="authentication.html">authentication</a>.</p>
-<h3 id="execution-and-environment-scope">Execution and environment scope</h3>
-<p>Each production database is bound to one environment. Jobs and machine credentials
-must match it exactly. Empty environment is never a wildcard. Provision agents
-with that environment and matching transport claims using user-session credentials.
-The display-only <code>env_label</code> setting does not authorize routing.</p>
+<h3 id="execution-by-agent-identity">Execution by agent identity</h3>
+<p>Jobs route by <code>agentId</code> and required capabilities. Environment labels no longer
+block jobs, credentials, admission or notifications. Old YAML fields, database
+columns and <code>-env</code> flags remain readable for upgrades and immutable snapshots;
+no journal deletion or token reissue is required for this change. Assign the exact
+Agent ID in Design to direct a job to its execution host. Unpinned jobs may use any
+eligible agent with matching capabilities. The production security profile still
+requires authentication, valid credentials and an explicit network boundary.</p>
 <p>Under deny, SERVER-AGENT is off and agentless SSH is blocked. The http policy
 allows the embedded HTTP/REST executor; http-ssh also allows agentless SSH on the
 server. External agents remain available under all three policies. This policy
@@ -257,21 +260,20 @@ RUNNING instances. Stop every node sharing the database. Conversion refuses a
 database with running instances; do not race an old node against conversion.</li>
 <li>While still in development, rotate active local passwords and replace admin
 scripts using REGENTE_TOKEN with user sessions. Provision scoped machine tokens
-under new agent IDs where the old principal's environment is empty or different.</li>
-<li>Publish definitions with the intended environment and executor. Existing orders
+bound to the intended agent IDs and capabilities.</li>
+<li>Publish definitions with the intended Agent ID and executor. Existing orders
 keep frozen snapshots: finish, cancel or deliberately replace incompatible orders;
 editing a live definition does not rewrite their execution identity.</li>
 <li>Set the explicit production configuration, clear REGENTE_TOKEN, disable demo and
 choose the execution policy. Remove incompatible OIDC settings in local mode.
 For public access, configure proxy or tls and verify the external boundary.</li>
 <li>Run check-config, then start one node and inspect startup diagnostics. The first
-conversion binds the database to the environment and revokes existing sessions.
+conversion binds the database to the production profile and revokes existing sessions.
 Log in again, provision/reconnect agents and inspect Explain before releasing work.</li>
-<li>Start remaining nodes with the same profile/environment and intended policy.
+<li>Start remaining nodes with the same profile and intended policy.
 Verify a restart and an authorized scoped job before reopening scheduling.</li>
 </ol>
-<p>The binding survives restart and backup/restore. Omitting the profile or changing
-its environment refuses startup; it is not editable through the settings API.
+<p>The binding survives restart and backup/restore. Omitting the production profile refuses startup; it is not editable through the settings API.
 Rollback is an explicit recovery operation using the pre-conversion backup and
 configuration, after draining/stopping the cluster. Older binaries do not enforce
 this marker, so do not use a binary downgrade as a policy bypass.</p>

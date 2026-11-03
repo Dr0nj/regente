@@ -13,8 +13,8 @@ func TestProductionScope(t *testing.T) {
 		t.Fatal("HTTP produtivo indisponível")
 	}
 	for _, env := range []string{"", "staging"} {
-		if h.HasAgent(ID, "HTTP", env) {
-			t.Fatal("SERVER-AGENT aceitou outro escopo")
+		if !h.HasAgent(ID, "HTTP", env) {
+			t.Fatal("legacy label blocked SERVER-AGENT")
 		}
 	}
 }

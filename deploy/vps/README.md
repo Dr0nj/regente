@@ -62,7 +62,11 @@ sudo DOMAIN="$DOMAIN" EMAIL=ops@yourcompany.com bash "$VPS/enable-tls.sh"
 
 # 4) Close the back door: the proxy reaches the server over the loopback, so the
 #    control plane should not be listening on a public address at all.
-sudo sed -i 's|^REGENTE_ADDR=.*|REGENTE_ADDR=127.0.0.1:8080|' /etc/regente/server.env
+sudo sed -i '/^REGENTE_ADDR=/d; /^REGENTE_APP_URL=/d; /^REGENTE_NETWORK_BOUNDARY=/d; /^REGENTE_TRUSTED_PROXIES=/d' /etc/regente/server.env
+printf '%s\n' 'REGENTE_ADDR=127.0.0.1:8080' "REGENTE_APP_URL=https://$DOMAIN" \
+  'REGENTE_NETWORK_BOUNDARY=proxy' 'REGENTE_TRUSTED_PROXIES=127.0.0.1/32,::1/128' \
+  | sudo tee -a /etc/regente/server.env >/dev/null
+sudo regente-server -config-env /etc/regente/server.env -check-config
 sudo systemctl restart regente-server
 
 # 5) Firewall: expose only the edge. Allow SSH in the SAME command — enabling ufw

@@ -10,7 +10,7 @@ import (
 )
 
 func TestProductionPolicyCannotBeForced(t *testing.T) {
-	for _, tc := range []struct{ name, env, job, agent string }{{"empty", "", "COMMAND", ""}, {"wrong", "staging", "COMMAND", ""}, {"ssh", "prod", "SSH", ""}, {"embedded", "prod", "HTTP", "SERVER-AGENT"}} {
+	for _, tc := range []struct{ name, env, job, agent string }{{"ssh", "prod", "SSH", ""}, {"embedded", "prod", "HTTP", "SERVER-AGENT"}} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := newTestScheduler(t)
 			s.DemoMode = false

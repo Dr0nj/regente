@@ -11,7 +11,7 @@ import (
 func TestGuidedConfiguration(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "server.env")
 	var out bytes.Buffer
-	if err := Initialize(strings.NewReader("lab\n18080\n"), &out, path); err != nil {
+	if err := Initialize(strings.NewReader("18080\n"), &out, path); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(path)
@@ -72,7 +72,7 @@ func TestConfigValidationBeforeEnvironmentMutation(t *testing.T) {
 }
 
 func TestInitializeRejectsInvalidInputWithoutFile(t *testing.T) {
-	for _, input := range []string{"bad env\n8080\n", "local\n0\n", "local\n65536\n"} {
+	for _, input := range []string{"invalid\n", "0\n", "65536\n"} {
 		path := filepath.Join(t.TempDir(), "config")
 		if Initialize(strings.NewReader(input), &bytes.Buffer{}, path) == nil {
 			t.Fatal("accepted invalid input")

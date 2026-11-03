@@ -1,7 +1,7 @@
 # Agent identity and credential lifecycle
 
 Schema 24 binds every external agent credential to an immutable machine principal:
-`agentId`, `environment` and `capabilities`. WebSocket, HTTP long-poll and SSE use
+`agentId` and `capabilities`. WebSocket, HTTP long-poll and SSE use
 the same policy. Human sessions and the administrative bearer cannot authenticate
 as agents; machine credentials cannot access the human administration API.
 
@@ -14,10 +14,10 @@ as agents; machine credentials cannot access the human administration API.
    labels, IDs and timestamps as `requires_reissue` records. There is no automatic
    association based on a label, hostname or an agent's self-reported identity.
 3. In **Settings > Agents**, issue one credential per verified agent identity.
-   Choose its exact ID, environment, capabilities and validity (at most 365 days).
+   Choose its exact ID, capabilities and validity (at most 365 days).
    The reserved embedded identity `SERVER-AGENT` and `web-*` IDs cannot be issued.
 4. Copy the secret once into `REGENTE_TOKEN` in the agent service's protected
-   environment file. Configure `-id`, `-env` and `-caps` to match the issued scope.
+   environment file. Configure `-id` and `-caps` to match the issued scope.
    Restart the service and verify presence and a synthetic job before resuming work.
 
 All three transports require `Authorization: Bearer <agent-token>`. Secrets in
@@ -26,12 +26,10 @@ An old WS agent must be upgraded even if a new credential has been issued.
 Do not put secrets in shell history, command-line arguments, screenshots or logs.
 Linux service installers keep the environment file at mode 0600.
 
-An empty environment authorizes **only unlabeled jobs** for external agents.
-It is not a wildcard. A labeled job requires the same exact environment, including
-case. Capabilities must match the issued set (order is irrelevant); a pinned job
-still requires an authorized capability. A changed scope requires a new agent ID
-and deliberate updates to definitions and service configuration. The embedded
-HTTP/REST server agent remains a separate trusted in-process executor.
+Environment fields and flags are accepted only as legacy metadata. They do not
+restrict routing, token issuance/rotation, transport claims or job admission.
+Agent ID and capabilities still match exactly. Existing journals and credentials
+remain valid. Use explicit agent IDs to direct jobs to production or QA hosts.
 
 ## Administrative API
 
@@ -42,7 +40,6 @@ POST /api/agents/tokens
 {
   "label": "worker-01 credential",
   "agentId": "worker-01",
-  "environment": "production",
   "capabilities": ["COMMAND", "SCRIPT"],
   "expiresAt": "<future RFC3339 timestamp, within 365 days>"
 }

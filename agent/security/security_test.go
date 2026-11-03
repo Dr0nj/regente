@@ -56,12 +56,12 @@ func TestI13SecretsRotationAuthorizationOutage(t *testing.T) {
 	secureFile(t, f, Secrets{Values: map[string]string{"auth": "Bearer original-canary"}})
 	input := map[string]interface{}{"headers": map[string]interface{}{"Authorization": map[string]interface{}{"secretRef": "auth"}}}
 	before, _ := json.Marshal(input)
-	for _, bad := range []struct{ env, id, kind string }{{"dev", "job", "HTTP"}, {"prod", "other", "HTTP"}, {"prod", "job", "COMMAND"}} {
+	for _, bad := range []struct{ env, id, kind string }{{"prod", "other", "HTTP"}, {"prod", "job", "COMMAND"}} {
 		if _, _, _, e := Prepare(context.Background(), p, f, bad.env, bad.id, bad.kind, input); e == nil {
 			t.Fatal("autorização fora do escopo")
 		}
 	}
-	_, params, redact, e := Prepare(context.Background(), p, f, "prod", "job", "HTTP", input)
+	_, params, redact, e := Prepare(context.Background(), p, f, "different-legacy-label", "job", "HTTP", input)
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -49,9 +49,6 @@ func (s *server) machineAuth(r *http.Request) (*machinePrincipal, bool) {
  FROM agent_tokens t JOIN machine_principals p ON p.agent_id=t.agent_id
  WHERE t.token_hash=? AND t.revoked_at=0 AND t.expires_at>?`, tokenDigest(token), time.Now().UnixMilli()).Scan(
 		&p.CredentialID, &p.AgentID, &p.Environment, &p.Capabilities, &p.CertificateSHA256)
-	if err == nil && !s.cfg.RuntimePolicy.AllowsEnvironment(p.Environment) {
-		return nil, false
-	}
 	if err == nil {
 		if r.TLS != nil {
 			p.Certificates = r.TLS.PeerCertificates
@@ -81,17 +78,14 @@ func (s *server) machineValid(p *machinePrincipal) bool {
 	if !s.machineCertificateValid(p) {
 		return false
 	}
-	if !s.cfg.RuntimePolicy.AllowsEnvironment(p.Environment) {
-		return false
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	var n int
 	err := s.cfg.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM agent_tokens t
  JOIN machine_principals p ON p.agent_id=t.agent_id
  WHERE t.id=? AND t.revoked_at=0 AND t.expires_at>? AND p.agent_id=?
- AND p.environment=? AND p.capabilities=? AND t.certificate_sha256=?`, p.CredentialID, time.Now().UnixMilli(),
-		p.AgentID, p.Environment, p.Capabilities, p.CertificateSHA256).Scan(&n)
+ AND p.capabilities=? AND t.certificate_sha256=?`, p.CredentialID, time.Now().UnixMilli(),
+		p.AgentID, p.Capabilities, p.CertificateSHA256).Scan(&n)
 	return err == nil && n == 1
 }
 
@@ -107,7 +101,7 @@ func canonicalCaps(caps []string) string {
 // Claims de transporte precisam coincidir com o principal provisionado.
 func (p *machinePrincipal) matches(r *http.Request) bool {
 	q := r.URL.Query()
-	return q.Get("id") == p.AgentID && q.Get("env") == p.Environment &&
+	return q.Get("id") == p.AgentID &&
 		canonicalCaps(strings.Split(q.Get("caps"), ",")) == p.Capabilities
 }
 
@@ -197,9 +191,6 @@ func (b *tokenRequest) validate() bool {
 		strings.HasPrefix(strings.ToLower(b.AgentID), "web-") || len(b.Label) > 256 {
 		return false
 	}
-	if b.Environment != "" && !machineName.MatchString(b.Environment) {
-		return false
-	}
 	if len(b.Capabilities) == 0 || len(b.Capabilities) > 32 {
 		return false
 	}
@@ -241,8 +232,8 @@ func (s *server) createAgentToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b tokenRequest
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&b) != nil || !b.validate() || !s.cfg.RuntimePolicy.AllowsEnvironment(b.Environment) || (s.cfg.RuntimePolicy.TLSClientCA != "" && b.CertificateSHA256 == "") {
-		http.Error(w, "agentId, environment, capabilities and expiresAt (within 365 days) are required; reserved IDs are forbidden", http.StatusBadRequest)
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&b) != nil || !b.validate() || (s.cfg.RuntimePolicy.TLSClientCA != "" && b.CertificateSHA256 == "") {
+		http.Error(w, "agentId, capabilities and expiresAt (within 365 days) are required; reserved IDs are forbidden", http.StatusBadRequest)
 		return
 	}
 	tx, err := s.cfg.DB.Begin()
@@ -259,7 +250,7 @@ func (s *server) createAgentToken(w http.ResponseWriter, r *http.Request) {
 	}
 	var env, caps string
 	if tx.QueryRow(`SELECT environment,capabilities FROM machine_principals WHERE agent_id=?`, b.AgentID).Scan(&env, &caps) != nil ||
-		env != b.Environment || caps != canonicalCaps(b.Capabilities) {
+		caps != canonicalCaps(b.Capabilities) {
 		http.Error(w, "principal scope is immutable; use a new agent ID for a different scope", http.StatusConflict)
 		return
 	}
@@ -314,10 +305,6 @@ func (s *server) rotateAgentToken(w http.ResponseWriter, r *http.Request) {
  JOIN machine_principals p ON p.agent_id=t.agent_id WHERE t.id=?`, chi.URLParam(r, "id")).Scan(&req.Label, &req.AgentID, &req.Environment, &caps, &req.CertificateSHA256)
 	if err != nil {
 		http.Error(w, "could not load principal", http.StatusInternalServerError)
-		return
-	}
-	if !s.cfg.RuntimePolicy.AllowsEnvironment(req.Environment) {
-		http.Error(w, "credential environment does not match production", http.StatusBadRequest)
 		return
 	}
 	if b.CertificateSHA256 != nil {

@@ -52,6 +52,11 @@ async function refreshServer(): Promise<void> {
   }
 }
 
+/** Refresh after an operator action even when the WebSocket is reconnecting. */
+export async function refreshConditions(): Promise<void> {
+  if (isServerMode()) await refreshServer();
+}
+
 function loadLocal(): void {
   cache = localLoad<CondEntry>(LOCAL_KEY);
   loaded = true;

@@ -87,6 +87,14 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ## 🔜 Backlog (o que falta)
 
+### Onboarding Linux — incremento em validação (03/11/2026)
+
+Remoção do roteamento/bloqueio por ambiente, compatibilidade dos agentes existentes,
+layout compacto por dependências e explicação de condições no Set OK implementados.
+Testes locais e publicação do incremento em acompanhamento. A validação funcional
+na VPS continua aberta até atualizar e verificar jobs/condições na nova versão.
+
+
 ### Prioridade operacional — servidor Linux na VPS (03/11/2026)
 
 Retomar os testes funcionais da instalação nativa Linux, reproduzir bugs na VPS

@@ -95,7 +95,9 @@ evidence. The source smoke proves unsigned updates are refused; the release smok
 uses the actual signed manifest to exercise the updater, backup, same-version
 no-op and production configuration/journal preservation.</p>
 <h2 id="trust-and-verification">Trust and verification</h2>
-<p>Install a trusted GitHub CLI with <code>gh attestation verify</code> support first
+<p>The trusted Ubuntu/Debian bootstrap installs GitHub CLI and Python prerequisites
+automatically when missing. For manual/offline verification, install a trusted
+GitHub CLI with <code>gh attestation verify</code> support first
 (the reference verifier is CLI 2.96.0), and Python 3 on Linux/macOS. Windows uses
 PowerShell JSON and SHA256 facilities. There is no unsigned fallback.
 The CLI verifies the Sigstore certificate, transparency evidence, repository

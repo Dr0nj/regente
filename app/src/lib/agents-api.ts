@@ -58,7 +58,7 @@ export async function listAgentTokens(): Promise<AgentToken[]> {
 }
 
 /** Cria um token de agente. O `token` cru só volta aqui, uma vez. */
-export async function createAgentToken(body: { label: string; agentId: string; environment: string; capabilities: string[]; expiresAt: string; certificateSHA256?: string }): Promise<{ id: number; token: string }> {
+export async function createAgentToken(body: { label: string; agentId: string; environment?: string; capabilities: string[]; expiresAt: string; certificateSHA256?: string }): Promise<{ id: number; token: string }> {
   return api("/api/agents/tokens", { method: "POST", body: JSON.stringify(body) });
 }
 

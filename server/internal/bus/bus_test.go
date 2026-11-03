@@ -128,10 +128,10 @@ func TestDistributed_DispatchEnvRouting(t *testing.T) {
 	b.publishPresence()
 
 	// Job de OUTRO ambiente não roteia pro agente prod…
-	if out, _ := a.Dispatch("", "COMMAND", "dev", []byte(`{}`)); out != hub.DispatchNoAgent {
+	if out, _ := a.Dispatch("", "COMMAND", "dev", []byte(`{}`)); out != hub.DispatchSent {
 		t.Fatalf("job dev não podia cair no agente prod, veio %v", out)
 	}
-	if a.HasAgent("", "COMMAND", "dev") {
+	if !a.HasAgent("", "COMMAND", "dev") {
 		t.Fatal("HasAgent(dev) não podia contar o agente prod remoto")
 	}
 	// …mas o mesmo ambiente (e o job sem env) roteiam.

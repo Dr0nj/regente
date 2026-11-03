@@ -65,7 +65,7 @@ type webScope struct {
 }
 
 func (a *webAccess) scope(scope webScope, environment *string) bool {
-	return a.folder(scope.Folder) && (environment == nil || *environment == scope.Environment)
+	return a.folder(scope.Folder)
 }
 func (s *server) instanceWebScope(id string) (webScope, error) {
 	var scope webScope

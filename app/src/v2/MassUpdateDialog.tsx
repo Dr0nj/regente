@@ -25,7 +25,6 @@ const FIELD_OPTIONS = [
   { v: "timeout", t: "Timeout s (int)" },
   { v: "agentId", t: "Agent ID" },
   { v: "calendar", t: "Calendar" },
-  { v: "environment", t: "Environment" },
   { v: "dryRun", t: "Dry Run (true/false)" },
   { v: "confirm", t: "Confirm (true/false)" },
 ];
@@ -38,7 +37,6 @@ const CRIT_FIELDS = [
   { v: "schedule.runAt", t: "Run At" },
   { v: "agentId", t: "Agent ID" },
   { v: "calendar", t: "Calendar" },
-  { v: "environment", t: "Environment" },
 ];
 
 const inputStyle: React.CSSProperties = {

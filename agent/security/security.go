@@ -75,7 +75,7 @@ func read(path string, out any) error {
 }
 func Load(path string) (Policy, error) {
 	var p Policy
-	if read(path, &p) != nil || p.Environment == "" || len(p.Jobs) == 0 {
+	if read(path, &p) != nil || len(p.Jobs) == 0 {
 		return p, ErrPolicy
 	}
 	for id, j := range p.Jobs {
@@ -130,7 +130,7 @@ func Prepare(ctx context.Context, policyFile, secretsFile, env, id, kind string,
 		return ctx, params, redact, nil
 	}
 	p, err := Load(policyFile)
-	if err != nil || p.Environment != env {
+	if err != nil {
 		return ctx, nil, redact, ErrPolicy
 	}
 	j, ok := p.Jobs[id]

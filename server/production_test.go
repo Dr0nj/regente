@@ -54,7 +54,7 @@ func TestProductionBoot(t *testing.T) {
 	if _, err = os.Stat(checkDB); !os.IsNotExist(err) {
 		t.Fatal("check-config criou banco")
 	}
-	for _, bad := range [][]string{{"-api-token", "synthetic-secret-never-log"}, {"-demo-mode"}, {"-server-agent"}, {"-addr", ":8080"}, {"-environment", ""}, {"-db-driver", "invalid", "-check-config"}, {"-migration-timeout", "0", "-check-config"}, {"-network-boundary", "tls", "-app-url", "https://example.test", "-tls-cert", "missing-cert", "-tls-key", "missing-key"}} {
+	for _, bad := range [][]string{{"-api-token", "synthetic-secret-never-log"}, {"-demo-mode"}, {"-server-agent"}, {"-addr", ":8080"}, {"-db-driver", "invalid", "-check-config"}, {"-migration-timeout", "0", "-check-config"}, {"-network-boundary", "tls", "-app-url", "https://example.test", "-tls-cert", "missing-cert", "-tls-key", "missing-key"}} {
 		args := append(append(append([]string{}, production...), "-db", checkDB), bad...)
 		out, err = invoke(args)
 		if err == nil || strings.Contains(string(out), "synthetic-secret-never-log") {
@@ -155,7 +155,7 @@ func TestProductionBoot(t *testing.T) {
 	initialize := exec.Command(bin, "-init-config", configPath)
 	initialize.Env = env
 	_, port, _ := net.SplitHostPort(addr)
-	initialize.Stdin = strings.NewReader("guided\n" + port + "\n")
+	initialize.Stdin = strings.NewReader(port + "\n")
 	initialized, e := initialize.CombinedOutput()
 	if e != nil {
 		t.Fatalf("init-config: %v %s", e, initialized)

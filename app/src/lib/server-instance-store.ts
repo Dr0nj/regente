@@ -1,3 +1,4 @@
+import { refreshConditions } from "./conditions-store";
 /**
  * server-instance-store — espelho local do estado de instances do server.
  *
@@ -519,7 +520,7 @@ export async function bypassInstance(id: string): Promise<void> {
   // Set OK (Control-M parity): flip NOTOK/CANCELLED -> OK no server,
   // destrava sucessores on-success.
   await api<void>(`/api/instances/${encodeURIComponent(id)}/set-ok`, { method: "POST" });
-  await refresh();
+  await Promise.all([refresh(), refreshConditions()]);
 }
 
 export async function confirmInstance(id: string): Promise<void> {

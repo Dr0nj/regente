@@ -33,8 +33,8 @@ func TestConfigurationMatrix(t *testing.T) {
 		{"http", func(c *Config) { c.ControlPlane = "http"; c.ServerAgent = true }, true},
 		{"ssh", func(c *Config) { c.ControlPlane = "http-ssh" }, true},
 		{"profile", func(c *Config) { c.Profile = "prod" }, false},
-		{"environment", func(c *Config) { c.Environment = "" }, false},
-		{"environment-wildcard", func(c *Config) { c.Environment = "*" }, false},
+		{"environment", func(c *Config) { c.Environment = "" }, true},
+		{"environment-wildcard", func(c *Config) { c.Environment = "*" }, true},
 		{"legacy-token", func(c *Config) { c.Token = "do-not-print-secret" }, false},
 		{"demo", func(c *Config) { c.Demo = true }, false},
 		{"implicit-server-agent", func(c *Config) { c.ServerAgent = true }, false},
@@ -109,8 +109,8 @@ func TestDatabaseBinding(t *testing.T) {
 		t.Fatal("downgrade aceito")
 	}
 	c.Environment = "staging"
-	if Bind(d, c) == nil {
-		t.Fatal("outro ambiente aceito")
+	if Bind(d, c) != nil {
+		t.Fatal("legacy environment blocked upgrade")
 	}
 }
 func TestExecutionPolicy(t *testing.T) {
@@ -121,8 +121,8 @@ func TestExecutionPolicy(t *testing.T) {
 	}
 	for _, env := range []string{"", "staging"} {
 		d.Environment = env
-		if c.ExecutionError(d) == "" {
-			t.Fatal("ambiente inválido aceito")
+		if c.ExecutionError(d) != "" {
+			t.Fatal("legacy environment blocked execution")
 		}
 	}
 	d.Environment = "prod"

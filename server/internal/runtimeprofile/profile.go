@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/netip"
 	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -30,10 +29,9 @@ func (c Config) Durable() bool {
 	return c.ExecutionMode == "durable" || ((c.ExecutionMode == "" || c.ExecutionMode == "auto") && c.Production())
 }
 
-var environmentPattern = regexp.MustCompile("^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
-
 func (c Config) AllowsEnvironment(env string) bool {
-	return !c.Production() || (env != "" && env == c.Environment)
+	// Legacy environment metadata is accepted for upgrades. Routing uses agent ID.
+	return true
 }
 func loopback(host string) bool {
 	ip, err := netip.ParseAddr(host)
@@ -60,13 +58,10 @@ func (c Config) Validate() error {
 		return errors.New("invalid auth mode")
 	}
 	if !c.Production() {
-		if c.Environment != "" || c.Network != "" || c.ControlPlane != "" {
-			return errors.New("environment, network-boundary and control-plane-execution require production profile")
+		if c.Network != "" || c.ControlPlane != "" {
+			return errors.New("network-boundary and control-plane-execution require production profile")
 		}
 		return nil
-	}
-	if !environmentPattern.MatchString(c.Environment) {
-		return errors.New("production requires an explicit environment (1-64 letters, digits, dots, underscores or hyphens)")
 	}
 	if c.Token != "" {
 		return errors.New("production forbids the legacy API token; use user sessions and scoped machine credentials")
@@ -170,12 +165,12 @@ func Bind(d *db.DB, c Config) error {
 	}
 	defer tx.Rollback()
 	var bound string
-	err = tx.QueryRow("SELECT value FROM settings WHERE key='_runtime_environment'").Scan(&bound)
+	err = tx.QueryRow("SELECT value FROM settings WHERE key IN ('_runtime_profile','_runtime_environment') AND value<>'' ORDER BY key DESC LIMIT 1").Scan(&bound)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	if bound != "" && (!c.Production() || bound != c.Environment) {
-		return errors.New("database is bound to a production environment; restore its explicit profile and environment")
+	if bound != "" && !c.Production() {
+		return errors.New("database is bound to the production profile; restore its explicit profile")
 	}
 	if c.Production() && bound == "" {
 		var running int
@@ -185,14 +180,11 @@ func Bind(d *db.DB, c Config) error {
 		if running != 0 {
 			return errors.New("drain running instances before converting the database to production")
 		}
-		if _, err = tx.Exec("INSERT INTO settings(key,value) VALUES('_runtime_environment',?) ON CONFLICT(key) DO NOTHING", c.Environment); err != nil {
+		if _, err = tx.Exec("INSERT INTO settings(key,value) VALUES('_runtime_profile',?) ON CONFLICT(key) DO NOTHING", c.Profile); err != nil {
 			return err
 		}
-		if err = tx.QueryRow("SELECT value FROM settings WHERE key='_runtime_environment'").Scan(&bound); err != nil {
+		if err = tx.QueryRow("SELECT value FROM settings WHERE key IN ('_runtime_profile','_runtime_environment') AND value<>'' ORDER BY key DESC LIMIT 1").Scan(&bound); err != nil {
 			return err
-		}
-		if bound != c.Environment {
-			return errors.New("database production environment conflict")
 		}
 		if _, err = tx.Exec("DELETE FROM sessions"); err != nil {
 			return err
@@ -223,9 +215,6 @@ func Bind(d *db.DB, c Config) error {
 func (c Config) ExecutionError(def domain.JobDefinition) string {
 	if !c.Production() {
 		return ""
-	}
-	if !c.AllowsEnvironment(def.Environment) {
-		return "Job environment does not match the production environment"
 	}
 	if strings.EqualFold(def.JobType, "SSH") && c.ControlPlane != "http-ssh" {
 		return "SSH execution on the control plane is disabled by production policy"

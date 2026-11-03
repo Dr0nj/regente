@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/Dr0nj/regente-server/internal/domain"
@@ -13,7 +14,7 @@ import (
 func TestDurableSetOKConditionsAndMonitoring(t *testing.T) {
 	f := durableTest(t,
 		domain.JobDefinition{ID: "producer", Team: "test", JobType: "COMMAND", Params: map[string]interface{}{"command": "unused"}, ConditionsOutAdd: []string{"done", "persistent@stat"}, ConditionsOutRemove: []string{"input"}},
-		domain.JobDefinition{ID: "consumer", Team: "test", JobType: "COMMAND", Params: map[string]interface{}{"command": "unused"}, ConditionsIn: []string{"done"}, Confirm: true},
+		domain.JobDefinition{ID: "consumer", Team: "test", JobType: "COMMAND", Params: map[string]interface{}{"command": "unused"}, ConditionsIn: []string{"done"}, ConditionsOutRemove: []string{"done"}, Confirm: true},
 	)
 	if err := f.s.conditions.Set("input", "2026-09-30", "fixture"); err != nil {
 		t.Fatal(err)
@@ -61,5 +62,18 @@ func TestDurableSetOKConditionsAndMonitoring(t *testing.T) {
 		if blocker.Kind == GateCondition {
 			t.Fatalf("successor still blocked by condition: %+v", blocker)
 		}
+	}
+	if _, err := f.s.DurableAction("admin", "consumer-2026-09-30", "set-ok"); err != nil {
+		t.Fatal(err)
+	}
+	if f.s.conditions.Has("done", "2026-09-30") {
+		t.Fatal("consumer did not remove its input condition")
+	}
+	var message string
+	if err := f.d.QueryRow("SELECT message FROM instance_events WHERE instance_id=? AND kind='set-ok'", "consumer-2026-09-30").Scan(&message); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(message, "conditions removed: done") {
+		t.Fatalf("condition removal is unexplained: %s", message)
 	}
 }

@@ -181,7 +181,7 @@ func (e *Engine) Start(orderID, agent, key, intent string) (Attempt, error) {
 	if err = tx.QueryRow(`SELECT environment,capabilities,internal FROM machine_principals WHERE agent_id=?`, agent).Scan(&machineEnv, &caps, &internal); err != nil {
 		return Attempt{}, ErrInvalid
 	}
-	if env != machineEnv || !slices.Contains(strings.Split(caps, ","), Capability) || !slices.Contains(strings.Split(caps, ","), strings.ToUpper(def.JobType)) || (def.AgentID != "" && def.AgentID != agent && !(o.Runtime && internal && def.AgentID == "SERVER-AGENT")) {
+	if !slices.Contains(strings.Split(caps, ","), Capability) || !slices.Contains(strings.Split(caps, ","), strings.ToUpper(def.JobType)) || (def.AgentID != "" && def.AgentID != agent && !(o.Runtime && internal && def.AgentID == "SERVER-AGENT")) {
 		return Attempt{}, ErrConflict
 	}
 	if o.Runtime && e.Prepare != nil {

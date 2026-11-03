@@ -42,10 +42,7 @@ func TestProductionIdentity(t *testing.T) {
 			machineRequest(t, srv, "PUT", "/api/settings", token, map[string]string{"_runtime_environment": "staging"}, 400)
 			machineRequest(t, srv, "POST", "/api/users", token, map[string]string{"username": "weak", "password": "short", "role": "viewer"}, 400)
 			for _, env := range []string{"", "staging", "prod"} {
-				want := 400
-				if env == "prod" {
-					want = 200
-				}
+				want := 200
 				b := tokenRequest{AgentID: "worker" + env, Environment: env, Capabilities: []string{"COMMAND"}, ExpiresAt: time.Now().Add(time.Hour)}
 				raw := machineRequest(t, srv, "POST", "/api/agents/tokens", token, b, want)
 				if want == 200 {
@@ -61,8 +58,8 @@ func TestProductionIdentity(t *testing.T) {
 						t.Fatal("escopo válido recusado")
 					}
 					p.Environment = ""
-					if s.machineValid(p) {
-						t.Fatal("escopo vazio aceito")
+					if !s.machineValid(p) {
+						t.Fatal("legacy label unexpectedly restricted credential")
 					}
 				}
 			}
@@ -84,13 +81,18 @@ func TestProductionIdentity(t *testing.T) {
 			s := server{cfg: cfg}
 			r := httptest.NewRequest("GET", "/", nil)
 			r.Header.Set("Authorization", "Bearer "+issued["token"].(string))
-			if _, ok := s.machineAuth(r); ok {
-				t.Fatal("token legado aceito")
+			p, ok := s.machineAuth(r)
+			if !ok || !s.machineValid(p) {
+				t.Fatal("existing credential with empty legacy label was rejected")
 			}
-			for _, path := range []string{"/ws/agent?id=legacy&caps=COMMAND", "/api/agent/poll?id=legacy&caps=COMMAND", "/api/agent/events?id=legacy&caps=COMMAND"} {
-				machineRequest(t, srv, "GET", path, issued["token"].(string), nil, 401)
+			for _, label := range []string{"", "local", "prod", "qa"} {
+				request := httptest.NewRequest("GET", "/?id=legacy&caps=COMMAND&env="+label, nil)
+				if !p.matches(request) {
+					t.Fatal("transport still enforces legacy label")
+				}
 			}
-			machineRequest(t, srv, "POST", fmt.Sprintf("/api/agents/tokens/%v/rotate", issued["id"]), token, map[string]any{"expiresAt": time.Now().Add(time.Hour), "graceSeconds": 0}, 400)
+			machineRequest(t, srv, "POST", fmt.Sprintf("/api/agents/tokens/%v/rotate", issued["id"]), token, map[string]any{"expiresAt": time.Now().Add(time.Hour), "graceSeconds": 0}, 200)
+
 			if _, err := s.webAccess(auth.Digest("test-token")); err == nil {
 				t.Fatal("token estático aceito em eventos")
 			}
