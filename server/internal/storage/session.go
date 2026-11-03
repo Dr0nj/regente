@@ -74,6 +74,24 @@ type SessionManager struct {
 	gcStopped chan struct{}
 }
 
+// CheckSessionDirectory fails at startup rather than on the first Design request.
+// A create/remove probe also detects read-only mounts and incorrect ownership.
+func CheckSessionDirectory(root string) error {
+	if err := os.MkdirAll(root, 0o750); err != nil {
+		return fmt.Errorf("create session directory %q: %w", root, err)
+	}
+	f, err := os.CreateTemp(root, ".regente-write-check-*")
+	if err != nil {
+		return fmt.Errorf("write session directory %q: %w", root, err)
+	}
+	closeErr := f.Close()
+	removeErr := os.Remove(f.Name())
+	if closeErr != nil {
+		return closeErr
+	}
+	return removeErr
+}
+
 // NewSessionManager — token é opcional; sem token, publish em PR mode falha.
 // db é opcional; se != nil, sessions são persistidas em design_sessions e
 // restauradas no boot via Restore().

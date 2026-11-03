@@ -108,6 +108,14 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
   The enterprise hardening cycle is active; delivery and remaining qualification work are tracked in the
   <a href="https://github.com/Dr0nj/regente/blob/main/docs/roadmap.md">roadmap</a>. Delivered features do not imply complete production qualification.</sub></p>
 </div>
+<blockquote>
+<p><strong>Kubernetes: EM DESENVOLVIMENTO E TESTES / IN DEVELOPMENT AND TESTING.</strong>
+The Kubernetes installer, images and deployment recipes are experimental and
+are not yet qualified for production. Local automated checks do not establish
+VPS readiness. Current validation work prioritizes the native Linux server
+installation and functional bug testing on a VPS. See the
+<a href="https://github.com/Dr0nj/regente/blob/main/deploy/kubernetes/INSTALL.md">Kubernetes status and limitations</a>.</p>
+</blockquote>
 <hr>
 <h2 id="-what-it-is">🧭 What it is</h2>
 <p>Authentication is selectable: <strong>local username/password</strong>, <strong>hybrid local + SSO</strong>,
@@ -577,6 +585,13 @@ check that the service is really up before they finish, and print the log if it 
 Let's Encrypt, firewall, enterprise hardening (SSO, RBAC, SIEM, mTLS) and a sandboxed agent for
 guests — is in <a href="https://github.com/Dr0nj/regente/blob/main/deploy/vps/README.md"><code>deploy/vps/</code></a>.</p>
 <h3 id="docker--kubernetes--serverless">Docker · Kubernetes · serverless</h3>
+<p><strong>Kubernetes is in development and testing; use it only for evaluation.</strong>
+For an <strong>existing Kubernetes cluster</strong>, use the <a href="https://github.com/Dr0nj/regente/blob/main/deploy/kubernetes/INSTALL.md">application installer</a>:
+PostgreSQL, server/web and a separate worker pod, with verified TLS, persistent
+Design sessions and journal, stable machine identity, and an executable end-to-end
+installation check. Commands run inside that worker pod. Use the release's
+<code>kubernetes-images.json</code> digest references and installer bundle; the older kind
+laboratory recipes are not the end-user onboarding path.</p>
 <p>A distroless image, a Knative Service with scale-to-zero and an external cron trigger live in
 <a href="deploy.html"><code>deploy/</code></a>. The same binary runs on Knative, Cloud Run, Fly, App Runner or
 Container Apps — you choose the cloud when you deploy, not in the code.</p>

@@ -1,5 +1,9 @@
 # Deploy — portable serverless
 
+> **Kubernetes: EM DESENVOLVIMENTO E TESTES / IN DEVELOPMENT AND TESTING.**
+> The [application installer](kubernetes/INSTALL.md), images and labs are
+> experimental. Current VPS testing prioritizes the native Linux installation.
+
 Production deployments: follow the [production profile](../docs/production-profile.md) for explicit environment/network scope, disabled legacy tokens and conversion steps.
 
 Artifacts for running `regente-server` as a **scale-to-zero serverless container without vendor

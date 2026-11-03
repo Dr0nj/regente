@@ -1,5 +1,15 @@
 # Kubernetes laboratory — external agent
 
+> **Kubernetes: EM DESENVOLVIMENTO E TESTES / IN DEVELOPMENT AND TESTING.**
+> These labs and the application installer are experimental, not production-qualified.
+> The current testing priority is the native Linux server on a VPS.
+
+**Installing the application on an existing cluster? Start with
+[INSTALL.md](INSTALL.md) and `install.py`.** That flow provisions a separate worker
+pod and verifies Design, durable execution and bootstrap cleanup. The recipes
+below are engineering labs with different topologies; do not adapt their fragments
+into a manual production installation.
+
 Later stages: [isolated HTTP cell](HTTP-CELL.md), [SSH bridge](SSH-BRIDGE.md),
 and [gradual migration, rollback and origin retirement](MIGRATION.md).
 

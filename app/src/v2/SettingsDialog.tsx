@@ -25,6 +25,7 @@ function ThemeSwatch({ colors, size = 40 }: { colors: ThemeDef["flag"]; size?: n
 }
 
 export function SettingsDialog({ onClose }: Props) {
+	const [maximized, setMaximized] = useState(false);
   const [settings, setSettings] = useState<ServerSettings>({});
   const [envLabel, setEnvLabel] = useState("");
   const [saving, setSaving] = useState(false);
@@ -165,13 +166,20 @@ export function SettingsDialog({ onClose }: Props) {
     >
       <div
         className="v2-grain-card v2-neon-card"
+        role="dialog" aria-modal="true" aria-labelledby="settings-title"
         style={{
-          width: 440, maxHeight: "80vh", overflow: "auto",
+          width: maximized ? "100vw" : "min(1000px, 94vw)",
+          height: maximized ? "100dvh" : "85dvh", maxWidth: "100vw", maxHeight: "100dvh",
+          minWidth: "min(360px, 94vw)", minHeight: "min(360px, 85dvh)",
+          resize: maximized ? "none" : "both", overflow: "auto", boxSizing: "border-box",
           padding: 24, display: "flex", flexDirection: "column", gap: 20,
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Settings</h2>
+          <h2 id="settings-title" style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Settings</h2>
+          <button onClick={() => setMaximized(!maximized)} className="v2-btn" aria-label={maximized ? "Restore settings size" : "Maximize settings"}>
+            {maximized ? "Restore size" : "Full screen"}
+          </button>
           <button onClick={onClose} className="v2-dialog-x" aria-label="Close">✕</button>
         </div>
 

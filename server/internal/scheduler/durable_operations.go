@@ -168,5 +168,10 @@ func (s *Scheduler) DurableAction(actor, id, action string) (string, error) {
 		s.resources.Release(id)
 	}
 	s.hub.BroadcastWeb("instance.changed", map[string]any{"id": id, "status": next})
+	if action == "set-ok" {
+		// Conditions were changed directly in the transaction, bypassing the
+		// ConditionEngine callback. Refresh Monitoring only after commit succeeds.
+		s.hub.BroadcastWeb("condition.changed", map[string]string{"by": id})
+	}
 	return next, nil
 }

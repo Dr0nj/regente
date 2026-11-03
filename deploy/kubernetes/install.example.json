@@ -1,0 +1,13 @@
+{
+  "context": "your-kube-context",
+  "namespace": "regente",
+  "environment": "prod",
+  "domain": "regente.example.com",
+  "publicIssuer": "letsencrypt-prod",
+  "storageClass": "local-path",
+  "serverImage": "ghcr.io/dr0nj/regente-server@sha256:REPLACE_WITH_RELEASE_DIGEST",
+  "agentImage": "ghcr.io/dr0nj/regente-agent@sha256:REPLACE_WITH_RELEASE_DIGEST",
+  "gitSource": "https://github.com/YOUR_ORG/YOUR_WORKSPACE.git",
+  "gitBranch": "main",
+  "agentId": "regente-worker-01"
+}

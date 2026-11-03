@@ -52,6 +52,16 @@ for (const mode of ["local", "hybrid", "oidc"]) {
       if (mode === "local") {
         await page.getByRole("button", { name: "Account", exact: true }).click();
         await page.getByRole("button", { name: "Settings", exact: true }).click();
+        const settingsDialog = page.getByRole("dialog", { name: "Settings" });
+        await expect(settingsDialog).toBeVisible();
+        const normalSize = await settingsDialog.boundingBox();
+        expect(normalSize!.width).toBeGreaterThan(440);
+        await page.getByRole("button", { name: "Maximize settings" }).click();
+        const fullSize = await settingsDialog.boundingBox();
+        expect(fullSize!.width).toBe(page.viewportSize()!.width);
+        expect(fullSize!.height).toBe(page.viewportSize()!.height);
+        await page.getByRole("button", { name: "Restore settings size" }).click();
+        expect((await settingsDialog.boundingBox())!.width).toBe(normalSize!.width);
         await page.getByRole("button", { name: "Agents", exact: true }).click();
         await page.getByLabel("Agent ID", { exact: true }).fill("browser-i13");
         const fingerprint="a".repeat(64);

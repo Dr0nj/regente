@@ -23,6 +23,13 @@ Production deployments: follow the [production profile](docs/production-profile.
   <a href="docs/roadmap.md">roadmap</a>. Delivered features do not imply complete production qualification.</sub></p>
 </div>
 
+> **Kubernetes: EM DESENVOLVIMENTO E TESTES / IN DEVELOPMENT AND TESTING.**
+> The Kubernetes installer, images and deployment recipes are experimental and
+> are not yet qualified for production. Local automated checks do not establish
+> VPS readiness. Current validation work prioritizes the native Linux server
+> installation and functional bug testing on a VPS. See the
+> [Kubernetes status and limitations](deploy/kubernetes/INSTALL.md).
+
 ---
 
 ## 🧭 What it is
@@ -474,6 +481,14 @@ Let's Encrypt, firewall, enterprise hardening (SSO, RBAC, SIEM, mTLS) and a sand
 guests — is in [`deploy/vps/`](deploy/vps/README.md).
 
 ### Docker · Kubernetes · serverless
+
+**Kubernetes is in development and testing; use it only for evaluation.**
+For an **existing Kubernetes cluster**, use the [application installer](deploy/kubernetes/INSTALL.md):
+PostgreSQL, server/web and a separate worker pod, with verified TLS, persistent
+Design sessions and journal, stable machine identity, and an executable end-to-end
+installation check. Commands run inside that worker pod. Use the release's
+`kubernetes-images.json` digest references and installer bundle; the older kind
+laboratory recipes are not the end-user onboarding path.
 
 A distroless image, a Knative Service with scale-to-zero and an external cron trigger live in
 [`deploy/`](deploy/README.md). The same binary runs on Knative, Cloud Run, Fly, App Runner or

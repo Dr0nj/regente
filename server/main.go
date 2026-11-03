@@ -91,6 +91,7 @@ func main() {
 		spaDir           = flag.String("spa-dir", envOr("REGENTE_SPA_DIR", ""), "Single-origin hosting: serve the built SPA from this directory (UI+API+WS on the same port). Empty = API only")
 		docsDir          = flag.String("docs-dir", envOr("REGENTE_DOCS_DIR", ""), "ADV-7: serve the docs site (cmd/docsite) at /docs on the same port. Empty = no docs")
 		workspace        = flag.String("workspace", envOr("REGENTE_WORKSPACE", "./workspace"), "Path to regente workspace (contains definitions/)")
+		sessionsDir      = flag.String("sessions-dir", os.Getenv("REGENTE_SESSIONS_DIR"), "Design clone cache directory (default: sessions next to workspace; must be writable)")
 		dbPath           = flag.String("db", envOr("REGENTE_DB", "./regente.db"), "DB DSN: path to the SQLite file, or a Postgres connection string when -db-driver=postgres")
 		dbDriver         = flag.String("db-driver", envOr("REGENTE_DB_DRIVER", "sqlite"), "State store backend: sqlite | postgres")
 		backupTo         = flag.String("backup", "", "R6/DR: writes an online backup of the state store to this path and exits (SQLite: VACUUM INTO; Postgres: use pg_dump — see docs/dr-backup.md)")
@@ -510,11 +511,17 @@ func main() {
 	// Sem GitOps configurado, sessions ficam desligadas (UI degrada gracefully).
 	var sessionMgr *storage.SessionManager
 	if gitOps != nil {
-		sessionMgr = storage.NewSessionManager("./sessions", *gitSource, *gitBranch, effectiveToken, ghClient, database)
+		if *sessionsDir == "" {
+			*sessionsDir = filepath.Join(filepath.Dir(filepath.Clean(*workspace)), "sessions")
+		}
+		if err := storage.CheckSessionDirectory(*sessionsDir); err != nil {
+			log.Fatalf("[design] session storage unavailable: %v; set REGENTE_SESSIONS_DIR to a writable volume", err)
+		}
+		sessionMgr = storage.NewSessionManager(*sessionsDir, *gitSource, *gitBranch, effectiveToken, ghClient, database)
 		if err := sessionMgr.Restore(); err != nil {
 			log.Printf("[design] restore warning: %v", err)
 		}
-		log.Printf("[design] sessions enabled (root=./sessions, source=%s)", *gitSource)
+		log.Printf("[design] sessions enabled (root=%s, source=%s)", *sessionsDir, *gitSource)
 		sessionMgr.StartGC(
 			time.Duration(*designSessionTTLMin)*time.Minute,
 			time.Duration(*designSessionGCTickMin)*time.Minute,

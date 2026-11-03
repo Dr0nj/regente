@@ -94,6 +94,7 @@ func main() {
 	)
 	tokenFile := flag.String("token-file", "", "Protected file containing the machine credential")
 	journalPath := flag.String("journal", envOr("REGENTE_AGENT_JOURNAL", ""), "Durable local journal path (required for v2)")
+	checkJournal := flag.Bool("check-journal", false, "Initialize or validate the durable journal identity offline, without polling or executing jobs")
 	concurrency := flag.Int("concurrency", 4, "Maximum concurrent durable executions")
 	pending := flag.Int("max-pending", 1000, "Maximum unconfirmed durable executions")
 	showCompatibility := flag.Bool("compatibility", false, "Print offline runtime compatibility descriptor")
@@ -110,6 +111,17 @@ func main() {
 	}
 	if *showVersion {
 		fmt.Println(agentVersion)
+		return
+	}
+	if *checkJournal {
+		j, err := journal.Open(*journalPath, *agentID)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := j.Close(); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("journal identity and integrity verified")
 		return
 	}
 	if *tokenFile != "" {

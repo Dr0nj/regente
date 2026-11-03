@@ -1,5 +1,11 @@
 # 🎼 Regente — Roadmap
 
+> **03/11/2026 — Kubernetes: EM DESENVOLVIMENTO E TESTES.** Instalador,
+> imagens e receitas permanecem experimentais, sem aceite produtivo na VPS.
+> As qualificações locais registradas abaixo não alteram esse status. Após o
+> incremento de onboarding, a prioridade passa aos testes funcionais e à busca
+> de bugs da instalação nativa do servidor Linux na VPS.
+
 > **Fonte única de status (single source of truth) E tracking de tudo que foi entregue.**
 > Este arquivo é a verdade sobre "o que já foi feito / o que falta" — e o §✅ Entregue é
 > detalhado o suficiente pra cada tópico virar **doc/feature** depois. O README é só
@@ -80,6 +86,14 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ---
 
 ## 🔜 Backlog (o que falta)
+
+### Prioridade operacional — servidor Linux na VPS (03/11/2026)
+
+Retomar os testes funcionais da instalação nativa Linux, reproduzir bugs na VPS
+e registrar evidência de cada correção. Kubernetes permanece **EM DESENVOLVIMENTO
+E TESTES**, com evolução pausada por decisão do mantenedor após o incremento de
+onboarding. O instalador possui qualificação local; aceite na VPS, operação
+continuada e renovação completa de PKI ainda não estão qualificados.
 
 > **Pergunta "o que falta?" → responde AQUI e só aqui.** Esta lista contém **TODO** item
 > em aberto do projeto: se não está abaixo, está **entregue** (§✅ Entregue) ou nunca foi

@@ -199,6 +199,7 @@ def manifests():
         "REGENTE_CONTROL_PLANE_EXECUTION": "deny",
         "REGENTE_DB_DRIVER": "postgres",
         "REGENTE_WORKSPACE": "/data/workspace",
+        "REGENTE_SESSIONS_DIR": "/data/sessions",
         "REGENTE_SPA_DIR": "/app",
         "REGENTE_TLS_CERT": "/private/server.crt",
         "REGENTE_TLS_KEY": "/private/server.key",

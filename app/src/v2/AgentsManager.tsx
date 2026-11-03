@@ -80,7 +80,7 @@ export default function AgentsManager() {
       setJustCreated(r.token);
       setNewLabel("");
       reload();
-    } catch { setTokenError("Could not issue token. Check the identity, scope and expiry. An existing agent ID must keep its original scope."); }
+    } catch (error) { setTokenError(error instanceof Error ? error.message : "Could not issue token. Check the identity, scope and expiry. An existing agent ID must keep its original scope."); }
     finally { setBusy(false); }
   }
   async function handleRevoke(id: number) {

@@ -86,6 +86,12 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <main>
 <article>
 <h1 id="production-profile">Production profile</h1>
+<blockquote>
+<p><strong>Kubernetes is EM DESENVOLVIMENTO E TESTES (in development and testing).</strong>
+Enabling the production security profile does not make the Kubernetes installer
+production-qualified. Its images and recipes remain experimental; current VPS
+validation prioritizes the native Linux server installation.</p>
+</blockquote>
 <p>The production profile is opt-in: set <code>REGENTE_PROFILE=production</code> (or
 <code>-profile production</code>). The bare daemon defaults to development, with no known bearer/password and an
 explicit bootstrap requirement. The guided configuration and new service installations
@@ -96,6 +102,12 @@ Production does not imply mandatory SSO: choose local, hybrid or oidc explicitly
 Use oidc when SSO must be required; provider unavailability never enables normal
 password login. An explicitly configured emergency administrator is the exception.</p>
 <h2 id="configuration-contract">Configuration contract</h2>
+<p>For Kubernetes application setup, follow the <a href="https://github.com/Dr0nj/regente/blob/main/deploy/kubernetes/INSTALL.md">installer</a>.
+Keep a writable server data volume with workspace, Design sessions and audit key.
+<code>REGENTE_SESSIONS_DIR</code> / <code>-sessions-dir</code> controls the Design clone cache; its default
+is <code>sessions</code> beside the workspace directory. With GitOps enabled, startup probes
+that directory for write access before serving requests. A healthy read-only image
+still requires writable data and temporary mounts.</p>
 <p>Flags override environment variables. These requirements are checked before opening
 the database, cloning a workspace, registering agents or starting the scheduler.</p>
 <table>

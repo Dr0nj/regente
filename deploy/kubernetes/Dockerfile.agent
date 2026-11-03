@@ -7,6 +7,7 @@ COPY . ./
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.agentVersion=${VERSION}" -o /out/regente-agent .
 FROM alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
+LABEL org.opencontainers.image.source="https://github.com/Dr0nj/regente"
 RUN adduser -D -u 10001 runner && mkdir -p /state /lab/output && chown -R 10001:10001 /state /lab
 COPY --from=build /out/regente-agent /usr/local/bin/regente-agent
 USER 10001:10001

@@ -1,5 +1,10 @@
 # Production profile
 
+> **Kubernetes is EM DESENVOLVIMENTO E TESTES (in development and testing).**
+> Enabling the production security profile does not make the Kubernetes installer
+> production-qualified. Its images and recipes remain experimental; current VPS
+> validation prioritizes the native Linux server installation.
+
 The production profile is opt-in: set `REGENTE_PROFILE=production` (or
 `-profile production`). The bare daemon defaults to development, with no known bearer/password and an
 explicit bootstrap requirement. The guided configuration and new service installations
@@ -11,6 +16,13 @@ Use oidc when SSO must be required; provider unavailability never enables normal
 password login. An explicitly configured emergency administrator is the exception.
 
 ## Configuration contract
+
+For Kubernetes application setup, follow the [installer](../deploy/kubernetes/INSTALL.md).
+Keep a writable server data volume with workspace, Design sessions and audit key.
+`REGENTE_SESSIONS_DIR` / `-sessions-dir` controls the Design clone cache; its default
+is `sessions` beside the workspace directory. With GitOps enabled, startup probes
+that directory for write access before serving requests. A healthy read-only image
+still requires writable data and temporary mounts.
 
 Flags override environment variables. These requirements are checked before opening
 the database, cloning a workspace, registering agents or starting the scheduler.
