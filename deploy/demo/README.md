@@ -30,8 +30,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\demo\host-demo.ps1
 
 Open the printed localhost URL. Change the initial `admin / admin` password
 immediately; create individual operator/viewer accounts for trusted guests.
-Set jobs' **environment to `demo`** and target the printed agent ID. The issued
-scope is exactly `demo` + `COMMAND,SCRIPT,HTTP`; administrative or human tokens
+Target the printed **Agent ID** on jobs. The issued
+capabilities are exactly `COMMAND,SCRIPT,HTTP`; administrative or human tokens
 cannot authenticate as this agent. Credentials are passed through process/container
 environment, not printed or included in CLI arguments. Docker administrators and
 jobs in that container can inspect its environment: it is not a secrets boundary.
@@ -70,7 +70,7 @@ use the exact run-specific resource names for manual cleanup, never a wildcard o
 inherited Regente/Vite/telemetry/token configuration and restores the caller's
 environment afterward. It runs `npm ci`, builds with `@origin`, provisions the
 machine principal, verifies authenticated presence and a pinned COMMAND's actual
-output, tests rejected ID/environment/capability claims and administrative bearer,
+output, tests rejected ID/capability claims and administrative bearer,
 then revokes the credential and verifies removal/rejection. Every wait has a
 timeout and failure is nonzero. Only the sanitized `evidence.json` is suitable
 for sharing; private logs and DBs are not CI artifacts.

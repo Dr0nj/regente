@@ -68,7 +68,10 @@ function Wait-For([string]$Description, [scriptblock]$Check) {
 }
 function Denied([string]$Secret, [string]$Claims, [int]$Expected) {
   $actual = 0
-  try { $null = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/agent/poll?$Claims" -Headers @{Authorization="Bearer $Secret"} -TimeoutSec 5 }
+  try {
+    $response = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/agent/poll?$Claims" -Headers @{Authorization="Bearer $Secret"} -TimeoutSec 5
+    $actual = [int]$response.StatusCode
+  }
   catch {
     if ($_.Exception.Response) { $actual = [int]$_.Exception.Response.StatusCode }
     else { throw 'Negative credential check failed without an HTTP response.' }
@@ -108,7 +111,7 @@ try {
     New-Item -ItemType Directory -Path $defs -Force | Out-Null
     # JSON e YAML valido; params e o contrato em disco, actionConfig e o da API.
     $definition = @{id='smoke'; label='Synthetic demo smoke'; team='demo'; jobType='COMMAND'; agentId=$agentID
-      environment='demo'; schedule=@{enabled=$false}; params=@{command='echo regente-demo-smoke'} }
+      schedule=@{enabled=$false}; params=@{command='echo regente-demo-smoke'} }
     [IO.File]::WriteAllText((Join-Path $defs 'smoke.yaml'), (ConvertTo-Json $definition -Depth 8))
     if ($GitFixture) {
       Invoke-Native git @('init', '-b', 'main', $source)
@@ -139,20 +142,19 @@ try {
   $headers = @{Authorization="Bearer $adminToken"}
   Wait-For 'server readiness' { try { $null = Api '/readyz'; $true } catch { $false } }
   if (-not $source) { Write-Host 'Git source is empty: OFFLINE, local definitions only.' }
-  $credential = Api '/api/agents/tokens' 'POST' @{label='Local demo'; agentId=$agentID; environment='demo'
+  $credential = Api '/api/agents/tokens' 'POST' @{label='Local demo'; agentId=$agentID
     capabilities=@('COMMAND','SCRIPT','HTTP'); expiresAt=[DateTime]::UtcNow.AddHours(8).ToString('o')}
-  $claims = "id=$agentID&env=demo&caps=COMMAND,SCRIPT,HTTP"
+  $claims = "id=$agentID&caps=COMMAND,SCRIPT,HTTP"
   if ($Smoke) {
     Denied $adminToken $claims 401
-    Denied $credential.token 'id=wrong&env=demo&caps=COMMAND,SCRIPT,HTTP' 403
-    Denied $credential.token "id=$agentID&env=wrong&caps=COMMAND,SCRIPT,HTTP" 403
-    Denied $credential.token "id=$agentID&env=demo&caps=COMMAND" 403
+    Denied $credential.token 'id=wrong&caps=COMMAND,SCRIPT,HTTP' 403
+    Denied $credential.token "id=$agentID&caps=COMMAND" 403
   }
   $env:REGENTE_TOKEN = $credential.token
   if ($NativeSmoke) {
     $agentBin = Join-Path $runDir "agent$suffix"
     Invoke-Native go @('-C', (Join-Path $repo 'agent'), 'build', '-o', $agentBin, '.')
-    $agent = Start-Owned $agentBin @('-server', "ws://127.0.0.1:$Port/ws/agent", '-id', $agentID, '-env=demo', '-caps=COMMAND,SCRIPT,HTTP') 'agent'
+    $agent = Start-Owned $agentBin @('-server', "ws://127.0.0.1:$Port/ws/agent", '-id', $agentID, '-caps=COMMAND,SCRIPT,HTTP') 'agent'
   } else {
     Invoke-Native docker @('build', '-f', (Join-Path $repo 'deploy/demo/Dockerfile.agent'), '-t', $imageName, (Join-Path $repo 'agent'))
     $imageOwned = $true
@@ -161,15 +163,15 @@ try {
     if ($onWindows) { $networkArgs = @(); $agentServer = "ws://host.docker.internal:$Port/ws/agent" }
     Invoke-Native docker (@('run', '-d', '--name', $container, '--rm', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
       '--pids-limit', '256', '--memory', '512m', '--cpus', '1', '-e', 'REGENTE_TOKEN') + $networkArgs +
-      @($imageName, '-server', $agentServer, '-id', $agentID, '-env=demo', '-caps=COMMAND,SCRIPT,HTTP'))
+      @($imageName, '-server', $agentServer, '-id', $agentID, '-caps=COMMAND,SCRIPT,HTTP'))
     $containerOwned = $true
   }
   $env:REGENTE_TOKEN = $null
   Wait-For 'authenticated agent presence' {
-    $found = @(Api '/api/agents' | Where-Object { $_.id -eq $agentID -and $_.online -and $_.environment -eq 'demo' })
+    $found = @(Api '/api/agents' | Where-Object { $_.id -eq $agentID -and $_.online })
     $found.Count -eq 1
   }
-  Write-Host "Agent authenticated: $agentID (environment demo; COMMAND/SCRIPT/HTTP)."
+  Write-Host "Agent authenticated: $agentID (COMMAND/SCRIPT/HTTP)."
   if ($Smoke) {
     $ordered = Api '/api/folders/demo/order' 'POST' @{}
     if ($ordered.ordered -ne 1) { throw 'Synthetic definition was not loaded/ordered.' }
@@ -191,7 +193,7 @@ try {
     Write-Host 'PASS: authenticated COMMAND, claim rejection and revocation; no public resources.'
   } else {
     Write-Host "Open $base (initial login admin / admin; change it immediately)."
-    Write-Host 'Use environment demo on guest jobs. Container networking is ON, not job-only isolation.'
+    Write-Host 'Target the printed Agent ID on guest jobs. Container networking is ON, not job-only isolation.'
     $null = Read-Host 'Press Enter to stop this demo (only owned resources are stopped)'
   }
 } catch {
