@@ -176,7 +176,7 @@ func (s *server) applyPresence(a *agentRow, remote map[string]bus.RemoteAgent) {
 	if s.cfg.RuntimePolicy.Durable() && a.LastSeen != nil && time.Since(*a.LastSeen) < 90*time.Second {
 		var environment, caps string
 		var active int
-		if s.cfg.DB.QueryRow("SELECT environment,capabilities FROM machine_principals WHERE agent_id=? AND internal=0", a.ID).Scan(&environment, &caps) == nil && strings.Contains(","+caps+",", ",EXECUTION_V2,") && s.cfg.DB.QueryRow("SELECT COUNT(*) FROM agent_tokens WHERE agent_id=? AND revoked_at=0 AND expires_at>?", a.ID, time.Now().UnixMilli()).Scan(&active) == nil && active > 0 {
+		if s.cfg.DB.QueryRow("SELECT environment,capabilities FROM machine_principals WHERE agent_id=? AND internal=0", a.ID).Scan(&environment, &caps) == nil && strings.Contains(","+caps+",", ",EXECUTION_V2,") && s.cfg.DB.QueryRow("SELECT COUNT(*) FROM agent_tokens WHERE agent_id=? AND revoked_at=0 AND (rotated_at=0 OR expires_at>?)", a.ID, time.Now().UnixMilli()).Scan(&active) == nil && active > 0 {
 			a.Online = true
 			a.Environment = environment
 			a.Transport = "durable-poll"

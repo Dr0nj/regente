@@ -100,7 +100,7 @@ func machineRequest(t *testing.T, srv *httptest.Server, method, path, token stri
 
 func issueTestMachine(t *testing.T, srv *httptest.Server, id string) issuedMachine {
 	t.Helper()
-	body := tokenRequest{AgentID: id, Environment: "", Capabilities: []string{"COMMAND"}, ExpiresAt: time.Now().Add(time.Hour)}
+	body := tokenRequest{AgentID: id, Environment: "", Capabilities: []string{"COMMAND"}}
 	raw := machineRequest(t, srv, "POST", "/api/agents/tokens", "test-token", body, 200)
 	var c issuedMachine
 	if json.Unmarshal(raw, &c) != nil || c.ID == 0 || len(c.Token) != 69 {
@@ -144,8 +144,38 @@ func TestMachineIdentity(t *testing.T) {
 				body.AgentID = "SERVER-AGENT"
 				machineRequest(t, servers[0], "POST", "/api/agents/tokens", "test-token", body, 400)
 				body.AgentID = "worker-new"
-				body.ExpiresAt = time.Now().Add(-time.Hour)
-				machineRequest(t, servers[0], "POST", "/api/agents/tokens", "test-token", body, 400)
+				body.ExpiresAt = time.Now().Add(-time.Hour) // legacy field is ignored
+				machineRequest(t, servers[0], "POST", "/api/agents/tokens", "test-token", body, 200)
+			})
+			t.Run("legacy_expiry_does_not_disable_agent", func(t *testing.T) {
+				c := issueTestMachine(t, servers[0], "no-expiry")
+				if _, err := d.Exec("UPDATE agent_tokens SET expires_at=? WHERE id=?", time.Now().Add(-time.Hour).UnixMilli(), c.ID); err != nil {
+					t.Fatal(err)
+				}
+				for _, srv := range servers {
+					machineRequest(t, srv, "POST", "/api/agent/output", c.Token, map[string]string{"instanceId": "missing"}, 403)
+				}
+				raw := machineRequest(t, servers[0], "GET", "/api/agents/tokens", "test-token", nil, 200)
+				var tokens []struct {
+					ID        int64      `json:"id"`
+					Status    string     `json:"status"`
+					ExpiresAt *time.Time `json:"expiresAt"`
+				}
+				if err := json.Unmarshal(raw, &tokens); err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, token := range tokens {
+					if token.ID == c.ID {
+						found = true
+						if token.Status != "active" || token.ExpiresAt != nil {
+							t.Fatal("legacy expiry remained active", token)
+						}
+					}
+				}
+				if !found {
+					t.Fatal("missing credential")
+				}
 			})
 			t.Run("claims_rejected_on_all_transports", func(t *testing.T) {
 				for _, path := range []string{"/ws/agent", "/api/agent/poll", "/api/agent/events"} {
@@ -203,7 +233,7 @@ func TestMachineIdentity(t *testing.T) {
 				machineRequest(t, servers[1], "POST", "/api/agent/output", replacement.Token, map[string]string{"instanceId": "missing"}, 403)
 			})
 			for _, transport := range []string{"ws", "poll", "events"} {
-				for _, action := range []string{"revoke", "expire", "rotate"} {
+				for _, action := range []string{"revoke", "rotation_grace_end", "rotate"} {
 					t.Run(transport+"_"+action+"_two_nodes", func(t *testing.T) {
 						id := "lease-" + transport + "-" + action
 						c := issueTestMachine(t, servers[0], id)
@@ -242,8 +272,8 @@ func TestMachineIdentity(t *testing.T) {
 						switch action {
 						case "revoke":
 							machineRequest(t, servers[0], "DELETE", fmt.Sprintf("/api/agents/tokens/%d", c.ID), "test-token", nil, 200)
-						case "expire":
-							if _, err := d.Exec(`UPDATE agent_tokens SET expires_at=? WHERE id=?`, time.Now().Add(100*time.Millisecond).UnixMilli(), c.ID); err != nil {
+						case "rotation_grace_end":
+							if _, err := d.Exec(`UPDATE agent_tokens SET rotated_at=1, expires_at=? WHERE id=?`, time.Now().Add(100*time.Millisecond).UnixMilli(), c.ID); err != nil {
 								t.Fatal(err)
 							}
 						case "rotate":

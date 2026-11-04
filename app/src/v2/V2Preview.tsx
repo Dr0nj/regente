@@ -1,4 +1,5 @@
-﻿import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { dependencyRelations } from "./dependency-layout";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -588,11 +589,13 @@ function V2PreviewInner() {
   // o selectedIds não conhecia — o "travou com 2 selecionados" dos cliques
   // rápidos alternados: sem estado nosso, nada limpava o highlight fantasma.
   const displayNodes = useMemo<Node[]>(() => {
+    const related = dependencyRelations(new Set([...selectedIds].map(id => `${mode === "monitoring" ? "m" : "d"}-${id}`)), canvas.edges);
     return canvas.nodes.map((n) => {
+      const relation = related.ancestors.has(n.id) ? "ancestor" : related.descendants.has(n.id) ? "descendant" : undefined;
       const sel = n.type !== "laneLabel" && selectedIds.has(n.id.replace(/^[md]-/, ""));
-      return sel === !!n.selected ? (n.selected === undefined ? { ...n, selected: false } : n) : { ...n, selected: sel };
+      return { ...n, selected: sel, data: { ...n.data, dependencyRelation: relation } };
     });
-  }, [canvas.nodes, selectedIds]);
+  }, [canvas.nodes, canvas.edges, selectedIds, mode]);
 
   // Abrir/criar folder no Design — absorvido do antigo FolderOpener pro botão
   // FOLDERS (FolderManagerDialog). Mantém a semântica de design-session: cria a
@@ -1517,7 +1520,7 @@ function V2PreviewInner() {
             </button>
 
             <button
-              onClick={() => { setShowResources((v) => !v); setShowConditions(false); }}
+              onClick={() => { setSelectedInstanceId(null); setShowResources((v) => !v); setShowConditions(false); }}
               title="Resources — the environment's quota pool: capacity and usage of each resource (semaphore). A job with no free unit sits in WAIT RESOURCE. Who consumes what is chosen in Design (Conditions tab → Resources)."
               style={{
                 padding: "5px 10px",
@@ -1535,7 +1538,7 @@ function V2PreviewInner() {
             </button>
 
             <button
-              onClick={() => { setShowConditions((v) => !v); setShowResources(false); }}
+              onClick={() => { setSelectedInstanceId(null); setShowConditions((v) => !v); setShowResources(false); }}
               title="Conditions — the environment pool: every condition added (by a job ending OK, Set OK, an On/Do action or an operator), with its date. Deleting one here blocks whoever depends on it; adding one releases them."
               style={{
                 padding: "5px 10px",

@@ -771,3 +771,5 @@ The updater verifies the signed release, snapshots the database and replaces the
 server/UI while preserving configuration. Agent binaries on separate hosts retain
 their own upgrade procedure. Check the [upgrade guide](docs/upgrades.md) for schema
 and identity transitions. Kubernetes remains **IN DEVELOPMENT AND TESTING**.
+
+Agent tokens have no automatic expiration. Manage replacement and revocation in Settings → Agents; see [credential lifecycle](docs/agent-identity.md).

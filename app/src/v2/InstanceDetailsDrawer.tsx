@@ -238,7 +238,7 @@ export default function InstanceDetailsDrawer({
   });
 
   return (
-    <aside
+    <aside aria-label="Job details"
       className="v2-grain v2-edge-highlight"
       data-canvas-inset="right"
       style={{
@@ -491,9 +491,11 @@ function GeneralTab({ instance, definition, jobType, actionConfig }: {
         )}
       </Section>
 
-      <Section title="Action">
-        <ActionView jobType={jobType} config={actionConfig ?? {}} />
-      </Section>
+      <div data-testid="primary-job-action" style={{ background: "var(--v2-accent-deep)", border: "1px solid var(--v2-accent-dark)", borderLeft: "3px solid var(--v2-accent-brand)", borderRadius: 6, padding: "12px 14px", marginBottom: 16 }}>
+        <Section title="Action">
+          <ActionView jobType={jobType} config={actionConfig ?? {}} />
+        </Section>
+      </div>
 
       <Section title="Timeline">
         <Field label="Business timezone" value={instance.businessTime ? `${instance.businessTime.timezone} · rollover ${instance.businessTime.dailyAt}` : "Legacy: zone unknown · timestamps shown in UTC"} />

@@ -34,7 +34,17 @@ test("I10: uncertain execution survives restart and requires an audited decision
   for(const kind of ["accepted","started","uncertain"]){expect((await request.post(base+"/api/agent/v2/ack",{headers:machineHeaders,data:{...identity,kind,reason:kind==="uncertain"?"Remote completion receipt lost":""}})).status()).toBe(200)}
   await stop();child=start();await ready();
   await page.goto(base);await page.getByPlaceholder("Username",{exact:true}).fill("execution-operator");await page.getByPlaceholder("Encrypted password").fill("synthetic-password");await page.getByRole("button",{name:"Sign in",exact:true}).click();await expect(page.getByRole("button",{name:"Account",exact:true})).toBeVisible();
-  await page.getByText("Execution UI",{exact:true}).first().click();await page.getByRole("button",{name:"Execution",exact:true}).click();
+  await page.getByText("Execution UI",{exact:true}).first().click();
+  await expect(page.getByTestId("primary-job-action")).toContainText("echo synthetic");
+  await page.screenshot({path:testInfo.outputPath("job-action.png")});
+  for (const panel of ["Conditions", "Resources"]) {
+    await page.getByRole("button",{name:panel,exact:true}).first().click();
+    await expect(page.getByRole("complementary",{name:"Job details"})).toHaveCount(0);
+    await expect(page.getByRole("complementary",{name:panel+" pool"})).toBeVisible();
+    await page.getByRole("complementary",{name:panel+" pool"}).getByTitle("Close",{exact:true}).click();
+    await page.getByText("Execution UI",{exact:true}).first().click();
+  }
+  await page.getByRole("button",{name:"Execution",exact:true}).click();
   await expect(page.getByText("Remote completion receipt lost",{exact:false})).toBeVisible();await expect(page.getByText(envelope.executionId,{exact:false})).toBeVisible();
   const form=page.getByRole("form",{name:"Resolve execution"});const button=form.getByRole("button",{name:"Record verified resolution"});await expect(button).toBeDisabled();await form.getByLabel("Evidence and reason").fill("External operation verified stopped; no successful completion");await expect(button).toBeDisabled();await form.getByRole("checkbox").check();await button.click();await expect(form).toHaveCount(0);
   const details=await(await request.get(base+"/api/instances/"+id+"/executions",{headers})).json();expect(details.attempts).toHaveLength(1);expect(details.attempts[0].state).toBe("failed");expect(details.attempts[0].resolvedBy).toBe("execution-operator");expect(details.attempts[0].reason).toContain("External operation verified stopped");

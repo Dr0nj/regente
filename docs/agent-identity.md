@@ -14,7 +14,7 @@ as agents; machine credentials cannot access the human administration API.
    labels, IDs and timestamps as `requires_reissue` records. There is no automatic
    association based on a label, hostname or an agent's self-reported identity.
 3. In **Settings > Agents**, issue one credential per verified agent identity.
-   Choose its exact ID, capabilities and validity (at most 365 days).
+   Choose its exact ID and capabilities. Tokens have no expiration date.
    The reserved embedded identity `SERVER-AGENT` and `web-*` IDs cannot be issued.
 4. Copy the secret once into `REGENTE_TOKEN` in the agent service's protected
    environment file. Configure `-id` and `-caps` to match the issued scope.
@@ -40,13 +40,12 @@ POST /api/agents/tokens
 {
   "label": "worker-01 credential",
   "agentId": "worker-01",
-  "capabilities": ["COMMAND", "SCRIPT"],
-  "expiresAt": "<future RFC3339 timestamp, within 365 days>"
+  "capabilities": ["COMMAND", "SCRIPT"]
 }
 
 GET /api/agents/tokens
 POST /api/agents/tokens/{id}/rotate
-{ "expiresAt": "<future RFC3339 timestamp>", "graceSeconds": 300 }
+{ "graceSeconds": 300 }
 
 DELETE /api/agents/tokens/{id}
 ```
@@ -54,12 +53,17 @@ DELETE /api/agents/tokens/{id}
 Issue and rotate return the new secret once with `Cache-Control: no-store`.
 The database stores a SHA-256 digest of a cryptographically random 256-bit token;
 listing returns only a short identification prefix and metadata, never the secret
-or digest. Expiry is mandatory. Revoked and expired credentials remain visible
+or digest. Tokens remain valid until explicitly revoked or replaced by rotation.
+Legacy `expiresAt` request fields and stored dates on unrotated tokens are ignored,
+including dates already in the past. No agent reinstall or token replacement is
+needed. Revoked credentials and retired schema-23 secrets remain disabled.
+Listing returns `expiresAt: null` unless an old token is in rotation grace.
+Revoked and rotated credentials remain visible
 for administration. Issuing another credential for an existing ID requires exactly
 the same scope; it does not modify the existing principal or revoke other tokens.
 
-Rotation atomically issues a new token and shortens the old token's remaining
-validity to the grace period (0–3600 seconds). The old token can be rotated only
+Rotation atomically issues a new non-expiring token and limits the old token
+to a grace period (0–3600 seconds). The old token can be rotated only
 once. The UI uses a five-minute grace period; the API allows zero for immediate
 replacement. Update the protected service environment and restart the agent within
 the grace period. If the new secret was lost, revoke its record and issue another
@@ -72,7 +76,7 @@ Each node checks the shared database on incoming agent requests/messages and bef
 dispatch delivery. Active WS/poll/SSE clients also revalidate every second, with a
 one-second database query budget; a failed check closes access. The laboratory
 target is removal of active connections within five seconds of revocation,
-rotation without grace, or expiry. Nodes do not depend on NATS notifications for
+rotation without grace, or the end of rotation grace. Nodes do not depend on NATS notifications for
 this decision. Cluster nodes must share the same PostgreSQL identity store.
 Fleet presence on other nodes can lag by the existing presence interval/TTL.
 
@@ -88,7 +92,7 @@ agent and instance ID remains part of I08–I10. NATS routing still lacks a dura
 delivery acknowledgment. Do not infer exactly-once effects from this change.
 
 `TestMachineIdentity` runs against SQLite and PostgreSQL: claim tampering, cross-agent
-result/output, digest-only storage, immutable scope, expiry, rotation overlap and
+result/output, digest-only storage, immutable scope, ignored legacy expiration, rotation overlap and
 active revocation on two nodes for WS, long-poll and SSE. Migration tests cover
 v22/v23 retirement and rejection by the previous runtime. The mandatory integration
 runner also revokes an agent connected to one real server process through the
@@ -102,4 +106,4 @@ took 1.017s; the full lab took 87.956s. [Recorded evidence](https://github.com/D
 
 ## Protocol 2 runtime
 
-Provision EXECUTION_V2 together with the exact job capabilities when installing the current durable agent. Polling uses the same immutable agent/environment/capability claims and active credential validation. Acceptance, start authorization, output, result and cancel receipts carry execution ID and fence. Version 1 cannot report output/results for durable orders. See [execution recovery](durable-execution.md) and [journal contract](adr-i09-agent-journal.md). Revocation prevents authenticated receipts; it does not roll back external work already initiated.
+Provision EXECUTION_V2 together with the exact job capabilities when installing the current durable agent. Polling uses the same immutable agent ID/capability claims and active credential validation. Acceptance, start authorization, output, result and cancel receipts carry execution ID and fence. Version 1 cannot report output/results for durable orders. See [execution recovery](durable-execution.md) and [journal contract](adr-i09-agent-journal.md). Revocation prevents authenticated receipts; it does not roll back external work already initiated.

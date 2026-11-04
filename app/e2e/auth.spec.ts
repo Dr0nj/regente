@@ -64,12 +64,14 @@ for (const mode of ["local", "hybrid", "oidc"]) {
         expect((await settingsDialog.boundingBox())!.width).toBe(normalSize!.width);
         await page.getByRole("button", { name: "Agents", exact: true }).click();
         await page.getByLabel("Agent ID", { exact: true }).fill("browser-i13");
+        await expect(page.getByLabel("Validity in days")).toHaveCount(0);
         const fingerprint="a".repeat(64);
         await page.getByLabel("Client certificate SHA256", { exact: true }).fill(fingerprint);
         const issued=page.waitForResponse(r=>r.url().endsWith("/api/agents/tokens") && r.request().method()==="POST" && r.status()===200);
         await page.getByRole("button", { name: "Create token", exact: true }).click();
         const credential=await (await issued).json();
         expect(credential.certificateSHA256).toBe(fingerprint);
+        expect(credential.expiresAt).toBeNull();
         await expect(page.getByText("Certificate: "+fingerprint,{exact:false})).toBeVisible();
         await page.getByRole("button",{name:"Close",exact:true}).click();
       }

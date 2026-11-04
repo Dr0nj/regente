@@ -80,7 +80,7 @@ export default function ResourcesPanel({ onClose }: { onClose: () => void }) {
   });
 
   return (
-    <aside style={{
+    <aside aria-label="Resources pool" style={{
       position: "absolute", top: 10, right: 10, bottom: 10, width,
       background: "var(--v2-bg-surface)",
       border: "1px solid var(--v2-border-medium)", borderRadius: 16,

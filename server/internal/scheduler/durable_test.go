@@ -63,7 +63,7 @@ func durableTest(t *testing.T, defs ...domain.JobDefinition) *durableFixture {
 	f.s.ReloadDefs()
 	f.s.RunDaily("2026-09-30")
 	f.d.Exec("INSERT INTO machine_principals(agent_id,environment,capabilities) VALUES('worker','','COMMAND,EXECUTION_V2')")
-	f.d.Exec("INSERT INTO agent_tokens(token_hash,label,agent_id,expires_at) VALUES('fixture','worker','worker',?)", time.Now().Add(time.Hour).UnixMilli())
+	f.d.Exec("INSERT INTO agent_tokens(token_hash,label,agent_id,expires_at) VALUES('fixture','worker','worker',?)", time.Now().Add(-time.Hour).UnixMilli())
 
 	if err = f.s.ReportAgentCapacity("worker", 4, 128, true); err != nil {
 		t.Fatal(err)

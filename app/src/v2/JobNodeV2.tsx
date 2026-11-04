@@ -57,11 +57,15 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
     : waitResource
     ? WAIT_RESOURCE_COLOR
     : STATUS_COLOR[data.status];
+  const relation = data.dependencyRelation;
+  const relationColor = relation === "ancestor" ? "#38bdf8" : relation === "descendant" ? "#c084fc" : undefined;
   const isRunning = data.status === "RUNNING";
 
   return (
     <div
       className="v2-grain-card v2-edge-highlight"
+      data-dependency-relation={relation as string | undefined}
+      title={relation === "ancestor" ? "Predecessor of selected job" : relation === "descendant" ? "Successor of selected job" : undefined}
       style={{
         position: "relative",
         width: 200,
@@ -84,6 +88,8 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
           : waitConfirm
           ? "0 0 0 1px rgba(167,139,250,0.45), 0 0 14px 1px rgba(167,139,250,0.25), inset 0 1px 0 rgba(255,255,255,0.04)"
           : undefined,
+        outline: !selected && relationColor ? `2px solid ${relationColor}` : undefined,
+        outlineOffset: 2,
         borderRadius: "var(--v2-radius)",
         fontFamily: "var(--v2-font-sans)",
         overflow: "hidden",
