@@ -1,3 +1,36 @@
+# Layout hierárquico de jobs — 04/11/2026
+
+Estado atual: Design e Monitoring usam Dagre em camadas por folder, com redução
+heurística de cruzamentos e alinhamento de ramificações/convergências. Raízes e
+isolados permanecem no topo. Ciclos são condensados em componentes fortemente
+conexos e exibidos lado a lado na mesma camada; dependências externas ao ciclo
+seguem abaixo. Arestas entre folders continuam visíveis, mas não alteram suas
+camadas internas. Organize reenquadra os limites recalculados.
+
+| Parâmetro | Valor |
+| --- | --- |
+| Separação horizontal mínima entre cards | 100 px |
+| Separação vertical mínima entre camadas | 80 px |
+| Padding interno do conteúdo | 20 px |
+| Folga do traço em cada ponta da conexão | 16 px |
+
+Geometria compartilhada entre cards, dimensões iniciais e handles estáticos.
+A altura máxima com tags reserva o espaço da camada, evitando sobreposição.
+Os valores são unidades do canvas antes do zoom. Ordenação de IDs e arestas
+estável evita mudanças de posição por simples reordenação da resposta da API.
+As antigas configurações de grade são aceitas por compatibilidade, mas não
+controlam o layout hierárquico.
+
+Fonte: [Dagre — configuração e coordenadas](https://github.com/dagrejs/dagre/wiki).
+Implementação em `app/src/v2/dependency-layout.ts`, `canvas-layout.ts`,
+`JobNodeV2.tsx` e `DependencyEdgeV2.tsx`.
+
+---
+
+## Histórico supersedido: proposta de grade
+
+O plano abaixo é histórico; sua partição entre fluxos e soltos foi substituída.
+
 # Plano — Layout de jobs (grade pros soltos, fluxo pros dependentes)
 
 > Refina o item do roadmap (§Identidade visual / UI). Escopo POR FOLDER.

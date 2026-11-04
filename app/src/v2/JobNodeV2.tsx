@@ -1,3 +1,4 @@
+import { GRAPH_SPACING, JOB_WIDTH, JOB_HEIGHT, JOB_TAGGED_HEIGHT } from "./dependency-layout";
 import { memo } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import { Lock } from "lucide-react";
@@ -68,7 +69,8 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
       title={relation === "ancestor" ? "Predecessor of selected job" : relation === "descendant" ? "Successor of selected job" : undefined}
       style={{
         position: "relative",
-        width: 200,
+        width: JOB_WIDTH,
+        height: data.manualOrder || data.dryRun ? JOB_TAGGED_HEIGHT : JOB_HEIGHT,
         // WAIT CONFIRM tinge o card inteiro de violeta (composto sobre a surface
         // pra manter a opacidade dos demais cards). Só quando aguardando confirmar.
         background: waitConfirm
@@ -127,7 +129,7 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
             flexShrink: 0,
           }}
         />
-        <div style={{ flex: 1, padding: "8px 10px", minWidth: 0 }}>
+        <div style={{ flex: 1, padding: GRAPH_SPACING.nodePadding, minWidth: 0 }}>
           {/* Linha 1: label SOZINHO na linha — as tags (FORCED/GHOST) moram numa
               linha própria ABAIXO do nome (pedido do usuário: a quantidade de
               tags espremia o job name até sumir). A tag ✋CONFIRM foi

@@ -1,3 +1,4 @@
+import { DependencyEdgeV2 } from "./DependencyEdgeV2";
 import { dependencyRelations } from "./dependency-layout";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -360,6 +361,7 @@ function V2PreviewInner() {
   const rfInstance = useRef<ReactFlowInstance | null>(null);
 
   const nodeTypes = useMemo(() => ({ jobV2: JobNodeV2, laneLabel: LaneLabelNode }), []);
+  const edgeTypes = useMemo(() => ({ dependencyV2: DependencyEdgeV2 }), []);
 
   // Disponibilidade de agentes p/ o card WAIT AGENT (azul claro). null = ainda
   // não carregou (canvas não acusa nada). Atualiza em agent.changed/_connected —
@@ -1483,7 +1485,7 @@ function V2PreviewInner() {
             arrastando. Antes só existia no Monitoring. */}
         <button
           onClick={() => organizeView(300)}
-          title="Organize — reframes the canvas to the same bounds it opened with (jobs already lay themselves out: dependents in a flow, loose ones on a grid)"
+          title="Organize — reframes the canvas to the same bounds it opened with (jobs use a hierarchical layered graph with roots at the top)"
           style={{
             padding: "5px 10px",
             background: "transparent",
@@ -1834,6 +1836,7 @@ function V2PreviewInner() {
           nodes={displayNodes}
           edges={canvas.edges}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           // (sem o prop fitView: o fit inicial embutido do RF aplicava DEPOIS do
           // organizeView de entrada — corrida — e deixava a câmera descentrada/fora
           // do extent. A entrada é 100% do organizeView, no gate 0→N.)

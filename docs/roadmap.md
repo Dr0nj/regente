@@ -2119,6 +2119,14 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 
 ## 📜 Changelog de entregas
 
+### 04/11/2026 — Canvas hierárquico
+
+Design e Monitoring passam a usar layout Dagre em camadas por folder: 100 px
+entre jobs, 80 px entre níveis, 20 px de padding e 16 px de folga nas conexões.
+Raízes no topo, ciclos agrupados, ordenação estável e alinhamento de bifurcações
+/convergências. Detalhes e limites em [layout de jobs](plano-layout-jobs.md).
+
+
 - **2026-11-02 — REV-02/04/05 publicados:** v0.2.62 no SHA `539e613`, 20 assets; CI tentativa 2/full/capacity e release aprovados, source-ci-proof conferido. Bootstrap privado, matriz executável e carregamento por autenticação/rota entregues; causa raiz da primeira falha Windows não comprovada. REV-01–05 concluídos, I17/EC-05 humano adiados.
 
 - **2026-11-02 — conciliação do roadmap:** status final da revisão e Kubernetes-01–05 alinhado às evidências; entregas retiradas do backlog e origem dos ECs explicitada. Nenhuma ampliação de homologação.

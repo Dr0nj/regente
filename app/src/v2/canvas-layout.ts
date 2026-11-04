@@ -2,12 +2,11 @@
  * canvas-layout — módulo PURO de layout do canvas (sem React state).
  *
  * Constantes de geometria, builders de nodes/edges (Monitoring e Design) e o
- * layout por folder (colunas Control-M style: dagre TB pros conectados + grade
- * pros soltos). Extraído do V2Preview.tsx (2026-07-01) para conter o blast
+ * layout hierárquico Dagre por folder (raízes e soltos no topo). Extraído do V2Preview.tsx (2026-07-01) para conter o blast
  * radius de mudanças de UI: layout muda AQUI, ciclo de vida do componente lá.
  */
 
-import { dependencyLayout } from "./dependency-layout";
+import { dependencyLayout, JOB_WIDTH, JOB_HEIGHT, JOB_TAGGED_HEIGHT } from "./dependency-layout";
 import { Position } from "@xyflow/react";
 import type { Node, Edge, NodeHandle } from "@xyflow/react";
 import type { JobNodeData } from "@/lib/job-config";
@@ -22,8 +21,8 @@ export type Mode = "design" | "monitoring";
    Constantes de layout (folders como colunas — Control-M style)
    ────────────────────────────────────────────────────────────── */
 
-export const NODE_W = 220;
-export const NODE_H = 72;
+export const NODE_W = JOB_WIDTH;
+export const NODE_H = JOB_TAGGED_HEIGHT;
 
 // Handles estáticos do card de job — fallback de geometria pro RF v12 renderizar
 // a LINHA DE DEPENDÊNCIA antes do ResizeObserver medir o nó. Sem isto, toda vez
@@ -46,9 +45,9 @@ export const NODE_H = 72;
 // ("atrás" dele) e ficava visivelmente mais curta. Duas variantes de handle,
 // escolhidas por card no builder do Monitoring (Design não tem linha de tags).
 const HANDLE_PX = 6;
-const CARD_VISUAL_W = 200; // largura do JobNodeV2 (≠ NODE_W=220, a célula de layout)
-const CARD_VISUAL_H = 55; // altura renderizada do card base (medida no lab)
-const CARD_VISUAL_H_TAGGED = 72; // card com a linha de tags ⚡FORCED/👻GHOST
+const CARD_VISUAL_W = JOB_WIDTH; // shared with the rendered card
+const CARD_VISUAL_H = JOB_HEIGHT; // browser-verified base card
+const CARD_VISUAL_H_TAGGED = JOB_TAGGED_HEIGHT; // browser-verified tagged card
 function jobHandles(cardH: number): NodeHandle[] {
   return [
     { type: "target", position: Position.Top, x: (CARD_VISUAL_W - HANDLE_PX) / 2, y: -HANDLE_PX / 2, width: HANDLE_PX, height: HANDLE_PX },
@@ -352,6 +351,7 @@ function makeEdge(
   const label = alt ? (sym ? `${sym} OR` : "OR") : sym;
   return {
     id: `e-${source}-${target}`,
+    type: "dependencyV2",
     source,
     target,
     label,

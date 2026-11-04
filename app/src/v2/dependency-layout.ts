@@ -1,48 +1,49 @@
 import Dagre from "@dagrejs/dagre";
 
-/** Longest dependency depth, including disconnected roots. Cycles share a rank. */
+export const GRAPH_SPACING = { horizontal: 100, vertical: 80, nodePadding: 20, arrow: 16 } as const;
+export const JOB_WIDTH = 220;
+export const JOB_HEIGHT = 80;
+export const JOB_TAGGED_HEIGHT = 99;
+
+/** Sugiyama-style layered layout, with stable input order and SCCs for cycles. */
 export function dependencyLayout(ids: string[], edges: Array<{ source: string; target: string }>, width: number, height: number) {
+  const sorted = [...new Set(ids)].sort();
+  const positions = new Map<string, { x: number; y: number }>();
+  if (!sorted.length) return positions;
   const graph = new Dagre.graphlib.Graph();
-  const sorted = [...ids].sort();
   for (const id of sorted) graph.setNode(id);
-  for (const e of edges) if (graph.hasNode(e.source) && graph.hasNode(e.target)) graph.setEdge(e.source, e.target);
-  const components = Dagre.graphlib.alg.tarjan(graph);
-  const owner = new Map<string, number>();
-  components.forEach((members, i) => members.forEach(id => owner.set(id, i)));
-  const children = components.map(() => new Set<number>());
-  const indegree = components.map(() => 0);
-  const depth = components.map(() => 0);
+  for (const e of [...edges].sort((a, b) => a.source.localeCompare(b.source) || a.target.localeCompare(b.target))) {
+    if (graph.hasNode(e.source) && graph.hasNode(e.target)) graph.setEdge(e.source, e.target);
+  }
+  const components = Dagre.graphlib.alg.tarjan(graph).map(m => m.sort()).sort((a, b) => a[0].localeCompare(b[0]));
+  const owner = new Map<string, string>();
+  // Reverse edges + BT + longest-path ranks by distance FROM roots. Normal
+  // longest-path ranks towards sinks and can lower short/disconnected roots.
+  const layered = new Dagre.graphlib.Graph().setGraph({
+    rankdir: "BT", ranker: "longest-path", nodesep: GRAPH_SPACING.horizontal,
+    ranksep: GRAPH_SPACING.vertical, edgesep: GRAPH_SPACING.arrow,
+  }).setDefaultEdgeLabel(() => ({}));
+  components.forEach((members, i) => {
+    const key = String(i);
+    members.forEach(id => owner.set(id, key));
+    layered.setNode(key, { width: members.length * width + (members.length - 1) * GRAPH_SPACING.horizontal, height });
+  });
   for (const e of graph.edges()) {
     const a = owner.get(e.v)!, b = owner.get(e.w)!;
-    if (a !== b && !children[a].has(b)) { children[a].add(b); indegree[b]++; }
+    if (a !== b) layered.setEdge(b, a);
   }
-  const queue = indegree.flatMap((n, i) => n === 0 ? [i] : []);
-  for (let i = 0; i < queue.length; i++) {
-    const a = queue[i];
-    for (const b of children[a]) {
-      depth[b] = Math.max(depth[b], depth[a] + 1);
-      if (--indegree[b] === 0) queue.push(b);
-    }
-  }
-  const rows = new Map<number, string[]>();
-  for (const id of sorted) {
-    const rank = depth[owner.get(id)!];
-    if (!rows.has(rank)) rows.set(rank, []);
-    rows.get(rank)!.push(id);
-  }
-  const positions = new Map<string, { x: number; y: number }>();
-  // Compact each row around its parents, keeping a full card of separation.
-  for (const [rank, members] of [...rows].sort(([a], [b]) => a - b)) {
-    const rowOrder = new Map(members.map((id, index) => [id, index]));
-    const desired = (id: string) => {
-      const parents = (graph.predecessors(id) ?? []).flatMap(p => positions.has(p) ? [positions.get(p)!.x] : []);
-      return parents.length ? parents.reduce((a, b) => a + b, 0) / parents.length : rowOrder.get(id)! * (width + 24);
-    };
-    members.sort((a, b) => desired(a) - desired(b) || a.localeCompare(b));
-    const target = members.reduce((sum, id) => sum + desired(id), 0) / members.length;
-    const start = Math.max(0, target - (members.length - 1) * (width + 24) / 2);
-    members.forEach((id, i) => positions.set(id, { x: start + i * (width + 24), y: rank * (height + 44) }));
-  }
+  Dagre.layout(layered);
+  components.forEach((members, i) => {
+    const node = layered.node(String(i));
+    members.forEach((id, j) => positions.set(id, {
+      x: node.x - node.width / 2 + j * (width + GRAPH_SPACING.horizontal),
+      y: node.y - height / 2,
+    }));
+  });
+  // Dagre coordinates are centers; canvas uses top-left, with no empty margin.
+  const minX = Math.min(...[...positions.values()].map(p => p.x));
+  const minY = Math.min(...[...positions.values()].map(p => p.y));
+  for (const p of positions.values()) { p.x -= minX; p.y -= minY; }
   return positions;
 }
 
