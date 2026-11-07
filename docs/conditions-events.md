@@ -275,6 +275,13 @@ The `upstream` field is no longer a gate and is no longer persisted:
    `FileStore.Save` ALWAYS drops it (persisting the view would re-expand it as a
    legacy edge).
 
+Topology construction indexes producers by condition base after legacy expansion
+and boolean-logic normalization. It preserves definition order, all matching
+producers, one edge per producer ID, and the date reference of the consumer's
+first matching input. Outputs from `set-condition` actions participate as before.
+This index is rebuilt for each normalization; it is not a workspace cache or an
+execution gate, and does not change the frozen-instance or pool semantics.
+
 **Snapshots** ordered before the unification: `defForInstance` expands the
 consumer side in memory (`ExpandSnapshotConditions`, with the idempotency rule
 against the live definitions). **`applyConditionsOut` is SNAPSHOT-ONLY (M1,

@@ -400,6 +400,12 @@ serves only as topology for the canvas/WhatIf/RCA/forecast/neighborhood.
 <code>FileStore.Save</code> ALWAYS drops it (persisting the view would re-expand it as a
 legacy edge).</li>
 </ol>
+<p>Topology construction indexes producers by condition base after legacy expansion
+and boolean-logic normalization. It preserves definition order, all matching
+producers, one edge per producer ID, and the date reference of the consumer's
+first matching input. Outputs from <code>set-condition</code> actions participate as before.
+This index is rebuilt for each normalization; it is not a workspace cache or an
+execution gate, and does not change the frozen-instance or pool semantics.</p>
 <p><strong>Snapshots</strong> ordered before the unification: <code>defForInstance</code> expands the
 consumer side in memory (<code>ExpandSnapshotConditions</code>, with the idempotency rule
 against the live definitions). <strong><code>applyConditionsOut</code> is SNAPSHOT-ONLY (M1,

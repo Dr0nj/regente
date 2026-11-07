@@ -114,6 +114,16 @@ scheduler. PERF-02 pode ser investigado enquanto PERF-01 é validado. PERF-05 co
 na primeira correção e acompanha cada implantação. Escala e novas funcionalidades
 não têm precedência sobre recuperação. Detalhes e testes no [plano](plans/2026-11-07-capacidade-recuperacao.md).
 
+**07/11 — PERF-01 em implementação, primeiro incremento:** normalização agora
+indexa produtores por base da condição, preservando ordem, múltiplos produtores,
+ações set-condition e referência de data do consumidor. Inclui comparação
+diferencial com o algoritmo anterior em 100 cenários determinísticos, duas
+passagens, e benchmark de 28.800 jobs. Medição local inicial: 10,05 ms por
+normalização (média de cinco iterações; Windows/i7; sem leitura de YAML/rede).
+Cache compartilhado, invalidação externa/coordenada, WebSocket sem reconstrução,
+perfil vivo, publicação/release e aceite na VPS continuam abertos; este incremento
+não encerra PERF-01 nem corrige a fila de auditoria.
+
 ### Onboarding Linux — incremento em validação (03/11/2026)
 
 Remoção do roteamento/bloqueio por ambiente, compatibilidade dos agentes existentes,

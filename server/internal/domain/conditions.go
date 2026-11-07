@@ -168,23 +168,52 @@ func addNotOKSetCondition(p *JobDefinition, name string) {
 // (OutAdd ou ação set-condition). NÃO é gate — o gate é o pool. O dateRef da
 // aresta espelha o sufixo da condição de entrada (informação de pareamento
 // visual: qual diária do pai casa com este filho).
-func deriveUpstreamView(c *JobDefinition, defs []*JobDefinition) {
+func deriveUpstreamView(c *JobDefinition, producers map[string][]string) {
 	c.Upstream = nil
+	if len(c.ConditionsIn) == 0 {
+		return
+	}
 	seen := map[string]bool{}
 	for _, n := range c.ConditionsIn {
 		b, ref := SplitCondRef(n)
-		for _, p := range defs {
-			if p.ID == c.ID || seen[p.ID] || !producesBase(p, b) {
+		for _, id := range producers[b] {
+			if id == c.ID || seen[id] {
 				continue
 			}
-			seen[p.ID] = true
-			e := Upstream{From: p.ID, Condition: CondOnSuccess}
+			seen[id] = true
+			e := Upstream{From: id, Condition: CondOnSuccess}
 			if ref != DateRefOdat {
 				e.DateRef = ref
 			}
 			c.Upstream = append(c.Upstream, e)
 		}
 	}
+}
+
+// conditionProducers indexa o escopo já expandido. Mantém a ordem das definitions
+// e todos os produtores; a primeira referência do consumidor continua definindo
+// o DateRef da aresta. Não é um índice de satisfação do pool nem de instâncias.
+func conditionProducers(defs []*JobDefinition) map[string][]string {
+	index := make(map[string][]string)
+	for _, d := range defs {
+		seen := make(map[string]bool)
+		add := func(name string) {
+			base, _ := SplitCondRef(name)
+			if !seen[base] {
+				seen[base] = true
+				index[base] = append(index[base], d.ID)
+			}
+		}
+		for _, name := range d.ConditionsOutAdd {
+			add(name)
+		}
+		for _, action := range d.Actions {
+			if action.Do == "set-condition" && action.Condition != "" {
+				add(action.Condition)
+			}
+		}
+	}
+	return index
 }
 
 // NormalizeConditions — normaliza um ESCOPO de definitions (folder/workspace
@@ -210,9 +239,10 @@ func NormalizeConditions(defs []JobDefinition) []JobDefinition {
 	for _, c := range ptrs {
 		normalizeConditionLogic(c)
 	}
-	// 3) upstream vira visão derivada (topologia por name-matching)
+	// 3) indexa uma vez; evita varrer todas as definitions para cada entrada.
+	producers := conditionProducers(ptrs)
 	for _, c := range ptrs {
-		deriveUpstreamView(c, ptrs)
+		deriveUpstreamView(c, producers)
 	}
 	return defs
 }
