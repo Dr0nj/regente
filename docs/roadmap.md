@@ -1,5 +1,10 @@
 # 🎼 Regente — Roadmap
 
+> **07/11/2026 — PRIORIDADE IMEDIATA: estabilizar 28.800 jobs/dia.**
+> A trilha **PERF-00–06** abaixo precede novas funcionalidades e expansão de escala.
+> Plano corrigido: [implementação urgente de capacidade e recuperação](plans/2026-11-07-capacidade-recuperacao.md).
+> Publicação deste planejamento não significa implementação, release ou aceite na VPS.
+
 > **03/11/2026 — Kubernetes: EM DESENVOLVIMENTO E TESTES.** Instalador,
 > imagens e receitas permanecem experimentais, sem aceite produtivo na VPS.
 > As qualificações locais registradas abaixo não alteram esse status. Após o
@@ -86,6 +91,28 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 ---
 
 ## 🔜 Backlog (o que falta)
+
+### 🔴 PERF — implementação urgente: CPU, auditoria e scheduler (07/11/2026)
+
+Status dos incrementos permanece somente neste Backlog; o plano vinculado contém
+contratos, sequência, evidências e critérios de aceite. A carga diária de 28.800
+jobs é o primeiro alvo real. Um milhão de execuções/dia continua não qualificado.
+
+| ID | Prioridade / ordem | Entrega pendente | Gate para conclusão |
+|---|---|---|---|
+| PERF-00 | P0, iniciar imediatamente | Baseline Go, pprof administrativo, métricas por etapa, diagnóstico operacional real | Perfis comparáveis e separação de CPU/steal, admissão/conclusão e readiness; sem expor dados sensíveis |
+| PERF-01 | P0, primeiro incremento | Índice de múltiplos produtores e snapshot compartilhado por geração consistente | Equivalência semântica, invalidação local, concorrência, cancelamento e ausência de publicação regressiva; reconexão não reconstrói grafo |
+| PERF-02 | P0, recuperação prioritária | ACK/result e auditoria atômicos ou recuperáveis pela identidade durável existente; capacidade reservada para conclusão | Fila cheia, retries e crash points não geram sucesso persistido convertido em 503 por auditoria HTTP nem novas intenções ilimitadas |
+| PERF-03 | P0, após contrato PERF-02 | Exportação em lotes duráveis com confirmação de prefixo contíguo | Perda de ACK, reinício, deduplicação, lacunas e integridade da cadeia; drenagem superior à produção no ensaio definido |
+| PERF-04 | P1, após estabilidade PERF-01–03 | Scheduler incremental sobre snapshots de instâncias e reconciliação limitada | Eventos por condição/horário/agente/recurso, recuperação de eventos perdidos e paridade de despacho |
+| PERF-05 | P0 transversal, fecha após PERF-04 | Qualificação integrada com 28.800 jobs e implantação nativa controlada | Um ciclo diário completo incluindo virada, falhas e recuperação; CPU/latência/filas comparadas com baseline |
+| PERF-06 | P2, depois de PERF-05 | Escala progressiva de 100 mil até 1 milhão de execuções/dia | Ensaio integrado por patamar, pico e hardware explícitos; nenhum aceite baseado apenas em inserção de registros |
+
+**Sequência ASAP:** PERF-00 acompanha todos os incrementos; entregar PERF-01,
+PERF-02 e PERF-03 em mudanças revisáveis e qualificadas, sem aguardar a reescrita do
+scheduler. PERF-02 pode ser investigado enquanto PERF-01 é validado. PERF-05 começa
+na primeira correção e acompanha cada implantação. Escala e novas funcionalidades
+não têm precedência sobre recuperação. Detalhes e testes no [plano](plans/2026-11-07-capacidade-recuperacao.md).
 
 ### Onboarding Linux — incremento em validação (03/11/2026)
 
