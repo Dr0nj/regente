@@ -22,6 +22,18 @@ func poolHas(t *testing.T, s *Scheduler, name, scope string) bool {
 	return s.conditions.Has(name, scope)
 }
 
+func waitPoolHas(t *testing.T, s *Scheduler, name, scope string) bool {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if poolHas(t, s, name, scope) {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return poolHas(t, s, name, scope)
+}
+
 func waitStatus(t *testing.T, s *Scheduler, id string, want ...string) string {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -256,7 +268,7 @@ func TestCondUnify_OperatorDeleteFromPoolBlocksChild(t *testing.T) {
 	_, _ = s.db.Exec(`UPDATE instances SET held_from_status='WAITING' WHERE id='B-1'`)
 
 	waitStatus(t, s, "A-1", string(domain.StatusOK))
-	if !poolHas(t, s, name, today) {
+	if !waitPoolHas(t, s, name, today) {
 		t.Fatalf("condição %s deveria estar no pool (visível no painel)", name)
 	}
 	// Operador deleta no painel Condições.
