@@ -23,6 +23,7 @@ import {
   onDefinitionsChange,
   reloadDefinitions,
 } from "@/lib/definition-store";
+import { hasLoadedToday } from "@/lib/server-instance-store";
 import { container } from "@/lib/container";
 import { onServerEvent, isServerMode, isResyncEvent } from "@/lib/server-client";
 import { listPublishedDefinitions } from "@/lib/adapters/storage/ServerApiAdapter";
@@ -50,7 +51,7 @@ export function useOrchestratorData() {
   // false, a UI NÃO mostra o empty state "Ambiente vazio": no server mode as
   // instances chegam async e o overlay piscava antes do board materializar no F5.
   const [defsLoaded, setDefsLoaded] = useState(false);
-  const [instancesLoaded, setInstancesLoaded] = useState(!isServerMode());
+  const [instancesLoaded, setInstancesLoaded] = useState(!isServerMode() || hasLoadedToday());
 
   /* ── Mount: load definitions + subscribe ── */
   useEffect(() => {
@@ -100,9 +101,9 @@ export function useOrchestratorData() {
     // em cada modo (local filtra por data local; server devolve o dia que o SERVER
     // materializou). Refiltrar pela data local do browser zerava o board no primeiro
     // evento WS quando o dia do cliente ≠ dia do server (acesso remoto/virada de dia).
-    const unsubInst = onInstanceChange(() => {
-      setInstances(getTodayInstances());
-      setInstancesLoaded(true);
+    const unsubInst = onInstanceChange((snapshot) => {
+      setInstances(serverMode ? snapshot : getTodayInstances());
+      setInstancesLoaded(!serverMode || hasLoadedToday());
     });
     startScheduler(2000);
 

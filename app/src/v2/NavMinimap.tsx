@@ -7,7 +7,7 @@
  * Extraído do V2Preview.tsx (2026-07-01).
  */
 
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import { useStore, type Node } from "@xyflow/react";
 import { NODE_W, NODE_H } from "./canvas-layout";
 
@@ -58,33 +58,38 @@ export default function NavMinimap({ nodes, width, height, onNavigate }: {
     onNavigate(fx, fy, tzoom);
   };
   return (
-    <svg width={width} height={height} onClick={handleClick} style={{ display: "block", cursor: "pointer" }}>
-      <JobsLayer jobs={jobs} minX={minX} minY={minY} scale={scale} offX={offX} offY={offY} sw={sw} sh={sh} />
+    <div style={{ position: "relative", width, height }}>
+      <JobsLayer jobs={jobs} width={width} height={height} minX={minX} minY={minY} scale={scale} offX={offX} offY={offY} sw={sw} sh={sh} />
+      <svg width={width} height={height} onClick={handleClick} style={{ position: "absolute", inset: 0, display: "block", cursor: "pointer" }}>
       {/* Retângulo do viewport — mostra onde a tela está sobre o conteúdo. */}
       <ViewportRect minX={minX} minY={minY} scale={scale} offX={offX} offY={offY} />
-    </svg>
+      </svg>
+    </div>
   );
 }
 
 // Camada dos jobs — memo: só re-renderiza quando a LISTA muda (publish, folder,
 // daily), nunca por movimento de câmera.
-const JobsLayer = memo(function JobsLayer({ jobs, minX, minY, scale, offX, offY, sw, sh }: {
-  jobs: Node[]; minX: number; minY: number; scale: number; offX: number; offY: number; sw: number; sh: number;
+const JobsLayer = memo(function JobsLayer({ jobs, width, height, minX, minY, scale, offX, offY, sw, sh }: {
+  jobs: Node[]; width: number; height: number; minX: number; minY: number; scale: number; offX: number; offY: number; sw: number; sh: number;
 }) {
-  const rects = useMemo(() => jobs.map((n) => (
-    <rect
-      key={n.id}
-      x={offX + (n.position.x - minX) * scale}
-      y={offY + (n.position.y - minY) * scale}
-      width={sw}
-      height={sh}
-      rx={1}
-      fill={miniNodeColor(n)}
-      stroke="#06080c"
-      strokeWidth={0.5}
-    />
-  )), [jobs, minX, minY, scale, offX, offY, sw, sh]);
-  return <>{rects}</>;
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current, context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
+    context.scale(ratio, ratio);
+    context.strokeStyle = "#06080c"; context.lineWidth = 0.5;
+    for (const node of jobs) {
+      const x = offX + (node.position.x - minX) * scale, y = offY + (node.position.y - minY) * scale;
+      context.fillStyle = miniNodeColor(node);
+      context.fillRect(x, y, sw, sh); context.strokeRect(x, y, sw, sh);
+    }
+  }, [jobs, width, height, minX, minY, scale, offX, offY, sw, sh]);
+  // One bitmap replaces thousands of SVG elements. Camera movement only moves
+  // the independent viewport rectangle and never redraws this layer.
+  return <canvas ref={ref} aria-hidden="true" style={{ display: "block", width, height }} />;
 });
 
 // Retângulo da área visível — ÚNICO assinante do transform. Re-renderiza a cada

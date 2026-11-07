@@ -40,7 +40,7 @@ function notify(): void {
 
 /* ── carregamento ── */
 
-async function refreshServer(): Promise<void> {
+async function fetchServer(): Promise<void> {
   try {
     cache = (await listConditions("*")).map((c) => ({
       name: c.name, scopeDate: c.scopeDate ?? "", setAt: c.setAt, setBy: c.setBy,
@@ -50,6 +50,21 @@ async function refreshServer(): Promise<void> {
   } catch (err) {
     console.warn("[conditions] refresh failed", err);
   }
+}
+
+let refreshInFlight: Promise<void> | null = null;
+let refreshTail: Promise<void> | null = null;
+function refreshServer(): Promise<void> {
+  if (refreshInFlight) {
+    return refreshTail ??= refreshInFlight.then(() => { refreshTail = null; return refreshServer(); });
+  }
+  refreshInFlight = fetchServer().finally(() => { refreshInFlight = null; });
+  return refreshInFlight;
+}
+let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+function scheduleServerRefresh() {
+  if (refreshTimer !== undefined) return;
+  refreshTimer = setTimeout(() => { refreshTimer = undefined; void refreshServer(); }, 32);
 }
 
 /** Refresh after an operator action even when the WebSocket is reconnecting. */
@@ -75,7 +90,7 @@ function ensure(): void {
         // condition.changed cobre tudo; set/unset são os broadcasts legados da API.
         if (ev.event === "condition.changed" || ev.event === "condition.set" ||
             ev.event === "condition.unset" || isResyncEvent(ev)) {
-          void refreshServer();
+          scheduleServerRefresh();
         }
       });
       void refreshServer();

@@ -1,5 +1,23 @@
 import { test, expect } from "@playwright/test";
 import { dependencyLayout, dependencyRelations } from "../src/v2/dependency-layout";
+import { enableCanvasMetrics, readCanvasMetrics } from "../src/v2/canvas-metrics";
+
+test("identical components reuse geometry; different edges of equal-sized groups do not", () => {
+  enableCanvasMetrics(true);
+  const ids = ["a0", "a1", "a2", "b0", "b1", "b2", "c0", "c1", "c2"];
+  const edges = [
+    {source:"a0",target:"a1"},{source:"a0",target:"a2"},
+    {source:"b0",target:"b1"},{source:"b0",target:"b2"},
+    {source:"c0",target:"c1"},{source:"c1",target:"c2"},
+  ];
+  const p = dependencyLayout(ids, edges, 220, 99);
+  expect(readCanvasMetrics().totals.dagre).toBe(2);
+  expect(p.get("a1")!.y).toBe(p.get("b1")!.y);
+  expect(p.get("a2")!.y).toBe(p.get("b2")!.y);
+  expect(p.get("c2")!.y).toBeGreaterThan(p.get("c1")!.y);
+  expect(dependencyLayout([...ids].reverse(), [...edges].reverse(), 220, 99)).toEqual(p);
+  enableCanvasMetrics(false);
+});
 
 test("roots and isolated jobs share the top row; children follow longest dependency depth", () => {
   const p = dependencyLayout(["a", "b", "c", "isolated", "root"], [

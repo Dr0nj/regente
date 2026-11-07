@@ -6,6 +6,7 @@
  * radius de mudanças de UI: layout muda AQUI, ciclo de vida do componente lá.
  */
 
+import { recordCanvasMetric } from "./canvas-metrics";
 import { dependencyLayout, JOB_WIDTH, JOB_HEIGHT, JOB_TAGGED_HEIGHT } from "./dependency-layout";
 import { Position } from "@xyflow/react";
 import type { Node, Edge, NodeHandle } from "@xyflow/react";
@@ -142,9 +143,8 @@ export function instanceToMonitoring(inst: JobInstance): MonitoringJob {
   };
 }
 
-function fmtHm(ms: number): string {
-  return new Date(ms).toLocaleTimeString("en-GB", { hour12: false }).slice(0, 5);
-}
+const timeFormatter = new Intl.DateTimeFormat("en-GB", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+function fmtHm(ms: number): string { return timeFormatter.format(ms).slice(0, 5); }
 
 // fmtRunRange — o horário no card do Monitoring: início e, quando a execução já
 // TERMINOU, "início–fim" (pedido do usuário; é o que o operador quer ler sem
@@ -177,7 +177,7 @@ function scheduleSummary(s: JobDefinition["schedule"]): string {
    Canvas builders (folders como colunas, dagre TB dentro)
    ────────────────────────────────────────────────────────────── */
 
-export interface Canvas { nodes: Node[]; edges: Edge[]; lanes: LaneInfo[] }
+export interface Canvas { nodes: Node[]; edges: Edge[]; lanes: LaneInfo[]; topology?: Array<{ source: string; target: string }> }
 export interface LaneInfo { team: string; x: number; y: number; width: number; height: number; count: number }
 
 export interface ContentBounds { minX: number; minY: number; maxX: number; maxY: number }
@@ -455,6 +455,7 @@ function composeColumns<T extends { id: string; team?: string }>(
       draggable: false,
       selectable: false,
       connectable: false,
+      selected: false,
       zIndex: 0,
     });
 
@@ -517,106 +518,31 @@ function hasResourceShortfall(resources: Record<string, number> | undefined, poo
   return false;
 }
 
-export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT, agents?: AgentAvailability | null, overrides?: LayoutOverrides | null, pool: ReadonlySet<string> = new Set(), resourcePool?: ResourcePool | null): Canvas {
-  // M1 — Monitoring 100% INSTANCE-DRIVEN: tudo (label/tipo/linhas/gates) vem
-  // CONGELADO na ordem (schemaV18), nunca da def viva. As `defs` entram só como
-  // FALLBACK de instance LEGADA sem backfill (label/jobType vazios).
-  const defsById = new Map(defs.map((d) => [d.id, d] as const));
-  // Relógio do gate de janela: WAIT RESOURCE só vale pra job já no horário (antes
-  // disso é "WAIT" de agendamento). Rebuild por tick mantém isto fresco.
-  const nowMs = Date.now();
+// Geometry contains only topology, fixed bounds and edge metadata. It never owns
+// status, selection or clocks. One model belongs to one canvas, so independent
+// views cannot evict each other's geometry or retain an unbounded day history.
+interface StructuralLink { source: string; target: string; condition: EdgeCondition; names: string[]; alt: boolean }
+export interface CanvasGeometry extends Canvas { links: StructuralLink[] }
 
-  // Enriquecimento (só legado): instance sem colunas congeladas cai na def viva
-  // pra folder/label/tipo aparecerem. Instance com snapshot (o caso normal) usa
-  // os próprios campos — editar a def no Design não a reescreve.
-  const instances: JobInstance[] = rawInstances.map((inst) => {
-    const def = defsById.get(inst.definitionId);
-    if (!def) return inst.label ? inst : { ...inst, label: inst.definitionId };
-    return {
-      ...inst,
-      team: inst.team || def.team,
-      // Frozen label (mesmo quando IGUAL ao id) vence; SÓ o vazio (legado sem
-      // backfill) cai na def viva. Nunca comparar com definitionId — um label
-      // congelado legítimo pode ser igual ao id (foi a raiz do card com o nome novo).
-      label: inst.label || def.label,
-      jobType: inst.jobType || def.jobType,
-    };
-  });
+export function buildCanvasGeometry(
+  mode: Mode, items: Array<{ id: string; team?: string; manualOrder?: boolean; dryRun?: boolean }>,
+  links: StructuralLink[], cfg: LayoutConfig, overrides?: LayoutOverrides | null,
+): CanvasGeometry {
+  const prefix = mode === "monitoring" ? "m" : "d";
+  const { nodes, lanes } = composeColumns(prefix, items, (item, x, y) => {
+    const height = mode === "monitoring" && (item.manualOrder || item.dryRun) ? JOB_TAGGED_HEIGHT : JOB_HEIGHT;
+    return { id: `${prefix}-${item.id}`, type: "jobV2", position: { x, y },
+      initialWidth: NODE_W, initialHeight: height,
+      handles: height === JOB_TAGGED_HEIGHT ? JOB_HANDLES_TAGGED : JOB_HANDLES,
+      data: {}, selected: false, draggable: false, zIndex: 10 };
+  }, links, item => `${prefix}-${item.id}`, cfg, overrides);
+  return { nodes, lanes, links, edges: links.map(e => makeEdge(e.source, e.target, e.condition, "pending", e.alt)) };
+}
 
-  // WAIT COND: instance WAITING com alguma condição de ENTRADA ausente do
-  // pool — a MESMA régua do gate do server (todas as condsIn congeladas). O
-  // card mostra "WAIT COND" pra distinguir de "esperando o horário".
-  const waitingOnDeps = new Set<string>();
-
-  // Índice PRODUTOR (do snapshot): base da condição → instances cujo condsOutAdd
-  // congelado a adiciona. É a fonte ÚNICA das linhas do grafo — nunca a
-  // topologia viva do Design (`def.upstream`), que só vale no modo design.
-  // Assim, criar/ligar jobs novos no Design não desenha linhas em instances já
-  // ordenadas; a linha nova só aparece na cópia forçada (que tem a saída no
-  // próprio snapshot).
-  const producersByBase = new Map<string, JobInstance[]>();
-  for (const p of instances) {
-    for (const n of p.condsOutAdd ?? []) {
-      const base = splitCondSuffix(n).base;
-      const list = producersByBase.get(base);
-      if (list) list.push(p);
-      else producersByBase.set(base, [p]);
-    }
-  }
-
-  const edges: Edge[] = [];
-  const rawEdges: Array<{ source: string; target: string }> = [];
-  for (const inst of instances) { // inst = CONSUMIDOR
-    if (isWaitingOnConds(inst, defsById.get(inst.definitionId), pool)) waitingOnDeps.add(inst.id);
-    const cin = inst.condsIn ?? [];
-    if (!cin.length) continue;
-    const tgt = `m-${inst.id}`;
-    const linkedParents = new Set<string>(); // 1 linha por par (produtor, consumidor)
-    for (const n of cin) {
-      const { base, ref } = splitCondSuffix(n);
-      const producers = producersByBase.get(base);
-      if (!producers) continue;
-      // Só as cópias do produtor da diária que o SUFIXO da entrada aceita
-      // (@odat mesma origem · @prev anterior · @stat qualquer): o filho
-      // carregado do dia 14 conversa com o pai do 14, não com o fresco de hoje.
-      const parents = parentsForEdge(inst, producers, ref);
-      for (const parent of parents) {
-        if (parent.id === inst.id || linkedParents.has(parent.id)) continue;
-        linkedParents.add(parent.id);
-        // As condições que LIGAM este par (entradas do filho que ESTE pai
-        // produz): a cor da linha é o estado delas no POOL para este consumidor.
-        // verde ✓ = existe (ou o filho rodou sobre ela); cinza = ainda não
-        // existe / consumida / deletada; vermelho ✗ = filho NOTOK.
-        const linkNames = instEdgeCondNames(parent.condsOutAdd, cin);
-        const state = evaluateEdgeState(inst, linkNames, pool);
-        // CL-4: aresta "alternativa" (OU) quando a condição que liga o par é
-        // membro de um grupo OR na lógica CONGELADA da ordem (nunca a def viva).
-        const alt = linkNames.some((n) => condIsAlternative(inst.condLogic, n));
-        const src = `m-${parent.id}`;
-        rawEdges.push({ source: src, target: tgt });
-        edges.push(makeEdge(src, tgt, EDGE_CONDITION_DEFAULT, state, alt));
-      }
-    }
-  }
-
-  const { nodes, lanes } = composeColumns(
-    "m",
-    instances,
-    (inst, x, y) => ({
-      id: `m-${inst.id}`,
-      type: "jobV2",
-      position: { x, y },
-      // Dimensão de cara (ver nota na lane): evita o `visibility:hidden` do RF
-      // enquanto mede — sob rajada a medição pode não chegar e o card some.
-      initialWidth: NODE_W,
-      initialHeight: NODE_H,
-      // Handles estáticos (ver JOB_HANDLES): mantém a LINHA de dependência
-      // posicionável mesmo antes/sem a medição — sob rajada a edge não some.
-      // BUG-9: card com linha de tags é mais alto — o handle de saída desce
-      // junto, senão a seta nasce atrás do card. Só MANUAL (Order Force) e GHOST
-      // (dry-run) fazem a linha de tags; Run Now não leva selo → card base.
-      handles: (inst.manualOrder || inst.dryRun) ? JOB_HANDLES_TAGGED : JOB_HANDLES,
-      data: {
+function monitoringData(inst: JobInstance, def: JobDefinition | undefined, agents: AgentAvailability | null | undefined,
+  pool: ReadonlySet<string>, resourcePool: ResourcePool | null | undefined, nowMs: number): JobNodeData {
+  const waitEvent = isWaitingOnConds(inst, def, pool);
+  return {
         label: inst.label,
         jobType: inst.jobType,
         status: INSTANCE_TO_UI_STATUS[inst.status],
@@ -642,12 +568,12 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
         // Cadeado âmbar (vs violeta do hold individual) quando o HOLD veio de uma
         // pausa de folder — não liberável 1-a-1, só pelo resume da folder.
         folderHeld: inst.status === "HOLD" && inst.holdScope === "folder",
-        waitEvent: waitingOnDeps.has(inst.id),
+        waitEvent: waitEvent,
         // WAIT AGENT (azul claro): WAITING sem bloqueio de dependência e sem
         // agente online capaz de executar. Só deriva quando a lista de agentes
         // já carregou (agents != null) — sem info, não acusa nada.
         // M1: jobType/pinnedAgent CONGELADOS na ordem (schemaV18), não a def viva.
-        waitAgent: !!agents && inst.status === "WAITING" && !waitingOnDeps.has(inst.id) &&
+        waitAgent: !!agents && inst.status === "WAITING" && !waitEvent &&
           !hasAgentFor(inst.jobType, inst.pinnedAgent, agents),
         // WAIT CONFIRM (violeta): a ordem exige confirmação (Control-M "Wait for
         // confirmation") e esta instância ainda não foi confirmada. M1: lê o
@@ -661,75 +587,162 @@ export function buildMonitoringCanvas(rawInstances: JobInstance[], defs: JobDefi
         // aí o único motivo restante é o recurso. Sem pool carregado, não acusa.
         waitResource: !!resourcePool && inst.status === "WAITING" &&
           inst.scheduledAt <= nowMs &&
-          !waitingOnDeps.has(inst.id) &&
+          !waitEvent &&
           !(!!inst.confirmReq && !inst.confirmed) &&
           !(!!agents && !hasAgentFor(inst.jobType, inst.pinnedAgent, agents)) &&
           hasResourceShortfall(inst.resources, resourcePool),
-      } as JobNodeData,
-      draggable: false,
-      zIndex: 10,
-    }),
-    rawEdges,
-    (inst) => `m-${inst.id}`,
-    cfg,
-    overrides,
-  );
-
-  return { nodes, edges, lanes };
+      } as JobNodeData;
 }
 
-export function buildDesignCanvas(defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT, overrides?: LayoutOverrides | null): Canvas {
-  const edges: Edge[] = [];
-  const rawEdges: Array<{ source: string; target: string }> = [];
-  const defsById = new Map(defs.map((d) => [d.id, d]));
-  for (const def of defs) {
-    if (!def.upstream?.length) continue;
-    // Uma aresta P→C é "alternativa" (OU) quando a condição que a liga é membro
-    // de um grupo OR na lógica de C — dica visual do CL-4. A setinha só cria AND.
-    const edgeAlt = (fromId: string) => {
-      const p = defsById.get(fromId);
-      if (!p || !def.conditionLogic) return false;
-      return (def.conditionsIn ?? []).some(
-        (n) => producesBase(p, splitCondSuffix(n).base) && condIsAlternative(def.conditionLogic, n),
-      );
-    };
-    for (const u of def.upstream) {
-      const src = `d-${u.from}`;
-      const tgt = `d-${def.id}`;
-      rawEdges.push({ source: src, target: tgt });
-      edges.push(makeEdge(src, tgt, u.condition ?? EDGE_CONDITION_DEFAULT, "pending", edgeAlt(u.from)));
+// All card fields are primitive visual values. Comparing just this projection
+// keeps output/log payloads and REST object allocation out of React Flow.
+function sameData(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  if (a === b) return true;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every(k => Object.is(a[k], b[k]));
+}
+
+export function applyCanvasRuntimeState(geometry: CanvasGeometry, previous: Canvas | undefined,
+  dataFor: (id: string) => JobNodeData, stateFor: (link: StructuralLink) => DepState): Canvas {
+  const oldNodes = new Map(previous?.nodes.map(n => [n.id, n]));
+  const oldEdges = new Map(previous?.edges.map(e => [e.id, e]));
+  const nodes = geometry.nodes.map(base => {
+    const old = oldNodes.get(base.id);
+    if (base.type === "laneLabel") return old && sameData(old.data, base.data) &&
+      old.position.x === base.position.x && old.position.y === base.position.y ? old : base;
+    const data = dataFor(base.id.slice(2));
+    if (old && old.position.x === base.position.x && old.position.y === base.position.y &&
+      old.initialWidth === base.initialWidth && old.initialHeight === base.initialHeight && old.handles === base.handles && sameData(old.data, data)) return old;
+    return { ...base, data };
+  });
+  const edges = geometry.links.map((link, i) => {
+    const base = geometry.edges[i], old = oldEdges.get(base.id);
+    const state = stateFor(link);
+    if (old && old.data?.state === state && old.data?.alt === link.alt && old.data?.condition === link.condition) return old;
+    return state === "pending" ? base : makeEdge(link.source, link.target, link.condition, state, link.alt);
+  });
+  const stableNodes = previous && nodes.length === previous.nodes.length && nodes.every((n, i) => n === previous.nodes[i]) ? previous.nodes : nodes;
+  const stableEdges = previous && edges.length === previous.edges.length && edges.every((e, i) => e === previous.edges[i]) ? previous.edges : edges;
+  return previous && stableNodes === previous.nodes && stableEdges === previous.edges && geometry.lanes === previous.lanes
+    ? previous : { nodes: stableNodes, edges: stableEdges, lanes: geometry.lanes, topology: geometry.links };
+}
+
+function monitoringLinks(instances: JobInstance[]): StructuralLink[] {
+  const producers = new Map<string, JobInstance[]>();
+  for (const inst of instances) for (const name of inst.condsOutAdd ?? []) {
+    const base = splitCondSuffix(name).base, list = producers.get(base);
+    if (list) list.push(inst); else producers.set(base, [inst]);
+  }
+  const links: StructuralLink[] = [];
+  for (const inst of instances) {
+    const cin = inst.condsIn ?? [], linked = new Set<string>();
+    for (const name of cin) {
+      const { base, ref } = splitCondSuffix(name);
+      for (const parent of parentsForEdge(inst, producers.get(base) ?? [], ref)) {
+        if (parent.id === inst.id || linked.has(parent.id)) continue;
+        linked.add(parent.id);
+        const names = instEdgeCondNames(parent.condsOutAdd, cin);
+        links.push({ source: `m-${parent.id}`, target: `m-${inst.id}`, condition: EDGE_CONDITION_DEFAULT,
+          names, alt: names.some(n => condIsAlternative(inst.condLogic, n)) });
+      }
     }
   }
+  return links;
+}
 
-  const { nodes, lanes } = composeColumns(
-    "d",
-    defs,
-    (def, x, y) => ({
-      id: `d-${def.id}`,
-      type: "jobV2",
-      position: { x, y },
-      // Dimensão de cara (ver nota na lane): evita o `visibility:hidden` do RF
-      // enquanto mede — sob rajada a medição pode não chegar e o card some.
-      initialWidth: NODE_W,
-      initialHeight: NODE_H,
-      // Handles estáticos (ver JOB_HANDLES): mantém a LINHA de dependência
-      // posicionável mesmo antes/sem a medição — sob rajada a edge não some.
-      handles: JOB_HANDLES,
-      data: {
-        label: def.label,
-        jobType: def.jobType as JobNodeData["jobType"],
-        status: def.schedule.enabled ? "WAITING" : "INACTIVE",
-        team: def.team,
-        schedule: scheduleSummary(def.schedule),
-        mode: "design",
-      } as JobNodeData,
-      zIndex: 10,
-    }),
-    rawEdges,
-    (def) => `d-${def.id}`,
-    cfg,
-    overrides,
-  );
+export function createCanvasModel() {
+  let key = "", geometry: CanvasGeometry | undefined, canvas: Canvas | undefined;
+  let layoutBuilds = 0;
+  const signatures = new WeakMap<JobInstance, string>();
+  const emptyPool = new Set<string>();
+  const dataCache = new Map<string, { inst: JobInstance; def: JobDefinition | undefined; data: JobNodeData; due: boolean }>();
+  const edgeStateCache = new Map<StructuralLink, { inst: JobInstance; state: DepState }>();
+  let previousAgents: AgentAvailability | null | undefined, previousPool: ReadonlySet<string> | undefined;
+  let previousResources: ResourcePool | null | undefined;
+  const configKey = (cfg: LayoutConfig, overrides?: LayoutOverrides | null) =>
+    JSON.stringify([cfg, [...(overrides ?? [])].sort(([a], [b]) => a.localeCompare(b)), NODE_W, NODE_H, JOB_HEIGHT]);
+  return {
+    get layoutBuilds() { return layoutBuilds; },
+    monitoring(raw: JobInstance[], defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT,
+      agents?: AgentAvailability | null, overrides?: LayoutOverrides | null, pool: ReadonlySet<string> = emptyPool,
+      resources?: ResourcePool | null): Canvas {
+      const start = performance.now();
+      const defsById = new Map(defs.map(d => [d.id, d]));
+      const instances = raw.map(inst => {
+        const def = defsById.get(inst.definitionId);
+        if (inst.team && inst.label && inst.jobType) return inst;
+        return { ...inst, team: inst.team || def?.team, label: inst.label || def?.label || inst.definitionId, jobType: inst.jobType || def?.jobType || "" };
+      });
+      // Signature includes ODAT scope, frozen dependencies, folder order and
+      // actual card dimensions. It deliberately excludes every runtime field.
+      const nextKey = "m" + configKey(cfg, overrides) + JSON.stringify(instances.map(inst => {
+        let signature = signatures.get(inst);
+        if (!signature) {
+          signature = JSON.stringify([inst.id, inst.team, odateOf(inst), inst.condsIn, inst.condsOutAdd, inst.condLogic, !!inst.manualOrder, !!inst.dryRun]);
+          signatures.set(inst, signature);
+        }
+        return signature;
+      }));
+      if (!geometry || key !== nextKey) {
+        geometry = buildCanvasGeometry("monitoring", instances, monitoringLinks(instances), cfg, overrides);
+        key = nextKey; layoutBuilds++;
+        dataCache.clear();
+        edgeStateCache.clear();
+      }
+      const byId = new Map(instances.map(inst => [inst.id, inst]));
+      const now = Date.now();
+      const poolChanged = previousPool !== pool, agentsChanged = previousAgents !== agents, resourcesChanged = previousResources !== resources;
+      const before = canvas;
+      canvas = applyCanvasRuntimeState(geometry, canvas, id => {
+        const inst = byId.get(id)!, def = defsById.get(inst.definitionId), old = dataCache.get(id);
+        const due = inst.scheduledAt <= now;
+        if (old && old.inst === inst && old.def === def && old.due === due &&
+          !(inst.status === "WAITING" && (poolChanged || agentsChanged || (resourcesChanged && Object.keys(inst.resources ?? {}).length > 0)))) return old.data;
+        const data = monitoringData(inst, def, agents, pool, resources, now);
+        dataCache.set(id, { inst, def, data, due });
+        return data;
+      }, link => {
+        const inst = byId.get(link.target.slice(2))!, old = edgeStateCache.get(link);
+        if (old?.inst === inst && !poolChanged) return old.state;
+        const state = evaluateEdgeState(inst, link.names, pool);
+        edgeStateCache.set(link, { inst, state });
+        return state;
+      });
+      previousPool = pool; previousAgents = agents; previousResources = resources;
+      const result = canvas;
+      recordCanvasMetric("build", start, () => ({ instances: raw.length, nodes: result.nodes.length, edges: result.edges.length,
+        nodesRecreated: result.nodes.filter((n, i) => n !== before?.nodes[i]).length,
+        edgesRecreated: result.edges.filter((e, i) => e !== before?.edges[i]).length, layoutBuilds }));
+      return canvas;
+    },
+    design(defs: JobDefinition[], cfg: LayoutConfig = DEFAULT_LAYOUT, overrides?: LayoutOverrides | null): Canvas {
+      const nextKey = "d" + configKey(cfg, overrides) + JSON.stringify(defs.map(d => [d.id, d.team, d.upstream, d.conditionsIn, d.conditionsOutAdd, d.conditionLogic]));
+      const byId = new Map(defs.map(d => [d.id, d]));
+      if (!geometry || key !== nextKey) {
+        const links: StructuralLink[] = [];
+        for (const def of defs) for (const u of def.upstream ?? []) {
+          const parent = byId.get(u.from);
+          if (!parent) continue;
+          const alt = (def.conditionsIn ?? []).some(n => producesBase(parent, splitCondSuffix(n).base) && condIsAlternative(def.conditionLogic, n));
+          links.push({ source: `d-${u.from}`, target: `d-${def.id}`, condition: u.condition ?? EDGE_CONDITION_DEFAULT, alt, names: [] });
+        }
+        geometry = buildCanvasGeometry("design", defs, links, cfg, overrides); key = nextKey; layoutBuilds++;
+        dataCache.clear();
+      }
+      canvas = applyCanvasRuntimeState(geometry, canvas, id => {
+        const def = byId.get(id)!;
+        return { label: def.label, jobType: def.jobType as JobNodeData["jobType"], team: def.team,
+          status: def.schedule.enabled ? "WAITING" : "INACTIVE", schedule: scheduleSummary(def.schedule), mode: "design" };
+      }, () => "pending");
+      return canvas;
+    },
+  };
+}
 
-  return { nodes, edges, lanes };
+// Pure entry points for one-shot callers. The UI owns a retained model per mode.
+export function buildMonitoringCanvas(...args: Parameters<ReturnType<typeof createCanvasModel>["monitoring"]>): Canvas {
+  return createCanvasModel().monitoring(...args);
+}
+export function buildDesignCanvas(...args: Parameters<ReturnType<typeof createCanvasModel>["design"]>): Canvas {
+  return createCanvasModel().design(...args);
 }

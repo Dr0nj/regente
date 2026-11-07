@@ -1,5 +1,6 @@
 import { GRAPH_SPACING, JOB_WIDTH, JOB_HEIGHT, JOB_TAGGED_HEIGHT } from "./dependency-layout";
 import { memo } from "react";
+import { recordCanvasMetric } from "./canvas-metrics";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import { Lock } from "lucide-react";
 import type { JobNodeData, JobStatus } from "@/lib/job-config";
@@ -46,6 +47,7 @@ const WAIT_CONFIRM_COLOR = "#a78bfa";
 const WAIT_RESOURCE_COLOR = "#f59e0b";
 
 function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
+  recordCanvasMetric("jobRender");
   const waitConfirm = data.status === "WAITING" && !!data.waitConfirm;
   const waitAgent = data.status === "WAITING" && !!data.waitAgent;
   const waitResource = data.status === "WAITING" && !!data.waitResource;

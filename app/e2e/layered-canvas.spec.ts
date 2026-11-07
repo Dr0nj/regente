@@ -77,5 +77,15 @@ test("layered canvas renders padding, spacing and detached edges in Monitoring a
     expect(edge).not.toContain("NaN");
     await page.screenshot({path:testInfo.outputPath(mode.toLowerCase()+"-layered.png")});
   }
+  // Design handles retain their gesture while the body remains camera-pan area.
+  const source = await page.locator('[data-id="d-right"] .react-flow__handle-bottom').boundingBox();
+  const target = await page.locator('[data-id="d-left"] .react-flow__handle-top').boundingBox();
+  expect(source).not.toBeNull(); expect(target).not.toBeNull();
+  // The card clips the outside half of each nub. Start inside the visible half.
+  await page.mouse.move(source!.x + source!.width / 2, source!.y + source!.height / 2 - 2);
+  await page.mouse.down();
+  await page.mouse.move(target!.x + target!.width / 2, target!.y + target!.height / 2 + 2, { steps: 15 });
+  await page.mouse.up();
+  await expect(page.locator('.react-flow__edge')).toHaveCount(5);
  } finally {await testInfo.attach("server.log",{body:output,contentType:"text/plain"});await stop();}
 });

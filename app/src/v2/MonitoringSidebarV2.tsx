@@ -5,7 +5,6 @@ import { useResizablePanel, ResizeHandle } from "./resizable";
 import { api, onServerEvent, isServerMode, isResyncEvent } from "@/lib/server-client";
 import { todayOrderDate } from "@/lib/orchestrator-model";
 import { onBusinessDateChange } from "@/lib/business-date";
-import { legacyCap } from "@/lib/server-instance-store";
 import { toast } from "./Toast";
 
 /* ──────────────────────────────────────────────────────────────
@@ -13,9 +12,9 @@ import { toast } from "./Toast";
    ──────────────────────────────────────────────────────────────
    UI-1 (2026-07-09): lista VIRTUALIZADA de verdade + dual-mode.
    - DOM = só as linhas visíveis (headers de folder + jobs), qualquer volume.
-   - Modo LOCAL (dia ≤ cap do canvas): dados do espelho local (props.jobs),
+   - Modo LOCAL (dias menores): dados do espelho completo (props.jobs),
      filtro/busca client-side — comportamento de sempre, DOM enxuto.
-   - Modo WINDOWED (dia > cap): o dia INTEIRO sem baixar o dia inteiro —
+   - Modo WINDOWED (dias maiores): paginação independente do canvas —
      estrutura/contagens do /api/instances/summary (totais REAIS) e linhas
      por página do /api/instances/page (offset = random-access no salto de
      scrollbar). Placeholders enquanto a janela carrega; filtro/busca são
@@ -383,12 +382,11 @@ export default function MonitoringSidebarV2({
     return () => clearTimeout(t);
   }, [query]);
 
-  // Modo windowed: server mode E o dia REAL passa do cap do grafo. Decisão pelo
-  // summary (fonte da verdade), não pelo tamanho do espelho local (que é capado).
-  const cap = legacyCap();
+  // Pagination is a sidebar strategy only. The canvas still owns the whole day.
+  const sidebarPageThreshold = 2000; // List rendering strategy only; never a canvas limit.
   const server = isServerMode();
   const [probeTotal, setProbeTotal] = useState(0);
-  const windowed = server && probeTotal > cap;
+  const windowed = server && probeTotal > sidebarPageThreshold;
   const win = useDayWindow(windowed, filter, debouncedQuery);
 
   // Sonda o total do dia (é o MESMO summary do hook quando windowed liga; aqui
@@ -1058,7 +1056,7 @@ export default function MonitoringSidebarV2({
         </button>
       </div>
 
-      {/* UI-1 — dia maior que o grafo desenha: a LISTA mostra tudo; avisa do cap. */}
+      {/* Both views represent the complete daily; ViewPoint remains optional. */}
       {windowed && (
         <div
           style={{
@@ -1070,7 +1068,7 @@ export default function MonitoringSidebarV2({
           }}
         >
           <span style={{ flex: 1 }}>
-            list: whole day · graph: first {fmtInt(cap)}
+            whole daily · canvas and list
           </span>
           {onOpenViewPoint && (
             <button

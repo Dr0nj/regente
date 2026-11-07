@@ -23,6 +23,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useReactFlow, useStore, useStoreApi } from "@xyflow/react";
+import { latestFrame } from "@/lib/latest-frame";
+import { recordCanvasMetric } from "../canvas-metrics";
 import {
   NODE_W,
   NODE_H,
@@ -216,13 +218,18 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
       apply({ x: sx - wx * nz, y: sy - wy * nz, zoom: nz });
     };
 
+    const panFrame = latestFrame<SavedViewport>((vp) => {
+      recordCanvasMetric("panViewport");
+      apply(vp);
+    });
     const onMouseMove = (e: MouseEvent) => {
       if (!pan) return;
       const dx = (e.clientX - pan.cx) * DRAG_PAN_SENS;
       const dy = (e.clientY - pan.cy) * DRAG_PAN_SENS;
-      apply({ x: pan.vx + dx, y: pan.vy + dy, zoom: pan.zoom });
+      panFrame.schedule({ x: pan.vx + dx, y: pan.vy + dy, zoom: pan.zoom });
     };
     const endPan = () => {
+      panFrame.cancel();
       if (!pan) return;
       pan = null;
       panActiveRef.current = false;

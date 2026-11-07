@@ -1,5 +1,5 @@
 import { DependencyEdgeV2 } from "./DependencyEdgeV2";
-import { dependencyRelations } from "./dependency-layout";
+import { createCanvasSelection } from "./canvas-selection";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
@@ -93,8 +93,7 @@ import "./tokens.css";
 import {
   readLayoutConfig,
   instanceToMonitoring,
-  buildMonitoringCanvas,
-  buildDesignCanvas,
+  createCanvasModel,
   type AgentAvailability,
   type Canvas,
   type LayoutConfig,
@@ -192,10 +191,7 @@ function V2PreviewInner() {
   useEffect(() => {
     const sync = () => {
       setLayoutCfg(readLayoutConfig());
-      // O cap do canvas (regente:legacyCap) também mora em Settings: re-BUSCA o
-      // espelho do server (o fetch lê o cap na hora) — o notify() do store já
-      // re-renderiza via onInstanceChange do useOrchestratorData.
-      void refreshInstancesFromServer();
+
     };
     window.addEventListener("regente:layout-changed", sync);
     return () => window.removeEventListener("regente:layout-changed", sync);
@@ -377,7 +373,8 @@ function V2PreviewInner() {
         ids.add(a.id);
         for (const c of a.capabilities ?? []) caps.add(c.trim().toUpperCase());
       }
-      setAgentAvail({ ids, caps });
+      setAgentAvail(old => old && old.ids.size === ids.size && old.caps.size === caps.size &&
+        [...ids].every(id => old.ids.has(id)) && [...caps].every(cap => old.caps.has(cap)) ? old : { ids, caps });
     }).catch(() => {});
   }, []);
   useEffect(() => { refreshAgents(); }, [refreshAgents]);
@@ -555,49 +552,57 @@ function V2PreviewInner() {
   const [showConditions, setShowConditions] = useState(false);
   // Painel Recursos (pool de quotas) — irmão do Condições, só no Monitoring.
   const [showResources, setShowResources] = useState(false);
-  useEffect(() => onConditionsChange(() => setCondPool(conditionPool())), []);
+  useEffect(() => onConditionsChange(() => {
+    const next = conditionPool();
+    setCondPool(old => old.size === next.size && [...next].every(key => old.has(key)) ? old : next);
+  }), []);
 
   // Pool de recursos (F15) p/ o card WAIT RESOURCE — mesma fonte do painel
   // Recursos. Sem WS de recurso, poll curto no Monitoring; alimenta o canvas.
   const [resourcePool, setResourcePool] = useState<Map<string, { capacity: number; used: number }>>(new Map());
+  const hasResources = filteredInstances.some(inst => Object.keys(inst.resources ?? {}).length > 0);
+  // Unchanged resource polling must stay quiet, but a scheduled job can cross
+  // its time gate without a pool mutation. Wake only at that next boundary.
+  const [resourceClock, setResourceClock] = useState(0);
   useEffect(() => {
-    if (mode !== "monitoring" || !isServerMode()) return;
+    if (mode !== "monitoring" || !hasResources) return;
+    const now = Date.now();
+    let next = Infinity;
+    for (const inst of filteredInstances) if (inst.status === "WAITING" && inst.scheduledAt > now && Object.keys(inst.resources ?? {}).length) next = Math.min(next, inst.scheduledAt);
+    if (!Number.isFinite(next)) return;
+    const timer = setTimeout(() => setResourceClock(n => n + 1), Math.min(2_147_483_647, next - now + 1));
+    return () => clearTimeout(timer);
+  }, [filteredInstances, mode, hasResources, resourceClock]);
+  useEffect(() => {
+    if (mode !== "monitoring" || !isServerMode() || !hasResources) return;
     let cancel = false;
     const load = () => listResources().then((rs) => {
       if (cancel) return;
-      setResourcePool(new Map(rs.map((r) => [r.name, { capacity: r.capacity, used: r.used }])));
+      setResourcePool(previous => {
+        if (previous.size === rs.length && rs.every(r => previous.get(r.name)?.capacity === r.capacity && previous.get(r.name)?.used === r.used)) return previous;
+        return new Map(rs.map(r => [r.name, { capacity: r.capacity, used: r.used }]));
+      });
     }).catch(() => {});
     load();
     const i = setInterval(load, 4000);
     return () => { cancel = true; clearInterval(i); };
-  }, [mode]);
+  }, [mode, hasResources]);
 
+  const [monitoringModel] = useState(createCanvasModel);
+  const [designModel] = useState(createCanvasModel);
+  const [selectCanvas] = useState(() => createCanvasSelection());
   const canvas = useMemo<Canvas>(
-    () => (mode === "monitoring" ? buildMonitoringCanvas(filteredInstances, filteredRunnableDefs, layoutCfg, agentAvail, folderLayouts, condPool, resourcePool) : buildDesignCanvas(designDefsWithDraft, layoutCfg, folderLayouts)),
-    [mode, filteredInstances, filteredRunnableDefs, designDefsWithDraft, layoutCfg, agentAvail, folderLayouts, condPool, resourcePool],
+    () => {
+      void resourceClock; // Time-gate invalidation, independent of pool changes.
+      return mode === "monitoring" ? monitoringModel.monitoring(filteredInstances, filteredRunnableDefs, layoutCfg, agentAvail, folderLayouts, condPool, resourcePool) : designModel.design(designDefsWithDraft, layoutCfg, folderLayouts);
+    },
+    [mode, filteredInstances, filteredRunnableDefs, designDefsWithDraft, layoutCfg, agentAvail, folderLayouts, condPool, resourcePool, resourceClock, monitoringModel, designModel],
   );
 
-  // Seleção threaded no prop CONTROLADO de nós. O ReactFlow guarda seleção no
-  // store interno, mas como passamos `nodes` controlado e o canvas é rebuildado
-  // a cada tick (monitoring) ou ao abrir o drawer (design), a seleção interna do
-  // RF era ZERADA no rebuild — o highlight piscava e sumia. Aqui reaplicamos
-  // `selected` a partir do selectedIds (fonte da verdade, alimentado pelo
-  // onSelectionChange) para que o destaque neon PERSISTA entre rebuilds.
-  // Sem seleção, devolvemos canvas.nodes intacto (o RF já mostra tudo sem halo).
-  // Geometria/câmera continuam em canvas.nodes — selecionar NÃO mexe na câmera.
-  // SEMPRE mapeia com `selected` booleano explícito — inclusive com a seleção
-  // vazia. Com `selected: undefined` o RF preservava a seleção INTERNA dele
-  // (que um micro-drag de clique rápido ativa), acumulando nós destacados que
-  // o selectedIds não conhecia — o "travou com 2 selecionados" dos cliques
-  // rápidos alternados: sem estado nosso, nada limpava o highlight fantasma.
-  const displayNodes = useMemo<Node[]>(() => {
-    const related = dependencyRelations(new Set([...selectedIds].map(id => `${mode === "monitoring" ? "m" : "d"}-${id}`)), canvas.edges);
-    return canvas.nodes.map((n) => {
-      const relation = related.ancestors.has(n.id) ? "ancestor" : related.descendants.has(n.id) ? "descendant" : undefined;
-      const sel = n.type !== "laneLabel" && selectedIds.has(n.id.replace(/^[md]-/, ""));
-      return { ...n, selected: sel, data: { ...n.data, dependencyRelation: relation } };
-    });
-  }, [canvas.nodes, canvas.edges, selectedIds, mode]);
+  const topology = canvas.topology ?? canvas.edges;
+  const displayNodes = useMemo<Node[]>(() =>
+    selectCanvas(canvas.nodes, topology, selectedIds, mode === "monitoring" ? "m" : "d"),
+    [selectCanvas, canvas.nodes, topology, selectedIds, mode]);
 
   // Abrir/criar folder no Design — absorvido do antigo FolderOpener pro botão
   // FOLDERS (FolderManagerDialog). Mantém a semântica de design-session: cria a
@@ -725,13 +730,12 @@ function V2PreviewInner() {
   const focusInstance = useCallback((instId: string) => {
     setSelectedInstanceId(instId);
     focusNode(`m-${instId}`);
-    // UI-1 — sidebar windowed: a row clicada pode estar FORA do espelho local
-    // (dia > cap do grafo). Puxa a instance pro cache pra o drawer abrir; o
-    // syncInstances do onInstanceChange re-renderiza quando ela chegar.
+    // A newly ordered row can appear in the sidebar before the WS snapshot.
+    // Load it and defer focus until its geometry exists in the canvas model.
     if (isServerMode() && !instances.some((i) => i.id === instId)) {
-      void fetchInstanceById(instId);
+      void fetchInstanceById(instId).then(inst => { if (inst) setPendingFocusId(inst.id); });
     }
-  }, [focusNode, instances]);
+  }, [focusNode, instances, setPendingFocusId]);
 
   // Shift+clique na lista = FAIXA: troca a seleção pelo intervalo (ou soma, com
   // Ctrl/Cmd junto). Os ids já vêm resolvidos pela sidebar — ela é quem conhece
@@ -1930,6 +1934,11 @@ function V2PreviewInner() {
           </>
         )}
 
+        {mode === "monitoring" && !ready && (
+          <div role="status" style={{ position: "absolute", top: 16, left: "50%", zIndex: 20, padding: "8px 12px", background: "var(--v2-bg-surface)", color: "var(--v2-text-secondary)", borderRadius: 4 }}>
+            Loading daily jobs…
+          </div>
+        )}
         {/* Empty state overlay — só depois do bootstrap assentar (ready): no F5 as
             instances chegam async e o "Ambiente vazio" piscava antes do board. */}
         {mode === "monitoring" && !hasInstances && ready && (

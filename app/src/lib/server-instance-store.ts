@@ -161,6 +161,7 @@ function keepDetail(next: JobInstance, prev?: JobInstance): JobInstance {
   if (next.environment === undefined && prev.environment !== undefined) next.environment = prev.environment;
   if (next.pinnedAgent === undefined && prev.pinnedAgent !== undefined) next.pinnedAgent = prev.pinnedAgent;
   if (next.resources === undefined && prev.resources !== undefined) next.resources = prev.resources;
+  if (next.condLogic === undefined && prev.condLogic !== undefined) next.condLogic = prev.condLogic;
   return next;
 }
 
@@ -179,32 +180,93 @@ let initialLoad: Promise<void> | null = null;
 // - tombstones: ids deletados via WS; snapshot antigo não os ressuscita.
 const touchedAt = new Map<string, number>();
 const tombstones = new Map<string, number>();
+// Detail reads outlive the full-refresh watermark cleanup. Keep a per-read
+// invalidation flag so that cleaning an old tombstone cannot revive its reply.
+const detailReads = new Map<string, Set<{ stale: boolean }>>();
+function invalidateDetailReads(id: string) { for (const read of detailReads.get(id) ?? []) read.stale = true; }
 
-type Listener = (instances: JobInstance[]) => void;
+export interface InstanceChanges { ids: ReadonlySet<string>; loaded: boolean }
+type Listener = (instances: JobInstance[], changes: InstanceChanges) => void;
 const listeners = new Set<Listener>();
 
+let cachedSnapshot: JobInstance[] | undefined;
+const changedIds = new Set<string>();
+let publishTimer: ReturnType<typeof setTimeout> | undefined;
 function snapshot(): JobInstance[] {
-  return [...cache.values()];
+  return cachedSnapshot ??= [...cache.values()];
 }
 
-function notify(): void {
-  const snap = snapshot();
-  for (const fn of listeners) {
-    try { fn(snap); } catch (err) { console.error("[server-instances] listener error", err); }
+// Apply immediately, publish once per short window. A timer also works in a
+// background tab, where animation frames may be suspended indefinitely.
+function notify(id?: string): void {
+  if (id) { changedIds.add(id); cachedSnapshot = undefined; }
+  if (publishTimer !== undefined) return;
+  publishTimer = setTimeout(() => {
+    publishTimer = undefined;
+    const changes: InstanceChanges = { ids: new Set(changedIds), loaded: hasLoadedToday() };
+    changedIds.clear();
+    const snap = snapshot();
+    for (const fn of listeners) {
+      try { fn(snap, changes); } catch (err) { console.error("[server-instances] listener error", err); }
+    }
+  }, 24);
+}
+
+function equalValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  const aa = a as Record<string, unknown>, bb = b as Record<string, unknown>;
+  const keys = Object.keys(aa);
+  return keys.length === Object.keys(bb).length && keys.every(k => Object.hasOwn(bb, k) && equalValue(aa[k], bb[k]));
+}
+
+function putInstance(next: JobInstance): void {
+  const old = cache.get(next.id);
+  if (old && equalValue(old, next)) return;
+  invalidateDetailReads(next.id);
+  // Reuse frozen arrays/objects across REST snapshots as well as WS patches.
+  if (old) for (const k of Object.keys(next) as Array<keyof JobInstance>) {
+    if (equalValue(old[k], next[k])) Object.assign(next, { [k]: old[k] });
   }
+  cache.set(next.id, next);
+  notify(next.id);
 }
 
 function applyInstance(s: ServerInstance): void {
   touchedAt.set(s.id, Date.now());
-  cache.set(s.id, keepDetail(toWeb(s), cache.get(s.id)));
-  notify();
+  putInstance(keepDetail(toWeb(s), cache.get(s.id)));
+}
+
+// Partial WS events reconcile only their own rows. A burst must not repeatedly
+// download the entire daily. Bound detail concurrency and retain a trailing
+// request when another event arrives while a row is being fetched.
+const detailQueue = new Set<string>();
+const detailInFlight = new Set<string>();
+let detailTimer: ReturnType<typeof setTimeout> | undefined;
+function scheduleDetailRefresh(id: string): void {
+  detailQueue.add(id);
+  if (detailTimer !== undefined) return;
+  detailTimer = setTimeout(() => {
+    detailTimer = undefined;
+    for (const next of detailQueue) {
+      if (detailInFlight.size >= 6) break;
+      if (detailInFlight.has(next)) continue;
+      detailQueue.delete(next);
+      detailInFlight.add(next);
+      void fetchInstanceDetail(next).finally(() => {
+        detailInFlight.delete(next);
+        const pending = detailQueue.values().next().value;
+        if (pending) scheduleDetailRefresh(pending);
+      });
+    }
+  }, 32);
 }
 
 function upsertFromEvent(payload: unknown): void {
   if (!payload || typeof payload !== "object") return;
   const p = payload as ServerInstance & { enrichFrom?: ServerInstance };
   // Server broadcasts partial payloads em ações (hold/release/cancel). Se vier
-  // com id+status mas sem orderDate, faz refresh completo para manter cache íntegro.
+  // com id+status mas sem orderDate, reconcilia o detalhe desse id.
   if (!p.orderDate || !p.scheduledAt) {
     if (p.id) touchedAt.set(p.id, Date.now());
     const existing = p.id ? cache.get(p.id) : undefined;
@@ -239,29 +301,21 @@ function upsertFromEvent(payload: unknown): void {
       if (next.startedAt != null && next.completedAt != null && next.completedAt >= next.startedAt) {
         next.durationMs = next.completedAt - next.startedAt;
       }
-      cache.set(p.id, next);
-      notify();
-      // também agenda um refresh full para reconciliar
-      refresh().catch((err) => console.warn("[server-instances] refresh failed", err));
+      putInstance(next);
+      scheduleDetailRefresh(p.id);
       return;
     }
-    refresh().catch((err) => console.warn("[server-instances] refresh failed", err));
+    if (p.id) scheduleDetailRefresh(p.id);
+    else refresh().catch((err) => console.warn("[server-instances] refresh failed", err));
     return;
   }
   applyInstance(p);
 }
 
-// Cap de segurança do canvas legado (ReactFlow não virtualiza): nunca puxa mais
-// que legacyCap() instances do dia. UI-1: o cap limita SÓ o desenho do grafo —
-// a sidebar ACTIVE JOBS virtualizada mostra o dia inteiro via summary/page
-// (windowed) e o ViewPoint (ScaleMonitor) cobre o drill-down a 100k–1M.
-// Configurável em Settings (regente:legacyCap); teto 5000 = parseLimit do server.
-const LEGACY_CAP_DEFAULT = 2000;
-export function legacyCap(): number {
-  if (typeof window === "undefined") return LEGACY_CAP_DEFAULT;
-  const v = parseInt(window.localStorage.getItem("regente:legacyCap") ?? "", 10);
-  return Number.isFinite(v) ? Math.min(5000, Math.max(500, v)) : LEGACY_CAP_DEFAULT;
-}
+// The canvas owns every accessible job in the daily. /api/instances without
+// limit returns the complete structural/runtime projection (no action payload).
+// DOM virtualization is independent of this logical model and never truncates it.
+export function hasLoadedToday(): boolean { return lastFetchDate === todayOrderDate(); }
 
 // doFetch — UMA rodada de GET + reconcile por MERGE (nunca cache.clear()).
 // gen guard: se um fetch mais novo começou enquanto este aguardava a resposta,
@@ -286,7 +340,7 @@ async function doFetch(date: string): Promise<void> {
   const gen = ++fetchGen;
   const startedAt = Date.now();
   const arr = await api<ServerInstance[]>(
-    `/api/instances?date=${encodeURIComponent(date)}&limit=${legacyCap()}`,
+    `/api/instances?date=${encodeURIComponent(date)}`,
   );
   if (gen !== fetchGen) return; // obsoleto: fetch mais novo já em voo/aplicado
 
@@ -297,7 +351,7 @@ async function doFetch(date: string): Promise<void> {
     // Mutado via WS durante o fetch → snapshot não regride status; o refresh
     // de cauda (agendado pelo próprio evento) reconcilia com dados completos.
     if (cache.has(s.id) && (touchedAt.get(s.id) ?? 0) >= startedAt) continue;
-    cache.set(s.id, keepDetail(toWeb(s), cache.get(s.id)));
+    putInstance(keepDetail(toWeb(s), cache.get(s.id)));
   }
   // Remoção por AUSÊNCIA só em troca de data (ver bloco acima). No mesmo dia,
   // um id que "faltou" no snapshot é truncamento transitório — preserva.
@@ -306,6 +360,8 @@ async function doFetch(date: string): Promise<void> {
       if (inst.orderDate === date) continue; // é do dia consultado → mantém
       if ((touchedAt.get(id) ?? 0) >= startedAt) continue; // mutado via WS agora → mantém
       cache.delete(id);
+      invalidateDetailReads(id);
+      notify(id);
     }
   }
   // Marcas antigas já cumpriram o papel (só protegem contra snapshots que
@@ -431,9 +487,10 @@ function ensureWs(): void {
       case "instance.deleted": {
         const p = ev.payload as { id?: string } | undefined;
         if (p?.id) {
+          invalidateDetailReads(p.id);
           tombstones.set(p.id, Date.now());
           touchedAt.delete(p.id);
-          if (cache.delete(p.id)) notify();
+          if (cache.delete(p.id)) notify(p.id);
         }
         break;
       }
@@ -496,8 +553,9 @@ export async function releaseInstance(id: string): Promise<void> {
 export async function deleteInstance(id: string): Promise<void> {
   await api<void>(`/api/instances/${encodeURIComponent(id)}`, { method: "DELETE" });
   tombstones.set(id, Date.now());
+  invalidateDetailReads(id);
   touchedAt.delete(id);
-  if (cache.delete(id)) notify();
+  if (cache.delete(id)) notify(id);
 }
 
 export async function cancelInstance(id: string): Promise<void> {
@@ -741,21 +799,30 @@ export interface InstanceOrderDetail {
 }
 
 export async function fetchInstanceDetail(id: string): Promise<InstanceOrderDetail | null> {
+  const touch = touchedAt.get(id);
+  const date = todayOrderDate();
+  const read = { stale: false }, reads = detailReads.get(id) ?? new Set<{ stale: boolean }>();
+  reads.add(read); detailReads.set(id, reads);
   try {
     const s = await api<ServerInstance & { snapshotDef?: JobDefinition; snapshotError?: string }>(`/api/instances/${encodeURIComponent(id)}`);
     if (!s?.id) return null;
-    applyInstance(s); // o espelho ganha a linha mais rica de carona
+    // A detail request can race WS/deletion/day-flip too. Never let an older
+    // REST response roll a card back or resurrect a deleted order.
+    if (!read.stale && !tombstones.has(id) && touch === touchedAt.get(id) && date === todayOrderDate()) {
+      putInstance(keepDetail(toWeb(s), cache.get(id)));
+    }
     return { label: s.label, jobType: s.jobType, actionConfig: s.actionConfig, snapshotDef: s.snapshotDef, snapshotError: s.snapshotError };
   } catch (err) {
     console.warn("[server-instances] fetchInstanceDetail failed", err);
     return null;
+  } finally {
+    reads.delete(read);
+    if (!reads.size) detailReads.delete(id);
   }
 }
 
-// UI-1 — puxa UMA instance pro cache pelo id (sidebar windowed: o dia tem mais
-// jobs que o cap, a row clicada pode não estar no espelho local — sem isto o
-// drawer não abriria). Antes usava o LIKE do listInstances; o detalhe por id
-// é exato e ainda traz a action congelada da ordem.
+// A newly ordered sidebar row can precede the WS snapshot. Fetch its exact id
+// into the logical canvas; pending camera focus waits for its geometry.
 export async function fetchInstanceById(id: string): Promise<JobInstance | null> {
   const hit = cache.get(id);
   if (hit) return hit;

@@ -46,16 +46,6 @@ export function SettingsDialog({ onClose }: Props) {
     } catch { /* ignore */ }
     window.dispatchEvent(new Event("regente:layout-changed"));
   };
-  // UI-1 — cap do grafo do Monitoring (quantos jobs o ReactFlow desenha; a lista
-  // ACTIVE JOBS e o ViewPoint mostram o dia inteiro independente disto).
-  const [legacyCapVal, setLegacyCapVal] = useState<number>(() => lsInt("regente:legacyCap", 2000));
-  const writeLegacyCap = (v: number) => {
-    try {
-      window.localStorage.setItem("regente:legacyCap", String(v));
-    } catch { /* ignore */ }
-    window.dispatchEvent(new Event("regente:layout-changed"));
-  };
-
   // GitHub token
   const [git, setGit] = useState<GitStatus | null>(null);
   const [tokenInput, setTokenInput] = useState("");
@@ -289,21 +279,9 @@ export function SettingsDialog({ onClose }: Props) {
                 </span>
               </div>
 
-              {/* UI-1 — cap do grafo do Monitoring (o quanto o ReactFlow desenha). */}
-              <div style={{ marginTop: 12, borderTop: "1px solid var(--v2-border-subtle)", paddingTop: 10 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Graph cap (Monitoring)</div>
-                <label style={{ fontSize: 11, color: "var(--v2-text-secondary)" }}>
-                  Max. jobs drawn on the canvas
-                  <input type="number" min={500} max={5000} step={100} value={legacyCapVal}
-                    onChange={(e) => { const v = Math.max(500, Math.min(5000, Number(e.target.value) || 2000)); setLegacyCapVal(v); writeLegacyCap(v); }}
-                    style={{ display: "block", marginTop: 4, width: 90, padding: "5px 8px", fontSize: 13, background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-medium)", borderRadius: 4, color: "var(--v2-text-primary)", outline: "none", boxSizing: "border-box" }} />
-                </label>
-                <span style={{ fontSize: 10, color: "var(--v2-text-muted)", marginTop: 6, display: "block", lineHeight: 1.5 }}>
-                  The graph (ReactFlow) does not virtualize — this cap keeps huge days from freezing the UI. The
-                  ACTIVE JOBS list shows the WHOLE day regardless of the cap (virtualized, server-driven above
-                  it) and the ViewPoint covers drill-down at 100k–1M. Raising the cap costs graph render time.
-                </span>
-              </div>
+              <p style={{ fontSize: 11, color: "var(--v2-text-secondary)", marginTop: 12 }}>
+                The canvas includes all daily jobs. Cards outside the visible area are rendered as you navigate.
+              </p>
             </fieldset>
 
             {/* F20 — Environment Label */}

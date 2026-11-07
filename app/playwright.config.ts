@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
+  tsconfig: "./tsconfig.app.json",
   testDir: "./e2e",
   workers: 1,
   timeout: 45000,
