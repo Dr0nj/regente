@@ -36,9 +36,11 @@ func TestIncrementalConditionWakeReconcileAndCorruptSnapshot(t *testing.T) {
 	}
 	// O orçamento de 100ms pode adiar candidatos num host concorrido; número
 	// fixo de ticks não é contrato. Exige convergência limitada e sem perdas.
+	// O detector de races instrumenta também SQLite em Go; este limite cobre
+	// o ensaio de correção, não substitui o orçamento de latência do laboratório.
 	settle := func(tracked int, pages uint64) {
 		t.Helper()
-		deadline := time.Now().Add(10 * time.Second)
+		deadline := time.Now().Add(60 * time.Second)
 		for time.Now().Before(deadline) {
 			if err = s.tickOnce(); err != nil {
 				t.Fatal(err)
