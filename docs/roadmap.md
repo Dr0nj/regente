@@ -249,6 +249,40 @@ Os limites do runner não incluem o PostgreSQL separado (sem limite Docker
 explícito de CPU/RAM nesses ensaios); o relatório passa a inspecionar e registrar
 mount/limites reais do banco, com espera por saúde antes do seed.
 
+### Canvas / issue #39 — minimapa operacional e zoom ampliado (10/11/2026)
+
+**Em implementação local, sem push e sem aceite visual ainda.** Trabalho isolado
+na branch `codex/issue-39-canvas`, preservando o checkout/binário do ensaio diário.
+Issue: <https://github.com/Dr0nj/regente/issues/39>.
+
+Implementado: zoom principal **5%–400%**, percentual e Fit; detalhes acima de 55%,
+modo compacto até 55% e blocos de status sólidos até 25% (inclui a referência de
+17%). Dimensões/posições e conexões preservadas. Cor compartilhada entre cards e
+mapa, fundo discreto no detalhe, textos neutros, seleção/relações destacadas e
+animação desativada quando oculta. Running ciano nesse par de superfícies segue a
+issue; outros indicadores existentes continuam com seus tokens anteriores.
+
+Minimapa: modelo derivado sem Dagre, folders com contagens/cores estáveis, duas
+grades de densidade, destaque de falha minoritária e execução, LOD independente,
+conexões agregadas/individuais, seleção existente, arrasto da viewport por rAF,
+clique/foco, Fit/Center, recolhimento persistente, teclado, legenda e tooltips.
+Sem cap ou remoção de jobs do modelo lógico. Métricas de build/patch/raster/viewport
+mais atraso estimado do ponteiro. Guia: [navegação do canvas](canvas-navigation.md).
+
+**Validação já executada:** TypeScript sem emissão/incremental; ESLint dos arquivos
+alterados e testes; **9 testes puros** novos (incluindo 5.000 marcadores, cores,
+coordenadas/resize/drag e identidade incremental) + **3 regressões existentes**
+de status/recursos/seleção passaram. Cenário de browser com capturas claro/escuro
+17%/100% preparado, **ainda não executado**.
+
+**Para concluir após o PERF-05:** build/lint completo, execução dos testes de
+browser e revisão das imagens; conferir contraste, resize, drag real, Center,
+cliques e persistência; medir pan/zoom/status na massa completa sem rebuild de
+layout/mapa por frame. Cobrir o limite de 5% e 400% e o estado vazio. Não fechar
+issue nem publicar antes desses gates e do aceite da trilha PERF local. O teste
+diário continua exigindo PC/Docker ligados até seu término; nenhum teste pesado
+de UI foi iniciado junto à medição.
+
 ### Onboarding Linux — incremento em validação (03/11/2026)
 
 Remoção do roteamento/bloqueio por ambiente, compatibilidade dos agentes existentes,

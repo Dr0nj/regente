@@ -234,3 +234,61 @@ test("real canvas virtualizes 5100 jobs, focuses an offscreen job and survives u
   writeFileSync(metricsFile, JSON.stringify({ visualLatencyMs, statusMetrics, ...metrics, continuous }, null, 2));
   await testInfo.attach("canvas-metrics.json", { path: metricsFile, contentType: "application/json" });
 });
+
+
+// Gate visual da issue #39: executar após o ensaio diário, sem disputar CPU.
+test("canvas zoom LOD and minimap navigation preserve layout in dark and light themes", async ({ page }, testInfo) => {
+  const api = await mock(page, 20), errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  api.data[0].status = "OK"; api.data[1].status = "NOTOK";
+  api.data[2].status = "RUNNING"; api.data[3].status = "UNCERTAIN";
+  api.data[4].status = "HELD";
+  Object.assign(api.data[5], { confirmReq: true });
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto(base);
+  await expect(page.locator(".v2-job-card").first()).toBeVisible();
+  await expect.poll(api.connected).toBe(true);
+  const map = page.getByRole("group", { name: /^Navigation map:/ });
+  await expect(map).toBeVisible();
+  const zoom = page.getByRole("status", { name: "Canvas zoom percentage" });
+  const initialZoom = await zoom.textContent();
+  await page.evaluate(async () => { const path = "/src/v2/canvas-metrics.ts"; (await import(path)).enableCanvasMetrics(true); });
+  await page.getByRole("button", { name: "Zoom in minimap", exact: true }).click();
+  await expect(zoom).toHaveText(initialZoom!);
+  await expect(page.locator(".v2-minimap-footer")).toContainText("150% map");
+  await map.focus(); await page.keyboard.press("+"); await page.keyboard.press("ArrowRight");
+  await expect(zoom).toHaveText(initialZoom!);
+  await page.getByRole("button", { name: "Fit minimap", exact: true }).click();
+  await expect(page.locator(".v2-minimap-footer")).toContainText("100% map");
+  await page.getByRole("button", { name: /^Focus folder Load,/ }).press("Enter");
+  await expect(zoom).toHaveText(initialZoom!);
+  await page.getByRole("button", { name: "Collapse minimap", exact: true }).click();
+  await expect(map).not.toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("regente:minimap-collapsed"))).toBe("1");
+  await page.getByRole("button", { name: "Expand minimap", exact: true }).click();
+  // 100% / 1.25^8 = 16.78%, comparável à referência de 17%.
+  for (let i = 0; i < 8; i++) await page.getByRole("button", { name: "Zoom out canvas", exact: true }).click();
+  await expect(zoom).toHaveText("17%");
+  await expect(page.locator("[data-canvas-detail=solid]")).toHaveCount(1);
+  for (const theme of ["escuro", "claro"]) {
+    await page.evaluate(theme => document.documentElement.setAttribute("data-theme", theme), theme);
+    const styles = await page.locator(".v2-job-card").evaluateAll(cards => cards.map(card => {
+      const style = getComputedStyle(card), expected = document.createElement("span");
+      expected.style.backgroundColor = style.getPropertyValue("--job-status-color"); card.appendChild(expected);
+      const color = getComputedStyle(expected).backgroundColor; expected.remove();
+      return { color: style.backgroundColor, expected: color, hidden: getComputedStyle(card.querySelector(".v2-job-content")!).visibility };
+    }));
+    expect(styles.length).toBeGreaterThan(0);
+    for (const style of styles) { expect(style.color).toBe(style.expected); expect(style.hidden).toBe("hidden"); }
+    await page.screenshot({ path: testInfo.outputPath(`canvas-solid-17-${theme}.png`) });
+  }
+  for (let i = 0; i < 8; i++) await page.getByRole("button", { name: "Zoom in canvas", exact: true }).click();
+  await expect(zoom).toHaveText("100%");
+  await expect(page.locator("[data-canvas-detail=detail]")).toHaveCount(1);
+  await page.screenshot({ path: testInfo.outputPath("canvas-detail-100-light.png") });
+  const metrics = await page.evaluate(async () => { const path = "/src/v2/canvas-metrics.ts"; return (await import(path)).readCanvasMetrics(); });
+  expect(metrics.totals.dagre ?? 0).toBe(0); expect(metrics.totals.minimapModelBuild ?? 0).toBe(0);
+  await page.getByRole("button", { name: "Fit canvas", exact: true }).click();
+  await expect(page.locator(".v2-job-card").first()).toBeVisible();
+  expect(errors).toEqual([]);
+});

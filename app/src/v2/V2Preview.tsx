@@ -107,6 +107,8 @@ import ResourcesPanel from "./ResourcesPanel";
 import { listAgents } from "@/lib/agents-api";
 import { listResources } from "@/lib/bloco2-api";
 import NavMinimap from "./NavMinimap";
+import CanvasZoomControls from "./CanvasZoomControls";
+import { CANVAS_MIN_ZOOM, CANVAS_MAX_ZOOM } from "./canvas-zoom";
 import { useCanvasCamera } from "./hooks/useCanvasCamera";
 import { useOrchestratorData } from "./hooks/useOrchestratorData";
 
@@ -703,7 +705,7 @@ function V2PreviewInner() {
 
   // Câmera do canvas (trava de pan + âncora de entrada + centralizações) — todo
   // movimento programático é clampado pelo mesmo limite do translateExtent.
-  const { panExtent, organizeView, focusOnPoint, focusNode, setPendingFocusId, attachStage } =
+  const { panExtent, organizeView, focusOnPoint, focusNode, setPendingFocusId, attachStage, zoomBy, moveCamera } =
     useCanvasCamera(canvas, mode, viewContextKey);
 
   const monitoringJobs = useMemo(() => {
@@ -1855,6 +1857,8 @@ function V2PreviewInner() {
           // arrastada não ia pra lugar nenhum (o rebuild do canvas devolvia o card
           // pro lugar). Ligado, só servia pra roubar o mousedown do pan. A posição no
           // Design vem do layout + grade da folder (.regente-folder.yaml).
+          minZoom={CANVAS_MIN_ZOOM}
+          maxZoom={CANVAS_MAX_ZOOM}
           nodesDraggable={false}
           nodesConnectable={mode === "design"}
           elementsSelectable
@@ -1892,9 +1896,12 @@ function V2PreviewInner() {
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#1a1a1a" />
         </ReactFlow>
         )}
+        {!(mode === "monitoring" && scaleView) && !(mode === "design" && codeMode) && (
+          <CanvasZoomControls onZoom={zoomBy} onFit={() => organizeView(200)} />
+        )}
         {showMinimap && !(mode === "monitoring" && scaleView) && !(mode === "design" && codeMode) && (
           <>
-            <div
+            <div className="v2-minimap-shell"
               style={{
                 position: "absolute", zIndex: 10,
                 right: mode === "monitoring" && selectedInstance ? 392 : 16, bottom: 16,
@@ -1905,15 +1912,16 @@ function V2PreviewInner() {
                 boxShadow: "0 6px 20px rgba(0,0,0,0.4)",
               }}
             >
-              <NavMinimap nodes={canvas.nodes} width={miniSize.w} height={miniSize.h} onNavigate={focusOnPoint} />
+              <NavMinimap nodes={displayNodes} lanes={canvas.lanes} edges={topology} width={miniSize.w} height={miniSize.h} onNavigate={focusOnPoint} onMoveCamera={moveCamera} />
             </div>
             <div
-              title="Redimensionar minimap"
+              className="v2-minimap-resize"
+              title="Resize minimap"
               onPointerDown={(e) => {
                 e.preventDefault();
                 const sx = e.clientX, sy = e.clientY, sw = miniSize.w, sh = miniSize.h;
                 const move = (ev: PointerEvent) => setMiniSize({
-                  w: Math.min(560, Math.max(170, sw + (sx - ev.clientX))),
+                  w: Math.min(560, Math.max(260, sw + (sx - ev.clientX))),
                   h: Math.min(380, Math.max(110, sh + (sy - ev.clientY))),
                 });
                 const up = () => {

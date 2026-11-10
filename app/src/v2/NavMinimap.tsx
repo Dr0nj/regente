@@ -1,130 +1,245 @@
-/**
- * NavMinimap — minimap de navegação próprio (protótipo opt-in, Settings → Geral).
- *
- * Desenha um retângulo por job a partir de canvas.nodes (posição garantida), sem
- * depender do MiniMap do ReactFlow (que filtra nós custom sem dimensão medida —
- * motivo de os jobs nunca aparecerem lá). Clique navega o canvas até o ponto.
- * Extraído do V2Preview.tsx (2026-07-01).
- */
+import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useStore, useStoreApi, type Node } from "@xyflow/react";
+import type { LaneInfo } from "./canvas-layout";
+import { latestFrame } from "../lib/latest-frame";
+import { recordCanvasMetric } from "./canvas-metrics";
+import { STATUS_VISUALS, priorityStatus, type VisualStatus } from "./job-status-visual";
+import { createMiniMapModel, clampMap, fitMap, mapLOD, mapPoint, mapTransform, selectionBounds, zoomMap, viewportOnMap, dragMapViewport,
+  type MiniMapModel, type MapTransform, type MapView, type MapJob } from "./minimap-model";
 
-import { memo, useEffect, useMemo, useRef } from "react";
-import { useStore, type Node } from "@xyflow/react";
-import { NODE_W, NODE_H } from "./canvas-layout";
+type Camera = { x: number; y: number; zoom: number };
+type Props = { nodes: Node[]; lanes: LaneInfo[]; edges: Array<{ source: string; target: string }>; width: number; height: number;
+  onNavigate: (x: number, y: number, zoom: number, duration?: number) => void;
+  onMoveCamera: (camera: Camera) => unknown };
 
-export default function NavMinimap({ nodes, width, height, onNavigate }: {
-  nodes: Node[];
-  width: number;
-  height: number;
-  // Navegação clamp-aware do pai (focusOnPoint) — setCenter cru deixaria a câmera
-  // fora do translateExtent ao clicar perto do topo (pulo no próximo pan).
-  onNavigate: (fx: number, fy: number, zoom: number) => void;
-}) {
-  // PERF: o corpo do minimap NÃO assina o transform. Assinava, e como a câmera
-  // escreve o viewport a cada mousemove, o componente inteiro re-renderizava por
-  // frame de pan — com 200 jobs eram 200 <rect> reconciliados a cada frame só pra
-  // mover um retângulo. Quem assina agora é o <ViewportRect> lá embaixo (1 rect),
-  // e a camada de jobs virou memo por [nodes,width,height].
-  const tzoom = useStore((s) => s.transform[2]);
-
-  // Mostra APENAS os jobs (ignora lanes/containers e outros nós). useMemo pra o
-  // memo do <JobsLayer> segurar: array novo a cada render invalidaria tudo.
-  const jobs = useMemo(() => nodes.filter((n) => n.type === "jobV2"), [nodes]);
-  if (jobs.length === 0) {
-    return <div style={{ width, height, display: "grid", placeItems: "center", fontSize: 11, color: "var(--v2-text-muted)" }}>no jobs</div>;
-  }
-  const MARGIN = 8; // respiro dentro da caixa do minimap
-  const xs = jobs.map((n) => n.position.x);
-  const ys = jobs.map((n) => n.position.y);
-  // Bounds SÓ dos jobs (âncora no canto de cima/esquerda). NÃO entra o viewport aqui
-  // de propósito: a escala do minimap fica ESTÁVEL, sempre mostrando toda a grade de
-  // jobs "no zoom out", independente de quanto o monitoring está com zoom.
-  const minX = Math.min(...xs);
-  const minY = Math.min(...ys);
-  const maxX = Math.max(...xs) + NODE_W;
-  const maxY = Math.max(...ys) + NODE_H;
-  const bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
-  const scale = Math.min((width - 2 * MARGIN) / bw, (height - 2 * MARGIN) / bh);
-  // Ancorado no topo-esquerdo (não centraliza) — reflete a organização real: 1ª
-  // coluna/linha no canto, seguindo pra direita conforme a grade.
-  const offX = MARGIN, offY = MARGIN;
-  // Quadradinho na proporção real do card (mín. legível).
-  const sw = Math.max(3, NODE_W * scale);
-  const sh = Math.max(2, NODE_H * scale);
-
-  const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    const fx = minX + (e.clientX - r.left - offX) / scale;
-    const fy = minY + (e.clientY - r.top - offY) / scale;
-    onNavigate(fx, fy, tzoom);
+export default function NavMinimap({ nodes, lanes, edges, width, height, onNavigate, onMoveCamera }: Props) {
+  const [builder] = useState(createMiniMapModel);
+  const model = useMemo(() => builder(nodes, lanes, edges), [builder, nodes, lanes, edges]);
+  const [manualView, setView] = useState<MapView | null>(null);
+  const view = useMemo(() => manualView ? clampMap(manualView, model.bounds) : fitMap(model.bounds), [manualView, model.bounds]);
+  const mapHeight = Math.max(30, height - 58);
+  const transform = useMemo(() => mapTransform(model.bounds, width, mapHeight, view), [model.bounds, width, mapHeight, view]);
+  const lod = mapLOD(view);
+  const store = useStoreApi();
+  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem("regente:minimap-collapsed") === "1"; } catch { return false; } });
+  const [showEdges, setShowEdges] = useState(true);
+  const [showLegend, setShowLegend] = useState(false);
+  const [tooltip, setTooltip] = useState("");
+  const [theme, setTheme] = useState(() => document.documentElement.getAttribute("data-theme"));
+  useEffect(() => {
+    const observer = new MutationObserver(() => setTheme(document.documentElement.getAttribute("data-theme")));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const gesture = useRef<{ id: number; x: number; y: number; moved: boolean; viewport: boolean; camera: Camera; transform: MapTransform; folderID: string | null } | null>(null);
+  const pointerFrame = useRef<ReturnType<typeof latestFrame<{ x: number; y: number; at: number }>> | null>(null);
+  useEffect(() => {
+    const frame = latestFrame<{ x: number; y: number; at: number }>(point => {
+      const current = gesture.current;
+      if (!current) return;
+      const started = performance.now(), dx = point.x - current.x, dy = point.y - current.y;
+      if (Math.abs(dx) + Math.abs(dy) > 3) current.moved = true;
+      if (current.viewport && current.moved) onMoveCamera(dragMapViewport(current.camera, dx, dy, current.transform.scale));
+      recordCanvasMetric("minimapPointerFrame", started, { droppedFrames: Math.max(0, Math.floor((started - point.at) / 16.67) - 1) });
+    });
+    pointerFrame.current = frame;
+    return () => { frame.cancel(); pointerFrame.current = null; };
+  }, [onMoveCamera]);
+  const hoverFrame = useRef<ReturnType<typeof latestFrame<{ x: number; y: number }>> | null>(null);
+  useEffect(() => {
+    const frame = latestFrame<{ x: number; y: number }>(point => {
+      const svg = svgRef.current;
+      if (!svg || gesture.current) return;
+      const rect = svg.getBoundingClientRect(), world = mapPoint(point.x - rect.left, point.y - rect.top, transform);
+      const job = lod === "near" ? model.jobs.find(job => world.x >= job.x && world.x <= job.x + job.width && world.y >= job.y && world.y <= job.y + job.height) : undefined;
+      setTooltip(job ? `${job.label} · ${STATUS_VISUALS[job.status].label}` : "");
+    });
+    hoverFrame.current = frame;
+    return () => { frame.cancel(); hoverFrame.current = null; };
+  }, [model, transform, lod]);
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || collapsed) return;
+    const wheel = (event: WheelEvent) => {
+      event.preventDefault(); event.stopPropagation();
+      const rect = svg.getBoundingClientRect(), unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? mapHeight : 1;
+      setView(zoomMap(view, model.bounds, width, mapHeight, Math.exp(-event.deltaY * unit * .002), { x: event.clientX - rect.left, y: event.clientY - rect.top }));
+    };
+    svg.addEventListener("wheel", wheel, { passive: false });
+    return () => svg.removeEventListener("wheel", wheel);
+  }, [view, model.bounds, width, mapHeight, collapsed]);
+  const selected = useMemo(() => selectionBounds(model.jobs), [model]);
+  const navigate = (x: number, y: number) => onNavigate(x, y, store.getState().transform[2]);
+  const focus = () => {
+    if (!selected) return;
+    const x = (selected.minX + selected.maxX) / 2, y = (selected.minY + selected.maxY) / 2;
+    setView(clampMap({ ...view, x, y }, model.bounds)); navigate(x, y);
   };
-  return (
-    <div style={{ position: "relative", width, height }}>
-      <JobsLayer jobs={jobs} width={width} height={height} minX={minX} minY={minY} scale={scale} offX={offX} offY={offY} sw={sw} sh={sh} />
-      <svg width={width} height={height} onClick={handleClick} style={{ position: "absolute", inset: 0, display: "block", cursor: "pointer" }}>
-      {/* Retângulo do viewport — mostra onde a tela está sobre o conteúdo. */}
-      <ViewportRect minX={minX} minY={minY} scale={scale} offX={offX} offY={offY} />
-      </svg>
+  const toggle = () => {
+    const next = !collapsed; setCollapsed(next);
+    try { localStorage.setItem("regente:minimap-collapsed", next ? "1" : "0"); } catch { /* Preferência não impede navegação. */ }
+  };
+  const down = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault(); event.stopPropagation();
+    const [x, y, zoom] = store.getState().transform;
+    gesture.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false,
+      viewport: (event.target as Element).getAttribute("data-map-viewport") === "true", camera: { x, y, zoom }, transform, folderID: (event.target as Element).closest("[data-folder]")?.getAttribute("data-folder") ?? null };
+    hoverFrame.current?.cancel();
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const up = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const current = gesture.current;
+    if (!current || current.id !== event.pointerId) return;
+    pointerFrame.current?.cancel();
+    const dx = event.clientX - current.x, dy = event.clientY - current.y;
+    const moved = current.moved || Math.abs(dx) + Math.abs(dy) > 3;
+    if (current.viewport && moved) onMoveCamera(dragMapViewport(current.camera, dx, dy, current.transform.scale));
+    if (!moved) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const point = mapPoint(event.clientX - rect.left, event.clientY - rect.top, transform);
+      const job = lod === "near" ? model.jobs.find(job => point.x >= job.x && point.x <= job.x + job.width && point.y >= job.y && point.y <= job.y + job.height) : undefined;
+      const folderID = current.folderID;
+      const folder = model.folders.find(folder => folder.id === folderID);
+      if (folder) navigate(folder.x + folder.width / 2, folder.y + folder.height / 2);
+      else if (job) navigate(job.x + job.width / 2, job.y + job.height / 2);
+      else navigate(point.x, point.y);
+    }
+    gesture.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+  const panMap = (dx: number, dy: number) => setView(clampMap({ ...view, x: view.x + dx / transform.scale, y: view.y + dy / transform.scale }, model.bounds));
+  return <section className="v2-minimap" data-collapsed={collapsed} style={{ width, height: collapsed ? 30 : height }} aria-label="Workflow navigation map">
+    <div className="v2-minimap-toolbar" role="group" aria-label="Minimap controls">
+      <button title={collapsed ? "Expand minimap" : "Collapse minimap"} aria-label={collapsed ? "Expand minimap" : "Collapse minimap"} aria-expanded={!collapsed} onClick={toggle}>{collapsed ? "▣" : "▾"}</button>
+      <span className="v2-minimap-heading">Map</span>
+      {!collapsed && <>
+        <button aria-label="Zoom out minimap" title="Zoom out minimap" disabled={view.zoom <= 1} onClick={() => setView(zoomMap(view, model.bounds, width, mapHeight, 1 / 1.5))}>−</button>
+        <button aria-label="Zoom in minimap" title="Zoom in minimap" disabled={view.zoom >= 16} onClick={() => setView(zoomMap(view, model.bounds, width, mapHeight, 1.5))}>+</button>
+        <button title="Fit minimap" aria-label="Fit minimap" onClick={() => setView(null)}>Fit</button>
+        <button title="Center selected jobs" aria-label="Center selection" disabled={!selected} onClick={focus}>Center</button>
+        <button title="Show connections" aria-label="Show minimap connections" aria-pressed={showEdges} onClick={() => setShowEdges(!showEdges)}>↗</button>
+        <button title="Status legend" aria-label="Minimap status legend" aria-expanded={showLegend} onClick={() => setShowLegend(!showLegend)}>?</button>
+      </>}
     </div>
-  );
+    {!collapsed && <>
+      <div className="v2-minimap-map" style={{ width, height: mapHeight }}>
+        <MapRaster model={model} transform={transform} lod={lod} width={width} height={mapHeight} showEdges={showEdges} theme={theme} />
+        <svg ref={svgRef} width={width} height={mapHeight} tabIndex={0} role="group" aria-label="Navigation map: click to focus, drag viewport, wheel to zoom, arrow keys to explore"
+          onPointerDown={down} onPointerUp={up} onPointerLeave={() => { hoverFrame.current?.cancel(); setTooltip(""); }} onPointerMove={event => {
+            if (gesture.current) pointerFrame.current?.schedule({ x: event.clientX, y: event.clientY, at: performance.now() });
+            else if (!(event.target as Element).closest("[data-folder]")) hoverFrame.current?.schedule({ x: event.clientX, y: event.clientY });
+          }} onPointerCancel={() => { pointerFrame.current?.cancel(); gesture.current = null; }} onLostPointerCapture={() => { pointerFrame.current?.cancel(); gesture.current = null; }}
+          onKeyDown={event => {
+            if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "+", "=", "-", "Home", "Enter"].includes(event.key)) event.preventDefault();
+            if (event.key === "ArrowLeft") panMap(-30, 0); if (event.key === "ArrowRight") panMap(30, 0);
+            if (event.key === "ArrowUp") panMap(0, -30); if (event.key === "ArrowDown") panMap(0, 30);
+            if (event.key === "+" || event.key === "=") setView(zoomMap(view, model.bounds, width, mapHeight, 1.5));
+            if (event.key === "-") setView(zoomMap(view, model.bounds, width, mapHeight, 1 / 1.5));
+            if (event.key === "Home") setView(null); if (event.key === "Enter") navigate(view.x, view.y);
+          }}>
+          <ViewportRect transform={transform} />
+          {model.folders.map(folder => {
+            const x = transform.offX + folder.x * transform.scale, y = transform.offY + folder.y * transform.scale, w = folder.width * transform.scale;
+            if (x > width || x + w < 0 || y > mapHeight || y + folder.height * transform.scale < 0 || w < 34) return null;
+            const counts = Object.entries(folder.counts).filter(([, count]) => count).map(([status, count]) => `${STATUS_VISUALS[status as VisualStatus].label}: ${count}`).join(" · ");
+            const label = `${folder.team} (${Object.values(folder.counts).reduce((sum, count) => sum + count, 0)})`, available = Math.max(3, Math.floor((Math.min(w, width) - 6) / 6));
+            return <g key={folder.id} data-folder={folder.id} className="v2-minimap-folder" tabIndex={0} role="button" aria-label={`Focus folder ${folder.team}, ${counts}`} onFocus={() => setTooltip(`${folder.team} · ${counts}`)}
+              onBlur={() => setTooltip("")} onMouseEnter={() => { hoverFrame.current?.cancel(); setTooltip(`${folder.team} · ${counts}`); }} onMouseLeave={() => setTooltip("")}
+              onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); navigate(folder.x + folder.width / 2, folder.y + folder.height / 2); } }}>
+              <title>{folder.team} · {counts}</title>
+              <rect x={Math.max(0, x)} y={Math.max(0, y)} width={Math.min(w, width)} height={15} rx={2} />
+              <text x={Math.max(0, x) + 3} y={Math.max(0, y) + 11}>{label.length > available ? label.slice(0, available - 1) + "…" : label}</text>
+            </g>;
+          })}
+          {!model.jobs.length && <text x={width / 2} y={mapHeight / 2} textAnchor="middle" fill="var(--v2-text-secondary)" fontSize={11}>No jobs</text>}
+        </svg>
+      </div>
+      <div className="v2-minimap-footer" title={tooltip || `${model.jobs.length} jobs · ${model.folders.length} folders`}>
+        {tooltip || `${model.jobs.length.toLocaleString()} jobs · ${Math.round(view.zoom * 100)}% map · ${lod}`}
+      </div>
+      {showLegend && <div className="v2-minimap-legend">{(["success", "failed", "uncertain", "running", "hold", "agent", "confirm", "waiting"] as VisualStatus[]).map(status => <span key={status}><i style={{ background: `var(${STATUS_VISUALS[status].token})` }} />{STATUS_VISUALS[status].label}</span>)}</div>}
+    </>}
+  </section>;
 }
 
-// Camada dos jobs — memo: só re-renderiza quando a LISTA muda (publish, folder,
-// daily), nunca por movimento de câmera.
-const JobsLayer = memo(function JobsLayer({ jobs, width, height, minX, minY, scale, offX, offY, sw, sh }: {
-  jobs: Node[]; width: number; height: number; minX: number; minY: number; scale: number; offX: number; offY: number; sw: number; sh: number;
+const MapRaster = memo(function MapRaster({ model, transform: t, lod, width, height, showEdges, theme }: {
+  model: MiniMapModel; transform: MapTransform; lod: "far" | "medium" | "near"; width: number; height: number; showEdges: boolean; theme: string | null;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    const canvas = ref.current, context = canvas?.getContext("2d");
-    if (!canvas || !context) return;
-    const ratio = window.devicePixelRatio || 1;
-    canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
-    context.scale(ratio, ratio);
-    context.strokeStyle = "#06080c"; context.lineWidth = 0.5;
-    for (const node of jobs) {
-      const x = offX + (node.position.x - minX) * scale, y = offY + (node.position.y - minY) * scale;
-      context.fillStyle = miniNodeColor(node);
-      context.fillRect(x, y, sw, sh); context.strokeRect(x, y, sw, sh);
+    const started = performance.now(), canvas = ref.current, ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(width * dpr); canvas.height = Math.round(height * dpr); ctx.scale(dpr, dpr);
+    const style = getComputedStyle(document.documentElement), color = Object.fromEntries(Object.entries(STATUS_VISUALS).map(([status, visual]) => [status, style.getPropertyValue(visual.token).trim()])) as Record<VisualStatus, string>;
+    const relationColors = { ancestor: style.getPropertyValue("--job-ancestor").trim(), descendant: style.getPropertyValue("--job-descendant").trim() };
+    const text = style.getPropertyValue("--v2-text-primary").trim(), border = style.getPropertyValue("--v2-border-strong").trim();
+    const selectedColor = style.getPropertyValue("--job-selected").trim();
+    ctx.fillStyle = style.getPropertyValue("--v2-bg-canvas").trim(); ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = border;
+    for (let x = 8; x < width; x += 16) for (let y = 8; y < height; y += 16) ctx.fillRect(x, y, 1, 1);
+    const visible = (x: number, y: number, w: number, h: number) => x + w >= 0 && y + h >= 0 && x <= width && y <= height;
+    for (const folder of model.folders) {
+      const x = t.offX + folder.x * t.scale, y = t.offY + folder.y * t.scale, w = folder.width * t.scale, h = folder.height * t.scale;
+      if (!visible(x, y, w, h)) continue;
+      ctx.fillStyle = `hsla(${folder.hue}, 45%, 50%, .09)`; ctx.strokeStyle = `hsla(${folder.hue}, 50%, 50%, .5)`;
+      ctx.fillRect(x, y, w, h); ctx.lineWidth = 1; ctx.strokeRect(x, y, w, h);
+      if ((folder.counts.failed ?? 0) + (folder.counts.uncertain ?? 0) > 0) { ctx.fillStyle = color[priorityStatus(folder.counts)]; ctx.fillRect(x, y, Math.min(w, 3), h); }
     }
-  }, [jobs, width, height, minX, minY, scale, offX, offY, sw, sh]);
-  // One bitmap replaces thousands of SVG elements. Camera movement only moves
-  // the independent viewport rectangle and never redraws this layer.
-  return <canvas ref={ref} aria-hidden="true" style={{ display: "block", width, height }} />;
+    const hasSelection = model.jobs.some(job => job.selected);
+    const related = (job: MapJob) => job.selected || !!job.relation;
+    if (showEdges && lod === "medium") {
+      ctx.strokeStyle = border; ctx.globalAlpha = .6;
+      for (const edge of model.links) {
+        ctx.lineWidth = Math.min(2, .5 + Math.log2(edge.count + 1) / 4); ctx.beginPath();
+        ctx.moveTo(t.offX + edge.x1 * t.scale, t.offY + edge.y1 * t.scale); ctx.lineTo(t.offX + edge.x2 * t.scale, t.offY + edge.y2 * t.scale); ctx.stroke();
+      }
+    }
+    if (showEdges && (lod === "near" || (lod === "medium" && hasSelection))) for (const edge of model.edges) {
+      const a = model.byID.get(edge.source), b = model.byID.get(edge.target);
+      if (!a || !b || (lod === "medium" && !(related(a) && related(b)))) continue;
+      ctx.globalAlpha = hasSelection && !(related(a) && related(b)) ? .08 : .5; ctx.strokeStyle = related(a) && related(b) ? (a.relation === "ancestor" || b.relation === "ancestor" ? relationColors.ancestor : relationColors.descendant) : border; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(t.offX + (a.x + a.width / 2) * t.scale, t.offY + (a.y + a.height) * t.scale);
+      ctx.lineTo(t.offX + (b.x + b.width / 2) * t.scale, t.offY + b.y * t.scale); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    if (lod !== "near") for (const cell of model.cells[lod === "far" ? 0 : 1]) {
+      if (cell.count <= 0) continue;
+      const x = t.offX + cell.x * t.scale, y = t.offY + cell.y * t.scale, size = Math.max(2, cell.size * t.scale - 1);
+      if (!visible(x, y, size, size)) continue;
+      ctx.globalAlpha = (hasSelection ? .22 : .6) + Math.min(.35, Math.log2(cell.count + 1) / 12);
+      ctx.fillStyle = color[cell.dominant]; ctx.fillRect(x, y, size, size);
+      // Uma falha minoritária nunca some no verde dominante.
+      ctx.globalAlpha = 1; ctx.fillStyle = color[cell.priority]; ctx.fillRect(x, y, Math.max(2, size * .25), size);
+      if (cell.counts.running && cell.priority !== "running") { ctx.fillStyle = color.running; ctx.fillRect(x + size - 2, y, 2, size); }
+    }
+    const drawJob = (job: MapJob) => {
+      const x = t.offX + job.x * t.scale, y = t.offY + job.y * t.scale, w = Math.max(3, job.width * t.scale), h = Math.max(2, job.height * t.scale);
+      if (!visible(x, y, w, h)) return;
+      ctx.globalAlpha = hasSelection && !related(job) ? .25 : 1;
+      ctx.fillStyle = color[job.status]; ctx.fillRect(x, y, w, h);
+      if (related(job)) {
+        ctx.globalAlpha = 1; ctx.lineWidth = job.selected ? 2 : 1.5;
+        ctx.strokeStyle = job.selected ? selectedColor : relationColors[job.relation as keyof typeof relationColors] || text;
+        ctx.strokeRect(x - 1, y - 1, w + 2, h + 2);
+      }
+      if (lod === "near" && w > 70 && h > 17) {
+        ctx.fillStyle = style.getPropertyValue("--v2-bg-surface").trim(); ctx.globalAlpha = .95; ctx.fillRect(x, y + h, w, 13);
+        ctx.globalAlpha = 1; ctx.fillStyle = text; ctx.font = "10px sans-serif"; ctx.fillText(job.label.slice(0, Math.floor(w / 6)), x + 2, y + h + 10, w - 4);
+      }
+    };
+    for (const job of model.jobs) if (lod === "near" || related(job) || (lod === "medium" && ["failed", "uncertain", "running"].includes(job.status))) drawJob(job);
+    ctx.globalAlpha = 1;
+    recordCanvasMetric("minimapRaster", started, { jobs: model.jobs.length, folders: model.folders.length, cells: model.cells[lod === "far" ? 0 : 1].length, links: model.links.length });
+  }, [model, t, lod, width, height, showEdges, theme]);
+  return <canvas ref={ref} aria-hidden="true" style={{ width, height, display: "block" }} />;
 });
 
-// Retângulo da área visível — ÚNICO assinante do transform. Re-renderiza a cada
-// frame de pan, mas custa 1 <rect>.
-function ViewportRect({ minX, minY, scale, offX, offY }: {
-  minX: number; minY: number; scale: number; offX: number; offY: number;
-}) {
-  const tx = useStore((s) => s.transform[0]);
-  const ty = useStore((s) => s.transform[1]);
-  const tzoom = useStore((s) => s.transform[2]);
-  const vpW = useStore((s) => s.width);
-  const vpH = useStore((s) => s.height);
-  const viewMinX = -tx / tzoom, viewMinY = -ty / tzoom;
-  const viewMaxX = (vpW - tx) / tzoom, viewMaxY = (vpH - ty) / tzoom;
-  return (
-    <rect
-      x={offX + (viewMinX - minX) * scale}
-      y={offY + (viewMinY - minY) * scale}
-      width={(viewMaxX - viewMinX) * scale}
-      height={(viewMaxY - viewMinY) * scale}
-      fill="rgba(255,255,255,0.05)"
-      stroke="var(--v2-accent-brand)"
-      strokeWidth={1}
-      rx={2}
-      pointerEvents="none"
-    />
-  );
-}
-
-// Cor do nó no minimap por status (hex p/ o fill SVG do minimap).
-function miniNodeColor(n: Node): string {
-  const s = String((n.data as { status?: string } | undefined)?.status ?? "");
-  if (s === "FAILED" || s === "NOTOK") return "#ef4444";
-  if (s === "RUNNING") return "#22d3ee";
-  if (s === "SUCCESS" || s === "OK") return "#11C76F";
-  if (s === "WAITING") return "#737373";
-  return "#3a3a3a";
+function ViewportRect({ transform }: { transform: MapTransform }) {
+  const camera = useStore(s => s.transform), width = useStore(s => s.width), height = useStore(s => s.height);
+  const rect = viewportOnMap({ x: camera[0], y: camera[1], zoom: camera[2] }, { width, height }, transform);
+  recordCanvasMetric("minimapViewportUpdate");
+  return <rect {...rect} data-map-viewport="true" className="v2-minimap-viewport" rx={2}><title>Drag to move the canvas</title></rect>;
 }
