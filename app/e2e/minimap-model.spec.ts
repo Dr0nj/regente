@@ -104,3 +104,71 @@ test("main canvas supports 5–400 percent and solid jobs at 17 percent", () => 
   expect(canvasDetail(.26)).toBe("compact"); expect(canvasDetail(.55)).toBe("compact");
   expect(canvasDetail(.9)).toBe("detail"); expect(canvasDetail(4)).toBe("detail");
 });
+
+
+test("replacement with unchanged job count removes stale density and folder status", () => {
+  const build = createMiniMapModel(), lanes = [lane];
+  const first = build([node("old", 0, 0, "FAILED"), node("kept", 800)], lanes, []);
+  const next = build([node("new", -100, 0, "RUNNING"), node("kept", 800)], lanes, []);
+  expect(next.geometryBuilds).toBe(first.geometryBuilds + 1);
+  expect(next.byID.has("old")).toBe(false);
+  expect(next.folders[0].counts).toEqual({ running: 1, success: 1 });
+  for (const cells of next.cells) {
+    expect(cells.reduce((sum, cell) => sum + cell.count, 0)).toBe(2);
+    expect(cells.reduce((sum, cell) => sum + (cell.counts.failed ?? 0), 0)).toBe(0);
+  }
+  const empty = build([], [], []);
+  expect(empty.cells).toEqual([[], []]); expect(empty.links).toEqual([]);
+  expect(empty.folders).toEqual([]); expect(selectionBounds(empty.jobs)).toBeNull();
+});
+
+test("split regions of one folder receive only their own job counts", () => {
+  const build = createMiniMapModel();
+  const lanes = [
+    { ...lane, x: 0, y: 0, width: 500, height: 500, count: 1 },
+    { ...lane, x: 1000, y: 0, width: 500, height: 500, count: 1 },
+  ];
+  const nodes = [node("left", 20, 20, "FAILED"), node("right", 1020, 20, "RUNNING")];
+  const before = build(nodes, lanes, []);
+  expect(before.folders.map(folder => folder.counts)).toEqual([{ failed: 1 }, { running: 1 }]);
+  expect(before.folders[0].hue).toBe(before.folders[1].hue);
+  nodes[0] = { ...nodes[0], data: { ...nodes[0].data, status: "SUCCESS" } };
+  const after = build(nodes, lanes, []);
+  expect(after.geometryBuilds).toBe(1);
+  expect(after.folders[0].counts).toMatchObject({ failed: 0, success: 1 });
+  expect(after.folders[1]).toBe(before.folders[1]);
+});
+
+test("topology changes refresh links without rebuilding positions or losing selection", () => {
+  const build = createMiniMapModel(), lanes = [lane];
+  const nodes = [{ ...node("a"), selected: true }, node("b", 800), node("c", 1400)];
+  const before = build(nodes, lanes, [{ source: "a", target: "b" }]);
+  const after = build(nodes, lanes, [{ source: "a", target: "c" }]);
+  expect(after.geometryBuilds).toBe(before.geometryBuilds);
+  expect(after.bounds).toBe(before.bounds);
+  expect(after.edges).toEqual([{ source: "a", target: "c" }]);
+  expect(after.links[0].x2).not.toBe(before.links[0].x2);
+  for (const id of ["a", "b", "c"]) expect(after.byID.get(id)).toBe(before.byID.get(id));
+  expect(after.byID.get("a")!.selected).toBe(true);
+});
+
+test("batched status changes keep density totals and previous snapshots intact", () => {
+  const build = createMiniMapModel(), lanes = [{ ...lane, count: 30 }];
+  let nodes = Array.from({ length: 30 }, (_, i) => node(String(i), (i % 10) * 10, Math.floor(i / 10) * 10));
+  const original = build(nodes, lanes, []);
+  for (let round = 0; round < 8; round++) {
+    nodes = nodes.map((n, i) => ({ ...n, data: { ...n.data, status: (i + round) % 3 === 0 ? "FAILED" : (i + round) % 3 === 1 ? "RUNNING" : "SUCCESS" } }));
+    const current = build(nodes, lanes, []);
+    expect(current.geometryBuilds).toBe(1);
+    expect(current.folders[0].counts).toEqual({ success: 10, failed: 10, running: 10 });
+    for (const cells of current.cells) {
+      expect(cells.reduce((sum, cell) => sum + cell.count, 0)).toBe(30);
+      for (const cell of cells) {
+        expect(Object.values(cell.counts).every(count => count >= 0)).toBe(true);
+        expect(Object.values(cell.counts).reduce((sum, count) => sum + count, 0)).toBe(cell.count);
+      }
+    }
+  }
+  expect(original.folders[0].counts).toEqual({ success: 30 });
+  expect(original.jobs.every(job => job.status === "success")).toBe(true);
+});

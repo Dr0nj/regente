@@ -270,8 +270,9 @@ Sem cap ou remoção de jobs do modelo lógico. Métricas de build/patch/raster/
 mais atraso estimado do ponteiro. Guia: [navegação do canvas](canvas-navigation.md).
 
 **Validação já executada:** TypeScript sem emissão/incremental; ESLint dos arquivos
-alterados e testes; **9 testes puros** novos (incluindo 5.000 marcadores, cores,
-coordenadas/resize/drag e identidade incremental) + **3 regressões existentes**
+alterados e testes; **13 testes puros** novos (incluindo 5.000 marcadores, cores,
+coordenadas/resize/drag, identidade incremental, substituição/remoção de jobs,
+regiões da mesma folder, troca de topologia e rajadas de status) + **3 regressões existentes**
 de status/recursos/seleção passaram. Cenário de browser com capturas claro/escuro
 17%/100% preparado, **ainda não executado**.
 
