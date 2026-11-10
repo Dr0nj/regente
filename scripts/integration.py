@@ -5,6 +5,7 @@ import hashlib
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import socket
 import ssl
@@ -25,6 +26,7 @@ ADMIN = "synthetic-lab-admin"
 PROCESSES = []
 REPORT = {"status": "running", "stages": [], "profile": "synthetic-ci-v1"}
 TLS_CONTEXT = None
+LAB_NETWORK_ATTACHED = False
 
 
 def command(args, *, env=None, timeout=180, name=None, stdin=None, expected_exit=0):
@@ -41,8 +43,41 @@ def command(args, *, env=None, timeout=180, name=None, stdin=None, expected_exit
     return result.stdout.strip()
 
 
+def service_host(service):
+    if service not in ("postgres", "nats", "keycloak"):
+        raise ValueError("Unknown disposable laboratory service")
+    return service if os.environ.get("DOCKER_LAB_CONTAINER") else "127.0.0.1"
+
+
 def port(service, internal):
+    if os.environ.get("DOCKER_LAB_CONTAINER"):
+        service_host(service)
+        return str(internal)
     return command(COMPOSE + ["port", service, str(internal)]).rsplit(":", 1)[1]
+
+
+def connect_lab_network():
+    global LAB_NETWORK_ATTACHED
+    runner = os.environ.get("DOCKER_LAB_CONTAINER", "")
+    if not runner:
+        return
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", runner):
+        raise RuntimeError("Invalid disposable laboratory container name")
+    label = command(["docker", "inspect", runner, "--format", '{{index .Config.Labels "regente.test"}}'])
+    if not label or label == "<no value>":
+        raise RuntimeError("Laboratory container requires the regente.test ownership label")
+    network = COMPOSE[3] + "_default"
+    attached = json.loads(command(["docker", "inspect", runner, "--format", '{{json .NetworkSettings.Networks}}']))
+    if network not in attached:
+        command(["docker", "network", "connect", network, runner])
+    LAB_NETWORK_ATTACHED = True
+
+
+def disconnect_lab_network():
+    global LAB_NETWORK_ATTACHED
+    if LAB_NETWORK_ATTACHED:
+        command(["docker", "network", "disconnect", COMPOSE[3] + "_default", os.environ["DOCKER_LAB_CONTAINER"]])
+        LAB_NETWORK_ATTACHED = False
 
 
 def free_port():
@@ -653,7 +688,7 @@ def main():
         tls_dir = RUN/"tls"
         tls_dir.mkdir()
         command(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-                 "-subj", "/CN=regente-lab", "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
+                 "-subj", "/CN=regente-lab", "-addext", "subjectAltName=DNS:localhost,DNS:keycloak,IP:127.0.0.1",
                  "-keyout", str(tls_dir/"lab.key"), "-out", str(tls_dir/"lab.crt")], name="lab-certificate")
         # Chave efêmera de lab: leitura pelo UID não-root do container, fora dos artifacts.
         (tls_dir/"lab.key").chmod(0o644)
@@ -661,13 +696,15 @@ def main():
         TLS_CONTEXT = ssl.create_default_context(cafile=str(tls_dir/"lab.crt"))
         compose_started = True
         command(COMPOSE+["up", "-d"], timeout=300, name="dependencies")
+        connect_lab_network()
+        REPORT["dependencyTransport"] = "private-container-network" if LAB_NETWORK_ATTACHED else "host-loopback"
         pg_port = port("postgres", 5432)
-        nats_url = "nats://127.0.0.1:" + port("nats", 4222)
-        issuer = "https://127.0.0.1:"+port("keycloak", 8443)+"/realms/regente-lab"
+        nats_url = "nats://" + service_host("nats") + ":" + port("nats", 4222)
+        issuer = "https://"+service_host("keycloak")+":"+port("keycloak", 8443)+"/realms/regente-lab"
         eventually("Keycloak discovery", lambda: request(issuer+"/.well-known/openid-configuration"), 150)
-        nats_info = request("http://127.0.0.1:"+port("nats", 8222)+"/varz")
+        nats_info = request("http://"+service_host("nats")+":"+port("nats", 8222)+"/varz")
         REPORT["nats_version"] = nats_info["version"]
-        dsn = f"postgres://regente:synthetic-lab-only@127.0.0.1:{pg_port}/regente_lab?sslmode=disable"
+        dsn = f"postgres://regente:synthetic-lab-only@{service_host('postgres')}:{pg_port}/regente_lab?sslmode=disable"
         # Configuração pessoal de Git, TLS, banco ou telemetria não entra no lab.
         clean_env = {k: v for k, v in os.environ.items()
                      if not k.startswith(("REGENTE_", "OTEL_")) and k not in ("GITHUB_TOKEN", "GH_TOKEN")}
@@ -729,6 +766,12 @@ def main():
             for args, name in [(["logs", "--no-color"], "dependency-logs"),
                                (["down", "-v", "--remove-orphans"], "cleanup")]:
                 try:
+                    if name == "cleanup":
+                        try:
+                            disconnect_lab_network()
+                        except Exception as error:
+                            REPORT["status"] = "failed"
+                            REPORT["network_cleanup_error"] = str(error)
                     output = command(COMPOSE+args, name=name)
                     if REPORT["status"] == "failed" and name == "dependency-logs":
                         print(output[-12000:], file=sys.stderr, flush=True)

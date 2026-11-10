@@ -349,8 +349,11 @@ def main():
         os.environ['REGENTE_LAB_TLS_DIR']=str(tls)
         env={k:v for k,v in os.environ.items() if not k.startswith(('REGENTE_','OTEL_')) and k not in ('GITHUB_TOKEN','GH_TOKEN')}
         env['SSL_CERT_FILE']=str(tls/'lab.crt')
-        lab.command(lab.COMPOSE+['up','-d','postgres'],timeout=300,name='capacity-postgres');compose=True
-        dsn='postgres://regente:synthetic-lab-only@127.0.0.1:'+lab.port('postgres',5432)+'/regente_lab?sslmode=disable'
+        compose=True
+        lab.command(lab.COMPOSE+['up','-d','postgres'],timeout=300,name='capacity-postgres')
+        lab.connect_lab_network()
+        report['dependencyTransport']='private-container-network' if lab.LAB_NETWORK_ATTACHED else 'host-loopback'
+        dsn='postgres://regente:synthetic-lab-only@'+lab.service_host('postgres')+':'+lab.port('postgres',5432)+'/regente_lab?sslmode=disable'
         for source,name,var in [('./server','server','main.version'),('./agent','agent','main.agentVersion'),('./server/cmd/capacity-seed','seed',None)]:
             args=['go','build','-o',str(lab.RUN/name)]
             if var:args+=['-ldflags','-X '+var+'=capacity-'+report['sha'][:12]]
@@ -402,6 +405,8 @@ def main():
             try:lab.stop_process(proc)
             except Exception as error:report['cleanupError']=str(error)
         if compose:
+            try:lab.disconnect_lab_network()
+            except Exception as error:report['status']='failed';report['networkCleanupError']=str(error)
             try:lab.command(lab.COMPOSE+['down','-v','--remove-orphans'],name='capacity-cleanup')
             except Exception as error:report['status']='failed';report['cleanupError']=str(error)
         report['seconds']=time.monotonic()-started

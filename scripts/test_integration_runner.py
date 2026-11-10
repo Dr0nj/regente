@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 import integration
 import recovery_rehearsal
 
@@ -123,6 +124,33 @@ class RecoveryScriptsTest(unittest.TestCase):
                 capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
 
+
+
+
+class ContainerNetworkTest(unittest.TestCase):
+    def test_native_host_keeps_published_loopback_port(self):
+        with mock.patch.dict(os.environ,{},clear=True), mock.patch.object(integration,'command',return_value='127.0.0.1:55432') as command:
+            self.assertEqual(integration.service_host('postgres'),'127.0.0.1')
+            self.assertEqual(integration.port('postgres',5432),'55432')
+            command.assert_called_once()
+
+    def test_container_uses_only_this_lab_network_and_disconnects(self):
+        with mock.patch.dict(os.environ,{'DOCKER_LAB_CONTAINER':'regente-fixture'}), mock.patch.object(integration,'LAB_NETWORK_ATTACHED',False), mock.patch.object(integration,'command',side_effect=['owned-fixture','{}','','']) as command:
+            integration.connect_lab_network()
+            self.assertEqual(integration.service_host('postgres'),'postgres')
+            self.assertEqual(integration.port('postgres',5432),'5432')
+            integration.disconnect_lab_network()
+            self.assertEqual(command.call_args_list[-2].args[0],['docker','network','connect',integration.COMPOSE[3]+'_default','regente-fixture'])
+            self.assertEqual(command.call_args_list[-1].args[0],['docker','network','disconnect',integration.COMPOSE[3]+'_default','regente-fixture'])
+            self.assertFalse(integration.LAB_NETWORK_ATTACHED)
+
+    def test_unlabelled_or_invalid_target_is_not_connected(self):
+        with mock.patch.dict(os.environ,{'DOCKER_LAB_CONTAINER':'operator-container'}), mock.patch.object(integration,'command',return_value='') as command:
+            with self.assertRaises(RuntimeError):integration.connect_lab_network()
+            command.assert_called_once()
+        with mock.patch.dict(os.environ,{'DOCKER_LAB_CONTAINER':'--invalid'}), mock.patch.object(integration,'command') as command:
+            with self.assertRaises(RuntimeError):integration.connect_lab_network()
+            command.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()

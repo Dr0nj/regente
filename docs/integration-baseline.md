@@ -193,3 +193,18 @@ The [execution security profile](execution-security.md) is exercised by TestI13C
 The [failure-resistant audit contract](failure-resistant-audit.md) is required on SQLite and PostgreSQL through transaction/storage/capacity/crash/verification/export tests and real SIGKILL processes with an independent TLS collector. PostgreSQL dump/restore is checked against the collector checkpoint. The installed smoke requires separate control/collector UIDs and permissions; its I14_SYSTEMD_OK marker is included in the verification artifact.
 
 Schema 33 also adds coalesced instance-change notifications and the keyset index used by optional incremental scheduling. See [performance and recovery operations](performance-recovery.md).
+
+## Running the laboratory inside a Linux container
+
+When Docker Desktop does not route published host-loopback ports back into a test
+container, set `DOCKER_LAB_CONTAINER` to that container's exact name. The container
+must carry a nonempty `regente.test` ownership label. The harness connects only
+that runner to its own unique Compose network, uses service DNS/internal ports
+for PostgreSQL, NATS and Keycloak, and disconnects before cleanup. Native Linux
+host runs keep their published-loopback behavior. Evidence records the transport.
+
+The runner needs an explicitly authorized Docker connection. Its repository path
+must also exist at the same absolute path on the daemon host so sibling containers
+can mount the TLS fixture and realm. A dedicated Docker volume mounted at its
+reported mountpoint provides that mapping. This mode does not grant access to an
+existing database or qualify an installed production service.
