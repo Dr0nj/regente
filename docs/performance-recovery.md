@@ -10,7 +10,7 @@ Upgrade the independent collector before enabling `-audit-batch-size 128`. The d
 
 ## Definitions
 
-The live workspace owns one immutable normalized snapshot. API readers receive isolated copies; WebSocket handshakes hash the authorized view without rebuilding or copying the graph. Concurrent cold readers share a build. A cancelled HTTP reader does not cancel that shared work. Known file/Git mutations invalidate before and after changing the workspace and serialize against publication. External changes are checked by content every 15 seconds, including same-size and same-mtime edits. The build compares the content it actually parsed with the surrounding digests; an unstable build is rejected.
+The live workspace owns one immutable normalized snapshot. API readers receive isolated copies; WebSocket handshakes hash the authorized view without rebuilding or copying the graph. Concurrent cold readers share a build. A cancelled HTTP reader does not cancel that shared work. Known file/Git mutations invalidate before and after changing the workspace and serialize against publication. A Git sync with unchanged HEAD and tracked files retains the hot snapshot; untracked files remain preserved. External changes are checked by content every 15 seconds, including same-size and same-mtime edits. The build compares the content it actually parsed with the surrounding digests; an unstable build is rejected.
 
 Invalid definitions make the snapshot unavailable. `/readyz` reports this, and a WebSocket connection receives 503 with `Retry-After` before upgrade. Correct the workspace and wait for reconciliation. External tools publishing multiple files must use coordinated or atomic publication; independent filesystem writes are not a multi-file transaction. Old snapshots are retained only while existing readers use them.
 
@@ -24,7 +24,7 @@ Batch export accepts at most 128 records and 1 MiB per request. The collector va
 
 ## Incremental scheduling
 
-The scheduler keeps a deduplicated candidate queue, condition consumer indexes and due-time heap. Database triggers coalesce instance changes in `scheduler_changes`; version-checked consumption avoids deleting a newer notification. Each tick reads at most 256 notifications and a 256-row reconciliation page. Candidate evaluation yields after 100 ms and requeues unfinished work. Claims, fencing, leadership and frozen instance snapshots retain their existing transaction rules.
+The scheduler keeps a deduplicated candidate queue, condition consumer indexes and due-time heap. Database triggers coalesce changes entering or leaving WAITING/RUNNING in `scheduler_changes`; terminal history inserts do not occupy the notification queue. Version-checked consumption avoids deleting a newer notification. Each tick reads at most 256 notifications and a 256-row reconciliation page. Candidate evaluation yields after 100 ms and requeues unfinished work. Claims, fencing, leadership and frozen instance snapshots retain their existing transaction rules.
 
 A full keyset pass recovers lost notifications; the next pass starts 30 seconds after completion. Agent/resource blockers retry after two seconds, running candidates after one minute. At a two-second tick, scanning 28,800 rows takes roughly 113 ticks before evaluation delays; the reconciliation interval is not a 30-second recovery guarantee. The validated-plan cache holds at most 1,024 entries. Condition-pool reads and existing running/resource maintenance remain; incremental mode does not eliminate every database scan.
 

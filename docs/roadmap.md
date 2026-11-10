@@ -167,6 +167,16 @@ inteiro na memória ao final de 24h. Ainda não equivale à suíte Linux integra
 smoke de instalação ou ensaio diário. Checkpoint local precede esses gates; nenhum push autorizado antes de terminar a
 trilha local solicitada.
 
+**10/11 — gate Linux completo e falha real no ensaio integrado:** checkpoint
+`ca2b4d1` passou `verify.py --full` (server/agent, race, web, browser, integração
+PostgreSQL/NATS/OIDC e demos). A primeira comparação do checkpoint `c2899b0`
+falhou: eventos de 28.800 fixtures terminais atrasaram o consumidor novo até o
+timeout de recuperação. Correção local restringe triggers a entradas/saídas de
+WAITING/RUNNING; teste garante candidato novo no primeiro tick apesar do histórico.
+Outra correção preserva o cache no sync Git sem alteração de HEAD/arquivos
+rastreados; mudanças remotas e reset de edição local continuam invalidados.
+Essas correções precisam de nova comparação; o gate diário e rollout seguem abertos.
+
 ### Onboarding Linux — incremento em validação (03/11/2026)
 
 Remoção do roteamento/bloqueio por ambiente, compatibilidade dos agentes existentes,

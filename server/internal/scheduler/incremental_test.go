@@ -230,3 +230,35 @@ func TestIncrementalCandidateCreationFIFO(t *testing.T) {
 		t.Fatalf("candidatos ignoraram antiguidade no empate: %+v", rows)
 	}
 }
+
+func TestIncrementalHistoryDoesNotDelayNewWaitingCandidate(t *testing.T) {
+	s := newTestScheduler(t)
+	s.EnableIncremental()
+	now := s.Now()
+	tx, err := s.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 600 {
+		if _, err = tx.Exec("INSERT INTO instances(id,definition_id,order_date,status,scheduled_at) VALUES(?,'history',?,'OK',?)", fmt.Sprintf("a-history-%04d", i), s.TodayDate(), now); err != nil {
+			tx.Rollback()
+			t.Fatal(err)
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.db.Exec("INSERT INTO instances(id,definition_id,order_date,status,scheduled_at) VALUES('z-new','new',?,'WAITING',?)", s.TodayDate(), now); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.tickCandidates(s.TodayDate(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if row.ID == "z-new" {
+			return
+		}
+	}
+	t.Fatal("histórico terminal impediu candidato novo de chegar ao primeiro tick")
+}

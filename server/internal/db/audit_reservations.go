@@ -86,12 +86,16 @@ BEGIN
  END IF;
  RETURN NULL;
 END $$;
-CREATE TRIGGER scheduler_instance_insert AFTER INSERT ON instances FOR EACH ROW EXECUTE FUNCTION regente_scheduler_change();
-CREATE TRIGGER scheduler_instance_update AFTER UPDATE OF ` + columns + ` ON instances FOR EACH ROW EXECUTE FUNCTION regente_scheduler_change();
-CREATE TRIGGER scheduler_instance_delete AFTER DELETE ON instances FOR EACH ROW EXECUTE FUNCTION regente_scheduler_change();`
+CREATE TRIGGER scheduler_instance_insert AFTER INSERT ON instances FOR EACH ROW WHEN (NEW.status IN ('WAITING','RUNNING')) EXECUTE FUNCTION regente_scheduler_change();
+CREATE TRIGGER scheduler_instance_update AFTER UPDATE OF ` + columns + ` ON instances FOR EACH ROW WHEN (OLD.status IN ('WAITING','RUNNING') OR NEW.status IN ('WAITING','RUNNING')) EXECUTE FUNCTION regente_scheduler_change();
+CREATE TRIGGER scheduler_instance_delete AFTER DELETE ON instances FOR EACH ROW WHEN (OLD.status IN ('WAITING','RUNNING')) EXECUTE FUNCTION regente_scheduler_change();`
 	}
 	for _, item := range []struct{ name, event, ref string }{{"insert", "INSERT", "NEW"}, {"update", "UPDATE OF " + columns, "NEW"}, {"delete", "DELETE", "OLD"}} {
-		base += "CREATE TRIGGER scheduler_instance_" + item.name + " AFTER " + item.event + " ON instances BEGIN INSERT INTO scheduler_changes(instance_id) VALUES(" + item.ref + ".id) ON CONFLICT(instance_id) DO UPDATE SET version=version+1; END;"
+		predicate := item.ref + ".status IN ('WAITING','RUNNING')"
+		if item.name == "update" {
+			predicate = "(OLD.status IN ('WAITING','RUNNING') OR NEW.status IN ('WAITING','RUNNING'))"
+		}
+		base += "CREATE TRIGGER scheduler_instance_" + item.name + " AFTER " + item.event + " ON instances WHEN " + predicate + " BEGIN INSERT INTO scheduler_changes(instance_id) VALUES(" + item.ref + ".id) ON CONFLICT(instance_id) DO UPDATE SET version=version+1; END;"
 	}
 	return base
 }

@@ -796,8 +796,30 @@ func (g *GitOps) bootstrapLocked() error {
 
 // SyncFromRemote roda fetch + reset --hard.
 func (g *GitOps) SyncFromRemote() error {
-	done := g.beginDefinitionMutation()
-	defer done()
+	// Ordem de locks igual às outras escritas: workspace antes do Git. O fetch
+	// não muda arquivos; leitores quentes continuam usando o snapshot publicado.
+	store := g.definitionStore
+	changed := false
+	if store != nil {
+		store.mu.Lock()
+		defer func() {
+			if changed {
+				store.invalidateDefinitionsLocked()
+			}
+			store.mu.Unlock()
+			if changed {
+				store.cache.mu.Lock()
+				trigger := store.cache.trigger
+				store.cache.mu.Unlock()
+				if trigger != nil {
+					select {
+					case trigger <- struct{}{}:
+					default:
+					}
+				}
+			}
+		}()
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if !g.IsRepo() {
@@ -807,18 +829,48 @@ func (g *GitOps) SyncFromRemote() error {
 	if err != nil {
 		return err
 	}
-	if err := g.fetchAndResetLocked(repo); err != nil {
-		g.lastErr = err.Error() // visível no /api/git/status, não só no log
+	if err = g.fetchLocked(repo, g.branch); err != nil {
+		g.lastErr = err.Error()
 		return err
 	}
+	target, err := g.refHash(repo, remoteRefName(g.branch))
+	if err != nil {
+		return err
+	}
+	wt, err := g.worktree(repo)
+	if err != nil {
+		return err
+	}
+	head, headErr := repo.Head()
+	needsReset := headErr != nil || head.Hash() != target
+	if !needsReset {
+		status, err := wt.Status()
+		if err != nil {
+			return err
+		}
+		for _, file := range status {
+			// Untracked são preservados pelo reset anterior e não exigem reconstrução.
+			if (file.Staging != git.Unmodified && file.Staging != git.Untracked) || (file.Worktree != git.Unmodified && file.Worktree != git.Untracked) {
+				needsReset = true
+				break
+			}
+		}
+	}
+	if needsReset {
+		changed = true
+		if store != nil {
+			store.invalidateDefinitionsLocked()
+		}
+		if err = g.hardResetTo(repo, wt, target); err != nil {
+			g.lastErr = err.Error()
+			return err
+		}
+	}
+	g.lastSync = time.Now()
 	g.lastErr = ""
-	// refreshSHA must run BEFORE assigning remoteSHA; otherwise we copy the
-	// stale lastSHA from before the fetch+reset (regression observed in
-	// /api/git/sync response: sha updated but remoteSha still old).
-	if err := g.refreshSHA(); err != nil {
+	if err = g.refreshSHA(); err != nil {
 		return err
 	}
-	// F13.4 — sync clears drift; local now matches remote.
 	g.drift = false
 	g.remoteSHA = g.lastSHA
 	g.driftErr = ""

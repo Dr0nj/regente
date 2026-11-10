@@ -268,3 +268,56 @@ func BenchmarkWorkspaceView28800(b *testing.B) {
 		}
 	}
 }
+
+func TestGitSyncUnchangedRetainsDefinitionSnapshot(t *testing.T) {
+	bare, seed := initRemote(t)
+	seed.commit("definitions/f/job.yaml", "id: job\nteam: f\nlabel: original\n", "definition")
+	seed.push()
+	ws := t.TempDir()
+	g := NewGitOps(ws, bare, testBranch)
+	if err := g.EnsureClone(); err != nil {
+		t.Fatal(err)
+	}
+	store := NewFileStore(ws, false)
+	g.BindDefinitionStore(store)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := store.StartDefinitionCache(ctx, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	original, err := store.definitionSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(ws, "scratch.tmp"), "preserved")
+	for range 3 {
+		if err = g.SyncFromRemote(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	same, err := store.readyDefinitionSnapshot()
+	if err != nil || same != original || store.cache.builds.Load() != 1 {
+		t.Fatal("sync sem mudanças invalidou snapshot", err)
+	}
+	// Reset continua descartando edição local rastreada, mesmo sem novo commit remoto.
+	mustWrite(t, filepath.Join(ws, "definitions", "f", "job.yaml"), "id: job\nteam: f\nlabel: local\n")
+	if err = g.SyncFromRemote(); err != nil {
+		t.Fatal(err)
+	}
+	reset, err := store.definitionSnapshot()
+	if err != nil || reset.definitions[0].Label != "original" {
+		t.Fatal("reset local não aplicado", err)
+	}
+	seed.commit("definitions/f/job.yaml", "id: job\nteam: f\nlabel: remote\n", "advance")
+	seed.push()
+	if err = g.SyncFromRemote(); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := store.definitionSnapshot()
+	if err != nil || updated.definitions[0].Label != "remote" || updated.generation <= original.generation {
+		t.Fatal("snapshot remoto não avançou", err)
+	}
+	if !exists(filepath.Join(ws, "scratch.tmp")) {
+		t.Fatal("sync removeu untracked")
+	}
+}
