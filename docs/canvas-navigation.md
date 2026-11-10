@@ -32,8 +32,13 @@ changing it does not change the main canvas zoom.
 - The arrow button toggles connections; **?** opens the status legend.
 - Collapse/expand is remembered on this browser.
 - With the map focused, arrow keys explore it, **+ / −** zoom, **Home** fits,
-  and **Enter** centers the main canvas on the map center. Folder labels also
-  accept **Enter** or **Space**.
+  and **Enter** centers the main canvas on the map center. **Shift + arrow keys**
+  move the main camera without changing its zoom. Folder labels also accept
+  **Enter** or **Space**. **Escape** closes the legend and returns focus to its
+  button. Browser shortcuts using Ctrl, Command or Alt remain available.
+- The resize handle is keyboard accessible: arrows change width/height by 10 px,
+  **Shift + arrows** by 40 px, and **Home** restores the default size. Dragging
+  resizes once per animation frame and ends on pointer cancellation.
 
 Distant views aggregate jobs into density cells. Intermediate views add failed,
 uncertain and running jobs, selections and aggregated connections. Close views

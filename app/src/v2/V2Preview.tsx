@@ -107,6 +107,7 @@ import ResourcesPanel from "./ResourcesPanel";
 import { listAgents } from "@/lib/agents-api";
 import { listResources } from "@/lib/bloco2-api";
 import NavMinimap from "./NavMinimap";
+import MinimapResizeHandle from "./MinimapResizeHandle";
 import CanvasZoomControls from "./CanvasZoomControls";
 import { CANVAS_MIN_ZOOM, CANVAS_MAX_ZOOM } from "./canvas-zoom";
 import { useCanvasCamera } from "./hooks/useCanvasCamera";
@@ -1914,31 +1915,8 @@ function V2PreviewInner() {
             >
               <NavMinimap nodes={displayNodes} lanes={canvas.lanes} edges={topology} width={miniSize.w} height={miniSize.h} onNavigate={focusOnPoint} onMoveCamera={moveCamera} />
             </div>
-            <div
-              className="v2-minimap-resize"
-              title="Resize minimap"
-              onPointerDown={(e) => {
-                e.preventDefault();
-                const sx = e.clientX, sy = e.clientY, sw = miniSize.w, sh = miniSize.h;
-                const move = (ev: PointerEvent) => setMiniSize({
-                  w: Math.min(560, Math.max(260, sw + (sx - ev.clientX))),
-                  h: Math.min(380, Math.max(110, sh + (sy - ev.clientY))),
-                });
-                const up = () => {
-                  window.removeEventListener("pointermove", move);
-                  window.removeEventListener("pointerup", up);
-                };
-                window.addEventListener("pointermove", move);
-                window.addEventListener("pointerup", up);
-              }}
-              style={{
-                position: "absolute", zIndex: 11, cursor: "nwse-resize",
-                right: (mode === "monitoring" && selectedInstance ? 392 : 16) + miniSize.w - 7,
-                bottom: 16 + miniSize.h - 7,
-                width: 14, height: 14, borderRadius: 4,
-                background: "var(--v2-bg-elevated)", border: "1px solid var(--v2-border-strong)",
-              }}
-            />
+            <MinimapResizeHandle size={miniSize} onResize={setMiniSize}
+              right={mode === "monitoring" && selectedInstance ? 392 : 16} />
           </>
         )}
 

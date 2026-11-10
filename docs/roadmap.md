@@ -270,11 +270,21 @@ Sem cap ou remoção de jobs do modelo lógico. Métricas de build/patch/raster/
 mais atraso estimado do ponteiro. Guia: [navegação do canvas](canvas-navigation.md).
 
 **Validação já executada:** TypeScript sem emissão/incremental; ESLint dos arquivos
-alterados e testes; **13 testes puros** novos (incluindo 5.000 marcadores, cores,
+alterados e testes; **17 testes puros** novos (incluindo 5.000 marcadores, cores,
 coordenadas/resize/drag, identidade incremental, substituição/remoção de jobs,
-regiões da mesma folder, troca de topologia e rajadas de status) + **3 regressões existentes**
+regiões da mesma folder, troca de topologia, rajadas de status e atalhos/resize) + **3 regressões existentes**
 de status/recursos/seleção passaram. Cenário de browser com capturas claro/escuro
 17%/100% preparado, **ainda não executado**.
+
+**10/11 — acessibilidade adiantada:** alça de resize agora é botão focável (24px),
+setas ajustam tamanho, Shift amplia o passo e Home restaura; arrasto usa captura
+de ponteiro/rAF e cancela no unmount, sem listeners globais sobrando. Shift+setas
+no mapa move a câmera principal; atalhos Ctrl/Command/Alt do browser preservados.
+Legenda inclui todos os estados, relaciona botão/conteúdo para leitor de tela e
+fecha com Escape devolvendo foco. Gestos de ponteiros diferentes não se misturam.
+Quatro testes puros de controles passaram. Browser preparado também para teclado,
+foco, persistência após reload, limites 5%/400% e contraste do nome (4,5:1) em dois
+temas; esses cenários **não foram executados durante a medição diária**.
 
 **Para concluir após o PERF-05:** build/lint completo, execução dos testes de
 browser e revisão das imagens; conferir contraste, resize, drag real, Center,

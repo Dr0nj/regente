@@ -1,6 +1,7 @@
-import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useEffect, useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useStore, useStoreApi, type Node } from "@xyflow/react";
 import type { LaneInfo } from "./canvas-layout";
+import { mapKeyAction } from "./minimap-controls";
 import { latestFrame } from "../lib/latest-frame";
 import { recordCanvasMetric } from "./canvas-metrics";
 import { STATUS_VISUALS, priorityStatus, type VisualStatus } from "./job-status-visual";
@@ -13,6 +14,8 @@ type Props = { nodes: Node[]; lanes: LaneInfo[]; edges: Array<{ source: string; 
   onMoveCamera: (camera: Camera) => unknown };
 
 export default function NavMinimap({ nodes, lanes, edges, width, height, onNavigate, onMoveCamera }: Props) {
+  const mapID = useId(), legendID = useId(), helpID = useId();
+  const legendButton = useRef<HTMLButtonElement>(null);
   const [builder] = useState(createMiniMapModel);
   const model = useMemo(() => builder(nodes, lanes, edges), [builder, nodes, lanes, edges]);
   const [manualView, setView] = useState<MapView | null>(null);
@@ -81,8 +84,8 @@ export default function NavMinimap({ nodes, lanes, edges, width, height, onNavig
     try { localStorage.setItem("regente:minimap-collapsed", next ? "1" : "0"); } catch { /* Preferência não impede navegação. */ }
   };
   const down = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (event.button !== 0) return;
-    event.preventDefault(); event.stopPropagation();
+    if (event.button !== 0 || gesture.current) return;
+    event.preventDefault(); event.stopPropagation(); event.currentTarget.focus();
     const [x, y, zoom] = store.getState().transform;
     gesture.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false,
       viewport: (event.target as Element).getAttribute("data-map-viewport") === "true", camera: { x, y, zoom }, transform, folderID: (event.target as Element).closest("[data-folder]")?.getAttribute("data-folder") ?? null };
@@ -107,12 +110,17 @@ export default function NavMinimap({ nodes, lanes, edges, width, height, onNavig
       else navigate(point.x, point.y);
     }
     gesture.current = null;
-    event.currentTarget.releasePointerCapture(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
   const panMap = (dx: number, dy: number) => setView(clampMap({ ...view, x: view.x + dx / transform.scale, y: view.y + dy / transform.scale }, model.bounds));
-  return <section className="v2-minimap" data-collapsed={collapsed} style={{ width, height: collapsed ? 30 : height }} aria-label="Workflow navigation map">
+  return <section className="v2-minimap" data-collapsed={collapsed} style={{ width, height: collapsed ? 30 : height }} aria-label="Workflow navigation map"
+    onKeyDown={event => {
+      if (event.key === "Escape" && showLegend) {
+        event.preventDefault(); event.stopPropagation(); setShowLegend(false); legendButton.current?.focus();
+      }
+    }}>
     <div className="v2-minimap-toolbar" role="group" aria-label="Minimap controls">
-      <button title={collapsed ? "Expand minimap" : "Collapse minimap"} aria-label={collapsed ? "Expand minimap" : "Collapse minimap"} aria-expanded={!collapsed} onClick={toggle}>{collapsed ? "▣" : "▾"}</button>
+      <button title={collapsed ? "Expand minimap" : "Collapse minimap"} aria-label={collapsed ? "Expand minimap" : "Collapse minimap"} aria-expanded={!collapsed} aria-controls={!collapsed ? mapID : undefined} onClick={toggle}>{collapsed ? "▣" : "▾"}</button>
       <span className="v2-minimap-heading">Map</span>
       {!collapsed && <>
         <button aria-label="Zoom out minimap" title="Zoom out minimap" disabled={view.zoom <= 1} onClick={() => setView(zoomMap(view, model.bounds, width, mapHeight, 1 / 1.5))}>−</button>
@@ -120,24 +128,29 @@ export default function NavMinimap({ nodes, lanes, edges, width, height, onNavig
         <button title="Fit minimap" aria-label="Fit minimap" onClick={() => setView(null)}>Fit</button>
         <button title="Center selected jobs" aria-label="Center selection" disabled={!selected} onClick={focus}>Center</button>
         <button title="Show connections" aria-label="Show minimap connections" aria-pressed={showEdges} onClick={() => setShowEdges(!showEdges)}>↗</button>
-        <button title="Status legend" aria-label="Minimap status legend" aria-expanded={showLegend} onClick={() => setShowLegend(!showLegend)}>?</button>
+        <button ref={legendButton} title="Status legend" aria-label="Minimap status legend" aria-expanded={showLegend} aria-controls={showLegend ? legendID : undefined} onClick={() => setShowLegend(!showLegend)}>?</button>
       </>}
     </div>
     {!collapsed && <>
       <div className="v2-minimap-map" style={{ width, height: mapHeight }}>
         <MapRaster model={model} transform={transform} lod={lod} width={width} height={mapHeight} showEdges={showEdges} theme={theme} />
-        <svg ref={svgRef} width={width} height={mapHeight} tabIndex={0} role="group" aria-label="Navigation map: click to focus, drag viewport, wheel to zoom, arrow keys to explore"
+        <svg id={mapID} ref={svgRef} aria-describedby={helpID} width={width} height={mapHeight} tabIndex={0} role="group" aria-label="Navigation map: click to focus, drag viewport, wheel to zoom, arrow keys to explore"
           onPointerDown={down} onPointerUp={up} onPointerLeave={() => { hoverFrame.current?.cancel(); setTooltip(""); }} onPointerMove={event => {
-            if (gesture.current) pointerFrame.current?.schedule({ x: event.clientX, y: event.clientY, at: performance.now() });
-            else if (!(event.target as Element).closest("[data-folder]")) hoverFrame.current?.schedule({ x: event.clientX, y: event.clientY });
-          }} onPointerCancel={() => { pointerFrame.current?.cancel(); gesture.current = null; }} onLostPointerCapture={() => { pointerFrame.current?.cancel(); gesture.current = null; }}
+            if (gesture.current?.id === event.pointerId) pointerFrame.current?.schedule({ x: event.clientX, y: event.clientY, at: performance.now() });
+            else if (!gesture.current && !(event.target as Element).closest("[data-folder]")) hoverFrame.current?.schedule({ x: event.clientX, y: event.clientY });
+          }} onPointerCancel={event => { if (gesture.current?.id === event.pointerId) { pointerFrame.current?.cancel(); gesture.current = null; } }} onLostPointerCapture={event => { if (gesture.current?.id === event.pointerId) { pointerFrame.current?.cancel(); gesture.current = null; } }}
           onKeyDown={event => {
-            if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "+", "=", "-", "Home", "Enter"].includes(event.key)) event.preventDefault();
-            if (event.key === "ArrowLeft") panMap(-30, 0); if (event.key === "ArrowRight") panMap(30, 0);
-            if (event.key === "ArrowUp") panMap(0, -30); if (event.key === "ArrowDown") panMap(0, 30);
-            if (event.key === "+" || event.key === "=") setView(zoomMap(view, model.bounds, width, mapHeight, 1.5));
-            if (event.key === "-") setView(zoomMap(view, model.bounds, width, mapHeight, 1 / 1.5));
-            if (event.key === "Home") setView(null); if (event.key === "Enter") navigate(view.x, view.y);
+            const action = mapKeyAction(event); if (!action) return;
+            if (action.kind === "dismiss") { hoverFrame.current?.cancel(); setTooltip(""); return; }
+            event.preventDefault(); event.stopPropagation();
+            if (action.kind === "panMap") panMap(action.dx, action.dy);
+            if (action.kind === "panCanvas") {
+              const [x, y, zoom] = store.getState().transform;
+              onMoveCamera({ x: x - action.dx, y: y - action.dy, zoom });
+            }
+            if (action.kind === "zoom") setView(zoomMap(view, model.bounds, width, mapHeight, action.factor));
+            if (action.kind === "fit") setView(null);
+            if (action.kind === "focus") navigate(view.x, view.y);
           }}>
           <ViewportRect transform={transform} />
           {model.folders.map(folder => {
@@ -147,7 +160,7 @@ export default function NavMinimap({ nodes, lanes, edges, width, height, onNavig
             const label = `${folder.team} (${Object.values(folder.counts).reduce((sum, count) => sum + count, 0)})`, available = Math.max(3, Math.floor((Math.min(w, width) - 6) / 6));
             return <g key={folder.id} data-folder={folder.id} className="v2-minimap-folder" tabIndex={0} role="button" aria-label={`Focus folder ${folder.team}, ${counts}`} onFocus={() => setTooltip(`${folder.team} · ${counts}`)}
               onBlur={() => setTooltip("")} onMouseEnter={() => { hoverFrame.current?.cancel(); setTooltip(`${folder.team} · ${counts}`); }} onMouseLeave={() => setTooltip("")}
-              onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); navigate(folder.x + folder.width / 2, folder.y + folder.height / 2); } }}>
+              onKeyDown={event => { if (!event.ctrlKey && !event.metaKey && !event.altKey && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); event.stopPropagation(); navigate(folder.x + folder.width / 2, folder.y + folder.height / 2); } }}>
               <title>{folder.team} · {counts}</title>
               <rect x={Math.max(0, x)} y={Math.max(0, y)} width={Math.min(w, width)} height={15} rx={2} />
               <text x={Math.max(0, x) + 3} y={Math.max(0, y) + 11}>{label.length > available ? label.slice(0, available - 1) + "…" : label}</text>
@@ -156,10 +169,11 @@ export default function NavMinimap({ nodes, lanes, edges, width, height, onNavig
           {!model.jobs.length && <text x={width / 2} y={mapHeight / 2} textAnchor="middle" fill="var(--v2-text-secondary)" fontSize={11}>No jobs</text>}
         </svg>
       </div>
+      <p id={helpID} className="v2-map-sr-only">Arrow keys explore the map. Shift plus arrow keys move the main canvas. Plus and minus zoom the map, Home fits, Enter centers the canvas, Escape closes the legend.</p>
       <div className="v2-minimap-footer" title={tooltip || `${model.jobs.length} jobs · ${model.folders.length} folders`}>
         {tooltip || `${model.jobs.length.toLocaleString()} jobs · ${Math.round(view.zoom * 100)}% map · ${lod}`}
       </div>
-      {showLegend && <div className="v2-minimap-legend">{(["success", "failed", "uncertain", "running", "hold", "agent", "confirm", "waiting"] as VisualStatus[]).map(status => <span key={status}><i style={{ background: `var(${STATUS_VISUALS[status].token})` }} />{STATUS_VISUALS[status].label}</span>)}</div>}
+      {showLegend && <div id={legendID} role="region" aria-label="Job status legend" className="v2-minimap-legend">{(Object.keys(STATUS_VISUALS) as VisualStatus[]).map(status => <span key={status}><i style={{ background: `var(${STATUS_VISUALS[status].token})` }} />{STATUS_VISUALS[status].label}</span>)}</div>}
     </>}
   </section>;
 }
