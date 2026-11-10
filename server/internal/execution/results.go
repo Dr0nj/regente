@@ -64,6 +64,9 @@ func (e *Engine) Complete(r Result) (Receipt, error) {
 	if err = event(tx, a.ExecutionID, "result_recorded", now); err != nil {
 		return Receipt{}, err
 	}
+	if err = tx.UseExecutionAudit(a.ExecutionID, "terminal", true); err != nil {
+		return Receipt{}, err
+	}
 	if err = tx.Commit(); err != nil {
 		return Receipt{}, err
 	}

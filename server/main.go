@@ -88,6 +88,7 @@ func main() {
 		executionLab     = flag.Bool("execution-lab", envOr("REGENTE_EXECUTION_LAB", "") == "1", "I08 development laboratory for protocol v2 attempts; unavailable in production")
 		checkConfig      = flag.Bool("check-config", false, "Validate static configuration and TLS files without opening the database or services")
 		addr             = flag.String("addr", envOr("REGENTE_ADDR", "127.0.0.1:8080"), "HTTP listen address (loopback by default)")
+		profilingAddr    = flag.String("profiling-addr", os.Getenv("REGENTE_PROFILING_ADDR"), "Optional pprof listener on numeric loopback:port; disabled when empty")
 		spaDir           = flag.String("spa-dir", envOr("REGENTE_SPA_DIR", ""), "Single-origin hosting: serve the built SPA from this directory (UI+API+WS on the same port). Empty = API only")
 		docsDir          = flag.String("docs-dir", envOr("REGENTE_DOCS_DIR", ""), "ADV-7: serve the docs site (cmd/docsite) at /docs on the same port. Empty = no docs")
 		workspace        = flag.String("workspace", envOr("REGENTE_WORKSPACE", "./workspace"), "Path to regente workspace (contains definitions/)")
@@ -104,6 +105,7 @@ func main() {
 		auditVerify     = flag.Bool("audit-verify", false, "Verify audit ledger and optional independent checkpoint, then exit")
 		auditCheckpoint = flag.String("audit-checkpoint", "", "Independent collector checkpoint JSON file for rollback detection")
 		auditKey        = flag.String("audit-key", envOr("REGENTE_AUDIT_KEY", ""), "External audit signing key file (default: SQLite DB path plus .audit.key; required for PostgreSQL)")
+		auditBatchSize  = flag.Int("audit-batch-size", 1, "Audit records per request (1-128); upgrade collector before enabling batches")
 		auditCapacity   = flag.Int64("audit-capacity", 100000, "Maximum unacknowledged mandatory audit records")
 		auditTokenFile  = flag.String("audit-token-file", os.Getenv("REGENTE_AUDIT_TOKEN_FILE"), "Separate collector bearer token file")
 		collectorFile   = flag.String("audit-collector-file", "", "Run only an independent audit collector with this journal file")
@@ -112,8 +114,9 @@ func main() {
 		secretsFile     = flag.String("secrets-file", envOr("REGENTE_SECRETS_FILE", ""), "H3: JSON secrets file {\"github_token\":...}; the REGENTE_SECRET_<KEY> env takes priority")
 		tickMs          = flag.Int("tick-ms", 2000, "Scheduler tick interval (ms) — used in internal mode")
 		// Fase 1/2 (serverless) — papel do processo + origem do tick. Ver docs/architecture-future.md.
-		role          = flag.String("role", envOr("REGENTE_ROLE", "all"), "Process role: all | api | scheduler")
-		schedulerMode = flag.String("scheduler", envOr("REGENTE_SCHEDULER", "internal"), "Scheduler trigger: internal (goroutine ticker) | external (cron via POST /api/scheduler/tick)")
+		role                 = flag.String("role", envOr("REGENTE_ROLE", "all"), "Process role: all | api | scheduler")
+		incrementalScheduler = flag.Bool("scheduler-incremental", false, "Evaluate bounded candidate pages and dependency notifications (enable after shadow qualification)")
+		schedulerMode        = flag.String("scheduler", envOr("REGENTE_SCHEDULER", "internal"), "Scheduler trigger: internal (goroutine ticker) | external (cron via POST /api/scheduler/tick)")
 		// R5 — bus distribuído (opt-in). hub (default) = comportamento local de sempre.
 		busMode = flag.String("bus", envOr("REGENTE_BUS", "hub"), "Hub transport: hub (local) | nats (distributed)")
 		natsURL = flag.String("nats-url", envOr("REGENTE_NATS_URL", "nats://localhost:4222"), "NATS URL (when -bus=nats)")
@@ -235,7 +238,13 @@ func main() {
 	var mtlsOn bool
 	mode, modeErr := auth.Mode(*authMode)
 	trustedProxies, tpErr := api.ParseTrustedProxies(*trustedProxyCIDR)
+	if *auditBatchSize < 1 || *auditBatchSize > audit.MaxBatchRecords {
+		log.Fatal("audit-batch-size must be between 1 and 128")
+	}
 	if serving {
+		if err := telemetry.ValidateProfilingAddress(*profilingAddr); err != nil {
+			log.Fatal(err)
+		}
 		if *insecureDev && (*profile != "development" || !runtimeprofile.LocalAddress(*addr)) {
 			log.Fatal("insecure-dev-auth requires development on numeric loopback")
 		}
@@ -441,6 +450,7 @@ func main() {
 
 	if *gitSource != "" {
 		gitOps = storage.NewGitOps(*workspace, *gitSource, *gitBranch)
+		gitOps.BindDefinitionStore(store)
 		gitOps.InjectToken(effectiveToken)
 		logSource := *gitSource // safe to log (no token)
 		log.Printf("[git] source=%s branch=%s — ensuring clone...", logSource, *gitBranch)
@@ -555,6 +565,9 @@ func main() {
 	}
 
 	sched := scheduler.New(store, database, theBus, time.Duration(*tickMs)*time.Millisecond)
+	if *incrementalScheduler {
+		sched.EnableIncremental()
+	}
 	sched.DemoMode = *demoMode
 	sched.RuntimePolicy = policy
 	sched.ExecutionPolicyPath = *executionPolicy
@@ -614,8 +627,16 @@ func main() {
 	log.Printf("[alerts] engine attached (Phase 8)")
 
 	ctx, cancel := context.WithCancel(context.Background())
+	if err := store.StartDefinitionCache(ctx, 15*time.Second); err != nil {
+		log.Fatalf("[definitions] snapshot initialization: %v", err)
+	}
+	if _, address, err := telemetry.StartProfiling(ctx, *profilingAddr); err != nil {
+		log.Fatalf("[profiling] %v", err)
+	} else if address != nil {
+		log.Printf("[profiling] administrative listener on %s", address)
+	}
 	if *auditSIEMURL != "" {
-		go (&audit.Exporter{DB: database, URL: *auditSIEMURL, Token: auditToken}).Run(ctx)
+		go (&audit.Exporter{DB: database, URL: *auditSIEMURL, Token: auditToken, BatchSize: *auditBatchSize}).Run(ctx)
 	}
 	defer cancel()
 

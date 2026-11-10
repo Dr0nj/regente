@@ -220,3 +220,29 @@ Evitar labels de job/operação/revisão/usuário de cardinalidade ilimitada.
 Cada PERF encerrado referencia commit, testes, dataset e limitações no roadmap;
 somente então move de Backlog para Entregue/Changelog. Urgência determina a ordem,
 não transforma benchmark sintético ou documentação em aceite produtivo.
+
+## Decisões de implementação para validação local (09/11)
+
+Detalhes operacionais no [runbook](../performance-recovery.md); status exclusivamente
+no roadmap. Snapshot privado por FileStore, serialização de publicação com escritas
+coordenadas e captura dos bytes efetivamente parseados. Edições externas são
+reconciliadas a cada 15s; publicação multi-arquivo exige coordenação/atomicidade.
+
+Schema 33 adiciona sete reservas por tentativa admitida e inventário das tentativas
+não terminais anteriores. Estados e evidência usam a mesma transação; heartbeat e
+contadores de output são telemetria por projeção SQL exata. ACK/result/output usam
+recibos v2 existentes, sem nova identidade artificial nem intenção a cada retry.
+
+Lotes limitados a 128 registros/1 MiB, payload obrigatório até 64 KiB, ACK apenas do
+prefixo persistido e sincronizado pelo coletor. Default de um registro até upgrade
+do coletor. Scheduler incremental fica opt-in: notificações coalescidas no banco,
+256 notificações/página por tick, orçamento de avaliação de 100ms, timers e cache
+de até 1.024 planos. Reconciliação espera 30s após uma passagem inteira, não promete
+recuperar todo evento perdido em 30s. Claims/fencing/snapshots congelados preservados.
+
+Harness diário exige 28.800 definições distintas executadas, 24h e virada de ODAT;
+a massa histórica não substitui efeitos verificados. O grafo sintético usa 900
+componentes com fan-out e cadeias curtas, condições permanentes e mix COMMAND/HTTP,
+output/retry. Captura perfis e CPU/steal com leitores/reconexões concorrentes.
+Condições por data/carry-over continuam exigindo testes de paridade e aceitação da
+topologia real. Patamares maiores só avançam após o gate diário e o anterior passar.

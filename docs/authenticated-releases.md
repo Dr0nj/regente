@@ -83,7 +83,7 @@ fully disconnected deployment). An old unsigned release is refused, even with
 
 Native binary checks do not certify every platform's service installer, fleet
 upgrade or workload. Server and agent must use the same tested release and
-protocol 2 in production; schema 32 accepts [32,32]. **No N/N−1 rolling pair is
+protocol 2 in production; schema 33 accepts [33,33]. **No N/N−1 rolling pair is
 qualified.** Schema refusal/legacy migration/recovery tests remain mandatory.
 Follow [upgrades](upgrades.md) for all-node drain and complete recovery sets;
 a retained old binary does not downgrade a migrated database.

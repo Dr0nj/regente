@@ -1,0 +1,270 @@
+package storage
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/Dr0nj/regente-server/internal/domain"
+)
+
+func TestDefinitionCacheInvalidationAndIsolation(t *testing.T) {
+	s := NewFileStore(t.TempDir(), false)
+	d := domain.JobDefinition{ID: "a", Team: "f", Params: map[string]any{"count": 3, "nested": map[string]any{"list": []any{"original"}}}, ConditionsOutAdd: []string{"C"}}
+	if err := s.Save(d); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := s.StartDefinitionCache(ctx, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	const n = 10
+	var wg sync.WaitGroup
+	for range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defs, err := s.List()
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			defs[0].ConditionsOutAdd[0] = "changed"
+			defs[0].Params["count"] = 9
+		}()
+	}
+	wg.Wait()
+	if s.cache.builds.Load() != 1 {
+		t.Fatal("construções duplicadas")
+	}
+	got, err := s.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].ConditionsOutAdd[0] != "C" || got[0].Params["count"] != 3 {
+		t.Fatal("snapshot mutável/tipo alterado")
+	}
+	d.Label = "new"
+	if err = s.Save(d); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.List()
+	if err != nil || got[0].Label != "new" {
+		t.Fatalf("save não invalidou: %v", err)
+	}
+	path := filepath.Join(s.definitionsDir(), "f", "a.yaml")
+	if err = os.WriteFile(path, []byte("broken: ["), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.rebuildDefinitionSnapshot(); err == nil {
+		t.Fatal("aceitou YAML inválido")
+	}
+	if _, err = s.List(); err == nil {
+		t.Fatal("serviu snapshot velho após erro")
+	}
+	if err = s.Save(d); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.List(); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Delete("f", "a"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.List()
+	if err != nil || len(got) != 0 {
+		t.Fatal("delete não invalidou")
+	}
+}
+
+func TestDefinitionCacheExternalContentAndViewScope(t *testing.T) {
+	s := NewFileStore(t.TempDir(), false)
+	for _, team := range []string{"visible", "hidden"} {
+		if err := s.Save(domain.JobDefinition{ID: team, Team: team, Label: "old"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := s.StartDefinitionCache(ctx, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	filter := func(team, env string) bool { return team == "visible" }
+	before, err := s.DefinitionViewDigest(filter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(s.definitionsDir(), "hidden", "hidden.yaml")
+	st, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i+3 <= len(raw); i++ {
+		if string(raw[i:i+3]) == "old" {
+			copy(raw[i:i+3], "new")
+		}
+	}
+	if err = os.WriteFile(p, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chtimes(p, st.ModTime(), st.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.rebuildDefinitionSnapshot(); err != nil {
+		t.Fatal(err)
+	}
+	if s.cache.builds.Load() != 2 {
+		t.Fatal("mtime igual ocultou mudança")
+	}
+	after, err := s.DefinitionViewDigest(filter)
+	if err != nil || after != before {
+		t.Fatal("mudança invisível vazou para visão")
+	}
+	if err = s.Save(domain.JobDefinition{ID: "visible", Team: "visible", Label: "new"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.List(); err != nil {
+		t.Fatal(err)
+	}
+	after, err = s.DefinitionViewDigest(filter)
+	if err != nil || after == before {
+		t.Fatal("mudança visível não refletida")
+	}
+}
+
+func TestDefinitionCacheCoordinatedMutation(t *testing.T) {
+	s := NewFileStore(t.TempDir(), false)
+	if err := s.Save(domain.JobDefinition{ID: "a", Team: "f", Label: "before"}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := s.StartDefinitionCache(ctx, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	g := NewGitOps(s.Root(), "", "")
+	g.BindDefinitionStore(s)
+	finish := g.beginDefinitionMutation()
+	done := make(chan string, 1)
+	go func() {
+		defs, err := s.List()
+		if err != nil {
+			done <- err.Error()
+			return
+		}
+		done <- defs[0].Label
+	}()
+	select {
+	case <-done:
+		finish()
+		t.Fatal("leitor atravessou mutação")
+	case <-time.After(20 * time.Millisecond):
+	}
+	err := os.WriteFile(filepath.Join(s.definitionsDir(), "f", "a.yaml"), []byte("id: a\nteam: f\nlabel: after\n"), 0600)
+	finish()
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case label := <-done:
+		if label != "after" {
+			t.Fatal(label)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("deadlock")
+	}
+}
+
+func TestDefinitionCacheCancelledReaderAndNonblockingHandshake(t *testing.T) {
+	s := NewFileStore(t.TempDir(), false)
+	if err := s.Save(domain.JobDefinition{ID: "a", Team: "f"}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	if err := s.StartDefinitionCache(ctx, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	s.cache.build.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			s.cache.build.Unlock()
+		}
+	}()
+	if err := s.Save(domain.JobDefinition{ID: "a", Team: "f", Label: "new"}); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if _, err := s.WorkspaceViewDigest(func(string, string) bool { return true }, func(string) bool { return true }); !errors.Is(err, ErrDefinitionsNotReady) {
+		t.Fatal(err)
+	}
+	if time.Since(start) > time.Second {
+		t.Fatal("handshake esperou build")
+	}
+	reader, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := s.ListContext(reader); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		defs, err := s.ListContext(ctx)
+		if err == nil && defs[0].Label != "new" {
+			err = errors.New("geração antiga")
+		}
+		done <- err
+	}()
+	s.cache.build.Unlock()
+	locked = false
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("leitor cancelado interrompeu build compartilhado")
+	}
+	if s.cache.builds.Load() != 2 {
+		t.Fatal("stampede", s.cache.builds.Load())
+	}
+}
+
+func BenchmarkWorkspaceView28800(b *testing.B) {
+	s := NewFileStore(b.TempDir(), false)
+	dir := filepath.Join(s.definitionsDir(), "f")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		b.Fatal(err)
+	}
+	for i := range 28800 {
+		id := fmt.Sprintf("job-%05d", i)
+		raw := fmt.Sprintf("id: %s\nteam: f\nconditionsIn: [C%d]\nconditionsOutAdd: [C%d]\n", id, i, i+1)
+		if err := os.WriteFile(filepath.Join(dir, id+".yaml"), []byte(raw), 0600); err != nil {
+			b.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	start := time.Now()
+	if err := s.StartDefinitionCache(ctx, time.Hour); err != nil {
+		b.Fatal(err)
+	}
+	b.Logf("construção fria com leitura/YAML/normalização/hash: %s", time.Since(start))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		if _, err := s.WorkspaceViewDigest(func(string, string) bool { return true }, func(string) bool { return true }); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

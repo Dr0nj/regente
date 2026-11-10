@@ -76,6 +76,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="ha-resources.html">Shared resources and scheduler leadership</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="operational-recovery-pilot.html">Operational recovery and controlled pilot</a>
+<a href="performance-recovery.html">Performance and recovery operations</a>
 <a href="production-profile.html">Production profile</a>
 <a href="safe-bootstrap.html">Safe first startup</a>
 <a href="shared-drafts.html">Shared Design drafts</a>
@@ -163,7 +164,7 @@ to bypass the runner's supported range or protocol changes.</p>
 state or listeners. The server descriptor derives its schema range from the real
 migration runner, and the agent descriptor derives its journal version from the
 journal implementation. Inspect the isolated target's migration history, then run:</p>
-<pre><code class="language-sh">python3 scripts/check-compatibility.py --server ./regente-server --agent ./regente-agent --schema 32
+<pre><code class="language-sh">python3 scripts/check-compatibility.py --server ./regente-server --agent ./regente-agent --schema 33
 </code></pre>
 <p>Exit zero requires matching nonempty build labels, schema within the server's
 runtime range (currently 32), protocol 2 and journal 1. Different/empty build labels,

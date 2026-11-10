@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Dr0nj/regente-server/internal/telemetry"
 	"os"
 	"regexp"
 	"runtime"
@@ -153,15 +154,24 @@ func (d *DB) WithAuditIdentity(identity AuditIdentity) *DB {
 var mutationRE = regexp.MustCompile(`(?i)\b(INSERT(?:\s+OR\s+(?:REPLACE|IGNORE))?\s+INTO|UPDATE|DELETE\s+FROM)\s+([a-z_][a-z_0-9]*)`)
 
 // Estas tabelas são telemetria, output ou locks; nunca são apresentadas como trilha obrigatória.
-var auditTelemetry = map[string]bool{"agents": true, "execution_agent_capacity": true, "execution_queue_lock": true, "instance_events": true, "instance_output": true, "execution_output": true, "sla_breaches": true, "alert_events": true, "auth_transactions": true, "web_tickets": true, "meta_flags": true}
+var auditTelemetry = map[string]bool{"agents": true, "execution_agent_capacity": true, "execution_queue_lock": true, "instance_events": true, "instance_output": true, "execution_output": true, "sla_breaches": true, "alert_events": true, "auth_transactions": true, "web_tickets": true, "meta_flags": true, "scheduler_changes": true}
 
 func mutation(query string) (Mutation, bool) {
+	// Projeções exatas de telemetria/output; qualquer mudança de estado, razão,
+	// identidade ou checksum de resultado continua obrigatoriamente auditada.
+	switch strings.TrimSpace(query) {
+	case "UPDATE lab_orders SET fence=fence WHERE id=?",
+		"UPDATE execution_attempts SET output_bytes=output_bytes+?,last_output_seq=? WHERE execution_id=? AND state=? AND last_output_seq=?",
+		"UPDATE execution_attempts SET lease_until=?,last_contact=? WHERE execution_id=? AND state=?":
+		return Mutation{}, false
+	}
+
 	m := mutationRE.FindStringSubmatch(query)
 	if len(m) == 0 {
 		return Mutation{}, false
 	}
 	table := strings.ToLower(m[2])
-	if auditTelemetry[table] || (table == "audit_head" || table == "audit_delivery" || table == "audit_events") || table == "security_audit" || strings.HasPrefix(table, "schema_") {
+	if auditTelemetry[table] || (table == "audit_reservations" || table == "audit_head" || table == "audit_delivery" || table == "audit_events") || table == "security_audit" || strings.HasPrefix(table, "schema_") {
 		return Mutation{}, false
 	}
 	// Presença do token não altera sua identidade ou escopo.
@@ -209,6 +219,7 @@ func (t *Tx) track(query string, count int64, args ...any) {
 	t.changes[key] = m
 }
 func (t *Tx) appendAudit(payload AuditPayload) error {
+	defer telemetry.Measure(telemetry.AuditPersist)()
 	category, capacity := "security", t.audit.capacity
 	if payload.Event != "" {
 		category = "control"
@@ -222,7 +233,14 @@ func (t *Tx) appendAudit(payload AuditPayload) error {
 	if err := t.Tx.QueryRow(rebind("SELECT COUNT(*) FROM audit_delivery WHERE acknowledged=0 AND category=?", t.dialect), category).Scan(&pending); err != nil {
 		return fmt.Errorf("%w: backlog read", ErrAuditUnavailable)
 	}
-	if pending >= capacity {
+	reserved := int64(0)
+	if category == "security" {
+		if err := t.Tx.QueryRow("SELECT COUNT(*) FROM audit_reservations").Scan(&reserved); err != nil {
+			return fmt.Errorf("%w: reservation read", ErrAuditUnavailable)
+		}
+	}
+	if pending+reserved >= capacity && !(category == "security" && t.auditCredit) {
+		telemetry.Count(telemetry.AuditRejected, 1)
 		return ErrAuditFull
 	}
 	var r AuditRecord
@@ -234,6 +252,9 @@ func (t *Tx) appendAudit(payload AuditPayload) error {
 	b, err := json.Marshal(payload)
 	if err != nil {
 		return err
+	}
+	if len(b) > MaxAuditPayloadBytes {
+		return fmt.Errorf("%w: audit payload exceeds byte budget", ErrAuditFull)
 	}
 	r.Payload = string(b)
 	r.Hash = recordHash(r)

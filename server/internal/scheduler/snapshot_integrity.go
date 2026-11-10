@@ -8,6 +8,9 @@ import (
 
 // Ausência legada é diferente de payload presente porém corrompido.
 func snapshotError(r instRow) string {
+	if r.validated {
+		return r.validation
+	}
 	if r.Snapshot == "" {
 		if r.SnapshotChecksum != "" {
 			return "Order snapshot is missing from a verified daily order; restore verified state or reorder."

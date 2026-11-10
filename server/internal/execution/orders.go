@@ -203,6 +203,9 @@ func (e *Engine) Start(orderID, agent, key, intent string) (Attempt, error) {
 	if _, err = tx.Exec(`INSERT INTO execution_attempts(execution_id,order_id,attempt,fence,agent_id,request_key,intent,state,created_at) VALUES(?,?,?,?,?,?,?,'dispatch_pending',?)`, id, orderID, number, fence, agent, key, intent, now); err != nil {
 		return Attempt{}, err
 	}
+	if err = tx.ReserveExecutionAudit(id); err != nil {
+		return Attempt{}, err
+	}
 	if _, err = tx.Exec(`INSERT INTO execution_outbox(id,execution_id,kind,state,payload,created_at) VALUES(?,?,'dispatch','pending',?,?)`, id+"-dispatch", id, string(payload), now); err != nil {
 		return Attempt{}, err
 	}

@@ -8,7 +8,7 @@ The database adapter covers identities, sessions, credentials, ACLs, settings, d
 
 Presence, heartbeat capacity, transient authentication challenges, web tickets, output, SLA/alert feeds, migration markers and legacy instance events are operational telemetry. The legacy audit feed and stderr sink remain historical diagnostics. Their retention/export does not establish the mandatory ledger's guarantees.
 
-API mutation requests persist an intent before entering the handler. Database commits carry the same request correlation ID. Responses and access denials are recorded before being returned; a failed audit write returns 503. Git and filesystem effects cannot share a database transaction: the durable intent is the admission record, I12 publication receipts remain the recovery evidence, and an interrupted request may have an unknown external outcome. Reconcile the receipt/Git state before retrying an external effect. Multi-step legacy operations can be partially completed, with each committed database step recorded.
+API mutation requests normally persist an intent before entering the handler. Protocol-2 ACK/result/output routes instead use their durable receipts; repeated delivery does not append another HTTP intent/result pair, while denials remain audited. Database commits carry the same request correlation ID. Responses and access denials are recorded before being returned; a failed audit write returns 503. Git and filesystem effects cannot share a database transaction: the durable intent is the admission record, I12 publication receipts remain the recovery evidence, and an interrupted request may have an unknown external outcome. Reconcile the receipt/Git state before retrying an external effect. Multi-step legacy operations can be partially completed, with each committed database step recorded.
 
 ## Keys, export and independent permissions
 
@@ -52,3 +52,9 @@ The mandatory gate proves SQLite/PostgreSQL rollback on storage failure, full ba
 ## Verified laboratory
 
 [Full CI 37128702406](https://github.com/Dr0nj/regente/actions/runs/37128702406) passed at e76b5ce95d9974ebfc7096a52725ad093a4d1df1 with all eight gates, 305 mandatory integration tests/subtests and eight browser scenarios without skips or flaky results. The [recorded evidence](evidence/i14-e76b5ce.json) includes real SQLite/PostgreSQL SIGKILL/destination-outage recovery, PostgreSQL dump/restore against an independent checkpoint, and an installed Linux collector with distinct UIDs and inaccessible signing key/journal. This qualifies the documented synthetic laboratory, not an installed production pilot.
+
+## Reserved completion and batch export (schema 33)
+
+Schema 33 reserves lifecycle audit capacity before admitting an execution, including inventory of existing nonterminal attempts during upgrade. Reserved transitions commit state, evidence and slot consumption atomically, even when unreserved admission is full. Heartbeat lease/contact and output byte/sequence metadata remain operational telemetry. State, identity, recovery and result changes remain mandatory. The 64 KiB payload limit bounds reservation sizing; it is not a limit on the complete signed envelope or database storage.
+
+Upgrade the collector first, then set `-audit-batch-size 128` on exporters. The default of one record preserves the single-record protocol. Batches are bounded to 128 records/1 MiB and acknowledge only a durable contiguous prefix. See [performance and recovery operations](performance-recovery.md) for migration, failure recovery, metrics and qualification limits.

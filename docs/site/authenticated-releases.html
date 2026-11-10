@@ -76,6 +76,7 @@ footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid 
 <a href="ha-resources.html">Shared resources and scheduler leadership</a>
 <a href="integration-baseline.html">Integration baseline and migration runbook</a>
 <a href="operational-recovery-pilot.html">Operational recovery and controlled pilot</a>
+<a href="performance-recovery.html">Performance and recovery operations</a>
 <a href="production-profile.html">Production profile</a>
 <a href="safe-bootstrap.html">Safe first startup</a>
 <a href="shared-drafts.html">Shared Design drafts</a>
@@ -175,7 +176,7 @@ fully disconnected deployment). An old unsigned release is refused, even with
 </table>
 <p>Native binary checks do not certify every platform's service installer, fleet
 upgrade or workload. Server and agent must use the same tested release and
-protocol 2 in production; schema 32 accepts [32,32]. <strong>No N/N−1 rolling pair is
+protocol 2 in production; schema 33 accepts [33,33]. <strong>No N/N−1 rolling pair is
 qualified.</strong> Schema refusal/legacy migration/recovery tests remain mandatory.
 Follow <a href="upgrades.html">upgrades</a> for all-node drain and complete recovery sets;
 a retained old binary does not downgrade a migrated database.</p>

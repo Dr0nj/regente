@@ -12,6 +12,7 @@ import (
 	"github.com/Dr0nj/regente-server/internal/storage"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -72,6 +73,9 @@ func durableTest(t *testing.T, defs ...domain.JobDefinition) *durableFixture {
 }
 func (f *durableFixture) attach() {
 	f.s = New(f.store, f.d, hub.New(), time.Hour)
+	if os.Getenv("REGENTE_TEST_INCREMENTAL") == "1" {
+		f.s.EnableIncremental()
+	}
 	f.s.SetClock(businessclock.Func(func() time.Time { return f.now }))
 	f.s.RuntimePolicy = runtimeprofile.Config{Profile: "development", ExecutionMode: "durable"}
 	f.e = execution.New(f.d, f.s.Now)

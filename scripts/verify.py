@@ -134,6 +134,8 @@ class Verifier:
 
     def gate(self, name):
         if name == "runner":
+            self.command([sys.executable, "-m", "unittest", "discover", "-s", "scripts",
+                          "-p", "test_capacity.py", "-v"])
             self.command([sys.executable, "-m", "unittest", "discover", "-s", "scripts", "-p", "test_compatibility.py", "-v"])
             self.command([sys.executable, "-m", "unittest", "discover", "-s", "scripts",
                           "-p", "test_verify.py", "-v"])

@@ -65,6 +65,9 @@ func (e *Engine) Resolve(exec string, fence int64, key, actor, decision, reason 
 	if err = event(tx, exec, "operator_resolved", now); err != nil {
 		return Attempt{}, err
 	}
+	if err = tx.UseExecutionAudit(exec, "terminal", true); err != nil {
+		return Attempt{}, err
+	}
 	if err = tx.Commit(); err != nil {
 		return Attempt{}, err
 	}

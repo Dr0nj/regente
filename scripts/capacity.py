@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """I16 synthetic engineering capacity profile; no production/pilot qualification."""
-import argparse,collections,concurrent.futures,hashlib,http.server,json,math,os,platform,signal,ssl,sys,threading,time,urllib.parse,urllib.request
+import argparse,base64,copy,socket,struct,collections,concurrent.futures,hashlib,http.server,json,math,os,platform,signal,ssl,sys,threading,time,urllib.parse,urllib.request
 from pathlib import Path
 if sys.flags.optimize:raise SystemExit("Qualification requires Python optimization disabled")
 import integration as lab
@@ -10,6 +10,27 @@ module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);pro
 
 def quantile(values,q):
     return sorted(values)[max(0,math.ceil(len(values)*q)-1)] if values else None
+
+def performance_workload(templates,count=28800):
+    """Mixed executable components: fan-out, short chains, output and retries."""
+    kinds=('fast','output','long','retry','http')
+    result=[]
+    for i in range(count):
+        offset=i%32
+        kind='parent' if offset==0 else ('child' if offset<=3 else kinds[(offset-4)%len(kinds)])
+        raw=copy.deepcopy(templates[kind]);raw['id']=f'graph-{i:05d}';raw['team']='graph'
+        raw['conditionsOutAdd']=[f'GRAPH-{i}@stat']
+        raw['conditionsIn']=[f'GRAPH-{i-offset}@stat'] if 1<=offset<=3 else ([f'GRAPH-{i-1}@stat'] if 4<=offset<=7 else [])
+        result.append((raw['id'],kind,raw))
+    return result
+
+
+def validate_performance_day(outcome):
+    if (not outcome['qualified'] or outcome['measurementSeconds']<86400
+        or outcome['admittedInstances']<28800 or outcome['distinctGraphDefinitionsExecuted']<28800
+        or outcome['businessCalendar']['orderDate']==outcome['businessCalendarAtEnd']['orderDate']):
+        raise RuntimeError('PERF 24-hour gate failed; higher tiers are blocked')
+
 
 def metrics(base):
     with urllib.request.urlopen(base+'/metrics',timeout=5) as r:text=r.read().decode()
@@ -27,6 +48,12 @@ def cpu_seconds(proc):
         return (int(fields[11])+int(fields[12]))/os.sysconf('SC_CLK_TCK')
     except FileNotFoundError:return 0
 
+def host_cpu_jiffies():
+    # Cumulativo do host Linux; não misturar steal com CPU do processo.
+    values=Path('/proc/stat').read_text().splitlines()[0].split()[1:]
+    return dict(zip(('user','nice','system','idle','iowait','irq','softirq','steal','guest','guest_nice'),map(int,values)))
+
+
 def rss(proc):
     try:
         for line in Path('/proc/'+str(proc.pid)+'/status').read_text().splitlines():
@@ -35,7 +62,8 @@ def rss(proc):
     return 0
 
 class Profile:
-    def __init__(self,name,density,env,dsn,tls):
+    def __init__(self,name,density,env,dsn,tls,perf=False):
+        self.perf=perf;self.reader_samples=[];self.reconnect_samples=[];self.retained_samples=[];self.profiles=[]
         self.name=name;self.env=env;self.density=density;self.directory=lab.RUN/name
         self.directory.mkdir();self.effects=self.directory/'effects.txt';self.lock=threading.Lock()
         self.external=http.server.ThreadingHTTPServer(('127.0.0.1',0),self.handler())
@@ -62,22 +90,71 @@ class Profile:
             ('parent','COMMAND',{'command':prefix+'echo producer'},{'conditionsOutAdd':['CAPACITY_READY@stat']}),
             ('child','COMMAND',{'command':prefix+'echo consumer'},{'conditionsIn':['CAPACITY_READY@stat']}),
             ('probe','COMMAND',{'command':prefix+'echo canary'},{})]
+        templates={};self.definition_kinds={};self.workload_names=('fast','output','long','retry','http','child','parent')
         for name2,kind,params,extra in definitions:
             raw={'id':name2,'team':'capacity','label':'Synthetic '+name2,'jobType':kind,'environment':'capacity','schedule':{'enabled':False},'params':params,**extra}
-            (self.defs/(name2+'.yaml')).write_text(json.dumps(raw))
+            templates[name2]=raw;self.definition_kinds[name2]=name2
+            (self.defs/(name2+'.yaml')).write_text(json.dumps(raw),encoding='utf-8')
+        if perf:
+            graph=self.defs.parent/'graph';graph.mkdir()
+            workload=performance_workload(templates)
+            self.workload_names=[item[0] for item in workload]
+            for name2,kind,definition in workload:
+                self.definition_kinds[name2]=kind
+                (graph/(name2+'.yaml')).write_text(json.dumps(definition),encoding='utf-8')
         addr='127.0.0.1:'+str(lab.free_port());self.base='http://'+addr
         self.server_args=[str(lab.RUN/'server'),'-profile','production','-environment','capacity','-network-boundary','loopback','-control-plane-execution','deny','-app-url',self.base,'-addr',addr,'-db-driver','postgres','-db',self.dsn,'-audit-key',str(self.key),'-workspace',str(self.directory/'workspace'),'-api-token','','-server-agent=false','-selfmon=false','-tick-ms','2000','-audit-siem-url','https://'+collector_addr,'-audit-token-file',str(self.collector_token)]
-        self.server=lab.start_process(name+'-server',self.server_args,self.directory,dict(env,REGENTE_BOOTSTRAP_PASSWORD='capacity-synthetic-password-32'))
+        if perf:
+            self.profiling_addr='127.0.0.1:'+str(lab.free_port())
+            self.server_args+=['-audit-batch-size','128','-scheduler-incremental','-profiling-addr',self.profiling_addr]
+        self.server=lab.start_process(name+'-server' ,self.server_args,self.directory,dict(env,REGENTE_BOOTSTRAP_PASSWORD='capacity-synthetic-password-32'))
         lab.eventually('capacity server',lambda:lab.request(self.base+'/health'))
         self.token=lab.request(self.base+'/api/auth/login','POST',{'username':'admin','password':'capacity-synthetic-password-32'},token='')['token']
         self.agents=[]
         for agent_id,slots in [('fast',4),('slow',1)]:
-            issued=self.req('/api/agents/tokens','POST',{'agentId':agent_id,'environment':'capacity','capabilities':['COMMAND','HTTP','EXECUTION_V2'],'expiresAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime(time.time()+7200))})
+            issued=self.req('/api/agents/tokens','POST',{'agentId':agent_id,'environment':'capacity','capabilities':['COMMAND','HTTP','EXECUTION_V2'],'expiresAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime(time.time()+(7*86400 if perf else 7200)))})
             folder=self.directory/agent_id;folder.mkdir()
             args=[str(lab.RUN/'agent'),'-transport','v2','-server',self.base,'-id',agent_id,'-env','capacity','-caps','COMMAND,HTTP','-token',issued['token'],'-journal',str(folder/'journal.db'),'-concurrency',str(slots)]
             self.agents.append(lab.start_process(name+'-'+agent_id,args,folder,env))
         lab.eventually('agent capacity',lambda:metrics(self.base).get('regente_execution_agent_slots',0)==5)
         self.records=[];self.samples=[];self.request_times=[];self.request_errors=[];self.fault_interval=None
+
+    def count_retained(self):
+        return int(lab.command(lab.COMPOSE+['exec','-T','postgres','psql','-U','regente','-d',self.dbname,'-Atc',"SELECT COUNT(*) FROM instances WHERE definition_id='retained' AND status='OK' AND id LIKE 'capacity-historical-%'"]))
+
+    def reconnect(self):
+        begin=time.monotonic()
+        ticket=self.req('/api/auth/event-ticket','POST',{})['ticket']
+        target=urllib.parse.urlsplit(self.base);key=base64.b64encode(os.urandom(16)).decode()
+        with socket.create_connection((target.hostname,target.port),timeout=5) as sock:
+            request=(f'GET /ws/web?ticket={urllib.parse.quote(ticket)} HTTP/1.1\r\nHost: {target.netloc}\r\nOrigin: {self.base}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n')
+            sock.sendall(request.encode());response=b''
+            while b'\r\n\r\n' not in response and len(response)<8192:
+                part=sock.recv(4096)
+                if not part:break
+                response+=part
+            headers=response.split(b'\r\n\r\n',1)[0]
+            expected=base64.b64encode(hashlib.sha1((key+'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').encode()).digest())
+            if not headers.startswith(b'HTTP/1.1 101 ') or expected not in headers:raise RuntimeError('WebSocket handshake failed')
+            mask=os.urandom(4);payload=struct.pack('!H',1000)
+            sock.sendall(bytes([0x88,0x82])+mask+bytes(v^mask[i%4] for i,v in enumerate(payload)))
+        return time.monotonic()-begin
+
+    def reader_probe(self):
+        begin=time.monotonic();definitions=self.req('/api/definitions')
+        if len(definitions)!=28808:raise RuntimeError('Performance graph reader lost definitions')
+        self.reader_samples.append(time.monotonic()-begin)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as readers:
+            self.reconnect_samples.extend(readers.map(lambda _:self.reconnect(),range(10)))
+
+    def capture_profile(self,kind):
+        suffix='?seconds=30' if kind=='profile' else ''
+        target=lab.EVIDENCE/(self.name+'-'+kind+'.pprof')
+        with urllib.request.urlopen('http://'+self.profiling_addr+'/debug/pprof/'+kind+suffix,timeout=65) as response:
+            data=response.read()
+        if not data:raise RuntimeError('Empty profiling evidence')
+        target.write_bytes(data);target.chmod(0o600)
+        self.profiles.append({'kind':kind,'file':target.name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()})
 
     def handler(self):
         owner=self
@@ -120,10 +197,14 @@ class Profile:
         business_calendar=self.req('/api/daily/status')
         fault_proof=None;stop_reason=None
         start=time.monotonic();start_wall=time.time();next_offer=start;next_sample=start;index=0;futures=[];paused=False;resumed=False
-        mix=('fast','output','long','retry','http','child','parent')
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        mix=self.workload_names
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool, concurrent.futures.ThreadPoolExecutor(max_workers=1) as readers, concurrent.futures.ThreadPoolExecutor(max_workers=1) as profiler:
+            reader_future=None;profile_future=None;last_retained=-300;last_progress=-300
             while time.monotonic()-start<seconds:
                 now=time.monotonic();elapsed=now-start
+                if elapsed-last_progress>=300:
+                    print(f'{self.name}: elapsed={elapsed:.0f}s offered={len(futures)} reader_probes={len(self.reader_samples)}',flush=True);last_progress=elapsed
+                if self.perf and elapsed>=60 and profile_future is None:profile_future=profiler.submit(self.capture_profile,'profile')
                 if now>=next_offer:
                     futures.append(pool.submit(self.order,mix[index%len(mix)]));index+=1
                     multiplier=4 if elapsed%300<60 else 1
@@ -131,11 +212,18 @@ class Profile:
                     if now-next_offer>5:raise RuntimeError('Load producer could not sustain offered rate')
                 if now>=next_sample:
                     m=metrics(self.base)
-                    self.samples.append({'seconds':elapsed,'serverRSS':rss(self.server),'agentRSS':[rss(p) for p in self.agents],'serverCPUSeconds':cpu_seconds(self.server),'agentCPUSeconds':[cpu_seconds(p) for p in self.agents],'metrics':m})
+                    self.samples.append({'seconds':elapsed,'serverRSS':rss(self.server),'agentRSS':[rss(p) for p in self.agents],'serverCPUSeconds':cpu_seconds(self.server),'agentCPUSeconds':[cpu_seconds(p) for p in self.agents],'hostCPUJiffies':host_cpu_jiffies(),'metrics':m})
                     # Operador concorrente: consulta autenticada durante as admissões.
                     self.req('/api/resources')
+                    if self.perf and int(elapsed)//30>getattr(self,'last_reader_bucket',-1):
+                        self.last_reader_bucket=int(elapsed)//30
+                        if reader_future is not None:
+                            if not reader_future.done():raise RuntimeError("Definition/WS reader exceeded 30 seconds")
+                            reader_future.result()
+                        reader_future=readers.submit(self.reader_probe)
                     next_sample=now+5
-                    (lab.EVIDENCE/(self.name+'-samples.json')).write_text(json.dumps(self.samples,indent=2))
+                    with (lab.EVIDENCE/(self.name+'-samples.jsonl')).open('a',encoding='utf-8') as journal:journal.write(json.dumps(self.samples[-1])+'\n')
+                    if elapsed-last_retained>=300:self.retained_samples.append(self.count_retained());last_retained=elapsed
                     expected_fault=self.fault_interval and self.fault_interval[0]-30<=time.time()<=self.fault_interval[1]
                     checks={'eligible_wait':m.get('regente_execution_oldest_eligible_wait_seconds',0)>10,'ack_p99':m.get('regente_execution_stage_seconds{stage="planned_to_accepted",window="1h_last_10000",quantile="0.99"}',0)>5,'ready_start_p99':m.get('regente_execution_stage_seconds{stage="ready_to_started",window="1h_last_10000",quantile="0.99"}',0)>10,'oldest_outbox':m.get('regente_execution_oldest_outbox_seconds',0)>5,'audit_lag':m.get('regente_audit_oldest_pending_seconds',0)>30,'server_rss':rss(self.server)>1<<30}
                     if not expected_fault and any(checks.values()):
@@ -159,6 +247,8 @@ class Profile:
                     fault_proof['producerScheduledPauseSeconds']=blocked
                     resumed=True
                 time.sleep(.02)
+            if reader_future is not None:reader_future.result()
+            if profile_future is not None:profile_future.result()
             for future in futures:
                 record=future.result()
                 self.request_times.append(record['requestSeconds'])
@@ -177,12 +267,12 @@ class Profile:
         counts=collections.Counter(effects)
         assert set(counts)==set(by_id) and all(n==1 for n in counts.values()),'Lost or duplicate external effect'
         for ident,attempts in by_id.items():
-            expected=2 if attempts[0]['definition_id']=='retry' else 1
+            expected=2 if self.definition_kinds[attempts[0]['definition_id']]=='retry' else 1
             assert len(attempts)==expected and attempts[-1]['state']=='succeeded','Incorrect attempt/result'
             if expected==2:assert attempts[0]['state']=='failed','Retry lost its original failure'
         assert len({r['execution_id'] for r in rows})==len(rows),'Duplicated execution identity'
         assert all(0<r['created_at']<=r['accepted_at']<=r['started_at']<=r['finished_at'] for r in rows),'Incomplete or invalid durable stage receipts'
-        assert set(('fast','output','long','retry','http','parent','child','probe'))<=set(r['definition_id'] for r in rows),'Incomplete mixed workload'
+        assert set(('fast','output','long','retry','http','parent','child','probe'))<=set(self.definition_kinds[r['definition_id']] for r in rows),'Incomplete mixed workload'
         all_stages={name:[] for name in ('ready_to_planned','planned_to_accepted','accepted_to_started','started_to_finished','ready_to_started')}
         stages={name:[] for name in ('ready_to_planned','planned_to_accepted','accepted_to_started','started_to_finished','ready_to_started')}
         for row in rows:
@@ -204,8 +294,13 @@ class Profile:
         lag=[s['metrics'].get('regente_audit_oldest_pending_seconds',0) for s in normal]
         oldest=[s['metrics'].get('regente_execution_oldest_outbox_seconds',0) for s in normal]
         maxrss=max(s['serverRSS'] for s in self.samples)
-        minimum_density=min(s['metrics'].get('regente_instances{status="OK"}',0) for s in self.samples)
+        self.retained_samples.append(self.count_retained())
+        minimum_density=min(self.retained_samples)
         qualified=(not stop_reason and minimum_density>=self.density and not self.request_errors and latencies['planned_to_accepted']['p99'] is not None and latencies['planned_to_accepted']['p99']<=5 and latencies['ready_to_started']['p99'] is not None and latencies['ready_to_started']['p99']<=10 and max(lag,default=0)<=30 and max(oldest,default=0)<=5 and maxrss<=1<<30)
+        reader_ok=(not self.perf or (bool(self.reader_samples) and quantile(self.reader_samples,.99)<=5 and bool(self.reconnect_samples) and quantile(self.reconnect_samples,.99)<=2))
+        qualified=qualified and reader_ok
+        end_calendar=self.req('/api/daily/status')
+        if self.perf:self.capture_profile('heap')
         # Completa a prova fora do orçamento de performance, sem falsificar aceite.
         lab.eventually('audit drained',lambda:self.req('/api/audit/security/status')['pending']==0,300)
         checkpoint=json.loads(self.journal.read_text().splitlines()[-1])
@@ -214,7 +309,7 @@ class Profile:
         lab.command([str(lab.RUN/'server'),'-db-driver','postgres','-db',self.dsn,'-audit-key',str(self.key),'-audit-verify','-audit-checkpoint',str(checkpoint_path)],env=self.env,name=self.name+'-audit-verify')
         (lab.EVIDENCE/(self.name+'-attempts.json')).write_text(json.dumps(rows,indent=2))
         (lab.EVIDENCE/(self.name+'-samples.json')).write_text(json.dumps(self.samples,indent=2))
-        return {'name':self.name,'businessCalendar':business_calendar,'retainedRows':self.density,'minimumObservedTerminalRows':minimum_density,'targetOrdersPerDay':round(rate*86400),'requestedMeasurementSeconds':seconds,'measurementSeconds':min(seconds,stop_reason['elapsedSeconds'] if stop_reason else seconds),'recoveryAndVerificationSeconds':time.monotonic()-start-min(seconds,stop_reason['elapsedSeconds'] if stop_reason else seconds),'admissionStop':stop_reason,'peakMultiplier':4,'peakSecondsPer300':60,'offeredRequests':len(futures),'admittedInstances':len(by_id),'attempts':len(rows),'errors':self.request_errors,'apiRequestSeconds':{'p95':quantile(self.request_times,.95),'p99':quantile(self.request_times,.99)},'latencies':latencies,'allAttemptLatenciesIncludingFault':all_latencies,'faultWallInterval':self.fault_interval,'databaseBytes':int(lab.command(lab.COMPOSE+['exec','-T','postgres','psql','-U','regente','-d',self.dbname,'-Atc','SELECT pg_database_size(current_database())'])),'serverCPUSeconds':cpu_seconds(self.server),'agentCPUSeconds':[cpu_seconds(p) for p in self.agents],'serverPeakRSSBytes':maxrss,'agentPeakRSSBytes':[max(s['agentRSS'][i] for s in self.samples) for i in range(2)],'maxAuditLagSeconds':max(lag,default=0),'maxOutboxAgeSeconds':max(oldest,default=0),'correctness':{'conditions':True,'attemptIdentity':True,'retry':True,'effectsExactlyOnceInThisLab':True,'ledgerCheckpoint':True},'externalCanary':canary,'fault':fault_proof,'qualified':qualified,'allSamplesIncludeFault':True,'normalPerformanceExclusionSeconds':60+fault_proof['pausedSeconds'] if fault_proof else 0,'averageOfferedPerSecond':len(futures)/(min(seconds,stop_reason['elapsedSeconds'] if stop_reason else seconds)-(fault_proof['producerScheduledPauseSeconds'] if fault_proof else 0))}
+        return {'distinctGraphDefinitionsExecuted':len({r['definition_id'] for r in rows if r['definition_id'].startswith('graph-')}),'profiles':self.profiles,'performanceOptimizations':self.perf,'graphDefinitions':28800 if self.perf else 0,'definitionReadSeconds':{'count':len(self.reader_samples),'p95':quantile(self.reader_samples,.95),'p99':quantile(self.reader_samples,.99)},'websocketReconnectSeconds':{'count':len(self.reconnect_samples),'p95':quantile(self.reconnect_samples,.95),'p99':quantile(self.reconnect_samples,.99)},'name':self.name,'businessCalendar':business_calendar,'businessCalendarAtEnd':end_calendar,'retainedRows':self.density,'minimumObservedTerminalRows':minimum_density,'targetOrdersPerDay':round(rate*86400),'requestedMeasurementSeconds':seconds,'measurementSeconds':min(seconds,stop_reason['elapsedSeconds'] if stop_reason else seconds),'recoveryAndVerificationSeconds':time.monotonic()-start-min(seconds,stop_reason['elapsedSeconds'] if stop_reason else seconds),'admissionStop':stop_reason,'peakMultiplier':4,'peakSecondsPer300':60,'offeredRequests':len(futures),'admittedInstances':len(by_id),'attempts':len(rows),'errors':self.request_errors,'apiRequestSeconds':{'p95':quantile(self.request_times,.95),'p99':quantile(self.request_times,.99)},'latencies':latencies,'allAttemptLatenciesIncludingFault':all_latencies,'faultWallInterval':self.fault_interval,'databaseBytes':int(lab.command(lab.COMPOSE+['exec','-T','postgres','psql','-U','regente','-d',self.dbname,'-Atc','SELECT pg_database_size(current_database())'])),'serverCPUSeconds':cpu_seconds(self.server),'agentCPUSeconds':[cpu_seconds(p) for p in self.agents],'serverPeakRSSBytes':maxrss,'agentPeakRSSBytes':[max(s['agentRSS'][i] for s in self.samples) for i in range(2)],'maxAuditLagSeconds':max(lag,default=0),'maxOutboxAgeSeconds':max(oldest,default=0),'correctness':{'conditions':True,'attemptIdentity':True,'retry':True,'effectsExactlyOnceInThisLab':True,'ledgerCheckpoint':True},'externalCanary':canary,'fault':fault_proof,'qualified':qualified,'allSamplesIncludeFault':True,'normalPerformanceExclusionSeconds':60+fault_proof['pausedSeconds'] if fault_proof else 0,'averageOfferedPerSecond':len(futures)/(min(seconds,stop_reason['elapsedSeconds'] if stop_reason else seconds)-(fault_proof['producerScheduledPauseSeconds'] if fault_proof else 0))}
 
     def close(self):
         for proc in self.agents:lab.stop_process(proc)
@@ -224,10 +319,13 @@ class Profile:
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--tier-seconds',type=int,default=300);p.add_argument('--soak-seconds',type=int,default=1800)
+    p.add_argument('--perf',action='store_true',help='PERF qualification: 28800-definition graph, batches, incremental scheduling, REST readers and ten simultaneous reconnects')
+    p.add_argument('--perf-day',action='store_true',help='Require a real 24-hour 28800/day recovery run before larger tiers; implies --perf')
     a=p.parse_args()
+    if a.perf_day:a.perf=True
     if a.tier_seconds<300 or a.soak_seconds<1800:raise SystemExit('Qualification requires tiers >=300s and developer soak >=1800s')
     lab.EVIDENCE.mkdir(parents=True)
-    report={'datasetPreparation':'Schema32 and actual empty-business backfills initialized before seeding; frozen label/job_type/environment populated; terminal fixtures without execution claims','status':'running','profile':'synthetic-i16-postgres-loopback-v2','tiers':[],'budgets':{'plannedToAcceptedP99Seconds':5,'readyToStartedP99Seconds':10,'firstEligibleWaitMaxSeconds':10,'oldestOutboxMaxSeconds':5,'auditLagMaxSeconds':30,'serverRSSMaxBytes':1<<30,'normalRequestErrorBudget':0},'limits':['One Linux host; PostgreSQL; production loopback; two agents/5 slots','Short rate windows with retained terminal fixtures; not a full day of executions','No HA/NATS/mTLS throughput or monthly SLO claim; independent pilot I17 pending']}
+    report={'datasetPreparation':'Schema33 and actual empty-business backfills initialized before seeding; frozen label/job_type/environment populated; terminal fixtures without execution claims','status':'running','profile':'synthetic-i16-postgres-loopback-v2','tiers':[],'budgets':{'plannedToAcceptedP99Seconds':5,'readyToStartedP99Seconds':10,'firstEligibleWaitMaxSeconds':10,'oldestOutboxMaxSeconds':5,'auditLagMaxSeconds':30,'serverRSSMaxBytes':1<<30,'normalRequestErrorBudget':0,'definitionReadP99Seconds':5,'websocketReconnectP99Seconds':2},'limits':['One Linux host; PostgreSQL; production loopback; two agents/5 slots','Retained terminal rows are fixtures; distinct graph definitions executed and actual attempts/effects are counted separately; only --perf-day requests a full day','No HA/NATS/mTLS throughput or monthly SLO claim; independent pilot I17 pending']}
     started=time.monotonic();active=None;compose=False
     try:
         if platform.system()!='Linux' or platform.machine() not in ('x86_64','amd64'):raise RuntimeError('Mandatory Linux/amd64 profile')
@@ -235,7 +333,7 @@ def main():
         report['platform']=platform.platform();report['cpu']=json.loads(lab.command(['lscpu','--json']))
         report['meminfo']=Path('/proc/meminfo').read_text();report['go']=lab.command(['go','version'])
         tls=lab.RUN/'tls';tls.mkdir()
-        lab.command(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=capacity-lab','-addext','subjectAltName=IP:127.0.0.1','-keyout',str(tls/'lab.key'),'-out',str(tls/'lab.crt')])
+        lab.command(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','7','-subj','/CN=capacity-lab','-addext','subjectAltName=IP:127.0.0.1','-keyout',str(tls/'lab.key'),'-out',str(tls/'lab.crt')])
         os.environ['REGENTE_LAB_TLS_DIR']=str(tls)
         env={k:v for k,v in os.environ.items() if not k.startswith(('REGENTE_','OTEL_')) and k not in ('GITHUB_TOKEN','GH_TOKEN')}
         env['SSL_CERT_FILE']=str(tls/'lab.crt')
@@ -247,8 +345,14 @@ def main():
             lab.command(args+[source],timeout=300,name=name+'-build')
         report['postgresSettings']=lab.command(lab.COMPOSE+['exec','-T','postgres','psql','-U','regente','-d','regente_lab','-Atc',"SELECT name||'='||setting FROM pg_settings WHERE name IN ('fsync','synchronous_commit','shared_buffers','max_connections','full_page_writes')"])
         supported=None
-        for density in (10000,100000,1000000):
-            active=Profile('tier'+str(density),density,env,dsn,tls)
+        report['perf']=a.perf;report['perfDayRequired']=a.perf_day
+        if a.perf_day:
+            active=Profile('perfday28800',28800,env,dsn,tls,perf=True)
+            report['perfDay']=active.exercise(28800/86400,86400,fault=True)
+            active.close();active=None
+            validate_performance_day(report['perfDay'])
+        for density in ((28800,100000,250000,1000000) if a.perf else (10000,100000,1000000)):
+            active=Profile('tier'+str(density),density,env,dsn,tls,perf=a.perf)
             outcome=active.exercise(density/86400,a.tier_seconds);report['tiers'].append(outcome)
             active.close();active=None
             print('I16 tier '+str(density)+': qualified='+str(outcome['qualified']),flush=True)
@@ -257,7 +361,7 @@ def main():
                 break
             supported=density
         if supported is None:raise RuntimeError('No supported initial envelope; preserve report and fix measured bottleneck')
-        active=Profile('soak'+str(supported),supported,env,dsn,tls)
+        active=Profile('soak'+str(supported),supported,env,dsn,tls,perf=a.perf)
         report['soak']=active.exercise(supported/86400,a.soak_seconds,fault=True)
         active.close();active=None
         # Falha prevista é visível; nenhuma perda/duplicação ou evidência ausente é permitida.

@@ -51,7 +51,12 @@ func (s *server) wsWeb(w http.ResponseWriter, r *http.Request) {
 		}
 		environment = &values[0]
 	}
-	view, _ := s.workspaceView(access, environment)
+	view, viewErr := s.workspaceView(access, environment)
+	if viewErr != nil && s.cfg.Store != nil {
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "Workspace definitions are temporarily unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("[ws/web] upgrade: %v", err)

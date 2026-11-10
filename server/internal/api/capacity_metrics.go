@@ -16,6 +16,14 @@ func (s *server) capacityMetrics(w http.ResponseWriter) {
 	fmt.Fprintf(w, "regente_db_open_connections %d\nregente_db_in_use_connections %d\nregente_db_wait_total %d\nregente_db_wait_seconds_total %.6f\n", stats.OpenConnections, stats.InUse, stats.WaitCount, stats.WaitDuration.Seconds())
 	if sch := s.cfg.Scheduler; sch != nil {
 		p := sch.TickProgress()
+		incremental := sch.IncrementalProgress()
+		if incremental.Enabled {
+			reconciledAge := -1.0
+			if !incremental.ReconciledAt.IsZero() {
+				reconciledAge = time.Since(incremental.ReconciledAt).Seconds()
+			}
+			fmt.Fprintf(w, "regente_scheduler_candidate_queue %d\nregente_scheduler_tracked_instances %d\nregente_scheduler_snapshot_cache_entries %d\nregente_scheduler_reconciliation_age_seconds %.3f\n", incremental.Pending, incremental.Tracked, incremental.Plans, reconciledAge)
+		}
 		age := -1.0
 		if !p.CompletedAt.IsZero() {
 			age = time.Since(p.CompletedAt).Seconds()

@@ -39,6 +39,11 @@ func realJournalRuntimeTest(t *testing.T, runtime bool) {
 	for _, dialect := range []db.Dialect{db.SQLite, db.Postgres} {
 		t.Run(string(dialect), func(t *testing.T) {
 			d := machineTestDB(t, dialect)
+			if runtime {
+				if err := d.EnableAudit(filepath.Join(t.TempDir(), "audit.key"), 1000); err != nil {
+					t.Fatal(err)
+				}
+			}
 			store := storage.NewFileStore(t.TempDir(), false)
 			var effects atomic.Int32
 			gate := make(chan struct{})

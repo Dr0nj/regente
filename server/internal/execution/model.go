@@ -9,6 +9,7 @@ import (
 	"errors"
 	"github.com/Dr0nj/regente-server/internal/db"
 	"github.com/Dr0nj/regente-server/internal/domain"
+	"github.com/Dr0nj/regente-server/internal/telemetry"
 	"time"
 )
 
@@ -128,6 +129,9 @@ type Receipt struct {
 }
 
 func receipt(id string, duplicate bool) Receipt {
+	if duplicate {
+		telemetry.Count(telemetry.AuditReplay, 1)
+	}
 	return Receipt{Accepted: true, Duplicate: duplicate, ExecutionID: id}
 }
 func resultChecksum(r Result) string {

@@ -36,7 +36,7 @@ migration runner, and the agent descriptor derives its journal version from the
 journal implementation. Inspect the isolated target's migration history, then run:
 
 ```sh
-python3 scripts/check-compatibility.py --server ./regente-server --agent ./regente-agent --schema 32
+python3 scripts/check-compatibility.py --server ./regente-server --agent ./regente-agent --schema 33
 ```
 
 Exit zero requires matching nonempty build labels, schema within the server's

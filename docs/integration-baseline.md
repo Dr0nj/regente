@@ -131,7 +131,15 @@ the same-binary drain and the schema-document contract. The
 [recorded evidence](evidence/doc-a-af75c51.json) is synthetic laboratory evidence,
 not production or mixed-version qualification.
 
-Current runtime schema: **32**; supported range: **[32,32]**.
+Current runtime schema: **33**; supported range: **[33,33]**.
+
+Schema 33 adds durable audit reservations for active execution attempts. Upgrade
+inventories seven lifecycle slots per nonterminal attempt; if the inherited
+backlog plus reservations exceeds capacity, new admissions stay blocked while
+existing work completes and the collector drains. Each slot budgets one audit
+payload up to 64 KiB. Slots and state changes commit or roll back together.
+A schema-32 binary cannot open schema 33: rollback requires a compatible binary
+or a verified offline restore and reconciliation of effects after the backup.
 
 `TestMigrationRunbookContract` compares this current statement with the migration
 constants and an actual fresh database. Historical fixture versions below remain
@@ -183,3 +191,5 @@ The [execution security profile](execution-security.md) is exercised by TestI13C
 ## I14 mandatory audit
 
 The [failure-resistant audit contract](failure-resistant-audit.md) is required on SQLite and PostgreSQL through transaction/storage/capacity/crash/verification/export tests and real SIGKILL processes with an independent TLS collector. PostgreSQL dump/restore is checked against the collector checkpoint. The installed smoke requires separate control/collector UIDs and permissions; its I14_SYSTEMD_OK marker is included in the verification artifact.
+
+Schema 33 also adds coalesced instance-change notifications and the keyset index used by optional incremental scheduling. See [performance and recovery operations](performance-recovery.md).

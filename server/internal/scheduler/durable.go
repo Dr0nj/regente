@@ -449,6 +449,7 @@ func (s *Scheduler) durableChanged(exec string) {
 	if err != nil || !o.Runtime {
 		return
 	}
+	s.WakeInstance(o.SourceInstanceID)
 	var status string
 	_ = s.db.QueryRow("SELECT status FROM instances WHERE id=?", o.SourceInstanceID).Scan(&status)
 	if s.resources != nil {

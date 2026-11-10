@@ -373,9 +373,9 @@ func NewRouter(cfg Config) http.Handler {
 	// Fase 2 — transporte HTTP long-poll p/ agentes (auth própria por agent token).
 	// Fora do grupo /api (que exige sessão/legacy), como o /ws/agent.
 	r.Get("/api/agent/v2/poll", s.scoped((*server).executionPoll))
-	r.Post("/api/agent/v2/ack", s.scoped((*server).executionAck))
-	r.Post("/api/agent/v2/result", s.scoped((*server).executionResult))
-	r.Post("/api/agent/v2/output", s.scoped((*server).executionOutput))
+	r.Post("/api/agent/v2/ack", s.scopedReceipt((*server).executionAck))
+	r.Post("/api/agent/v2/result", s.scopedReceipt((*server).executionResult))
+	r.Post("/api/agent/v2/output", s.scopedReceipt((*server).executionOutput))
 	r.Get("/api/agent/poll", s.scoped((*server).agentPoll))
 	// ARCH-4 — transporte SSE: stream de dispatch por push imediato (mesmo broker;
 	// resultados voltam pelos POSTs abaixo, iguais ao long-poll).

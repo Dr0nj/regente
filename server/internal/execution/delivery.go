@@ -93,6 +93,9 @@ func (e *Engine) claimOne(id, agent string, now int64) (*Envelope, error) {
 		if err = event(tx, exec, "delivery_uncertain", now); err != nil {
 			return nil, err
 		}
+		if err = tx.UseExecutionAudit(exec, "recovery", false); err != nil {
+			return nil, err
+		}
 		return nil, tx.Commit()
 	}
 	var msg Envelope
@@ -111,6 +114,13 @@ func (e *Engine) claimOne(id, agent string, now int64) (*Envelope, error) {
 		}
 	}
 	if err = event(tx, exec, "delivered_"+kind, now); err != nil {
+		return nil, err
+	}
+	slot := "dispatch"
+	if kind == "cancel" {
+		slot = "cancel_delivery"
+	}
+	if err = tx.UseExecutionAudit(exec, slot, false); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(); err != nil {
@@ -152,6 +162,21 @@ func (e *Engine) AcknowledgeReason(id Identity, kind, reason string) (Receipt, e
 	}
 	if !current(o, a) || terminal(a.State) {
 		return Receipt{}, ErrConflict
+	}
+	if kind == "uncertain" {
+		if reason == "" {
+			reason = "agent reported an unresolved effect"
+		}
+		var recorded int
+		if err = tx.QueryRow("SELECT COUNT(*) FROM execution_events WHERE execution_id=? AND kind='uncertain'", a.ExecutionID).Scan(&recorded); err != nil {
+			return Receipt{}, err
+		}
+		if recorded > 0 {
+			if a.Reason != reason {
+				return Receipt{}, ErrConflict
+			}
+			return phaseReceipt(o, a, true), nil
+		}
 	}
 	now := e.now()
 	next := a.State
@@ -235,7 +260,12 @@ func (e *Engine) AcknowledgeReason(id Identity, kind, reason string) (Receipt, e
 	if terminal(next) || next == "uncertain" {
 		leaseUntil = 0
 	}
-	if _, err = tx.Exec(`UPDATE execution_attempts SET state=?,lease_until=?,last_contact=?,reason=? WHERE execution_id=? AND state=?`, next, leaseUntil, now, a.Reason, a.ExecutionID, a.State); err != nil {
+	if kind == "heartbeat" {
+		_, err = tx.Exec(`UPDATE execution_attempts SET lease_until=?,last_contact=? WHERE execution_id=? AND state=?`, leaseUntil, now, a.ExecutionID, a.State)
+	} else {
+		_, err = tx.Exec(`UPDATE execution_attempts SET state=?,lease_until=?,last_contact=?,reason=? WHERE execution_id=? AND state=?`, next, leaseUntil, now, a.Reason, a.ExecutionID, a.State)
+	}
+	if err != nil {
 		return Receipt{}, err
 	}
 	a.State = next
@@ -251,6 +281,18 @@ func (e *Engine) AcknowledgeReason(id Identity, kind, reason string) (Receipt, e
 	}
 	if kind != "heartbeat" {
 		if err = event(tx, a.ExecutionID, kind, now); err != nil {
+			return Receipt{}, err
+		}
+	}
+	if kind != "heartbeat" {
+		slot := kind
+		if kind == "cancelled" {
+			slot = "terminal"
+		}
+		if kind == "uncertain" {
+			slot = "recovery"
+		}
+		if err = tx.UseExecutionAudit(a.ExecutionID, slot, terminal(next)); err != nil {
 			return Receipt{}, err
 		}
 	}
@@ -337,6 +379,9 @@ func (e *Engine) CancelFor(orderID, actor string) (Attempt, error) {
 	if err = event(tx, a.ExecutionID, "cancel_requested", now); err != nil {
 		return Attempt{}, err
 	}
+	if err = tx.UseExecutionAudit(a.ExecutionID, "cancel", terminal(state)); err != nil {
+		return Attempt{}, err
+	}
 	if err = tx.Commit(); err != nil {
 		return Attempt{}, err
 	}
@@ -401,6 +446,9 @@ func (e *Engine) expire(id string, now int64) (bool, error) {
 		return false, err
 	}
 	if err = event(tx, id, "lease_uncertain", now); err != nil {
+		return false, err
+	}
+	if err = tx.UseExecutionAudit(id, "recovery", false); err != nil {
 		return false, err
 	}
 	if err = tx.Commit(); err != nil {

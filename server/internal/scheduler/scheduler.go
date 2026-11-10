@@ -48,14 +48,16 @@ type Scheduler struct {
 	hub                                 Bus
 	tick                                time.Duration
 
-	dailyMu      sync.Mutex // só coordenação local; o checkpoint também é serializado no banco.
-	mu           sync.Mutex
-	running      map[string]bool
-	defs         []domain.JobDefinition
-	settings     Settings
-	lastTickAt   time.Time // tentativa; progresso concluído é separado
-	progress     TickProgress
-	eligibleSeen map[string]bool
+	dailyMu        sync.Mutex // só coordenação local; o checkpoint também é serializado no banco.
+	mu             sync.Mutex
+	running        map[string]bool
+	defs           []domain.JobDefinition
+	defsGeneration uint64
+	settings       Settings
+	lastTickAt     time.Time // tentativa; progresso concluído é separado
+	progress       TickProgress
+	incremental    *candidateIndex
+	eligibleSeen   map[string]bool
 
 	// emptyDailyLoggedFor — data da última daily recusada por não haver NENHUMA
 	// definition carregada (ver RunDaily). Sem isso o aviso sairia a cada tick.
@@ -266,6 +268,9 @@ func (s *Scheduler) AttachConditions(c *ConditionEngine) {
 	s.conditions = c
 	if c != nil {
 		c.OnChange(func(name, scope, kind string) {
+			if s.incremental != nil {
+				s.incremental.conditionChanged(condKey(name, scope))
+			}
 			s.hub.BroadcastWeb("condition.changed", map[string]string{
 				"name": name, "scope": scope, "kind": kind,
 			})
@@ -495,6 +500,7 @@ func (s *Scheduler) reloadDefs() {
 	}
 	s.mu.Lock()
 	s.defs = defs
+	s.defsGeneration++
 	s.mu.Unlock()
 }
 
@@ -592,6 +598,9 @@ func (s *Scheduler) dailySync() (sha string, err error) {
 //	        cancelled | held | released | force-ordered | set-ok
 //	actor:  "scheduler" | "operator" | "agent:<id>" | ""
 func (s *Scheduler) emitEvent(instanceID, kind, actor, message string) {
+	if kind != "wait" && kind != "submitted" {
+		s.WakeInstance(instanceID)
+	}
 	if instanceID == "" || kind == "" {
 		return
 	}
@@ -1005,6 +1014,9 @@ type instRow struct {
 	HeldFrom         string
 	DailyState       string // preenchido pelo ledger; Force/legado não pertencem ao ciclo novo.
 	SnapshotChecksum string
+	validated        bool
+	validation       string
+	resolved         *domain.JobDefinition
 }
 
 // defForInstance devolve a definition CONGELADA no momento da ordem (snapshot),
@@ -1018,6 +1030,9 @@ type instRow struct {
 // instances continuar valendo no modelo único (o OutAdd do pai vem da def
 // viva normalizada — ver applyConditionsOut).
 func defForInstance(r instRow, live map[string]domain.JobDefinition) (domain.JobDefinition, bool) {
+	if r.resolved != nil {
+		return *r.resolved, true
+	}
 	if snapshotError(r) != "" {
 		return domain.JobDefinition{}, false
 	}
@@ -1059,6 +1074,7 @@ func statusRank(s string) int {
 const stuckRunningTimeout = 15 * time.Minute
 
 func (s *Scheduler) tickOnce() error {
+	defer telemetry.Measure(telemetry.SchedulerEvaluation)()
 	if s.durable != nil {
 		if _, err := s.rebuildDurableResources(); err != nil {
 			log.Printf("[quotas] reconciliation blocked: %v", err)
@@ -1076,45 +1092,6 @@ func (s *Scheduler) tickOnce() error {
 	}
 	today := s.BusinessDate(now)
 
-	// Carrega TODAS as instances do dia (não só WAITING/RUNNING).
-	// evalDeps precisa enxergar pais OK/NOTOK para decidir corretamente.
-	rows, err := s.db.Query(
-		`SELECT i.id, i.definition_id, i.order_date, i.status, i.scheduled_at,
-		 i.started_at,i.carried_at,COALESCE(i.forced,0),COALESCE(i.force_mode,''),COALESCE(i.confirmed,0),COALESCE(i.carried_from,''),COALESCE(i.definition_snapshot,''),COALESCE(i.held_from_status,''),COALESCE(d.state,''),COALESCE(l.snapshot_checksum,'')
-		 FROM instances i LEFT JOIN daily_order_ledger l ON l.instance_id=i.id LEFT JOIN daily_runs d ON d.order_date=l.order_date WHERE i.order_date=? ORDER BY i.scheduled_at,i.created_at,i.id`,
-		today,
-	)
-	if err != nil {
-		return err
-	}
-	insts := []instRow{}
-	for rows.Next() {
-		var r instRow
-		var forcedInt, confirmedInt int
-		if err := rows.Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.CarriedFrom, &r.Snapshot, &r.HeldFrom, &r.DailyState, &r.SnapshotChecksum); err != nil {
-			rows.Close()
-			return err
-		}
-		r.Forced = forcedInt == 1
-		r.Confirmed = confirmedInt == 1
-		insts = append(insts, r)
-	}
-	// Iteração incompleta = tick parcial (instances de fora ficam pro próximo
-	// tick — benigno, mas tem que aparecer no log pra não virar mistério).
-	if err := rows.Err(); err != nil {
-		log.Printf("[scheduler] tick: incomplete instance read (%d read): %v", len(insts), err)
-		rows.Close()
-		return err
-	}
-	rows.Close()
-
-	s.mu.Lock()
-	defs := map[string]domain.JobDefinition{}
-	for _, d := range s.defs {
-		defs[d.ID] = d
-	}
-	s.mu.Unlock()
-
 	// Foto do POOL de condições (modelo único de dependência): uma query por
 	// tick, consultada in-memory pelo gate de cada instance WAITING. O pool é
 	// pequeno (condições vivas do ambiente); o volume está nas instances.
@@ -1130,7 +1107,34 @@ func (s *Scheduler) tickOnce() error {
 		}
 	}
 
-	for _, r := range insts {
+	if s.incremental != nil {
+		s.incremental.conditionsChanged(condIdx)
+	}
+
+	insts, err := s.tickCandidates(today, now)
+	if err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defs := map[string]domain.JobDefinition{}
+	for _, d := range s.defs {
+		defs[d.ID] = d
+	}
+	s.mu.Unlock()
+
+	budgetEnd := time.Now().Add(100 * time.Millisecond)
+	for i, r := range insts {
+		if s.incremental != nil {
+			if i > 0 && time.Now().After(budgetEnd) {
+				for _, pending := range insts[i:] {
+					s.WakeInstance(pending.ID)
+				}
+				break
+			}
+			r = s.prepareCandidate(r, defs)
+			s.incremental.observe(s, r, defs, condIdx, now)
+		}
 		// Watchdog: RUNNING parado por muito tempo vira NOTOK (timeout). Um job
 		// carregado na virada da daily (carried_at) re-arma o relógio: mede-se a
 		// staleness de max(started_at, carried_at), pra um RUNNING legítimo que
@@ -1994,4 +1998,36 @@ func (s *Scheduler) ForceOrder(defID string) (string, error) {
 	// pelo run-job → ForceOrder).
 	s.spawnTracked("force de "+id, func() { s.startInstance(id, *def) })
 	return id, nil
+}
+
+const tickInstanceSelect = `SELECT i.id, i.definition_id, i.order_date, i.status, i.scheduled_at,
+		 i.started_at,i.carried_at,COALESCE(i.forced,0),COALESCE(i.force_mode,''),COALESCE(i.confirmed,0),COALESCE(i.carried_from,''),COALESCE(i.definition_snapshot,''),COALESCE(i.held_from_status,''),COALESCE(d.state,''),COALESCE(l.snapshot_checksum,'')
+		 FROM instances i LEFT JOIN daily_order_ledger l ON l.instance_id=i.id LEFT JOIN daily_runs d ON d.order_date=l.order_date`
+
+func (s *Scheduler) readTickInstances(where string, args ...any) ([]instRow, error) {
+	rows, err := s.db.Query(tickInstanceSelect+where, args...)
+	if err != nil {
+		return nil, err
+	}
+	insts := []instRow{}
+	for rows.Next() {
+		var r instRow
+		var forcedInt, confirmedInt int
+		if err := rows.Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.CarriedFrom, &r.Snapshot, &r.HeldFrom, &r.DailyState, &r.SnapshotChecksum); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		r.Forced = forcedInt == 1
+		r.Confirmed = confirmedInt == 1
+		insts = append(insts, r)
+	}
+	// Iteração incompleta = tick parcial (instances de fora ficam pro próximo
+	// tick — benigno, mas tem que aparecer no log pra não virar mistério).
+	if err := rows.Err(); err != nil {
+		log.Printf("[scheduler] tick: incomplete instance read (%d read): %v", len(insts), err)
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	return insts, nil
 }

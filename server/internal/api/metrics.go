@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"github.com/Dr0nj/regente-server/internal/telemetry"
 	"log"
 	"net/http"
 	"time"
@@ -16,6 +17,18 @@ const readyTickStaleSeconds = 120.0
 func (s *server) metrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	s.capacityMetrics(w)
+	telemetry.WritePerformance(w)
+	if s.cfg.Store != nil {
+		ready := 0
+		if s.cfg.Store.DefinitionsReady() {
+			ready = 1
+		}
+		fmt.Fprintf(w, "regente_definitions_ready %d\n", ready)
+	}
+	var reservations int64
+	if err := s.cfg.DB.QueryRow("SELECT COUNT(*) FROM audit_reservations").Scan(&reservations); err == nil {
+		fmt.Fprintf(w, "regente_audit_reserved_records %d\nregente_audit_reserved_payload_bytes %d\n", reservations, reservations*(64<<10))
+	}
 	today := time.Now().UTC().Format("2006-01-02")
 	if s.cfg.Scheduler != nil {
 		today = s.cfg.Scheduler.TodayDate()
@@ -187,6 +200,22 @@ func (s *server) readyz(w http.ResponseWriter, r *http.Request) {
 		if last := s.cfg.Scheduler.LastTick(); !last.IsZero() {
 			age = time.Since(last).Seconds()
 			stale = age > readyTickStaleSeconds
+		}
+	}
+	completedAge := -1.0
+	if s.cfg.Scheduler != nil {
+		p := s.cfg.Scheduler.TickProgress()
+		if !p.CompletedAt.IsZero() {
+			completedAge = time.Since(p.CompletedAt).Seconds()
+		}
+	}
+	out["schedulerCompletedTickAgeSeconds"] = completedAge
+	out["schedulerProgressStale"] = completedAge < 0 || completedAge > readyTickStaleSeconds
+	if s.cfg.Store != nil {
+		ok := s.cfg.Store.DefinitionsReady()
+		out["definitions"] = check{OK: ok}
+		if !ok {
+			ready = false
 		}
 	}
 	out["schedulerLastTickAgeSeconds"] = age

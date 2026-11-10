@@ -103,7 +103,10 @@ def validate_test_events(output):
     if skipped:
         raise RuntimeError(f"Mandatory integration tests skipped: {skipped}")
     passed = {e.get("Test") for e in events if e.get("Action") == "pass"}
-    required = {"TestMandatoryAuditTransactions/sqlite", "TestMandatoryAuditTransactions/postgres",
+    required = {"TestPerformanceMigrationV33/sqlite", "TestPerformanceMigrationV33/postgres",
+ "TestBatchLostACKRestartAndPartialPrefix/sqlite", "TestBatchLostACKRestartAndPartialPrefix/postgres",
+ "TestAuditReservedLifecycleSurvivesFullQueueAndRestart", "TestAuditReservationSurvivesFailedResultCommit",
+ "TestReceiptMiddlewareDoesNotTurnCommitInto503", "TestMandatoryAuditTransactions/sqlite", "TestMandatoryAuditTransactions/postgres",
  "TestMandatoryAuditConcurrentVerification/sqlite", "TestMandatoryAuditConcurrentVerification/postgres",
  "TestMandatoryAuditCrash/sqlite", "TestMandatoryAuditCrash/postgres",
  "TestI14DurableExport/sqlite", "TestI14DurableExport/postgres", "TestI14MandatoryAPI", "TestI14MemoryChangesWaitForAudit",
@@ -673,15 +676,15 @@ def main():
                    REGENTE_TEST_OIDC_CLIENT_SECRET="synthetic-client-secret",
                    REGENTE_TEST_OIDC_USER="lab-user", REGENTE_TEST_OIDC_PASS="synthetic-password", REGENTE_AUDIT_KEY=str(RUN/"audit-integrity.key"))
         output = command(["go", "test", "-json", "-count=1", "-timeout=5m",
-                          "./server/internal/db", "./server/internal/audit", "./server/internal/api", "./server/internal/storage", "./server/internal/scheduler", "./server/internal/leader", "./agent/journal", "./agent/security", "-run",
-                          "TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials|TestHumanIdentity|TestWebEvent|TestProductionIdentity|TestI06BusinessTimeIntegration|TestI07DailyRecoveryIntegration|TestI08AttemptIntegration|TestI09|TestI10|TestI11|TestI12|TestI13|TestMandatoryAudit|TestI14"],
+                          "./server/internal/db", "./server/internal/audit", "./server/internal/execution", "./server/internal/api", "./server/internal/storage", "./server/internal/scheduler", "./server/internal/leader", "./agent/journal", "./agent/security", "-run",
+                          "TestPerformanceMigration|TestBatch|TestAudit|TestReceiptMiddleware|TestMigration|TestLegacy|TestPostgres|TestOnlineBackup|TestIntegrationOIDC|TestMachineIdentity|TestAgentAuthRejectsHumanCredentials|TestHumanIdentity|TestWebEvent|TestProductionIdentity|TestI06BusinessTimeIntegration|TestI07DailyRecoveryIntegration|TestI08AttemptIntegration|TestI09|TestI10|TestI11|TestI12|TestI13|TestMandatoryAudit|TestI14"],
                          env=env, timeout=360, name="database-oidc-tests")
         validate_test_events(output)
         command(["go", "test", "-race", "-count=1", "-timeout=3m", "./server/internal/api", "-run", "^TestWebEvent"],
                 env=env, timeout=300, name="web-events-race")
         command(["go", "build", "-o", str(RUN/"server"), "./server"], timeout=180, name="server-build")
         command(["go", "build", "-o", str(RUN/"agent"), "./agent"], timeout=180, name="agent-build")
-        command([sys.executable, "scripts/check-compatibility.py", "--server", str(RUN/"server"), "--agent", str(RUN/"agent"), "--schema", "32"], name="runtime-compatibility")
+        command([sys.executable, "scripts/check-compatibility.py", "--server", str(RUN/"server"), "--agent", str(RUN/"agent"), "--schema", "33"], name="runtime-compatibility")
         i14_audit_processes(env, dsn, tls_dir)
         durable_process_recovery(env, dsn)
         i11_ha_processes(env, dsn, nats_url)

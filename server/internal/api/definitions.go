@@ -37,17 +37,33 @@ func decodeDefinition(r io.Reader) (domain.JobDefinition, error) {
 }
 
 func (s *server) listDefinitions(w http.ResponseWriter, r *http.Request) {
-	defs, err := s.cfg.Store.List()
+	defs, err := s.cfg.Store.ListContext(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Workspace definitions are temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	// F11.10b — filtra por ACL de leitura.
 	if u, ok := auth.FromContext(r.Context()); ok && u != nil {
+		folders := make([]string, 0)
+		seen := map[string]bool{}
+		for _, d := range defs {
+			if !seen[d.Team] {
+				seen[d.Team] = true
+				folders = append(folders, d.Team)
+			}
+		}
+		readable, err := auth.FilterReadableFolders(s.cfg.DB, u, folders)
+		if err != nil {
+			http.Error(w, "Workspace authorization unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		allowed := map[string]bool{}
+		for _, f := range readable {
+			allowed[f] = true
+		}
 		filtered := defs[:0]
 		for _, d := range defs {
-			canRead, _ := auth.CanReadFolder(s.cfg.DB, u, d.Team)
-			if canRead {
+			if allowed[d.Team] {
 				filtered = append(filtered, d)
 			}
 		}

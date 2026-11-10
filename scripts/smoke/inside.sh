@@ -63,19 +63,28 @@ if [ "$STAGE" = stage2 ]; then
   if [ -f /root/previous-bundle.tar.gz ]; then
     head1 "Drained v0.2.47 service before authenticated upgrade"
     systemctl stop regente-agent
-    prior_instances="$(api "$BASE/api/instances" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)))')" || exit 1
     prior_source="$(grep "^REGENTE_GIT_SOURCE=" "$ENV_FILE")"
     systemctl stop regente-server
     mkdir -p /root/previous
     tar -xzf /root/previous-bundle.tar.gz -C /root/previous || exit 1
     prior=/root/previous/regente-server_linux_amd64/regente-server
     [ "$("$prior" -version)" = v0.2.47 ] || exit 1
+    # O schema novo nunca é entregue ao binário antigo. Preserva a prova de
+    # fresh install/reboot e inicia um fixture independente, criado pelo v0.2.47.
+    install -d -m 0700 /var/lib/regente/current-schema-proof
+    for file in /var/lib/regente/regente.db*; do
+      [ ! -f "$file" ] || mv "$file" /var/lib/regente/current-schema-proof/
+    done
     install -m 0755 "$prior" /usr/local/bin/regente-server
     systemctl start regente-server
     wait_for 30 '[ "$(code "'"$BASE"'/health")" = 200 ]' || exit 1
     [ "$(api "$BASE/api/version" | jfield version)" = v0.2.47 ] || exit 1
-    [ "$(api "$BASE/api/instances" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)))')" = "$prior_instances" ] || exit 1
-    ok "Previous released binary serves the drained preserved schema-32 history"
+    wait_for 30 '[ -n "$(gitfield sha)" ]' || exit 1
+    api -X POST "$BASE/api/scheduler/tick" > /tmp/previous-tick.json || exit 1
+    prior_fixture_iid="$(api -X POST "$BASE/api/definitions/smoke-job/force" | jfield instanceId)" || exit 1
+    [ -n "$prior_fixture_iid" ] || exit 1
+    prior_instances="$(api "$BASE/api/instances" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)))')" || exit 1
+    ok "Previous binary created independent schema-32 history; current-schema proof is preserved separately"
   fi
 
   if [ -f /root/release-manifest.json ]; then

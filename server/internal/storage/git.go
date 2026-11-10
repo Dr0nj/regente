@@ -47,6 +47,8 @@ import (
 
 // GitOps gerencia o workspace como clone Git.
 type GitOps struct {
+	definitionStore *FileStore // vinculado antes de iniciar concorrência
+
 	workspace string
 	source    string // ex: git@github.com:owner/repo.git ou https://... (SEMPRE sem credenciais)
 	branch    string
@@ -494,6 +496,8 @@ func (g *GitOps) IsEmpty() bool {
 // Registra o último erro em lastErr (exposto no /api/git/status) para que a UI
 // consiga dizer POR QUE o GitOps não está sincronizado — o boot não é mais fatal.
 func (g *GitOps) EnsureClone() error {
+	done := g.beginDefinitionMutation()
+	defer done()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	err := g.ensureCloneLocked()
@@ -792,6 +796,8 @@ func (g *GitOps) bootstrapLocked() error {
 
 // SyncFromRemote roda fetch + reset --hard.
 func (g *GitOps) SyncFromRemote() error {
+	done := g.beginDefinitionMutation()
+	defer done()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if !g.IsRepo() {
@@ -937,6 +943,8 @@ func (g *GitOps) CheckDrift() (drifted bool, err error) {
 // CheckoutNewBranch cria branch a partir de origin/<branch> e checa out.
 // Preserva arquivos untracked (não usa o Checkout do go-git, que apaga untracked).
 func (g *GitOps) CheckoutNewBranch(branchName string) error {
+	done := g.beginDefinitionMutation()
+	defer done()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if !g.IsRepo() {
@@ -971,6 +979,8 @@ func (g *GitOps) CheckoutNewBranch(branchName string) error {
 // preserva o working tree (necessário para publish de design sessions, onde
 // edições já estão em disco e não devem ser perdidas).
 func (g *GitOps) CheckoutLocalBranch(branchName string) error {
+	done := g.beginDefinitionMutation()
+	defer done()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if !g.IsRepo() {
@@ -1175,6 +1185,8 @@ func (g *GitOps) pushLocked(repo *git.Repository, branchName string) error {
 // por timestamp — o caminho de conflito é praticamente inalcançável. Em caso de
 // erro o caller chama AbortRebase e desiste.
 func (g *GitOps) RebaseBranch(base string) error {
+	done := g.beginDefinitionMutation()
+	defer done()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	repo, err := g.openRepo()
@@ -1360,6 +1372,8 @@ func writeFileAt(root, relPath, content string, mode os.FileMode) error {
 // AbortRebase restaura a branch + working tree ao estado pré-rebase (F13.4).
 // Best-effort: se não há rebase em andamento, no-op.
 func (g *GitOps) AbortRebase() error {
+	done := g.beginDefinitionMutation()
+	defer done()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.rebaseOrig.IsZero() || g.rebaseRef == "" {
@@ -1385,6 +1399,8 @@ func (g *GitOps) AbortRebase() error {
 // CheckoutMain volta para a branch principal e reseta ao remote (descarta
 // qualquer mudança local da branch anterior). Preserva untracked.
 func (g *GitOps) CheckoutMain() error {
+	done := g.beginDefinitionMutation()
+	defer done()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	repo, err := g.openRepo()
@@ -1450,4 +1466,13 @@ func SafeBranchName(s string) string {
 		out = "x"
 	}
 	return out
+}
+
+// BindDefinitionStore é configuração de boot, antes de qualquer operação concorrente.
+func (g *GitOps) BindDefinitionStore(store *FileStore) { g.definitionStore = store }
+func (g *GitOps) beginDefinitionMutation() func() {
+	if g.definitionStore == nil {
+		return func() {}
+	}
+	return g.definitionStore.beginWorkspaceMutation()
 }

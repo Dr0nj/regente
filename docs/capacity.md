@@ -192,3 +192,16 @@ After resumption, a new canary completed in 3.263
 seconds. The 65.061-second fault/margin interval
 is excluded only from the normal performance columns above; all-attempt latencies,
 all samples and every effect remain in the evidence. I17 is pending.
+
+## Performance comparison and daily gate
+
+Use `python3 scripts/capacity.py --perf` for the optional graph/reader comparison,
+or `--perf-day` to require a real 24-hour run and business-date rollover before
+higher tiers. The daily gate requires 28,800 distinct graph definitions with
+verified effects, not just retained rows or repeated executions of eight jobs.
+The synthetic graph uses permanent-condition fan-out and short chains; production
+topology and dated carry-over need separate qualification. This profile enables
+batch audit export and incremental scheduling, saves CPU/heap profiles, and samples
+host steal separately from process CPU. See [performance and recovery operations](performance-recovery.md)
+for flags, schema 33 migration, budgets and limits. Short `--perf` runs do not close
+the daily gate or establish a one-million-per-day capacity claim.

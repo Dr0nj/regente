@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -52,6 +53,9 @@ func newTestScheduler(t *testing.T) *Scheduler {
 	// Testes rodam sem agente conectado: DemoMode mantém o mock-finish (OK em 1s),
 	// que é o comportamento que os cenários de dispatch/retry/alerting assumem.
 	s.DemoMode = true
+	if os.Getenv("REGENTE_TEST_INCREMENTAL") == "1" {
+		s.EnableIncremental()
+	}
 	// Para as goroutines de fundo (mock-finish/retry) ANTES do Close do DB (LIFO:
 	// registrado depois do Close → roda antes dele). Sem isso o mock-finish de 1s
 	// escrevia no DB durante o RemoveAll do t.TempDir() → flake "directory not

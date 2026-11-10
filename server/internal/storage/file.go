@@ -11,7 +11,9 @@
 package storage
 
 import (
+	"context"
 	"fmt"
+	"github.com/Dr0nj/regente-server/internal/telemetry"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -27,6 +29,7 @@ type FileStore struct {
 	root      string
 	gitCommit bool
 	mu        sync.RWMutex
+	cache     definitionCache
 }
 
 func NewFileStore(root string, gitCommit bool) *FileStore {
@@ -38,10 +41,28 @@ func (s *FileStore) definitionsDir() string { return filepath.Join(s.root, "defi
 
 // List caminha recursivamente em definitions/**/*.yaml.
 func (s *FileStore) List() ([]domain.JobDefinition, error) {
+	if s.cache.enabled.Load() {
+		snap, err := s.definitionSnapshot()
+		if err != nil {
+			return nil, err
+		}
+		return cloneDefinitionValues(snap.definitions), nil
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.listDefinitionsLocked()
+}
+
+func (s *FileStore) listDefinitionsLocked() ([]domain.JobDefinition, error) {
+	return s.listDefinitionsContextLocked(context.Background())
+}
+func (s *FileStore) listDefinitionsContextLocked(ctx context.Context) ([]domain.JobDefinition, error) {
+	defer telemetry.Measure(telemetry.DefinitionsRead)()
 	out := []domain.JobDefinition{}
 	err := filepath.WalkDir(s.definitionsDir(), func(path string, d fs.DirEntry, err error) error {
+		if e := ctx.Err(); e != nil {
+			return e
+		}
 		if err != nil {
 			if os.IsNotExist(err) {
 				return nil
@@ -84,6 +105,7 @@ func (s *FileStore) List() ([]domain.JobDefinition, error) {
 	// `upstream` legado em condições explícitas e recalcula upstream como VISÃO
 	// derivada. Este é o CHOKEPOINT de leitura — scheduler, API, sessions e
 	// publish enxergam sempre defs normalizadas.
+	defer telemetry.Measure(telemetry.DefinitionsNormalize)()
 	return domain.NormalizeConditions(out), nil
 }
 
@@ -92,8 +114,8 @@ func (s *FileStore) Save(def domain.JobDefinition) error {
 	if err := validDefinitionPath(def.Team, def.ID); err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	done := s.beginWorkspaceMutation()
+	defer done()
 	if def.ID == "" || def.Team == "" {
 		return fmt.Errorf("definition requires id and team")
 	}
@@ -124,8 +146,8 @@ func (s *FileStore) Delete(team, id string) error {
 	if err := validDefinitionPath(team, id); err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	done := s.beginWorkspaceMutation()
+	defer done()
 	path := filepath.Join(s.definitionsDir(), team, id+".yaml")
 	if err := os.Remove(path); err != nil {
 		return err
@@ -175,8 +197,25 @@ func readFolderMeta(dir string) folderMeta {
 // ListFolders retorna folders com contagem de jobs. Folders arquivados
 // começam com ".archived-" prefix e ficam ocultos por padrão.
 func (s *FileStore) ListFolders() ([]FolderInfo, error) {
+	if s.cache.enabled.Load() {
+		snap, err := s.definitionSnapshot()
+		if err != nil {
+			return nil, err
+		}
+		out := append([]FolderInfo(nil), snap.folders...)
+		for i := range out {
+			if out[i].Layout != nil {
+				layout := *out[i].Layout
+				out[i].Layout = &layout
+			}
+		}
+		return out, nil
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.listFoldersLocked()
+}
+func (s *FileStore) listFoldersLocked() ([]FolderInfo, error) {
 	entries, err := os.ReadDir(s.definitionsDir())
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -220,8 +259,8 @@ func (s *FileStore) ListFolders() ([]FolderInfo, error) {
 
 // CreateFolder cria um folder vazio (útil para preparar times sem jobs).
 func (s *FileStore) CreateFolder(name string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	done := s.beginWorkspaceMutation()
+	defer done()
 	if err := validFolderName(name); err != nil {
 		return err
 	}
@@ -246,8 +285,8 @@ func (s *FileStore) CreateFolder(name string) error {
 // folder no stub .regente-folder.yaml, preservando o name. Mesmo caminho de
 // commit dos saves de definition — o layout é workspace, não estado de runtime.
 func (s *FileStore) SetFolderLayout(name string, layout *FolderLayout) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	done := s.beginWorkspaceMutation()
+	defer done()
 	if err := validFolderName(name); err != nil {
 		return err
 	}
@@ -277,8 +316,8 @@ func (s *FileStore) SetFolderLayout(name string, layout *FolderLayout) error {
 // RenameFolder move definitions/<old>/ → definitions/<new>/. Falha se <new>
 // já existir.
 func (s *FileStore) RenameFolder(oldName, newName string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	done := s.beginWorkspaceMutation()
+	defer done()
 	if err := validFolderName(newName); err != nil {
 		return err
 	}
@@ -323,8 +362,8 @@ func (s *FileStore) RenameFolder(oldName, newName string) error {
 
 // DeleteFolder remove um folder. Se force=false e o folder tiver jobs, falha.
 func (s *FileStore) DeleteFolder(name string, force bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	done := s.beginWorkspaceMutation()
+	defer done()
 	if err := validFolderName(name); err != nil {
 		return err
 	}
@@ -352,8 +391,8 @@ func (s *FileStore) DeleteFolder(name string, force bool) error {
 // ArchiveFolder renomeia para ".archived-<name>" — mantém git history,
 // oculta do UI padrão.
 func (s *FileStore) ArchiveFolder(name string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	done := s.beginWorkspaceMutation()
+	defer done()
 	if err := validFolderName(name); err != nil {
 		return err
 	}

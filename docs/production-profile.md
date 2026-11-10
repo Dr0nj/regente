@@ -152,4 +152,4 @@ systemd service. See [verification](verification.md) for commands and gate limit
 
 ## Durable execution upgrade
 
-Production selects REGENTE_EXECUTION_MODE=durable automatically and rejects legacy mode. Protocol 2 agents require a persistent local journal and EXECUTION_V2 in their exact provisioned capabilities. Schema 32 and the matching agent/server binaries must be upgraded together after draining legacy executions. See the [durable execution runbook](durable-execution.md) for backup, rollback, uncertainty and operator resolution.
+Production selects REGENTE_EXECUTION_MODE=durable automatically and rejects legacy mode. Protocol 2 agents require a persistent local journal and EXECUTION_V2 in their exact provisioned capabilities. Schema 33 and the matching agent/server binaries must be upgraded together after draining legacy executions. See the [durable execution runbook](durable-execution.md) for backup, rollback, uncertainty and operator resolution.

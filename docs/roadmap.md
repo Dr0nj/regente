@@ -124,6 +124,44 @@ Cache compartilhado, invalidação externa/coordenada, WebSocket sem reconstruç
 perfil vivo, publicação/release e aceite na VPS continuam abertos; este incremento
 não encerra PERF-01 nem corrige a fila de auditoria.
 
+**09/11 — implementação local de PERF-00–04 e harness PERF-05/06, em validação:**
+pprof opt-in em loopback; métricas por etapa; snapshot compartilhado com leitura
+isolada, invalidação coordenada e reconciliação por conteúdo; ACK/result/output sem
+amplificação de intenções HTTP; reservas transacionais de auditoria (schema 33);
+exportação/coletor em lotes com ACK de prefixo; scheduler incremental opt-in com
+notificações duráveis, fila deduplicada, timers e reconciliação keyset limitada.
+Defaults preservam exportação de um registro e scheduler completo para rollout
+comparável. O [runbook](performance-recovery.md) documenta flags, migração e limites.
+
+Validação Windows/SQLite: suíte completa de server+agent passou (965 testes/subtestes,
+62 skips de gates externos), staticcheck dos dois módulos passou, paridade da suíte
+inteira do scheduler com incremental ligado passou. Testes adicionais cobrem
+migração 32→33 com trabalho em voo, rollback de reserva/estado/evidência, fila cheia,
+recibo perdido/restart com agente real, ACL, leitores concorrentes e ACK de lote
+inválido. PostgreSQL/Linux, race, smoke instalado, comparação de perfis vivos e
+ensaio diário ainda precisam de execução; não considerar os skips como aprovação.
+
+Microbenchmark em Windows/amd64, i7-13700KF, 28.800 WAITING bloqueadas por confirmação:
+244,95 ms/ciclo completo versus 1,12 ms/ciclo incremental aquecido (3 iterações;
+185,96 MB versus 4.301 bytes alocados por ciclo). Mede quiescência em SQLite,
+sem despacho/efeitos, não CPU da VPS nem throughput produtivo. View hash quente de
+28.800 definitions: 0,392 ms, 240 bytes, 5 alocações (10 iterações; sem HTTP/ACL SQL).
+
+O harness `scripts/capacity.py --perf-day` exige 24h reais, virada de ODAT e 28.800
+definições distintas efetivamente executadas antes dos patamares maiores. Inclui
+fan-out/cadeias curtas, agentes reais, efeitos COMMAND/HTTP, retry/output, dez
+reconexões simultâneas, CPU/heap profiles e amostras de steal separadas. Fixtures de
+linhas históricas não contam como execuções. O teste ainda não foi executado;
+**PERF-00–06 permanecem abertos e não houve push deste conjunto local**. Falta
+homologar topologia real e a implantação controlada; 1 milhão/dia segue sem aceite.
+
+**10/11 — validação local adicional:** contratos de migração 32→33, transações de
+auditoria e reenvio/ACK parcial de lotes passaram contra PostgreSQL 17.6 real,
+isolado em container descartável. Gates de receitas e site versionado passaram.
+Ainda não equivale à suíte Linux integral, smoke de instalação ou ensaio diário.
+Checkpoint local precede esses gates; nenhum push autorizado antes de terminar a
+trilha local solicitada.
+
 ### Onboarding Linux — incremento em validação (03/11/2026)
 
 Remoção do roteamento/bloqueio por ambiente, compatibilidade dos agentes existentes,

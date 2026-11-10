@@ -1,6 +1,7 @@
 package api
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -137,9 +138,8 @@ func readBody(r *http.Response) string {
 		return ""
 	}
 	defer r.Body.Close()
-	buf := make([]byte, 4096)
-	n, _ := r.Body.Read(buf)
-	return string(buf[:n])
+	buf, _ := io.ReadAll(io.LimitReader(r.Body, 2<<20))
+	return string(buf)
 }
 
 func mustGet(t *testing.T, c *http.Client, url string) *http.Response {

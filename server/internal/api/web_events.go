@@ -1,8 +1,6 @@
 package api
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -108,34 +106,7 @@ func (s *server) workspaceView(a *webAccess, environment *string) (string, error
 	if s.cfg.Store == nil {
 		return "", errors.New("workspace unavailable")
 	}
-	defs, err := s.cfg.Store.List()
-	if err != nil {
-		return "", err
-	}
-	folders, err := s.cfg.Store.ListFolders()
-	if err != nil {
-		return "", err
-	}
-	visible := []any{}
-	for _, def := range defs {
-		if a.scope(webScope{def.Team, def.Environment}, environment) {
-			visible = append(visible, def)
-		}
-	}
-	// Folder não tem ambiente próprio: inclui metadados só na subscription global.
-	if environment == nil {
-		for _, folder := range folders {
-			if a.folder(folder.Name) {
-				visible = append(visible, folder)
-			}
-		}
-	}
-	raw, err := json.Marshal(visible)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:]), nil
+	return s.cfg.Store.WorkspaceViewDigest(func(team, env string) bool { return a.scope(webScope{team, env}, environment) }, func(folder string) bool { return environment == nil && a.folder(folder) })
 }
 
 // Lista fechada de eventos e projeções. Payload desconhecido/sem prova de escopo

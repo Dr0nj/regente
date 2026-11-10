@@ -14,6 +14,15 @@ import (
 
 // Receiver por requisição; nunca muda o DB compartilhado entre usuários.
 func (s *server) scoped(handler func(*server, http.ResponseWriter, *http.Request)) http.HandlerFunc {
+	return s.scopedAudit(handler, false)
+}
+
+// Recibos v2 têm auditoria e estado no mesmo commit; transporte não cria intenções por retry.
+func (s *server) scopedReceipt(handler func(*server, http.ResponseWriter, *http.Request)) http.HandlerFunc {
+	return s.scopedAudit(handler, true)
+}
+
+func (s *server) scopedAudit(handler func(*server, http.ResponseWriter, *http.Request), receipt bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		requestID := make([]byte, 16)
 		if _, err := rand.Read(requestID); err != nil {
@@ -37,13 +46,14 @@ func (s *server) scoped(handler func(*server, http.ResponseWriter, *http.Request
 			engine.DB = clone.cfg.DB
 			clone.attempts = &engine
 		}
-		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch || r.Method == http.MethodDelete {
+		mutation := !receipt && (r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch || r.Method == http.MethodDelete)
+		if mutation {
 			if err := clone.cfg.DB.AuditObservation("request.intent", "started"); err != nil {
 				http.Error(w, "Mandatory audit unavailable; action refused", http.StatusServiceUnavailable)
 				return
 			}
 		}
-		handler(&clone, &auditResponse{ResponseWriter: w, DB: clone.cfg.DB, mutation: r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch || r.Method == http.MethodDelete}, r)
+		handler(&clone, &auditResponse{ResponseWriter: w, DB: clone.cfg.DB, mutation: mutation}, r)
 	}
 }
 

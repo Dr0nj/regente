@@ -142,10 +142,11 @@ func (d *DB) InsertID(query string, args ...any) (int64, error) {
 
 type Tx struct {
 	*sql.Tx
-	dialect  Dialect
-	audit    *auditConfig
-	identity AuditIdentity
-	changes  map[string]Mutation
+	dialect     Dialect
+	audit       *auditConfig
+	identity    AuditIdentity
+	changes     map[string]Mutation
+	auditCredit bool
 }
 
 func (t *Tx) Exec(query string, args ...any) (sql.Result, error) {
@@ -353,16 +354,6 @@ func tsType(d Dialect) string {
 // splitStatements quebra um script DDL em statements por ';' (o protocolo
 // estendido do pgx não aceita múltiplos statements num Exec). O DDL aqui não
 // contém ';' embutido.
-func splitStatements(script string) []string {
-	parts := strings.Split(script, ";")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if strings.TrimSpace(p) != "" {
-			out = append(out, p)
-		}
-	}
-	return out
-}
 
 // idCol devolve a definição de PK auto-incremento por dialeto.
 const (
@@ -580,6 +571,7 @@ var sqliteMigrations = []migration{
 	{version: 30, sql: schemaV30()},
 	{version: 31, sql: schemaV31()},
 	{version: 32, sql: schemaV32()},
+	{version: 33, sql: schemaV33(SQLite)},
 }
 
 var pgMigrations = []migration{
@@ -615,6 +607,7 @@ var pgMigrations = []migration{
 	{version: 30, sql: schemaV30()},
 	{version: 31, sql: schemaV31()},
 	{version: 32, sql: schemaV32()},
+	{version: 33, sql: schemaV33(Postgres)},
 }
 
 // schemaV23 — ST-1 (Statistics honesta, 2026-08-05): a EXECUÇÃO vira linha
