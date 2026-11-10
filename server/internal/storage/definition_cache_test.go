@@ -6,12 +6,118 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/Dr0nj/regente-server/internal/domain"
 )
+
+func BenchmarkDefinitionCopy28800(b *testing.B) {
+	defs := make([]domain.JobDefinition, 28800)
+	for i := range defs {
+		defs[i] = domain.JobDefinition{ID: fmt.Sprintf("job-%05d", i), Team: "graph", JobType: "COMMAND",
+			Params:       map[string]any{"command": "echo done", "count": 3},
+			ConditionsIn: []string{"parent@stat"}, ConditionsOutAdd: []string{"done@stat"}}
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		if got := cloneDefinitionValues(defs); len(got) != len(defs) || got[0].Params["count"] != 3 {
+			b.Fatal("cópia perdeu conteúdo ou tipo")
+		}
+	}
+}
+
+func TestDefinitionCopyNestedMutableValues(t *testing.T) {
+	type nested struct {
+		Values []int
+		Items  [1]map[string]string
+		When   time.Time
+	}
+	original := []domain.JobDefinition{{ID: "original", Params: map[string]any{
+		"nested": &nested{Values: []int{3}, Items: [1]map[string]string{{"key": "original"}}, When: time.Now()},
+		"nil":    []string(nil), "empty": []string{},
+	}, Actions: []domain.ActionRule{{Channels: []string{"mail"}}},
+		SubWorkflow: &domain.SubWorkflowRef{Variables: map[string]string{"key": "original"}}}}
+	got := cloneDefinitionValues(original)
+	if !reflect.DeepEqual(original, got) {
+		t.Fatal("cópia alterou tipos, valores, nil ou time.Time")
+	}
+	got[0].Params["nested"].(*nested).Values[0] = 99
+	got[0].Params["nested"].(*nested).Items[0]["key"] = "changed"
+	got[0].Actions[0].Channels[0] = "changed"
+	got[0].SubWorkflow.Variables["key"] = "changed"
+	if n := original[0].Params["nested"].(*nested); n.Values[0] != 3 || n.Items[0]["key"] != "original" ||
+		original[0].Actions[0].Channels[0] != "mail" || original[0].SubWorkflow.Variables["key"] != "original" {
+		t.Fatal("cópia manteve referências mutáveis ao snapshot")
+	}
+}
+
+func BenchmarkDefinitionLookup28800(b *testing.B) {
+	store := NewFileStore(b.TempDir(), false)
+	snap := &definitionSnapshot{definitions: make([]domain.JobDefinition, 28800), byID: map[string]int{}}
+	for i := range snap.definitions {
+		id := fmt.Sprintf("job-%05d", i)
+		snap.definitions[i] = domain.JobDefinition{ID: id, Team: "graph", JobType: "COMMAND",
+			Params:       map[string]any{"command": "echo done", "count": 3},
+			ConditionsIn: []string{"parent@stat"}, ConditionsOutAdd: []string{"done@stat"}}
+		snap.byID[id] = i
+	}
+	store.cache.current = snap
+	store.cache.enabled.Store(true)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		def, found, err := store.DefinitionContext(context.Background(), "job-28799")
+		if err != nil || !found || def.ID != "job-28799" {
+			b.Fatal("busca falhou", err)
+		}
+	}
+}
+
+func TestDefinitionLookupTracksRevisionAndIsolatesReaders(t *testing.T) {
+	for _, cached := range []bool{false, true} {
+		t.Run(fmt.Sprint(cached), func(t *testing.T) {
+			store := NewFileStore(t.TempDir(), false)
+			def := domain.JobDefinition{ID: "one", Team: "folder", Params: map[string]any{"value": 3}}
+			if err := store.Save(def); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if cached {
+				if err := store.StartDefinitionCache(ctx, time.Hour); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, found, err := store.DefinitionContext(ctx, "one")
+			if err != nil || !found || got.Team != "folder" {
+				t.Fatalf("busca: %+v %v %v", got, found, err)
+			}
+			got.Params["value"] = 99
+			got, found, err = store.DefinitionContext(ctx, "one")
+			if err != nil || !found || got.Params["value"] != 3 {
+				t.Fatal("leitor alterou revisão compartilhada", err)
+			}
+			def.Label = "updated"
+			if err = store.Save(def); err != nil {
+				t.Fatal(err)
+			}
+			got, found, err = store.DefinitionContext(ctx, "one")
+			if err != nil || !found || got.Label != "updated" {
+				t.Fatal("índice manteve revisão antiga", err)
+			}
+			if err = store.Delete("folder", "one"); err != nil {
+				t.Fatal(err)
+			}
+			if _, found, err = store.DefinitionContext(ctx, "one"); err != nil || found {
+				t.Fatal("índice manteve definição removida", err)
+			}
+		})
+	}
+}
 
 func TestDefinitionCacheInvalidationAndIsolation(t *testing.T) {
 	s := NewFileStore(t.TempDir(), false)

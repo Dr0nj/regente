@@ -5,6 +5,7 @@ package api
 // (coluna `team` snapshotada), além do writer role. Bearer legado = admin.
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -15,10 +16,48 @@ import (
 
 	"github.com/Dr0nj/regente-server/internal/auth"
 	"github.com/Dr0nj/regente-server/internal/db"
+	"github.com/Dr0nj/regente-server/internal/domain"
 	"github.com/Dr0nj/regente-server/internal/hub"
 	"github.com/Dr0nj/regente-server/internal/scheduler"
 	"github.com/Dr0nj/regente-server/internal/storage"
 )
+
+func TestForceOrderCachedLookupKeepsFolderAuthorization(t *testing.T) {
+	d := newTestDB(t)
+	t.Cleanup(func() { _ = d.Close() })
+	h := hub.New()
+	store := storage.NewFileStore(t.TempDir(), false)
+	for _, team := range []string{"allowed", "denied"} {
+		if err := store.Save(domain.JobDefinition{ID: team, Team: team, JobType: "COMMAND", Confirm: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := store.StartDefinitionCache(ctx, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	sched := scheduler.New(store, d, h, time.Hour)
+	t.Cleanup(sched.Stop)
+	sched.ReloadDefs()
+	srv := httptest.NewServer(NewRouter(Config{DB: d, Hub: h, Token: "test-token", Scheduler: sched, Store: store}))
+	t.Cleanup(srv.Close)
+	token := newOperatorToken(t, d, "scoped", map[string]string{"allowed": "rw"})
+	for _, tc := range []struct {
+		id     string
+		status int
+	}{{"denied", 403}, {"absent", 404}, {"allowed", 200}} {
+		resp := doReq(t, srv.Client(), http.MethodPost, srv.URL+"/api/definitions/"+tc.id+"/force", token, "")
+		resp.Body.Close()
+		if resp.StatusCode != tc.status {
+			t.Fatalf("%s: status=%d, esperado=%d", tc.id, resp.StatusCode, tc.status)
+		}
+	}
+	var count int
+	if err := d.QueryRow("SELECT COUNT(*) FROM instances").Scan(&count); err != nil || count != 1 {
+		t.Fatalf("admissões sem autorização ou ausentes: %d %v", count, err)
+	}
+}
 
 // newOpsTestServer — router real com Scheduler+Store (os handlers de ação
 // emitem eventos e o fallback de folder lê a def viva).

@@ -23,6 +23,7 @@ import (
 
 type definitionSnapshot struct {
 	definitions []domain.JobDefinition
+	byID        map[string]int
 	digest      string
 	views       []definitionView
 	folders     []FolderInfo
@@ -187,6 +188,32 @@ func (s *FileStore) ListContext(ctx context.Context) ([]domain.JobDefinition, er
 	return cloneDefinitionValues(snap.definitions), nil
 }
 
+// DefinitionContext devolve uma cópia isolada de uma definição. A revisão
+// cacheada tem índice próprio; autorizar uma ordem não copia o workspace inteiro.
+func (s *FileStore) DefinitionContext(ctx context.Context, id string) (domain.JobDefinition, bool, error) {
+	if !s.cache.enabled.Load() {
+		defs, err := s.ListContext(ctx)
+		if err != nil {
+			return domain.JobDefinition{}, false, err
+		}
+		for _, def := range defs {
+			if def.ID == id {
+				return def, true, nil
+			}
+		}
+		return domain.JobDefinition{}, false, nil
+	}
+	snap, err := s.definitionSnapshotContext(ctx)
+	if err != nil {
+		return domain.JobDefinition{}, false, err
+	}
+	index, found := snap.byID[id]
+	if !found {
+		return domain.JobDefinition{}, false, nil
+	}
+	return cloneDefinitionValue(reflect.ValueOf(snap.definitions[index])).Interface().(domain.JobDefinition), true, nil
+}
+
 func (s *FileStore) definitionsDigestContext(ctx context.Context) (string, error) {
 	defer telemetry.Measure(telemetry.DefinitionsDigest)()
 	h := sha256.New()
@@ -266,8 +293,12 @@ func (s *FileStore) rebuildDefinitionSnapshot() (*definitionSnapshot, error) {
 	if after != before || observed != before {
 		return fail(fmt.Errorf("definitions changed while building snapshot; retry after reconciliation"))
 	}
-	snap := &definitionSnapshot{definitions: defs, digest: after, folders: folders}
-	for _, def := range defs {
+	snap := &definitionSnapshot{definitions: defs, byID: make(map[string]int, len(defs)), digest: after, folders: folders}
+	for index, def := range defs {
+		// Mantém a primeira ocorrência, como a busca linear anterior.
+		if _, found := snap.byID[def.ID]; !found {
+			snap.byID[def.ID] = index
+		}
 		raw, e := json.Marshal(def)
 		if e != nil {
 			return fail(e)
@@ -324,6 +355,39 @@ func (s *FileStore) DefinitionViewDigest(visible func(team, environment string) 
 func cloneDefinitionValues(in []domain.JobDefinition) []domain.JobDefinition {
 	return cloneDefinitionValue(reflect.ValueOf(in)).Interface().([]domain.JobDefinition)
 }
+
+// O layout mutável depende do tipo, não do job/revisão. Calcula uma vez para
+// evitar inspecionar todos os campos escalares de cada definição a cada leitura.
+var definitionCloneFields sync.Map // reflect.Type -> []int; somente layouts, sem valores do workspace
+
+func mutableDefinitionFields(t reflect.Type) []int {
+	if cached, ok := definitionCloneFields.Load(t); ok {
+		return cached.([]int)
+	}
+	fields := []int{}
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if field.IsExported() && definitionTypeNeedsClone(field.Type) {
+			fields = append(fields, i)
+		}
+	}
+	cached, _ := definitionCloneFields.LoadOrStore(t, fields)
+	return cached.([]int)
+}
+
+func definitionTypeNeedsClone(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Interface, reflect.Pointer, reflect.Slice, reflect.Map:
+		return true
+	case reflect.Array:
+		return definitionTypeNeedsClone(t.Elem())
+	case reflect.Struct:
+		return len(mutableDefinitionFields(t)) > 0
+	default:
+		return false
+	}
+}
+
 func cloneDefinitionValue(v reflect.Value) reflect.Value {
 	switch v.Kind() {
 	case reflect.Interface:
@@ -345,6 +409,19 @@ func cloneDefinitionValue(v reflect.Value) reflect.Value {
 			return reflect.Zero(v.Type())
 		}
 		out := reflect.MakeSlice(v.Type(), v.Len(), v.Len())
+		if definitionTypeNeedsClone(v.Type().Elem()) {
+			for i := 0; i < v.Len(); i++ {
+				out.Index(i).Set(cloneDefinitionValue(v.Index(i)))
+			}
+		} else {
+			reflect.Copy(out, v)
+		}
+		return out
+	case reflect.Array:
+		if !definitionTypeNeedsClone(v.Type().Elem()) {
+			return v
+		}
+		out := reflect.New(v.Type()).Elem()
 		for i := 0; i < v.Len(); i++ {
 			out.Index(i).Set(cloneDefinitionValue(v.Index(i)))
 		}
@@ -360,12 +437,14 @@ func cloneDefinitionValue(v reflect.Value) reflect.Value {
 		}
 		return out
 	case reflect.Struct:
+		fields := mutableDefinitionFields(v.Type())
+		if len(fields) == 0 {
+			return v
+		}
 		out := reflect.New(v.Type()).Elem()
 		out.Set(v)
-		for i := 0; i < v.NumField(); i++ {
-			if v.Type().Field(i).IsExported() {
-				out.Field(i).Set(cloneDefinitionValue(v.Field(i)))
-			}
+		for _, i := range fields {
+			out.Field(i).Set(cloneDefinitionValue(v.Field(i)))
 		}
 		return out
 	default:

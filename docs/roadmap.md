@@ -185,9 +185,26 @@ reboot, execução real, nginx/WebSocket, upgrade local preservando estado, cél
 isoladas/mTLS e coletor independente com interrupção/retomada sem lacuna. Isso não
 certifica atualização de release assinada nem implantação na VPS. Evidências
 locais: `perf-linux-scheduler-race-complete.log` e `perf-linux-native-install.log`.
-Os logs do laboratório agora identificam [PERF-05]/[PERF-06]. Nova comparação usa
-8 slots rápidos e 4 de jobs longos em ambos os modos, preservando a falha anterior
-com 4+1 slots; seu resultado e o ensaio diário continuam pendentes. Nenhum push.
+Os logs do laboratório agora identificam [PERF-05]/[PERF-06]. Nenhum push.
+
+**10/11 — [PERF-05] comparação curta aprovada e [PERF-01] novo custo identificado:**
+ensaio `29e9e16a6010`, checkout limpo `8fd9110`, Linux com limite de 4 CPUs/8 GiB,
+PostgreSQL real e agentes com 8+4 slots. Ambos os modos passaram 300 s, 163
+instâncias/188 tentativas cada, efeitos e ledger verificados. CPU total reportada
+do processo: 57,74 s full/single versus 29,70 s incremental/batch (−48,6%); pico RSS
+372,3 versus 258,8 MiB; p99 elegível→started 3,165 versus 2,803 s. Mesmo cache/schema
+33 nos dois modos; não compara binário antigo nem comprova CPU da VPS/24h. A falha
+anterior com 4+1 slots permanece preservada. Evidências locais exportadas para
+`outputs/regente-perf-local/comparison-29e9e16a6010/capacity.json`.
+
+O perfil revelou cópia de todo o catálogo na autorização de cada Force Order
+(38,6% das amostras CPU do primeiro intervalo no handler). Correção adicional
+consulta índice por ID da revisão, mantém ACL por folder e copia somente o job.
+Layout dos tipos mutáveis fica reutilizável para as cópias completas. Testes de
+isolamento/tipos, atualização/exclusão do índice, ACL/404 e suítes completas de
+storage/API passaram no Windows. Microbenchmark local: cópia de 28.800 definições
+52,48→23,57 ms; busca isolada de um job 1,56 µs/2.720 bytes. Essa correção ainda
+precisa de gate Linux e nova comparação. Ensaio diário/escala/rollout seguem abertos.
 
 ### Onboarding Linux — incremento em validação (03/11/2026)
 

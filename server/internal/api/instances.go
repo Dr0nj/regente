@@ -949,23 +949,16 @@ func (s *server) schedulerDaily(w http.ResponseWriter, r *http.Request) {
 func (s *server) forceOrder(w http.ResponseWriter, r *http.Request) {
 	defID := chi.URLParam(r, "id")
 	// F11.10b — precisa de write na folder da definition.
-	defs, err := s.cfg.Store.List()
+	def, found, err := s.cfg.Store.DefinitionContext(r.Context(), defID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	var team string
-	for _, d := range defs {
-		if d.ID == defID {
-			team = d.Team
-			break
-		}
-	}
-	if team == "" {
+	if !found || def.Team == "" {
 		http.Error(w, "definition not found", http.StatusNotFound)
 		return
 	}
-	if !s.requireFolderWrite(w, r, team) {
+	if !s.requireFolderWrite(w, r, def.Team) {
 		return
 	}
 	id, err := s.cfg.Scheduler.ForceOrder(defID)
