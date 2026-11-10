@@ -177,6 +177,18 @@ Outra correção preserva o cache no sync Git sem alteração de HEAD/arquivos
 rastreados; mudanças remotas e reset de edição local continuam invalidados.
 Essas correções precisam de nova comparação; o gate diário e rollout seguem abertos.
 
+**10/11 — [PERF-04] concorrência e [PERF-05] instalação nativa:** suíte completa
+do scheduler com `-race` passou no checkpoint `7b09619` (355,48 s); o teste de
+convergência tem prazo de correção separado dos limites de latência do laboratório.
+Smoke `--build` em Ubuntu/systemd passou: instalação, configuração inválida,
+reboot, execução real, nginx/WebSocket, upgrade local preservando estado, células
+isoladas/mTLS e coletor independente com interrupção/retomada sem lacuna. Isso não
+certifica atualização de release assinada nem implantação na VPS. Evidências
+locais: `perf-linux-scheduler-race-complete.log` e `perf-linux-native-install.log`.
+Os logs do laboratório agora identificam [PERF-05]/[PERF-06]. Nova comparação usa
+8 slots rápidos e 4 de jobs longos em ambos os modos, preservando a falha anterior
+com 4+1 slots; seu resultado e o ensaio diário continuam pendentes. Nenhum push.
+
 ### Onboarding Linux — incremento em validação (03/11/2026)
 
 Remoção do roteamento/bloqueio por ambiente, compatibilidade dos agentes existentes,
