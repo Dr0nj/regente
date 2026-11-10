@@ -30,7 +30,8 @@ hostpath() {
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CT="regente-smoke-$$"
-IMG="regente-smoke-systemd"
+IMG="${REGENTE_SMOKE_IMAGE:-regente-smoke-systemd}"
+CT_OWNED=0
 BUNDLE=""
 AGENT=""
 MANIFEST=""
@@ -56,6 +57,9 @@ command -v docker >/dev/null || { echo "docker é necessário"; exit 2; }
 
 cleanup() {
   local rc=$?
+  if [ "$CT_OWNED" != 1 ]; then
+    exit "$rc"
+  fi
   if [ "$KEEP" = 1 ]; then
     echo "== container mantido de pé: docker exec -it $CT bash  (docker rm -f $CT quando terminar)"
   else
@@ -123,6 +127,7 @@ echo "== subindo o 'VPS'..."
 dk run -d --name "$CT" --privileged --cgroupns=host \
   -v /sys/fs/cgroup:/sys/fs/cgroup:rw --tmpfs /run --tmpfs /run/lock \
   "$IMG" >/dev/null
+CT_OWNED=1
 
 for i in $(seq 1 60); do
   st="$(dk exec "$CT" systemctl is-system-running 2>/dev/null || true)"

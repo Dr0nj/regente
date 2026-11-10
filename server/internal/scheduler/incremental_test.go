@@ -34,19 +34,32 @@ func TestIncrementalConditionWakeReconcileAndCorruptSnapshot(t *testing.T) {
 	if err = tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	// Reconciliação é limitada a páginas; nenhum tick lê as 600 linhas de uma vez.
-	for range 20 {
-		if err = s.tickOnce(); err != nil {
-			t.Fatal(err)
+	// O orçamento de 100ms pode adiar candidatos num host concorrido; número
+	// fixo de ticks não é contrato. Exige convergência limitada e sem perdas.
+	settle := func(tracked int, pages uint64) {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			if err = s.tickOnce(); err != nil {
+				t.Fatal(err)
+			}
+			progress := s.IncrementalProgress()
+			if progress.Pending == 0 && progress.Tracked == tracked && progress.Pages >= pages && progress.ReconciledAt.Equal(now) {
+				return
+			}
+			time.Sleep(time.Millisecond)
 		}
+		t.Fatalf("fila incremental não convergiu: %+v", s.IncrementalProgress())
 	}
+	// Reconciliação continua limitada a três páginas para as 600 linhas.
+	settle(600, 3)
 	c := s.incremental
 	c.mu.Lock()
 	before := c.evaluated
 	pages := c.pages
 	cursor := c.cursor
 	c.mu.Unlock()
-	if before != 600 || pages != 3 || cursor != "" {
+	if before < 600 || pages != 3 || cursor != "" {
 		t.Fatalf("bootstrap/paginação: %d %d %s", before, pages, cursor)
 	}
 	if err = s.tickOnce(); err != nil {
@@ -72,11 +85,7 @@ func TestIncrementalConditionWakeReconcileAndCorruptSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	now = now.Add(31 * time.Second)
-	for range 20 {
-		if err = s.tickOnce(); err != nil {
-			t.Fatal(err)
-		}
-	}
+	settle(599, pages+3)
 	if c.tracked["job-0009"] != nil {
 		t.Fatal("reconciliação não recuperou evento perdido")
 	}

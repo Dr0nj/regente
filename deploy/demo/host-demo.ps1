@@ -91,6 +91,11 @@ try {
   if (-not $NativeSmoke) {
     $dockerOS = & docker info --format '{{.OSType}}'
     if ($LASTEXITCODE -ne 0 -or $dockerOS -ne 'linux') { throw 'A running Linux Docker engine is required.' }
+    if ($env:DOCKER_LAB_CONTAINER -and -not $onWindows) {
+      if ($env:DOCKER_LAB_CONTAINER -notmatch '^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$') { throw 'Invalid laboratory container name.' }
+      $runnerLabel = & docker inspect $env:DOCKER_LAB_CONTAINER --format '{{index .Config.Labels "regente.test"}}'
+      if ($LASTEXITCODE -ne 0 -or -not $runnerLabel -or $runnerLabel -eq '<no value>') { throw 'Laboratory container requires the regente.test ownership label.' }
+    }
   }
   Push-Location (Join-Path $repo 'app')
   try {
@@ -161,6 +166,7 @@ try {
     $networkArgs = @('--network', 'host')
     $agentServer = "ws://127.0.0.1:$Port/ws/agent"
     if ($onWindows) { $networkArgs = @(); $agentServer = "ws://host.docker.internal:$Port/ws/agent" }
+    elseif ($env:DOCKER_LAB_CONTAINER) { $networkArgs = @('--network', "container:$($env:DOCKER_LAB_CONTAINER)") }
     Invoke-Native docker (@('run', '-d', '--name', $container, '--rm', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
       '--pids-limit', '256', '--memory', '512m', '--cpus', '1', '-e', 'REGENTE_TOKEN') + $networkArgs +
       @($imageName, '-server', $agentServer, '-id', $agentID, '-caps=COMMAND,SCRIPT,HTTP'))

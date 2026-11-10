@@ -117,14 +117,25 @@ class RecoveryScriptsTest(unittest.TestCase):
         self.assertIn("does NOT undo migrations", result.stdout)
         self.assertNotIn("downgrade included", result.stdout)
 
+    def test_smoke_preparation_failure_does_not_remove_unowned_container(self):
+        fake=self.root/'docker';log=self.root/'docker.log'
+        fake.write_text('#!/bin/sh\nprintf "%s\n" "$*" >> "$DOCKER_FIXTURE_LOG"\nexit 0\n')
+        fake.chmod(0o700)
+        result=subprocess.run(['bash',str(integration.ROOT/'scripts/smoke-install.sh'),'--bundle',str(self.root/'missing.tar.gz')],
+                              env=dict(self.env,PATH=str(self.root)+os.pathsep+self.env['PATH'],DOCKER_FIXTURE_LOG=str(log)),
+                              capture_output=True,text=True,timeout=10)
+        self.assertNotEqual(result.returncode,0)
+        self.assertFalse(log.exists(),'Preparation failure invoked Docker against an unowned container')
+
     def test_shell_syntax(self):
         for name in ("backup.sh", "restore.sh", "update.sh", "rolling-upgrade.sh"):
             result = subprocess.run(
                 ["bash" if name == "update.sh" else "sh", "-n", str(integration.ROOT / "server/deploy" / name)],
                 capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-
-
+        for path in ("scripts/smoke-install.sh", "scripts/smoke/inside.sh"):
+            result=subprocess.run(["bash","-n",str(integration.ROOT/path)],capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
 
 
 class ContainerNetworkTest(unittest.TestCase):

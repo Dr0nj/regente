@@ -208,3 +208,5 @@ must also exist at the same absolute path on the daemon host so sibling containe
 can mount the TLS fixture and realm. A dedicated Docker volume mounted at its
 reported mountpoint provides that mapping. This mode does not grant access to an
 existing database or qualify an installed production service.
+
+The PowerShell demo uses the same labelled runner network namespace for its disposable agent when `DOCKER_LAB_CONTAINER` is set. Installation smoke accepts `REGENTE_SMOKE_IMAGE` for an isolated image tag, and cleanup removes a smoke container only after this invocation successfully created it.
