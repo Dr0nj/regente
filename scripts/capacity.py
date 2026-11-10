@@ -72,6 +72,8 @@ def rss(proc):
 
 class Profile:
     def __init__(self,name,density,env,dsn,tls,perf=False,optimized=True,fast_slots=4,slow_slots=1):
+        self.phase=('PERF-05' if density==28800 else 'PERF-06') if perf else 'I16'
+        print(f'[{self.phase}] Preparing {name}: retained_rows={density} fast_slots={fast_slots} slow_slots={slow_slots}',flush=True)
         self.agent_slots={'fast':fast_slots,'slow':slow_slots}
         self.perf=perf;self.optimized=perf and optimized;self.reader_samples=[];self.reconnect_samples=[];self.retained_samples=[];self.profiles=[]
         self.name=name;self.env=env;self.density=density;self.directory=lab.RUN/name
@@ -213,7 +215,7 @@ class Profile:
             while time.monotonic()-start<seconds:
                 now=time.monotonic();elapsed=now-start
                 if elapsed-last_progress>=300:
-                    print(f'{self.name}: elapsed={elapsed:.0f}s offered={len(futures)} reader_probes={len(self.reader_samples)}',flush=True);last_progress=elapsed
+                    print(f'[{self.phase}] {self.name}: elapsed={elapsed:.0f}s offered={len(futures)} reader_probes={len(self.reader_samples)}',flush=True);last_progress=elapsed
                 if self.perf and profile_future is None:profile_future=profiler.submit(self.capture_profile,'profile')
                 if now>=next_offer:
                     futures.append(pool.submit(self.order,mix[index%len(mix)]));index+=1
