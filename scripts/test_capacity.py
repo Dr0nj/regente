@@ -18,6 +18,7 @@ class PerformanceContracts(unittest.TestCase):
         produced=set()
         for name,_,definition in graph:
             self.assertEqual(name,definition['id'])
+            self.assertEqual(definition['schedule']['keepActive'],2)
             self.assertTrue(set(definition['conditionsIn'])<=produced)
             self.assertIn('command',definition['params'])
             produced.update(definition['conditionsOutAdd'])

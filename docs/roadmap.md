@@ -206,6 +206,10 @@ storage/API passaram no Windows. Microbenchmark local: cópia de 28.800 definiç
 52,48→23,57 ms; busca isolada de um job 1,56 µs/2.720 bytes. Essa correção ainda
 precisa de gate Linux e nova comparação. Ensaio diário/escala/rollout seguem abertos.
 
+Preparação do gate diário: o grafo sintético passa a declarar `keepActive=2`,
+também registrado no relatório. Assim, admissões WAITING atravessam a virada por
+configuração explícita; não se altera a regra produtiva de expiração com zero.
+
 ### Onboarding Linux — incremento em validação (03/11/2026)
 
 Remoção do roteamento/bloqueio por ambiente, compatibilidade dos agentes existentes,

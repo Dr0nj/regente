@@ -19,6 +19,9 @@ def performance_workload(templates,count=28800):
         offset=i%32
         kind='parent' if offset==0 else ('child' if offset<=3 else kinds[(offset-4)%len(kinds)])
         raw=copy.deepcopy(templates[kind]);raw['id']=f'graph-{i:05d}';raw['team']='graph'
+        # O ensaio diário exige concluir admissões que ainda esperam na virada;
+        # keepActive=0 expiraria essas ordens pela regra normal do produto.
+        raw.setdefault('schedule',{})['keepActive']=2
         raw['conditionsOutAdd']=[f'GRAPH-{i}@stat']
         raw['conditionsIn']=[f'GRAPH-{i-offset}@stat'] if 1<=offset<=3 else ([f'GRAPH-{i-1}@stat'] if 4<=offset<=7 else [])
         result.append((raw['id'],kind,raw))
@@ -347,6 +350,7 @@ def main():
     try:
         if platform.system()!='Linux' or platform.machine() not in ('x86_64','amd64'):raise RuntimeError('Mandatory Linux/amd64 profile')
         report['sha']=lab.command(['git','rev-parse','HEAD']);report['dirty']=bool(lab.command(['git','status','--porcelain']))
+        if a.perf:report['performanceGraph']={'definitions':28800,'keepActiveDays':2,'conditionScope':'stat'}
         report['platform']=platform.platform();report['cpu']=json.loads(lab.command(['lscpu','--json']))
         report['meminfo']=Path('/proc/meminfo').read_text();report['go']=lab.command(['go','version'])
         report['cgroupLimits']={name:(Path('/sys/fs/cgroup')/name).read_text().strip() if (Path('/sys/fs/cgroup')/name).exists() else None for name in ('cpu.max','memory.max')}

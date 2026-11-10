@@ -61,6 +61,11 @@ The last command requests a real 24-hour run with business-date rollover before 
 
 Require bounded queues, correct receipts/effects, acceptable CPU/RSS and dispatch/reader latency, fault recovery and the complete versioned verification gates before deployment. Preserve failures and skipped gates in the report. Short quiescent SQLite benchmarks do not establish PostgreSQL throughput, VPS CPU reduction, a daily SLO, or one-million-per-day capacity.
 
+The synthetic graph uses `schedule.keepActive=2`, recorded in the report, so
+admitted waiting jobs can cross the business-date rollover. The product default
+of zero intentionally expires never-started waiting jobs at the first rollover;
+this fixture setting does not change that behavior.
+
 The capacity runner accepts explicit `--fast-slots` and `--slow-slots` (defaults
 4 and 1, respectively). Every result records both. Use identical concurrency for
 both halves of a comparison; changing slots defines a new capacity envelope and
