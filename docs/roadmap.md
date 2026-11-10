@@ -158,8 +158,13 @@ homologar topologia real e a implantação controlada; 1 milhão/dia segue sem a
 **10/11 — validação local adicional:** contratos de migração 32→33, transações de
 auditoria e reenvio/ACK parcial de lotes passaram contra PostgreSQL 17.6 real,
 isolado em container descartável. Gates de receitas e site versionado passaram.
-Ainda não equivale à suíte Linux integral, smoke de instalação ou ensaio diário.
-Checkpoint local precede esses gates; nenhum push autorizado antes de terminar a
+Detector de corridas passou em storage/audit/execution no Linux; 33 testes de
+scripts passaram sem skips no Linux. A suíte incremental e os contratos PostgreSQL
+do scheduler passaram após corrigir o desempate por criação entre candidatos com
+o mesmo horário. O harness ganhou comparação explícita full/single versus
+incremental/batch e leitura limitada da cauda do journal, evitando carregá-lo
+inteiro na memória ao final de 24h. Ainda não equivale à suíte Linux integral,
+smoke de instalação ou ensaio diário. Checkpoint local precede esses gates; nenhum push autorizado antes de terminar a
 trilha local solicitada.
 
 ### Onboarding Linux — incremento em validação (03/11/2026)

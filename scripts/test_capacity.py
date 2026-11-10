@@ -1,4 +1,7 @@
 import copy
+import json
+import tempfile
+from pathlib import Path
 import unittest
 import capacity
 
@@ -21,6 +24,15 @@ class PerformanceContracts(unittest.TestCase):
         graph[0][2]['params']['command']='changed'
         self.assertEqual(templates,original)
         self.assertEqual(graph[1][2]['params']['command'],'effect')
+
+    def test_checkpoint_reads_tail_and_rejects_partial_write(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'journal.jsonl'
+            checkpoint={'stream':'test','seq':123,'hash':'signed-hash'}
+            path.write_bytes(b'old record\n'*200000+json.dumps(checkpoint).encode()+b'\n')
+            self.assertEqual(capacity.last_checkpoint(path),checkpoint)
+            with path.open('ab') as journal:journal.write(b'{"incomplete":')
+            with self.assertRaises(RuntimeError):capacity.last_checkpoint(path)
 
     def test_daily_gate_rejects_row_count_and_repeated_definitions(self):
         valid={'qualified':True,'measurementSeconds':86400,'admittedInstances':30000,

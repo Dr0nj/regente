@@ -996,6 +996,7 @@ func computeScheduledAt(d domain.JobDefinition, date string) time.Time {
 type instRow struct {
 	ID, DefID, OrderDate, Status string
 	ScheduledAt                  time.Time
+	CreatedAt                    sql.NullTime
 	StartedAt                    sql.NullTime
 	CarriedAt                    sql.NullTime // virada da daily: re-arma o watchdog de stuck-running.
 	Forced                       bool
@@ -2001,7 +2002,7 @@ func (s *Scheduler) ForceOrder(defID string) (string, error) {
 }
 
 const tickInstanceSelect = `SELECT i.id, i.definition_id, i.order_date, i.status, i.scheduled_at,
-		 i.started_at,i.carried_at,COALESCE(i.forced,0),COALESCE(i.force_mode,''),COALESCE(i.confirmed,0),COALESCE(i.carried_from,''),COALESCE(i.definition_snapshot,''),COALESCE(i.held_from_status,''),COALESCE(d.state,''),COALESCE(l.snapshot_checksum,'')
+		 i.started_at,i.carried_at,COALESCE(i.forced,0),COALESCE(i.force_mode,''),COALESCE(i.confirmed,0),COALESCE(i.carried_from,''),COALESCE(i.definition_snapshot,''),COALESCE(i.held_from_status,''),COALESCE(d.state,''),COALESCE(l.snapshot_checksum,''),i.created_at
 		 FROM instances i LEFT JOIN daily_order_ledger l ON l.instance_id=i.id LEFT JOIN daily_runs d ON d.order_date=l.order_date`
 
 func (s *Scheduler) readTickInstances(where string, args ...any) ([]instRow, error) {
@@ -2013,7 +2014,7 @@ func (s *Scheduler) readTickInstances(where string, args ...any) ([]instRow, err
 	for rows.Next() {
 		var r instRow
 		var forcedInt, confirmedInt int
-		if err := rows.Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.CarriedFrom, &r.Snapshot, &r.HeldFrom, &r.DailyState, &r.SnapshotChecksum); err != nil {
+		if err := rows.Scan(&r.ID, &r.DefID, &r.OrderDate, &r.Status, &r.ScheduledAt, &r.StartedAt, &r.CarriedAt, &forcedInt, &r.ForceMode, &confirmedInt, &r.CarriedFrom, &r.Snapshot, &r.HeldFrom, &r.DailyState, &r.SnapshotChecksum, &r.CreatedAt); err != nil {
 			rows.Close()
 			return nil, err
 		}

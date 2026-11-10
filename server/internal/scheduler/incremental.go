@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/Dr0nj/regente-server/internal/db"
 	"github.com/Dr0nj/regente-server/internal/domain"
 	"github.com/Dr0nj/regente-server/internal/telemetry"
 	"sort"
@@ -322,6 +323,17 @@ func (s *Scheduler) tickCandidates(today string, now time.Time) ([]instRow, erro
 	}
 	sort.Slice(unique, func(i, j int) bool {
 		if unique[i].ScheduledAt.Equal(unique[j].ScheduledAt) {
+			a, b := unique[i].CreatedAt, unique[j].CreatedAt
+			// Mesma precedência de NULL do ORDER BY original em cada banco.
+			if a.Valid != b.Valid {
+				if s.db.Dialect() == db.Postgres {
+					return a.Valid
+				}
+				return !a.Valid
+			}
+			if a.Valid && !a.Time.Equal(b.Time) {
+				return a.Time.Before(b.Time)
+			}
 			return unique[i].ID < unique[j].ID
 		}
 		return unique[i].ScheduledAt.Before(unique[j].ScheduledAt)

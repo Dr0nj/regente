@@ -51,8 +51,11 @@ CPU and trace durations are bounded to 1–60 seconds. Heap, allocations, gorout
 go test ./server/... ./agent/...
 REGENTE_TEST_INCREMENTAL=1 go test ./server/internal/scheduler -count=1
 # Linux/amd64, real PostgreSQL, agents and independent TLS collector:
+python3 scripts/capacity.py --perf-compare
 python3 scripts/capacity.py --perf-day
 ```
+
+`--perf-compare` runs the same 28,800-definition workload with full scheduling/single-record export and then incremental scheduling/batch export. Both use schema 33, the definition cache and audit reservations; this is not an old-binary comparison. It records process profiles, collector RSS and container CPU/memory limits. It does not qualify a daily capacity.
 
 The last command requests a real 24-hour run with business-date rollover before higher tiers (28,800, 100,000, 250,000 and 1,000,000 orders/day offered rates), then a recovery soak at the last supported rate. CPU/heap profiles are saved with owner-only permissions; samples retain host CPU jiffies (including steal) separately from process CPU. A failed daily gate blocks higher tiers. Retained terminal rows are fixtures; actual admitted attempts, verified effects and distinct executed graph definitions are counted separately. The daily gate requires all 28,800 graph definitions to execute. The synthetic graph contains 900 components with fan-out and short chains using permanent conditions, mixed COMMAND/HTTP jobs, output and retries. It is not a qualification of the operator's production topology. `--perf` without `--perf-day` is a short engineering comparison and cannot close the daily gate.
 

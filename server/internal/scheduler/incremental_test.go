@@ -200,3 +200,24 @@ func BenchmarkSchedulerQuiescent28800(b *testing.B) {
 		})
 	}
 }
+
+func TestIncrementalCandidateCreationFIFO(t *testing.T) {
+	s := newTestScheduler(t)
+	s.EnableIncremental()
+	now := s.Now()
+	for _, item := range []struct {
+		id      string
+		created time.Time
+	}{{"z-older", now.Add(-time.Hour)}, {"a-newer", now}} {
+		if _, err := s.db.Exec("INSERT INTO instances(id,definition_id,order_date,status,scheduled_at,created_at) VALUES(?,? ,?,'WAITING',?,?)", item.id, item.id, s.TodayDate(), now, item.created); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := s.tickCandidates(s.TodayDate(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].ID != "z-older" {
+		t.Fatalf("candidatos ignoraram antiguidade no empate: %+v", rows)
+	}
+}

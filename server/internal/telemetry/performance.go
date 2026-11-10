@@ -82,7 +82,8 @@ func WritePerformance(w io.Writer) {
 		for j, b := range bounds {
 			fmt.Fprintf(w, "regente_perf_stage_seconds_bucket{stage=%q,le=%q} %d\n", stageNames[i], fmt.Sprint(b), h.buckets[j].Load())
 		}
-		fmt.Fprintf(w, "regente_perf_stage_seconds_bucket{stage=%q,le=%q} %d\nregente_perf_stage_seconds_count{stage=%q} %d\nregente_perf_stage_seconds_sum{stage=%q} %.9f\n", stageNames[i], fmt.Sprint(math.Inf(1)), h.count.Load(), stageNames[i], h.count.Load(), stageNames[i], float64(h.nanos.Load())/1e9)
+		count := h.count.Load()
+		fmt.Fprintf(w, "regente_perf_stage_seconds_bucket{stage=%q,le=%q} %d\nregente_perf_stage_seconds_count{stage=%q} %d\nregente_perf_stage_seconds_sum{stage=%q} %.9f\n", stageNames[i], fmt.Sprint(math.Inf(1)), count, stageNames[i], count, stageNames[i], float64(h.nanos.Load())/1e9)
 	}
 	for i := range events {
 		fmt.Fprintf(w, "# TYPE regente_%s_total counter\nregente_%s_total %d\n", eventNames[i], eventNames[i], events[i].Load())

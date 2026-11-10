@@ -205,3 +205,5 @@ batch audit export and incremental scheduling, saves CPU/heap profiles, and samp
 host steal separately from process CPU. See [performance and recovery operations](performance-recovery.md)
 for flags, schema 33 migration, budgets and limits. Short `--perf` runs do not close
 the daily gate or establish a one-million-per-day capacity claim.
+
+`--perf-compare` runs a short comparison on identical graph workloads, using full scheduling/single-record export versus incremental scheduling/batches. Both runs share the new cache and reservation contracts. Container CPU/memory limits and collector RSS are recorded; daily and scale gates remain separate.
