@@ -219,9 +219,25 @@ PostgreSQL confirmado em volume exclusivo, sem limite Docker próprio de CPU/RAM
 runner limitado a 4 CPUs/8 GiB. Evidência `comparison-7bf37ead74ed/capacity.json` e
 inspeção separada `comparison-7bf37ead74ed-postgres-mount.json`, em
 `outputs/regente-perf-local`. Não misturar com a rodada anterior em tmpfs.
-Próximo gate: `--perf-day --fast-slots 128 --slow-slots 64`, dois agentes e limites
+Gate em execução: `--perf-day --fast-slots 128 --slow-slots 64`, dois agentes e limites
 de concorrência explícitos para acomodar os patamares maiores; configuração
 distinta da comparação 8+4. Não são 192 CPUs. Nenhum aceite de 24h/1 milhão ainda.
+
+**10/11 — [PERF-00/05] análise de evidências e preparação operacional:**
+`scripts/perf_report.py` resume JSONL em streaming, separa CPU do processo de steal,
+expõe lacunas/resets/amostras indisponíveis e preserva veredito do runner sem
+conceder aceite próprio. Sete testes de contrato e os dez testes do verificador
+passaram; o gate runner passa a incluir o analisador. Runbook detalha rollout
+systemd por etapa e reversão de flags sem downgrade do schema. A revisão PERF-04
+explicita custo de reconciliação por densidade e o limite da ordenação por lote;
+throughput não substitui aceite de recuperação/global FIFO.
+
+Ensaio diário `8950f1b43692`, binário/checkpoint `149d9f5`, preservado sem alterações:
+às 4.186 s de medição, 836 amostras, maior intervalo 5,02 s, nenhum reset CPU,
+CPU média amostrada 0,0456 core, pico RSS servidor 356 MiB, backlog auditoria máximo
+30 e final zero; maior atraso auditoria 1 s. É progresso parcial, não aceite.
+Precisa de PC/Docker ativos até o término; previsão inicial 11/11 13:54 BRT para
+24h, mais escala/recuperação. Nenhum push enquanto a trilha local estiver pendente.
 
 Preparação do gate diário: o grafo sintético passa a declarar `keepActive=2`,
 também registrado no relatório. Assim, admissões WAITING atravessam a virada por

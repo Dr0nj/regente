@@ -8,6 +8,46 @@ This runtime requires schema **33**, protocol **2**, and matching server/agent a
 
 Upgrade the independent collector before enabling `-audit-batch-size 128`. The default remains one record for compatibility with existing collectors. Upgrade the server with `-scheduler-incremental=false` first; enable `-scheduler-incremental` only after the comparison workload passes. Both switches are startup flags. Disabling incremental scheduling restores full evaluation on schema 33; it does not downgrade the database. Rollback to a schema-32 binary requires the complete matching pre-upgrade backup and reconciliation of subsequent external effects, not just replacing the executable.
 
+### Native systemd rollout
+
+Follow the [backup and restore procedure](dr-backup.md) and [upgrade contract](upgrades.md)
+before changing the installed service. Preserve the actual unit, environment file,
+binary versions and flags with the backup. Verify the restore in an isolated cell;
+an online database snapshot alone does not capture every journal or external effect.
+
+The supplied `regente-server.service` starts the binary without arguments. These
+two performance switches are CLI flags, not environment variables. For that stock
+unit, a reviewed drop-in at `/etc/systemd/system/regente-server.service.d/performance.conf`
+can select the initial mode:
+
+```ini
+[Service]
+ExecStart=
+ExecStart=/usr/local/bin/regente-server -audit-batch-size=1 -scheduler-incremental=false
+```
+
+For a customized unit, preserve all existing arguments in the replacement
+`ExecStart`. The environment file remains in effect. Inspect the effective unit
+with `systemctl cat regente-server`, then apply the drop-in with
+`systemctl daemon-reload` and `systemctl restart regente-server` during the planned
+window. A restart changes process counters; start a new measurement interval.
+
+| Stage | Mode | Evidence before proceeding | Reversal on schema 33 |
+|---|---|---|---|
+| Collector upgrade | Existing server settings | Durable prefix ACK, compatible single-record requests, journal preserved | Use a compatible collector with its complete journal |
+| Server/agent upgrade | Batch 1, full scheduler | Definition readiness, scoped authentication, real durable canary, receipt replay, no ledger gap | Keep the matching runtime; investigate migration separately |
+| Batch export | Batch 128, full scheduler | Pending audit records drain, ACK continuity, no new audit errors | Return batch size to 1 |
+| Incremental scheduler | Batch 128, incremental true | Dispatch/condition parity, bounded queue, completed ticks, reconciliation progress and canary success | Return incremental to false |
+
+Observe each stage under the same offered load before proceeding. Record the
+actual settings and change time; a successful `/health` request is insufficient.
+The existing `scripts/progress-probe.py` creates a real order, so use only a
+dedicated, approved canary definition and a protected token file. Pause admission
+and investigate if evidence has a ledger gap, conflicting receipt, duplicate
+external effect, growing backlog without recovery or stalled execution. Do not
+delete audit data or reissue uncertain effects to make a check pass. Switching
+flags back does not undo migration or completed external effects.
+
 ## Definitions
 
 The live workspace owns one immutable normalized snapshot. API readers receive isolated copies; WebSocket handshakes hash the authorized view without rebuilding or copying the graph. Force Order looks up one definition through the snapshot's ID index before checking folder write permission; it does not copy the entire workspace for authorization. Full-list copies reuse type layouts and preserve nested value types and isolation. Concurrent cold readers share a build. A cancelled HTTP reader does not cancel that shared work. Known file/Git mutations invalidate before and after changing the workspace and serialize against publication. A Git sync with unchanged HEAD and tracked files retains the hot snapshot; untracked files remain preserved. External changes are checked by content every 15 seconds, including same-size and same-mtime edits. The build compares the content it actually parsed with the surrounding digests; an unstable build is rejected.
@@ -27,6 +67,16 @@ Batch export accepts at most 128 records and 1 MiB per request. The collector va
 The scheduler keeps a deduplicated candidate queue, condition consumer indexes and due-time heap. Database triggers coalesce changes entering or leaving WAITING/RUNNING in `scheduler_changes`; terminal history inserts do not occupy the notification queue. Version-checked consumption avoids deleting a newer notification. Each tick reads at most 256 notifications and a 256-row reconciliation page. Candidate evaluation yields after 100 ms and requeues unfinished work. Claims, fencing, leadership and frozen instance snapshots retain their existing transaction rules.
 
 A full keyset pass recovers lost notifications; the next pass starts 30 seconds after completion. Agent/resource blockers retry after two seconds, running candidates after one minute. At a two-second tick, scanning 28,800 rows takes roughly 113 ticks before evaluation delays; the reconciliation interval is not a 30-second recovery guarantee. The validated-plan cache holds at most 1,024 entries. Condition-pool reads and existing running/resource maintenance remain; incremental mode does not eliminate every database scan.
+
+Reconciliation reads retained rows in the current business date, including
+terminal history. At 256 rows per tick and a two-second tick, nominal pass times
+are 226 seconds for 28,800 rows, 782 seconds for 100,000, 1,954 seconds for 250,000,
+and 7,814 seconds for 1,000,000. These are arithmetic estimates, excluding delays
+and the 30-second pause between passes, not measured recovery guarantees. Durable
+notifications normally provide the faster path; lost-event recovery and restart
+must still be evaluated at each density. Ordering within a selected batch does
+not by itself prove global FIFO across pages. Keep these gates distinct from
+ordinary dispatch throughput when deciding whether a larger tier is qualified.
 
 ## Capture comparable evidence
 
@@ -80,3 +130,29 @@ both halves of a comparison; changing slots defines a new capacity envelope and
 must not overwrite a failed report. Long-job capacity includes receipt/polling
 latency in addition to the three-second external command. CPU profiles cover the
 first 30 seconds, including any admission stop inside that window.
+
+## Read evidence while the laboratory runs
+
+```sh
+python3 scripts/perf_report.py .integration/RUN_ID/evidence > perf-summary.json
+```
+
+The analyzer is read-only and uses one sample at a time. It accepts a live or
+copied evidence directory, stops at the file size observed when opening it, and
+reports an incomplete trailing line instead of consuming a partial write. Invalid
+complete records, nonfinite values and out-of-order timestamps fail analysis.
+It reports counter resets, missing observations, sample gaps, CPU per elapsed
+interval, peak server/collector RSS, queue ages and counters. Reconciliation age
+`-1` is counted as unavailable, not a fresh reconciliation. Host steal is separate
+from process CPU, and guest time is not counted twice.
+
+No final `capacity.json` means there is no final report; it does not prove the
+process is still alive. The analyzer retains the runner's reported verdict and
+limitations but never grants qualification. Samples include the injected outage,
+so their maxima must not be substituted for the runner's fault-window-aware
+acceptance decision. Preserve the original files, binary SHA and final report.
+
+A `--perf-day` run needs the host awake with Docker running for at least 24 hours,
+plus higher tiers, recovery and verification. Screen lock is fine; suspension,
+shutdown or stopping Docker interrupts the experiment. Record an interrupted run
+as incomplete and restart the full measurement window when rerunning it.
