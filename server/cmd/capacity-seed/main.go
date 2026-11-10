@@ -20,10 +20,10 @@ func main() {
 	dsn := flag.String("db", "", "Disposable lab DSN")
 	key := flag.String("audit-key", "", "Lab audit key")
 	count := flag.Int("count", 10000, "Retained synthetic terminal rows")
+	privateNetwork := flag.Bool("private-lab-network", false, "Allow the disposable Compose postgres service on port 5432")
 	flag.Parse()
-	u, err := url.Parse(*dsn)
-	if os.Getenv("REGENTE_DISPOSABLE_DB") != "1" || *driver != "postgres" || err != nil || u.Hostname() != "127.0.0.1" || !strings.HasPrefix(u.Path, "/regente_capacity_") || *count < 1 || *count > 1000000 {
-		log.Fatal("Only an explicitly disposable loopback capacity database is accepted")
+	if os.Getenv("REGENTE_DISPOSABLE_DB") != "1" || *driver != "postgres" || !disposableDSN(*dsn, *privateNetwork) || *count < 1 || *count > 1000000 {
+		log.Fatal("Only an explicitly disposable loopback or opted-in private laboratory database is accepted")
 	}
 	d, err := db.Open(db.Postgres, *dsn)
 	if err != nil {
@@ -75,4 +75,21 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("Seeded %d retained terminal fixtures; no execution/effect claim; snapshot bytes=%d\n", *count, len(raw))
+}
+
+// O opt-in aceita somente o serviço exato do Compose descartável; nunca um host
+// arbitrário. Prefixo, credencial sintética e porta continuam obrigatórios.
+func disposableDSN(dsn string, privateNetwork bool) bool {
+	u, err := url.Parse(dsn)
+	if err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") || !strings.HasPrefix(u.Path, "/regente_capacity_") || len(u.Path) <= len("/regente_capacity_") {
+		return false
+	}
+	if u.Hostname() == "127.0.0.1" {
+		return true
+	}
+	if !privateNetwork || u.Hostname() != "postgres" || u.Port() != "5432" || u.User == nil {
+		return false
+	}
+	password, _ := u.User.Password()
+	return u.User.Username() == "regente" && password == "synthetic-lab-only"
 }

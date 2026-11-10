@@ -82,7 +82,7 @@ class Profile:
         self.dsn=dsn.replace('/regente_lab?','/'+self.dbname+'?')
         self.key=self.directory/'audit.key';self.collector_token=self.directory/'collector-token'
         self.collector_token.write_text('capacity-independent-collector-fixture');self.collector_token.chmod(0o600)
-        lab.command([str(lab.RUN/'seed'),'-db',self.dsn,'-audit-key',str(self.key),'-count',str(density)],env=dict(env,REGENTE_DISPOSABLE_DB='1'),timeout=600,name=name+'-seed')
+        lab.command([str(lab.RUN/'seed'),'-db',self.dsn,'-audit-key',str(self.key),'-count',str(density)]+(['-private-lab-network'] if lab.LAB_NETWORK_ATTACHED else []),env=dict(env,REGENTE_DISPOSABLE_DB='1'),timeout=600,name=name+'-seed')
         collector_addr='127.0.0.1:'+str(lab.free_port())
         self.journal=self.directory/'independent.jsonl'
         self.collector_args=[str(lab.RUN/'server'),'-addr',collector_addr,'-audit-collector-file',str(self.journal),'-audit-collector-public-key',str(self.key)+'.pub','-audit-token-file',str(self.collector_token),'-tls-cert',str(tls/'lab.crt'),'-tls-key',str(tls/'lab.key')]
