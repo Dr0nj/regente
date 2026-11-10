@@ -60,3 +60,10 @@ python3 scripts/capacity.py --perf-day
 The last command requests a real 24-hour run with business-date rollover before higher tiers (28,800, 100,000, 250,000 and 1,000,000 orders/day offered rates), then a recovery soak at the last supported rate. CPU/heap profiles are saved with owner-only permissions; samples retain host CPU jiffies (including steal) separately from process CPU. A failed daily gate blocks higher tiers. Retained terminal rows are fixtures; actual admitted attempts, verified effects and distinct executed graph definitions are counted separately. The daily gate requires all 28,800 graph definitions to execute. The synthetic graph contains 900 components with fan-out and short chains using permanent conditions, mixed COMMAND/HTTP jobs, output and retries. It is not a qualification of the operator's production topology. `--perf` without `--perf-day` is a short engineering comparison and cannot close the daily gate.
 
 Require bounded queues, correct receipts/effects, acceptable CPU/RSS and dispatch/reader latency, fault recovery and the complete versioned verification gates before deployment. Preserve failures and skipped gates in the report. Short quiescent SQLite benchmarks do not establish PostgreSQL throughput, VPS CPU reduction, a daily SLO, or one-million-per-day capacity.
+
+The capacity runner accepts explicit `--fast-slots` and `--slow-slots` (defaults
+4 and 1, respectively). Every result records both. Use identical concurrency for
+both halves of a comparison; changing slots defines a new capacity envelope and
+must not overwrite a failed report. Long-job capacity includes receipt/polling
+latency in addition to the three-second external command. CPU profiles cover the
+first 30 seconds, including any admission stop inside that window.
