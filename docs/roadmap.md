@@ -207,7 +207,21 @@ storage/API passaram no Windows. Microbenchmark local: cópia de 28.800 definiç
 `verify.py --full` em checkout limpo `955f5da` (oito gates, evidência
 `verify-00061974cb15`), incluindo race, browser, PostgreSQL/NATS/OIDC e demos.
 Smoke instalado `--build` também passou em `9bdb3bc`, com o mesmo runtime corrigido.
-Nova comparação com volume em andamento; ensaio diário/escala/rollout seguem abertos.
+Ensaio diário/escala/rollout seguem abertos.
+
+**10/11 — [PERF-05] comparação em volume aprovada:** `7bf37ead74ed`, checkout
+limpo `9bdb3bc`, mesmos 8+4 slots e 300 s por modo, 163 instâncias/188 tentativas
+em cada um. CPU do processo 40,09 s full/single versus 16,48 s incremental/batch
+(−58,9%); pico RSS 380,5→342,5 MiB; p99 elegível→started 4,859→3,103 s. Ambos
+passaram todos os limites, com efeitos e ledger verificados. Leituras REST e
+reconexões também passaram, sem alegação de melhora em todos os percentis.
+PostgreSQL confirmado em volume exclusivo, sem limite Docker próprio de CPU/RAM;
+runner limitado a 4 CPUs/8 GiB. Evidência `comparison-7bf37ead74ed/capacity.json` e
+inspeção separada `comparison-7bf37ead74ed-postgres-mount.json`, em
+`outputs/regente-perf-local`. Não misturar com a rodada anterior em tmpfs.
+Próximo gate: `--perf-day --fast-slots 128 --slow-slots 64`, dois agentes e limites
+de concorrência explícitos para acomodar os patamares maiores; configuração
+distinta da comparação 8+4. Não são 192 CPUs. Nenhum aceite de 24h/1 milhão ainda.
 
 Preparação do gate diário: o grafo sintético passa a declarar `keepActive=2`,
 também registrado no relatório. Assim, admissões WAITING atravessam a virada por
