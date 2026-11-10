@@ -66,6 +66,11 @@ admitted waiting jobs can cross the business-date rollover. The product default
 of zero intentionally expires never-started waiting jobs at the first rollover;
 this fixture setting does not change that behavior.
 
+Capacity profiles use `integration/compose.capacity.yaml`, with PostgreSQL data
+on a dedicated Docker volume owned by the disposable run. The runner removes
+that volume during cleanup. This differs from the short integration suite's
+RAM-backed `tmpfs`; do not combine their results as one storage configuration.
+
 The capacity runner accepts explicit `--fast-slots` and `--slow-slots` (defaults
 4 and 1, respectively). Every result records both. Use identical concurrency for
 both halves of a comparison; changing slots defines a new capacity envelope and

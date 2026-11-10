@@ -344,6 +344,9 @@ def main():
     if a.perf_compare and a.perf_day:p.error('--perf-compare and --perf-day are separate profiles')
     if a.perf_day or a.perf_compare:a.perf=True
     if a.tier_seconds<300 or a.soak_seconds<1800:raise SystemExit('Qualification requires tiers >=300s and developer soak >=1800s')
+    # Mantém o projeto exclusivo e cleanup do runner, com PostgreSQL em volume
+    # próprio. O tmpfs da integração curta não representa I/O de um ensaio diário.
+    lab.COMPOSE=['docker','compose','-p','regente-it-'+lab.RUN.name,'-f',str(lab.ROOT/'integration/compose.capacity.yaml')]
     lab.EVIDENCE.mkdir(parents=True)
     report={'datasetPreparation':'Schema33 and actual empty-business backfills initialized before seeding; frozen label/job_type/environment populated; terminal fixtures without execution claims','status':'running','profile':'synthetic-i16-postgres-loopback-v2','tiers':[],'budgets':{'plannedToAcceptedP99Seconds':5,'readyToStartedP99Seconds':10,'firstEligibleWaitMaxSeconds':10,'oldestOutboxMaxSeconds':5,'auditLagMaxSeconds':30,'serverRSSMaxBytes':1<<30,'normalRequestErrorBudget':0,'definitionReadP99Seconds':5,'websocketReconnectP99Seconds':2},'limits':[f'One Linux host; PostgreSQL; production loopback; two agents/{a.fast_slots+a.slow_slots} slots','Retained terminal rows are fixtures; distinct graph definitions executed and actual attempts/effects are counted separately; only --perf-day requests a full day','No HA/NATS/mTLS throughput or monthly SLO claim; independent pilot I17 pending']}
     started=time.monotonic();active=None;compose=False
@@ -363,6 +366,8 @@ def main():
         lab.command(lab.COMPOSE+['up','-d','postgres'],timeout=300,name='capacity-postgres')
         lab.connect_lab_network()
         report['dependencyTransport']='private-container-network' if lab.LAB_NETWORK_ATTACHED else 'host-loopback'
+        report['postgresStorage']='disposable-docker-volume'
+        report['images']=json.loads(lab.command(lab.COMPOSE+['images','--format','json']))
         dsn='postgres://regente:synthetic-lab-only@'+lab.service_host('postgres')+':'+lab.port('postgres',5432)+'/regente_lab?sslmode=disable'
         for source,name,var in [('./server','server','main.version'),('./agent','agent','main.agentVersion'),('./server/cmd/capacity-seed','seed',None)]:
             args=['go','build','-o',str(lab.RUN/name)]
@@ -402,7 +407,6 @@ def main():
             # Falha prevista é visível; nenhuma perda/duplicação ou evidência ausente é permitida.
             if not report['soak']['fault'] or not report['soak']['fault']['stalledProgressDetected']:raise RuntimeError('Missing independent stalled-progress proof')
             report['supportedEnvelope']=supported if report['soak']['qualified'] else None
-            report['images']=json.loads(lab.command(lab.COMPOSE+['images','--format','json']))
             if report['supportedEnvelope'] is None:raise RuntimeError('Soak exceeded the supported envelope budget')
         report['status']='passed'
     except Exception as error:

@@ -189,7 +189,7 @@ Os logs do laboratório agora identificam [PERF-05]/[PERF-06]. Nenhum push.
 
 **10/11 — [PERF-05] comparação curta aprovada e [PERF-01] novo custo identificado:**
 ensaio `29e9e16a6010`, checkout limpo `8fd9110`, Linux com limite de 4 CPUs/8 GiB,
-PostgreSQL real e agentes com 8+4 slots. Ambos os modos passaram 300 s, 163
+PostgreSQL real em tmpfs e agentes com 8+4 slots. Ambos os modos passaram 300 s, 163
 instâncias/188 tentativas cada, efeitos e ledger verificados. CPU total reportada
 do processo: 57,74 s full/single versus 29,70 s incremental/batch (−48,6%); pico RSS
 372,3 versus 258,8 MiB; p99 elegível→started 3,165 versus 2,803 s. Mesmo cache/schema
@@ -209,6 +209,9 @@ precisa de gate Linux e nova comparação. Ensaio diário/escala/rollout seguem 
 Preparação do gate diário: o grafo sintético passa a declarar `keepActive=2`,
 também registrado no relatório. Assim, admissões WAITING atravessam a virada por
 configuração explícita; não se altera a regra produtiva de expiração com zero.
+O ensaio de capacidade passa a usar Compose próprio com volume Docker descartável
+para o PostgreSQL, em vez do tmpfs da integração curta. Nova comparação deve
+registrar essa mudança de armazenamento; resultados antigos não são misturados.
 
 ### Onboarding Linux — incremento em validação (03/11/2026)
 

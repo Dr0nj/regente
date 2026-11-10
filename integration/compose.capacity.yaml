@@ -1,0 +1,19 @@
+# Capacidade usa armazenamento persistente do Docker, sem o tmpfs da suíte curta.
+# O projeto regente-it-<run> é exclusivo; down -v remove somente seu volume.
+services:
+  postgres:
+    image: postgres:17.6-alpine@sha256:747d5ed1fdeeb124b880fbe3d7c6557d2c4064ae41d6b6297d417882effce4be
+    platform: linux/amd64
+    environment:
+      POSTGRES_USER: regente
+      POSTGRES_PASSWORD: synthetic-lab-only
+      POSTGRES_DB: regente_lab
+    ports: ["127.0.0.1::5432"]
+    volumes: ["capacity-postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U regente -d regente_lab"]
+      interval: 2s
+      timeout: 3s
+      retries: 40
+volumes:
+  capacity-postgres-data:
