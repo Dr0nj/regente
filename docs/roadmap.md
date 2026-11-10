@@ -188,7 +188,7 @@ locais: `perf-linux-scheduler-race-complete.log` e `perf-linux-native-install.lo
 Os logs do laboratório agora identificam [PERF-05]/[PERF-06]. Nenhum push.
 
 **10/11 — [PERF-05] comparação curta aprovada e [PERF-01] novo custo identificado:**
-ensaio `29e9e16a6010`, checkout limpo `8fd9110`, Linux com limite de 4 CPUs/8 GiB,
+ensaio `29e9e16a6010`, checkout limpo `8fd9110`, runner Linux limitado a 4 CPUs/8 GiB,
 PostgreSQL real em tmpfs e agentes com 8+4 slots. Ambos os modos passaram 300 s, 163
 instâncias/188 tentativas cada, efeitos e ledger verificados. CPU total reportada
 do processo: 57,74 s full/single versus 29,70 s incremental/batch (−48,6%); pico RSS
@@ -203,8 +203,11 @@ consulta índice por ID da revisão, mantém ACL por folder e copia somente o jo
 Layout dos tipos mutáveis fica reutilizável para as cópias completas. Testes de
 isolamento/tipos, atualização/exclusão do índice, ACL/404 e suítes completas de
 storage/API passaram no Windows. Microbenchmark local: cópia de 28.800 definições
-52,48→23,57 ms; busca isolada de um job 1,56 µs/2.720 bytes. Essa correção ainda
-precisa de gate Linux e nova comparação. Ensaio diário/escala/rollout seguem abertos.
+52,48→23,57 ms; busca isolada de um job 1,56 µs/2.720 bytes. Essa correção passou
+`verify.py --full` em checkout limpo `955f5da` (oito gates, evidência
+`verify-00061974cb15`), incluindo race, browser, PostgreSQL/NATS/OIDC e demos.
+Smoke instalado `--build` também passou em `9bdb3bc`, com o mesmo runtime corrigido.
+Nova comparação com volume em andamento; ensaio diário/escala/rollout seguem abertos.
 
 Preparação do gate diário: o grafo sintético passa a declarar `keepActive=2`,
 também registrado no relatório. Assim, admissões WAITING atravessam a virada por
@@ -212,6 +215,9 @@ configuração explícita; não se altera a regra produtiva de expiração com z
 O ensaio de capacidade passa a usar Compose próprio com volume Docker descartável
 para o PostgreSQL, em vez do tmpfs da integração curta. Nova comparação deve
 registrar essa mudança de armazenamento; resultados antigos não são misturados.
+Os limites do runner não incluem o PostgreSQL separado (sem limite Docker
+explícito de CPU/RAM nesses ensaios); o relatório passa a inspecionar e registrar
+mount/limites reais do banco, com espera por saúde antes do seed.
 
 ### Onboarding Linux — incremento em validação (03/11/2026)
 

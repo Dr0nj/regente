@@ -70,6 +70,9 @@ Capacity profiles use `integration/compose.capacity.yaml`, with PostgreSQL data
 on a dedicated Docker volume owned by the disposable run. The runner removes
 that volume during cleanup. This differs from the short integration suite's
 RAM-backed `tmpfs`; do not combine their results as one storage configuration.
+The report verifies the actual data mount and records PostgreSQL's Docker
+CPU/memory limits separately. A zero Docker limit means no explicit container
+limit; the runner's cgroup budget does not include this separate database.
 
 The capacity runner accepts explicit `--fast-slots` and `--slow-slots` (defaults
 4 and 1, respectively). Every result records both. Use identical concurrency for

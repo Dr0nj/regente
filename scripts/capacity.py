@@ -363,11 +363,17 @@ def main():
         env={k:v for k,v in os.environ.items() if not k.startswith(('REGENTE_','OTEL_')) and k not in ('GITHUB_TOKEN','GH_TOKEN')}
         env['SSL_CERT_FILE']=str(tls/'lab.crt')
         compose=True
-        lab.command(lab.COMPOSE+['up','-d','postgres'],timeout=300,name='capacity-postgres')
+        lab.command(lab.COMPOSE+['up','-d','--wait','--wait-timeout','90','postgres'],timeout=300,name='capacity-postgres')
         lab.connect_lab_network()
         report['dependencyTransport']='private-container-network' if lab.LAB_NETWORK_ATTACHED else 'host-loopback'
         report['postgresStorage']='disposable-docker-volume'
         report['images']=json.loads(lab.command(lab.COMPOSE+['images','--format','json']))
+        pg_container=lab.command(lab.COMPOSE+['ps','-q','postgres'])
+        pg=json.loads(lab.command(['docker','inspect',pg_container]))[0]
+        data_mounts=[m for m in pg['Mounts'] if m['Destination']=='/var/lib/postgresql/data']
+        if len(data_mounts)!=1 or data_mounts[0]['Type']!='volume':raise RuntimeError('Capacity PostgreSQL must use its disposable Docker data volume')
+        report['postgresContainer']={'dataMount':{k:data_mounts[0][k] for k in ('Type','Name','Destination')},
+                                     'limits':{k:pg['HostConfig'][k] for k in ('NanoCpus','Memory','MemorySwap')}}
         dsn='postgres://regente:synthetic-lab-only@'+lab.service_host('postgres')+':'+lab.port('postgres',5432)+'/regente_lab?sslmode=disable'
         for source,name,var in [('./server','server','main.version'),('./agent','agent','main.agentVersion'),('./server/cmd/capacity-seed','seed',None)]:
             args=['go','build','-o',str(lab.RUN/name)]
