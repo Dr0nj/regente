@@ -21,7 +21,11 @@ func main() {
 	key := flag.String("audit-key", "", "Lab audit key")
 	count := flag.Int("count", 10000, "Retained synthetic terminal rows")
 	privateNetwork := flag.Bool("private-lab-network", false, "Allow the disposable Compose postgres service on port 5432")
+	rolloverAfter := flag.Duration("rollover-after", 12*time.Hour, "Disposable lab time until daily rollover (1m..12h)")
 	flag.Parse()
+	if *rolloverAfter < time.Minute || *rolloverAfter > 12*time.Hour {
+		log.Fatal("Lab rollover must be within 1m..12h")
+	}
 	if os.Getenv("REGENTE_DISPOSABLE_DB") != "1" || *driver != "postgres" || !disposableDSN(*dsn, *privateNetwork) || *count < 1 || *count > 1000000 {
 		log.Fatal("Only an explicitly disposable loopback or opted-in private laboratory database is accepted")
 	}
@@ -48,7 +52,7 @@ func main() {
 		log.Fatal("Current business migrations were not initialized")
 	}
 	now := time.Now().UTC()
-	calendar := businessclock.Calendar{Timezone: "UTC", DailyAt: now.Add(12 * time.Hour).Format("15:04")}
+	calendar := businessclock.Calendar{Timezone: "UTC", DailyAt: now.Add(*rolloverAfter).Format("15:04")}
 	for key, value := range map[string]string{"daily_timezone": calendar.Timezone, "daily_at": calendar.DailyAt} {
 		if _, err = d.Exec("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)", key, value); err != nil {
 			log.Fatal(err)

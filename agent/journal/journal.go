@@ -190,6 +190,11 @@ func Open(path, agent string) (j *Journal, err error) {
 	if e != nil {
 		return nil, e
 	}
+	// Tombstones preservam deduplicação, mas não pertencem à fila pendente.
+	// Índice aditivo compatível com journal v1, criado só após validar o schema.
+	if _, err = d.Exec("CREATE INDEX IF NOT EXISTS journal_pending_idx ON journal_entries(execution_id) WHERE state!='acked'"); err != nil {
+		return nil, err
+	}
 	// O lock de arquivo prova que o worker anterior terminou; não prova que seus efeitos/filhos pararam.
 	if _, err = d.Exec("UPDATE journal_entries SET state='uncertain',reason='worker restarted with an unresolved effect' WHERE state IN ('starting','running')"); err != nil {
 		return nil, err

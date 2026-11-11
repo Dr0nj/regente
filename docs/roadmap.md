@@ -249,6 +249,26 @@ Os limites do runner não incluem o PostgreSQL separado (sem limite Docker
 explícito de CPU/RAM nesses ensaios); o relatório passa a inspecionar e registrar
 mount/limites reais do banco, com espera por saúde antes do seed.
 
+**11/11 — [PERF-05] rodada diária reprovada e diagnóstico preservado:**
+`8950f1b43692`/`149d9f5` encerrou após 44.901,507 s (12h28m21s), às ~02h23 BRT,
+por outbox 6,378 s > orçamento 5 s. Não houve execução dos patamares superiores.
+23.963 instâncias/27.706 tentativas; 23.958 definições distintas. Virada ODAT,
+recuperação da pausa, efeitos sem perda/duplicação no laboratório e ledger passaram.
+CPU média amostrada 0,04824 core; pico RSS 396,4 MiB. Na amostra de falha, espera
+de I/O do host ~42,9%, completed-tick age 6,86 s e CPU servidor +0,04 s em ~5 s.
+É evidência de espera de I/O concomitante, não prova de qual disco/operação a causou.
+Artefatos preservados em `outputs/regente-perf-local/day-8950f1b43692-final`.
+
+Correções locais em validação: agente confirma o aceite no ciclo de recebimento,
+drena no máximo 32 mensagens por tick mantendo limites de journal/concorrência e
+a autorização durável antes do efeito; índice parcial evita varrer tombstones
+concluídos na fila pendente sem removê-los. Runner captura PSI/cgroup, espera de
+transações PostgreSQL sem SQL/segredos e pilhas do servidor em alertas de latência;
+limites de reprovação permanecem intactos. `--perf-check --tier-seconds 600` testa
+virada em cinco minutos e recuperação, **sem qualificar 24h nem patamares maiores**.
+Tests do journal e contratos Python passaram; ensaio real curto/full ainda pendentes.
+Não houve reinício de 24h nem push. Avisar janela de energia antes da nova rodada.
+
 ### Onboarding Linux — incremento em validação (03/11/2026)
 
 Remoção do roteamento/bloqueio por ambiente, compatibilidade dos agentes existentes,

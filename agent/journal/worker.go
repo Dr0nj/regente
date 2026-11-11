@@ -369,15 +369,30 @@ func (w *Worker) Tick(ctx context.Context) error {
 			return err
 		}
 	}
-	entries, err = w.Journal.Pending()
-	if err != nil {
-		return err
-	}
-	message, err := w.Transport.Poll(ctx, len(entries) < w.Journal.MaxPending)
-	if err != nil {
-		return transportError(err)
-	}
-	if message != nil {
+	// Drena um lote limitado sem dormir entre recebimento e ACK. O journal
+	// continua durável ANTES do ACK e nenhum efeito antecede start autorizado.
+	// O limite evita que uma fila contínua adie heartbeats/resultados antigos.
+	for range 32 {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		w.mu.Lock()
+		fatal = w.fatalErr
+		w.mu.Unlock()
+		if fatal != nil {
+			return fmt.Errorf("journal persistence failed; new effects stopped: %w", fatal)
+		}
+		entries, err = w.Journal.Pending()
+		if err != nil {
+			return err
+		}
+		message, err := w.Transport.Poll(ctx, len(entries) < w.Journal.MaxPending)
+		if err != nil {
+			return transportError(err)
+		}
+		if message == nil {
+			break
+		}
 		e, err := w.Journal.Accept(*message)
 		if err != nil {
 			return err
@@ -390,7 +405,14 @@ func (w *Worker) Tick(ctx context.Context) error {
 				c()
 			}
 		}
+		// Tombstone confirmado continua aceitando redelivery sem novo efeito.
+		if e.State != "acked" {
+			if err = w.Sync(ctx, e); err != nil {
+				return err
+			}
+		}
 	}
+
 	return nil
 }
 func (w *Worker) Stop() {

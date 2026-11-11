@@ -34,6 +34,25 @@ class EvidenceSummaryTests(unittest.TestCase):
         self.assertEqual(profile['hostStealPercent'], 12.5)
         self.assertEqual(profile['counters']['regente_audit_exported_records_total']['perSecond'], 4)
 
+    def test_io_peak_reports_interval_and_related_backlog_without_guest_double_count(self):
+        first, last = self.sample(0, 1), self.sample(5, 2)
+        first['hostCPUJiffies'] = {k: 0 for k in first['hostCPUJiffies']}
+        last['hostCPUJiffies'] = dict(first['hostCPUJiffies'], user=10, idle=40, iowait=50, guest=10)
+        last['metrics'].update(regente_execution_oldest_outbox_seconds=6.378, regente_scheduler_completed_tick_age_seconds=6.86)
+        self.write(first, last)
+        self.assertEqual(summarize_samples(self.path)['peakHostIOWaitInterval'], {
+            'percent': 50, 'fromSeconds': 0, 'toSeconds': 5,
+            'oldestOutboxSeconds': 6.378, 'completedTickAgeSeconds': 6.86})
+        last['hostCPUJiffies']['iowait'] = -1
+        self.write(first, last)
+        with self.assertRaises(ValueError): summarize_samples(self.path)
+
+    def test_io_counter_reset_does_not_create_a_negative_peak(self):
+        first, last = self.sample(0, 1), self.sample(5, 2)
+        first['hostCPUJiffies']['iowait'] = 100
+        self.write(first, last)
+        self.assertIsNone(summarize_samples(self.path)['peakHostIOWaitInterval'])
+
     def test_complete_corruption_is_not_ignored(self):
         self.path.write_bytes(b'{broken}\n')
         with self.assertRaises(ValueError):

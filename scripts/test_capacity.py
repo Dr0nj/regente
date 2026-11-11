@@ -26,6 +26,20 @@ class PerformanceContracts(unittest.TestCase):
         self.assertEqual(templates,original)
         self.assertEqual(graph[1][2]['params']['command'],'effect')
 
+    def test_short_check_requires_rollover_recovery_and_cannot_pass_daily_gate(self):
+        valid={'qualified':True,'measurementSeconds':600,'admittedInstances':300,
+               'distinctGraphDefinitionsExecuted':300,
+               'businessCalendar':{'orderDate':'2026-11-09'},
+               'businessCalendarAtEnd':{'orderDate':'2026-11-10'},
+               'fault':{'stalledProgressDetected':True,'restoredProgress':{'passed':True}}}
+        capacity.validate_performance_check(valid)
+        with self.assertRaises(RuntimeError): capacity.validate_performance_day(valid)
+        for changes in ({'qualified':False},{'measurementSeconds':599},{'fault':None},
+                        {'fault':{'stalledProgressDetected':True,'restoredProgress':{'passed':False}}},
+                        {'businessCalendarAtEnd':{'orderDate':'2026-11-09'}}):
+            with self.subTest(changes=changes), self.assertRaises(RuntimeError):
+                capacity.validate_performance_check(dict(valid,**changes))
+
     def test_checkpoint_reads_tail_and_rejects_partial_write(self):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'journal.jsonl'

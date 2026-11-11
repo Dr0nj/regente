@@ -156,3 +156,34 @@ A `--perf-day` run needs the host awake with Docker running for at least 24 hour
 plus higher tiers, recovery and verification. Screen lock is fine; suspension,
 shutdown or stopping Docker interrupts the experiment. Record an interrupted run
 as incomplete and restart the full measurement window when rerunning it.
+
+
+## Diagnose a failed daily gate before repeating it
+
+Keep the failed `capacity.json`, sample journal, attempt records and profiles.
+A short regression can exercise the same 28,800-definition graph, a real business
+rollover and paused-agent recovery without claiming a full-day qualification:
+
+```sh
+python3 scripts/capacity.py --perf-check --tier-seconds 600 --fast-slots 128 --slow-slots 64
+```
+
+This uses a disposable PostgreSQL volume with durable commits enabled. Its seed
+sets rollover five minutes ahead; normal daily runs keep their twelve-hour offset.
+A passing short check does not substitute for `--perf-day` or authorize higher
+tiers. Use the same host resource configuration and finish other verification
+work before beginning the isolated daily measurement.
+
+Sample journals now include Linux pressure and cgroup I/O/CPU data. Bounded
+latency alerts capture PostgreSQL transaction wait types/blocking PIDs, process
+I/O counters and server goroutine stacks. These files omit SQL text, command
+arguments and credentials. Capture errors remain explicit. The report analyzer
+correlates the peak host I/O-wait interval with outbox and scheduler ages; host
+I/O wait includes unrelated workloads and does not identify the responsible disk
+or prove an application bottleneck. Diagnostic capture does not relax budgets.
+
+The agent drains at most 32 deliveries per tick and acknowledges a newly persisted
+entry immediately, retaining concurrency and pending-journal limits. Acceptance
+still follows journal persistence, and effects still require durable start
+authorization. A partial SQLite index excludes acknowledged tombstones from the
+pending scan while retaining them for duplicate detection across restarts.

@@ -30,6 +30,17 @@ def number(value, label):
     return value
 
 
+def host_cpu_delta(before, after):
+    keys = ('user', 'nice', 'system', 'idle', 'iowait', 'irq', 'softirq', 'steal')
+    if not all(k in before and k in after for k in keys):
+        return None
+    delta = {k: number(after[k], k) - number(before[k], k) for k in keys}
+    if any(v < 0 for v in delta.values()) or not sum(delta.values()):
+        return None
+    total = sum(delta.values())
+    return {k: delta[k] / total * 100 for k in ('iowait', 'steal')}
+
+
 def summarize_samples(path):
     # Limita a leitura ao tamanho observado: append concorrente não prolonga a
     # análise indefinidamente. Só a última linha incompleta pode ser ignorada.
@@ -40,6 +51,7 @@ def summarize_samples(path):
     max_gap = 0
     cpu_delta = 0
     cpu_resets = 0
+    io_peak = None
     peaks = {'serverRSS': 0, 'collectorRSS': 0}
     gauges = {}
     unavailable = {}
@@ -63,6 +75,12 @@ def summarize_samples(path):
                 if gap <= 0:
                     raise ValueError('Sample timestamps must increase strictly')
                 max_gap = max(max_gap, gap)
+                host_delta = host_cpu_delta(previous.get('hostCPUJiffies', {}), sample.get('hostCPUJiffies', {}))
+                if host_delta is not None and (io_peak is None or host_delta['iowait'] > io_peak['percent']):
+                    io_peak = {'percent': host_delta['iowait'], 'fromSeconds': previous['seconds'], 'toSeconds': seconds,
+                               'oldestOutboxSeconds': metrics.get('regente_execution_oldest_outbox_seconds'),
+                               'completedTickAgeSeconds': metrics.get('regente_scheduler_completed_tick_age_seconds')}
+
                 delta = cpu - previous['serverCPUSeconds']
                 cpu_resets += delta < 0
                 if delta >= 0:
@@ -108,7 +126,7 @@ def summarize_samples(path):
         'observedIntervalSeconds': elapsed, 'maxSampleGapSeconds': max_gap,
         'serverCPUDeltaSeconds': cpu_delta, 'serverCPUCounterResets': cpu_resets,
         'serverAverageCores': cpu_delta / elapsed if elapsed and not cpu_resets else None,
-        'hostStealPercent': steal, 'peakBytes': peaks, 'gauges': gauges,
+        'hostStealPercent': steal, 'peakHostIOWaitInterval': io_peak, 'peakBytes': peaks, 'gauges': gauges,
         'unavailableGaugeSamples': unavailable, 'counters': counters,
     }
 
@@ -138,7 +156,7 @@ def summarize(evidence):
             outcomes[name] = outcome
         for outcome in reported.get('tiers', []):
             outcomes[outcome['name']] = outcome
-        for name in ('perfDay', 'soak'):
+        for name in ('perfDay', 'perfCheck', 'soak'):
             if name in reported:
                 outcomes[name] = reported[name]
         result['reportedOutcomes'] = {name: {k: outcome.get(k) for k in (

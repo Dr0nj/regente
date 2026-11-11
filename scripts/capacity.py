@@ -4,6 +4,7 @@ import argparse,base64,copy,socket,struct,collections,concurrent.futures,hashlib
 from pathlib import Path
 if sys.flags.optimize:raise SystemExit("Qualification requires Python optimization disabled")
 import integration as lab
+from perf_report import host_cpu_delta
 import importlib.util
 spec=importlib.util.spec_from_file_location('progress_probe',lab.ROOT/'scripts/progress-probe.py')
 module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);probe=module.probe
@@ -33,6 +34,14 @@ def validate_performance_day(outcome):
         or outcome['admittedInstances']<28800 or outcome['distinctGraphDefinitionsExecuted']<28800
         or outcome['businessCalendar']['orderDate']==outcome['businessCalendarAtEnd']['orderDate']):
         raise RuntimeError('PERF 24-hour gate failed; higher tiers are blocked')
+
+
+def validate_performance_check(outcome):
+    if (not outcome['qualified'] or outcome['measurementSeconds'] < 600
+        or outcome['businessCalendar']['orderDate'] == outcome['businessCalendarAtEnd']['orderDate']
+        or not (outcome.get('fault') or {}).get('stalledProgressDetected')
+        or not ((outcome.get('fault') or {}).get('restoredProgress') or {}).get('passed')):
+        raise RuntimeError('Short PERF diagnostic failed its latency, rollover or recovery gate')
 
 
 def last_checkpoint(path):
@@ -73,12 +82,21 @@ def rss(proc):
     except FileNotFoundError:pass
     return 0
 
+def pressure_snapshot():
+    result = {}
+    for name in ('/proc/pressure/io', '/proc/pressure/cpu', '/proc/pressure/memory',
+                 '/sys/fs/cgroup/io.stat', '/sys/fs/cgroup/cpu.stat', '/sys/fs/cgroup/memory.events'):
+        try: result[name] = Path(name).read_text()[:16384]
+        except OSError: result[name] = None
+    return result
+
+
 class Profile:
-    def __init__(self,name,density,env,dsn,tls,perf=False,optimized=True,fast_slots=4,slow_slots=1):
+    def __init__(self,name,density,env,dsn,tls,perf=False,optimized=True,fast_slots=4,slow_slots=1,rollover_after=None):
         self.phase=('PERF-05' if density==28800 else 'PERF-06') if perf else 'I16'
         print(f'[{self.phase}] Preparing {name}: retained_rows={density} fast_slots={fast_slots} slow_slots={slow_slots}',flush=True)
         self.agent_slots={'fast':fast_slots,'slow':slow_slots}
-        self.perf=perf;self.optimized=perf and optimized;self.reader_samples=[];self.reconnect_samples=[];self.retained_samples=[];self.profiles=[]
+        self.perf=perf;self.optimized=perf and optimized;self.reader_samples=[];self.reconnect_samples=[];self.retained_samples=[];self.profiles=[];self.diagnostics=[]
         self.name=name;self.env=env;self.density=density;self.directory=lab.RUN/name
         self.directory.mkdir();self.effects=self.directory/'effects.txt';self.lock=threading.Lock()
         self.external=http.server.ThreadingHTTPServer(('127.0.0.1',0),self.handler())
@@ -88,7 +106,7 @@ class Profile:
         self.dsn=dsn.replace('/regente_lab?','/'+self.dbname+'?')
         self.key=self.directory/'audit.key';self.collector_token=self.directory/'collector-token'
         self.collector_token.write_text('capacity-independent-collector-fixture');self.collector_token.chmod(0o600)
-        lab.command([str(lab.RUN/'seed'),'-db',self.dsn,'-audit-key',str(self.key),'-count',str(density)]+(['-private-lab-network'] if lab.LAB_NETWORK_ATTACHED else []),env=dict(env,REGENTE_DISPOSABLE_DB='1'),timeout=600,name=name+'-seed')
+        lab.command([str(lab.RUN/'seed'),'-db',self.dsn,'-audit-key',str(self.key),'-count',str(density)]+(['-rollover-after',rollover_after] if rollover_after else [])+(['-private-lab-network'] if lab.LAB_NETWORK_ATTACHED else []),env=dict(env,REGENTE_DISPOSABLE_DB='1'),timeout=600,name=name+'-seed')
         collector_addr='127.0.0.1:'+str(lab.free_port())
         self.journal=self.directory/'independent.jsonl'
         self.collector_args=[str(lab.RUN/'server'),'-addr',collector_addr,'-audit-collector-file',str(self.journal),'-audit-collector-public-key',str(self.key)+'.pub','-audit-token-file',str(self.collector_token),'-tls-cert',str(tls/'lab.crt'),'-tls-key',str(tls/'lab.key')]
@@ -171,6 +189,28 @@ class Profile:
         target.write_bytes(data);target.chmod(0o600)
         self.profiles.append({'kind':kind,'file':target.name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()})
 
+    def capture_diagnostic(self, seconds, metric_snapshot):
+        # Evidência limitada, sem query SQL, argumentos de processos ou tokens.
+        target = lab.EVIDENCE / (self.name + f'-diagnostic-{int(seconds)}.json')
+        data = {'requestedMeasurementSeconds': seconds, 'capturedWallTime': time.time(),
+                'metrics': metric_snapshot, 'pressure': pressure_snapshot(), 'processes': {}}
+        for name, proc in [('server', self.server), ('collector', self.collector), *[(f'agent-{i}', p) for i,p in enumerate(self.agents)]]:
+            data['processes'][name] = {}
+            for item in ('stat', 'io', 'wchan'):
+                try: data['processes'][name][item] = Path(f'/proc/{proc.pid}/{item}').read_text()[:16384]
+                except OSError: data['processes'][name][item] = None
+        sql = "SET statement_timeout='2000ms'; SELECT COALESCE(json_agg(row_to_json(t)),'[]') FROM (SELECT pid,state,wait_event_type,wait_event,EXTRACT(EPOCH FROM (clock_timestamp()-xact_start)) AS transaction_age_seconds,pg_blocking_pids(pid) AS blockers FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid()) t"
+        try: data['postgresWaits'] = lab.command(lab.COMPOSE+['exec','-T','postgres','psql','-U','regente','-d',self.dbname,'-Atc',sql], timeout=5)
+        except Exception as error: data['postgresWaitsError'] = type(error).__name__
+        if self.perf:
+            try:
+                with urllib.request.urlopen('http://'+self.profiling_addr+'/debug/pprof/goroutine?debug=2',timeout=2) as response:
+                    data['serverGoroutines'] = response.read(2<<20).decode(errors='replace')
+            except Exception as error: data['serverGoroutinesError'] = type(error).__name__
+        target.write_text(json.dumps(data,indent=2)); target.chmod(0o600)
+        self.diagnostics.append(target.name)
+        print(f'[{self.phase}] Diagnostic captured: {target.name}',flush=True)
+
     def handler(self):
         owner=self
         class Effect(http.server.BaseHTTPRequestHandler):
@@ -213,7 +253,8 @@ class Profile:
         fault_proof=None;stop_reason=None
         start=time.monotonic();start_wall=time.time();next_offer=start;next_sample=start;index=0;futures=[];paused=False;resumed=False
         mix=self.workload_names
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool, concurrent.futures.ThreadPoolExecutor(max_workers=1) as readers, concurrent.futures.ThreadPoolExecutor(max_workers=1) as profiler:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool, concurrent.futures.ThreadPoolExecutor(max_workers=1) as readers, concurrent.futures.ThreadPoolExecutor(max_workers=1) as profiler, concurrent.futures.ThreadPoolExecutor(max_workers=1) as diagnostics:
+            diagnostic_future=None;last_diagnostic=-300;diagnostic_count=0
             reader_future=None;profile_future=None;last_retained=-300;last_progress=-300
             while time.monotonic()-start<seconds:
                 now=time.monotonic();elapsed=now-start
@@ -227,7 +268,7 @@ class Profile:
                     if now-next_offer>5:raise RuntimeError('Load producer could not sustain offered rate')
                 if now>=next_sample:
                     m=metrics(self.base)
-                    self.samples.append({'seconds':elapsed,'serverRSS':rss(self.server),'collectorRSS':rss(self.collector),'agentRSS':[rss(p) for p in self.agents],'serverCPUSeconds':cpu_seconds(self.server),'agentCPUSeconds':[cpu_seconds(p) for p in self.agents],'hostCPUJiffies':host_cpu_jiffies(),'metrics':m})
+                    self.samples.append({'seconds':elapsed,'serverRSS':rss(self.server),'collectorRSS':rss(self.collector),'agentRSS':[rss(p) for p in self.agents],'serverCPUSeconds':cpu_seconds(self.server),'agentCPUSeconds':[cpu_seconds(p) for p in self.agents],'hostCPUJiffies':host_cpu_jiffies(),'pressure':pressure_snapshot(),'metrics':m})
                     # Operador concorrente: consulta autenticada durante as admissões.
                     self.req('/api/resources')
                     if self.perf and int(elapsed)//30>getattr(self,'last_reader_bucket',-1):
@@ -241,6 +282,10 @@ class Profile:
                     if elapsed-last_retained>=300:self.retained_samples.append(self.count_retained());last_retained=elapsed
                     expected_fault=self.fault_interval and self.fault_interval[0]-30<=time.time()<=self.fault_interval[1]
                     checks={'eligible_wait':m.get('regente_execution_oldest_eligible_wait_seconds',0)>10,'ack_p99':m.get('regente_execution_stage_seconds{stage="planned_to_accepted",window="1h_last_10000",quantile="0.99"}',0)>5,'ready_start_p99':m.get('regente_execution_stage_seconds{stage="ready_to_started",window="1h_last_10000",quantile="0.99"}',0)>10,'oldest_outbox':m.get('regente_execution_oldest_outbox_seconds',0)>5,'audit_lag':m.get('regente_audit_oldest_pending_seconds',0)>30,'server_rss':rss(self.server)>1<<30}
+                    host_delta=host_cpu_delta(self.samples[-2]['hostCPUJiffies'],self.samples[-1]['hostCPUJiffies']) if len(self.samples)>1 else None
+                    warning=(any(checks.values()) or m.get('regente_execution_oldest_outbox_seconds',0)>=2.5 or m.get('regente_scheduler_completed_tick_age_seconds',0)>=4 or (host_delta and host_delta['iowait']>=10))
+                    if not expected_fault and warning and (any(checks.values()) or elapsed-last_diagnostic>=300) and (diagnostic_count<4 or any(checks.values())) and (any(checks.values()) or diagnostic_future is None or diagnostic_future.done()):
+                        diagnostic_future=diagnostics.submit(self.capture_diagnostic,elapsed,dict(m));last_diagnostic=elapsed;diagnostic_count+=1
                     if not expected_fault and any(checks.values()):
                         stop_reason={'elapsedSeconds':elapsed,'exceeded':[k for k,v in checks.items() if v]}
                         break
@@ -262,6 +307,7 @@ class Profile:
                     fault_proof['producerScheduledPauseSeconds']=blocked
                     resumed=True
                 time.sleep(.02)
+            if diagnostic_future is not None:diagnostic_future.result()
             if reader_future is not None:reader_future.result()
             if profile_future is not None:profile_future.result()
             for future in futures:
@@ -324,7 +370,7 @@ class Profile:
         lab.command([str(lab.RUN/'server'),'-db-driver','postgres','-db',self.dsn,'-audit-key',str(self.key),'-audit-verify','-audit-checkpoint',str(checkpoint_path)],env=self.env,name=self.name+'-audit-verify')
         (lab.EVIDENCE/(self.name+'-attempts.json')).write_text(json.dumps(rows,indent=2))
         (lab.EVIDENCE/(self.name+'-samples.json')).write_text(json.dumps(self.samples,indent=2))
-        return {'agentSlots':self.agent_slots,'distinctGraphDefinitionsExecuted':len({r['definition_id'] for r in rows if r['definition_id'].startswith('graph-')}),'profiles':self.profiles,'performanceOptimizations':self.optimized,'graphDefinitions':28800 if self.perf else 0,'definitionReadSeconds':{'count':len(self.reader_samples),'p95':quantile(self.reader_samples,.95),'p99':quantile(self.reader_samples,.99)},'websocketReconnectSeconds':{'count':len(self.reconnect_samples),'p95':quantile(self.reconnect_samples,.95),'p99':quantile(self.reconnect_samples,.99)},'name':self.name,'businessCalendar':business_calendar,'businessCalendarAtEnd':end_calendar,'retainedRows':self.density,'minimumObservedTerminalRows':minimum_density,'targetOrdersPerDay':round(rate*86400),'requestedMeasurementSeconds':seconds,'measurementSeconds':min(seconds,stop_reason['elapsedSeconds'] if stop_reason else seconds),'recoveryAndVerificationSeconds':time.monotonic()-start-min(seconds,stop_reason['elapsedSeconds'] if stop_reason else seconds),'admissionStop':stop_reason,'peakMultiplier':4,'peakSecondsPer300':60,'offeredRequests':len(futures),'admittedInstances':len(by_id),'attempts':len(rows),'errors':self.request_errors,'apiRequestSeconds':{'p95':quantile(self.request_times,.95),'p99':quantile(self.request_times,.99)},'latencies':latencies,'allAttemptLatenciesIncludingFault':all_latencies,'faultWallInterval':self.fault_interval,'databaseBytes':int(lab.command(lab.COMPOSE+['exec','-T','postgres','psql','-U','regente','-d',self.dbname,'-Atc','SELECT pg_database_size(current_database())'])),'serverCPUSeconds':cpu_seconds(self.server),'agentCPUSeconds':[cpu_seconds(p) for p in self.agents],'serverPeakRSSBytes':maxrss,'collectorPeakRSSBytes':max(s['collectorRSS'] for s in self.samples),'agentPeakRSSBytes':[max(s['agentRSS'][i] for s in self.samples) for i in range(2)],'maxAuditLagSeconds':max(lag,default=0),'maxOutboxAgeSeconds':max(oldest,default=0),'correctness':{'conditions':True,'attemptIdentity':True,'retry':True,'effectsExactlyOnceInThisLab':True,'ledgerCheckpoint':True},'externalCanary':canary,'fault':fault_proof,'qualified':qualified,'allSamplesIncludeFault':True,'normalPerformanceExclusionSeconds':60+fault_proof['pausedSeconds'] if fault_proof else 0,'averageOfferedPerSecond':len(futures)/(min(seconds,stop_reason['elapsedSeconds'] if stop_reason else seconds)-(fault_proof['producerScheduledPauseSeconds'] if fault_proof else 0))}
+        return {'diagnostics':self.diagnostics,'agentSlots':self.agent_slots,'distinctGraphDefinitionsExecuted':len({r['definition_id'] for r in rows if r['definition_id'].startswith('graph-')}),'profiles':self.profiles,'performanceOptimizations':self.optimized,'graphDefinitions':28800 if self.perf else 0,'definitionReadSeconds':{'count':len(self.reader_samples),'p95':quantile(self.reader_samples,.95),'p99':quantile(self.reader_samples,.99)},'websocketReconnectSeconds':{'count':len(self.reconnect_samples),'p95':quantile(self.reconnect_samples,.95),'p99':quantile(self.reconnect_samples,.99)},'name':self.name,'businessCalendar':business_calendar,'businessCalendarAtEnd':end_calendar,'retainedRows':self.density,'minimumObservedTerminalRows':minimum_density,'targetOrdersPerDay':round(rate*86400),'requestedMeasurementSeconds':seconds,'measurementSeconds':min(seconds,stop_reason['elapsedSeconds'] if stop_reason else seconds),'recoveryAndVerificationSeconds':time.monotonic()-start-min(seconds,stop_reason['elapsedSeconds'] if stop_reason else seconds),'admissionStop':stop_reason,'peakMultiplier':4,'peakSecondsPer300':60,'offeredRequests':len(futures),'admittedInstances':len(by_id),'attempts':len(rows),'errors':self.request_errors,'apiRequestSeconds':{'p95':quantile(self.request_times,.95),'p99':quantile(self.request_times,.99)},'latencies':latencies,'allAttemptLatenciesIncludingFault':all_latencies,'faultWallInterval':self.fault_interval,'databaseBytes':int(lab.command(lab.COMPOSE+['exec','-T','postgres','psql','-U','regente','-d',self.dbname,'-Atc','SELECT pg_database_size(current_database())'])),'serverCPUSeconds':cpu_seconds(self.server),'agentCPUSeconds':[cpu_seconds(p) for p in self.agents],'serverPeakRSSBytes':maxrss,'collectorPeakRSSBytes':max(s['collectorRSS'] for s in self.samples),'agentPeakRSSBytes':[max(s['agentRSS'][i] for s in self.samples) for i in range(2)],'maxAuditLagSeconds':max(lag,default=0),'maxOutboxAgeSeconds':max(oldest,default=0),'correctness':{'conditions':True,'attemptIdentity':True,'retry':True,'effectsExactlyOnceInThisLab':True,'ledgerCheckpoint':True},'externalCanary':canary,'fault':fault_proof,'qualified':qualified,'allSamplesIncludeFault':True,'normalPerformanceExclusionSeconds':60+fault_proof['pausedSeconds'] if fault_proof else 0,'averageOfferedPerSecond':len(futures)/(min(seconds,stop_reason['elapsedSeconds'] if stop_reason else seconds)-(fault_proof['producerScheduledPauseSeconds'] if fault_proof else 0))}
 
     def close(self):
         for proc in self.agents:lab.stop_process(proc)
@@ -337,12 +383,14 @@ def main():
     p.add_argument('--perf',action='store_true',help='PERF qualification: 28800-definition graph, batches, incremental scheduling, REST readers and ten simultaneous reconnects')
     p.add_argument('--perf-day',action='store_true',help='Require a real 24-hour 28800/day recovery run before larger tiers; implies --perf')
     p.add_argument('--perf-compare',action='store_true',help='Compare full/single-record versus incremental/batched scheduling on identical 28800-definition workloads; no daily or capacity qualification')
+    p.add_argument('--perf-check',action='store_true',help='Short diagnostic with recovery and rollover; never grants 24-hour qualification')
     p.add_argument('--fast-slots',type=int,default=4,help='Explicit concurrency of the fast agent (default: 4)')
     p.add_argument('--slow-slots',type=int,default=1,help='Explicit concurrency of the pinned long-job agent (default: 1)')
     a=p.parse_args()
     if not (1<=a.fast_slots<=256 and 1<=a.slow_slots<=256):p.error('Agent slots must be within 1..256')
-    if a.perf_compare and a.perf_day:p.error('--perf-compare and --perf-day are separate profiles')
-    if a.perf_day or a.perf_compare:a.perf=True
+    if sum((a.perf_compare,a.perf_day,a.perf_check))>1:p.error('Select only one of --perf-compare, --perf-day or --perf-check')
+    if a.perf_day or a.perf_compare or a.perf_check:a.perf=True
+    if a.perf_check and a.tier_seconds<600:p.error('--perf-check requires at least 600 seconds to observe rollover and recovery')
     if a.tier_seconds<300 or a.soak_seconds<1800:raise SystemExit('Qualification requires tiers >=300s and developer soak >=1800s')
     # Mantém o projeto exclusivo e cleanup do runner, com PostgreSQL em volume
     # próprio. O tmpfs da integração curta não representa I/O de um ensaio diário.
@@ -380,7 +428,14 @@ def main():
             if var:args+=['-ldflags','-X '+var+'=capacity-'+report['sha'][:12]]
             lab.command(args+[source],timeout=300,name=name+'-build')
         report['postgresSettings']=lab.command(lab.COMPOSE+['exec','-T','postgres','psql','-U','regente','-d','regente_lab','-Atc',"SELECT name||'='||setting FROM pg_settings WHERE name IN ('fsync','synchronous_commit','shared_buffers','max_connections','full_page_writes')"])
-        if a.perf_compare:
+        if a.perf_check:
+            report['profile']='synthetic-perf-diagnostic';report['perfDayRequired']=False
+            report['qualificationScope']='Short regression only; no 24-hour or higher-tier qualification'
+            active=Profile('perfcheck28800',28800,env,dsn,tls,perf=True,fast_slots=a.fast_slots,slow_slots=a.slow_slots,rollover_after='5m')
+            report['perfCheck']=active.exercise(28800/86400,a.tier_seconds,fault=True)
+            active.close();active=None
+            validate_performance_check(report['perfCheck'])
+        elif a.perf_compare:
             report['profile']='synthetic-perf-comparison'
             report['comparisonScope']='Same schema33/cache/reservations; full scheduler with single-record export versus incremental scheduler with batches. No old-binary or VPS CPU claim.'
             report['comparison']={}
