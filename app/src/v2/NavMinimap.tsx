@@ -73,7 +73,7 @@ export default function NavMinimap({ nodes, lanes, edges, width, height, onNavig
     return () => svg.removeEventListener("wheel", wheel);
   }, [view, model.bounds, width, mapHeight, collapsed]);
   const selected = useMemo(() => selectionBounds(model.jobs), [model]);
-  const navigate = (x: number, y: number) => onNavigate(x, y, store.getState().transform[2]);
+  const navigate = (x: number, y: number) => onNavigate(x, y, store.getState().transform[2], 0);
   const focus = () => {
     if (!selected) return;
     const x = (selected.minX + selected.maxX) / 2, y = (selected.minY + selected.maxY) / 2;
@@ -155,15 +155,17 @@ export default function NavMinimap({ nodes, lanes, edges, width, height, onNavig
           <ViewportRect transform={transform} />
           {model.folders.map(folder => {
             const x = transform.offX + folder.x * transform.scale, y = transform.offY + folder.y * transform.scale, w = folder.width * transform.scale;
-            if (x > width || x + w < 0 || y > mapHeight || y + folder.height * transform.scale < 0 || w < 34) return null;
+            if (x > width || x + w < 0 || y > mapHeight || y + folder.height * transform.scale < 0) return null;
             const counts = Object.entries(folder.counts).filter(([, count]) => count).map(([status, count]) => `${STATUS_VISUALS[status as VisualStatus].label}: ${count}`).join(" · ");
-            const label = `${folder.team} (${Object.values(folder.counts).reduce((sum, count) => sum + count, 0)})`, available = Math.max(3, Math.floor((Math.min(w, width) - 6) / 6));
+            const labelWidth = Math.min(width, Math.max(64, w));
+            const labelX = Math.max(0, Math.min(width - labelWidth, x + (w - labelWidth) / 2));
+            const label = `${folder.team} (${Object.values(folder.counts).reduce((sum, count) => sum + count, 0)})`, available = Math.max(3, Math.floor((labelWidth - 6) / 6));
             return <g key={folder.id} data-folder={folder.id} className="v2-minimap-folder" tabIndex={0} role="button" aria-label={`Focus folder ${folder.team}, ${counts}`} onFocus={() => setTooltip(`${folder.team} · ${counts}`)}
               onBlur={() => setTooltip("")} onMouseEnter={() => { hoverFrame.current?.cancel(); setTooltip(`${folder.team} · ${counts}`); }} onMouseLeave={() => setTooltip("")}
               onKeyDown={event => { if (!event.ctrlKey && !event.metaKey && !event.altKey && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); event.stopPropagation(); navigate(folder.x + folder.width / 2, folder.y + folder.height / 2); } }}>
               <title>{folder.team} · {counts}</title>
-              <rect x={Math.max(0, x)} y={Math.max(0, y)} width={Math.min(w, width)} height={15} rx={2} />
-              <text x={Math.max(0, x) + 3} y={Math.max(0, y) + 11}>{label.length > available ? label.slice(0, available - 1) + "…" : label}</text>
+              <rect x={labelX} y={Math.max(0, y)} width={labelWidth} height={15} rx={2} />
+              <text x={labelX + 3} y={Math.max(0, y) + 11}>{label.length > available ? label.slice(0, available - 1) + "…" : label}</text>
             </g>;
           })}
           {!model.jobs.length && <text x={width / 2} y={mapHeight / 2} textAnchor="middle" fill="var(--v2-text-secondary)" fontSize={11}>No jobs</text>}

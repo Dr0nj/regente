@@ -251,8 +251,8 @@ mount/limites reais do banco, com espera por saúde antes do seed.
 
 ### Canvas / issue #39 — minimapa operacional e zoom ampliado (10/11/2026)
 
-**Em implementação local, sem push e sem aceite visual ainda.** Trabalho isolado
-na branch `codex/issue-39-canvas`, preservando o checkout/binário do ensaio diário.
+**Implementado e validado localmente em 11/11; publicação aguarda a trilha PERF.**
+Trabalho na branch `codex/issue-39-canvas`; checkout/binário do ensaio diário preservados.
 Issue: <https://github.com/Dr0nj/regente/issues/39>.
 
 Implementado: zoom principal **5%–400%**, percentual e Fit; detalhes acima de 55%,
@@ -273,8 +273,11 @@ mais atraso estimado do ponteiro. Guia: [navegação do canvas](canvas-navigatio
 alterados e testes; **17 testes puros** novos (incluindo 5.000 marcadores, cores,
 coordenadas/resize/drag, identidade incremental, substituição/remoção de jobs,
 regiões da mesma folder, troca de topologia, rajadas de status e atalhos/resize) + **3 regressões existentes**
-de status/recursos/seleção passaram. Cenário de browser com capturas claro/escuro
-17%/100% preparado, **ainda não executado**.
+de status/recursos/seleção passaram. Em 11/11, **build completo, lint sem avisos e
+4 cenários de browser passaram**: massa de 5.100 jobs, virtualização/foco, rajadas
+de status, zoom 17%/100%, limites 5%/400%, minimapa independente, drag real, teclado,
+resize, persistência e contraste mínimo 4,5:1. Capturas claro/escuro em 17% e
+detalhe em 100% revisadas visualmente. Pan não reconstrói layout/modelo/raster.
 
 **10/11 — acessibilidade adiantada:** alça de resize agora é botão focável (24px),
 setas ajustam tamanho, Shift amplia o passo e Home restaura; arrasto usa captura
@@ -286,13 +289,13 @@ Quatro testes puros de controles passaram. Browser preparado também para teclad
 foco, persistência após reload, limites 5%/400% e contraste do nome (4,5:1) em dois
 temas; esses cenários **não foram executados durante a medição diária**.
 
-**Para concluir após o PERF-05:** build/lint completo, execução dos testes de
-browser e revisão das imagens; conferir contraste, resize, drag real, Center,
-cliques e persistência; medir pan/zoom/status na massa completa sem rebuild de
-layout/mapa por frame. Cobrir o limite de 5% e 400% e o estado vazio. Não fechar
-issue nem publicar antes desses gates e do aceite da trilha PERF local. O teste
-diário continua exigindo PC/Docker ligados até seu término; nenhum teste pesado
-de UI foi iniciado junto à medição.
+**11/11 — correções confirmadas no browser:** folders estreitas mantêm rótulo e
+foco acessível; navegação pelo mapa preserva o zoom imediatamente, sem uma
+animação disputar a próxima interação. Testes pesados ocorreram depois do fim
+do ensaio diário reprovado, sem contaminar a medição.
+
+**Para concluir:** integrar localmente à main, validar o conjunto no Linux e
+publicar somente após o aceite da trilha PERF local; então fechar a issue.
 
 ### Onboarding Linux — incremento em validação (03/11/2026)
 
