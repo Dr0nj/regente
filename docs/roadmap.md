@@ -269,6 +269,18 @@ virada em cinco minutos e recuperação, **sem qualificar 24h nem patamares maio
 Tests do journal e contratos Python passaram; ensaio real curto/full ainda pendentes.
 Não houve reinício de 24h nem push. Avisar janela de energia antes da nova rodada.
 
+**11/11 — [PERF-05] regressão curta aprovada:** `d4ef17342005`, checkout limpo
+`9c3191b`, 600 s com PostgreSQL em volume e 128+64 slots. Catálogo de 28.800;
+311 definições distintas executadas, 316 instâncias/365 tentativas. Virada ODAT,
+pausa de 5 s detectada, recuperação, identidade/retry/condições, efeitos e ledger
+passaram. ACK p99 1,015 s; ready-to-start p99 1,035 s; maior outbox normal 0,913 s;
+lag de auditoria 1 s; pico RSS servidor 339,4 MiB. Nenhum erro de requisição.
+Leitura de definições p99 144,5 ms; 200 reconexões p99 51,6 ms. Não reproduziu o
+pico anterior de I/O e não identifica sua origem. Evidências preservadas em
+`outputs/regente-perf-local/check-d4ef17342005-final`. Não qualifica 24h ou escala.
+Conjunto com issue #39 integrado à main local; full Linux e smoke serão repetidos
+antes da nova medição diária. Nenhum push.
+
 ### Canvas / issue #39 — minimapa operacional e zoom ampliado (10/11/2026)
 
 **Implementado e validado localmente em 11/11; publicação aguarda a trilha PERF.**
