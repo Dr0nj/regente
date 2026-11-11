@@ -24,6 +24,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useReactFlow, useStore, useStoreApi } from "@xyflow/react";
 import { latestFrame } from "@/lib/latest-frame";
+import { CANVAS_MIN_ZOOM as MIN_ZOOM, CANVAS_MAX_ZOOM as MAX_ZOOM, canvasDetail, clampCanvasZoom } from "../canvas-zoom";
 import { recordCanvasMetric } from "../canvas-metrics";
 import {
   NODE_W,
@@ -47,8 +48,6 @@ type Extent = [[number, number], [number, number]];
 // panOnDrag nativos e reimplementamos os dois AQUI, com ganho reduzido — pedido do
 // usuário: "velocidade de puxar um pouco mais baixa que o normal". Ajuste fino é
 // só mexer nestas duas constantes.
-const MIN_ZOOM = 0.5; // = default do ReactFlow (usado no clamp do fit)
-const MAX_ZOOM = 2;   // = default do ReactFlow
 // Ganho do zoom por unidade de deltaY. O nativo equivale a ~ln2 (0.693, pois faz
 // 2^x); 0.35 ≈ metade da velocidade → passo mais suave por "clique" da roda.
 const WHEEL_ZOOM_GAIN = 0.35;
@@ -139,8 +138,9 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
   // clampCamera — TODO movimento (user ou programático) passa aqui.
   const clampCamera = useCallback((vp: SavedViewport): SavedViewport => {
     const { width, height } = storeApi.getState();
-    if (!width || !height) return vp;
-    return clampToExtent(vp.x, vp.y, vp.zoom, width, height, extentFor(vp.zoom, width, height));
+    const zoom = clampCanvasZoom(vp.zoom);
+    if (!width || !height) return { ...vp, zoom };
+    return clampToExtent(vp.x, vp.y, zoom, width, height, extentFor(zoom, width, height));
   }, [storeApi, extentFor]);
 
   // Hidrata as câmeras salvas 1× (não a cada render). null! + guarda = ref
@@ -194,6 +194,13 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
     cleanupStageRef.current?.();
     cleanupStageRef.current = null;
     if (!el) return;
+    // Um atributo no palco muda o LOD por limiar, sem assinar zoom em cada job.
+    const updateDetail = () => {
+      const detail = canvasDetail(storeApi.getState().transform[2]);
+      if (el.dataset.canvasDetail !== detail) el.dataset.canvasDetail = detail;
+    };
+    updateDetail();
+    const unsubscribeDetail = storeApi.subscribe(updateDetail);
 
     let pan: { cx: number; cy: number; vx: number; vy: number; zoom: number } | null = null;
     const insideFlow = (t: EventTarget | null): t is Element =>
@@ -270,8 +277,9 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
       el.removeEventListener("wheel", onWheel, true);
       el.removeEventListener("mousedown", onMouseDown);
       endPan();
+      unsubscribeDetail();
     };
-  }, [getViewport, apply]);
+  }, [getViewport, apply, storeApi]);
 
   // visibleInsets — o <ReactFlow> ocupa a largura INTEIRA do palco; a sidebar
   // (esquerda) e o drawer de detalhes (direita) são overlays absolutos POR CIMA
@@ -424,5 +432,13 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
     setPendingFocusId(null);
   }, [pendingFocusId, canvas.nodes, focusOnPoint, getViewport]);
 
-  return { panExtent, organizeView, focusOnPoint, focusNode, setPendingFocusId, attachStage };
+  const zoomBy = useCallback((factor: number) => {
+    const vp = getViewport(), { width, height } = storeApi.getState();
+    const { left, right } = visibleInsets();
+    const sx = left + Math.max(1, width - left - right) / 2, sy = height / 2;
+    const zoom = clampCanvasZoom(vp.zoom * factor);
+    apply({ x: sx - (sx - vp.x) / vp.zoom * zoom, y: sy - (sy - vp.y) / vp.zoom * zoom, zoom });
+  }, [getViewport, storeApi, visibleInsets, apply]);
+  return { panExtent, organizeView, focusOnPoint, focusNode, setPendingFocusId, attachStage, zoomBy, moveCamera: apply };
+
 }

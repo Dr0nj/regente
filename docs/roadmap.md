@@ -269,6 +269,54 @@ virada em cinco minutos e recuperação, **sem qualificar 24h nem patamares maio
 Tests do journal e contratos Python passaram; ensaio real curto/full ainda pendentes.
 Não houve reinício de 24h nem push. Avisar janela de energia antes da nova rodada.
 
+### Canvas / issue #39 — minimapa operacional e zoom ampliado (10/11/2026)
+
+**Implementado e validado localmente em 11/11; publicação aguarda a trilha PERF.**
+Trabalho na branch `codex/issue-39-canvas`; checkout/binário do ensaio diário preservados.
+Issue: <https://github.com/Dr0nj/regente/issues/39>.
+
+Implementado: zoom principal **5%–400%**, percentual e Fit; detalhes acima de 55%,
+modo compacto até 55% e blocos de status sólidos até 25% (inclui a referência de
+17%). Dimensões/posições e conexões preservadas. Cor compartilhada entre cards e
+mapa, fundo discreto no detalhe, textos neutros, seleção/relações destacadas e
+animação desativada quando oculta. Running ciano nesse par de superfícies segue a
+issue; outros indicadores existentes continuam com seus tokens anteriores.
+
+Minimapa: modelo derivado sem Dagre, folders com contagens/cores estáveis, duas
+grades de densidade, destaque de falha minoritária e execução, LOD independente,
+conexões agregadas/individuais, seleção existente, arrasto da viewport por rAF,
+clique/foco, Fit/Center, recolhimento persistente, teclado, legenda e tooltips.
+Sem cap ou remoção de jobs do modelo lógico. Métricas de build/patch/raster/viewport
+mais atraso estimado do ponteiro. Guia: [navegação do canvas](canvas-navigation.md).
+
+**Validação já executada:** TypeScript sem emissão/incremental; ESLint dos arquivos
+alterados e testes; **17 testes puros** novos (incluindo 5.000 marcadores, cores,
+coordenadas/resize/drag, identidade incremental, substituição/remoção de jobs,
+regiões da mesma folder, troca de topologia, rajadas de status e atalhos/resize) + **3 regressões existentes**
+de status/recursos/seleção passaram. Em 11/11, **build completo, lint sem avisos e
+4 cenários de browser passaram**: massa de 5.100 jobs, virtualização/foco, rajadas
+de status, zoom 17%/100%, limites 5%/400%, minimapa independente, drag real, teclado,
+resize, persistência e contraste mínimo 4,5:1. Capturas claro/escuro em 17% e
+detalhe em 100% revisadas visualmente. Pan não reconstrói layout/modelo/raster.
+
+**10/11 — acessibilidade adiantada:** alça de resize agora é botão focável (24px),
+setas ajustam tamanho, Shift amplia o passo e Home restaura; arrasto usa captura
+de ponteiro/rAF e cancela no unmount, sem listeners globais sobrando. Shift+setas
+no mapa move a câmera principal; atalhos Ctrl/Command/Alt do browser preservados.
+Legenda inclui todos os estados, relaciona botão/conteúdo para leitor de tela e
+fecha com Escape devolvendo foco. Gestos de ponteiros diferentes não se misturam.
+Quatro testes puros de controles passaram. Browser preparado também para teclado,
+foco, persistência após reload, limites 5%/400% e contraste do nome (4,5:1) em dois
+temas; esses cenários **não foram executados durante a medição diária**.
+
+**11/11 — correções confirmadas no browser:** folders estreitas mantêm rótulo e
+foco acessível; navegação pelo mapa preserva o zoom imediatamente, sem uma
+animação disputar a próxima interação. Testes pesados ocorreram depois do fim
+do ensaio diário reprovado, sem contaminar a medição.
+
+**Para concluir:** validar o conjunto integrado na main local no Linux e
+publicar somente após o aceite da trilha PERF local; então fechar a issue.
+
 ### Onboarding Linux — incremento em validação (03/11/2026)
 
 Remoção do roteamento/bloqueio por ambiente, compatibilidade dos agentes existentes,

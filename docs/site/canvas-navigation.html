@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canvas navigation and status · Regente Docs</title>
+<style>
+:root{--bg:#0b0f0d;--panel:#111613;--border:#1f2a24;--text:#d7e2dc;--muted:#8aa096;--accent:#11c76f;--code:#0f1512}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--text);
+  font:15px/1.65 -apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+nav.side{position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;flex:0 0 240px;
+  padding:20px 14px;border-right:1px solid var(--border);background:var(--panel)}
+nav.side .brand{font-weight:700;font-size:16px;margin-bottom:14px}
+nav.side .brand span{color:var(--muted);font-weight:400;font-size:12px}
+nav.side a{display:block;padding:6px 10px;margin:2px 0;border-radius:6px;color:var(--muted);
+  text-decoration:none;font-size:13px}
+nav.side a:hover{color:var(--text);background:rgba(17,199,111,.08)}
+nav.side a.active{color:var(--accent);background:rgba(17,199,111,.12);font-weight:600}
+main{flex:1;min-width:0;padding:32px 40px}
+article{max-width:880px;margin:0 auto}
+h1,h2,h3,h4{line-height:1.3;scroll-margin-top:16px}
+h1{font-size:28px;border-bottom:1px solid var(--border);padding-bottom:8px}
+h2{font-size:21px;margin-top:36px;border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:17px;margin-top:28px}
+a{color:var(--accent)}
+code{background:var(--code);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  font:12.5px/1.5 ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+pre code{background:none;border:none;padding:0}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel)}
+blockquote{margin:0;padding:8px 16px;border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;color:var(--muted)}
+img{max-width:100%}
+hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+footer{max-width:880px;margin:48px auto 0;padding-top:14px;border-top:1px solid var(--border);
+  color:var(--muted);font-size:12px}
+@media (max-width:760px){body{flex-direction:column}nav.side{position:static;height:auto;flex:none;
+  width:100%;border-right:none;border-bottom:1px solid var(--border)}main{padding:20px 16px}}
+</style>
+</head>
+<body>
+<nav class="side">
+<div class="brand">🎼 Regente <span>docs</span></div>
+<a href="index.html">Regente</a>
+<a href="server.html">regente-server</a>
+<a href="agent.html">regente-agent</a>
+<a href="app.html">Regente — Web (frontend)</a>
+<a href="deploy.html">Deploy — portable serverless</a>
+<a href="api.html">API reference</a>
+<a href="operations.html">⚙️ Running in production — enterprise readiness</a>
+<a href="conditions-events.html">Conditions — behaviour specification (SINGLE SOURCE OF TRUTH)</a>
+<a href="dr-backup.html">DR: database, unpublished drafts and configuration</a>
+<a href="slos.html">Control plane SLO objectives — regente-server</a>
+<a href="mcp.html">🤖 Regente MCP — the agent-native layer</a>
+<a href="architecture-future.html">Future architecture — serverless, portable, no lock-in</a>
+<a href="case-study.en.html">Case study — Regente: an enterprise-class, Git-native job orchestrator, from scratch</a>
+<a href="adr-i03-auth.html">I03: selectable authentication and browser sessions</a>
+<a href="adr-i08-attempts.html">ADR: Durable attempt contract in the I08 laboratory</a>
+<a href="adr-i09-agent-journal.html">Durable agent journal</a>
+<a href="agent-authentication.html">Agent authentication and upgrades</a>
+<a href="agent-identity.html">Agent identity and credential lifecycle</a>
+<a href="authenticated-releases.html">Authenticated releases</a>
+<a href="authentication.html">Authentication: local, hybrid or SSO</a>
+<a href="business-time.html">Business time</a>
+<a href="canvas-navigation.html" class="active">Canvas navigation and status</a>
+<a href="capacity.html">Capacity and progress</a>
+<a href="capacity-guarantees.html">Capacity evidence and guarantee limits</a>
+<a href="daily-recovery.html">Daily recovery</a>
+<a href="durable-execution.html">Durable execution and recovery</a>
+<a href="enterprise-compatibility.html">Enterprise compatibility contracts</a>
+<a href="execution-security.html">Execution security</a>
+<a href="failure-resistant-audit.html">Failure-resistant audit</a>
+<a href="frontend-performance.html">Frontend loading measurement</a>
+<a href="ha-resources.html">Shared resources and scheduler leadership</a>
+<a href="integration-baseline.html">Integration baseline and migration runbook</a>
+<a href="operational-recovery-pilot.html">Operational recovery and controlled pilot</a>
+<a href="performance-recovery.html">Performance and recovery operations</a>
+<a href="production-profile.html">Production profile</a>
+<a href="safe-bootstrap.html">Safe first startup</a>
+<a href="shared-drafts.html">Shared Design drafts</a>
+<a href="upgrades.html">Upgrade and recovery compatibility</a>
+<a href="verification.html">Verification profiles</a>
+<a href="web-events.html">Web event authorization</a>
+</nav>
+<main>
+<article>
+<h1 id="canvas-navigation-and-status">Canvas navigation and status</h1>
+<p>The main canvas keeps the complete logical workflow. Zoom and the navigation map do
+not impose a job limit or switch the view to a list. Positions and dependencies
+continue to come from the existing canvas layout.</p>
+<h2 id="main-canvas-zoom">Main canvas zoom</h2>
+<p>Use the mouse wheel or the <strong>− / +</strong> controls to zoom from <strong>5% to 400%</strong>. The
+percentage refers to the canvas, not browser zoom. <strong>Fit</strong> frames the workflow
+within the camera limits. Camera navigation respects the sidebar and detail drawer.</p>
+<table>
+<thead>
+<tr>
+<th>Canvas zoom</th>
+<th>Job appearance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Above 55%</td>
+<td>Name, type, status and existing badges</td>
+</tr>
+<tr>
+<td>Above 25%, up to 55%</td>
+<td>Name and status color; secondary details hidden</td>
+</tr>
+<tr>
+<td>5% through 25%</td>
+<td>Solid status blocks, with selection and relationship outlines</td>
+</tr>
+</tbody>
+</table>
+<p>At <strong>17%</strong>, cards become solid blocks. Their dimensions, positions, connections
+and click targets stay the same. Zooming back in restores details. Hidden status
+animations stop at the solid level. Hover text retains the job name and status.</p>
+<h2 id="navigation-map">Navigation map</h2>
+<p>Enable the minimap using the canvas preference. The map has its own zoom:
+changing it does not change the main canvas zoom.</p>
+<ul>
+<li>Click a region or a folder label to center the main canvas there.</li>
+<li>Drag the viewport rectangle to move the main camera while preserving its zoom.</li>
+<li>Use the wheel or <strong>− / +</strong> inside the minimap to explore its detail levels.</li>
+<li><strong>Fit</strong> restores the complete map; <strong>Center</strong> focuses the selected jobs.</li>
+<li>The arrow button toggles connections; <strong>?</strong> opens the status legend.</li>
+<li>Collapse/expand is remembered on this browser.</li>
+<li>With the map focused, arrow keys explore it, <strong>+ / −</strong> zoom, <strong>Home</strong> fits,
+and <strong>Enter</strong> centers the main canvas on the map center. <strong>Shift + arrow keys</strong>
+move the main camera without changing its zoom. Folder labels also accept
+<strong>Enter</strong> or <strong>Space</strong>. <strong>Escape</strong> closes the legend and returns focus to its
+button. Browser shortcuts using Ctrl, Command or Alt remain available.</li>
+<li>The resize handle is keyboard accessible: arrows change width/height by 10 px,
+<strong>Shift + arrows</strong> by 40 px, and <strong>Home</strong> restores the default size. Dragging
+resizes once per animation frame and ends on pointer cancellation.</li>
+</ul>
+<p>Distant views aggregate jobs into density cells. Intermediate views add failed,
+uncertain and running jobs, selections and aggregated connections. Close views
+show individual markers and connections, with names where space permits. Folder
+colors are stable by name, and tooltips show their complete names and status counts.
+A minority failure remains visible even when most jobs in the cell succeeded.</p>
+<h2 id="status-and-selection">Status and selection</h2>
+<p>Cards and map markers share status tokens. Detailed cards have a softly tinted
+surface, a strong status strip and neutral text. Solid cards use the same status
+color as the map. Selection and dependency outlines remain separate from status.</p>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Visual family</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Failed</td>
+<td>Red</td>
+</tr>
+<tr>
+<td>Uncertain</td>
+<td>Orange</td>
+</tr>
+<tr>
+<td>Running</td>
+<td>Cyan</td>
+</tr>
+<tr>
+<td>Held</td>
+<td>Amber</td>
+</tr>
+<tr>
+<td>Waiting for confirmation</td>
+<td>Violet</td>
+</tr>
+<tr>
+<td>Waiting for agent/resource</td>
+<td>Blue</td>
+</tr>
+<tr>
+<td>Waiting for conditions/time or inactive</td>
+<td>Gray</td>
+</tr>
+<tr>
+<td>Successful</td>
+<td>Green</td>
+</tr>
+</tbody>
+</table>
+<p>When multiple flags exist, display priority is failure, uncertainty, execution,
+hold, confirmation, agent/resource, condition, waiting, success, inactive. This
+only selects a visual treatment; it does not change scheduler gate ordering or
+job state. Themes adjust color tokens. The rest of the application's pre-existing
+status treatments are unchanged.</p>
+<h2 id="implementation-and-diagnostics">Implementation and diagnostics</h2>
+<p>The minimap derives positions, folder bounds and topology from the current canvas.
+Status patches update affected counts and preserve unrelated marker identities.
+Pan updates the viewport component without rebuilding or rasterizing the map.
+The heavy layers use Canvas 2D, not one React component per job. Pointer writes
+are coalesced with <code>requestAnimationFrame</code>.</p>
+<p>Opt-in development diagnostics in <code>canvas-metrics.ts</code> include
+<code>minimapModelBuild</code>, <code>minimapModelPatch</code>, <code>minimapRaster</code>,
+<code>minimapViewportUpdate</code> and <code>minimapPointerFrame</code>. Their bounded samples expose
+counts and durations; pointer samples include estimated dropped frames. These
+are diagnostic observations, not a capacity qualification.</p>
+<p>Pure geometry/status tests are in <code>app/e2e/minimap-model.spec.ts</code>. The browser
+scenario <code>canvas zoom LOD and minimap navigation</code> in <code>canvas-browser.spec.ts</code>
+produces dark/light screenshots at 17% and a detailed view at 100%. Run browser
+and load tests outside an active capacity measurement. Release readiness and
+remaining validation are tracked only in <a href="https://github.com/Dr0nj/regente/blob/main/docs/roadmap.md">the roadmap</a>.</p>
+</article>
+<footer>Generated by <code>regente docsite</code> — docs-as-code: edit the markdown in the repo, not this HTML.</footer>
+</main>
+</body>
+</html>
