@@ -281,6 +281,18 @@ pico anterior de I/O e não identifica sua origem. Evidências preservadas em
 Conjunto com issue #39 integrado à main local; full Linux e smoke serão repetidos
 antes da nova medição diária. Nenhum push.
 
+**11/11 — [PERF-05] conjunto integrado aprovado nos gates locais:** checkout
+limpo `8a7140a` passou os oito gates de `verify.sh --full` em 716 s, incluindo
+race de server/agent, lint/build, browser completo, PostgreSQL/NATS/OIDC e demos.
+Evidência `verify-c7f9c7212fd3`; integração `33031a412084`. Smoke nativo `--build`
+no mesmo commit passou instalação, reboot, upgrade, células mTLS e recuperação
+do coletor sem lacunas. Evidências copiadas para `outputs/regente-perf-local`.
+Nova medição diária preparada após encerrar os testes pesados, mantendo 128+64
+slots, PostgreSQL em volume e todos os limites. Janela informada: 11/11 ~09h55
+até 12/11 ~11h BRT, incluindo escala/recuperação; exige PC/Docker ativos. Registro
+ativo em `outputs/regente-perf-local/active-run.json`. Ainda sem aceite diário,
+sem implantação na VPS e sem push. Matriz adicional Node/Windows pertence à CI.
+
 ### Canvas / issue #39 — minimapa operacional e zoom ampliado (10/11/2026)
 
 **Implementado e validado localmente em 11/11; publicação aguarda a trilha PERF.**
@@ -326,8 +338,8 @@ foco acessível; navegação pelo mapa preserva o zoom imediatamente, sem uma
 animação disputar a próxima interação. Testes pesados ocorreram depois do fim
 do ensaio diário reprovado, sem contaminar a medição.
 
-**Para concluir:** validar o conjunto integrado na main local no Linux e
-publicar somente após o aceite da trilha PERF local; então fechar a issue.
+**Para concluir:** publicar somente após o aceite da trilha PERF local; então
+fechar a issue. Conjunto integrado aprovado no full Linux de 11/11.
 
 ### Onboarding Linux — incremento em validação (03/11/2026)
 
