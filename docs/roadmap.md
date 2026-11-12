@@ -293,6 +293,31 @@ até 12/11 ~11h BRT, incluindo escala/recuperação; exige PC/Docker ativos. Reg
 ativo em `outputs/regente-perf-local/active-run.json`. Ainda sem aceite diário,
 sem implantação na VPS e sem push. Matriz adicional Node/Windows pertence à CI.
 
+**12/11 — [PERF-05/06] rodada encerrada; diário aprovado, limite de escala encontrado:**
+`ed8db69403bc`, checkout limpo `8a7140a`, terminou às 10h37 BRT. O diário passou
+86.400 s, todas as 28.800 definições, 46.077 instâncias/53.276 tentativas, virada,
+pausa/recuperação e verificações de efeitos/recibos/ledger. CPU média amostrada
+0,05087 core; pico RSS servidor 401,5 MiB; ACK p99 normal 1,053 s;
+ready-to-start p99 1,133 s; maior outbox 1,731 s e lag auditoria 1,4 s.
+
+Patamar de taxa 100 mil/dia passou 300 s (559 instâncias/645 tentativas) e soak
+com falha/recuperação de 1.800 s (3.306 instâncias/3.821 tentativas). **Não são
+100 mil execuções observadas nem 24h nesse patamar.** Patamar 250 mil/dia falhou
+aos 20,067 s por ACK p99 e idade da outbox; relatório final ACK p99 8,097 s e
+outbox 7,283 s, ambos acima de 5 s. Um milhão/dia não executado. `status=passed`
+do runner significa envelope sintético encontrado em 100 mil/dia, não aprovação
+de todos os patamares. PERF-06 permanece aberto; aceite na VPS também.
+
+Diagnósticos em 10/20 s capturaram espera PostgreSQL por `WalSync`, locks de
+transação/tupla e `DataFileRead`, sem espera por conexão no pool nem OOM. Esses
+instantâneos orientam a investigação; não isolam ainda o custo dominante.
+Próximo passo: reproduzir o patamar curto e medir o caminho de entrega/ACK,
+contenção e commits duráveis antes de corrigir e repetir a escala. Não reduzir
+limites nem desativar durabilidade para aprovar. Nenhum novo ensaio iniciado.
+Evidências finais preservadas em `outputs/regente-perf-local/day-ed8db69403bc-final`;
+PC/Docker liberados da exigência de permanecer ligados. Publicação retida até
+concluir a trilha local solicitada; nenhum push.
+
 ### Canvas / issue #39 — minimapa operacional e zoom ampliado (10/11/2026)
 
 **Implementado e validado localmente em 11/11; publicação aguarda a trilha PERF.**
