@@ -92,313 +92,18 @@ Legenda: ✅ pronto · 🟡 em andamento · ⬜ a fazer · ⭐ recomendado · �
 
 ## 🔜 Backlog (o que falta)
 
-### 🔴 PERF — implementação urgente: CPU, auditoria e scheduler (07/11/2026)
+### PERF — limites e aceite operacional após a entrega local
 
-Status dos incrementos permanece somente neste Backlog; o plano vinculado contém
-contratos, sequência, evidências e critérios de aceite. A carga diária de 28.800
-jobs é o primeiro alvo real. Um milhão de execuções/dia continua não qualificado.
+Implementação PERF-00–05, campanha PERF-06 no envelope medido e issue #39
+concluídas localmente; evidências e histórico em §✅ Entregue. Escopo de publicação
+confirmado pelo usuário em 12/11: entregar com o limite medido, sem aguardar 1M/dia.
 
-| ID | Prioridade / ordem | Entrega pendente | Gate para conclusão |
-|---|---|---|---|
-| PERF-00 | P0, iniciar imediatamente | Baseline Go, pprof administrativo, métricas por etapa, diagnóstico operacional real | Perfis comparáveis e separação de CPU/steal, admissão/conclusão e readiness; sem expor dados sensíveis |
-| PERF-01 | P0, primeiro incremento | Índice de múltiplos produtores e snapshot compartilhado por geração consistente | Equivalência semântica, invalidação local, concorrência, cancelamento e ausência de publicação regressiva; reconexão não reconstrói grafo |
-| PERF-02 | P0, recuperação prioritária | ACK/result e auditoria atômicos ou recuperáveis pela identidade durável existente; capacidade reservada para conclusão | Fila cheia, retries e crash points não geram sucesso persistido convertido em 503 por auditoria HTTP nem novas intenções ilimitadas |
-| PERF-03 | P0, após contrato PERF-02 | Exportação em lotes duráveis com confirmação de prefixo contíguo | Perda de ACK, reinício, deduplicação, lacunas e integridade da cadeia; drenagem superior à produção no ensaio definido |
-| PERF-04 | P1, após estabilidade PERF-01–03 | Scheduler incremental sobre snapshots de instâncias e reconciliação limitada | Eventos por condição/horário/agente/recurso, recuperação de eventos perdidos e paridade de despacho |
-| PERF-05 | P0 transversal, fecha após PERF-04 | Qualificação integrada com 28.800 jobs e implantação nativa controlada | Um ciclo diário completo incluindo virada, falhas e recuperação; CPU/latência/filas comparadas com baseline |
-| PERF-06 | P2, depois de PERF-05 | Escala progressiva de 100 mil até 1 milhão de execuções/dia | Ensaio integrado por patamar, pico e hardware explícitos; nenhum aceite baseado apenas em inserção de registros |
-
-**Sequência ASAP:** PERF-00 acompanha todos os incrementos; entregar PERF-01,
-PERF-02 e PERF-03 em mudanças revisáveis e qualificadas, sem aguardar a reescrita do
-scheduler. PERF-02 pode ser investigado enquanto PERF-01 é validado. PERF-05 começa
-na primeira correção e acompanha cada implantação. Escala e novas funcionalidades
-não têm precedência sobre recuperação. Detalhes e testes no [plano](plans/2026-11-07-capacidade-recuperacao.md).
-
-**07/11 — PERF-01 em implementação, primeiro incremento:** normalização agora
-indexa produtores por base da condição, preservando ordem, múltiplos produtores,
-ações set-condition e referência de data do consumidor. Inclui comparação
-diferencial com o algoritmo anterior em 100 cenários determinísticos, duas
-passagens, e benchmark de 28.800 jobs. Medição local inicial: 10,05 ms por
-normalização (média de cinco iterações; Windows/i7; sem leitura de YAML/rede).
-Cache compartilhado, invalidação externa/coordenada, WebSocket sem reconstrução,
-perfil vivo, publicação/release e aceite na VPS continuam abertos; este incremento
-não encerra PERF-01 nem corrige a fila de auditoria.
-
-**09/11 — implementação local de PERF-00–04 e harness PERF-05/06, em validação:**
-pprof opt-in em loopback; métricas por etapa; snapshot compartilhado com leitura
-isolada, invalidação coordenada e reconciliação por conteúdo; ACK/result/output sem
-amplificação de intenções HTTP; reservas transacionais de auditoria (schema 33);
-exportação/coletor em lotes com ACK de prefixo; scheduler incremental opt-in com
-notificações duráveis, fila deduplicada, timers e reconciliação keyset limitada.
-Defaults preservam exportação de um registro e scheduler completo para rollout
-comparável. O [runbook](performance-recovery.md) documenta flags, migração e limites.
-
-Validação Windows/SQLite: suíte completa de server+agent passou (965 testes/subtestes,
-62 skips de gates externos), staticcheck dos dois módulos passou, paridade da suíte
-inteira do scheduler com incremental ligado passou. Testes adicionais cobrem
-migração 32→33 com trabalho em voo, rollback de reserva/estado/evidência, fila cheia,
-recibo perdido/restart com agente real, ACL, leitores concorrentes e ACK de lote
-inválido. PostgreSQL/Linux, race, smoke instalado, comparação de perfis vivos e
-ensaio diário ainda precisam de execução; não considerar os skips como aprovação.
-
-Microbenchmark em Windows/amd64, i7-13700KF, 28.800 WAITING bloqueadas por confirmação:
-244,95 ms/ciclo completo versus 1,12 ms/ciclo incremental aquecido (3 iterações;
-185,96 MB versus 4.301 bytes alocados por ciclo). Mede quiescência em SQLite,
-sem despacho/efeitos, não CPU da VPS nem throughput produtivo. View hash quente de
-28.800 definitions: 0,392 ms, 240 bytes, 5 alocações (10 iterações; sem HTTP/ACL SQL).
-
-O harness `scripts/capacity.py --perf-day` exige 24h reais, virada de ODAT e 28.800
-definições distintas efetivamente executadas antes dos patamares maiores. Inclui
-fan-out/cadeias curtas, agentes reais, efeitos COMMAND/HTTP, retry/output, dez
-reconexões simultâneas, CPU/heap profiles e amostras de steal separadas. Fixtures de
-linhas históricas não contam como execuções. O teste ainda não foi executado;
-**PERF-00–06 permanecem abertos e não houve push deste conjunto local**. Falta
-homologar topologia real e a implantação controlada; 1 milhão/dia segue sem aceite.
-
-**10/11 — validação local adicional:** contratos de migração 32→33, transações de
-auditoria e reenvio/ACK parcial de lotes passaram contra PostgreSQL 17.6 real,
-isolado em container descartável. Gates de receitas e site versionado passaram.
-Detector de corridas passou em storage/audit/execution no Linux; 33 testes de
-scripts passaram sem skips no Linux. A suíte incremental e os contratos PostgreSQL
-do scheduler passaram após corrigir o desempate por criação entre candidatos com
-o mesmo horário. O harness ganhou comparação explícita full/single versus
-incremental/batch e leitura limitada da cauda do journal, evitando carregá-lo
-inteiro na memória ao final de 24h. Ainda não equivale à suíte Linux integral,
-smoke de instalação ou ensaio diário. Checkpoint local precede esses gates; nenhum push autorizado antes de terminar a
-trilha local solicitada.
-
-**10/11 — gate Linux completo e falha real no ensaio integrado:** checkpoint
-`ca2b4d1` passou `verify.py --full` (server/agent, race, web, browser, integração
-PostgreSQL/NATS/OIDC e demos). A primeira comparação do checkpoint `c2899b0`
-falhou: eventos de 28.800 fixtures terminais atrasaram o consumidor novo até o
-timeout de recuperação. Correção local restringe triggers a entradas/saídas de
-WAITING/RUNNING; teste garante candidato novo no primeiro tick apesar do histórico.
-Outra correção preserva o cache no sync Git sem alteração de HEAD/arquivos
-rastreados; mudanças remotas e reset de edição local continuam invalidados.
-Essas correções precisam de nova comparação; o gate diário e rollout seguem abertos.
-
-**10/11 — [PERF-04] concorrência e [PERF-05] instalação nativa:** suíte completa
-do scheduler com `-race` passou no checkpoint `7b09619` (355,48 s); o teste de
-convergência tem prazo de correção separado dos limites de latência do laboratório.
-Smoke `--build` em Ubuntu/systemd passou: instalação, configuração inválida,
-reboot, execução real, nginx/WebSocket, upgrade local preservando estado, células
-isoladas/mTLS e coletor independente com interrupção/retomada sem lacuna. Isso não
-certifica atualização de release assinada nem implantação na VPS. Evidências
-locais: `perf-linux-scheduler-race-complete.log` e `perf-linux-native-install.log`.
-Os logs do laboratório agora identificam [PERF-05]/[PERF-06]. Nenhum push.
-
-**10/11 — [PERF-05] comparação curta aprovada e [PERF-01] novo custo identificado:**
-ensaio `29e9e16a6010`, checkout limpo `8fd9110`, runner Linux limitado a 4 CPUs/8 GiB,
-PostgreSQL real em tmpfs e agentes com 8+4 slots. Ambos os modos passaram 300 s, 163
-instâncias/188 tentativas cada, efeitos e ledger verificados. CPU total reportada
-do processo: 57,74 s full/single versus 29,70 s incremental/batch (−48,6%); pico RSS
-372,3 versus 258,8 MiB; p99 elegível→started 3,165 versus 2,803 s. Mesmo cache/schema
-33 nos dois modos; não compara binário antigo nem comprova CPU da VPS/24h. A falha
-anterior com 4+1 slots permanece preservada. Evidências locais exportadas para
-`outputs/regente-perf-local/comparison-29e9e16a6010/capacity.json`.
-
-O perfil revelou cópia de todo o catálogo na autorização de cada Force Order
-(38,6% das amostras CPU do primeiro intervalo no handler). Correção adicional
-consulta índice por ID da revisão, mantém ACL por folder e copia somente o job.
-Layout dos tipos mutáveis fica reutilizável para as cópias completas. Testes de
-isolamento/tipos, atualização/exclusão do índice, ACL/404 e suítes completas de
-storage/API passaram no Windows. Microbenchmark local: cópia de 28.800 definições
-52,48→23,57 ms; busca isolada de um job 1,56 µs/2.720 bytes. Essa correção passou
-`verify.py --full` em checkout limpo `955f5da` (oito gates, evidência
-`verify-00061974cb15`), incluindo race, browser, PostgreSQL/NATS/OIDC e demos.
-Smoke instalado `--build` também passou em `9bdb3bc`, com o mesmo runtime corrigido.
-Ensaio diário/escala/rollout seguem abertos.
-
-**10/11 — [PERF-05] comparação em volume aprovada:** `7bf37ead74ed`, checkout
-limpo `9bdb3bc`, mesmos 8+4 slots e 300 s por modo, 163 instâncias/188 tentativas
-em cada um. CPU do processo 40,09 s full/single versus 16,48 s incremental/batch
-(−58,9%); pico RSS 380,5→342,5 MiB; p99 elegível→started 4,859→3,103 s. Ambos
-passaram todos os limites, com efeitos e ledger verificados. Leituras REST e
-reconexões também passaram, sem alegação de melhora em todos os percentis.
-PostgreSQL confirmado em volume exclusivo, sem limite Docker próprio de CPU/RAM;
-runner limitado a 4 CPUs/8 GiB. Evidência `comparison-7bf37ead74ed/capacity.json` e
-inspeção separada `comparison-7bf37ead74ed-postgres-mount.json`, em
-`outputs/regente-perf-local`. Não misturar com a rodada anterior em tmpfs.
-Gate em execução: `--perf-day --fast-slots 128 --slow-slots 64`, dois agentes e limites
-de concorrência explícitos para acomodar os patamares maiores; configuração
-distinta da comparação 8+4. Não são 192 CPUs. Nenhum aceite de 24h/1 milhão ainda.
-
-**10/11 — [PERF-00/05] análise de evidências e preparação operacional:**
-`scripts/perf_report.py` resume JSONL em streaming, separa CPU do processo de steal,
-expõe lacunas/resets/amostras indisponíveis e preserva veredito do runner sem
-conceder aceite próprio. Sete testes de contrato e os dez testes do verificador
-passaram; o gate runner passa a incluir o analisador. Runbook detalha rollout
-systemd por etapa e reversão de flags sem downgrade do schema. A revisão PERF-04
-explicita custo de reconciliação por densidade e o limite da ordenação por lote;
-throughput não substitui aceite de recuperação/global FIFO.
-
-Ensaio diário `8950f1b43692`, binário/checkpoint `149d9f5`, preservado sem alterações:
-às 4.186 s de medição, 836 amostras, maior intervalo 5,02 s, nenhum reset CPU,
-CPU média amostrada 0,0456 core, pico RSS servidor 356 MiB, backlog auditoria máximo
-30 e final zero; maior atraso auditoria 1 s. É progresso parcial, não aceite.
-Precisa de PC/Docker ativos até o término; previsão inicial 11/11 13:54 BRT para
-24h, mais escala/recuperação. Nenhum push enquanto a trilha local estiver pendente.
-
-Preparação do gate diário: o grafo sintético passa a declarar `keepActive=2`,
-também registrado no relatório. Assim, admissões WAITING atravessam a virada por
-configuração explícita; não se altera a regra produtiva de expiração com zero.
-O ensaio de capacidade passa a usar Compose próprio com volume Docker descartável
-para o PostgreSQL, em vez do tmpfs da integração curta. Nova comparação deve
-registrar essa mudança de armazenamento; resultados antigos não são misturados.
-Os limites do runner não incluem o PostgreSQL separado (sem limite Docker
-explícito de CPU/RAM nesses ensaios); o relatório passa a inspecionar e registrar
-mount/limites reais do banco, com espera por saúde antes do seed.
-
-**11/11 — [PERF-05] rodada diária reprovada e diagnóstico preservado:**
-`8950f1b43692`/`149d9f5` encerrou após 44.901,507 s (12h28m21s), às ~02h23 BRT,
-por outbox 6,378 s > orçamento 5 s. Não houve execução dos patamares superiores.
-23.963 instâncias/27.706 tentativas; 23.958 definições distintas. Virada ODAT,
-recuperação da pausa, efeitos sem perda/duplicação no laboratório e ledger passaram.
-CPU média amostrada 0,04824 core; pico RSS 396,4 MiB. Na amostra de falha, espera
-de I/O do host ~42,9%, completed-tick age 6,86 s e CPU servidor +0,04 s em ~5 s.
-É evidência de espera de I/O concomitante, não prova de qual disco/operação a causou.
-Artefatos preservados em `outputs/regente-perf-local/day-8950f1b43692-final`.
-
-Correções locais em validação: agente confirma o aceite no ciclo de recebimento,
-drena no máximo 32 mensagens por tick mantendo limites de journal/concorrência e
-a autorização durável antes do efeito; índice parcial evita varrer tombstones
-concluídos na fila pendente sem removê-los. Runner captura PSI/cgroup, espera de
-transações PostgreSQL sem SQL/segredos e pilhas do servidor em alertas de latência;
-limites de reprovação permanecem intactos. `--perf-check --tier-seconds 600` testa
-virada em cinco minutos e recuperação, **sem qualificar 24h nem patamares maiores**.
-Tests do journal e contratos Python passaram; ensaio real curto/full ainda pendentes.
-Não houve reinício de 24h nem push. Avisar janela de energia antes da nova rodada.
-
-**11/11 — [PERF-05] regressão curta aprovada:** `d4ef17342005`, checkout limpo
-`9c3191b`, 600 s com PostgreSQL em volume e 128+64 slots. Catálogo de 28.800;
-311 definições distintas executadas, 316 instâncias/365 tentativas. Virada ODAT,
-pausa de 5 s detectada, recuperação, identidade/retry/condições, efeitos e ledger
-passaram. ACK p99 1,015 s; ready-to-start p99 1,035 s; maior outbox normal 0,913 s;
-lag de auditoria 1 s; pico RSS servidor 339,4 MiB. Nenhum erro de requisição.
-Leitura de definições p99 144,5 ms; 200 reconexões p99 51,6 ms. Não reproduziu o
-pico anterior de I/O e não identifica sua origem. Evidências preservadas em
-`outputs/regente-perf-local/check-d4ef17342005-final`. Não qualifica 24h ou escala.
-Conjunto com issue #39 integrado à main local; full Linux e smoke serão repetidos
-antes da nova medição diária. Nenhum push.
-
-**11/11 — [PERF-05] conjunto integrado aprovado nos gates locais:** checkout
-limpo `8a7140a` passou os oito gates de `verify.sh --full` em 716 s, incluindo
-race de server/agent, lint/build, browser completo, PostgreSQL/NATS/OIDC e demos.
-Evidência `verify-c7f9c7212fd3`; integração `33031a412084`. Smoke nativo `--build`
-no mesmo commit passou instalação, reboot, upgrade, células mTLS e recuperação
-do coletor sem lacunas. Evidências copiadas para `outputs/regente-perf-local`.
-Nova medição diária preparada após encerrar os testes pesados, mantendo 128+64
-slots, PostgreSQL em volume e todos os limites. Janela informada: 11/11 ~09h55
-até 12/11 ~11h BRT, incluindo escala/recuperação; exige PC/Docker ativos. Registro
-ativo em `outputs/regente-perf-local/active-run.json`. Ainda sem aceite diário,
-sem implantação na VPS e sem push. Matriz adicional Node/Windows pertence à CI.
-
-**12/11 — [PERF-05/06] rodada encerrada; diário aprovado, limite de escala encontrado:**
-`ed8db69403bc`, checkout limpo `8a7140a`, terminou às 10h37 BRT. O diário passou
-86.400 s, todas as 28.800 definições, 46.077 instâncias/53.276 tentativas, virada,
-pausa/recuperação e verificações de efeitos/recibos/ledger. CPU média amostrada
-0,05087 core; pico RSS servidor 401,5 MiB; ACK p99 normal 1,053 s;
-ready-to-start p99 1,133 s; maior outbox 1,731 s e lag auditoria 1,4 s.
-
-Patamar de taxa 100 mil/dia passou 300 s (559 instâncias/645 tentativas) e soak
-com falha/recuperação de 1.800 s (3.306 instâncias/3.821 tentativas). **Não são
-100 mil execuções observadas nem 24h nesse patamar.** Patamar 250 mil/dia falhou
-aos 20,067 s por ACK p99 e idade da outbox; relatório final ACK p99 8,097 s e
-outbox 7,283 s, ambos acima de 5 s. Um milhão/dia não executado. `status=passed`
-do runner significa envelope sintético encontrado em 100 mil/dia, não aprovação
-de todos os patamares. PERF-06 permanece aberto; aceite na VPS também.
-
-Diagnósticos em 10/20 s capturaram espera PostgreSQL por `WalSync`, locks de
-transação/tupla e `DataFileRead`, sem espera por conexão no pool nem OOM. Esses
-instantâneos orientam a investigação; não isolam ainda o custo dominante.
-Próximo passo: reproduzir o patamar curto e medir o caminho de entrega/ACK,
-contenção e commits duráveis antes de corrigir e repetir a escala. Não reduzir
-limites nem desativar durabilidade para aprovar. Nenhum novo ensaio iniciado.
-Evidências finais preservadas em `outputs/regente-perf-local/day-ed8db69403bc-final`;
-PC/Docker liberados da exigência de permanecer ligados. Publicação retida até
-concluir a trilha local solicitada; nenhum push.
-
-**12/11 — [PERF-06] correção de locks em validação:** PostgreSQL usa `FOR UPDATE`
-para os locks de auditoria, fila e ordem, sem UPDATE fictício que cria versões
-mortas; ordem global dos locks e commits síncronos preservados, SQLite inalterado.
-Teste PG verifica exclusão contra readers/writers concorrentes, CTID estável em
-transação sem mutação e integridade da auditoria após a liberação. Harness aceita
-`--perf-tier` para regressão isolada, explicitamente sem aceite diário/escala.
-Regressões e medição do patamar reprovado ainda em andamento; não há push/release.
-
-**12/11 — [PERF-06] lock isolado insuficiente; telemetria em validação:**
-`797e7e0e4cc0`/`a4fa74a` repetiu a reprovação em 250 mil/dia. A troca de locks
-passou contratos de DB/execução/scheduler/API, mas não resolve sozinha o gargalo.
-Novo incremento limita regravações idênticas de presença/last-used/capacidade a
-aproximadamente uma por segundo; mudanças de slots, disponibilidade e metadata
-continuam imediatas. Autenticação/revogação são consultadas em toda chamada,
-sem cache de autorização. Teste SQLite/PG conta escritas e prova renovação,
-mudança imediata e revogação. Medição comparável ainda pendente.
-
-**12/11 — [PERF-06] entrega intercalada e filtro de avaliações sem efeito:**
-`f50eb458e763`/`b20d6dd` ainda reprovou 250 mil/dia (ACK p99 7,674 s).
-Diagnóstico instrumentado `3a9b8cc022e3` confirmou até 2,864 s drenando pendências
-antes do próximo poll; requisições POST individuais ficaram abaixo de 96 ms.
-O agente agora intercala pendências e novas entregas e consulta COUNT pelo índice,
-sem reler envelopes/sysout de toda a fila para cada poll. Race/journal aprovados.
-Regressão exploratória `9ea313f352e9` reduziu ACK p99 para 5,983 s, mas ainda
-reprovou: não é aceite de escala. Scheduler agora pré-filtra ações/SLA por prazo
-e alertas de lentidão por histórico/regra antes de adquirir locks de escrita;
-revalidação transacional preservada. Contratos SQLite/PG de ações/SLA passaram.
-Medição conjunta `fa98b77f6bf8` reprovou aos 40,095 s: ACK p99 5,613 s,
-outbox 5,517 s; efeitos/recibos/ledger corretos. Checkpoints exploratórios com
-mudanças locais identificadas. Em 12/11 o usuário definiu publicar após validar
-a versão final, documentando o limite medido, sem reter a release até 1 milhão/dia.
-Validação final completa e repetição do envelope/recuperação pendentes; sem push.
-Nenhum novo ensaio de 24h. O diário anterior pertence exclusivamente a `8a7140a`.
-
-### Canvas / issue #39 — minimapa operacional e zoom ampliado (10/11/2026)
-
-**Implementado e validado localmente em 11/11; publicação aguarda a trilha PERF.**
-Trabalho na branch `codex/issue-39-canvas`; checkout/binário do ensaio diário preservados.
-Issue: <https://github.com/Dr0nj/regente/issues/39>.
-
-Implementado: zoom principal **5%–400%**, percentual e Fit; detalhes acima de 55%,
-modo compacto até 55% e blocos de status sólidos até 25% (inclui a referência de
-17%). Dimensões/posições e conexões preservadas. Cor compartilhada entre cards e
-mapa, fundo discreto no detalhe, textos neutros, seleção/relações destacadas e
-animação desativada quando oculta. Running ciano nesse par de superfícies segue a
-issue; outros indicadores existentes continuam com seus tokens anteriores.
-
-Minimapa: modelo derivado sem Dagre, folders com contagens/cores estáveis, duas
-grades de densidade, destaque de falha minoritária e execução, LOD independente,
-conexões agregadas/individuais, seleção existente, arrasto da viewport por rAF,
-clique/foco, Fit/Center, recolhimento persistente, teclado, legenda e tooltips.
-Sem cap ou remoção de jobs do modelo lógico. Métricas de build/patch/raster/viewport
-mais atraso estimado do ponteiro. Guia: [navegação do canvas](canvas-navigation.md).
-
-**Validação já executada:** TypeScript sem emissão/incremental; ESLint dos arquivos
-alterados e testes; **17 testes puros** novos (incluindo 5.000 marcadores, cores,
-coordenadas/resize/drag, identidade incremental, substituição/remoção de jobs,
-regiões da mesma folder, troca de topologia, rajadas de status e atalhos/resize) + **3 regressões existentes**
-de status/recursos/seleção passaram. Em 11/11, **build completo, lint sem avisos e
-4 cenários de browser passaram**: massa de 5.100 jobs, virtualização/foco, rajadas
-de status, zoom 17%/100%, limites 5%/400%, minimapa independente, drag real, teclado,
-resize, persistência e contraste mínimo 4,5:1. Capturas claro/escuro em 17% e
-detalhe em 100% revisadas visualmente. Pan não reconstrói layout/modelo/raster.
-
-**10/11 — acessibilidade adiantada:** alça de resize agora é botão focável (24px),
-setas ajustam tamanho, Shift amplia o passo e Home restaura; arrasto usa captura
-de ponteiro/rAF e cancela no unmount, sem listeners globais sobrando. Shift+setas
-no mapa move a câmera principal; atalhos Ctrl/Command/Alt do browser preservados.
-Legenda inclui todos os estados, relaciona botão/conteúdo para leitor de tela e
-fecha com Escape devolvendo foco. Gestos de ponteiros diferentes não se misturam.
-Quatro testes puros de controles passaram. Browser preparado também para teclado,
-foco, persistência após reload, limites 5%/400% e contraste do nome (4,5:1) em dois
-temas; esses cenários **não foram executados durante a medição diária**.
-
-**11/11 — correções confirmadas no browser:** folders estreitas mantêm rótulo e
-foco acessível; navegação pelo mapa preserva o zoom imediatamente, sem uma
-animação disputar a próxima interação. Testes pesados ocorreram depois do fim
-do ensaio diário reprovado, sem contaminar a medição.
-
-**Para concluir:** publicar somente após o aceite da trilha PERF local; então
-fechar a issue. Conjunto integrado aprovado no full Linux de 11/11.
+- **Escala acima de 100 mil/dia:** 250 mil/dia excedeu ACK/outbox; 1 milhão/dia
+  não executado. Exige novo desenvolvimento e qualificação, sem reduzir budgets.
+- **VPS:** implantação controlada, perfil vivo e comparação operacional ainda
+  pendentes; o laboratório local não mede a CPU da VPS nem encerra esse aceite.
+- **Publicação:** push/CI/release deste conjunto em andamento; não confundir
+  qualificação local com release já publicada.
 
 ### Onboarding Linux — incremento em validação (03/11/2026)
 
@@ -744,6 +449,343 @@ domínio**, não o binário.
 ---
 
 # ✅ Entregue *(tracking por tópico)*
+
+### PERF e issue #39 — implementação e qualificação local concluídas (12/11/2026)
+
+Código integrado em `9cbd6a3` (tag local `perf-final-20261112`), incluindo toda a
+branch `codex/issue-39-canvas`. Worktrees limpos. [Evidências versionadas](evidence/perf-2026-11-12.json).
+Publicação autorizada com o envelope medido; CI/release remotas ainda pendentes.
+
+- **PERF-00–04:** perfis/métricas administrativos, índice/cache compartilhado de
+  definições, reservas e recibos duráveis, exportação de prefixos em lote,
+  scheduler incremental/reconciliação, redução de escritas/locks sem efeito e
+  alternância de resultados/entregas no agente. Durabilidade e limites preservados.
+- **PERF-05:** diário `ed8db69403bc` no SHA `8a7140a`: 86.400 s, 28.800 definições,
+  46.077 instâncias/53.276 tentativas, virada e recuperação. **O diário pertence
+  a esse SHA anterior.** Versão final `9cbd6a3`: full `a10dc4c27545` aprovado em
+  958,605 s, 45 testes browser sem skip/flaky, integração `94a907bd131f`, instalação
+  systemd/reboot/upgrade/mTLS/coletor e regressão de 600 s `7293fa43ccbc` aprovados.
+- **PERF-06:** campanha final `d3c5f1569f62`, 4 CPU/8 GiB no runner, PostgreSQL em
+  volume separado sem limite próprio de CPU/RAM e 128+64 slots. 100 mil/dia passou
+  300 s e recuperação de 1.800 s (3.305 instâncias/3.820 tentativas); ACK p99 normal
+  1,199 s, ready-to-start 1,226 s, outbox máxima 1,029 s. **Taxa ofertada sintética,
+  não 100 mil execuções observadas nem garantia produtiva.** 250 mil reprovou aos
+  45,104 s (ACK p99 5,506 s, outbox 5,411 s); 1 milhão não executado. Fechamento
+  da campanha no limite medido conforme decisão do usuário; expansão permanece backlog.
+- **Issue #39:** minimapa operacional, folders/densidade/status/seleção, teclado,
+  resize e viewport por rAF; zoom principal 5%–400%, cards compactos e blocos
+  sólidos até 25% (inclui 17%). Modelo completo preservado, sem novo cap/Dagre no pan.
+  Build/lint/browser finais aprovados. Fechamento remoto acompanha o push.
+
+Os registros cronológicos abaixo são histórico, não substituem o status final acima.
+
+#### Histórico da implementação PERF (07–12/11/2026)
+
+Status dos incrementos permanece somente neste Backlog; o plano vinculado contém
+contratos, sequência, evidências e critérios de aceite. A carga diária de 28.800
+jobs é o primeiro alvo real. Um milhão de execuções/dia continua não qualificado.
+
+| ID | Prioridade / ordem | Entrega pendente | Gate para conclusão |
+|---|---|---|---|
+| PERF-00 | P0, iniciar imediatamente | Baseline Go, pprof administrativo, métricas por etapa, diagnóstico operacional real | Perfis comparáveis e separação de CPU/steal, admissão/conclusão e readiness; sem expor dados sensíveis |
+| PERF-01 | P0, primeiro incremento | Índice de múltiplos produtores e snapshot compartilhado por geração consistente | Equivalência semântica, invalidação local, concorrência, cancelamento e ausência de publicação regressiva; reconexão não reconstrói grafo |
+| PERF-02 | P0, recuperação prioritária | ACK/result e auditoria atômicos ou recuperáveis pela identidade durável existente; capacidade reservada para conclusão | Fila cheia, retries e crash points não geram sucesso persistido convertido em 503 por auditoria HTTP nem novas intenções ilimitadas |
+| PERF-03 | P0, após contrato PERF-02 | Exportação em lotes duráveis com confirmação de prefixo contíguo | Perda de ACK, reinício, deduplicação, lacunas e integridade da cadeia; drenagem superior à produção no ensaio definido |
+| PERF-04 | P1, após estabilidade PERF-01–03 | Scheduler incremental sobre snapshots de instâncias e reconciliação limitada | Eventos por condição/horário/agente/recurso, recuperação de eventos perdidos e paridade de despacho |
+| PERF-05 | P0 transversal, fecha após PERF-04 | Qualificação integrada com 28.800 jobs e implantação nativa controlada | Um ciclo diário completo incluindo virada, falhas e recuperação; CPU/latência/filas comparadas com baseline |
+| PERF-06 | P2, depois de PERF-05 | Escala progressiva de 100 mil até 1 milhão de execuções/dia | Ensaio integrado por patamar, pico e hardware explícitos; nenhum aceite baseado apenas em inserção de registros |
+
+**Sequência ASAP:** PERF-00 acompanha todos os incrementos; entregar PERF-01,
+PERF-02 e PERF-03 em mudanças revisáveis e qualificadas, sem aguardar a reescrita do
+scheduler. PERF-02 pode ser investigado enquanto PERF-01 é validado. PERF-05 começa
+na primeira correção e acompanha cada implantação. Escala e novas funcionalidades
+não têm precedência sobre recuperação. Detalhes e testes no [plano](plans/2026-11-07-capacidade-recuperacao.md).
+
+**07/11 — PERF-01 em implementação, primeiro incremento:** normalização agora
+indexa produtores por base da condição, preservando ordem, múltiplos produtores,
+ações set-condition e referência de data do consumidor. Inclui comparação
+diferencial com o algoritmo anterior em 100 cenários determinísticos, duas
+passagens, e benchmark de 28.800 jobs. Medição local inicial: 10,05 ms por
+normalização (média de cinco iterações; Windows/i7; sem leitura de YAML/rede).
+Cache compartilhado, invalidação externa/coordenada, WebSocket sem reconstrução,
+perfil vivo, publicação/release e aceite na VPS continuam abertos; este incremento
+não encerra PERF-01 nem corrige a fila de auditoria.
+
+**09/11 — implementação local de PERF-00–04 e harness PERF-05/06, em validação:**
+pprof opt-in em loopback; métricas por etapa; snapshot compartilhado com leitura
+isolada, invalidação coordenada e reconciliação por conteúdo; ACK/result/output sem
+amplificação de intenções HTTP; reservas transacionais de auditoria (schema 33);
+exportação/coletor em lotes com ACK de prefixo; scheduler incremental opt-in com
+notificações duráveis, fila deduplicada, timers e reconciliação keyset limitada.
+Defaults preservam exportação de um registro e scheduler completo para rollout
+comparável. O [runbook](performance-recovery.md) documenta flags, migração e limites.
+
+Validação Windows/SQLite: suíte completa de server+agent passou (965 testes/subtestes,
+62 skips de gates externos), staticcheck dos dois módulos passou, paridade da suíte
+inteira do scheduler com incremental ligado passou. Testes adicionais cobrem
+migração 32→33 com trabalho em voo, rollback de reserva/estado/evidência, fila cheia,
+recibo perdido/restart com agente real, ACL, leitores concorrentes e ACK de lote
+inválido. PostgreSQL/Linux, race, smoke instalado, comparação de perfis vivos e
+ensaio diário ainda precisam de execução; não considerar os skips como aprovação.
+
+Microbenchmark em Windows/amd64, i7-13700KF, 28.800 WAITING bloqueadas por confirmação:
+244,95 ms/ciclo completo versus 1,12 ms/ciclo incremental aquecido (3 iterações;
+185,96 MB versus 4.301 bytes alocados por ciclo). Mede quiescência em SQLite,
+sem despacho/efeitos, não CPU da VPS nem throughput produtivo. View hash quente de
+28.800 definitions: 0,392 ms, 240 bytes, 5 alocações (10 iterações; sem HTTP/ACL SQL).
+
+O harness `scripts/capacity.py --perf-day` exige 24h reais, virada de ODAT e 28.800
+definições distintas efetivamente executadas antes dos patamares maiores. Inclui
+fan-out/cadeias curtas, agentes reais, efeitos COMMAND/HTTP, retry/output, dez
+reconexões simultâneas, CPU/heap profiles e amostras de steal separadas. Fixtures de
+linhas históricas não contam como execuções. O teste ainda não foi executado;
+**PERF-00–06 permanecem abertos e não houve push deste conjunto local**. Falta
+homologar topologia real e a implantação controlada; 1 milhão/dia segue sem aceite.
+
+**10/11 — validação local adicional:** contratos de migração 32→33, transações de
+auditoria e reenvio/ACK parcial de lotes passaram contra PostgreSQL 17.6 real,
+isolado em container descartável. Gates de receitas e site versionado passaram.
+Detector de corridas passou em storage/audit/execution no Linux; 33 testes de
+scripts passaram sem skips no Linux. A suíte incremental e os contratos PostgreSQL
+do scheduler passaram após corrigir o desempate por criação entre candidatos com
+o mesmo horário. O harness ganhou comparação explícita full/single versus
+incremental/batch e leitura limitada da cauda do journal, evitando carregá-lo
+inteiro na memória ao final de 24h. Ainda não equivale à suíte Linux integral,
+smoke de instalação ou ensaio diário. Checkpoint local precede esses gates; nenhum push autorizado antes de terminar a
+trilha local solicitada.
+
+**10/11 — gate Linux completo e falha real no ensaio integrado:** checkpoint
+`ca2b4d1` passou `verify.py --full` (server/agent, race, web, browser, integração
+PostgreSQL/NATS/OIDC e demos). A primeira comparação do checkpoint `c2899b0`
+falhou: eventos de 28.800 fixtures terminais atrasaram o consumidor novo até o
+timeout de recuperação. Correção local restringe triggers a entradas/saídas de
+WAITING/RUNNING; teste garante candidato novo no primeiro tick apesar do histórico.
+Outra correção preserva o cache no sync Git sem alteração de HEAD/arquivos
+rastreados; mudanças remotas e reset de edição local continuam invalidados.
+Essas correções precisam de nova comparação; o gate diário e rollout seguem abertos.
+
+**10/11 — [PERF-04] concorrência e [PERF-05] instalação nativa:** suíte completa
+do scheduler com `-race` passou no checkpoint `7b09619` (355,48 s); o teste de
+convergência tem prazo de correção separado dos limites de latência do laboratório.
+Smoke `--build` em Ubuntu/systemd passou: instalação, configuração inválida,
+reboot, execução real, nginx/WebSocket, upgrade local preservando estado, células
+isoladas/mTLS e coletor independente com interrupção/retomada sem lacuna. Isso não
+certifica atualização de release assinada nem implantação na VPS. Evidências
+locais: `perf-linux-scheduler-race-complete.log` e `perf-linux-native-install.log`.
+Os logs do laboratório agora identificam [PERF-05]/[PERF-06]. Nenhum push.
+
+**10/11 — [PERF-05] comparação curta aprovada e [PERF-01] novo custo identificado:**
+ensaio `29e9e16a6010`, checkout limpo `8fd9110`, runner Linux limitado a 4 CPUs/8 GiB,
+PostgreSQL real em tmpfs e agentes com 8+4 slots. Ambos os modos passaram 300 s, 163
+instâncias/188 tentativas cada, efeitos e ledger verificados. CPU total reportada
+do processo: 57,74 s full/single versus 29,70 s incremental/batch (−48,6%); pico RSS
+372,3 versus 258,8 MiB; p99 elegível→started 3,165 versus 2,803 s. Mesmo cache/schema
+33 nos dois modos; não compara binário antigo nem comprova CPU da VPS/24h. A falha
+anterior com 4+1 slots permanece preservada. Evidências locais exportadas para
+`outputs/regente-perf-local/comparison-29e9e16a6010/capacity.json`.
+
+O perfil revelou cópia de todo o catálogo na autorização de cada Force Order
+(38,6% das amostras CPU do primeiro intervalo no handler). Correção adicional
+consulta índice por ID da revisão, mantém ACL por folder e copia somente o job.
+Layout dos tipos mutáveis fica reutilizável para as cópias completas. Testes de
+isolamento/tipos, atualização/exclusão do índice, ACL/404 e suítes completas de
+storage/API passaram no Windows. Microbenchmark local: cópia de 28.800 definições
+52,48→23,57 ms; busca isolada de um job 1,56 µs/2.720 bytes. Essa correção passou
+`verify.py --full` em checkout limpo `955f5da` (oito gates, evidência
+`verify-00061974cb15`), incluindo race, browser, PostgreSQL/NATS/OIDC e demos.
+Smoke instalado `--build` também passou em `9bdb3bc`, com o mesmo runtime corrigido.
+Ensaio diário/escala/rollout seguem abertos.
+
+**10/11 — [PERF-05] comparação em volume aprovada:** `7bf37ead74ed`, checkout
+limpo `9bdb3bc`, mesmos 8+4 slots e 300 s por modo, 163 instâncias/188 tentativas
+em cada um. CPU do processo 40,09 s full/single versus 16,48 s incremental/batch
+(−58,9%); pico RSS 380,5→342,5 MiB; p99 elegível→started 4,859→3,103 s. Ambos
+passaram todos os limites, com efeitos e ledger verificados. Leituras REST e
+reconexões também passaram, sem alegação de melhora em todos os percentis.
+PostgreSQL confirmado em volume exclusivo, sem limite Docker próprio de CPU/RAM;
+runner limitado a 4 CPUs/8 GiB. Evidência `comparison-7bf37ead74ed/capacity.json` e
+inspeção separada `comparison-7bf37ead74ed-postgres-mount.json`, em
+`outputs/regente-perf-local`. Não misturar com a rodada anterior em tmpfs.
+Gate em execução: `--perf-day --fast-slots 128 --slow-slots 64`, dois agentes e limites
+de concorrência explícitos para acomodar os patamares maiores; configuração
+distinta da comparação 8+4. Não são 192 CPUs. Nenhum aceite de 24h/1 milhão ainda.
+
+**10/11 — [PERF-00/05] análise de evidências e preparação operacional:**
+`scripts/perf_report.py` resume JSONL em streaming, separa CPU do processo de steal,
+expõe lacunas/resets/amostras indisponíveis e preserva veredito do runner sem
+conceder aceite próprio. Sete testes de contrato e os dez testes do verificador
+passaram; o gate runner passa a incluir o analisador. Runbook detalha rollout
+systemd por etapa e reversão de flags sem downgrade do schema. A revisão PERF-04
+explicita custo de reconciliação por densidade e o limite da ordenação por lote;
+throughput não substitui aceite de recuperação/global FIFO.
+
+Ensaio diário `8950f1b43692`, binário/checkpoint `149d9f5`, preservado sem alterações:
+às 4.186 s de medição, 836 amostras, maior intervalo 5,02 s, nenhum reset CPU,
+CPU média amostrada 0,0456 core, pico RSS servidor 356 MiB, backlog auditoria máximo
+30 e final zero; maior atraso auditoria 1 s. É progresso parcial, não aceite.
+Precisa de PC/Docker ativos até o término; previsão inicial 11/11 13:54 BRT para
+24h, mais escala/recuperação. Nenhum push enquanto a trilha local estiver pendente.
+
+Preparação do gate diário: o grafo sintético passa a declarar `keepActive=2`,
+também registrado no relatório. Assim, admissões WAITING atravessam a virada por
+configuração explícita; não se altera a regra produtiva de expiração com zero.
+O ensaio de capacidade passa a usar Compose próprio com volume Docker descartável
+para o PostgreSQL, em vez do tmpfs da integração curta. Nova comparação deve
+registrar essa mudança de armazenamento; resultados antigos não são misturados.
+Os limites do runner não incluem o PostgreSQL separado (sem limite Docker
+explícito de CPU/RAM nesses ensaios); o relatório passa a inspecionar e registrar
+mount/limites reais do banco, com espera por saúde antes do seed.
+
+**11/11 — [PERF-05] rodada diária reprovada e diagnóstico preservado:**
+`8950f1b43692`/`149d9f5` encerrou após 44.901,507 s (12h28m21s), às ~02h23 BRT,
+por outbox 6,378 s > orçamento 5 s. Não houve execução dos patamares superiores.
+23.963 instâncias/27.706 tentativas; 23.958 definições distintas. Virada ODAT,
+recuperação da pausa, efeitos sem perda/duplicação no laboratório e ledger passaram.
+CPU média amostrada 0,04824 core; pico RSS 396,4 MiB. Na amostra de falha, espera
+de I/O do host ~42,9%, completed-tick age 6,86 s e CPU servidor +0,04 s em ~5 s.
+É evidência de espera de I/O concomitante, não prova de qual disco/operação a causou.
+Artefatos preservados em `outputs/regente-perf-local/day-8950f1b43692-final`.
+
+Correções locais em validação: agente confirma o aceite no ciclo de recebimento,
+drena no máximo 32 mensagens por tick mantendo limites de journal/concorrência e
+a autorização durável antes do efeito; índice parcial evita varrer tombstones
+concluídos na fila pendente sem removê-los. Runner captura PSI/cgroup, espera de
+transações PostgreSQL sem SQL/segredos e pilhas do servidor em alertas de latência;
+limites de reprovação permanecem intactos. `--perf-check --tier-seconds 600` testa
+virada em cinco minutos e recuperação, **sem qualificar 24h nem patamares maiores**.
+Tests do journal e contratos Python passaram; ensaio real curto/full ainda pendentes.
+Não houve reinício de 24h nem push. Avisar janela de energia antes da nova rodada.
+
+**11/11 — [PERF-05] regressão curta aprovada:** `d4ef17342005`, checkout limpo
+`9c3191b`, 600 s com PostgreSQL em volume e 128+64 slots. Catálogo de 28.800;
+311 definições distintas executadas, 316 instâncias/365 tentativas. Virada ODAT,
+pausa de 5 s detectada, recuperação, identidade/retry/condições, efeitos e ledger
+passaram. ACK p99 1,015 s; ready-to-start p99 1,035 s; maior outbox normal 0,913 s;
+lag de auditoria 1 s; pico RSS servidor 339,4 MiB. Nenhum erro de requisição.
+Leitura de definições p99 144,5 ms; 200 reconexões p99 51,6 ms. Não reproduziu o
+pico anterior de I/O e não identifica sua origem. Evidências preservadas em
+`outputs/regente-perf-local/check-d4ef17342005-final`. Não qualifica 24h ou escala.
+Conjunto com issue #39 integrado à main local; full Linux e smoke serão repetidos
+antes da nova medição diária. Nenhum push.
+
+**11/11 — [PERF-05] conjunto integrado aprovado nos gates locais:** checkout
+limpo `8a7140a` passou os oito gates de `verify.sh --full` em 716 s, incluindo
+race de server/agent, lint/build, browser completo, PostgreSQL/NATS/OIDC e demos.
+Evidência `verify-c7f9c7212fd3`; integração `33031a412084`. Smoke nativo `--build`
+no mesmo commit passou instalação, reboot, upgrade, células mTLS e recuperação
+do coletor sem lacunas. Evidências copiadas para `outputs/regente-perf-local`.
+Nova medição diária preparada após encerrar os testes pesados, mantendo 128+64
+slots, PostgreSQL em volume e todos os limites. Janela informada: 11/11 ~09h55
+até 12/11 ~11h BRT, incluindo escala/recuperação; exige PC/Docker ativos. Registro
+ativo em `outputs/regente-perf-local/active-run.json`. Ainda sem aceite diário,
+sem implantação na VPS e sem push. Matriz adicional Node/Windows pertence à CI.
+
+**12/11 — [PERF-05/06] rodada encerrada; diário aprovado, limite de escala encontrado:**
+`ed8db69403bc`, checkout limpo `8a7140a`, terminou às 10h37 BRT. O diário passou
+86.400 s, todas as 28.800 definições, 46.077 instâncias/53.276 tentativas, virada,
+pausa/recuperação e verificações de efeitos/recibos/ledger. CPU média amostrada
+0,05087 core; pico RSS servidor 401,5 MiB; ACK p99 normal 1,053 s;
+ready-to-start p99 1,133 s; maior outbox 1,731 s e lag auditoria 1,4 s.
+
+Patamar de taxa 100 mil/dia passou 300 s (559 instâncias/645 tentativas) e soak
+com falha/recuperação de 1.800 s (3.306 instâncias/3.821 tentativas). **Não são
+100 mil execuções observadas nem 24h nesse patamar.** Patamar 250 mil/dia falhou
+aos 20,067 s por ACK p99 e idade da outbox; relatório final ACK p99 8,097 s e
+outbox 7,283 s, ambos acima de 5 s. Um milhão/dia não executado. `status=passed`
+do runner significa envelope sintético encontrado em 100 mil/dia, não aprovação
+de todos os patamares. PERF-06 permanece aberto; aceite na VPS também.
+
+Diagnósticos em 10/20 s capturaram espera PostgreSQL por `WalSync`, locks de
+transação/tupla e `DataFileRead`, sem espera por conexão no pool nem OOM. Esses
+instantâneos orientam a investigação; não isolam ainda o custo dominante.
+Próximo passo: reproduzir o patamar curto e medir o caminho de entrega/ACK,
+contenção e commits duráveis antes de corrigir e repetir a escala. Não reduzir
+limites nem desativar durabilidade para aprovar. Nenhum novo ensaio iniciado.
+Evidências finais preservadas em `outputs/regente-perf-local/day-ed8db69403bc-final`;
+PC/Docker liberados da exigência de permanecer ligados. Publicação retida até
+concluir a trilha local solicitada; nenhum push.
+
+**12/11 — [PERF-06] correção de locks em validação:** PostgreSQL usa `FOR UPDATE`
+para os locks de auditoria, fila e ordem, sem UPDATE fictício que cria versões
+mortas; ordem global dos locks e commits síncronos preservados, SQLite inalterado.
+Teste PG verifica exclusão contra readers/writers concorrentes, CTID estável em
+transação sem mutação e integridade da auditoria após a liberação. Harness aceita
+`--perf-tier` para regressão isolada, explicitamente sem aceite diário/escala.
+Regressões e medição do patamar reprovado ainda em andamento; não há push/release.
+
+**12/11 — [PERF-06] lock isolado insuficiente; telemetria em validação:**
+`797e7e0e4cc0`/`a4fa74a` repetiu a reprovação em 250 mil/dia. A troca de locks
+passou contratos de DB/execução/scheduler/API, mas não resolve sozinha o gargalo.
+Novo incremento limita regravações idênticas de presença/last-used/capacidade a
+aproximadamente uma por segundo; mudanças de slots, disponibilidade e metadata
+continuam imediatas. Autenticação/revogação são consultadas em toda chamada,
+sem cache de autorização. Teste SQLite/PG conta escritas e prova renovação,
+mudança imediata e revogação. Medição comparável ainda pendente.
+
+**12/11 — [PERF-06] entrega intercalada e filtro de avaliações sem efeito:**
+`f50eb458e763`/`b20d6dd` ainda reprovou 250 mil/dia (ACK p99 7,674 s).
+Diagnóstico instrumentado `3a9b8cc022e3` confirmou até 2,864 s drenando pendências
+antes do próximo poll; requisições POST individuais ficaram abaixo de 96 ms.
+O agente agora intercala pendências e novas entregas e consulta COUNT pelo índice,
+sem reler envelopes/sysout de toda a fila para cada poll. Race/journal aprovados.
+Regressão exploratória `9ea313f352e9` reduziu ACK p99 para 5,983 s, mas ainda
+reprovou: não é aceite de escala. Scheduler agora pré-filtra ações/SLA por prazo
+e alertas de lentidão por histórico/regra antes de adquirir locks de escrita;
+revalidação transacional preservada. Contratos SQLite/PG de ações/SLA passaram.
+Medição conjunta `fa98b77f6bf8` reprovou aos 40,095 s: ACK p99 5,613 s,
+outbox 5,517 s; efeitos/recibos/ledger corretos. Checkpoints exploratórios com
+mudanças locais identificadas. Em 12/11 o usuário definiu publicar após validar
+a versão final, documentando o limite medido, sem reter a release até 1 milhão/dia.
+Validação final completa e repetição do envelope/recuperação pendentes; sem push.
+Nenhum novo ensaio de 24h. O diário anterior pertence exclusivamente a `8a7140a`.
+
+#### Histórico do canvas / issue #39 — minimapa operacional e zoom ampliado (10/11/2026)
+
+**Implementado e validado localmente em 11/11; publicação aguarda a trilha PERF.**
+Trabalho na branch `codex/issue-39-canvas`; checkout/binário do ensaio diário preservados.
+Issue: <https://github.com/Dr0nj/regente/issues/39>.
+
+Implementado: zoom principal **5%–400%**, percentual e Fit; detalhes acima de 55%,
+modo compacto até 55% e blocos de status sólidos até 25% (inclui a referência de
+17%). Dimensões/posições e conexões preservadas. Cor compartilhada entre cards e
+mapa, fundo discreto no detalhe, textos neutros, seleção/relações destacadas e
+animação desativada quando oculta. Running ciano nesse par de superfícies segue a
+issue; outros indicadores existentes continuam com seus tokens anteriores.
+
+Minimapa: modelo derivado sem Dagre, folders com contagens/cores estáveis, duas
+grades de densidade, destaque de falha minoritária e execução, LOD independente,
+conexões agregadas/individuais, seleção existente, arrasto da viewport por rAF,
+clique/foco, Fit/Center, recolhimento persistente, teclado, legenda e tooltips.
+Sem cap ou remoção de jobs do modelo lógico. Métricas de build/patch/raster/viewport
+mais atraso estimado do ponteiro. Guia: [navegação do canvas](canvas-navigation.md).
+
+**Validação já executada:** TypeScript sem emissão/incremental; ESLint dos arquivos
+alterados e testes; **17 testes puros** novos (incluindo 5.000 marcadores, cores,
+coordenadas/resize/drag, identidade incremental, substituição/remoção de jobs,
+regiões da mesma folder, troca de topologia, rajadas de status e atalhos/resize) + **3 regressões existentes**
+de status/recursos/seleção passaram. Em 11/11, **build completo, lint sem avisos e
+4 cenários de browser passaram**: massa de 5.100 jobs, virtualização/foco, rajadas
+de status, zoom 17%/100%, limites 5%/400%, minimapa independente, drag real, teclado,
+resize, persistência e contraste mínimo 4,5:1. Capturas claro/escuro em 17% e
+detalhe em 100% revisadas visualmente. Pan não reconstrói layout/modelo/raster.
+
+**10/11 — acessibilidade adiantada:** alça de resize agora é botão focável (24px),
+setas ajustam tamanho, Shift amplia o passo e Home restaura; arrasto usa captura
+de ponteiro/rAF e cancela no unmount, sem listeners globais sobrando. Shift+setas
+no mapa move a câmera principal; atalhos Ctrl/Command/Alt do browser preservados.
+Legenda inclui todos os estados, relaciona botão/conteúdo para leitor de tela e
+fecha com Escape devolvendo foco. Gestos de ponteiros diferentes não se misturam.
+Quatro testes puros de controles passaram. Browser preparado também para teclado,
+foco, persistência após reload, limites 5%/400% e contraste do nome (4,5:1) em dois
+temas; esses cenários **não foram executados durante a medição diária**.
+
+**11/11 — correções confirmadas no browser:** folders estreitas mantêm rótulo e
+foco acessível; navegação pelo mapa preserva o zoom imediatamente, sem uma
+animação disputar a próxima interação. Testes pesados ocorreram depois do fim
+do ensaio diário reprovado, sem contaminar a medição.
+
+**Para concluir:** publicar somente após o aceite da trilha PERF local; então
+fechar a issue. Conjunto integrado aprovado no full Linux de 11/11.
 
 ### REV-02 / REV-04 / REV-05 — entregues na v0.2.62, 02/11/2026
 
@@ -2431,6 +2473,8 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-11-12 — PERF + issue #39 prontos para publicação:** conjunto `9cbd6a3`, full/native/virada/recuperação aprovados; envelope sintético final 100 mil/dia, 250 mil reprovado e 1M não qualificado. Diário anterior vinculado a `8a7140a`; zoom 5%–400% e minimapa integrados. [Evidências](evidence/perf-2026-11-12.json).
 
 ### 04/11/2026 — Canvas hierárquico
 

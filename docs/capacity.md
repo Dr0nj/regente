@@ -207,3 +207,38 @@ for flags, schema 33 migration, budgets and limits. Short `--perf` runs do not c
 the daily gate or establish a one-million-per-day capacity claim.
 
 `--perf-compare` runs a short comparison on identical graph workloads, using full scheduling/single-record export versus incremental scheduling/batches. Both runs share the new cache and reservation contracts. Container CPU/memory limits and collector RSS are recorded; daily and scale gates remain separate.
+
+## Local performance qualification — 2026-11-12
+
+The final runtime source is `9cbd6a3f7ec65c80ddf6e2d365a4826baf29e0d6`.
+[Versioned evidence](evidence/perf-2026-11-12.json) records source identities,
+report hashes, budgets, failures and qualification boundaries. Full verification
+passed all eight gates, including 45 browser tests with no skips or flaky results;
+the separate systemd install/reboot/upgrade and collector recovery smoke passed.
+
+| Final-source phase | Measurement | Instances / attempts | ACK p99 | Ready-to-start p99 | Result |
+|---|---:|---:|---:|---:|---|
+| 28,800/day regression, rollover and recovery | 600 s | 317 / 366 | 1.030 s | 1.083 s | Passed |
+| 100,000/day offered-rate tier | 300 s | 559 / 645 | 1.279 s | 1.346 s | Passed |
+| 100,000/day recovery soak | 1,800 s | 3,305 / 3,820 | 1.199 s | 1.226 s | Passed |
+| 250,000/day offered-rate tier | 45.104 s | 526 / 607 | 5.506 s | 5.596 s | Failed ACK/outbox budgets |
+
+Normal latency columns exclude only the declared injected-fault window. The soak
+recovered progress after agent resumption; effects, receipts and collector
+checkpoint verification passed. The 250,000 tier retained its failure and drained
+admitted work for verification. The 1,000,000 tier was not run.
+
+The lab used one Linux Docker host, a runner limited to four CPU cores and 8 GiB,
+two agents with 128+64 slots, and PostgreSQL in a separate durable volume with no
+explicit database container CPU/RAM limit. Offered peaks were four times the
+nominal rate. **100,000/day is a short synthetic offered-rate envelope**, not
+100,000 observed executions, a 24-hour qualification at that rate, or a production
+VPS guarantee.
+
+The earlier full daily run belongs specifically to source `8a7140a`: 86,400 seconds,
+28,800 distinct definitions, 46,077 instances and 53,276 attempts, including rollover
+and recovery. Its normal ACK p99 was 1.053 seconds and peak server RSS 401.5 MiB.
+That daily evidence is retained separately; the final runtime source received the
+short rollover/recovery regression and progressive-scale soak described above,
+not another full daily run. Production VPS rollout/CPU comparison and higher
+capacity remain outside this local qualification.

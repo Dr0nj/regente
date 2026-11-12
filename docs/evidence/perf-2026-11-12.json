@@ -1,0 +1,1336 @@
+{
+  "scope": "Local synthetic evidence. Production/VPS acceptance and 1M/day capacity are not qualified.",
+  "dailyQualification": {
+    "run": "day-ed8db69403bc-final",
+    "sourceSha": "8a7140ab7c2f997bb6a64d99a3468e9cbf65f3c5",
+    "dirty": false,
+    "reportSHA256": "461f3648d7e58fdcf9debbd713bc5e15609896f6c2678e94706b1024f582888a",
+    "runnerStatus": "passed",
+    "daily": {
+      "name": "perfday28800",
+      "agentSlots": {
+        "fast": 128,
+        "slow": 64
+      },
+      "retainedRows": 28800,
+      "distinctGraphDefinitionsExecuted": 28800,
+      "targetOrdersPerDay": 28800,
+      "measurementSeconds": 86400,
+      "requestedMeasurementSeconds": 86400,
+      "admittedInstances": 46077,
+      "attempts": 53276,
+      "qualified": true,
+      "admissionStop": null,
+      "latencies": {
+        "ready_to_planned": {
+          "observations": 46028,
+          "p95": 0.092,
+          "p99": 0.106,
+          "max": 3.839
+        },
+        "planned_to_accepted": {
+          "observations": 53221,
+          "p95": 1.002,
+          "p99": 1.053,
+          "max": 4.672
+        },
+        "accepted_to_started": {
+          "observations": 53221,
+          "p95": 0.035,
+          "p99": 0.048,
+          "max": 0.353
+        },
+        "started_to_finished": {
+          "observations": 53221,
+          "p95": 3.171,
+          "p99": 3.255,
+          "max": 8.12
+        },
+        "ready_to_started": {
+          "observations": 46028,
+          "p95": 1.066,
+          "p99": 1.133,
+          "max": 4.926
+        }
+      },
+      "serverPeakRSSBytes": 420966400,
+      "maxOutboxAgeSeconds": 1.731,
+      "maxAuditLagSeconds": 1.4,
+      "correctness": {
+        "conditions": true,
+        "attemptIdentity": true,
+        "retry": true,
+        "effectsExactlyOnceInThisLab": true,
+        "ledgerCheckpoint": true
+      },
+      "fault": {
+        "healthReady": true,
+        "stalledProgressDetected": true,
+        "error": "No durable canary progress by deadline; instance=probe-FORCE-005253",
+        "pausedSeconds": 5.078391663999355,
+        "producerScheduledPauseSeconds": 6.535282987002574,
+        "restoredProgress": {
+          "passed": true,
+          "instanceId": "probe-FORCE-005258",
+          "executionId": "3b220ac5d757e9efa4c843ce54ee489f",
+          "seconds": 1.456880691999686
+        }
+      }
+    },
+    "tiers": [
+      {
+        "name": "tier28800",
+        "agentSlots": {
+          "fast": 128,
+          "slow": 64
+        },
+        "retainedRows": 28800,
+        "distinctGraphDefinitionsExecuted": 160,
+        "targetOrdersPerDay": 28800,
+        "measurementSeconds": 300,
+        "requestedMeasurementSeconds": 300,
+        "admittedInstances": 163,
+        "attempts": 188,
+        "qualified": true,
+        "admissionStop": null,
+        "latencies": {
+          "ready_to_planned": {
+            "observations": 163,
+            "p95": 0.03,
+            "p99": 0.042,
+            "max": 0.047
+          },
+          "planned_to_accepted": {
+            "observations": 188,
+            "p95": 0.968,
+            "p99": 1.017,
+            "max": 1.032
+          },
+          "accepted_to_started": {
+            "observations": 188,
+            "p95": 0.037,
+            "p99": 0.058,
+            "max": 0.171
+          },
+          "started_to_finished": {
+            "observations": 188,
+            "p95": 3.143,
+            "p99": 3.288,
+            "max": 3.341
+          },
+          "ready_to_started": {
+            "observations": 163,
+            "p95": 0.999,
+            "p99": 1.049,
+            "max": 1.082
+          }
+        },
+        "serverPeakRSSBytes": 322105344,
+        "maxOutboxAgeSeconds": 0.802,
+        "maxAuditLagSeconds": 0.9,
+        "correctness": {
+          "conditions": true,
+          "attemptIdentity": true,
+          "retry": true,
+          "effectsExactlyOnceInThisLab": true,
+          "ledgerCheckpoint": true
+        },
+        "fault": null
+      },
+      {
+        "name": "tier100000",
+        "agentSlots": {
+          "fast": 128,
+          "slow": 64
+        },
+        "retainedRows": 100000,
+        "distinctGraphDefinitionsExecuted": 556,
+        "targetOrdersPerDay": 100000,
+        "measurementSeconds": 300,
+        "requestedMeasurementSeconds": 300,
+        "admittedInstances": 559,
+        "attempts": 645,
+        "qualified": true,
+        "admissionStop": null,
+        "latencies": {
+          "ready_to_planned": {
+            "observations": 559,
+            "p95": 0.049,
+            "p99": 0.065,
+            "max": 0.103
+          },
+          "planned_to_accepted": {
+            "observations": 645,
+            "p95": 1.151,
+            "p99": 1.389,
+            "max": 1.601
+          },
+          "accepted_to_started": {
+            "observations": 645,
+            "p95": 0.046,
+            "p99": 0.062,
+            "max": 0.108
+          },
+          "started_to_finished": {
+            "observations": 645,
+            "p95": 3.664,
+            "p99": 4.429,
+            "max": 5.155
+          },
+          "ready_to_started": {
+            "observations": 559,
+            "p95": 1.177,
+            "p99": 1.416,
+            "max": 1.637
+          }
+        },
+        "serverPeakRSSBytes": 376365056,
+        "maxOutboxAgeSeconds": 0.96,
+        "maxAuditLagSeconds": 0.9,
+        "correctness": {
+          "conditions": true,
+          "attemptIdentity": true,
+          "retry": true,
+          "effectsExactlyOnceInThisLab": true,
+          "ledgerCheckpoint": true
+        },
+        "fault": null
+      },
+      {
+        "name": "tier250000",
+        "agentSlots": {
+          "fast": 128,
+          "slow": 64
+        },
+        "retainedRows": 250000,
+        "distinctGraphDefinitionsExecuted": 233,
+        "targetOrdersPerDay": 250000,
+        "measurementSeconds": 20.067300920010894,
+        "requestedMeasurementSeconds": 300,
+        "admittedInstances": 236,
+        "attempts": 272,
+        "qualified": false,
+        "admissionStop": {
+          "elapsedSeconds": 20.067300920010894,
+          "exceeded": [
+            "ack_p99",
+            "oldest_outbox"
+          ]
+        },
+        "latencies": {
+          "ready_to_planned": {
+            "observations": 236,
+            "p95": 0.113,
+            "p99": 0.152,
+            "max": 0.161
+          },
+          "planned_to_accepted": {
+            "observations": 272,
+            "p95": 7.75,
+            "p99": 8.097,
+            "max": 8.188
+          },
+          "accepted_to_started": {
+            "observations": 272,
+            "p95": 0.074,
+            "p99": 0.11,
+            "max": 0.153
+          },
+          "started_to_finished": {
+            "observations": 272,
+            "p95": 8.833,
+            "p99": 12.38,
+            "max": 12.925
+          },
+          "ready_to_started": {
+            "observations": 236,
+            "p95": 7.836,
+            "p99": 8.21,
+            "max": 8.294
+          }
+        },
+        "serverPeakRSSBytes": 237228032,
+        "maxOutboxAgeSeconds": 7.283,
+        "maxAuditLagSeconds": 0.7,
+        "correctness": {
+          "conditions": true,
+          "attemptIdentity": true,
+          "retry": true,
+          "effectsExactlyOnceInThisLab": true,
+          "ledgerCheckpoint": true
+        },
+        "fault": null
+      }
+    ],
+    "soak": {
+      "name": "soak100000",
+      "agentSlots": {
+        "fast": 128,
+        "slow": 64
+      },
+      "retainedRows": 100000,
+      "distinctGraphDefinitionsExecuted": 3301,
+      "targetOrdersPerDay": 100000,
+      "measurementSeconds": 1800,
+      "requestedMeasurementSeconds": 1800,
+      "admittedInstances": 3306,
+      "attempts": 3821,
+      "qualified": true,
+      "admissionStop": null,
+      "latencies": {
+        "ready_to_planned": {
+          "observations": 3146,
+          "p95": 0.042,
+          "p99": 0.058,
+          "max": 0.214
+        },
+        "planned_to_accepted": {
+          "observations": 3643,
+          "p95": 1.145,
+          "p99": 1.354,
+          "max": 1.696
+        },
+        "accepted_to_started": {
+          "observations": 3643,
+          "p95": 0.043,
+          "p99": 0.058,
+          "max": 0.324
+        },
+        "started_to_finished": {
+          "observations": 3643,
+          "p95": 3.748,
+          "p99": 4.505,
+          "max": 5.237
+        },
+        "ready_to_started": {
+          "observations": 3146,
+          "p95": 1.182,
+          "p99": 1.38,
+          "max": 1.986
+        }
+      },
+      "serverPeakRSSBytes": 367554560,
+      "maxOutboxAgeSeconds": 1.25,
+      "maxAuditLagSeconds": 1.0,
+      "correctness": {
+        "conditions": true,
+        "attemptIdentity": true,
+        "retry": true,
+        "effectsExactlyOnceInThisLab": true,
+        "ledgerCheckpoint": true
+      },
+      "fault": {
+        "healthReady": true,
+        "stalledProgressDetected": true,
+        "error": "No durable canary progress by deadline; instance=probe-FORCE-132155",
+        "pausedSeconds": 5.057850114011671,
+        "producerScheduledPauseSeconds": 6.4984116760024335,
+        "restoredProgress": {
+          "passed": true,
+          "instanceId": "probe-FORCE-132200",
+          "executionId": "8db7fbd9e7d89e28bac331eadb00139b",
+          "seconds": 1.4405525519978255
+        }
+      }
+    },
+    "cgroupLimits": {
+      "cpu.max": "400000 100000",
+      "memory.max": "8589934592"
+    },
+    "postgresContainer": {
+      "dataMount": {
+        "Type": "volume",
+        "Name": "regente-it-ed8db69403bc_capacity-postgres-data",
+        "Destination": "/var/lib/postgresql/data"
+      },
+      "limits": {
+        "NanoCpus": 0,
+        "Memory": 0,
+        "MemorySwap": 0
+      }
+    },
+    "postgresSettings": "fsync=on\nfull_page_writes=on\nmax_connections=100\nshared_buffers=16384\nsynchronous_commit=on",
+    "supportedEnvelope": 100000
+  },
+  "exploratoryFailures": [
+    {
+      "run": "perf06-locks-797e7e0e4cc0",
+      "sourceSha": "a4fa74a676ee28af6925967203d9149c77a6fcd5",
+      "dirty": false,
+      "reportSHA256": "37758e2f977d6effcb18ec3b697239cd9d438ff6df8e5dcba20d2bad3b249c12",
+      "runnerStatus": "failed",
+      "outcome": {
+        "name": "probe250000",
+        "agentSlots": {
+          "fast": 128,
+          "slow": 64
+        },
+        "retainedRows": 250000,
+        "distinctGraphDefinitionsExecuted": 233,
+        "targetOrdersPerDay": 250000,
+        "measurementSeconds": 20.050361468995106,
+        "requestedMeasurementSeconds": 300,
+        "admittedInstances": 236,
+        "attempts": 272,
+        "qualified": false,
+        "admissionStop": {
+          "elapsedSeconds": 20.050361468995106,
+          "exceeded": [
+            "oldest_outbox"
+          ]
+        },
+        "latencies": {
+          "ready_to_planned": {
+            "observations": 236,
+            "p95": 0.084,
+            "p99": 0.1,
+            "max": 0.103
+          },
+          "planned_to_accepted": {
+            "observations": 272,
+            "p95": 5.78,
+            "p99": 8.756,
+            "max": 8.782
+          },
+          "accepted_to_started": {
+            "observations": 272,
+            "p95": 0.069,
+            "p99": 0.123,
+            "max": 0.349
+          },
+          "started_to_finished": {
+            "observations": 272,
+            "p95": 8.249,
+            "p99": 12.342,
+            "max": 13.083
+          },
+          "ready_to_started": {
+            "observations": 236,
+            "p95": 5.885,
+            "p99": 8.82,
+            "max": 8.869
+          }
+        },
+        "serverPeakRSSBytes": 253448192,
+        "maxOutboxAgeSeconds": 5.155,
+        "maxAuditLagSeconds": 0.7,
+        "correctness": {
+          "conditions": true,
+          "attemptIdentity": true,
+          "retry": true,
+          "effectsExactlyOnceInThisLab": true,
+          "ledgerCheckpoint": true
+        },
+        "fault": null
+      }
+    },
+    {
+      "run": "perf06-presence-f50eb458e763",
+      "sourceSha": "b20d6dd421ecd67c8886f407e928804134afddcd",
+      "dirty": false,
+      "reportSHA256": "1a2f6e60c153ca30a158dca8dc06cade28493dc303573946a10c61bce8c3ffc0",
+      "runnerStatus": "failed",
+      "outcome": {
+        "name": "probe250000",
+        "agentSlots": {
+          "fast": 128,
+          "slow": 64
+        },
+        "retainedRows": 250000,
+        "distinctGraphDefinitionsExecuted": 232,
+        "targetOrdersPerDay": 250000,
+        "measurementSeconds": 20.04327951199957,
+        "requestedMeasurementSeconds": 300,
+        "admittedInstances": 235,
+        "attempts": 271,
+        "qualified": false,
+        "admissionStop": {
+          "elapsedSeconds": 20.04327951199957,
+          "exceeded": [
+            "ack_p99"
+          ]
+        },
+        "latencies": {
+          "ready_to_planned": {
+            "observations": 235,
+            "p95": 0.095,
+            "p99": 0.127,
+            "max": 0.134
+          },
+          "planned_to_accepted": {
+            "observations": 271,
+            "p95": 6.642,
+            "p99": 7.674,
+            "max": 7.797
+          },
+          "accepted_to_started": {
+            "observations": 271,
+            "p95": 0.065,
+            "p99": 0.08,
+            "max": 0.085
+          },
+          "started_to_finished": {
+            "observations": 271,
+            "p95": 7.464,
+            "p99": 12.608,
+            "max": 13.521
+          },
+          "ready_to_started": {
+            "observations": 235,
+            "p95": 6.759,
+            "p99": 7.781,
+            "max": 7.907
+          }
+        },
+        "serverPeakRSSBytes": 239837184,
+        "maxOutboxAgeSeconds": 4.649,
+        "maxAuditLagSeconds": 0.8,
+        "correctness": {
+          "conditions": true,
+          "attemptIdentity": true,
+          "retry": true,
+          "effectsExactlyOnceInThisLab": true,
+          "ledgerCheckpoint": true
+        },
+        "fault": null
+      }
+    },
+    {
+      "run": "perf06-fair-9ea313f352e9",
+      "sourceSha": "b20d6dd421ecd67c8886f407e928804134afddcd",
+      "dirty": true,
+      "reportSHA256": "39288cbcacb099bd43ae4edab507f092ff95dd0c44b23df4f2de6f0d44d05b68",
+      "runnerStatus": "failed",
+      "outcome": {
+        "name": "probe250000",
+        "agentSlots": {
+          "fast": 128,
+          "slow": 64
+        },
+        "retainedRows": 250000,
+        "distinctGraphDefinitionsExecuted": 349,
+        "targetOrdersPerDay": 250000,
+        "measurementSeconds": 30.06946573300229,
+        "requestedMeasurementSeconds": 300,
+        "admittedInstances": 352,
+        "attempts": 407,
+        "qualified": false,
+        "admissionStop": {
+          "elapsedSeconds": 30.06946573300229,
+          "exceeded": [
+            "ack_p99",
+            "oldest_outbox"
+          ]
+        },
+        "latencies": {
+          "ready_to_planned": {
+            "observations": 352,
+            "p95": 0.1,
+            "p99": 0.177,
+            "max": 0.299
+          },
+          "planned_to_accepted": {
+            "observations": 407,
+            "p95": 5.563,
+            "p99": 5.983,
+            "max": 6.113
+          },
+          "accepted_to_started": {
+            "observations": 407,
+            "p95": 0.066,
+            "p99": 0.089,
+            "max": 0.178
+          },
+          "started_to_finished": {
+            "observations": 407,
+            "p95": 11.012,
+            "p99": 12.675,
+            "max": 13.529
+          },
+          "ready_to_started": {
+            "observations": 352,
+            "p95": 5.718,
+            "p99": 6.112,
+            "max": 6.182
+          }
+        },
+        "serverPeakRSSBytes": 238845952,
+        "maxOutboxAgeSeconds": 5.327,
+        "maxAuditLagSeconds": 0.5,
+        "correctness": {
+          "conditions": true,
+          "attemptIdentity": true,
+          "retry": true,
+          "effectsExactlyOnceInThisLab": true,
+          "ledgerCheckpoint": true
+        },
+        "fault": null
+      }
+    },
+    {
+      "run": "perf06-prefilter-fa98b77f6bf8",
+      "sourceSha": "b20d6dd421ecd67c8886f407e928804134afddcd",
+      "dirty": true,
+      "reportSHA256": "d1ee0aaf85e297a166019e990c00bd9a04ed8bcc561b3805a2f3aa163511476c",
+      "runnerStatus": "failed",
+      "outcome": {
+        "name": "probe250000",
+        "agentSlots": {
+          "fast": 128,
+          "slow": 64
+        },
+        "retainedRows": 250000,
+        "distinctGraphDefinitionsExecuted": 465,
+        "targetOrdersPerDay": 250000,
+        "measurementSeconds": 40.0951986680011,
+        "requestedMeasurementSeconds": 300,
+        "admittedInstances": 468,
+        "attempts": 540,
+        "qualified": false,
+        "admissionStop": {
+          "elapsedSeconds": 40.0951986680011,
+          "exceeded": [
+            "ack_p99",
+            "oldest_outbox"
+          ]
+        },
+        "latencies": {
+          "ready_to_planned": {
+            "observations": 468,
+            "p95": 0.08,
+            "p99": 0.107,
+            "max": 0.151
+          },
+          "planned_to_accepted": {
+            "observations": 540,
+            "p95": 5.212,
+            "p99": 5.613,
+            "max": 6.068
+          },
+          "accepted_to_started": {
+            "observations": 540,
+            "p95": 0.064,
+            "p99": 0.078,
+            "max": 0.117
+          },
+          "started_to_finished": {
+            "observations": 540,
+            "p95": 10.905,
+            "p99": 12.427,
+            "max": 13.925
+          },
+          "ready_to_started": {
+            "observations": 468,
+            "p95": 5.318,
+            "p99": 5.706,
+            "max": 6.161
+          }
+        },
+        "serverPeakRSSBytes": 264638464,
+        "maxOutboxAgeSeconds": 5.517,
+        "maxAuditLagSeconds": 0.8,
+        "correctness": {
+          "conditions": true,
+          "attemptIdentity": true,
+          "retry": true,
+          "effectsExactlyOnceInThisLab": true,
+          "ledgerCheckpoint": true
+        },
+        "fault": null
+      }
+    }
+  ],
+  "finalCandidate": {
+    "sha": "9cbd6a3f7ec65c80ddf6e2d365a4826baf29e0d6",
+    "status": "passed-local-release-gates",
+    "fullVerification": {
+      "run": "a10dc4c27545",
+      "sha256": "2633d5c8826973a5b14a9a861e9a763c7011205f82344482b440bd47aec8261f",
+      "seconds": 958.605,
+      "gates": [
+        {
+          "gate": "runner",
+          "status": "passed"
+        },
+        {
+          "gate": "docs",
+          "status": "passed"
+        },
+        {
+          "gate": "server",
+          "status": "passed"
+        },
+        {
+          "gate": "agent",
+          "status": "passed"
+        },
+        {
+          "gate": "web",
+          "status": "passed"
+        },
+        {
+          "gate": "browser",
+          "status": "passed"
+        },
+        {
+          "gate": "integration",
+          "status": "passed"
+        },
+        {
+          "gate": "demo",
+          "status": "passed"
+        }
+      ],
+      "browserStats": {
+        "startTime": "2026-11-12T15:34:11.219Z",
+        "duration": 47515.775,
+        "expected": 45,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      }
+    },
+    "integration": {
+      "run": "94a907bd131f",
+      "sha256": "f1913c0db7bd4b0d130d59d4316b7202541daf906678149207d003204778ac19",
+      "status": "passed"
+    },
+    "nativeInstall": {
+      "exitCode": 0,
+      "logSHA256": "afa61bd1f63b87e2507e19c2f7c632f3311822d3ded07c8f441f817edc7109d8",
+      "scope": "Disposable real systemd install/reboot/upgrade, restricted mTLS cells and independent audit collector outage/SIGKILL/gap-free recovery"
+    },
+    "rolloverRegression": {
+      "run": "7293fa43ccbc",
+      "reportSHA256": "6b0e884450e65032d5cbc059b3b711fb66be1fef68b99cdcc5801952da3ba22d",
+      "sourceSha": "9cbd6a3f7ec65c80ddf6e2d365a4826baf29e0d6",
+      "dirty": false,
+      "profile": "synthetic-perf-diagnostic",
+      "budgets": {
+        "plannedToAcceptedP99Seconds": 5,
+        "readyToStartedP99Seconds": 10,
+        "firstEligibleWaitMaxSeconds": 10,
+        "oldestOutboxMaxSeconds": 5,
+        "auditLagMaxSeconds": 30,
+        "serverRSSMaxBytes": 1073741824,
+        "normalRequestErrorBudget": 0,
+        "definitionReadP99Seconds": 5,
+        "websocketReconnectP99Seconds": 2
+      },
+      "cgroupLimits": {
+        "cpu.max": "400000 100000",
+        "memory.max": "8589934592"
+      },
+      "postgresContainer": {
+        "dataMount": {
+          "Type": "volume",
+          "Name": "regente-it-7293fa43ccbc_capacity-postgres-data",
+          "Destination": "/var/lib/postgresql/data"
+        },
+        "limits": {
+          "NanoCpus": 0,
+          "Memory": 0,
+          "MemorySwap": 0
+        }
+      },
+      "postgresSettings": "fsync=on\nfull_page_writes=on\nmax_connections=100\nshared_buffers=16384\nsynchronous_commit=on",
+      "limits": [
+        "One Linux host; PostgreSQL; production loopback; two agents/192 slots",
+        "Retained terminal rows are fixtures; distinct graph definitions executed and actual attempts/effects are counted separately; only --perf-day requests a full day",
+        "No HA/NATS/mTLS throughput or monthly SLO claim; independent pilot I17 pending"
+      ],
+      "phases": [
+        {
+          "name": "perfcheck28800",
+          "agentSlots": {
+            "fast": 128,
+            "slow": 64
+          },
+          "retainedRows": 28800,
+          "distinctGraphDefinitionsExecuted": 312,
+          "targetOrdersPerDay": 28800,
+          "requestedMeasurementSeconds": 600,
+          "measurementSeconds": 600,
+          "admittedInstances": 317,
+          "attempts": 366,
+          "qualified": true,
+          "admissionStop": null,
+          "latencies": {
+            "ready_to_planned": {
+              "observations": 268,
+              "p95": 0.034,
+              "p99": 0.043,
+              "max": 0.054
+            },
+            "planned_to_accepted": {
+              "observations": 310,
+              "p95": 1.008,
+              "p99": 1.03,
+              "max": 1.066
+            },
+            "accepted_to_started": {
+              "observations": 310,
+              "p95": 0.034,
+              "p99": 0.04,
+              "max": 0.044
+            },
+            "started_to_finished": {
+              "observations": 310,
+              "p95": 3.118,
+              "p99": 3.226,
+              "max": 3.296
+            },
+            "ready_to_started": {
+              "observations": 268,
+              "p95": 1.04,
+              "p99": 1.083,
+              "max": 1.098
+            }
+          },
+          "serverPeakRSSBytes": 306483200,
+          "maxOutboxAgeSeconds": 0.8,
+          "maxAuditLagSeconds": 1.0,
+          "correctness": {
+            "conditions": true,
+            "attemptIdentity": true,
+            "retry": true,
+            "effectsExactlyOnceInThisLab": true,
+            "ledgerCheckpoint": true
+          },
+          "fault": {
+            "healthReady": true,
+            "stalledProgressDetected": true,
+            "error": "No durable canary progress by deadline; instance=probe-FORCE-154521",
+            "pausedSeconds": 5.053106645005755,
+            "producerScheduledPauseSeconds": 6.2923748930043075,
+            "restoredProgress": {
+              "passed": true,
+              "instanceId": "probe-FORCE-154526",
+              "executionId": "20a8e59e002e1404df1aabf3ff5fa30b",
+              "seconds": 1.239256872999249
+            }
+          },
+          "businessCalendar": {
+            "dailyAt": "15:45",
+            "lastRunDate": "",
+            "orderDate": "2026-11-11",
+            "pending": null,
+            "run": null,
+            "serverNow": "2026-11-12T15:40:20Z",
+            "timezone": "UTC"
+          },
+          "businessCalendarAtEnd": {
+            "dailyAt": "15:45",
+            "lastRunAt": "2026-11-12T15:45:01Z",
+            "lastRunDate": "2026-11-12",
+            "lateStart": false,
+            "orderDate": "2026-11-12",
+            "pending": null,
+            "run": {
+              "orderDate": "2026-11-12",
+              "state": "completed",
+              "commitSha": "",
+              "expected": 0,
+              "inserted": 0,
+              "checkpoint": 0,
+              "carried": 0,
+              "startedAt": "2026-11-12T15:45:01.024398Z",
+              "finishedAt": "2026-11-12T15:45:01.042086Z",
+              "canResume": false
+            },
+            "serverNow": "2026-11-12T15:50:25Z",
+            "timezone": "UTC"
+          }
+        }
+      ]
+    },
+    "progressiveScale": {
+      "run": "d3c5f1569f62",
+      "reportSHA256": "d3cf12329c57193847177525e4fe6dca3d77de5e8056ddc32621b60e084a215b",
+      "sourceSha": "9cbd6a3f7ec65c80ddf6e2d365a4826baf29e0d6",
+      "dirty": false,
+      "profile": "synthetic-i16-postgres-loopback-v2",
+      "budgets": {
+        "plannedToAcceptedP99Seconds": 5,
+        "readyToStartedP99Seconds": 10,
+        "firstEligibleWaitMaxSeconds": 10,
+        "oldestOutboxMaxSeconds": 5,
+        "auditLagMaxSeconds": 30,
+        "serverRSSMaxBytes": 1073741824,
+        "normalRequestErrorBudget": 0,
+        "definitionReadP99Seconds": 5,
+        "websocketReconnectP99Seconds": 2
+      },
+      "cgroupLimits": {
+        "cpu.max": "400000 100000",
+        "memory.max": "8589934592"
+      },
+      "postgresContainer": {
+        "dataMount": {
+          "Type": "volume",
+          "Name": "regente-it-d3c5f1569f62_capacity-postgres-data",
+          "Destination": "/var/lib/postgresql/data"
+        },
+        "limits": {
+          "NanoCpus": 0,
+          "Memory": 0,
+          "MemorySwap": 0
+        }
+      },
+      "postgresSettings": "fsync=on\nfull_page_writes=on\nmax_connections=100\nshared_buffers=16384\nsynchronous_commit=on",
+      "limits": [
+        "One Linux host; PostgreSQL; production loopback; two agents/192 slots",
+        "Retained terminal rows are fixtures; distinct graph definitions executed and actual attempts/effects are counted separately; only --perf-day requests a full day",
+        "No HA/NATS/mTLS throughput or monthly SLO claim; independent pilot I17 pending"
+      ],
+      "phases": [
+        {
+          "name": "tier28800",
+          "agentSlots": {
+            "fast": 128,
+            "slow": 64
+          },
+          "retainedRows": 28800,
+          "distinctGraphDefinitionsExecuted": 160,
+          "targetOrdersPerDay": 28800,
+          "requestedMeasurementSeconds": 300,
+          "measurementSeconds": 300,
+          "admittedInstances": 163,
+          "attempts": 188,
+          "qualified": true,
+          "admissionStop": null,
+          "latencies": {
+            "ready_to_planned": {
+              "observations": 163,
+              "p95": 0.027,
+              "p99": 0.041,
+              "max": 0.053
+            },
+            "planned_to_accepted": {
+              "observations": 188,
+              "p95": 0.996,
+              "p99": 1.025,
+              "max": 1.039
+            },
+            "accepted_to_started": {
+              "observations": 188,
+              "p95": 0.036,
+              "p99": 0.078,
+              "max": 0.084
+            },
+            "started_to_finished": {
+              "observations": 188,
+              "p95": 3.154,
+              "p99": 3.194,
+              "max": 3.343
+            },
+            "ready_to_started": {
+              "observations": 163,
+              "p95": 1.026,
+              "p99": 1.087,
+              "max": 1.128
+            }
+          },
+          "serverPeakRSSBytes": 343277568,
+          "maxOutboxAgeSeconds": 0.866,
+          "maxAuditLagSeconds": 0.9,
+          "correctness": {
+            "conditions": true,
+            "attemptIdentity": true,
+            "retry": true,
+            "effectsExactlyOnceInThisLab": true,
+            "ledgerCheckpoint": true
+          },
+          "fault": null,
+          "businessCalendar": {
+            "dailyAt": "03:50",
+            "lastRunAt": "2026-11-12T15:50:42Z",
+            "lastRunDate": "2026-11-12",
+            "lateStart": true,
+            "orderDate": "2026-11-12",
+            "pending": null,
+            "run": {
+              "orderDate": "2026-11-12",
+              "state": "completed",
+              "commitSha": "",
+              "expected": 0,
+              "inserted": 0,
+              "checkpoint": 0,
+              "carried": 0,
+              "startedAt": "2026-11-12T15:50:42.790674Z",
+              "finishedAt": "2026-11-12T15:50:42.803952Z",
+              "canResume": false
+            },
+            "serverNow": "2026-11-12T15:50:45Z",
+            "timezone": "UTC"
+          },
+          "businessCalendarAtEnd": {
+            "dailyAt": "03:50",
+            "lastRunAt": "2026-11-12T15:50:42Z",
+            "lastRunDate": "2026-11-12",
+            "lateStart": true,
+            "orderDate": "2026-11-12",
+            "pending": null,
+            "run": {
+              "orderDate": "2026-11-12",
+              "state": "completed",
+              "commitSha": "",
+              "expected": 0,
+              "inserted": 0,
+              "checkpoint": 0,
+              "carried": 0,
+              "startedAt": "2026-11-12T15:50:42.790674Z",
+              "finishedAt": "2026-11-12T15:50:42.803952Z",
+              "canResume": false
+            },
+            "serverNow": "2026-11-12T15:55:46Z",
+            "timezone": "UTC"
+          }
+        },
+        {
+          "name": "tier100000",
+          "agentSlots": {
+            "fast": 128,
+            "slow": 64
+          },
+          "retainedRows": 100000,
+          "distinctGraphDefinitionsExecuted": 556,
+          "targetOrdersPerDay": 100000,
+          "requestedMeasurementSeconds": 300,
+          "measurementSeconds": 300,
+          "admittedInstances": 559,
+          "attempts": 645,
+          "qualified": true,
+          "admissionStop": null,
+          "latencies": {
+            "ready_to_planned": {
+              "observations": 559,
+              "p95": 0.036,
+              "p99": 0.051,
+              "max": 0.106
+            },
+            "planned_to_accepted": {
+              "observations": 645,
+              "p95": 1.096,
+              "p99": 1.279,
+              "max": 1.394
+            },
+            "accepted_to_started": {
+              "observations": 645,
+              "p95": 0.04,
+              "p99": 0.052,
+              "max": 0.094
+            },
+            "started_to_finished": {
+              "observations": 645,
+              "p95": 3.729,
+              "p99": 4.302,
+              "max": 4.862
+            },
+            "ready_to_started": {
+              "observations": 559,
+              "p95": 1.135,
+              "p99": 1.346,
+              "max": 1.416
+            }
+          },
+          "serverPeakRSSBytes": 312045568,
+          "maxOutboxAgeSeconds": 1.09,
+          "maxAuditLagSeconds": 1.0,
+          "correctness": {
+            "conditions": true,
+            "attemptIdentity": true,
+            "retry": true,
+            "effectsExactlyOnceInThisLab": true,
+            "ledgerCheckpoint": true
+          },
+          "fault": null,
+          "businessCalendar": {
+            "dailyAt": "03:55",
+            "lastRunAt": "2026-11-12T15:56:08Z",
+            "lastRunDate": "2026-11-12",
+            "lateStart": true,
+            "orderDate": "2026-11-12",
+            "pending": null,
+            "run": {
+              "orderDate": "2026-11-12",
+              "state": "completed",
+              "commitSha": "",
+              "expected": 0,
+              "inserted": 0,
+              "checkpoint": 0,
+              "carried": 0,
+              "startedAt": "2026-11-12T15:56:08.003652Z",
+              "finishedAt": "2026-11-12T15:56:08.021823Z",
+              "canResume": false
+            },
+            "serverNow": "2026-11-12T15:56:10Z",
+            "timezone": "UTC"
+          },
+          "businessCalendarAtEnd": {
+            "dailyAt": "03:55",
+            "lastRunAt": "2026-11-12T15:56:08Z",
+            "lastRunDate": "2026-11-12",
+            "lateStart": true,
+            "orderDate": "2026-11-12",
+            "pending": null,
+            "run": {
+              "orderDate": "2026-11-12",
+              "state": "completed",
+              "commitSha": "",
+              "expected": 0,
+              "inserted": 0,
+              "checkpoint": 0,
+              "carried": 0,
+              "startedAt": "2026-11-12T15:56:08.003652Z",
+              "finishedAt": "2026-11-12T15:56:08.021823Z",
+              "canResume": false
+            },
+            "serverNow": "2026-11-12T16:01:26Z",
+            "timezone": "UTC"
+          }
+        },
+        {
+          "name": "tier250000",
+          "agentSlots": {
+            "fast": 128,
+            "slow": 64
+          },
+          "retainedRows": 250000,
+          "distinctGraphDefinitionsExecuted": 523,
+          "targetOrdersPerDay": 250000,
+          "requestedMeasurementSeconds": 300,
+          "measurementSeconds": 45.10418184300943,
+          "admittedInstances": 526,
+          "attempts": 607,
+          "qualified": false,
+          "admissionStop": {
+            "elapsedSeconds": 45.10418184300943,
+            "exceeded": [
+              "ack_p99",
+              "oldest_outbox"
+            ]
+          },
+          "latencies": {
+            "ready_to_planned": {
+              "observations": 526,
+              "p95": 0.081,
+              "p99": 0.106,
+              "max": 0.133
+            },
+            "planned_to_accepted": {
+              "observations": 607,
+              "p95": 4.988,
+              "p99": 5.506,
+              "max": 6.221
+            },
+            "accepted_to_started": {
+              "observations": 607,
+              "p95": 0.057,
+              "p99": 0.073,
+              "max": 0.102
+            },
+            "started_to_finished": {
+              "observations": 607,
+              "p95": 10.353,
+              "p99": 12.035,
+              "max": 13.164
+            },
+            "ready_to_started": {
+              "observations": 526,
+              "p95": 5.093,
+              "p99": 5.596,
+              "max": 6.285
+            }
+          },
+          "serverPeakRSSBytes": 271572992,
+          "maxOutboxAgeSeconds": 5.411,
+          "maxAuditLagSeconds": 0.8,
+          "correctness": {
+            "conditions": true,
+            "attemptIdentity": true,
+            "retry": true,
+            "effectsExactlyOnceInThisLab": true,
+            "ledgerCheckpoint": true
+          },
+          "fault": null,
+          "businessCalendar": {
+            "dailyAt": "04:01",
+            "lastRunAt": "2026-11-12T16:02:09Z",
+            "lastRunDate": "2026-11-12",
+            "lateStart": true,
+            "orderDate": "2026-11-12",
+            "pending": null,
+            "run": {
+              "orderDate": "2026-11-12",
+              "state": "completed",
+              "commitSha": "",
+              "expected": 0,
+              "inserted": 0,
+              "checkpoint": 0,
+              "carried": 0,
+              "startedAt": "2026-11-12T16:02:09.710296Z",
+              "finishedAt": "2026-11-12T16:02:09.724365Z",
+              "canResume": false
+            },
+            "serverNow": "2026-11-12T16:02:12Z",
+            "timezone": "UTC"
+          },
+          "businessCalendarAtEnd": {
+            "dailyAt": "04:01",
+            "lastRunAt": "2026-11-12T16:02:09Z",
+            "lastRunDate": "2026-11-12",
+            "lateStart": true,
+            "orderDate": "2026-11-12",
+            "pending": null,
+            "run": {
+              "orderDate": "2026-11-12",
+              "state": "completed",
+              "commitSha": "",
+              "expected": 0,
+              "inserted": 0,
+              "checkpoint": 0,
+              "carried": 0,
+              "startedAt": "2026-11-12T16:02:09.710296Z",
+              "finishedAt": "2026-11-12T16:02:09.724365Z",
+              "canResume": false
+            },
+            "serverNow": "2026-11-12T16:03:53Z",
+            "timezone": "UTC"
+          }
+        },
+        {
+          "name": "soak100000",
+          "agentSlots": {
+            "fast": 128,
+            "slow": 64
+          },
+          "retainedRows": 100000,
+          "distinctGraphDefinitionsExecuted": 3300,
+          "targetOrdersPerDay": 100000,
+          "requestedMeasurementSeconds": 1800,
+          "measurementSeconds": 1800,
+          "admittedInstances": 3305,
+          "attempts": 3820,
+          "qualified": true,
+          "admissionStop": null,
+          "latencies": {
+            "ready_to_planned": {
+              "observations": 3144,
+              "p95": 0.039,
+              "p99": 0.053,
+              "max": 0.161
+            },
+            "planned_to_accepted": {
+              "observations": 3641,
+              "p95": 1.054,
+              "p99": 1.199,
+              "max": 1.447
+            },
+            "accepted_to_started": {
+              "observations": 3641,
+              "p95": 0.037,
+              "p99": 0.05,
+              "max": 0.134
+            },
+            "started_to_finished": {
+              "observations": 3641,
+              "p95": 3.678,
+              "p99": 4.193,
+              "max": 4.786
+            },
+            "ready_to_started": {
+              "observations": 3144,
+              "p95": 1.089,
+              "p99": 1.226,
+              "max": 1.515
+            }
+          },
+          "serverPeakRSSBytes": 401252352,
+          "maxOutboxAgeSeconds": 1.029,
+          "maxAuditLagSeconds": 1.0,
+          "correctness": {
+            "conditions": true,
+            "attemptIdentity": true,
+            "retry": true,
+            "effectsExactlyOnceInThisLab": true,
+            "ledgerCheckpoint": true
+          },
+          "fault": {
+            "healthReady": true,
+            "stalledProgressDetected": true,
+            "error": "No durable canary progress by deadline; instance=probe-FORCE-161917",
+            "pausedSeconds": 5.066202180998516,
+            "producerScheduledPauseSeconds": 6.520774506003363,
+            "restoredProgress": {
+              "passed": true,
+              "instanceId": "probe-FORCE-161922",
+              "executionId": "224e066598c377058e0eadb802991c2a",
+              "seconds": 1.4545502940018196
+            }
+          },
+          "businessCalendar": {
+            "dailyAt": "04:03",
+            "lastRunAt": "2026-11-12T16:04:14Z",
+            "lastRunDate": "2026-11-12",
+            "lateStart": true,
+            "orderDate": "2026-11-12",
+            "pending": null,
+            "run": {
+              "orderDate": "2026-11-12",
+              "state": "completed",
+              "commitSha": "",
+              "expected": 0,
+              "inserted": 0,
+              "checkpoint": 0,
+              "carried": 0,
+              "startedAt": "2026-11-12T16:04:14.856377Z",
+              "finishedAt": "2026-11-12T16:04:14.868387Z",
+              "canResume": false
+            },
+            "serverNow": "2026-11-12T16:04:17Z",
+            "timezone": "UTC"
+          },
+          "businessCalendarAtEnd": {
+            "dailyAt": "04:03",
+            "lastRunAt": "2026-11-12T16:04:14Z",
+            "lastRunDate": "2026-11-12",
+            "lateStart": true,
+            "orderDate": "2026-11-12",
+            "pending": null,
+            "run": {
+              "orderDate": "2026-11-12",
+              "state": "completed",
+              "commitSha": "",
+              "expected": 0,
+              "inserted": 0,
+              "checkpoint": 0,
+              "carried": 0,
+              "startedAt": "2026-11-12T16:04:14.856377Z",
+              "finishedAt": "2026-11-12T16:04:14.868387Z",
+              "canResume": false
+            },
+            "serverNow": "2026-11-12T16:34:19Z",
+            "timezone": "UTC"
+          }
+        }
+      ],
+      "supportedEnvelope": 100000,
+      "stopReason": "Previous tier exceeded its declared budget; higher tiers not run",
+      "unexecutedTiers": [
+        1000000
+      ]
+    }
+  },
+  "publication": {
+    "state": "pending",
+    "runtimeSource": "9cbd6a3f7ec65c80ddf6e2d365a4826baf29e0d6"
+  },
+  "limits": [
+    "24h daily proof belongs to 8a7140a; final 9cbd6a3 has full/native/600s rollover regression and progressive tiers/1800s recovery, not a new 24h run.",
+    "100k/day is nominal offered rate with fourfold peaks, not 100k observed executions or a production guarantee.",
+    "250k/day failed unchanged 5s ACK/outbox budgets; 1M/day was not run.",
+    "One Linux Docker host, runner 4 CPU/8 GiB, 128+64 agent slots, PostgreSQL in separate durable volume without an explicit container CPU/RAM limit.",
+    "No production VPS deployment, HA/NATS/mTLS throughput or monthly SLO qualification."
+  ]
+}
