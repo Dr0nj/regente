@@ -49,6 +49,7 @@ set_source() { # set_source <url|path>  — reescreve/insere REGENTE_GIT_SOURCE
 }
 
 if [ "$STAGE" = stage2 ]; then
+  fixture_password=$(grep '^REGENTE_BOOTSTRAP_PASSWORD=' "$ENV_FILE" | tail -1 | cut -d= -f2-)
   head1 "Depois do reboot da máquina"
   wait_for 60 active || bad "o serviço não voltou sozinho depois do reboot"
   active && ok "serviço ativo sem ninguém mandar (systemd enable)"
@@ -84,6 +85,10 @@ if [ "$STAGE" = stage2 ]; then
     prior_fixture_iid="$(api -X POST "$BASE/api/definitions/smoke-job/force" | jfield instanceId)" || exit 1
     [ -n "$prior_fixture_iid" ] || exit 1
     prior_instances="$(api "$BASE/api/instances" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)))')" || exit 1
+    # O bundle v0.2.47 tem hash/version conferidos pelo runner e cria admin/admin
+    # no perfil legado. O bootstrap aleatório do instalador novo não altera esse
+    # banco independente; nunca tentar essa credencial fora deste fixture fixo.
+    fixture_password=admin
     ok "Previous binary created independent schema-32 history; current-schema proof is preserved separately"
   fi
 
@@ -130,10 +135,10 @@ if [ "$STAGE" = stage2 ]; then
   fi
   head1 "Production profile: convert explicit legacy fixture and upgrade"
   # Fixture sintética; nenhum segredo do operador entra neste ensaio.
-  bootstrap=$(grep '^REGENTE_BOOTSTRAP_PASSWORD=' "$ENV_FILE" | tail -1 | cut -d= -f2-)
-  login_token=$(printf '{"username":"admin","password":"%s"}' "$bootstrap" | curl -fsS -H 'Content-Type: application/json' --data-binary @- "$BASE/api/auth/login" | jfield token)
-  printf '{"current":"%s","next":"production-smoke-fixture"}' "$bootstrap" | curl -fsS -H "Authorization: Bearer $login_token" -H 'Content-Type: application/json' --data-binary @- "$BASE/api/auth/change-password" >/dev/null || bad "password rotation failed"
-  unset bootstrap
+  login_token=$(printf '{"username":"admin","password":"%s"}' "$fixture_password" | curl -fsS -H 'Content-Type: application/json' --data-binary @- "$BASE/api/auth/login" | jfield token) || { bad "fixture login failed before production conversion"; exit 1; }
+  [ -n "$login_token" ] || { bad "fixture login returned no session"; exit 1; }
+  printf '{"current":"%s","next":"production-smoke-fixture"}' "$fixture_password" | curl -fsS -H "Authorization: Bearer $login_token" -H 'Content-Type: application/json' --data-binary @- "$BASE/api/auth/change-password" >/dev/null || { bad "password rotation failed before production conversion"; exit 1; }
+  unset fixture_password
   systemctl stop regente-server
   cat >> "$ENV_FILE" <<'PRODUCTION'
 REGENTE_PROFILE=production

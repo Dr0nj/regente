@@ -477,6 +477,17 @@ Publicação autorizada com o envelope medido; CI/release remotas ainda pendente
   sólidos até 25% (inclui 17%). Modelo completo preservado, sem novo cap/Dagre no pan.
   Build/lint/browser finais aprovados. Fechamento remoto acompanha o push.
 
+**12/11 — correção do smoke Linux de upgrade legado:** CI `43321083252`
+aprovou os oito gates full, mas o smoke adicional com `--previous-bundle v0.2.47`
+falhou no login/rotação: o banco independente antigo cria admin/admin, enquanto o
+teste reutilizava a senha aleatória do bootstrap novo. O smoke local anterior não
+incluiu esse bundle antigo, lacuna agora coberta. Fixture seleciona a credencial
+somente após verificar o bundle fixo e interrompe imediatamente antes de conversão
+em caso de falha. Autenticação do produto não alterada. Smoke completo com o
+bundle v0.2.47 passou: histórico/configuração/credenciais preservados, protocolo 2,
+mTLS, limites/egress e recuperação do coletor. Nova CI/release aguardam publicação
+deste patch; nenhum limite de capacidade foi relaxado.
+
 Os registros cronológicos abaixo são histórico, não substituem o status final acima.
 
 #### Histórico da implementação PERF (07–12/11/2026)

@@ -1332,5 +1332,20 @@
     "250k/day failed unchanged 5s ACK/outbox budgets; 1M/day was not run.",
     "One Linux Docker host, runner 4 CPU/8 GiB, 128+64 agent slots, PostgreSQL in separate durable volume without an explicit container CPU/RAM limit.",
     "No production VPS deployment, HA/NATS/mTLS throughput or monthly SLO qualification."
-  ]
+  ],
+  "legacyUpgradeSmokeCorrection": {
+    "failedCI": "https://github.com/Dr0nj/regente/actions/runs/43321083252",
+    "failedJob": 131541709727,
+    "fullVerification": "all eight gates passed; subsequent previous-bundle smoke failed",
+    "cause": "v0.2.47 independent database uses its legacy bootstrap credential; fixture incorrectly used the new installer bootstrap password",
+    "productRuntimeChanged": false,
+    "script": "scripts/smoke/inside.sh",
+    "scriptSHA256": "55d143b672eb7c1f6650396f6708585794885004e0ee775549090832616d9d4e",
+    "previousBundle": "v0.2.47",
+    "previousBundleSHA256": "52434beed4e25af0b1644eb5a31f8b0dd4073009ff4750052d30c25cf224d680",
+    "localCommand": "bash scripts/smoke-install.sh --build --previous-bundle /evidence-export/previous-v0.2.47/regente-server_linux_amd64.tar.gz",
+    "exitCode": 0,
+    "logSHA256": "cc352a76c9aaca66c4732b1ee0dedf5180ce81d17de484b586194c6a8b46c88f",
+    "scope": "Real systemd legacy database upgrade, preservation of history/configuration/credentials, durable execution, mTLS cells and audit collector recovery; source fixture, signed release remains a remote gate"
+  }
 }
