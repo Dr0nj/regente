@@ -127,7 +127,14 @@ func (d *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
 				return nil, err
 			}
 		}
-		if _, err = tx.ExecContext(ctx, "UPDATE audit_head SET seq=seq WHERE id=1"); err != nil {
+		if d.dialect == Postgres {
+			// Lock real sem criar uma versão morta da linha a cada transação.
+			var seq int64
+			err = tx.QueryRowContext(ctx, "SELECT seq FROM audit_head WHERE id=1 FOR UPDATE").Scan(&seq)
+		} else {
+			_, err = tx.ExecContext(ctx, "UPDATE audit_head SET seq=seq WHERE id=1")
+		}
+		if err != nil {
 			_ = tx.Rollback()
 			return nil, fmt.Errorf("%w: journal lock", ErrAuditUnavailable)
 		}
@@ -147,6 +154,19 @@ type Tx struct {
 	identity    AuditIdentity
 	changes     map[string]Mutation
 	auditCredit bool
+}
+
+// Dialect identifica o dialeto da transação para locks específicos do backend.
+func (t *Tx) Dialect() Dialect { return t.dialect }
+
+// LockExecutionQueue mantém a serialização de admissão/recursos sem UPDATE fictício no PG.
+func (t *Tx) LockExecutionQueue() error {
+	if t.dialect == Postgres {
+		var marker int
+		return t.QueryRow("SELECT marker FROM execution_queue_lock WHERE id=1 FOR UPDATE").Scan(&marker)
+	}
+	_, err := t.Exec("UPDATE execution_queue_lock SET marker=marker WHERE id=1")
+	return err
 }
 
 func (t *Tx) Exec(query string, args ...any) (sql.Result, error) {

@@ -10,7 +10,7 @@ func (e *Engine) begin() (*db.Tx, error) {
 		return nil, err
 	}
 	{
-		if _, err = tx.Exec(`UPDATE execution_queue_lock SET marker=marker WHERE id=1`); err != nil {
+		if err = tx.LockExecutionQueue(); err != nil {
 			tx.Rollback()
 			return nil, err
 		}

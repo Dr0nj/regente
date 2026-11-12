@@ -318,6 +318,14 @@ Evidências finais preservadas em `outputs/regente-perf-local/day-ed8db69403bc-f
 PC/Docker liberados da exigência de permanecer ligados. Publicação retida até
 concluir a trilha local solicitada; nenhum push.
 
+**12/11 — [PERF-06] correção de locks em validação:** PostgreSQL usa `FOR UPDATE`
+para os locks de auditoria, fila e ordem, sem UPDATE fictício que cria versões
+mortas; ordem global dos locks e commits síncronos preservados, SQLite inalterado.
+Teste PG verifica exclusão contra readers/writers concorrentes, CTID estável em
+transação sem mutação e integridade da auditoria após a liberação. Harness aceita
+`--perf-tier` para regressão isolada, explicitamente sem aceite diário/escala.
+Regressões e medição do patamar reprovado ainda em andamento; não há push/release.
+
 ### Canvas / issue #39 — minimapa operacional e zoom ampliado (10/11/2026)
 
 **Implementado e validado localmente em 11/11; publicação aguarda a trilha PERF.**

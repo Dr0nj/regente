@@ -91,6 +91,15 @@ class EvidenceSummaryTests(unittest.TestCase):
         self.assertFalse(result['reportedOutcomes']['perfDay']['qualified'])
         self.assertFalse(result['qualificationGrantedByAnalyzer'])
 
+    def test_isolated_tier_is_not_daily_qualification(self):
+        self.write(self.sample(0, 1))
+        (self.root / 'capacity.json').write_text(json.dumps({'status': 'passed',
+            'tierRegression': {'qualified': True, 'measurementSeconds': 300}}), encoding='utf-8')
+        result = summarize(self.root)
+        self.assertTrue(result['reportedOutcomes']['tierRegression']['qualified'])
+        self.assertNotIn('perfDay', result['reportedOutcomes'])
+        self.assertFalse(result['qualificationGrantedByAnalyzer'])
+
     def test_initial_reconciliation_sentinel_is_not_zero_age(self):
         sample = self.sample(0, 1)
         name = 'regente_scheduler_reconciliation_age_seconds'

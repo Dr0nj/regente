@@ -156,7 +156,7 @@ def summarize(evidence):
             outcomes[name] = outcome
         for outcome in reported.get('tiers', []):
             outcomes[outcome['name']] = outcome
-        for name in ('perfDay', 'perfCheck', 'soak'):
+        for name in ('perfDay', 'perfCheck', 'tierRegression', 'soak'):
             if name in reported:
                 outcomes[name] = reported[name]
         result['reportedOutcomes'] = {name: {k: outcome.get(k) for k in (

@@ -16,7 +16,7 @@ func (s *Scheduler) rebuildDurableResources() (int, error) {
 		return 0, err
 	}
 	defer tx.Rollback()
-	if _, err = tx.Exec("UPDATE execution_queue_lock SET marker=marker WHERE id=1"); err != nil {
+	if err = tx.LockExecutionQueue(); err != nil {
 		return 0, err
 	}
 	if err = s.guardLeadership(tx); err != nil {
@@ -126,7 +126,7 @@ func (s *Scheduler) DurableResourceChangeUsing(database *db.DB, name string, cap
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = tx.Exec("UPDATE execution_queue_lock SET marker=marker WHERE id=1"); err != nil {
+	if err = tx.LockExecutionQueue(); err != nil {
 		return err
 	}
 	if remove {

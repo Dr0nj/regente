@@ -384,12 +384,13 @@ def main():
     p.add_argument('--perf-day',action='store_true',help='Require a real 24-hour 28800/day recovery run before larger tiers; implies --perf')
     p.add_argument('--perf-compare',action='store_true',help='Compare full/single-record versus incremental/batched scheduling on identical 28800-definition workloads; no daily or capacity qualification')
     p.add_argument('--perf-check',action='store_true',help='Short diagnostic with recovery and rollover; never grants 24-hour qualification')
+    p.add_argument('--perf-tier',type=int,choices=(28800,100000,250000,1000000),help='Isolated tier regression only; no daily or progressive-scale qualification')
     p.add_argument('--fast-slots',type=int,default=4,help='Explicit concurrency of the fast agent (default: 4)')
     p.add_argument('--slow-slots',type=int,default=1,help='Explicit concurrency of the pinned long-job agent (default: 1)')
     a=p.parse_args()
     if not (1<=a.fast_slots<=256 and 1<=a.slow_slots<=256):p.error('Agent slots must be within 1..256')
-    if sum((a.perf_compare,a.perf_day,a.perf_check))>1:p.error('Select only one of --perf-compare, --perf-day or --perf-check')
-    if a.perf_day or a.perf_compare or a.perf_check:a.perf=True
+    if sum((a.perf_compare,a.perf_day,a.perf_check,a.perf_tier is not None))>1:p.error('Select only one of --perf-compare, --perf-day, --perf-check or --perf-tier')
+    if a.perf_day or a.perf_compare or a.perf_check or a.perf_tier:a.perf=True
     if a.perf_check and a.tier_seconds<600:p.error('--perf-check requires at least 600 seconds to observe rollover and recovery')
     if a.tier_seconds<300 or a.soak_seconds<1800:raise SystemExit('Qualification requires tiers >=300s and developer soak >=1800s')
     # Mantém o projeto exclusivo e cleanup do runner, com PostgreSQL em volume
@@ -428,7 +429,14 @@ def main():
             if var:args+=['-ldflags','-X '+var+'=capacity-'+report['sha'][:12]]
             lab.command(args+[source],timeout=300,name=name+'-build')
         report['postgresSettings']=lab.command(lab.COMPOSE+['exec','-T','postgres','psql','-U','regente','-d','regente_lab','-Atc',"SELECT name||'='||setting FROM pg_settings WHERE name IN ('fsync','synchronous_commit','shared_buffers','max_connections','full_page_writes')"])
-        if a.perf_check:
+        if a.perf_tier:
+            report['profile']='synthetic-perf-tier-regression';report['perfDayRequired']=False
+            report['qualificationScope']='Isolated engineering regression; no daily or progressive-scale qualification'
+            active=Profile('probe'+str(a.perf_tier),a.perf_tier,env,dsn,tls,perf=True,fast_slots=a.fast_slots,slow_slots=a.slow_slots)
+            report['tierRegression']=active.exercise(a.perf_tier/86400,a.tier_seconds)
+            active.close();active=None
+            if not report['tierRegression']['qualified']:raise RuntimeError('Isolated tier exceeded its declared budget')
+        elif a.perf_check:
             report['profile']='synthetic-perf-diagnostic';report['perfDayRequired']=False
             report['qualificationScope']='Short regression only; no 24-hour or higher-tier qualification'
             active=Profile('perfcheck28800',28800,env,dsn,tls,perf=True,fast_slots=a.fast_slots,slow_slots=a.slow_slots,rollover_after='5m')

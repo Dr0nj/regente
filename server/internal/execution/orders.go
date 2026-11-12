@@ -43,6 +43,9 @@ const orderSelect = `SELECT id,source_instance_id,state,current_execution,attemp
 
 func (e *Engine) Order(id string) (Order, error) { return scanOrder(e.DB.QueryRow(orderSelect, id)) }
 func lockOrder(tx *db.Tx, id string) (Order, error) {
+	if tx.Dialect() == db.Postgres {
+		return scanOrder(tx.QueryRow(orderSelect+" FOR UPDATE", id))
+	}
 	if _, err := tx.Exec(`UPDATE lab_orders SET fence=fence WHERE id=?`, id); err != nil {
 		return Order{}, err
 	}
@@ -158,7 +161,7 @@ func (e *Engine) Start(orderID, agent, key, intent string) (Attempt, error) {
 		return Attempt{}, ErrConflict
 	}
 	// Um lock global leve torna o teto de fila exato também com várias ordens/nós.
-	if _, err = tx.Exec(`UPDATE execution_queue_lock SET marker=marker WHERE id=1`); err != nil {
+	if err = tx.LockExecutionQueue(); err != nil {
 		return Attempt{}, err
 	}
 	var pending int
