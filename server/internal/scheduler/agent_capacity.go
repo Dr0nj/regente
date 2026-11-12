@@ -15,7 +15,7 @@ func (s *Scheduler) ReportAgentCapacity(agent string, slots, pending int, availa
 	if available {
 		yes = 1
 	}
-	_, err := s.db.Exec("INSERT INTO execution_agent_capacity(agent_id,slots,pending_limit,available,last_seen) VALUES(?,?,?,?,?) ON CONFLICT(agent_id) DO UPDATE SET slots=excluded.slots,pending_limit=excluded.pending_limit,available=excluded.available,last_seen=excluded.last_seen", agent, slots, pending, yes, time.Now().UnixMilli())
+	_, err := s.db.Exec("INSERT INTO execution_agent_capacity(agent_id,slots,pending_limit,available,last_seen) VALUES(?,?,?,?,?) ON CONFLICT(agent_id) DO UPDATE SET slots=excluded.slots,pending_limit=excluded.pending_limit,available=excluded.available,last_seen=excluded.last_seen WHERE execution_agent_capacity.slots<>excluded.slots OR execution_agent_capacity.pending_limit<>excluded.pending_limit OR execution_agent_capacity.available<>excluded.available OR execution_agent_capacity.last_seen<=excluded.last_seen-1000 OR execution_agent_capacity.last_seen>excluded.last_seen", agent, slots, pending, yes, time.Now().UnixMilli())
 	return err
 }
 func (s *Scheduler) durableAgentAdmission(tx *db.Tx, agent string) error {

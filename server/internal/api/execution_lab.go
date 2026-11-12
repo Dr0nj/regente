@@ -211,7 +211,7 @@ func (s *server) executionPoll(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		q := r.URL.Query()
-		if _, err := s.cfg.DB.Exec("INSERT INTO agents(id,os,arch,host,version,capabilities,started_at,connected_at,first_seen,last_seen_at,online) VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,1) ON CONFLICT(id) DO UPDATE SET os=excluded.os,arch=excluded.arch,host=excluded.host,version=excluded.version,capabilities=excluded.capabilities,last_seen_at=CURRENT_TIMESTAMP,online=1", p.AgentID, q.Get("os"), q.Get("arch"), q.Get("host"), q.Get("ver"), p.Capabilities); err != nil {
+		if _, err := s.cfg.DB.Exec("INSERT INTO agents(id,os,arch,host,version,capabilities,started_at,connected_at,first_seen,last_seen_at,online) VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,1) ON CONFLICT(id) DO UPDATE SET os=excluded.os,arch=excluded.arch,host=excluded.host,version=excluded.version,capabilities=excluded.capabilities,last_seen_at=CURRENT_TIMESTAMP,online=1 WHERE agents.os IS DISTINCT FROM excluded.os OR agents.arch IS DISTINCT FROM excluded.arch OR agents.host IS DISTINCT FROM excluded.host OR agents.version IS DISTINCT FROM excluded.version OR agents.capabilities IS DISTINCT FROM excluded.capabilities OR agents.online<>1 OR agents.last_seen_at < "+presenceCutoff(s.cfg.DB.Dialect()), p.AgentID, q.Get("os"), q.Get("arch"), q.Get("host"), q.Get("ver"), p.Capabilities); err != nil {
 			executionError(w, err)
 			return
 		}

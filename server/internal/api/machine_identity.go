@@ -62,9 +62,18 @@ func (s *server) machineAuth(r *http.Request) (*machinePrincipal, bool) {
 			engine.DB = s.cfg.DB
 			s.attempts = &engine
 		}
-		_, _ = s.cfg.DB.ExecContext(ctx, `UPDATE agent_tokens SET last_used_at=CURRENT_TIMESTAMP WHERE id=?`, p.CredentialID)
+		// Last-used é telemetria; autenticação e revogação continuam lidas em toda chamada.
+		_, _ = s.cfg.DB.ExecContext(ctx, `UPDATE agent_tokens SET last_used_at=CURRENT_TIMESTAMP WHERE id=? AND (last_used_at IS NULL OR last_used_at < `+presenceCutoff(s.cfg.DB.Dialect())+`)`, p.CredentialID)
 	}
 	return p, err == nil
+}
+
+// Corte pelo relógio do banco, compartilhado pela presença e pela telemetria do token.
+func presenceCutoff(dialect db.Dialect) string {
+	if dialect == db.Postgres {
+		return "CURRENT_TIMESTAMP - INTERVAL '1 second'"
+	}
+	return "datetime('now','-1 second')"
 }
 
 func (s *server) machineCertificateValid(p *machinePrincipal) bool {

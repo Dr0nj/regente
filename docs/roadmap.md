@@ -326,6 +326,15 @@ transação sem mutação e integridade da auditoria após a liberação. Harnes
 `--perf-tier` para regressão isolada, explicitamente sem aceite diário/escala.
 Regressões e medição do patamar reprovado ainda em andamento; não há push/release.
 
+**12/11 — [PERF-06] lock isolado insuficiente; telemetria em validação:**
+`797e7e0e4cc0`/`a4fa74a` repetiu a reprovação em 250 mil/dia. A troca de locks
+passou contratos de DB/execução/scheduler/API, mas não resolve sozinha o gargalo.
+Novo incremento limita regravações idênticas de presença/last-used/capacidade a
+aproximadamente uma por segundo; mudanças de slots, disponibilidade e metadata
+continuam imediatas. Autenticação/revogação são consultadas em toda chamada,
+sem cache de autorização. Teste SQLite/PG conta escritas e prova renovação,
+mudança imediata e revogação. Medição comparável ainda pendente.
+
 ### Canvas / issue #39 — minimapa operacional e zoom ampliado (10/11/2026)
 
 **Implementado e validado localmente em 11/11; publicação aguarda a trilha PERF.**
