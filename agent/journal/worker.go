@@ -364,15 +364,11 @@ func (w *Worker) Tick(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	for _, e := range entries {
-		if err = w.Sync(ctx, e); err != nil {
-			return err
-		}
-	}
-	// Drena um lote limitado sem dormir entre recebimento e ACK. O journal
-	// continua durável ANTES do ACK e nenhum efeito antecede start autorizado.
-	// O limite evita que uma fila contínua adie heartbeats/resultados antigos.
-	for range 32 {
+	// Alterna entregas novas com a fila existente. Resultados/sysout não podem
+	// bloquear todos os ACKs até o fim de uma passagem inteira pelo journal.
+	// A fila antiga ainda é visitada inteira e novas entregas têm teto por tick.
+	polling := true
+	for i := 0; i < max(len(entries), 32); i++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -382,16 +378,32 @@ func (w *Worker) Tick(ctx context.Context) error {
 		if fatal != nil {
 			return fmt.Errorf("journal persistence failed; new effects stopped: %w", fatal)
 		}
-		entries, err = w.Journal.Pending()
+		if i < len(entries) {
+			// Um cancel/redelivery intercalado pode ter alterado esta entrada.
+			e, err := w.Journal.Entry(entries[i].Envelope.ExecutionID)
+			if err != nil {
+				return err
+			}
+			if e.State != "acked" {
+				if err = w.Sync(ctx, e); err != nil {
+					return err
+				}
+			}
+		}
+		if !polling || i >= 32 {
+			continue
+		}
+		pending, err := w.Journal.PendingCount()
 		if err != nil {
 			return err
 		}
-		message, err := w.Transport.Poll(ctx, len(entries) < w.Journal.MaxPending)
+		message, err := w.Transport.Poll(ctx, pending < w.Journal.MaxPending)
 		if err != nil {
 			return transportError(err)
 		}
 		if message == nil {
-			break
+			polling = false
+			continue
 		}
 		e, err := w.Journal.Accept(*message)
 		if err != nil {

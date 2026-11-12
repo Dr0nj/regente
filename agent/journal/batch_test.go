@@ -140,3 +140,76 @@ func TestPendingIndexExcludesDurableTombstones(t *testing.T) {
 		t.Fatalf("tombstone perdido após reabertura: %+v %v", entry, err)
 	}
 }
+
+// A busca deve ocorrer antes de drenar todos os resultados, sem abandonar os
+// antigos quando o servidor esvaziar a fila de entregas.
+type fairTransport struct {
+	batchTransport
+	events []string
+}
+
+func (f *fairTransport) Poll(ctx context.Context, available bool) (*Envelope, error) {
+	f.events = append(f.events, "poll")
+	return f.batchTransport.Poll(ctx, available)
+}
+func (f *fairTransport) Post(ctx context.Context, path string, body any) (Receipt, error) {
+	raw, _ := json.Marshal(body)
+	var id Identity
+	_ = json.Unmarshal(raw, &id)
+	f.events = append(f.events, path+":"+id.ExecutionID)
+	return f.batchTransport.Post(ctx, path, body)
+}
+func TestTickInterleavesDeliveryWithResultsAndDrainsAfterEmptyPoll(t *testing.T) {
+	j, _ := openTest(t)
+	for _, id := range []string{"old-a", "old-b", "old-c"} {
+		accept(t, j, id)
+		if err := j.AckPhase(id, "accepted"); err != nil {
+			t.Fatal(err)
+		}
+		if ok, err := j.BeginEffect(id); err != nil || !ok {
+			t.Fatalf("início não persistido: %v", err)
+		}
+		if err := j.AckPhase(id, "started"); err != nil {
+			t.Fatal(err)
+		}
+		if err := j.Running(id); err != nil {
+			t.Fatal(err)
+		}
+		if err := j.Result(id, 0, "durable result"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f := &fairTransport{batchTransport: batchTransport{messages: []Envelope{message("new")}}}
+	release := make(chan struct{})
+	w := NewWorker(j, f, func(context.Context, Envelope, func(string)) (int, string) { <-release; return 0, "" }, 1)
+	defer func() { close(release); w.Stop() }()
+	if err := w.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	firstPoll, secondResult := -1, -1
+	for i, event := range f.events {
+		if event == "poll" && firstPoll < 0 {
+			firstPoll = i
+		}
+		if event == "result:old-b" {
+			secondResult = i
+		}
+	}
+	if firstPoll < 0 || secondResult < firstPoll {
+		t.Fatalf("entregas bloqueadas pelos resultados: %v", f.events)
+	}
+	for _, id := range []string{"old-a", "old-b", "old-c"} {
+		e, err := j.Entry(id)
+		if err != nil || e.State != "acked" {
+			t.Fatalf("resultado antigo abandonado: %+v %v", e, err)
+		}
+	}
+	e, err := j.Entry("new")
+	if err != nil || !e.AcceptedAck || !e.StartedAck {
+		t.Fatalf("novo efeito sem autorização: %+v %v", e, err)
+	}
+	n, err := j.PendingCount()
+	if err != nil || n != 1 {
+		t.Fatalf("contagem de pendências: %d %v", n, err)
+	}
+}

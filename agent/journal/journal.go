@@ -293,6 +293,14 @@ func (j *Journal) Accept(e Envelope) (Entry, error) {
 	}
 	return Entry{Envelope: e, State: state, CancelRequested: cancelled}, nil
 }
+
+// PendingCount consulta apenas o índice parcial; não lê envelopes nem sysout.
+func (j *Journal) PendingCount() (int, error) {
+	var n int
+	err := j.DB.QueryRow("SELECT COUNT(*) FROM journal_entries WHERE state!='acked'").Scan(&n)
+	return n, err
+}
+
 func (j *Journal) Pending() ([]Entry, error) {
 	rows, err := j.DB.Query("SELECT execution_id FROM journal_entries WHERE state!='acked' ORDER BY execution_id LIMIT 1001")
 	if err != nil {

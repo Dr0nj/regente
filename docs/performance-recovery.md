@@ -209,3 +209,18 @@ Repeated identical agent presence, capacity heartbeats and credential last-use
 telemetry are coalesced over approximately one second. Capacity or metadata
 changes are persisted immediately. Authentication, revocation and certificate
 checks still run on each request; no authorization decision is cached.
+
+### Keep delivery responsive while draining results
+
+The durable agent alternates existing journal entries with new deliveries, up to
+32 deliveries per tick. An empty poll still allows the existing journal to drain.
+Capacity checks count pending entries through the partial index without loading
+their definitions or output. Acceptance, start authorization and output receipts
+retain their durability and replay requirements.
+
+Runtime monitoring uses a read-only candidate filter before acquiring execution
+write locks: due runtime actions, expired SLA thresholds, or a matching slow rule
+with completed history. Rules and history are read again on subsequent ticks;
+no negative result is cached across ticks. Candidate effects are still validated
+and committed under the existing transactional leadership and execution locks.
+This reduces empty transactions, but does not itself establish a capacity rating.

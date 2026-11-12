@@ -335,6 +335,23 @@ continuam imediatas. Autenticação/revogação são consultadas em toda chamada
 sem cache de autorização. Teste SQLite/PG conta escritas e prova renovação,
 mudança imediata e revogação. Medição comparável ainda pendente.
 
+**12/11 — [PERF-06] entrega intercalada e filtro de avaliações sem efeito:**
+`f50eb458e763`/`b20d6dd` ainda reprovou 250 mil/dia (ACK p99 7,674 s).
+Diagnóstico instrumentado `3a9b8cc022e3` confirmou até 2,864 s drenando pendências
+antes do próximo poll; requisições POST individuais ficaram abaixo de 96 ms.
+O agente agora intercala pendências e novas entregas e consulta COUNT pelo índice,
+sem reler envelopes/sysout de toda a fila para cada poll. Race/journal aprovados.
+Regressão exploratória `9ea313f352e9` reduziu ACK p99 para 5,983 s, mas ainda
+reprovou: não é aceite de escala. Scheduler agora pré-filtra ações/SLA por prazo
+e alertas de lentidão por histórico/regra antes de adquirir locks de escrita;
+revalidação transacional preservada. Contratos SQLite/PG de ações/SLA passaram.
+Medição conjunta `fa98b77f6bf8` reprovou aos 40,095 s: ACK p99 5,613 s,
+outbox 5,517 s; efeitos/recibos/ledger corretos. Checkpoints exploratórios com
+mudanças locais identificadas. Em 12/11 o usuário definiu publicar após validar
+a versão final, documentando o limite medido, sem reter a release até 1 milhão/dia.
+Validação final completa e repetição do envelope/recuperação pendentes; sem push.
+Nenhum novo ensaio de 24h. O diário anterior pertence exclusivamente a `8a7140a`.
+
 ### Canvas / issue #39 — minimapa operacional e zoom ampliado (10/11/2026)
 
 **Implementado e validado localmente em 11/11; publicação aguarda a trilha PERF.**

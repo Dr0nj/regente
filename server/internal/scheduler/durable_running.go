@@ -12,18 +12,32 @@ import (
 )
 
 func (s *Scheduler) evaluateDurableRunning(now time.Time) {
-	rows, err := s.db.Query("SELECT r.instance_id FROM runtime_orders r JOIN lab_orders o ON o.id=r.order_id JOIN execution_attempts a ON a.execution_id=o.current_execution WHERE a.state='running' AND a.started_at>0")
+	var slowRules []AlertRule
+	if s.alerts != nil {
+		slowRules = s.alerts.SlowRules()
+	}
+	// Pré-filtro somente de leitura. Sem regra vencida ou histórico para alerta,
+	// não disputa os locks globais de auditoria/fila apenas para confirmar um no-op.
+	// Candidatos continuam sendo revalidados integralmente na transação abaixo.
+	rows, err := s.db.Query(`SELECT r.instance_id,i.definition_snapshot,COALESCE(NULLIF(i.carried_from,''),i.order_date),a.started_at,
+ EXISTS(SELECT 1 FROM instance_runs h WHERE h.definition_id=i.definition_id AND h.status='OK' AND h.finished_at IS NOT NULL AND NOT(h.instance_id=i.id AND h.attempt=a.attempt))
+ FROM runtime_orders r JOIN lab_orders o ON o.id=r.order_id JOIN execution_attempts a ON a.execution_id=o.current_execution JOIN instances i ON i.id=r.instance_id WHERE a.state='running' AND a.started_at>0`)
 	if err != nil {
 		return
 	}
 	ids := []string{}
 	for rows.Next() {
-		var id string
-		if err = rows.Scan(&id); err != nil {
+		var id, raw, odate string
+		var started int64
+		var history bool
+		if err = rows.Scan(&id, &raw, &odate, &started, &history); err != nil {
 			rows.Close()
 			return
 		}
-		ids = append(ids, id)
+		var def domain.JobDefinition
+		if json.Unmarshal([]byte(raw), &def) != nil || runtimeEvaluationDue(def, odate, started, now, s.sla != nil, history, slowRules) {
+			ids = append(ids, id)
+		}
 	}
 	err = rows.Err()
 	rows.Close()
@@ -132,6 +146,34 @@ func (s *Scheduler) evaluateDurableRunning(now time.Time) {
 			s.hub.BroadcastWeb("sla.breach", map[string]string{"instance": id})
 		}
 	}
+}
+
+func runtimeEvaluationDue(def domain.JobDefinition, odate string, started int64, now time.Time, sla, history bool, slowRules []AlertRule) bool {
+	ev := actionEvent{kind: "runtime", runMin: int((now.UnixMilli() - started) / 60000)}
+	for _, rule := range def.Actions {
+		if actionMatches(rule, ev) {
+			return true
+		}
+	}
+	if sla && def.SLA != nil {
+		if def.SLA.ExpectedDurationMin > 0 && now.UnixMilli()-started > int64(def.SLA.ExpectedDurationMin)*60000 {
+			return true
+		}
+		if c, ok := frozenCalendar(def); ok && def.SLA.DeadlineHM != "" {
+			deadline := c.At(odate, def.SLA.DeadlineHM)
+			if !deadline.IsZero() && now.After(deadline) {
+				return true
+			}
+		}
+	}
+	if history {
+		for _, rule := range slowRules {
+			if matchesWorkflow(rule.WorkflowPattern, def.ID) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type durableWebhook struct {

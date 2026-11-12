@@ -68,7 +68,7 @@ func TestI10PostgresRuntimeContracts(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		run  func(*testing.T)
-	}{{"atomic-result", TestI10RealOrderResultConditionsAndActionsAtomicRecovery}, {"unknown-resolution", TestI10UnknownEffectRequiresAuditedResolutionAndNeverAutoRetries}, {"effects-recovery", TestI10ExternalActionUnknownIsNotRepeatedAfterRestart}, {"retry-generation", TestI10KnownFailureRetryIsDurableAndOldAttemptCannotFinishNext}, {"operation-protection", TestI10OperationsNeverOverwriteUnresolvedAttempt}, {"effect-audit", TestI10EffectResolutionRequiresEvidenceAndAudit}, {"internal-http", TestI10InternalHTTPUsesJournalAndUnknownNeverRetries}, {"runtime-sla", TestI10RuntimeActionsAndSLARecoverAtomically}, {"internal-ssh", TestI10RealSSHReceiptsLossAndCancellation}} {
+	}{{"atomic-result", TestI10RealOrderResultConditionsAndActionsAtomicRecovery}, {"unknown-resolution", TestI10UnknownEffectRequiresAuditedResolutionAndNeverAutoRetries}, {"effects-recovery", TestI10ExternalActionUnknownIsNotRepeatedAfterRestart}, {"retry-generation", TestI10KnownFailureRetryIsDurableAndOldAttemptCannotFinishNext}, {"operation-protection", TestI10OperationsNeverOverwriteUnresolvedAttempt}, {"effect-audit", TestI10EffectResolutionRequiresEvidenceAndAudit}, {"internal-http", TestI10InternalHTTPUsesJournalAndUnknownNeverRetries}, {"runtime-sla", TestI10RuntimeActionsAndSLARecoverAtomically}, {"runtime-prefilter", TestRuntimePrefilterObservesNewHistoryAndRules}, {"internal-ssh", TestI10RealSSHReceiptsLossAndCancellation}} {
 		t.Run(test.name, test.run)
 	}
 }
