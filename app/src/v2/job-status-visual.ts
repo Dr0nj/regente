@@ -1,8 +1,8 @@
 // Fonte semântica única para cards, densidade, legenda e tooltips do minimap.
-export type VisualStatus = "failed" | "uncertain" | "running" | "hold" | "confirm" | "agent" | "resource" | "condition" | "waiting" | "success" | "inactive";
+export type VisualStatus = "failed" | "uncertain" | "running" | "hold" | "confirm" | "agent" | "slot" | "resource" | "condition" | "waiting" | "success" | "inactive";
 export interface StatusInput {
   status?: string; held?: boolean; waitConfirm?: boolean; waitAgent?: boolean;
-  waitResource?: boolean; waitEvent?: boolean;
+  waitResource?: boolean; waitEvent?: boolean; waitSlot?: boolean;
 }
 export const STATUS_VISUALS: Record<VisualStatus, { label: string; token: string; priority: number }> = {
   failed: { label: "FAIL", token: "--job-failed", priority: 100 },
@@ -11,7 +11,8 @@ export const STATUS_VISUALS: Record<VisualStatus, { label: string; token: string
   hold: { label: "HOLD", token: "--job-hold", priority: 70 },
   confirm: { label: "CONFIRM", token: "--job-confirm", priority: 60 },
   agent: { label: "WAIT AGENT", token: "--job-agent", priority: 50 },
-  resource: { label: "WAIT RESOURCE", token: "--job-agent", priority: 50 },
+  slot: { label: "WAIT SLOT", token: "--job-slot", priority: 50 },
+  resource: { label: "WAIT RESOURCE", token: "--job-resource", priority: 50 },
   condition: { label: "WAIT COND", token: "--job-waiting", priority: 40 },
   waiting: { label: "WAIT", token: "--job-waiting", priority: 30 },
   success: { label: "OK", token: "--job-success", priority: 20 },
@@ -25,6 +26,7 @@ export function jobVisualStatus(data: StatusInput): VisualStatus {
   if (data.status === "WAITING") {
     if (data.waitConfirm) return "confirm";
     if (data.waitAgent) return "agent";
+    if (data.waitSlot) return "slot";
     if (data.waitResource) return "resource";
     if (data.waitEvent) return "condition";
     return "waiting";

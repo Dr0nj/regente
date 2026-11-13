@@ -162,6 +162,11 @@ export interface JobNodeData {
    */
   waitAgent?: boolean;
   /**
+   * WAITING com agente online, mas SEM slot livre (todos ocupados — inclusive por
+   * execuções UNCERTAIN, que retêm o slot até resolução). Card "WAIT SLOT".
+   */
+  waitSlot?: boolean;
+  /**
    * Instance em HOLD — segurada manualmente por um operador (Control-M "Hold").
    * Não roda até um Release. Como HOLD colapsa para INACTIVE na cor de status
    * (igual a CANCELLED), o card sinaliza o estado com um cadeado sobreposto no

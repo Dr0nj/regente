@@ -372,16 +372,32 @@ function V2PreviewInner() {
     void listAgents().then((list) => {
       const ids = new Set<string>();
       const caps = new Set<string>();
+      const full = new Set<string>();
+      const capsFree = new Set<string>();
       for (const a of list) {
         if (!a.online) continue;
         ids.add(a.id);
-        for (const c of a.capabilities ?? []) caps.add(c.trim().toUpperCase());
+        // Sem `slots` (execução não durável) a ocupação é desconhecida: conta livre.
+        const isFull = !!a.slots && (a.inUse ?? 0) >= a.slots;
+        if (isFull) full.add(a.id);
+        for (const c of a.capabilities ?? []) {
+          caps.add(c.trim().toUpperCase());
+          if (!isFull) capsFree.add(c.trim().toUpperCase());
+        }
       }
-      setAgentAvail(old => old && old.ids.size === ids.size && old.caps.size === caps.size &&
-        [...ids].every(id => old.ids.has(id)) && [...caps].every(cap => old.caps.has(cap)) ? old : { ids, caps });
+      const same = (a: Set<string>, b?: Set<string>) => !!b && a.size === b.size && [...a].every(v => b.has(v));
+      setAgentAvail(old => old && same(ids, old.ids) && same(caps, old.caps) && same(full, old.full) && same(capsFree, old.capsFree)
+        ? old : { ids, caps, full, capsFree });
     }).catch(() => {});
   }, []);
   useEffect(() => { refreshAgents(); }, [refreshAgents]);
+  // A ocupação de slots muda sem evento de agente (execução termina/é resolvida):
+  // reconsulta devagar, só com a aba visível.
+  useEffect(() => {
+    if (!isServerMode()) return;
+    const timer = window.setInterval(() => { if (!document.hidden) refreshAgents(); }, 20000);
+    return () => window.clearInterval(timer);
+  }, [refreshAgents]);
 
   // Server mode: o "daily HH:MM" do rodapé vem do SERVER (daily_runs via
   // /api/daily/status), não de localStorage — quem roda a daily é o server, no

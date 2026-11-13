@@ -487,6 +487,19 @@ function composeColumns<T extends { id: string; team?: string }>(
 export interface AgentAvailability {
   ids: Set<string>;   // ids de agentes ONLINE
   caps: Set<string>;  // capabilities anunciadas pelos agentes online (UPPERCASE)
+  /** ids ONLINE sem slot livre (inUse >= slots). Ausente = ocupação desconhecida. */
+  full?: Set<string>;
+  /** capabilities com ao menos um agente online COM slot livre. */
+  capsFree?: Set<string>;
+}
+
+// Há slot livre para o job? Só responde "não" com ocupação conhecida.
+function hasFreeSlotFor(jobType: string, pinnedAgent: string | undefined, agents: AgentAvailability): boolean {
+  if (!agents.full || !agents.capsFree) return true;
+  const jt = (jobType || "").toUpperCase();
+  if (jt === "SSH" || jt === "") return true;
+  if (pinnedAgent) return !agents.full.has(pinnedAgent);
+  return agents.capsFree.has(jt);
 }
 
 // Job tem agente disponível? Pinado (congelado na ordem) exige o id online;
@@ -580,6 +593,12 @@ function monitoringData(inst: JobInstance, def: JobDefinition | undefined, agent
         // confirmReq CONGELADO na ordem (schemaV18) — ligar Confirm no Design não
         // reescreve cards já materializados. O gate do server é o mesmo snapshot.
         waitConfirm: inst.status === "WAITING" && !inst.confirmed && !!inst.confirmReq,
+        // WAIT SLOT (turquesa): no horário, sem condição/confirm pendente, agente
+        // online — mas todos os slots ocupados (inclusive por UNCERTAIN).
+        waitSlot: !!agents && inst.status === "WAITING" && inst.scheduledAt <= nowMs && !waitEvent &&
+          !(!!inst.confirmReq && !inst.confirmed) &&
+          hasAgentFor(inst.jobType, inst.pinnedAgent, agents) &&
+          !hasFreeSlotFor(inst.jobType, inst.pinnedAgent, agents),
         // WAIT RESOURCE (âmbar): a ordem exige um recurso/quota (F15 congelado,
         // schemaV19) sem unidade livre no pool. Deriva na MESMA ordem dos gates
         // do server (janela → confirm → cond → agente → recurso): só quando o
@@ -590,6 +609,7 @@ function monitoringData(inst: JobInstance, def: JobDefinition | undefined, agent
           !waitEvent &&
           !(!!inst.confirmReq && !inst.confirmed) &&
           !(!!agents && !hasAgentFor(inst.jobType, inst.pinnedAgent, agents)) &&
+          !(!!agents && !hasFreeSlotFor(inst.jobType, inst.pinnedAgent, agents)) &&
           hasResourceShortfall(inst.resources, resourcePool),
       } as JobNodeData;
 }

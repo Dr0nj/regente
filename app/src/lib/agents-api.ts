@@ -17,6 +17,10 @@ export interface AgentInfo {
   connectedAt?: string; // conectou neste servidor (sessão)
   firstSeen?: string;
   lastSeen?: string;
+  /** Admissão durável: slots anunciados, ocupados e quantos por UNCERTAIN. */
+  slots?: number;
+  inUse?: number;
+  uncertain?: number;
 }
 
 export async function listAgents(): Promise<AgentInfo[]> {

@@ -102,6 +102,11 @@ type agentRow struct {
 	ConnectedAt  *time.Time `json:"connectedAt,omitempty"` // conectou neste servidor (sessão)
 	FirstSeen    *time.Time `json:"firstSeen,omitempty"`
 	LastSeen     *time.Time `json:"lastSeen,omitempty"`
+	// Admissão durável: slots anunciados, execuções que os ocupam e quantas delas
+	// estão UNCERTAIN (retêm o slot até resolução). Ausentes sem execução durável.
+	Slots     int `json:"slots,omitempty"`
+	InUse     int `json:"inUse,omitempty"`
+	Uncertain int `json:"uncertain,omitempty"`
 }
 
 // listAgents — GET /api/agents: frota CONSOLIDADA (online + offline com last-seen).
@@ -167,7 +172,33 @@ func (s *server) listAgents(w http.ResponseWriter, r *http.Request) {
 		s.applyPresence(&a, remote)
 		out = append(out, a)
 	}
+	s.applyAdmission(out)
 	writeJSON(w, 200, out)
+}
+
+// applyAdmission preenche a ocupação de slots de cada agente. A UI usa isso para
+// separar "sem agente" de "agente sem slot livre" (produção 2026-11-13: 4 slots
+// presos em UNCERTAIN paravam a diária e os cards liam só WAIT).
+func (s *server) applyAdmission(out []agentRow) {
+	rows, err := s.cfg.DB.Query("SELECT c.agent_id,c.slots,(SELECT COUNT(*) FROM execution_attempts a WHERE a.agent_id=c.agent_id AND a.state NOT IN ('succeeded','failed','cancelled')),(SELECT COUNT(*) FROM execution_attempts a WHERE a.agent_id=c.agent_id AND a.state NOT IN ('succeeded','failed','cancelled') AND a.state='uncertain') FROM execution_agent_capacity c")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	type admission struct{ slots, inUse, uncertain int }
+	by := map[string]admission{}
+	for rows.Next() {
+		var id string
+		var a admission
+		if rows.Scan(&id, &a.slots, &a.inUse, &a.uncertain) == nil {
+			by[id] = a
+		}
+	}
+	for i := range out {
+		if a, ok := by[out[i].ID]; ok {
+			out[i].Slots, out[i].InUse, out[i].Uncertain = a.slots, a.inUse, a.uncertain
+		}
+	}
 }
 
 // applyPresence resolve online/node/local de um agent: preferência ao hub LOCAL

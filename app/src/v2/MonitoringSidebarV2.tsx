@@ -47,7 +47,7 @@ export interface MonitoringJob {
 type StatusFilter = "UNCERTAIN" | "ALL" | "RUNNING" | "FAILED" | "SUCCESS" | "WAITING";
 
 const STATUS_DOT: Record<JobNodeData["status"], string> = {
-  UNCERTAIN: "var(--v2-status-waiting)",
+  UNCERTAIN: "var(--job-uncertain)",
   SUCCESS: "var(--v2-status-ok)",
   RUNNING: "var(--v2-status-running)",
   FAILED: "var(--v2-status-failed)",

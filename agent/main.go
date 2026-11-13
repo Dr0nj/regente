@@ -95,7 +95,7 @@ func main() {
 	tokenFile := flag.String("token-file", "", "Protected file containing the machine credential")
 	journalPath := flag.String("journal", envOr("REGENTE_AGENT_JOURNAL", ""), "Durable local journal path (required for v2)")
 	checkJournal := flag.Bool("check-journal", false, "Initialize or validate the durable journal identity offline, without polling or executing jobs")
-	concurrency := flag.Int("concurrency", 4, "Maximum concurrent durable executions")
+	concurrency := flag.Int("concurrency", 32, "Maximum concurrent durable executions (1-256); size it to the host: I/O-bound HTTP jobs tolerate far more than CPU-bound commands")
 	pending := flag.Int("max-pending", 1000, "Maximum unconfirmed durable executions")
 	showCompatibility := flag.Bool("compatibility", false, "Print offline runtime compatibility descriptor")
 	showVersion := flag.Bool("version", false, "Print build version")

@@ -57,7 +57,7 @@ export interface InstanceActionHandlers {
 }
 
 const STATUS_COLOR: Record<JobInstance["status"], string> = {
-  UNCERTAIN: "var(--v2-status-waiting)",
+  UNCERTAIN: "var(--job-uncertain)",
   OK: "var(--v2-status-ok)",
   NOTOK: "var(--v2-status-failed)",
   RUNNING: "var(--v2-status-running)",

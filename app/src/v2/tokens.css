@@ -930,7 +930,11 @@
   --job-failed: var(--v2-status-failed);
   --job-running: var(--v2-accent-info);
   --job-waiting: #94a3b8;
-  --job-agent: #38bdf8;
+  /* Cada motivo de espera tem matiz própria: sem agente (rosa), agente sem slot
+     livre (turquesa), recurso/quota (azul). Antes eram todos azuis. */
+  --job-agent: #f472b6;
+  --job-slot: #2dd4bf;
+  --job-resource: #38bdf8;
   --job-confirm: #a78bfa;
   --job-hold: #fbbf24;
   --job-uncertain: #fb923c;
@@ -942,7 +946,9 @@
 :root[data-theme="claro"], :root[data-theme="branco-azul"],
 :root[data-theme="sepia"], :root[data-theme="cinza-claro"] {
   --job-waiting: #475569;
-  --job-agent: #0369a1;
+  --job-agent: #be185d;
+  --job-slot: #0f766e;
+  --job-resource: #0369a1;
   --job-confirm: #6d28d9;
   --job-hold: #92400e;
   --job-uncertain: #c2410c;
