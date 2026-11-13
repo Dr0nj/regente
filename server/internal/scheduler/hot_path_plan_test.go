@@ -36,6 +36,10 @@ func TestTickQueriesNeverScanHistory(t *testing.T) {
 			state, status = "uncertain", "RUNNING"
 		case i == 11:
 			state, status, attempts = "failed", "WAITING", 2
+		case i%2 == 0:
+			// Diária grande ainda aguardando (28,8 mil na VPS): o ramo de retry não
+			// pode percorrer todas elas via idx_instances_status.
+			status = "WAITING"
 		}
 		exec("INSERT INTO instances(id,definition_id,order_date,status,scheduled_at,attempts) VALUES(?,?,'2026-11-13',?,CURRENT_TIMESTAMP,?)", id, id, status, attempts)
 		exec("INSERT INTO lab_orders(id,source_instance_id,request_key,snapshot,snapshot_checksum,environment,state,current_execution,created_at) VALUES(?,?,?,'{}',?,'test',?,?,1)", id, id, id, digest("{}"), state, id)
@@ -55,7 +59,7 @@ func TestTickQueriesNeverScanHistory(t *testing.T) {
 	}
 
 	queries := map[string]string{
-		"reservas":    activeResourceOrdersQuery,
+		"reservas":    activeResourceOrdersQuery(d.Dialect()),
 		"lease":       "SELECT execution_id FROM execution_attempts WHERE " + db.ActiveAttemptPredicate("execution_attempts") + " AND state IN ('accepted','running','cancel_requested') AND lease_until>0 AND lease_until<=1",
 		"em-execução": "SELECT r.instance_id FROM execution_attempts a JOIN lab_orders o ON o.id=a.order_id AND o.current_execution=a.execution_id JOIN runtime_orders r ON r.order_id=o.id JOIN instances i ON i.id=r.instance_id WHERE " + db.ActiveAttemptPredicate("a") + " AND a.state='running' AND a.started_at>0",
 	}
@@ -82,6 +86,9 @@ func TestTickQueriesNeverScanHistory(t *testing.T) {
 			for _, step := range plan {
 				if strings.HasPrefix(step, "SCAN") && !strings.Contains(step, "execution_attempts_active") && !strings.Contains(step, "instances_retry_wait") {
 					t.Errorf("%s: varredura de histórico no plano: %q\nplano completo: %v", name, step, plan)
+				}
+				if strings.Contains(step, "idx_instances_status") {
+					t.Errorf("%s: plano percorre toda instance de um status: %q\nplano completo: %v", name, step, plan)
 				}
 			}
 		}

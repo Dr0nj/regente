@@ -83,6 +83,16 @@ before starting the service, for example
 and environment. A binary older than this release refuses a schema 34 database,
 so keep the pre-upgrade backup until the new version is accepted.
 
+**Follow-up after v0.2.72 (same day).** A CPU profile of the upgraded server
+still showed 57% of its time in the per-tick reservation query. The partial
+index existed, but without table statistics SQLite chose `idx_instances_status`
+for the retry branch and visited every `WAITING` instance (28,802) every two
+seconds to return zero rows (1.6 s per run on the VPS). The retry branch now
+names the partial index explicitly on SQLite (`INDEXED BY
+instances_retry_wait`), and the plan test fails if any tick query walks
+`idx_instances_status`. Lesson: a plan test must reproduce the production
+shape (a large waiting daily), not only a large finished history.
+
 **CPU steal on the host.** `sar` history on the same machine separates the two
 explanations. On the last day before the 28,800-job workspace the guest averaged
 18% user, 7% steal and 75% idle. From the next day on it never idled again, and

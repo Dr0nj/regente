@@ -15,8 +15,19 @@ import (
 // por índice parcial (schemaV34) unidas, em vez de um OR sobre o histórico
 // inteiro: o OR antigo forçava SCAN de runtime_orders a cada tick e, em
 // produção, levava 14 s para devolver 4 linhas — dentro de transação de escrita.
-var activeResourceOrdersQuery = "SELECT r.instance_id,o.current_execution,o.snapshot,o.snapshot_checksum FROM execution_attempts a JOIN lab_orders o ON o.id=a.order_id AND o.current_execution=a.execution_id JOIN runtime_orders r ON r.order_id=o.id WHERE " + db.ActiveAttemptPredicate("a") +
-	" UNION SELECT r.instance_id,o.current_execution,o.snapshot,o.snapshot_checksum FROM instances i JOIN runtime_orders r ON r.instance_id=i.id JOIN lab_orders o ON o.id=r.order_id JOIN execution_attempts a ON a.execution_id=o.current_execution WHERE " + db.RetryWaitPredicate("i")
+//
+// O ramo de retry força o índice parcial no SQLite (INDEXED BY): sem
+// estatísticas o planner prefere idx_instances_status e percorre TODA instance
+// WAITING — 28,8 mil linhas a cada tick na VPS (v0.2.72), 57% da CPU do server.
+// No Postgres o planner tem estatísticas e a sintaxe não existe.
+func activeResourceOrdersQuery(dialect db.Dialect) string {
+	hint := ""
+	if dialect == db.SQLite {
+		hint = " INDEXED BY instances_retry_wait"
+	}
+	return "SELECT r.instance_id,o.current_execution,o.snapshot,o.snapshot_checksum FROM execution_attempts a JOIN lab_orders o ON o.id=a.order_id AND o.current_execution=a.execution_id JOIN runtime_orders r ON r.order_id=o.id WHERE " + db.ActiveAttemptPredicate("a") +
+		" UNION SELECT r.instance_id,o.current_execution,o.snapshot,o.snapshot_checksum FROM instances i" + hint + " JOIN runtime_orders r ON r.instance_id=i.id JOIN lab_orders o ON o.id=r.order_id JOIN execution_attempts a ON a.execution_id=o.current_execution WHERE " + db.RetryWaitPredicate("i")
+}
 
 type resourceOrder struct {
 	id, exec string
@@ -25,12 +36,13 @@ type resourceOrder struct {
 
 type rowQuerier interface {
 	Query(query string, args ...any) (*sql.Rows, error)
+	Dialect() db.Dialect
 }
 
 // readResourceOrders lê e valida as ordens vivas. Devolve também se alguma
 // delas declara recurso — sem isso não há reserva a reconciliar.
 func readResourceOrders(q rowQuerier) ([]resourceOrder, bool, error) {
-	rows, err := q.Query(activeResourceOrdersQuery)
+	rows, err := q.Query(activeResourceOrdersQuery(q.Dialect()))
 	if err != nil {
 		return nil, false, err
 	}

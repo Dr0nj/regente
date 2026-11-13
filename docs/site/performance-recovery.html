@@ -225,6 +225,14 @@ before starting the service, for example
 <code>regente-server -migrate-only -migration-timeout=15m</code> under the service account
 and environment. A binary older than this release refuses a schema 34 database,
 so keep the pre-upgrade backup until the new version is accepted.</p>
+<p><strong>Follow-up after v0.2.72 (same day).</strong> A CPU profile of the upgraded server
+still showed 57% of its time in the per-tick reservation query. The partial
+index existed, but without table statistics SQLite chose <code>idx_instances_status</code>
+for the retry branch and visited every <code>WAITING</code> instance (28,802) every two
+seconds to return zero rows (1.6 s per run on the VPS). The retry branch now
+names the partial index explicitly on SQLite (<code>INDEXED BY instances_retry_wait</code>), and the plan test fails if any tick query walks
+<code>idx_instances_status</code>. Lesson: a plan test must reproduce the production
+shape (a large waiting daily), not only a large finished history.</p>
 <p><strong>CPU steal on the host.</strong> <code>sar</code> history on the same machine separates the two
 explanations. On the last day before the 28,800-job workspace the guest averaged
 18% user, 7% steal and 75% idle. From the next day on it never idled again, and
