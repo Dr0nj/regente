@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -105,6 +106,7 @@ func main() {
 		tlsKey          = flag.String("tls-key", envOr("REGENTE_TLS_KEY", ""), "Security: server TLS key")
 		tlsClientCA     = flag.String("tls-client-ca", envOr("REGENTE_TLS_CLIENT_CA", ""), "Security: CA for certificate-bound machine routes (web and probes remain HTTPS)")
 		auditVerify     = flag.Bool("audit-verify", false, "Verify audit ledger and optional independent checkpoint, then exit")
+		auditStartup    = flag.String("audit-startup-verify", "incremental", "Ledger verification before serving: incremental (records after the last signed local checkpoint; older records are re-verified in the background) | full (every record, every start)")
 		auditCheckpoint = flag.String("audit-checkpoint", "", "Independent collector checkpoint JSON file for rollback detection")
 		auditKey        = flag.String("audit-key", envOr("REGENTE_AUDIT_KEY", ""), "External audit signing key file (default: SQLite DB path plus .audit.key; required for PostgreSQL)")
 		auditBatchSize  = flag.Int("audit-batch-size", 1, "Audit records per request (1-128); upgrade collector before enabling batches")
@@ -351,11 +353,39 @@ func main() {
 		auditKeyPath = *dbPath + ".audit.key"
 	}
 	auditStarted := time.Now()
-	log.Print("[audit] verifying full ledger before serving; large histories may take several minutes")
-	if err := database.EnableAudit(auditKeyPath, *auditCapacity); err != nil {
-		log.Fatalf("[audit] startup refused: %v", err)
+	if *auditStartup != "incremental" && *auditStartup != "full" {
+		log.Fatal("[config] audit-startup-verify must be incremental or full")
 	}
-	log.Printf("[audit] ledger verified in %s", time.Since(auditStarted).Round(time.Millisecond))
+	var auditBackground *db.AuditStartup
+	// -audit-verify é o pedido explícito de verificação integral: nunca incremental.
+	if *auditStartup == "full" || *auditVerify {
+		log.Print("[audit] verifying full ledger before serving; large histories may take several minutes")
+		if err := database.EnableAudit(auditKeyPath, *auditCapacity); err != nil {
+			log.Fatalf("[audit] startup refused: %v", err)
+		}
+		log.Printf("[audit] ledger verified in %s", time.Since(auditStarted).Round(time.Millisecond))
+	} else {
+		started, err := database.EnableAuditIncremental(auditKeyPath, *auditCapacity)
+		if err != nil {
+			log.Fatalf("[audit] startup refused: %v", err)
+		}
+		if started.Deferred == 0 {
+			log.Printf("[audit] full ledger verified in %s (%d records); signed checkpoint written", time.Since(auditStarted).Round(time.Millisecond), started.Head)
+		} else {
+			log.Printf("[audit] verified records %d..%d in %s from the signed checkpoint; records 1..%d are re-verified in the background", started.Deferred+1, started.Head, time.Since(auditStarted).Round(time.Millisecond), started.Deferred)
+		}
+		auditBackground = &started
+	}
+	if auditBackground != nil && !*auditVerify {
+		go func(start db.AuditStartup) {
+			// Só retorna por shutdown ou por falha de INTEGRIDADE. Nesta última o
+			// checkpoint já foi apagado: encerrar faz o próximo boot verificar tudo
+			// e recusar a partida, que é o comportamento de sempre para trilha violada.
+			if err := database.VerifyAuditBackground(ctx, start, 10*time.Minute); errors.Is(err, db.ErrAuditBackground) {
+				log.Fatalf("[audit] %v — stopping; the next start verifies the full ledger", err)
+			}
+		}(*auditBackground)
+	}
 	if *auditVerify {
 		if *auditCheckpoint != "" {
 			b, err := os.ReadFile(*auditCheckpoint)

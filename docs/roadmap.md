@@ -112,6 +112,11 @@ confirmado pelo usuário em 12/11: entregar com o limite medido, sem aguardar 1M
   e [frontend-performance](frontend-performance.md#large-dailies-measured-browser-behaviour-2026-11-13).
   **Não qualifica 1M/dia:** a UI ainda recebe a diária inteira, a auditoria divide
   o banco operacional e o steal de CPU do host segue sem causa provada.
+- **Boot de 28 min por verificação integral da auditoria (13/11) — corrigido:**
+  o boot passa a verificar só o trecho posterior a um checkpoint local assinado
+  (`-audit-startup-verify=incremental`, default); o restante é reverificado em
+  segundo plano e um banco atrás do checkpoint é recusado. Detalhe e o que muda
+  na garantia em [failure-resistant-audit](failure-resistant-audit.md#startup-verification).
 - **Incidente de inicialização (13/11):** recuperação da VPS após repetição de
   verificação integral da auditoria seguida de timeout de 30s nas definições;
   medir novamente disponibilidade, filas e CPU após o hotfix. Aceite operacional

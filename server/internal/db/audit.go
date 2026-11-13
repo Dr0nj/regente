@@ -68,6 +68,16 @@ CREATE INDEX idx_audit_delivery_pending ON audit_delivery(acknowledged,seq);
 
 // Chave externa ao banco. Não regenerar silenciosamente sobre uma trilha existente.
 func (d *DB) EnableAudit(path string, capacity int64) error {
+	if err := d.prepareAudit(path, capacity); err != nil {
+		return err
+	}
+	return d.VerifyAudit()
+}
+
+// prepareAudit valida chave, permissões e cabeçalho e liga a auditoria, SEM
+// verificar a cadeia — quem chama decide entre a verificação integral
+// (EnableAudit) e a incremental por checkpoint (EnableAuditIncremental).
+func (d *DB) prepareAudit(path string, capacity int64) error {
 	if d.dialect == SQLite {
 		var sync int
 		if err := d.QueryRow("PRAGMA synchronous").Scan(&sync); err != nil || sync < 2 {
@@ -137,7 +147,7 @@ func (d *DB) EnableAudit(path string, capacity int64) error {
 		return err
 	}
 	d.audit = &auditConfig{key: private, capacity: capacity}
-	return d.VerifyAudit()
+	return nil
 }
 
 func (d *DB) AuditEnabled() bool { return d != nil && d.audit != nil }

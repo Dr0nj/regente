@@ -114,6 +114,49 @@ sudo bash /var/lib/regente/deploy/audit/install-audit-collector.sh /secure/sourc
 </code></pre>
 <p>The database must include the checkpoint record with its exact hash. If a backup predates the collector checkpoint, restore a newer database or perform explicit incident recovery; do not reset the collector to hide a gap. An incomplete collector tail refuses startup and requires a verified recovery copy. Database backups, the signing key and collector backups have separate permissions and custody. Existing pre-I14 history is not retroactively signed.</p>
 <p>The mandatory gate proves SQLite/PostgreSQL rollback on storage failure, full backlog refusal, immediate process exit after commit, ACK loss/deduplication, invalid ACK dead letter, alteration detection and collector restore. Real processes additionally prove SIGKILL during a destination outage and PostgreSQL pg_dump/pg_restore against an independent checkpoint. The installed Linux smoke proves separate UIDs, inaccessible signing key/journal, TLS, outage and crash recovery.</p>
+<h2 id="startup-verification">Startup verification</h2>
+<p><code>-audit-startup-verify</code> selects what is verified before the server accepts
+requests.</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Before serving</th>
+<th>Afterwards</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>incremental</code> (default)</td>
+<td>Records after the last signed local checkpoint, anchored on the checkpoint hash</td>
+<td>Older records are re-verified in the background at a limited pace; the checkpoint then advances every ten minutes</td>
+</tr>
+<tr>
+<td><code>full</code></td>
+<td>Every record, on every start</td>
+<td>Nothing deferred</td>
+</tr>
+</tbody>
+</table>
+<p>The checkpoint is a small file beside the signing key (<code>&lt;key&gt;.checkpoint</code>)
+holding the stream, a sequence number and that record's hash, signed with the
+audit private key. It is written only for positions this server has verified.</p>
+<p>What the incremental mode still guarantees before serving:</p>
+<ul>
+<li>A checkpoint that is missing, corrupt, signed by another key or from another
+stream is ignored and the full verification runs.</li>
+<li>A database whose head is <em>behind</em> the checkpoint is refused. This detects a
+restore of an older, internally valid database on the same host, which local
+verification alone could not detect before.</li>
+<li>The record at the checkpoint must carry the checkpointed hash, and every later
+record is verified in full.</li>
+</ul>
+<p>What changes: alteration of a record older than the checkpoint is detected
+after the server starts serving instead of before. When the background pass
+finds it, the server removes the checkpoint and stops; the next start runs the
+full verification and refuses to start, as it always did. Use <code>full</code> where that
+window is unacceptable, and keep using <code>-audit-verify</code> with the independent
+collector checkpoint for restores, which always verifies every record.</p>
 <h2 id="verified-laboratory">Verified laboratory</h2>
 <p><a href="https://github.com/Dr0nj/regente/actions/runs/37128702406">Full CI 37128702406</a> passed at e76b5ce95d9974ebfc7096a52725ad093a4d1df1 with all eight gates, 305 mandatory integration tests/subtests and eight browser scenarios without skips or flaky results. The <a href="https://github.com/Dr0nj/regente/blob/main/docs/evidence/i14-e76b5ce.json">recorded evidence</a> includes real SQLite/PostgreSQL SIGKILL/destination-outage recovery, PostgreSQL dump/restore against an independent checkpoint, and an installed Linux collector with distinct UIDs and inaccessible signing key/journal. This qualifies the documented synthetic laboratory, not an installed production pilot.</p>
 <h2 id="reserved-completion-and-batch-export-schema-33">Reserved completion and batch export (schema 33)</h2>

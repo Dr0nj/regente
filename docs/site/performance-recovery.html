@@ -225,9 +225,22 @@ before starting the service, for example
 <code>regente-server -migrate-only -migration-timeout=15m</code> under the service account
 and environment. A binary older than this release refuses a schema 34 database,
 so keep the pre-upgrade backup until the new version is accepted.</p>
-<p><strong>Still open.</strong> The host showed 89 to 95% CPU steal during the diagnosis; whether
-that is provider throttling triggered by the sustained load above or contention
-from neighbours was not established. One million orders per day remains
+<p><strong>CPU steal on the host.</strong> <code>sar</code> history on the same machine separates the two
+explanations. On the last day before the 28,800-job workspace the guest averaged
+18% user, 7% steal and 75% idle. From the next day on it never idled again, and
+the CPU it actually received became flat: 21 to 29% of the two vCPUs every day
+for a week, then 4 to 5% hour after hour, while steal filled the rest (55 to 70%,
+then 84 to 93%). Contention from neighbours fluctuates; an allowance that stays
+constant for thirteen consecutive hours, whatever the guest asks for, is a
+quota. The measurements are therefore consistent with the provider limiting a
+guest that had been asking for both cores continuously, and that demand came
+from the costs in the table above. This is inferred from guest-side counters:
+the provider's own panel is the only place that states a limit explicitly.</p>
+<p>How to read it on any host: steal with idle near zero means the guest wants more
+CPU than it is being given. Compare <code>sar -u</code> across days rather than a single
+<code>top</code> sample, and reduce the guest's own demand before attributing the steal to
+the provider.</p>
+<p><strong>Still open.</strong> One million orders per day remains
 unqualified: the web UI still receives the whole daily, the audit trail shares
 the operational database, and SQLite remains a single-writer store. PostgreSQL is
 the supported backend for larger installations.</p>
@@ -255,9 +268,14 @@ ordinary dispatch throughput when deciding whether a larger tier is qualified.</
 <p>A running systemd process does not imply that the API is listening. If nginx
 reports <code>connect() failed (111: Connection refused)</code> for the configured upstream,
 check the backend listener and startup journal before changing login credentials.
-Startup verifies the complete signed audit ledger before serving requests. A
-large retained history can take several minutes, especially on a VPS with high
-CPU steal. Logs identify the start and completion of that verification; it must
+Startup verifies the signed audit ledger before serving requests. Until
+v0.2.72 that meant every record on every start: on the diagnosed host, 2.7
+million records took 27 minutes 49 seconds per restart. The default is now
+incremental (see <a href="failure-resistant-audit.html#startup-verification">audit integrity</a>):
+only records written after the last signed local checkpoint are verified before
+serving, and older records are re-verified in the background. The first start
+after upgrading still performs one full verification, because no checkpoint
+exists yet. Logs state which mode ran and how long it took; verification must
 not be bypassed or repaired by deleting ledger entries.</p>
 <p>Definition snapshots have a separate <code>-definitions-build-timeout</code> (default
 <code>5m</code>). The previous fixed 30-second budget could fail after the expensive audit

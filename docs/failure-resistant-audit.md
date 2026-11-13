@@ -49,6 +49,37 @@ The database must include the checkpoint record with its exact hash. If a backup
 
 The mandatory gate proves SQLite/PostgreSQL rollback on storage failure, full backlog refusal, immediate process exit after commit, ACK loss/deduplication, invalid ACK dead letter, alteration detection and collector restore. Real processes additionally prove SIGKILL during a destination outage and PostgreSQL pg_dump/pg_restore against an independent checkpoint. The installed Linux smoke proves separate UIDs, inaccessible signing key/journal, TLS, outage and crash recovery.
 
+## Startup verification
+
+`-audit-startup-verify` selects what is verified before the server accepts
+requests.
+
+| Mode | Before serving | Afterwards |
+|---|---|---|
+| `incremental` (default) | Records after the last signed local checkpoint, anchored on the checkpoint hash | Older records are re-verified in the background at a limited pace; the checkpoint then advances every ten minutes |
+| `full` | Every record, on every start | Nothing deferred |
+
+The checkpoint is a small file beside the signing key (`<key>.checkpoint`)
+holding the stream, a sequence number and that record's hash, signed with the
+audit private key. It is written only for positions this server has verified.
+
+What the incremental mode still guarantees before serving:
+
+- A checkpoint that is missing, corrupt, signed by another key or from another
+  stream is ignored and the full verification runs.
+- A database whose head is *behind* the checkpoint is refused. This detects a
+  restore of an older, internally valid database on the same host, which local
+  verification alone could not detect before.
+- The record at the checkpoint must carry the checkpointed hash, and every later
+  record is verified in full.
+
+What changes: alteration of a record older than the checkpoint is detected
+after the server starts serving instead of before. When the background pass
+finds it, the server removes the checkpoint and stops; the next start runs the
+full verification and refuses to start, as it always did. Use `full` where that
+window is unacceptable, and keep using `-audit-verify` with the independent
+collector checkpoint for restores, which always verifies every record.
+
 ## Verified laboratory
 
 [Full CI 37128702406](https://github.com/Dr0nj/regente/actions/runs/37128702406) passed at e76b5ce95d9974ebfc7096a52725ad093a4d1df1 with all eight gates, 305 mandatory integration tests/subtests and eight browser scenarios without skips or flaky results. The [recorded evidence](evidence/i14-e76b5ce.json) includes real SQLite/PostgreSQL SIGKILL/destination-outage recovery, PostgreSQL dump/restore against an independent checkpoint, and an installed Linux collector with distinct UIDs and inaccessible signing key/journal. This qualifies the documented synthetic laboratory, not an installed production pilot.

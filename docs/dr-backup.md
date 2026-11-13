@@ -154,4 +154,14 @@ RPO/RTO, shared-file SQLite HA or general partition qualification.
 
 ## Mandatory security audit
 
+**Startup checkpoint.** The server keeps `<signing key>.checkpoint`, a signed
+marker of the last ledger position it verified (see
+[startup verification](failure-resistant-audit.md#startup-verification)). It is
+not part of the recovery set: do not copy it to a restore target. If a database
+older than that marker is restored *beside the same key file*, the server
+refuses to start because the ledger is behind a position it already signed.
+Reconcile the gap, verify with `-audit-verify` and the independent collector
+checkpoint, and only then remove the marker; the next start verifies the whole
+ledger and writes a new one.
+
 Schema 32 adds a signed ledger and durable export outbox. Back up the external signing key separately and verify restores against an independent collector checkpoint before admitting jobs. See [failure-resistant audit](failure-resistant-audit.md) for commands, permissions and retention limits.
