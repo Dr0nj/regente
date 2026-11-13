@@ -19,6 +19,11 @@
 export interface AdaptiveThrottleOptions {
   /** Espaçamento mínimo entre execuções (ms). */
   minMs: number;
+  /**
+   * Janela de coalescência ANTES de cada execução (ms): do primeiro gatilho até
+   * a execução, para uma rajada sair numa execução só. Default = minMs.
+   */
+  leadMs?: number;
   /** Teto do espaçamento (ms) — limita o atraso do dado exibido. Default 5000. */
   maxMs?: number;
   /** Quantas vezes o custo medido a thread deve ficar livre depois. Default 3. */
@@ -52,7 +57,7 @@ export function adaptiveThrottle(fn: () => void | Promise<unknown>, opts: Adapti
 
   const arm = () => {
     if (timer !== undefined || running) return;
-    timer = setTimeout(run, Math.max(0, nextAllowedAt - now()));
+    timer = setTimeout(run, Math.max(opts.leadMs ?? opts.minMs, nextAllowedAt - now()));
   };
 
   const finish = (startedAt: number) => {

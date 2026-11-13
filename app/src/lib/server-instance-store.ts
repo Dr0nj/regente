@@ -251,7 +251,7 @@ let detailTimer: ReturnType<typeof setTimeout> | undefined;
 const DETAIL_BURST_LIMIT = 48;
 const burstRefresh = adaptiveThrottle(
   () => refresh().catch((err) => console.warn("[server-instances] burst refresh failed", err)),
-  { minMs: 5000, maxMs: 60000, idleFactor: 6, settle: true },
+  { minMs: 5000, leadMs: 250, maxMs: 60000, idleFactor: 6, settle: true },
 );
 function scheduleDetailRefresh(id: string): void {
   detailQueue.add(id);

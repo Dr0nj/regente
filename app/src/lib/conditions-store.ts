@@ -64,7 +64,7 @@ function refreshServer(): Promise<void> {
 }
 // Cada condição criada/consumida gera um evento; baixar o pool inteiro a cada
 // um (debounce fixo de 32 ms) virava dezenas de GETs por segundo numa rajada.
-const scheduleServerRefresh = adaptiveThrottle(() => refreshServer(), { minMs: 250, maxMs: 5000, settle: true });
+const scheduleServerRefresh = adaptiveThrottle(() => refreshServer(), { minMs: 250, leadMs: 32, maxMs: 5000, settle: true });
 
 /** Refresh after an operator action even when the WebSocket is reconnecting. */
 export async function refreshConditions(): Promise<void> {

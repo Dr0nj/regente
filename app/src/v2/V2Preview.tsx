@@ -405,7 +405,7 @@ function V2PreviewInner() {
   // cada mudança de instance — um GET de 500 linhas por evento numa rajada.
   const refreshAlertBadge = useMemo(() => adaptiveThrottle(
     () => fetchUnacknowledgedCount().then(setUnreadAlerts),
-    { minMs: 2000, maxMs: 15000, settle: true },
+    { minMs: 2000, leadMs: 50, maxMs: 15000, settle: true },
   ), []);
   useEffect(() => {
     if (!isServerMode()) return;
