@@ -80,6 +80,35 @@ ordinary dispatch throughput when deciding whether a larger tier is qualified.
 
 ## Capture comparable evidence
 
+### Startup failures after an upgrade
+
+A running systemd process does not imply that the API is listening. If nginx
+reports `connect() failed (111: Connection refused)` for the configured upstream,
+check the backend listener and startup journal before changing login credentials.
+Startup verifies the complete signed audit ledger before serving requests. A
+large retained history can take several minutes, especially on a VPS with high
+CPU steal. Logs identify the start and completion of that verification; it must
+not be bypassed or repaired by deleting ledger entries.
+
+Definition snapshots have a separate `-definitions-build-timeout` (default
+`5m`). The previous fixed 30-second budget could fail after the expensive audit
+verification and cause systemd to repeat the entire startup. Increase the budget
+for a large workspace on a constrained host, for example
+`-definitions-build-timeout=10m`. Timeout, cancellation, inconsistent files and
+parse failures still prevent publication of an incomplete snapshot.
+
+`-definitions-reconcile-interval` (default `15s`) controls the pause after a
+completed periodic scan. A slower host can use `60s`; external file changes may
+then take longer to appear. Application and coordinated Git mutations still
+invalidate the cache immediately. Slow scans no longer accumulate periodic
+ticks that immediately start another scan.
+
+The optional loopback profiler starts before database and audit initialization,
+after static configuration validation. It can therefore diagnose startup CPU as
+well as steady-state execution. `-check-config` still opens no listeners. Compare
+server, collector and agent versions individually: updating the server alone
+does not update an independently installed agent.
+
 Profiling is disabled by default. Use `-profiling-addr 127.0.0.1:6060` or `REGENTE_PROFILING_ADDR=127.0.0.1:6060`; only numeric loopback addresses are accepted. The listener is separate from the public router. It has no HTTP authentication: access it through a protected host or SSH tunnel. Profiles can contain private paths and workload data; store them with restricted permissions.
 
 ```sh

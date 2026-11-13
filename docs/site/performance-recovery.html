@@ -174,6 +174,30 @@ must still be evaluated at each density. Ordering within a selected batch does
 not by itself prove global FIFO across pages. Keep these gates distinct from
 ordinary dispatch throughput when deciding whether a larger tier is qualified.</p>
 <h2 id="capture-comparable-evidence">Capture comparable evidence</h2>
+<h3 id="startup-failures-after-an-upgrade">Startup failures after an upgrade</h3>
+<p>A running systemd process does not imply that the API is listening. If nginx
+reports <code>connect() failed (111: Connection refused)</code> for the configured upstream,
+check the backend listener and startup journal before changing login credentials.
+Startup verifies the complete signed audit ledger before serving requests. A
+large retained history can take several minutes, especially on a VPS with high
+CPU steal. Logs identify the start and completion of that verification; it must
+not be bypassed or repaired by deleting ledger entries.</p>
+<p>Definition snapshots have a separate <code>-definitions-build-timeout</code> (default
+<code>5m</code>). The previous fixed 30-second budget could fail after the expensive audit
+verification and cause systemd to repeat the entire startup. Increase the budget
+for a large workspace on a constrained host, for example
+<code>-definitions-build-timeout=10m</code>. Timeout, cancellation, inconsistent files and
+parse failures still prevent publication of an incomplete snapshot.</p>
+<p><code>-definitions-reconcile-interval</code> (default <code>15s</code>) controls the pause after a
+completed periodic scan. A slower host can use <code>60s</code>; external file changes may
+then take longer to appear. Application and coordinated Git mutations still
+invalidate the cache immediately. Slow scans no longer accumulate periodic
+ticks that immediately start another scan.</p>
+<p>The optional loopback profiler starts before database and audit initialization,
+after static configuration validation. It can therefore diagnose startup CPU as
+well as steady-state execution. <code>-check-config</code> still opens no listeners. Compare
+server, collector and agent versions individually: updating the server alone
+does not update an independently installed agent.</p>
 <p>Profiling is disabled by default. Use <code>-profiling-addr 127.0.0.1:6060</code> or <code>REGENTE_PROFILING_ADDR=127.0.0.1:6060</code>; only numeric loopback addresses are accepted. The listener is separate from the public router. It has no HTTP authentication: access it through a protected host or SSH tunnel. Profiles can contain private paths and workload data; store them with restricted permissions.</p>
 <pre><code class="language-sh">umask 077
 curl --fail 'http://127.0.0.1:6060/debug/pprof/profile?seconds=30' -o cpu.pprof

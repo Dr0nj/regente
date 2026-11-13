@@ -54,7 +54,7 @@ func TestProductionBoot(t *testing.T) {
 	if _, err = os.Stat(checkDB); !os.IsNotExist(err) {
 		t.Fatal("check-config criou banco")
 	}
-	for _, bad := range [][]string{{"-api-token", "synthetic-secret-never-log"}, {"-demo-mode"}, {"-server-agent"}, {"-addr", ":8080"}, {"-db-driver", "invalid", "-check-config"}, {"-migration-timeout", "0", "-check-config"}, {"-network-boundary", "tls", "-app-url", "https://example.test", "-tls-cert", "missing-cert", "-tls-key", "missing-key"}} {
+	for _, bad := range [][]string{{"-api-token", "synthetic-secret-never-log"}, {"-demo-mode"}, {"-server-agent"}, {"-addr", ":8080"}, {"-db-driver", "invalid", "-check-config"}, {"-migration-timeout", "0", "-check-config"}, {"-definitions-build-timeout", "0", "-check-config"}, {"-definitions-reconcile-interval", "0", "-check-config"}, {"-network-boundary", "tls", "-app-url", "https://example.test", "-tls-cert", "missing-cert", "-tls-key", "missing-key"}} {
 		args := append(append(append([]string{}, production...), "-db", checkDB), bad...)
 		out, err = invoke(args)
 		if err == nil || strings.Contains(string(out), "synthetic-secret-never-log") {

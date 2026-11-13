@@ -14,6 +14,41 @@ import (
 	"github.com/Dr0nj/regente-server/internal/domain"
 )
 
+func TestDefinitionCacheBuildBudgetAndRecovery(t *testing.T) {
+	s := NewFileStore(t.TempDir(), false)
+	if err := s.Save(domain.JobDefinition{ID: "one", Team: "folder"}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := s.StartDefinitionCacheWithTimeout(ctx, time.Hour, time.Nanosecond); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("orçamento esgotado deve impedir publicação: %v", err)
+	}
+	if s.cache.current != nil {
+		t.Fatal("snapshot incompleto foi publicado")
+	}
+	if err := s.StartDefinitionCacheWithTimeout(ctx, time.Hour, time.Minute); err != nil {
+		t.Fatalf("novo orçamento deve permitir recuperação: %v", err)
+	}
+	defs, err := s.ListContext(ctx)
+	if err != nil || len(defs) != 1 || defs[0].ID != "one" {
+		t.Fatalf("snapshot recuperado inválido: %v %v", defs, err)
+	}
+	cancel()
+	if _, err := s.rebuildDefinitionSnapshot(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelamento do serviço não interrompeu construção: %v", err)
+	}
+}
+
+func TestDefinitionCacheRejectsInvalidBuildBudget(t *testing.T) {
+	for _, timeout := range []time.Duration{0, -time.Second} {
+		s := NewFileStore(t.TempDir(), false)
+		if err := s.StartDefinitionCacheWithTimeout(context.Background(), time.Hour, timeout); err == nil {
+			t.Fatal("aceitou orçamento inválido")
+		}
+	}
+}
+
 func BenchmarkDefinitionCopy28800(b *testing.B) {
 	defs := make([]domain.JobDefinition, 28800)
 	for i := range defs {

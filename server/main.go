@@ -80,24 +80,26 @@ func main() {
 	}
 
 	var (
-		profile          = flag.String("profile", envOr("REGENTE_PROFILE", "development"), "Runtime profile: development | production")
-		environment      = flag.String("environment", os.Getenv("REGENTE_ENVIRONMENT"), "Deprecated legacy label; ignored for routing")
-		network          = flag.String("network-boundary", os.Getenv("REGENTE_NETWORK_BOUNDARY"), "Production boundary: loopback | proxy | tls")
-		controlPlane     = flag.String("control-plane-execution", os.Getenv("REGENTE_CONTROL_PLANE_EXECUTION"), "Production execution policy: deny | http | http-ssh")
-		executionMode    = flag.String("execution-mode", envOr("REGENTE_EXECUTION_MODE", "auto"), "Execution contract: auto (durable in production), durable or legacy (development only)")
-		executionLab     = flag.Bool("execution-lab", envOr("REGENTE_EXECUTION_LAB", "") == "1", "I08 development laboratory for protocol v2 attempts; unavailable in production")
-		checkConfig      = flag.Bool("check-config", false, "Validate static configuration and TLS files without opening the database or services")
-		addr             = flag.String("addr", envOr("REGENTE_ADDR", "127.0.0.1:8080"), "HTTP listen address (loopback by default)")
-		profilingAddr    = flag.String("profiling-addr", os.Getenv("REGENTE_PROFILING_ADDR"), "Optional pprof listener on numeric loopback:port; disabled when empty")
-		spaDir           = flag.String("spa-dir", envOr("REGENTE_SPA_DIR", ""), "Single-origin hosting: serve the built SPA from this directory (UI+API+WS on the same port). Empty = API only")
-		docsDir          = flag.String("docs-dir", envOr("REGENTE_DOCS_DIR", ""), "ADV-7: serve the docs site (cmd/docsite) at /docs on the same port. Empty = no docs")
-		workspace        = flag.String("workspace", envOr("REGENTE_WORKSPACE", "./workspace"), "Path to regente workspace (contains definitions/)")
-		sessionsDir      = flag.String("sessions-dir", os.Getenv("REGENTE_SESSIONS_DIR"), "Design clone cache directory (default: sessions next to workspace; must be writable)")
-		dbPath           = flag.String("db", envOr("REGENTE_DB", "./regente.db"), "DB DSN: path to the SQLite file, or a Postgres connection string when -db-driver=postgres")
-		dbDriver         = flag.String("db-driver", envOr("REGENTE_DB_DRIVER", "sqlite"), "State store backend: sqlite | postgres")
-		backupTo         = flag.String("backup", "", "R6/DR: writes an online backup of the state store to this path and exits (SQLite: VACUUM INTO; Postgres: use pg_dump — see docs/dr-backup.md)")
-		migrateOnly      = flag.Bool("migrate-only", false, "Apply and verify schema migrations, then exit before starting services")
-		migrationTimeout = flag.Duration("migration-timeout", 2*time.Minute, "Total schema upgrade and lock wait timeout")
+		profile                      = flag.String("profile", envOr("REGENTE_PROFILE", "development"), "Runtime profile: development | production")
+		environment                  = flag.String("environment", os.Getenv("REGENTE_ENVIRONMENT"), "Deprecated legacy label; ignored for routing")
+		network                      = flag.String("network-boundary", os.Getenv("REGENTE_NETWORK_BOUNDARY"), "Production boundary: loopback | proxy | tls")
+		controlPlane                 = flag.String("control-plane-execution", os.Getenv("REGENTE_CONTROL_PLANE_EXECUTION"), "Production execution policy: deny | http | http-ssh")
+		executionMode                = flag.String("execution-mode", envOr("REGENTE_EXECUTION_MODE", "auto"), "Execution contract: auto (durable in production), durable or legacy (development only)")
+		executionLab                 = flag.Bool("execution-lab", envOr("REGENTE_EXECUTION_LAB", "") == "1", "I08 development laboratory for protocol v2 attempts; unavailable in production")
+		checkConfig                  = flag.Bool("check-config", false, "Validate static configuration and TLS files without opening the database or services")
+		addr                         = flag.String("addr", envOr("REGENTE_ADDR", "127.0.0.1:8080"), "HTTP listen address (loopback by default)")
+		profilingAddr                = flag.String("profiling-addr", os.Getenv("REGENTE_PROFILING_ADDR"), "Optional pprof listener on numeric loopback:port; disabled when empty")
+		definitionsBuildTimeout      = flag.Duration("definitions-build-timeout", 5*time.Minute, "Maximum time to build or reconcile the workspace definition snapshot")
+		definitionsReconcileInterval = flag.Duration("definitions-reconcile-interval", 15*time.Second, "Delay between completed periodic definition scans")
+		spaDir                       = flag.String("spa-dir", envOr("REGENTE_SPA_DIR", ""), "Single-origin hosting: serve the built SPA from this directory (UI+API+WS on the same port). Empty = API only")
+		docsDir                      = flag.String("docs-dir", envOr("REGENTE_DOCS_DIR", ""), "ADV-7: serve the docs site (cmd/docsite) at /docs on the same port. Empty = no docs")
+		workspace                    = flag.String("workspace", envOr("REGENTE_WORKSPACE", "./workspace"), "Path to regente workspace (contains definitions/)")
+		sessionsDir                  = flag.String("sessions-dir", os.Getenv("REGENTE_SESSIONS_DIR"), "Design clone cache directory (default: sessions next to workspace; must be writable)")
+		dbPath                       = flag.String("db", envOr("REGENTE_DB", "./regente.db"), "DB DSN: path to the SQLite file, or a Postgres connection string when -db-driver=postgres")
+		dbDriver                     = flag.String("db-driver", envOr("REGENTE_DB_DRIVER", "sqlite"), "State store backend: sqlite | postgres")
+		backupTo                     = flag.String("backup", "", "R6/DR: writes an online backup of the state store to this path and exits (SQLite: VACUUM INTO; Postgres: use pg_dump — see docs/dr-backup.md)")
+		migrateOnly                  = flag.Bool("migrate-only", false, "Apply and verify schema migrations, then exit before starting services")
+		migrationTimeout             = flag.Duration("migration-timeout", 2*time.Minute, "Total schema upgrade and lock wait timeout")
 		// Segurança — TLS/mTLS opcional (vazio = HTTP plano, comportamento atual).
 		tlsCert         = flag.String("tls-cert", envOr("REGENTE_TLS_CERT", ""), "Security: server TLS cert (empty = plain HTTP)")
 		tlsKey          = flag.String("tls-key", envOr("REGENTE_TLS_KEY", ""), "Security: server TLS key")
@@ -241,6 +243,9 @@ func main() {
 	if *auditBatchSize < 1 || *auditBatchSize > audit.MaxBatchRecords {
 		log.Fatal("audit-batch-size must be between 1 and 128")
 	}
+	if *definitionsBuildTimeout <= 0 || *definitionsReconcileInterval <= 0 {
+		log.Fatal("definition build timeout and reconciliation interval must be positive")
+	}
 	if serving {
 		if err := telemetry.ValidateProfilingAddress(*profilingAddr); err != nil {
 			log.Fatal(err)
@@ -294,6 +299,15 @@ func main() {
 		log.Printf("[config] static configuration valid: profile=%s auth=%s server-agent=%t; database, accounts and reachability not checked", *profile, mode, *serverAgent)
 		return
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if serving {
+		if _, address, err := telemetry.StartProfiling(ctx, *profilingAddr); err != nil {
+			log.Fatalf("[profiling] %v", err)
+		} else if address != nil {
+			log.Printf("[profiling] administrative listener on %s", address)
+		}
+	}
 
 	dialect, err := db.ParseDialect(*dbDriver)
 	if err != nil {
@@ -336,9 +350,12 @@ func main() {
 		}
 		auditKeyPath = *dbPath + ".audit.key"
 	}
+	auditStarted := time.Now()
+	log.Print("[audit] verifying full ledger before serving; large histories may take several minutes")
 	if err := database.EnableAudit(auditKeyPath, *auditCapacity); err != nil {
 		log.Fatalf("[audit] startup refused: %v", err)
 	}
+	log.Printf("[audit] ledger verified in %s", time.Since(auditStarted).Round(time.Millisecond))
 	if *auditVerify {
 		if *auditCheckpoint != "" {
 			b, err := os.ReadFile(*auditCheckpoint)
@@ -626,19 +643,15 @@ func main() {
 	log.Printf("[bloco2] calendars/resources/conditions/sla/variables engines attached")
 	log.Printf("[alerts] engine attached (Phase 8)")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	if err := store.StartDefinitionCache(ctx, 15*time.Second); err != nil {
+	definitionsStarted := time.Now()
+	log.Printf("[definitions] initializing snapshot (timeout=%s)", *definitionsBuildTimeout)
+	if err := store.StartDefinitionCacheWithTimeout(ctx, *definitionsReconcileInterval, *definitionsBuildTimeout); err != nil {
 		log.Fatalf("[definitions] snapshot initialization: %v", err)
 	}
-	if _, address, err := telemetry.StartProfiling(ctx, *profilingAddr); err != nil {
-		log.Fatalf("[profiling] %v", err)
-	} else if address != nil {
-		log.Printf("[profiling] administrative listener on %s", address)
-	}
+	log.Printf("[definitions] snapshot ready in %s", time.Since(definitionsStarted).Round(time.Millisecond))
 	if *auditSIEMURL != "" {
 		go (&audit.Exporter{DB: database, URL: *auditSIEMURL, Token: auditToken, BatchSize: *auditBatchSize}).Run(ctx)
 	}
-	defer cancel()
 
 	// G1 — leader election. Postgres: advisory lock (vários nós, 1 líder).
 	// SQLite/nó único: sempre líder.

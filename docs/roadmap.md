@@ -102,8 +102,10 @@ confirmado pelo usuário em 12/11: entregar com o limite medido, sem aguardar 1M
   não executado. Exige novo desenvolvimento e qualificação, sem reduzir budgets.
 - **VPS:** implantação controlada, perfil vivo e comparação operacional ainda
   pendentes; o laboratório local não mede a CPU da VPS nem encerra esse aceite.
-- **Publicação:** push/CI/release deste conjunto em andamento; não confundir
-  qualificação local com release já publicada.
+- **Incidente de inicialização (13/11):** recuperação da VPS após repetição de
+  verificação integral da auditoria seguida de timeout de 30s nas definições;
+  medir novamente disponibilidade, filas e CPU após o hotfix. Aceite operacional
+  permanece aberto até essa verificação.
 
 ### Onboarding Linux — incremento em validação (03/11/2026)
 
@@ -451,6 +453,18 @@ domínio**, não o binário.
 # ✅ Entregue *(tracking por tópico)*
 
 ### PERF e issue #39 — implementação e qualificação local concluídas (12/11/2026)
+
+**Publicação confirmada em 13/11:** conjunto publicado na release **v0.2.70**,
+commit `f3d5455`, com CI `43326780873` e release `43332191451` aprovadas.
+Esse resultado não encerra o aceite operacional da VPS registrado no backlog.
+
+**Recuperação de inicialização (13/11):** orçamento de construção de definições
+configurável (default 5min), reconciliação com pausa após o scan e profiler
+administrativo disponível antes da verificação da auditoria. Logs distinguem
+verificação integral e carregamento das definições. Timeout, cancelamento e
+conteúdo inconsistente continuam impedindo publicação parcial; a auditoria
+integral continua obrigatória. Testes Linux de concorrência, boot produtivo,
+validação de parâmetros e recuperação após timeout aprovados.
 
 Código integrado em `9cbd6a3` (tag local `perf-final-20261112`), incluindo toda a
 branch `codex/issue-39-canvas`. Worktrees limpos. [Evidências versionadas](evidence/perf-2026-11-12.json).
@@ -2484,6 +2498,12 @@ contra Postgres 16 real (Docker); **os dois últimos resíduos (secrets · SSH/s
 > nova da borda (7 asserções) — mais suíte do server, `go vet` e staticcheck limpos.
 
 ## 📜 Changelog de entregas
+
+- **2026-11-13 — recuperação de startup PERF:** remove o orçamento fixo de 30s
+  das definições no servidor, permite ajustar timeout/cadência e diagnosticar o
+  boot por profiler loopback. Não pula verificação da trilha de auditoria.
+  Publicação anterior PERF + issue #39 confirmada na v0.2.70; aceite da VPS
+  continua separado no backlog.
 
 - **2026-11-12 — PERF + issue #39 prontos para publicação:** conjunto `9cbd6a3`, full/native/virada/recuperação aprovados; envelope sintético final 100 mil/dia, 250 mil reprovado e 1M não qualificado. Diário anterior vinculado a `8a7140a`; zoom 5%–400% e minimapa integrados. [Evidências](evidence/perf-2026-11-12.json).
 

@@ -40,6 +40,7 @@ type definitionCache struct {
 	current                *definitionSnapshot
 	err                    error
 	ctx                    context.Context
+	buildTimeout           time.Duration
 	trigger                chan struct{}
 	flight                 chan struct{}
 	generation             uint64
@@ -51,12 +52,24 @@ type definitionCache struct {
 // Chamadas quentes não leem arquivos nem reconstroem o índice. Shutdown cancela
 // a reconciliação; o snapshot é propriedade deste FileStore, sem registro global.
 func (s *FileStore) StartDefinitionCache(ctx context.Context, interval time.Duration) error {
+	return s.StartDefinitionCacheWithTimeout(ctx, interval, 30*time.Second)
+}
+
+// O orçamento de construção é independente da frequência de reconciliação.
+// Workspaces grandes em CPUs limitadas precisam de mais tempo inclusive no boot.
+func (s *FileStore) StartDefinitionCacheWithTimeout(ctx context.Context, interval, buildTimeout time.Duration) error {
 	if interval <= 0 {
 		return fmt.Errorf("definition reconciliation interval must be positive")
 	}
+	if buildTimeout <= 0 {
+		return fmt.Errorf("definition build timeout must be positive")
+	}
 	s.cache.mu.Lock()
-	if s.cache.trigger == nil {
+	if !s.cache.enabled.Load() {
 		s.cache.ctx = ctx
+		s.cache.buildTimeout = buildTimeout
+	}
+	if s.cache.trigger == nil {
 		s.cache.trigger = make(chan struct{}, 1)
 	}
 	s.cache.mu.Unlock()
@@ -68,7 +81,7 @@ func (s *FileStore) StartDefinitionCache(ctx context.Context, interval time.Dura
 		return err
 	}
 	go func() {
-		t := time.NewTicker(interval)
+		t := time.NewTimer(interval)
 		defer t.Stop()
 		for {
 			select {
@@ -76,6 +89,7 @@ func (s *FileStore) StartDefinitionCache(ctx context.Context, interval time.Dura
 				return
 			case <-t.C:
 				_, _ = s.rebuildDefinitionSnapshot()
+				t.Reset(interval)
 			case <-s.cache.trigger:
 				_, _ = s.definitionSnapshotContext(ctx)
 			}
@@ -255,11 +269,15 @@ func (s *FileStore) rebuildDefinitionSnapshot() (*definitionSnapshot, error) {
 	defer s.cache.build.Unlock()
 	s.cache.mu.Lock()
 	parent := s.cache.ctx
+	buildTimeout := s.cache.buildTimeout
 	s.cache.mu.Unlock()
 	if parent == nil {
 		parent = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
+	if buildTimeout <= 0 {
+		buildTimeout = 30 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(parent, buildTimeout)
 	defer cancel()
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -304,6 +322,9 @@ func (s *FileStore) rebuildDefinitionSnapshot() (*definitionSnapshot, error) {
 			return fail(e)
 		}
 		snap.views = append(snap.views, definitionView{def.Team, def.Environment, sha256.Sum256(raw)})
+	}
+	if err := ctx.Err(); err != nil {
+		return fail(err)
 	}
 	s.cache.mu.Lock()
 	s.cache.generation++
