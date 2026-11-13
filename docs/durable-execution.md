@@ -53,6 +53,11 @@ panel, in the instance event and in the server log, for example:
 - `agent 'X' has no valid credential (token revoked or expired)`
 - `this job runs on the built-in SERVER-AGENT, which is disabled on this server`
 
+The agent advertises its slots with `-concurrency` (1-256). The default was 4
+and is now 32; size it to the host, since I/O-bound HTTP jobs tolerate far more
+than CPU-bound commands. An installed agent keeps the value in its service unit,
+so upgrading the binary alone changes nothing if the unit passes the flag.
+
 Resolve each UNCERTAIN execution as described above to release its slot. There
 is no automatic resolution and no push alert for this condition yet.
 

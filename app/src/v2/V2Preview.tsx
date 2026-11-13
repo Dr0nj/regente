@@ -6,6 +6,7 @@ import {
   ReactFlowProvider,
   Background,
   BackgroundVariant,
+  useStore,
   type Node,
   type Connection,
   type NodeMouseHandler,
@@ -109,7 +110,10 @@ import { listResources } from "@/lib/bloco2-api";
 import NavMinimap from "./NavMinimap";
 import MinimapResizeHandle from "./MinimapResizeHandle";
 import CanvasZoomControls from "./CanvasZoomControls";
-import { CANVAS_MIN_ZOOM, CANVAS_MAX_ZOOM } from "./canvas-zoom";
+import { CANVAS_MIN_ZOOM, CANVAS_MAX_ZOOM, CanvasSolidContext, canvasDetail } from "./canvas-zoom";
+import CanvasScrollbar from "./CanvasScrollbar";
+
+const NO_EDGES: never[] = [];
 import { useCanvasCamera } from "./hooks/useCanvasCamera";
 import { adaptiveThrottle } from "@/lib/adaptive-throttle";
 import { useOrchestratorData } from "./hooks/useOrchestratorData";
@@ -730,8 +734,21 @@ function V2PreviewInner() {
 
   // Câmera do canvas (trava de pan + âncora de entrada + centralizações) — todo
   // movimento programático é clampado pelo mesmo limite do translateExtent.
-  const { panExtent, organizeView, focusOnPoint, focusNode, setPendingFocusId, attachStage, zoomBy, moveCamera } =
+  const { bounds: cameraBounds, panExtent, organizeView, focusOnPoint, focusNode, setPendingFocusId, attachStage, zoomBy, moveCamera } =
     useCanvasCamera(canvas, mode, viewContextKey);
+
+  // Zoom muito afastado ("solid"): cards viram blocos sem filhos e as arestas
+  // saem do DOM — só ficam as do(s) job(s) selecionado(s), que é o que ainda se
+  // lê a essa distância. Medido com 28,8 mil jobs: 3.331 paths SVG de 1 px a 5%
+  // de zoom custavam mais da metade de cada frame do arrasto.
+  const solidDetail = useStore((s) => canvasDetail(s.transform[2]) === "solid");
+  const canvasEdges = useMemo(() => {
+    if (!solidDetail) return canvas.edges;
+    if (selectedIds.size === 0) return NO_EDGES;
+    const prefix = mode === "monitoring" ? "m-" : "d-";
+    const picked = new Set([...selectedIds].map((id) => prefix + id));
+    return canvas.edges.filter((e) => picked.has(e.source) || picked.has(e.target));
+  }, [solidDetail, canvas.edges, selectedIds, mode]);
 
   const monitoringJobs = useMemo(() => {
     const defsById = new Map(runnableDefs.map((d) => [d.id, d] as const));
@@ -1863,9 +1880,10 @@ function V2PreviewInner() {
         {/* P3/escala — não monta o canvas legado quando o ViewPoint cobre a tela.
             Job-as-code — nem quando o modo código cobre o palco do Design. */}
         {!(mode === "monitoring" && scaleView) && !(mode === "design" && codeMode) && (
+        <CanvasSolidContext.Provider value={solidDetail}>
         <ReactFlow
           nodes={displayNodes}
-          edges={canvas.edges}
+          edges={canvasEdges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           // (sem o prop fitView: o fit inicial embutido do RF aplicava DEPOIS do
@@ -1920,9 +1938,13 @@ function V2PreviewInner() {
         >
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#1a1a1a" />
         </ReactFlow>
+        </CanvasSolidContext.Provider>
         )}
         {!(mode === "monitoring" && scaleView) && !(mode === "design" && codeMode) && (
           <CanvasZoomControls onZoom={zoomBy} onFit={() => organizeView(200)} />
+        )}
+        {cameraBounds && !(mode === "monitoring" && scaleView) && !(mode === "design" && codeMode) && (
+          <CanvasScrollbar minX={cameraBounds.minX} maxX={cameraBounds.maxX} onMove={moveCamera} />
         )}
         {showMinimap && !(mode === "monitoring" && scaleView) && !(mode === "design" && codeMode) && (
           <>

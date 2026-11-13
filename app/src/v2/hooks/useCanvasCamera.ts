@@ -439,6 +439,6 @@ export function useCanvasCamera(canvas: Canvas, mode: Mode, viewContextKey: stri
     const zoom = clampCanvasZoom(vp.zoom * factor);
     apply({ x: sx - (sx - vp.x) / vp.zoom * zoom, y: sy - (sy - vp.y) / vp.zoom * zoom, zoom });
   }, [getViewport, storeApi, visibleInsets, apply]);
-  return { panExtent, organizeView, focusOnPoint, focusNode, setPendingFocusId, attachStage, zoomBy, moveCamera: apply };
+  return { bounds, panExtent, organizeView, focusOnPoint, focusNode, setPendingFocusId, attachStage, zoomBy, moveCamera: apply };
 
 }

@@ -1,5 +1,6 @@
 import { GRAPH_SPACING, JOB_WIDTH, JOB_HEIGHT, JOB_TAGGED_HEIGHT } from "./dependency-layout";
-import { memo, type CSSProperties } from "react";
+import { memo, useContext, type CSSProperties } from "react";
+import { CanvasSolidContext } from "./canvas-zoom";
 import { jobStatusVisual } from "./job-status-visual";
 import { recordCanvasMetric } from "./canvas-metrics";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
@@ -13,6 +14,11 @@ type JobNodeV2 = Node<JobNodeData, "jobV2">;
 
 function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
   recordCanvasMetric("jobRender");
+  // Zoom muito afastado: bloco de cor SEM filhos. Medido no laboratório com 28,8
+  // mil jobs (2026-11-13): no zoom mínimo havia ~2 mil cards na tela, cada um
+  // com ~15 elementos ocultos por CSS — 42,7 mil nós de DOM e 12 fps no arrasto.
+  // As arestas usam âncoras estáticas (JOB_HANDLES), não os <Handle> do DOM.
+  const solid = useContext(CanvasSolidContext);
   const visual = jobStatusVisual(data);
   const statusColor = visual.color;
   const relation = data.dependencyRelation;
@@ -42,6 +48,7 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
         transition: "box-shadow 120ms ease, border-color 120ms ease",
       } as CSSProperties}
     >
+      {!solid && <>
       {/* Cadeado preserva a origem do HOLD no tooltip. */}
       {data.held && (
         <div
@@ -220,6 +227,7 @@ function JobNodeV2Component({ data, selected }: NodeProps<JobNodeV2>) {
           height: 18,
         }}
       />
+      </>}
     </div>
   );
 }

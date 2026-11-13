@@ -136,3 +136,26 @@ The canvas still owns every job of the daily. That model does not reach one
 million orders; the next step is to open on the aggregated summary and load one
 folder at a time, which the sidebar already does through `/api/instances/summary`
 and `/api/instances/page`.
+
+## Far zoom, wait reasons and horizontal scroll (2026-11-13)
+
+Measured in the local laboratory with the 28,800-job daily, dragging the canvas
+at the minimum zoom (5%): 12.5 frames per second, with 2,082 cards and 3,331
+dependency paths mounted (42,769 DOM elements). More than half of each frame was
+browser rendering, not script.
+
+- At the far "solid" detail level a card is now a single coloured block with no
+  children, and dependency lines leave the DOM; only the lines of the selected
+  job stay. The same drag now runs at 56.7 frames per second with 4,475 DOM
+  elements. Zooming in restores full cards and all lines.
+- A draggable horizontal scrollbar appears at the bottom of the canvas whenever
+  the content is wider than the visible area. It moves the same camera as every
+  other gesture and stays clear of the sidebar and the details drawer.
+- Each wait reason has its own colour: no capable agent (pink, `WAIT AGENT`),
+  agent online with every slot in use (teal, `WAIT SLOT`), resource or quota
+  (blue, `WAIT RESOURCE`). `UNCERTAIN` is orange in the job list and the details
+  drawer too. `GET /api/agents` reports `slots`, `inUse` and `uncertain` per
+  agent, refreshed every 20 seconds while the tab is visible.
+
+Not verified in the laboratory: the selected-job lines at far zoom (the job
+clicked in the check had no visible dependency).

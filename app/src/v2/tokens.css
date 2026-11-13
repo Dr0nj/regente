@@ -970,6 +970,16 @@
 [data-canvas-detail="solid"] .v2-job-card > :not(.react-flow__handle) { visibility: hidden; }
 [data-canvas-detail="solid"] .v2-job-card .react-flow__handle { opacity: 0; }
 [data-canvas-detail="solid"] .v2-job-card * { animation: none !important; }
+.v2-canvas-scrollbar {
+  position: absolute; bottom: 3px; height: 10px; z-index: 11; border-radius: 5px;
+  background: color-mix(in srgb, var(--v2-text-primary) 8%, transparent); cursor: pointer; touch-action: none;
+}
+.v2-canvas-scrollbar-thumb {
+  position: absolute; top: 1px; bottom: 1px; border-radius: 4px; cursor: grab;
+  background: color-mix(in srgb, var(--v2-text-primary) 38%, transparent);
+}
+.v2-canvas-scrollbar-thumb:hover, .v2-canvas-scrollbar-thumb:active { background: color-mix(in srgb, var(--v2-text-primary) 60%, transparent); }
+.v2-canvas-scrollbar-thumb:active { cursor: grabbing; }
 [data-canvas-detail="solid"] .v2-job-card[data-selected] { outline: 6px solid var(--job-selected) !important; outline-offset: 2px !important; }
 [data-canvas-detail="solid"] .v2-job-card[data-dependency-relation="ancestor"]:not([data-selected]) { outline: 5px solid var(--job-ancestor) !important; }
 [data-canvas-detail="solid"] .v2-job-card[data-dependency-relation="descendant"]:not([data-selected]) { outline: 5px solid var(--job-descendant) !important; }
