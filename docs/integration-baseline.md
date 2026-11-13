@@ -131,7 +131,7 @@ the same-binary drain and the schema-document contract. The
 [recorded evidence](evidence/doc-a-af75c51.json) is synthetic laboratory evidence,
 not production or mixed-version qualification.
 
-Current runtime schema: **33**; supported range: **[33,33]**.
+Current runtime schema: **34**; supported range: **[33,34]**.
 
 Schema 33 adds durable audit reservations for active execution attempts. Upgrade
 inventories seven lifecycle slots per nonterminal attempt; if the inherited

@@ -111,6 +111,7 @@ import MinimapResizeHandle from "./MinimapResizeHandle";
 import CanvasZoomControls from "./CanvasZoomControls";
 import { CANVAS_MIN_ZOOM, CANVAS_MAX_ZOOM } from "./canvas-zoom";
 import { useCanvasCamera } from "./hooks/useCanvasCamera";
+import { adaptiveThrottle } from "@/lib/adaptive-throttle";
 import { useOrchestratorData } from "./hooks/useOrchestratorData";
 
 /* ──────────────────────────────────────────────────────────────
@@ -400,6 +401,12 @@ function V2PreviewInner() {
      resync dos itens "fetch-once" sem outro caminho de recuperação (badge de
      alertas, env label e o /me — server fora do ar no mount deixava o
      LoginForm mesmo com token válido). */
+  // O badge baixa a lista de alertas para contar. Era pedido a cada alerta E a
+  // cada mudança de instance — um GET de 500 linhas por evento numa rajada.
+  const refreshAlertBadge = useMemo(() => adaptiveThrottle(
+    () => fetchUnacknowledgedCount().then(setUnreadAlerts),
+    { minMs: 2000, maxMs: 15000, settle: true },
+  ), []);
   useEffect(() => {
     if (!isServerMode()) return;
     return onServerEvent((ev) => {
@@ -421,11 +428,11 @@ function V2PreviewInner() {
         } else {
           toast.info(title, { detail: p.message });
         }
-        void fetchUnacknowledgedCount().then(setUnreadAlerts);
+        refreshAlertBadge();
       }
       // Ciclo de vida: alertas tratados (rerun/set-ok) no server → atualiza o badge.
       if (ev.event === "alert.changed") {
-        void fetchUnacknowledgedCount().then(setUnreadAlerts);
+        refreshAlertBadge();
       }
       if (isResyncEvent(ev)) {
         void fetchUnacknowledgedCount().then(setUnreadAlerts);
@@ -441,7 +448,7 @@ function V2PreviewInner() {
         void fetchMe().then((u) => { if (u) setMe(u); });
       }
     });
-  }, [refreshDailyStatus, refreshAgents]);
+  }, [refreshDailyStatus, refreshAgents, refreshAlertBadge]);
 
   // Alerting (Phase 8) — surface fired alerts as toasts and keep the topbar
   // badge in sync. In local mode the notifier is invoked from instance-store;
@@ -462,9 +469,10 @@ function V2PreviewInner() {
 
   // Recompute unread badge on instance changes (alerts fire during updates)
   // and whenever the panel toggles (acknowledge happens inside it).
+  useEffect(() => { refreshAlertBadge(); }, [instances, refreshAlertBadge]);
   useEffect(() => {
     void fetchUnacknowledgedCount().then(setUnreadAlerts);
-  }, [instances, showAlerts]);
+  }, [showAlerts]);
 
   // F11.8 — persist visibleFolders
   useEffect(() => {

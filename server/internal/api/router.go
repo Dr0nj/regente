@@ -116,6 +116,11 @@ func NewRouter(cfg Config) http.Handler {
 	// vindos de um proxy confiável — ver realip.go.
 	r.Use(realIP(cfg.TrustedProxies))
 	r.Use(s.cors)
+	// Compressão na origem: a lista de instances de uma diária grande são dezenas
+	// de MB de JSON e o bundle da SPA ia sem compressão (o template do nginx não
+	// liga gzip). Feito aqui vale para qualquer borda. text/event-stream fica de
+	// fora de propósito — SSE precisa sair sem buffer.
+	r.Use(middleware.Compress(5, "application/json", "text/html", "text/css", "text/javascript", "application/javascript", "image/svg+xml", "text/plain"))
 
 	r.Get("/health", s.scoped((*server).health))
 	// R2 — liveness (público): 200 enquanto o processo serve; reporta idade do tick.

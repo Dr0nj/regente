@@ -4,7 +4,7 @@ The performance changes address repeated definition loading, retry amplification
 
 ## Compatibility and rollout
 
-This runtime requires schema **33**, protocol **2**, and matching server/agent artifacts. Stop admission, drain or inventory active and uncertain executions, and back up the database, workspace, signing key, collector journal and agent journals before migration. Schema 33 adds audit reservations and transactional scheduler change notifications. It inventories seven audit slots for each nonterminal attempt, including uncertain attempts. An inherited backlog can exceed the configured limit: new admission then fails closed while reserved transitions remain available. Do not delete reservations or ledger entries to reopen admission.
+This runtime requires schema **34** (it upgrades a schema 33 database in place by adding two partial indexes), protocol **2**, and matching server/agent artifacts. Stop admission, drain or inventory active and uncertain executions, and back up the database, workspace, signing key, collector journal and agent journals before migration. Schema 33 adds audit reservations and transactional scheduler change notifications. It inventories seven audit slots for each nonterminal attempt, including uncertain attempts. An inherited backlog can exceed the configured limit: new admission then fails closed while reserved transitions remain available. Do not delete reservations or ledger entries to reopen admission.
 
 Upgrade the independent collector before enabling `-audit-batch-size 128`. The default remains one record for compatibility with existing collectors. Upgrade the server with `-scheduler-incremental=false` first; enable `-scheduler-incremental` only after the comparison workload passes. Both switches are startup flags. Disabling incremental scheduling restores full evaluation on schema 33; it does not downgrade the database. Rollback to a schema-32 binary requires the complete matching pre-upgrade backup and reconciliation of subsequent external effects, not just replacing the executable.
 
@@ -47,6 +47,48 @@ and investigate if evidence has a ledger gap, conflicting receipt, duplicate
 external effect, growing backlog without recovery or stalled execution. Do not
 delete audit data or reissue uncertain effects to make a check pass. Switching
 flags back does not undo migration or completed external effects.
+
+## Production diagnosis of 2026-11-13
+
+The first live profile of a production host (2 vCPU, SQLite, 28,800 jobs per
+daily, ten days of accumulated history) showed that the laboratory had missed
+costs that grow with *history* and with *workspace size* rather than with the
+load of the moment. The scheduler was not dispatching: the daily sat with 28,802
+orders waiting, and the web UI never finished loading.
+
+| Measured on the host | Cause | Change |
+|---|---|---|
+| Scheduler tick spent 76% of its time in one query; the same query took 14.3 s to return 4 rows | `rebuildDurableResources` joined from `runtime_orders` with an `OR` predicate, so every tick scanned every order ever executed, inside a write transaction holding the queue lock | Two index-driven branches joined by `UNION`; schema 34 adds partial indexes holding only live attempts and retry-waiting instances. When no live order declares a resource the tick opens no write transaction at all |
+| Lease expiry and running evaluation also scanned `execution_attempts` | No index on attempt state | Same partial index; the queries now carry its predicate literally |
+| 27% of server CPU while idle | The 30 s Git poll ran a full worktree status (stat and hash of every tracked file) even when `HEAD` already matched the remote | `SyncFromRemotePoll` skips the per-file audit when nothing moved and repeats it every 10 minutes; explicit syncs (daily, API, sessions) still audit every time |
+| Every poll reloaded definitions and broadcast `definition.changed` and `folder.changed` | The poll callback ran unconditionally | The poll reports whether the worktree changed; reload and broadcast happen only then |
+| 17% of server CPU while idle | The 60 s definition reconciliation read and hashed every YAML file | A path, size and modification-time stamp is compared first; content is re-read only when the stamp changes, and every tenth round regardless |
+| Login and `GET /api/auth/me` took 1 to 9 s; `database is locked` at boot | Readers and writers queued behind the tick transaction above | Removed with the tick change; SQLite page cache raised from 2 MB to 32 MB per connection |
+| Web event buffer overflowed during bursts and events were dropped silently | Each delivered event re-resolved the session and its ACLs in the database, twice | The resolution is reused for 500 ms inside a connection; the buffer grew from 64 to 2,048 events; a client that falls behind is told to resynchronize once it catches up |
+| JSON and the UI bundle were sent uncompressed | The edge template does not enable compression | The server compresses JSON, HTML, CSS, JavaScript and SVG itself |
+
+**SQLite planner constraint.** SQLite uses a partial index only when the query
+repeats the index predicate textually; it does not infer that `state='running'`
+implies `state NOT IN ('succeeded','failed','cancelled')`. Queries against these
+indexes must use `db.ActiveAttemptPredicate` and `db.RetryWaitPredicate`.
+`TestTickQueriesNeverScanHistory` fails if any per-tick query plans a table scan.
+
+**Upgrade.** Schema 34 is applied at startup and only creates the two indexes.
+Building the `instances` index reads that table once. On the diagnosed host
+(231,000 instances in a 4 GB SQLite file, CPU throttled) the equivalent scan took
+111 s, close to the default `-migration-timeout` of two minutes. On a database of
+that size or larger, apply the migration as its own step with a measured budget
+before starting the service, for example
+`regente-server -migrate-only -migration-timeout=15m` under the service account
+and environment. A binary older than this release refuses a schema 34 database,
+so keep the pre-upgrade backup until the new version is accepted.
+
+**Still open.** The host showed 89 to 95% CPU steal during the diagnosis; whether
+that is provider throttling triggered by the sustained load above or contention
+from neighbours was not established. One million orders per day remains
+unqualified: the web UI still receives the whole daily, the audit trail shares
+the operational database, and SQLite remains a single-writer store. PostgreSQL is
+the supported backend for larger installations.
 
 ## Definitions
 

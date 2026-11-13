@@ -45,6 +45,9 @@ type definitionCache struct {
 	flight                 chan struct{}
 	generation             uint64
 	hits, builds, failures atomic.Uint64
+	// Carimbo de stat da última reconciliação bem-sucedida (reconcileDefinitions).
+	statStamp  string
+	statRounds uint64
 }
 
 // StartDefinitionCache ativa somente no workspace vivo. Sessions mantêm leitura
@@ -88,7 +91,7 @@ func (s *FileStore) StartDefinitionCacheWithTimeout(ctx context.Context, interva
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				_, _ = s.rebuildDefinitionSnapshot()
+				s.reconcileDefinitions(ctx)
 				t.Reset(interval)
 			case <-s.cache.trigger:
 				_, _ = s.definitionSnapshotContext(ctx)
@@ -96,6 +99,65 @@ func (s *FileStore) StartDefinitionCacheWithTimeout(ctx context.Context, interva
 		}
 	}()
 	return nil
+}
+
+// definitionContentAuditEvery — a cada quantas reconciliações periódicas o
+// conteúdo é relido mesmo com o carimbo de stat inalterado.
+const definitionContentAuditEvery = 10
+
+// reconcileDefinitions é a reconciliação PERIÓDICA contra edições feitas por
+// fora do server. Antes, cada rodada lia e fazia SHA-256 de todos os YAMLs
+// (17% da CPU do server ocioso com 28,8 mil definitions, medido em produção).
+// Agora compara primeiro um carimbo barato — caminho, tamanho e mtime de cada
+// arquivo — e só relê o conteúdo se o carimbo mudou. Uma edição que preserve
+// tamanho E mtime escaparia do carimbo; por isso o conteúdo ainda é conferido
+// a cada definitionContentAuditEvery rodadas.
+func (s *FileStore) reconcileDefinitions(ctx context.Context) {
+	stamp, err := s.definitionsStatStamp(ctx)
+	s.cache.mu.Lock()
+	s.cache.statRounds++
+	same := err == nil && s.cache.current != nil && stamp == s.cache.statStamp && s.cache.statRounds%definitionContentAuditEvery != 0
+	s.cache.mu.Unlock()
+	if same {
+		return
+	}
+	if _, buildErr := s.rebuildDefinitionSnapshot(); buildErr == nil && err == nil {
+		s.cache.mu.Lock()
+		s.cache.statStamp = stamp
+		s.cache.mu.Unlock()
+	}
+}
+
+// definitionsStatStamp resume o diretório de definitions sem ler nenhum arquivo.
+func (s *FileStore) definitionsStatStamp(ctx context.Context) (string, error) {
+	h := sha256.New()
+	root := s.definitionsDir()
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) && path == root {
+				return nil
+			}
+			return err
+		}
+		if e := ctx.Err(); e != nil {
+			return e
+		}
+		rel, _ := filepath.Rel(root, path)
+		if d.IsDir() {
+			fmt.Fprintf(h, "dir:%s\n", rel)
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".yaml") && !strings.HasSuffix(d.Name(), ".yml") {
+			return nil
+		}
+		info, e := d.Info()
+		if e != nil {
+			return e
+		}
+		fmt.Fprintf(h, "%d:%s:%d:%d\n", len(rel), rel, info.Size(), info.ModTime().UnixNano())
+		return nil
+	})
+	return hex.EncodeToString(h.Sum(nil)), err
 }
 
 // beginWorkspaceMutation também envolve operações Git que alteram o worktree.

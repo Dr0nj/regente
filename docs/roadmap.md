@@ -102,6 +102,16 @@ confirmado pelo usuário em 12/11: entregar com o limite medido, sem aguardar 1M
   não executado. Exige novo desenvolvimento e qualificação, sem reduzir budgets.
 - **VPS:** implantação controlada, perfil vivo e comparação operacional ainda
   pendentes; o laboratório local não mede a CPU da VPS nem encerra esse aceite.
+- **Diagnóstico ao vivo na VPS (13/11) — correções entregues, aceite em medição:**
+  perfil de CPU e banco reais mostraram o scheduler parado numa consulta que
+  varria o histórico a cada tick (14,3 s para 4 linhas), git poll e digest lendo
+  28,8 mil arquivos com o sistema ocioso, e a UI congelada numa normalização
+  O(n²) de condições. Schema 34 (índices parciais), poll e digest por mudança,
+  compressão na origem, contrapressão no WebSocket e na tela. Causas, medições e
+  o que continua aberto em [performance-recovery](performance-recovery.md#production-diagnosis-of-2026-11-13)
+  e [frontend-performance](frontend-performance.md#large-dailies-measured-browser-behaviour-2026-11-13).
+  **Não qualifica 1M/dia:** a UI ainda recebe a diária inteira, a auditoria divide
+  o banco operacional e o steal de CPU do host segue sem causa provada.
 - **Incidente de inicialização (13/11):** recuperação da VPS após repetição de
   verificação integral da auditoria seguida de timeout de 30s nas definições;
   medir novamente disponibilidade, filas e CPU após o hotfix. Aceite operacional

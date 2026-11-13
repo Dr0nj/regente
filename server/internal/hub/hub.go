@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -32,6 +33,12 @@ type Client struct {
 	Authorize      func() bool         // revalidação limitada antes de entregar mensagens
 	FilterWeb      func([]byte) []byte // obrigatório no writer web; nil/retorno vazio = negar
 	Done           chan struct{}
+
+	// Lagged — o buffer de envio encheu e ao menos um evento foi descartado.
+	// O writer web, ao esvaziar a fila, avisa o browser para ressincronizar
+	// (ver api.clientWriter). Sem isso o descarte era silencioso: o board ficava
+	// com status velho até um F5.
+	Lagged atomic.Bool
 
 	// Environment — ADV-2: label de ambiente/site do agente (flag -env do
 	// agente; ex. "prod", "dc-sp"). Vazio = generalista (serve qualquer job).
@@ -147,7 +154,12 @@ func (h *Hub) BroadcastWeb(event string, payload interface{}) {
 		select {
 		case c.Send <- raw:
 		default:
-			log.Printf("[hub] drop msg to web %s (buffer full)", c.ID)
+			// Uma linha por episódio de atraso, não por evento: numa rajada de
+			// milhares de transições o log por mensagem custava mais CPU que o
+			// próprio envio.
+			if c.Lagged.CompareAndSwap(false, true) {
+				log.Printf("[hub] web %s is lagging (send buffer full); events dropped until it catches up, then it is told to resync", c.ID)
+			}
 		}
 	}
 }

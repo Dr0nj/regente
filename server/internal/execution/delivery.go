@@ -391,7 +391,7 @@ func (e *Engine) CancelFor(orderID, actor string) (Attempt, error) {
 
 func (e *Engine) Reconcile() (int, error) {
 	now := e.now()
-	rows, err := e.DB.Query(`SELECT execution_id FROM execution_attempts WHERE state IN ('accepted','running','cancel_requested') AND lease_until>0 AND lease_until<=?`, now)
+	rows, err := e.DB.Query(`SELECT execution_id FROM execution_attempts WHERE state NOT IN ('succeeded','failed','cancelled') AND state IN ('accepted','running','cancel_requested') AND lease_until>0 AND lease_until<=?`, now)
 	if err != nil {
 		return 0, err
 	}

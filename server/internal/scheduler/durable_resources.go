@@ -10,7 +10,71 @@ import (
 
 // Reconcilia a fonte durável, sem apagar reservas incertas ou órfãs. Um erro
 // impede admissão; reconstrução não inventa uma execução a partir de RUNNING.
+// activeResourceOrdersQuery — ordens cujas reservas precisam existir: tentativa
+// corrente ainda viva OU instance aguardando retry. São DUAS consultas guiadas
+// por índice parcial (schemaV34) unidas, em vez de um OR sobre o histórico
+// inteiro: o OR antigo forçava SCAN de runtime_orders a cada tick e, em
+// produção, levava 14 s para devolver 4 linhas — dentro de transação de escrita.
+var activeResourceOrdersQuery = "SELECT r.instance_id,o.current_execution,o.snapshot,o.snapshot_checksum FROM execution_attempts a JOIN lab_orders o ON o.id=a.order_id AND o.current_execution=a.execution_id JOIN runtime_orders r ON r.order_id=o.id WHERE " + db.ActiveAttemptPredicate("a") +
+	" UNION SELECT r.instance_id,o.current_execution,o.snapshot,o.snapshot_checksum FROM instances i JOIN runtime_orders r ON r.instance_id=i.id JOIN lab_orders o ON o.id=r.order_id JOIN execution_attempts a ON a.execution_id=o.current_execution WHERE " + db.RetryWaitPredicate("i")
+
+type resourceOrder struct {
+	id, exec string
+	needs    map[string]int
+}
+
+type rowQuerier interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+}
+
+// readResourceOrders lê e valida as ordens vivas. Devolve também se alguma
+// delas declara recurso — sem isso não há reserva a reconciliar.
+func readResourceOrders(q rowQuerier) ([]resourceOrder, bool, error) {
+	rows, err := q.Query(activeResourceOrdersQuery)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	records := []resourceOrder{}
+	hasNeeds := false
+	for rows.Next() {
+		var r resourceOrder
+		var raw, sum string
+		if err = rows.Scan(&r.id, &r.exec, &raw, &sum); err != nil {
+			return nil, false, err
+		}
+		var def domain.JobDefinition
+		if digest(raw) != sum || json.Unmarshal([]byte(raw), &def) != nil {
+			return nil, false, execution.ErrConflict
+		}
+		for name, qty := range def.Resources {
+			if qty <= 0 {
+				continue
+			}
+			if r.needs == nil {
+				r.needs = map[string]int{}
+			}
+			r.needs[name] = qty
+			hasNeeds = true
+		}
+		records = append(records, r)
+	}
+	return records, hasNeeds, rows.Err()
+}
+
 func (s *Scheduler) rebuildDurableResources() (int, error) {
+	// Pré-leitura fora de transação: no caso comum (nenhuma ordem viva declara
+	// recurso) o tick não abre transação de escrita nem toma o lock da fila —
+	// era isso que fazia login, auditoria e poll do agente esperarem atrás do
+	// scheduler. Havendo reserva a conferir, tudo é relido e validado dentro da
+	// transação abaixo; a pré-leitura nunca decide uma escrita.
+	records, hasNeeds, err := readResourceOrders(s.db)
+	if err != nil {
+		return 0, err
+	}
+	if !hasNeeds {
+		return len(records), nil
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
@@ -22,34 +86,11 @@ func (s *Scheduler) rebuildDurableResources() (int, error) {
 	if err = s.guardLeadership(tx); err != nil {
 		return 0, err
 	}
-	rows, err := tx.Query("SELECT r.instance_id,o.current_execution,o.snapshot,o.snapshot_checksum FROM runtime_orders r JOIN lab_orders o ON o.id=r.order_id JOIN execution_attempts a ON a.execution_id=o.current_execution JOIN instances i ON i.id=r.instance_id WHERE a.state NOT IN ('succeeded','failed','cancelled') OR (i.status='WAITING' AND COALESCE(i.attempts,1)>1)")
-	if err != nil {
-		return 0, err
-	}
-	type record struct{ id, exec, raw, sum string }
-	records := []record{}
-	for rows.Next() {
-		var r record
-		if err = rows.Scan(&r.id, &r.exec, &r.raw, &r.sum); err != nil {
-			rows.Close()
-			return 0, err
-		}
-		records = append(records, r)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
+	if records, _, err = readResourceOrders(tx); err != nil {
 		return 0, err
 	}
 	for _, r := range records {
-		var def domain.JobDefinition
-		if digest(r.raw) != r.sum || json.Unmarshal([]byte(r.raw), &def) != nil {
-			return 0, execution.ErrConflict
-		}
-		for name, qty := range def.Resources {
-			if qty <= 0 {
-				continue
-			}
+		for name, qty := range r.needs {
 			if _, err = tx.Exec("INSERT INTO resources(name,capacity) VALUES(?,1) ON CONFLICT(name) DO NOTHING", name); err != nil {
 				return 0, err
 			}

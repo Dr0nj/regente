@@ -115,3 +115,24 @@ measurements above do not establish performance of a deployed remote daily.
 The virtualization/dimension contract follows the installed React Flow code and
 its [node API](https://reactflow.dev/api-reference/types/node) and
 [rendering API](https://reactflow.dev/api-reference/react-flow).
+
+## Large dailies: measured browser behaviour (2026-11-13)
+
+Profiled in a headless browser against a disposable server holding the
+28,800-definition workspace, with jobs finishing continuously.
+
+| Before | Cause | After |
+|---|---|---|
+| The tab froze for minutes; 90% of browser CPU in `normalizeDefsConditions` | The derived upstream view compared every incoming condition against every definition, about 1.3 billion comparisons at this size | A producer index built once per load; the derived view is identical |
+| The definition catalogue (19 MB) was downloaded four times to open the page | The design and published catalogues share a URL without a design session, and both were requested at mount and again after login | Concurrent requests for the same URL share one response |
+| The main thread stayed busy while jobs were finishing | Each WebSocket event triggered, after a fixed debounce of about 30 ms, work costing hundreds of milliseconds: recomputing the canvas, reloading the condition pool, counting alerts | `adaptiveThrottle` spaces each of these by a multiple of its measured cost, including the render it schedules |
+| Hundreds of single-row requests during a burst | Every partial event fetched its row | Above 48 pending rows one snapshot of the day replaces them |
+
+Result in that laboratory: first cards in 3 to 4 s, and the main thread about
+84% idle once loaded (44% idle during the first 30 s under a continuous burst),
+against a page that did not respond at all before.
+
+The canvas still owns every job of the daily. That model does not reach one
+million orders; the next step is to open on the aggregated summary and load one
+folder at a time, which the sidebar already does through `/api/instances/summary`
+and `/api/instances/page`.

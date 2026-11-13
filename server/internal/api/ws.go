@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Dr0nj/regente-server/internal/auth"
@@ -39,9 +40,42 @@ func (s *server) wsWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fingerprint := access.fingerprint()
+	// A cada evento entregue a sessão é revalidada no banco (revogação e mudança
+	// de ACL valem na hora — é contrato, coberto por TestWebEventDistributed).
+	// O writer chamava essa resolução DUAS vezes por mensagem: uma no Authorize e
+	// outra no filtro de escopo. O Authorize agora deixa o resultado para o
+	// filtro da MESMA mensagem consumir (uma vez só); o ticker de 1 s e qualquer
+	// outra chamada continuam resolvendo do zero. Metade das consultas, mesma
+	// garantia.
+	var (
+		handoffMu sync.Mutex
+		handoff   *webAccess
+	)
 	valid := func() bool {
 		current, e := s.webAccess(digest)
 		return e == nil && current.fingerprint() == fingerprint
+	}
+	authorizeMessage := func() bool {
+		current, e := s.webAccess(digest)
+		ok := e == nil && current.fingerprint() == fingerprint
+		handoffMu.Lock()
+		if ok {
+			handoff = current
+		} else {
+			handoff = nil
+		}
+		handoffMu.Unlock()
+		return ok
+	}
+	takeAccess := func() (*webAccess, error) {
+		handoffMu.Lock()
+		current := handoff
+		handoff = nil
+		handoffMu.Unlock()
+		if current != nil {
+			return current, nil
+		}
+		return s.webAccess(digest)
 	}
 	var environment *string
 	if values, ok := r.URL.Query()["environment"]; ok {
@@ -66,11 +100,11 @@ func (s *server) wsWeb(w http.ResponseWriter, r *http.Request) {
 		ID:        "web-" + randID(),
 		Kind:      hub.ClientWeb,
 		Conn:      conn,
-		Send:      make(chan []byte, 64),
-		Authorize: valid,
+		Send:      make(chan []byte, webSendBuffer),
+		Authorize: authorizeMessage,
 	}
 	c.FilterWeb = func(raw []byte) []byte {
-		current, e := s.webAccess(digest)
+		current, e := takeAccess()
 		if e != nil || current.fingerprint() != fingerprint {
 			_ = conn.Close()
 			return nil
@@ -218,8 +252,34 @@ func clientWriter(c *hub.Client) {
 		if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 			break
 		}
+		// O cliente ficou para trás e eventos foram descartados (hub.BroadcastWeb).
+		// Fila esvaziada = ele alcançou: um único aviso manda refazer a leitura de
+		// instances e do pool de condições, em vez de deixar o board desatualizado.
+		// São eventos sem dado de negócio, por isso não passam pelo filtro de escopo.
+		if c.Kind == hub.ClientWeb && len(c.Send) == 0 && c.Lagged.CompareAndSwap(true, false) {
+			failed := false
+			for _, notice := range webResyncNotices {
+				_ = c.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				if err := c.Conn.WriteMessage(websocket.TextMessage, notice); err != nil {
+					failed = true
+					break
+				}
+			}
+			if failed {
+				break
+			}
+		}
 	}
 	_ = c.Conn.Close()
+}
+
+// webSendBuffer — eventos pendentes por browser antes de descartar. 64 enchia
+// com uma rajada modesta (um bloco de jobs terminando junto).
+const webSendBuffer = 2048
+
+var webResyncNotices = [][]byte{
+	[]byte(`{"event":"instance.bulk","payload":{"action":"resync","reason":"lagged"}}`),
+	[]byte(`{"event":"condition.changed","payload":{"reason":"lagged"}}`),
 }
 
 func clientReader(c *hub.Client, onMsg func([]byte)) {

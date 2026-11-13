@@ -21,7 +21,7 @@ func (s *Scheduler) evaluateDurableRunning(now time.Time) {
 	// Candidatos continuam sendo revalidados integralmente na transação abaixo.
 	rows, err := s.db.Query(`SELECT r.instance_id,i.definition_snapshot,COALESCE(NULLIF(i.carried_from,''),i.order_date),a.started_at,
  EXISTS(SELECT 1 FROM instance_runs h WHERE h.definition_id=i.definition_id AND h.status='OK' AND h.finished_at IS NOT NULL AND NOT(h.instance_id=i.id AND h.attempt=a.attempt))
- FROM runtime_orders r JOIN lab_orders o ON o.id=r.order_id JOIN execution_attempts a ON a.execution_id=o.current_execution JOIN instances i ON i.id=r.instance_id WHERE a.state='running' AND a.started_at>0`)
+ FROM execution_attempts a JOIN lab_orders o ON o.id=a.order_id AND o.current_execution=a.execution_id JOIN runtime_orders r ON r.order_id=o.id JOIN instances i ON i.id=r.instance_id WHERE a.state NOT IN ('succeeded','failed','cancelled') AND a.state='running' AND a.started_at>0`)
 	if err != nil {
 		return
 	}

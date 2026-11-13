@@ -289,7 +289,10 @@ func sqliteDSN(path string) string {
 	if strings.Contains(path, "?") {
 		sep = "&"
 	}
-	return path + sep + "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)&_pragma=foreign_keys(1)"
+	// cache_size(-32768) = 32 MB de page cache por conexão. O default do SQLite
+	// são 2 MB: com o banco de produção em 4 GB, toda consulta fora do miolo
+	// quente virava leitura de disco.
+	return path + sep + "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)&_pragma=foreign_keys(1)&_pragma=cache_size(-32768)"
 }
 
 // ---------------------------------------------------------------------------
@@ -592,6 +595,7 @@ var sqliteMigrations = []migration{
 	{version: 31, sql: schemaV31()},
 	{version: 32, sql: schemaV32()},
 	{version: 33, sql: schemaV33(SQLite)},
+	{version: 34, sql: schemaV34()},
 }
 
 var pgMigrations = []migration{
@@ -628,6 +632,7 @@ var pgMigrations = []migration{
 	{version: 31, sql: schemaV31()},
 	{version: 32, sql: schemaV32()},
 	{version: 33, sql: schemaV33(Postgres)},
+	{version: 34, sql: schemaV34()},
 }
 
 // schemaV23 — ST-1 (Statistics honesta, 2026-08-05): a EXECUÇÃO vira linha

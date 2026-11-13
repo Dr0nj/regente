@@ -64,6 +64,8 @@ type GitOps struct {
 	// o server sobe mesmo com o GitOps quebrado, e este campo é o que conta o
 	// PORQUÊ na UI (/api/git/status) em vez de sumir dentro do log.
 	lastErr string
+	// Última conferência arquivo-a-arquivo do worktree (ver SyncFromRemotePoll).
+	lastWorktreeAudit time.Time
 	// rebase abort state (replay linear nativo — ver RebaseBranch/AbortRebase)
 	rebaseOrig plumbing.Hash
 	rebaseRef  plumbing.ReferenceName
@@ -795,11 +797,31 @@ func (g *GitOps) bootstrapLocked() error {
 }
 
 // SyncFromRemote roda fetch + reset --hard.
-func (g *GitOps) SyncFromRemote() error {
+func (g *GitOps) SyncFromRemote() error { _, err := g.syncFromRemote(true); return err }
+
+// worktreeAuditInterval — de quanto em quanto tempo o POLL periódico confere o
+// worktree arquivo por arquivo quando HEAD já está no commit remoto.
+const worktreeAuditInterval = 10 * time.Minute
+
+// SyncFromRemotePoll é a variante do poll periódico. Faz o mesmo fetch e o
+// mesmo reset quando o remoto andou, mas quando HEAD já é o commit remoto NÃO
+// relê o worktree inteiro a cada chamada: `wt.Status()` faz stat+hash de todos
+// os arquivos versionados e, com dezenas de milhares de definitions, consumia
+// ~27% da CPU do server com o sistema ocioso (medido em produção, 2026-11-13).
+// A conferência completa — que detecta arquivo versionado adulterado no disco —
+// continua acontecendo a cada worktreeAuditInterval e em toda chamada explícita
+// (daily, API, sessão), que usam SyncFromRemote.
+//
+// Devolve changed=true só quando o worktree foi de fato alterado. O chamador
+// usa isso para NÃO recarregar definitions nem avisar os browsers a cada poll:
+// antes, todo poll de 30 s emitia definition.changed/folder.changed e cada aba
+// aberta rebaixava o catálogo inteiro sem que nada tivesse mudado.
+func (g *GitOps) SyncFromRemotePoll() (changed bool, err error) { return g.syncFromRemote(false) }
+
+func (g *GitOps) syncFromRemote(full bool) (changed bool, err error) {
 	// Ordem de locks igual às outras escritas: workspace antes do Git. O fetch
 	// não muda arquivos; leitores quentes continuam usando o snapshot publicado.
 	store := g.definitionStore
-	changed := false
 	if store != nil {
 		store.mu.Lock()
 		defer func() {
@@ -823,30 +845,44 @@ func (g *GitOps) SyncFromRemote() error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if !g.IsRepo() {
-		return fmt.Errorf("workspace is not a git repo")
+		return false, fmt.Errorf("workspace is not a git repo")
 	}
-	repo, err := g.openRepo()
+	repo, e := g.openRepo()
+	err = e
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err = g.fetchLocked(repo, g.branch); err != nil {
 		g.lastErr = err.Error()
-		return err
+		return false, err
 	}
-	target, err := g.refHash(repo, remoteRefName(g.branch))
+	target, e := g.refHash(repo, remoteRefName(g.branch))
+	err = e
 	if err != nil {
-		return err
-	}
-	wt, err := g.worktree(repo)
-	if err != nil {
-		return err
+		return false, err
 	}
 	head, headErr := repo.Head()
 	needsReset := headErr != nil || head.Hash() != target
+	audit := full || time.Since(g.lastWorktreeAudit) >= worktreeAuditInterval
+	if !needsReset && !audit {
+		g.lastSync = time.Now()
+		g.lastErr = ""
+		g.drift = false
+		g.remoteSHA = target.String()
+		g.driftErr = ""
+		return changed, nil
+	}
+	wt, e := g.worktree(repo)
+	err = e
+	if err != nil {
+		return false, err
+	}
 	if !needsReset {
-		status, err := wt.Status()
+		g.lastWorktreeAudit = time.Now()
+		status, e := wt.Status()
+		err = e
 		if err != nil {
-			return err
+			return false, err
 		}
 		for _, file := range status {
 			// Untracked são preservados pelo reset anterior e não exigem reconstrução.
@@ -863,18 +899,19 @@ func (g *GitOps) SyncFromRemote() error {
 		}
 		if err = g.hardResetTo(repo, wt, target); err != nil {
 			g.lastErr = err.Error()
-			return err
+			return changed, err
 		}
+		g.lastWorktreeAudit = time.Now()
 	}
 	g.lastSync = time.Now()
 	g.lastErr = ""
 	if err = g.refreshSHA(); err != nil {
-		return err
+		return changed, err
 	}
 	g.drift = false
 	g.remoteSHA = g.lastSHA
 	g.driftErr = ""
-	return nil
+	return changed, nil
 }
 
 func (g *GitOps) fetchAndResetLocked(repo *git.Repository) error {

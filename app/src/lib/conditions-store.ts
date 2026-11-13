@@ -11,6 +11,7 @@
  * (ConditionsOutAdd/Remove) aqui — ver applyOutcomesLocal.
  */
 
+import { adaptiveThrottle } from "@/lib/adaptive-throttle";
 import { isServerMode, isResyncEvent, onServerEvent } from "@/lib/server-client";
 import { listConditions, setCondition, unsetCondition } from "@/lib/bloco2-api";
 import { localLoad, localSave } from "@/lib/persistence";
@@ -61,11 +62,9 @@ function refreshServer(): Promise<void> {
   refreshInFlight = fetchServer().finally(() => { refreshInFlight = null; });
   return refreshInFlight;
 }
-let refreshTimer: ReturnType<typeof setTimeout> | undefined;
-function scheduleServerRefresh() {
-  if (refreshTimer !== undefined) return;
-  refreshTimer = setTimeout(() => { refreshTimer = undefined; void refreshServer(); }, 32);
-}
+// Cada condição criada/consumida gera um evento; baixar o pool inteiro a cada
+// um (debounce fixo de 32 ms) virava dezenas de GETs por segundo numa rajada.
+const scheduleServerRefresh = adaptiveThrottle(() => refreshServer(), { minMs: 250, maxMs: 5000, settle: true });
 
 /** Refresh after an operator action even when the WebSocket is reconnecting. */
 export async function refreshConditions(): Promise<void> {

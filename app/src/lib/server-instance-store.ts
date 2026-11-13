@@ -1,3 +1,4 @@
+import { adaptiveThrottle } from "@/lib/adaptive-throttle";
 import { refreshConditions } from "./conditions-store";
 /**
  * server-instance-store — espelho local do estado de instances do server.
@@ -191,25 +192,27 @@ const listeners = new Set<Listener>();
 
 let cachedSnapshot: JobInstance[] | undefined;
 const changedIds = new Set<string>();
-let publishTimer: ReturnType<typeof setTimeout> | undefined;
 function snapshot(): JobInstance[] {
   return cachedSnapshot ??= [...cache.values()];
 }
 
-// Apply immediately, publish once per short window. A timer also works in a
-// background tab, where animation frames may be suspended indefinitely.
+// Apply immediately; publish coalesced. O intervalo entre publicações acompanha
+// o custo dos listeners (o canvas recalcula o modelo do dia a cada publicação):
+// numa diária pequena sai a cada ~24 ms como sempre; numa de dezenas de milhares
+// de jobs em rajada, espaça sozinho para a aba não ficar presa recalculando.
+// É timer, não rAF: aba em segundo plano suspende animation frames.
+const publish = adaptiveThrottle(() => {
+  const changes: InstanceChanges = { ids: new Set(changedIds), loaded: hasLoadedToday() };
+  changedIds.clear();
+  const snap = snapshot();
+  for (const fn of listeners) {
+    try { fn(snap, changes); } catch (err) { console.error("[server-instances] listener error", err); }
+  }
+}, { minMs: 24, maxMs: 3000, settle: true });
+
 function notify(id?: string): void {
   if (id) { changedIds.add(id); cachedSnapshot = undefined; }
-  if (publishTimer !== undefined) return;
-  publishTimer = setTimeout(() => {
-    publishTimer = undefined;
-    const changes: InstanceChanges = { ids: new Set(changedIds), loaded: hasLoadedToday() };
-    changedIds.clear();
-    const snap = snapshot();
-    for (const fn of listeners) {
-      try { fn(snap, changes); } catch (err) { console.error("[server-instances] listener error", err); }
-    }
-  }, 24);
+  publish();
 }
 
 function equalValue(a: unknown, b: unknown): boolean {
@@ -243,8 +246,20 @@ function applyInstance(s: ServerInstance): void {
 const detailQueue = new Set<string>();
 const detailInFlight = new Set<string>();
 let detailTimer: ReturnType<typeof setTimeout> | undefined;
+// Acima deste tanto de linhas pendentes não compensa buscar uma a uma: são
+// centenas de GETs para o que um único snapshot do dia devolve.
+const DETAIL_BURST_LIMIT = 48;
+const burstRefresh = adaptiveThrottle(
+  () => refresh().catch((err) => console.warn("[server-instances] burst refresh failed", err)),
+  { minMs: 5000, maxMs: 60000, idleFactor: 6, settle: true },
+);
 function scheduleDetailRefresh(id: string): void {
   detailQueue.add(id);
+  if (detailQueue.size > DETAIL_BURST_LIMIT) {
+    detailQueue.clear();
+    burstRefresh();
+    return;
+  }
   if (detailTimer !== undefined) return;
   detailTimer = setTimeout(() => {
     detailTimer = undefined;
@@ -482,7 +497,7 @@ function ensureWs(): void {
       // {action, folder, total}, não instances — refresh full pra o mirror pegar
       // os novos status/hold_scope (senão o cadeado da folder só aparecia no F5).
       case "instance.bulk":
-        refresh().catch((err) => console.warn("[server-instances] bulk refresh failed", err));
+        burstRefresh();
         break;
       case "instance.deleted": {
         const p = ev.payload as { id?: string } | undefined;

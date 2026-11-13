@@ -200,6 +200,22 @@ function toServer(d: JobDefinition): ServerDefinition {
   };
 }
 
+// Um GET do catálogo por vez, por URL. Sem design session aberta, o catálogo
+// de desenho e o PUBLICADO saem da mesma URL e eram pedidos em paralelo — no
+// mount e de novo no resync pós-login: quatro downloads do catálogo inteiro
+// (19 MB cada com 28,8 mil definitions) para abrir a tela. Chamadas simultâneas
+// agora compartilham a mesma resposta; nada fica em cache depois que ela chega.
+const definitionsInFlight = new Map<string, Promise<ServerDefinition[]>>();
+function fetchDefinitions(path: string): Promise<ServerDefinition[]> {
+  const pending = definitionsInFlight.get(path);
+  if (pending) return pending;
+  const request = api<ServerDefinition[]>(path).finally(() => {
+    if (definitionsInFlight.get(path) === request) definitionsInFlight.delete(path);
+  });
+  definitionsInFlight.set(path, request);
+  return request;
+}
+
 /**
  * listPublishedDefinitions — as definitions do WORKSPACE PRINCIPAL (publicadas),
  * SEMPRE de /api/definitions, ignorando a design session ativa. É o que o
@@ -208,7 +224,7 @@ function toServer(d: JobDefinition): ServerDefinition {
  * (bug reportado 2026-07-13: o cache session-routed vazava drafts pro Force).
  */
 export async function listPublishedDefinitions(): Promise<JobDefinition[]> {
-  const arr = await api<ServerDefinition[]>("/api/definitions");
+  const arr = await fetchDefinitions("/api/definitions");
   return (arr ?? []).map(toWeb);
 }
 
@@ -216,7 +232,7 @@ export class ServerApiAdapter implements StoragePort {
   private cache: Map<string, ServerDefinition> = new Map();
 
   async list(): Promise<JobDefinition[]> {
-    const arr = await api<ServerDefinition[]>(defsListPath());
+    const arr = await fetchDefinitions(defsListPath());
     this.cache.clear();
     for (const d of arr ?? []) this.cache.set(d.id, d);
     return (arr ?? []).map(toWeb);

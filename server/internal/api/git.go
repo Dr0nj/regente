@@ -339,11 +339,13 @@ func StartGitPolling(ctx context.Context, git *storage.GitOps, intervalSec int, 
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if err := git.SyncFromRemote(); err != nil {
+				changed, err := git.SyncFromRemotePoll()
+				if err != nil {
 					log.Printf("[git-poll] sync failed: %v", err)
 					continue
 				}
-				if onSync != nil {
+				// Sem mudança no worktree não há o que recarregar nem anunciar.
+				if changed && onSync != nil {
 					onSync()
 				}
 			case <-driftTicker.C:
