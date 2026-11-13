@@ -180,23 +180,15 @@ func (s *server) listAgents(w http.ResponseWriter, r *http.Request) {
 // separar "sem agente" de "agente sem slot livre" (produção 2026-11-13: 4 slots
 // presos em UNCERTAIN paravam a diária e os cards liam só WAIT).
 func (s *server) applyAdmission(out []agentRow) {
-	rows, err := s.cfg.DB.Query("SELECT c.agent_id,c.slots,(SELECT COUNT(*) FROM execution_attempts a WHERE a.agent_id=c.agent_id AND a.state NOT IN ('succeeded','failed','cancelled')),(SELECT COUNT(*) FROM execution_attempts a WHERE a.agent_id=c.agent_id AND a.state NOT IN ('succeeded','failed','cancelled') AND a.state='uncertain') FROM execution_agent_capacity c")
-	if err != nil {
+	if s.cfg.Scheduler == nil {
 		return
 	}
-	defer rows.Close()
-	type admission struct{ slots, inUse, uncertain int }
-	by := map[string]admission{}
-	for rows.Next() {
-		var id string
-		var a admission
-		if rows.Scan(&id, &a.slots, &a.inUse, &a.uncertain) == nil {
-			by[id] = a
-		}
-	}
+	admissions := s.cfg.Scheduler.AgentAdmissions()
 	for i := range out {
-		if a, ok := by[out[i].ID]; ok {
-			out[i].Slots, out[i].InUse, out[i].Uncertain = a.slots, a.inUse, a.uncertain
+		for _, a := range admissions {
+			if a.AgentID == out[i].ID {
+				out[i].Slots, out[i].InUse, out[i].Uncertain = a.Slots, a.InUse, a.Uncertain
+			}
 		}
 	}
 }

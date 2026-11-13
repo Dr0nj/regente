@@ -59,7 +59,17 @@ than CPU-bound commands. An installed agent keeps the value in its service unit,
 so upgrading the binary alone changes nothing if the unit passes the flag.
 
 Resolve each UNCERTAIN execution as described above to release its slot. There
-is no automatic resolution and no push alert for this condition yet.
+is no automatic resolution.
+
+The control-plane monitor (`-selfmon`, on by default) raises an alert through
+the configured channels (bell, Slack, webhook, e-mail, PagerDuty):
+
+- **critical**, `Agent blocked by unresolved executions`: every slot of an agent
+  is held by UNCERTAIN executions. Repeats at most once per hour per agent.
+- **warning**, `Agent slots held by unresolved executions`: some slots are held.
+  Repeats at most once every six hours per agent.
+
+An agent that is merely busy does not alert.
 
 ## Limits of the guarantee
 

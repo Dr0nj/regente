@@ -131,7 +131,16 @@ and is now 32; size it to the host, since I/O-bound HTTP jobs tolerate far more
 than CPU-bound commands. An installed agent keeps the value in its service unit,
 so upgrading the binary alone changes nothing if the unit passes the flag.</p>
 <p>Resolve each UNCERTAIN execution as described above to release its slot. There
-is no automatic resolution and no push alert for this condition yet.</p>
+is no automatic resolution.</p>
+<p>The control-plane monitor (<code>-selfmon</code>, on by default) raises an alert through
+the configured channels (bell, Slack, webhook, e-mail, PagerDuty):</p>
+<ul>
+<li><strong>critical</strong>, <code>Agent blocked by unresolved executions</code>: every slot of an agent
+is held by UNCERTAIN executions. Repeats at most once per hour per agent.</li>
+<li><strong>warning</strong>, <code>Agent slots held by unresolved executions</code>: some slots are held.
+Repeats at most once every six hours per agent.</li>
+</ul>
+<p>An agent that is merely busy does not alert.</p>
 <h2 id="limits-of-the-guarantee">Limits of the guarantee</h2>
 <p>The server outbox and local journal preserve identity and evidence; they cannot make arbitrary commands, remote systems or multi-channel notifications exactly once. A running agent that restarts reports uncertainty instead of replaying. HTTP/REST receipt loss, OpenSSH transport/deadline loss, and SSH exit status outside 0..254 remain uncertain. Windows OpenSSH can return UINT32_MAX on missing remote receipt. Mutating external adapters without a confirmed completion also preserve uncertainty on failure rather than using normal retry.</p>
 <p>Cancel acknowledges the local executor returning after a stop request; it does not undo remote work. Unix cancellation targets the local process group. Windows kills the direct process and bounds pipe waiting; descendant or remote completion requires operator verification. Timeout alone is not evidence that an external operation stopped.</p>

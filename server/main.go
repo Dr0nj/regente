@@ -705,6 +705,7 @@ func main() {
 			time.Duration(*selfmonInterval)*time.Second,
 			time.Duration(*selfmonTickStale)*time.Second,
 		)
+		mon.SetAgentAdmissions(sched.AgentAdmissions)
 		mon.Start(ctx)
 		log.Printf("[selfmon] R7 control-plane monitor ON (interval=%ds, tick-stale=%ds)", *selfmonInterval, *selfmonTickStale)
 	} else {

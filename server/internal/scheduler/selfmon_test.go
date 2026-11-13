@@ -110,3 +110,28 @@ func TestSelfmon_Healthy(t *testing.T) {
 		t.Fatalf("estado saudável não deveria gerar alertas, veio %+v", got)
 	}
 }
+
+// Produção 2026-11-13: 4 slots, 4 UNCERTAIN, três dias sem despachar e sem alerta.
+func TestSelfmon_AgentBlockedByUncertain(t *testing.T) {
+	var st cpState
+	now := time.Now()
+	read := func(a ...AgentAdmission) map[string]bool {
+		return keys(st.eval(now, cpReading{tickAge: time.Second, agentsOnline: 1, admissions: a}, testStale, testFlapW, testFlapN))
+	}
+	if got := read(AgentAdmission{"w", 4, 4, 0}); got["agent-blocked:w"] || got["agent-uncertain:w"] {
+		t.Fatal("agente apenas ocupado (sem UNCERTAIN) não é alerta", got)
+	}
+	if got := read(AgentAdmission{"w", 32, 4, 4}); !got["agent-uncertain:w"] || got["agent-blocked:w"] {
+		t.Fatal("parte dos slots em UNCERTAIN deveria ser aviso", got)
+	}
+	out := st.eval(now, cpReading{tickAge: time.Second, agentsOnline: 1, admissions: []AgentAdmission{{"w", 4, 4, 4}}}, testStale, testFlapW, testFlapN)
+	found := false
+	for _, a := range out {
+		if a.Key == "agent-blocked:w" {
+			found = a.Severity == "critical" && sysAlertCooldown(a.Key) >= int64(time.Hour/time.Millisecond)
+		}
+	}
+	if !found {
+		t.Fatal("todos os slots em UNCERTAIN deveria ser crítico com cooldown longo", out)
+	}
+}

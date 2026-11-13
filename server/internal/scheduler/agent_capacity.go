@@ -33,3 +33,21 @@ func (s *Scheduler) durableAgentAdmission(tx *db.Tx, agent string) error {
 	}
 	return nil
 }
+
+// AgentAdmissions devolve a ocupação de slots de cada agente que anunciou
+// capacidade. Erro de leitura devolve vazio: é telemetria para alerta e tela.
+func (s *Scheduler) AgentAdmissions() []AgentAdmission {
+	rows, err := s.db.Query("SELECT c.agent_id,c.slots,(SELECT COUNT(*) FROM execution_attempts a WHERE a.agent_id=c.agent_id AND a.state NOT IN ('succeeded','failed','cancelled')),(SELECT COUNT(*) FROM execution_attempts a WHERE a.agent_id=c.agent_id AND a.state NOT IN ('succeeded','failed','cancelled') AND a.state='uncertain') FROM execution_agent_capacity c ORDER BY c.agent_id")
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	out := []AgentAdmission{}
+	for rows.Next() {
+		var a AgentAdmission
+		if rows.Scan(&a.AgentID, &a.Slots, &a.InUse, &a.Uncertain) == nil {
+			out = append(out, a)
+		}
+	}
+	return out
+}
