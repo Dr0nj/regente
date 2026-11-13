@@ -1186,7 +1186,7 @@ func (s *Scheduler) tickOnce() error {
 				return err
 			}
 			if !s.agentAvailable(def) {
-				s.maybeEmitNoAgent(r.ID, def.JobType)
+				s.maybeEmitNoAgent(r.ID, def)
 				continue
 			}
 			s.startInstance(r.ID, def)
@@ -1267,7 +1267,8 @@ func (s *Scheduler) agentAvailable(def domain.JobDefinition) bool {
 
 // maybeEmitNoAgent — registra o evento "no agent online" com throttle de 5 min
 // por instance (o tick roda a cada 2s; sem throttle o event log inundaria).
-func (s *Scheduler) maybeEmitNoAgent(id, jobType string) {
+func (s *Scheduler) maybeEmitNoAgent(id string, def domain.JobDefinition) {
+	jobType := def.JobType
 	s.mu.Lock()
 	last, seen := s.noAgentAt[id]
 	now := s.Now()
@@ -1277,6 +1278,14 @@ func (s *Scheduler) maybeEmitNoAgent(id, jobType string) {
 	}
 	s.noAgentAt[id] = now
 	s.mu.Unlock()
+	if s.durable != nil {
+		// Execução durável: nomeia o critério que recusou (slots presos em
+		// UNCERTAIN, agente offline, SERVER-AGENT desligado...).
+		reason := s.agentBlockReason(def)
+		s.emitEvent(id, "submitted", "scheduler", reason+" — waiting (retried on every tick)")
+		log.Printf("[scheduler] %s: %s — instance stays WAITING", id, reason)
+		return
+	}
 	s.emitEvent(id, "submitted", "scheduler",
 		"no agent online for capability "+jobType+" — waiting (retried on every tick)")
 	log.Printf("[scheduler] %s: no agent online for %s — instance stays WAITING", id, jobType)
@@ -1398,7 +1407,7 @@ func (s *Scheduler) startInstance(id string, def domain.JobDefinition) {
 			if len(def.Resources) > 0 && s.resources != nil {
 				s.resources.Release(id)
 			}
-			s.maybeEmitNoAgent(id, def.JobType)
+			s.maybeEmitNoAgent(id, def)
 			s.hub.BroadcastWeb("instance.changed", map[string]string{"id": id, "status": string(domain.StatusWaiting)})
 		case hub.DispatchQueueFull:
 			s.emitEvent(id, "submitted", "scheduler", "agent queue full")

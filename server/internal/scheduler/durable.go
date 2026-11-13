@@ -99,7 +99,7 @@ func (s *Scheduler) startDurable(id string, def domain.JobDefinition) {
 	}
 	agent, err := s.durableAgent(def)
 	if err != nil {
-		s.maybeEmitNoAgent(id, def.JobType)
+		s.maybeEmitNoAgent(id, def)
 		return
 	}
 	o, err := s.durable.CreateRuntimeOrder(id)

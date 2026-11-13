@@ -10,6 +10,7 @@ import (
 	"github.com/Dr0nj/regente-server/internal/execution"
 	"github.com/Dr0nj/regente-server/internal/hub"
 	"github.com/Dr0nj/regente-server/internal/leader"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -209,12 +210,31 @@ func TestI11AgentCapacityAndOffline(t *testing.T) {
 		t.Fatal("excedeu slots do agente")
 	}
 	ex, err := f.s.Explain("b-2026-09-30")
-	if err != nil || len(ex.Blockers) != 1 || ex.Blockers[0].Kind != GateAgent || ex.Blockers[0].Detail != "no eligible agent with matching identity, capabilities and available admission capacity" {
+	if err != nil || len(ex.Blockers) != 1 || ex.Blockers[0].Kind != GateAgent || ex.Blockers[0].Detail != "agent 'worker' has no free slot: 1 of 1 in use" {
 		t.Fatal(ex, err)
+	}
+	// Produção 2026-11-13: slots presos em UNCERTAIN paravam a diária inteira e a
+	// espera não dizia por quê. O motivo precisa nomear o agente e a saída.
+	f.d.Exec("UPDATE execution_attempts SET state='uncertain'")
+	if got := f.s.computeAgentBlockReason(i11Def("b")); !strings.Contains(got, "agent 'worker' has no free slot: 1 of 1 in use, 1 by UNCERTAIN executions") || !strings.Contains(got, "Execution tab") {
+		t.Fatal(got)
+	}
+	f.d.Exec("UPDATE execution_attempts SET state='running'")
+	pinned := i11Def("b")
+	pinned.AgentID = "SERVER-AGENT"
+	if got := f.s.computeAgentBlockReason(pinned); (f.s.internalAgentID == "") != strings.Contains(got, "SERVER-AGENT, which is disabled") {
+		t.Fatal(got)
+	}
+	pinned.AgentID = "ghost"
+	if got := f.s.computeAgentBlockReason(pinned); !strings.Contains(got, "agent 'ghost' is not registered") {
+		t.Fatal(got)
 	}
 	f.d.Exec("UPDATE execution_agent_capacity SET last_seen=0")
 	if _, err := f.s.durableAgent(i11Def("b")); !errors.Is(err, execution.ErrNotFound) {
 		t.Fatal(err)
+	}
+	if got := f.s.computeAgentBlockReason(i11Def("b")); got != "agent 'worker' is offline or not reporting capacity" {
+		t.Fatal(got)
 	}
 	f.s.ReportAgentCapacity("worker", 4, 128, false)
 	if _, err := f.s.durableAgent(i11Def("b")); !errors.Is(err, execution.ErrNotFound) {

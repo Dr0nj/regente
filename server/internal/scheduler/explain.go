@@ -194,7 +194,7 @@ func (s *Scheduler) gateInstance(r instRow, def domain.JobDefinition, condIdx Co
 			detail = "agent '" + def.AgentID + "' is offline or does not provide " + def.JobType
 		}
 		if s.durable != nil {
-			detail = "no eligible agent with matching identity, capabilities and available admission capacity"
+			detail = s.agentBlockReason(def)
 		}
 		if add(Blocker{Kind: GateAgent, Detail: detail}) {
 			return out

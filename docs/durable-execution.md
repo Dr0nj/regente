@@ -37,6 +37,25 @@ regente ops resolve-execution EXECUTION -fence N -key REQUEST -decision failed -
 regente ops resolve-effect EFFECT -generation N -key REQUEST -decision retry -reason 'Destination deduplicates this effect ID' -classification idempotent -accept-duplicate-risk -effect-stopped
 ~~~
 
+### When unresolved executions stop dispatch
+
+An UNCERTAIN execution keeps its agent slot until it is resolved. If an agent
+has as many unresolved executions as slots, nothing else is dispatched to it and
+every job routed there stays WAITING. This happened in production on
+2026-11-13: one agent with four slots held four UNCERTAIN executions for three
+days and a 28,800-job daily never started.
+
+The wait reason now names the criterion that refused the job, in the Explain
+panel, in the instance event and in the server log, for example:
+
+- `agent 'X' has no free slot: 4 of 4 in use, 4 by UNCERTAIN executions that keep their slot until an operator resolves them`
+- `agent 'X' is offline or not reporting capacity`
+- `agent 'X' has no valid credential (token revoked or expired)`
+- `this job runs on the built-in SERVER-AGENT, which is disabled on this server`
+
+Resolve each UNCERTAIN execution as described above to release its slot. There
+is no automatic resolution and no push alert for this condition yet.
+
 ## Limits of the guarantee
 
 The server outbox and local journal preserve identity and evidence; they cannot make arbitrary commands, remote systems or multi-channel notifications exactly once. A running agent that restarts reports uncertainty instead of replaying. HTTP/REST receipt loss, OpenSSH transport/deadline loss, and SSH exit status outside 0..254 remain uncertain. Windows OpenSSH can return UINT32_MAX on missing remote receipt. Mutating external adapters without a confirmed completion also preserve uncertainty on failure rather than using normal retry.
