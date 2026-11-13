@@ -156,3 +156,34 @@ func TestAuditBackgroundAdvancesCheckpoint(t *testing.T) {
 		t.Fatalf("encerramento por cancelamento esperado: %v", err)
 	}
 }
+
+// Dois nós subindo ao mesmo tempo sobre o mesmo banco novo (CI, shared-drafts
+// I12): a criação da chave e da cabeça da trilha corria e derrubava um deles
+// com "UNIQUE constraint failed".
+func TestAuditConcurrentFirstStartup(t *testing.T) {
+	for round := 0; round < 40; round++ {
+		dir := t.TempDir()
+		path, key := filepath.Join(dir, "audit.db"), filepath.Join(dir, "audit.key")
+		first, err := Open(SQLite, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = Migrate(first); err != nil {
+			t.Fatal(err)
+		}
+		second, err := Open(SQLite, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		errs := make(chan error, 2)
+		for _, d := range []*DB{first, second} {
+			go func(d *DB) { _, e := d.EnableAuditIncremental(key, 100000); errs <- e }(d)
+		}
+		a, b := <-errs, <-errs
+		first.Close()
+		second.Close()
+		if a != nil || b != nil {
+			t.Fatalf("rodada %d: partida concorrente recusada: %v / %v", round, a, b)
+		}
+	}
+}

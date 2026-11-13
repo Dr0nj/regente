@@ -99,22 +99,34 @@ func (d *DB) prepareAudit(path string, capacity int64) error {
 			return e
 		}
 		f, e := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-		if e != nil {
+		switch {
+		case os.IsExist(e):
+			// Dois nós subindo ao mesmo tempo sobre o MESMO banco novo: o outro
+			// ganhou a criação da chave. Espera ele terminar de gravar e usa a dele.
+			// (CI, shared-drafts I12: a corrida derrubava um dos nós na partida.)
+			for i := 0; i < 50; i++ {
+				if key, err = os.ReadFile(path); err == nil && len(key) == ed25519.PrivateKeySize {
+					break
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+		case e != nil:
 			return e
+		default:
+			_, e = f.Write(private)
+			if e == nil {
+				e = f.Sync()
+			}
+			closeErr := f.Close()
+			if e == nil {
+				e = closeErr
+			}
+			if e != nil {
+				return e
+			}
+			key = private
+			err = nil
 		}
-		_, e = f.Write(private)
-		if e == nil {
-			e = f.Sync()
-		}
-		closeErr := f.Close()
-		if e == nil {
-			e = closeErr
-		}
-		if e != nil {
-			return e
-		}
-		key = private
-		err = nil
 	}
 	if err != nil || len(key) != ed25519.PrivateKeySize {
 		return fmt.Errorf("audit signing key missing or invalid")
@@ -140,7 +152,12 @@ func (d *DB) prepareAudit(path string, capacity int64) error {
 			return err
 		}
 		if _, err = d.Exec("INSERT INTO audit_head(id,stream,public_key) VALUES(1,?,?)", hex.EncodeToString(b), public); err != nil {
-			return err
+			// Corrida de partida: outro nó criou a cabeça entre a leitura e o
+			// INSERT. Só é aceitável se a cabeça dele usa ESTA chave.
+			var raced string
+			if d.QueryRow("SELECT public_key FROM audit_head WHERE id=1").Scan(&raced) != nil || raced != public {
+				return err
+			}
 		}
 	}
 	if err = os.WriteFile(path+".pub", []byte(public+"\n"), 0644); err != nil {

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 )
@@ -58,11 +59,13 @@ func (d *DB) writeAuditCheckpoint(path, stream string, seq int64, hash string) e
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	// Nome temporário ÚNICO: dois nós sobre o mesmo banco gravam o checkpoint ao
+	// mesmo tempo na partida; com um ".tmp" fixo um atropelava o arquivo do outro.
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
 	if err != nil {
 		return err
 	}
+	tmp := f.Name()
 	_, err = f.Write(raw)
 	if err == nil {
 		err = f.Sync()
@@ -70,11 +73,22 @@ func (d *DB) writeAuditCheckpoint(path, stream string, seq int64, hash string) e
 	if closeErr := f.Close(); err == nil {
 		err = closeErr
 	}
-	if err != nil {
-		_ = os.Remove(tmp)
-		return err
+	if err == nil {
+		err = os.Chmod(tmp, 0600)
 	}
-	return os.Rename(tmp, path)
+	// No Windows o rename falha enquanto outro processo troca o mesmo destino.
+	for attempt := 0; err == nil; attempt++ {
+		if err = os.Rename(tmp, path); err == nil {
+			return nil
+		}
+		if attempt >= 20 {
+			break
+		}
+		err = nil
+		time.Sleep(15 * time.Millisecond)
+	}
+	_ = os.Remove(tmp)
+	return err
 }
 
 // readAuditCheckpoint devolve nil quando não há checkpoint utilizável: ausente,
