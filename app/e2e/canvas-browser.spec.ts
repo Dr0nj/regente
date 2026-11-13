@@ -273,13 +273,17 @@ test("canvas zoom LOD and minimap navigation preserve layout in dark and light t
   for (const theme of ["escuro", "claro"]) {
     await page.evaluate(theme => document.documentElement.setAttribute("data-theme", theme), theme);
     const styles = await page.locator(".v2-job-card").evaluateAll(cards => cards.map(card => {
+      // No detalhe "solid" o card é um bloco de cor SEM filhos (antes o conteúdo
+      // ficava no DOM com visibility:hidden — 42,7 mil elementos e 12 fps no
+      // arrasto com a diária de 28,8 mil jobs).
+      const children = card.childElementCount;
       const style = getComputedStyle(card), expected = document.createElement("span");
       expected.style.backgroundColor = style.getPropertyValue("--job-status-color"); card.appendChild(expected);
       const color = getComputedStyle(expected).backgroundColor; expected.remove();
-      return { color: style.backgroundColor, expected: color, hidden: getComputedStyle(card.querySelector(".v2-job-content")!).visibility };
+      return { color: style.backgroundColor, expected: color, children };
     }));
     expect(styles.length).toBeGreaterThan(0);
-    for (const style of styles) { expect(style.color).toBe(style.expected); expect(style.hidden).toBe("hidden"); }
+    for (const style of styles) { expect(style.color).toBe(style.expected); expect(style.children).toBe(0); }
     await page.screenshot({ path: testInfo.outputPath(`canvas-solid-17-${theme}.png`) });
   }
   for (let i = 0; i < 8; i++) await page.getByRole("button", { name: "Zoom in canvas", exact: true }).click();
