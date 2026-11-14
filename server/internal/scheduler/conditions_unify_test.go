@@ -298,7 +298,7 @@ func TestCondUnify_OperatorDeleteFromPoolBlocksChild(t *testing.T) {
 func TestCondUnify_ForcedCopyFollowsPool(t *testing.T) {
 	s := newTestScheduler(t)
 	today := time.Now().Format("2006-01-02")
-	defA, defB, name := linkedDefs()
+	defA, defB, _ := linkedDefs()
 
 	// Dia já aconteceu: A OK, B OK (condição consumida — pool vazio).
 	seedInst(t, s, "A-1", today, string(domain.StatusOK), defA)
@@ -321,9 +321,10 @@ func TestCondUnify_ForcedCopyFollowsPool(t *testing.T) {
 		string(domain.StatusWaiting), "A-1",
 	)
 	waitStatus(t, s, "A-1", string(domain.StatusOK))
-	if !poolHas(t, s, name, today) {
-		t.Fatalf("rerun do pai deveria repor %s no pool", name)
-	}
+	// NÃO conferir o pool aqui: a cópia forçada está esperando exatamente esta
+	// condição e a CONSOME assim que roda. Entre o OK do pai e a leitura do pool
+	// ela pode já ter rodado — a asserção antiga falhava de forma intermitente no
+	// CI Linux (2026-11-13). A prova de que a condição voltou é a cópia rodar.
 	if st := waitStatus(t, s, copyID, string(domain.StatusRunning), string(domain.StatusOK)); st != string(domain.StatusRunning) && st != string(domain.StatusOK) {
 		t.Fatalf("cópia deveria rodar com a condição reposta, está %s", st)
 	}
