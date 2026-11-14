@@ -132,6 +132,58 @@ than CPU-bound commands. An installed agent keeps the value in its service unit,
 so upgrading the binary alone changes nothing if the unit passes the flag.</p>
 <p>Resolve each UNCERTAIN execution as described above to release its slot. There
 is no automatic resolution.</p>
+<h3 id="resolving-from-the-server-host">Resolving from the server host</h3>
+<p>When nobody can sign in, or many executions are stuck at once, resolve them from
+the machine that runs the server:</p>
+<pre><code>sudo regente-server -resolve-uncertain -resolve-dry-run
+sudo regente-server -resolve-uncertain -resolve-reason &quot;test endpoint, nothing left running&quot;
+</code></pre>
+<p>The command does not open the database. It asks the running server, through a
+private Unix socket next to the SQLite file (<code>&lt;db&gt;.admin.sock</code>, mode 0600), to
+record the decision. The server uses the same path as the UI and the API: the
+attempt is closed, the job status changes on every open screen, the agent slot
+is released and the decision is written to the signed audit trail with the actor
+<code>local-admin</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-resolve-decision</code></td>
+<td><code>failed</code> (default, job becomes NOTOK), <code>cancelled</code> or <code>succeeded</code> (job becomes OK and releases its dependents)</td>
+</tr>
+<tr>
+<td><code>-resolve-reason</code></td>
+<td>Evidence stored with the decision. Required unless it is a dry run</td>
+</tr>
+<tr>
+<td><code>-resolve-agent</code></td>
+<td>Only executions held by this agent</td>
+</tr>
+<tr>
+<td><code>-resolve-executions</code></td>
+<td>Comma-separated execution IDs. Default: every unresolved execution</td>
+</tr>
+<tr>
+<td><code>-resolve-dry-run</code></td>
+<td>List what would be resolved and record nothing</td>
+</tr>
+<tr>
+<td><code>-admin-socket</code></td>
+<td>Socket path. Must match the running server; <code>off</code> disables the socket</td>
+</tr>
+</tbody>
+</table>
+<p>Only root and the service user can connect: they already have write access to
+the data directory. With Postgres there is no default path; pass <code>-admin-socket</code>
+to the server and to the command. Pass the same <code>-db</code> the service uses when it is
+not the default, since the socket path derives from it.</p>
+<p>The command records what you tell it. Check that the external operation really
+stopped before using <code>succeeded</code>.</p>
 <p>The control-plane monitor (<code>-selfmon</code>, on by default) raises an alert through
 the configured channels (bell, Slack, webhook, e-mail, PagerDuty):</p>
 <ul>

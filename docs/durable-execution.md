@@ -61,6 +61,40 @@ so upgrading the binary alone changes nothing if the unit passes the flag.
 Resolve each UNCERTAIN execution as described above to release its slot. There
 is no automatic resolution.
 
+### Resolving from the server host
+
+When nobody can sign in, or many executions are stuck at once, resolve them from
+the machine that runs the server:
+
+```
+sudo regente-server -resolve-uncertain -resolve-dry-run
+sudo regente-server -resolve-uncertain -resolve-reason "test endpoint, nothing left running"
+```
+
+The command does not open the database. It asks the running server, through a
+private Unix socket next to the SQLite file (`<db>.admin.sock`, mode 0600), to
+record the decision. The server uses the same path as the UI and the API: the
+attempt is closed, the job status changes on every open screen, the agent slot
+is released and the decision is written to the signed audit trail with the actor
+`local-admin`.
+
+| Flag | Meaning |
+|---|---|
+| `-resolve-decision` | `failed` (default, job becomes NOTOK), `cancelled` or `succeeded` (job becomes OK and releases its dependents) |
+| `-resolve-reason` | Evidence stored with the decision. Required unless it is a dry run |
+| `-resolve-agent` | Only executions held by this agent |
+| `-resolve-executions` | Comma-separated execution IDs. Default: every unresolved execution |
+| `-resolve-dry-run` | List what would be resolved and record nothing |
+| `-admin-socket` | Socket path. Must match the running server; `off` disables the socket |
+
+Only root and the service user can connect: they already have write access to
+the data directory. With Postgres there is no default path; pass `-admin-socket`
+to the server and to the command. Pass the same `-db` the service uses when it is
+not the default, since the socket path derives from it.
+
+The command records what you tell it. Check that the external operation really
+stopped before using `succeeded`.
+
 The control-plane monitor (`-selfmon`, on by default) raises an alert through
 the configured channels (bell, Slack, webhook, e-mail, PagerDuty):
 

@@ -175,7 +175,52 @@ func main() {
 	flag.String("config-env", "", "Protected KEY=VALUE file; environment and flags override it")
 	initConfig := flag.String("init-config", "", "Create a new private production configuration interactively")
 	insecureDev := flag.Bool("insecure-dev-auth", os.Getenv("REGENTE_INSECURE_DEV_AUTH") == "1", "Explicit loopback-only fixture credentials; never production")
+	adminSocket := flag.String("admin-socket", os.Getenv("REGENTE_ADMIN_SOCKET"), "Local administration Unix socket (default with SQLite: <db>.admin.sock; 'off' disables). Only root and the service user can use it")
+	resolveUncertain := flag.Bool("resolve-uncertain", false, "Ask the RUNNING server, through the local admin socket, to resolve executions stuck in UNCERTAIN/cancel_requested, then exit")
+	resolveDecision := flag.String("resolve-decision", "failed", "With -resolve-uncertain: failed | cancelled | succeeded")
+	resolveReason := flag.String("resolve-reason", "", "With -resolve-uncertain: evidence recorded in the audit trail (required unless -resolve-dry-run)")
+	resolveAgent := flag.String("resolve-agent", "", "With -resolve-uncertain: only executions held by this agent")
+	resolveExecutions := flag.String("resolve-executions", "", "With -resolve-uncertain: comma-separated execution IDs (default: all)")
+	resolveDryRun := flag.Bool("resolve-dry-run", false, "With -resolve-uncertain: list what would be resolved without recording anything")
 	flag.Parse()
+	// Socket de administração local: ao lado do banco SQLite, como a chave de
+	// auditoria. Com Postgres não há diretório de dados óbvio — só com flag.
+	if *adminSocket == "" && *dbDriver == "sqlite" {
+		*adminSocket = *dbPath + ".admin.sock"
+	}
+	if *adminSocket == "off" {
+		*adminSocket = ""
+	}
+	if *resolveUncertain {
+		if *adminSocket == "" {
+			log.Fatal("[admin] no local admin socket: pass -admin-socket with the path the running server uses")
+		}
+		req := api.LocalResolveRequest{Decision: *resolveDecision, Reason: *resolveReason, Agent: *resolveAgent, DryRun: *resolveDryRun}
+		for _, id := range strings.Split(*resolveExecutions, ",") {
+			if id = strings.TrimSpace(id); id != "" {
+				req.Executions = append(req.Executions, id)
+			}
+		}
+		out, err := api.LocalAdminResolve(*adminSocket, req)
+		if err != nil {
+			log.Fatalf("[admin] %v", err)
+		}
+		verb := "resolved as " + out.Decision
+		if out.DryRun {
+			verb = "would be resolved"
+		}
+		for _, it := range out.Resolved {
+			fmt.Printf("%s: execution %s instance %s agent %s (was %s)\n", verb, it.ExecutionID, it.InstanceID, it.AgentID, it.State)
+		}
+		for _, it := range out.Failed {
+			fmt.Printf("NOT resolved: execution %s instance %s: %s\n", it.ExecutionID, it.InstanceID, it.Error)
+		}
+		fmt.Printf("%d %s, %d refused\n", len(out.Resolved), verb, len(out.Failed))
+		if len(out.Failed) > 0 {
+			os.Exit(1)
+		}
+		return
+	}
 	if *initConfig != "" {
 		if err := runtimeprofile.Initialize(os.Stdin, os.Stdout, *initConfig); err != nil {
 			log.Fatal(err)
@@ -880,6 +925,17 @@ func main() {
 
 		TrustedProxies: trustedProxies,
 	})
+
+	// Administração local (socket 0600): só com o papel que serve a API e fora
+	// dos modos one-shot. Falha ao abrir não derruba o server — é um atalho de
+	// operação, não parte do contrato de execução.
+	if *adminSocket != "" {
+		if err := api.ServeLocalAdmin(ctx, *adminSocket, api.LocalAdminHandler(database, sched.DurableEngine)); err != nil {
+			log.Printf("[admin] local admin socket disabled: %v", err)
+		} else {
+			log.Printf("[admin] local admin socket on %s (root and the service user only)", *adminSocket)
+		}
+	}
 
 	if *spaDir != "" {
 		log.Printf("[spa] servindo o frontend de %s (single-origin: UI+API+WS na porta %s)", *spaDir, *addr)
