@@ -172,9 +172,12 @@ func (e *Engine) AcknowledgeReason(id Identity, kind, reason string) (Receipt, e
 			return Receipt{}, err
 		}
 		if recorded > 0 {
-			if a.Reason != reason {
-				return Receipt{}, ErrConflict
-			}
+			// Já está incerta: o agente e o server concordam no estado, e é isso
+			// que o ack pede. O MOTIVO pode divergir sem ser conflito — na VPS
+			// (14/11/2026) um CANCEL do operador trocou o motivo do server
+			// ("delivery limit exhausted") e o agente, com o motivo antigo, passou a
+			// receber 409 para sempre, travando o journal inteiro dele. O primeiro
+			// motivo registrado é preservado.
 			return phaseReceipt(o, a, true), nil
 		}
 	}

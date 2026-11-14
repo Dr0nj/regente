@@ -12,6 +12,18 @@ type TransportError struct{ Err error }
 
 func (e *TransportError) Error() string { return e.Err.Error() }
 func (e *TransportError) Unwrap() error { return e.Err }
+// RejectedError: o server RESPONDEU e recusou este pedido (4xx que diz respeito
+// a UMA execução). É diferente de rede caída: o resto do journal continua
+// entregável e não pode ficar refém desta entrada.
+type RejectedError struct {
+	Path   string
+	Status int
+}
+
+func (e *RejectedError) Error() string {
+	return fmt.Sprintf("protocol 2 %s: HTTP %d; journal retained", e.Path, e.Status)
+}
+
 func transportError(err error) error {
 	if err == nil {
 		return nil
@@ -364,6 +376,22 @@ func (w *Worker) Tick(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Uma entrada recusada pelo server NÃO interrompe a passagem. Na VPS
+	// (14/11/2026) um ack "uncertain" passou a receber 409 e o tick abortava
+	// nela a cada segundo: as entradas seguintes ficaram 1 h sem heartbeat nem
+	// reconciliação, o lease delas venceu e 9 execuções viraram UNCERTAIN. A
+	// recusa é guardada e devolvida no fim, para continuar aparecendo no log.
+	var rejected error
+	skip := func(id string, err error) bool {
+		var r *RejectedError
+		if !errors.As(err, &r) {
+			return false
+		}
+		if rejected == nil {
+			rejected = &TransportError{fmt.Errorf("execution %s: %w", id, err)}
+		}
+		return true
+	}
 	// Alterna entregas novas com a fila existente. Resultados/sysout não podem
 	// bloquear todos os ACKs até o fim de uma passagem inteira pelo journal.
 	// A fila antiga ainda é visitada inteira e novas entregas têm teto por tick.
@@ -385,7 +413,7 @@ func (w *Worker) Tick(ctx context.Context) error {
 				return err
 			}
 			if e.State != "acked" {
-				if err = w.Sync(ctx, e); err != nil {
+				if err = w.Sync(ctx, e); err != nil && !skip(e.Envelope.ExecutionID, err) {
 					return err
 				}
 			}
@@ -419,13 +447,13 @@ func (w *Worker) Tick(ctx context.Context) error {
 		}
 		// Tombstone confirmado continua aceitando redelivery sem novo efeito.
 		if e.State != "acked" {
-			if err = w.Sync(ctx, e); err != nil {
+			if err = w.Sync(ctx, e); err != nil && !skip(e.Envelope.ExecutionID, err) {
 				return err
 			}
 		}
 	}
 
-	return nil
+	return rejected
 }
 func (w *Worker) Stop() {
 	w.mu.Lock()

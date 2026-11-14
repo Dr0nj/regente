@@ -49,3 +49,25 @@ func TestI09CapacityStillDeliversControlIntent(t *testing.T) {
 		t.Fatal(msg, err)
 	}
 }
+
+// Regressão da VPS (14/11/2026): o agente reenvia o ack "uncertain" com o motivo
+// DELE; se o server já registrou a incerteza com outro motivo (ex.: um CANCEL do
+// operador esgotou a entrega), isso não é conflito. Recusar com 409 prendia o
+// journal do agente para sempre.
+func TestUncertainAckWithAnotherReasonIsNotAConflict(t *testing.T) {
+	f := newFixture(t)
+	o := f.order(t, "copy")
+	a := f.start(t, o, "first")
+	f.running(t, a)
+	if _, err := f.e.AcknowledgeReason(identity(a), "uncertain", "delivery limit exhausted; acceptance unknown"); err != nil {
+		t.Fatal(err)
+	}
+	r, err := f.e.AcknowledgeReason(identity(a), "uncertain", "server no longer authorizes this execution")
+	if err != nil || r.State != "uncertain" || r.StartAuthorized {
+		t.Fatal("repeated uncertain ack with another reason refused", r, err)
+	}
+	got, err := f.e.Attempt(a.ExecutionID)
+	if err != nil || got.Reason != "delivery limit exhausted; acceptance unknown" {
+		t.Fatal("first recorded reason must be preserved", got.Reason, err)
+	}
+}

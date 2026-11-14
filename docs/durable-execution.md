@@ -61,6 +61,28 @@ so upgrading the binary alone changes nothing if the unit passes the flag.
 Resolve each UNCERTAIN execution as described above to release its slot. There
 is no automatic resolution.
 
+### One refused execution must not stall an agent
+
+On 2026-11-14 an operator cancelled an UNCERTAIN execution in production. The
+cancel could not be delivered, so the server recorded a new uncertainty reason.
+The agent kept acknowledging the execution with its own, older reason, and the
+server answered HTTP 409 once per second for an hour. The agent stopped its
+journal pass at that entry every time: later executions got no heartbeat, their
+lease expired and nine more became UNCERTAIN. They recovered by themselves as
+soon as the refused execution was resolved.
+
+Two changes prevent this:
+
+- The server accepts a repeated `uncertain` acknowledgement even when the reason
+  differs. Both sides already agree on the state; the first reason is kept.
+- The agent treats HTTP 400, 404, 409, 410 and 422 as a refusal of one
+  execution. It keeps that entry in the journal, reports it in the log with the
+  execution ID, and continues with the other entries. Network failures and
+  401, 403, 429 and 5xx still stop the pass, as before.
+
+A log line `durable execution: execution <id>: protocol 2 ack: HTTP 409; journal
+retained` repeating every second names an execution to resolve.
+
 ### Resolving from the server host
 
 When nobody can sign in, or many executions are stuck at once, resolve them from

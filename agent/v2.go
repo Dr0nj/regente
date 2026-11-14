@@ -76,6 +76,11 @@ func (t *v2HTTP) Post(ctx context.Context, path string, body any) (journal.Recei
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
+		// 4xx sobre UMA execução (conflito, inexistente, inválida): o worker segue
+		// com as outras. 401/403/429/5xx valem para o agente inteiro e abortam o tick.
+		if res.StatusCode == 400 || res.StatusCode == 404 || res.StatusCode == 409 || res.StatusCode == 410 || res.StatusCode == 422 {
+			return journal.Receipt{}, &journal.RejectedError{Path: path, Status: res.StatusCode}
+		}
 		return journal.Receipt{}, fmt.Errorf("protocol 2 %s: HTTP %d; journal retained", path, res.StatusCode)
 	}
 	var receipt journal.Receipt
