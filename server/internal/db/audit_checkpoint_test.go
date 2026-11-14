@@ -187,3 +187,46 @@ func TestAuditConcurrentFirstStartup(t *testing.T) {
 		}
 	}
 }
+
+// Reproduz de forma determinística a janela que o CI Linux pegou: o outro nó já
+// criou o arquivo da chave mas ainda não gravou o conteúdo. A partida tem que
+// esperar a chave ficar completa em vez de recusar.
+func TestAuditStartupWaitsForKeyBeingWritten(t *testing.T) {
+	dir := t.TempDir()
+	donorKey := filepath.Join(dir, "donor.key")
+	donor, err := Open(SQLite, filepath.Join(dir, "donor.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = Migrate(donor); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = donor.EnableAuditIncremental(donorKey, 100000); err != nil {
+		t.Fatal(err)
+	}
+	donor.Close()
+	material, err := os.ReadFile(donorKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key := filepath.Join(dir, "audit.key")
+	if err = os.WriteFile(key, nil, 0600); err != nil { // criado, ainda vazio
+		t.Fatal(err)
+	}
+	d, err := Open(SQLite, filepath.Join(dir, "audit.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if err = Migrate(d); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		_ = os.WriteFile(key, material, 0600)
+	}()
+	if _, err = d.EnableAuditIncremental(key, 100000); err != nil {
+		t.Fatalf("partida recusada com a chave ainda sendo gravada: %v", err)
+	}
+}

@@ -93,6 +93,13 @@ func (d *DB) prepareAudit(path string, capacity int64) error {
 		return err
 	}
 	key, err := os.ReadFile(path)
+	// Arquivo existe mas ainda curto: outro nó acabou de criá-lo (O_EXCL) e não
+	// terminou de gravar. Sem esta espera a leitura pega o arquivo vazio e a
+	// partida é recusada (CI Linux, TestAuditConcurrentFirstStartup rodada 7).
+	for i := 0; err == nil && len(key) < ed25519.PrivateKeySize && i < 50; i++ {
+		time.Sleep(20 * time.Millisecond)
+		key, err = os.ReadFile(path)
+	}
 	if os.IsNotExist(err) && stored == "" {
 		_, private, e := ed25519.GenerateKey(rand.Reader)
 		if e != nil {
