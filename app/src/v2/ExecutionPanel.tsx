@@ -49,15 +49,25 @@ export default function ExecutionPanel({ instanceId }: { instanceId: string }) {
   </article>)}
  </section>;
 }
+// Rascunho do formulário FORA do React, por execução. Relato de 14/11/2026 na VPS
+// (diária de 28,8 mil jobs, eventos chegando o tempo todo): a caixa "verified
+// stopped" desmarcava sozinha. Não reproduziu em laboratório parado, então a
+// remontagem que zera o estado não foi localizada; o rascunho aqui sobrevive a
+// QUALQUER remontagem do painel e só some quando a resolução é gravada.
+type Draft = { decision: string; reason: string; stopped: boolean; classification: string; risk: boolean };
+const drafts = new Map<string, Draft>();
 function ResolutionForm({ id, fence, generation, effect = false, onDone }: { id: string; fence?: number; generation?: number; effect?: boolean; onDone: () => void }) {
- const [decision, setDecision] = useState(effect ? "done" : "failed");
- const [reason, setReason] = useState(""); const [stopped, setStopped] = useState(false);
- const [classification, setClassification] = useState("verified-absent"); const [risk, setRisk] = useState(false);
+ const draftKey = (effect ? "effect:" : "exec:") + id + ":" + (generation ?? fence ?? "");
+ const saved = drafts.get(draftKey);
+ const [decision, setDecision] = useState(saved?.decision ?? (effect ? "done" : "failed"));
+ const [reason, setReason] = useState(saved?.reason ?? ""); const [stopped, setStopped] = useState(saved?.stopped ?? false);
+ const [classification, setClassification] = useState(saved?.classification ?? "verified-absent"); const [risk, setRisk] = useState(saved?.risk ?? false);
+ useEffect(() => { drafts.set(draftKey, { decision, reason, stopped, classification, risk }); }, [draftKey, decision, reason, stopped, classification, risk]);
  const [key, setKey] = useState(() => crypto.randomUUID()); const [saving, setSaving] = useState(false); const [error, setError] = useState("");
  const changed = () => { setKey(crypto.randomUUID()); setError(""); };
  const submit = async (event: React.FormEvent) => {
   event.preventDefault(); setSaving(true); setError("");
-  try { await api("/api/" + (effect ? "execution-effects" : "executions") + "/" + encodeURIComponent(id) + "/resolve", { method: "POST", body: JSON.stringify({ idempotencyKey: key, decision, reason, effectStopped: stopped, ...(effect ? { generation, classification, duplicateRiskAccepted: risk } : { fence }) }) }); onDone(); }
+  try { await api("/api/" + (effect ? "execution-effects" : "executions") + "/" + encodeURIComponent(id) + "/resolve", { method: "POST", body: JSON.stringify({ idempotencyKey: key, decision, reason, effectStopped: stopped, ...(effect ? { generation, classification, duplicateRiskAccepted: risk } : { fence }) }) }); drafts.delete(draftKey); onDone(); }
   catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setSaving(false); }
  };
  return <form onSubmit={e => { void submit(e); }} aria-label={effect ? "Resolve post-action" : "Resolve execution"} style={{ marginTop: 10, padding: 12, border: "1px solid var(--v2-border-medium)", borderRadius: 6, background: "var(--v2-bg-elevated)" }}>

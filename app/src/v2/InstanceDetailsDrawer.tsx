@@ -119,6 +119,7 @@ const TAB_LABEL: Record<Tab, string> = {
   neighborhood: "Neighborhood",
   whynot: "Why not?",
 };
+const lastTab = new Map<string, Tab>();
 const TAB_ORDER: Tab[] = ["general", "execution", "output", "logs", "stats", "schedule", "deps", "neighborhood", "whynot"];
 
 export default function InstanceDetailsDrawer({
@@ -136,7 +137,11 @@ export default function InstanceDetailsDrawer({
 }) {
   const status = instance.status;
   const color = STATUS_COLOR[status];
-  const [tab, setTab] = useState<Tab>("general");
+  // Aba lembrada por instance FORA do React: se o drawer remontar no meio de uma
+  // diária movimentada, o operador não é devolvido para "General" enquanto
+  // preenche a resolução na aba Execution (relato de 14/11/2026).
+  const [tab, setTabState] = useState<Tab>(() => lastTab.get(instance.id) ?? "general");
+  const setTab = (t: Tab) => { lastTab.clear(); lastTab.set(instance.id, t); setTabState(t); };
 
   // Action CONGELADA NA ORDEM — em server mode a lista não carrega actionConfig
   // (payload de escala); o detalhe (GET /api/instances/{id}) traz a foto da

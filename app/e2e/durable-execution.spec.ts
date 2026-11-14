@@ -46,7 +46,13 @@ test("I10: uncertain execution survives restart and requires an audited decision
   }
   await page.getByRole("button",{name:"Execution",exact:true}).click();
   await expect(page.getByText("Remote completion receipt lost",{exact:false})).toBeVisible();await expect(page.getByText(envelope.executionId,{exact:false})).toBeVisible();
-  const form=page.getByRole("form",{name:"Resolve execution"});const button=form.getByRole("button",{name:"Record verified resolution"});await expect(button).toBeDisabled();await form.getByLabel("Evidence and reason").fill("External operation verified stopped; no successful completion");await expect(button).toBeDisabled();await form.getByRole("checkbox").check();await button.click();await expect(form).toHaveCount(0);
+  const form=page.getByRole("form",{name:"Resolve execution"});const button=form.getByRole("button",{name:"Record verified resolution"});await expect(button).toBeDisabled();await form.getByLabel("Evidence and reason").fill("External operation verified stopped; no successful completion");await expect(button).toBeDisabled();await form.getByRole("checkbox").check();
+  // O rascunho sobrevive à remontagem do painel (sair da aba e voltar): antes o
+  // motivo e a caixa marcada se perdiam e o operador não conseguia concluir.
+  await page.getByRole("button",{name:"General",exact:true}).click();await expect(form).toHaveCount(0);
+  await page.getByRole("button",{name:"Execution",exact:true}).click();
+  await expect(form.getByRole("checkbox")).toBeChecked();await expect(form.getByLabel("Evidence and reason")).toHaveValue("External operation verified stopped; no successful completion");
+  await button.click();await expect(form).toHaveCount(0);
   const details=await(await request.get(base+"/api/instances/"+id+"/executions",{headers})).json();expect(details.attempts).toHaveLength(1);expect(details.attempts[0].state).toBe("failed");expect(details.attempts[0].resolvedBy).toBe("execution-operator");expect(details.attempts[0].reason).toContain("External operation verified stopped");
  } finally {await testInfo.attach("server.log",{body:output,contentType:"text/plain"});await stop();}
 });
